@@ -335,13 +335,16 @@ describe("GitHub canonical chat threads", () => {
     expect(firstThreadEvents.events).toContainEqual(
       expect.objectContaining({
         eventType: "input.prompt",
-        annotation: {
-          kind: "github",
-          href: `https://github.com/${REPO}/issues/${subjectNumber}#issuecomment-10001`,
-        },
         userMessage: {
           version: 1,
-          parts: [{ type: "text", text: "A turn 1" }],
+          parts: [
+            { type: "text", text: "A turn 1" },
+            {
+              type: "source",
+              kind: "github",
+              href: `https://github.com/${REPO}/issues/${subjectNumber}#issuecomment-10001`,
+            },
+          ],
         },
       }),
     );

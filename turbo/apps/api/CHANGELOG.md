@@ -1,5 +1,93 @@
 # Changelog
 
+## [1.362.0](https://github.com/vm0-ai/vm0/compare/api-v1.361.1...api-v1.362.0) (2026-07-31)
+
+
+### Features
+
+* add deepseek v4 flash responses support ([#24283](https://github.com/vm0-ai/vm0/issues/24283)) ([c6ac8c8](https://github.com/vm0-ai/vm0/commit/c6ac8c8a49e3cbb9586ac5bf1c64732dd4712a28))
+* move chat display metadata into user messages ([#24339](https://github.com/vm0-ai/vm0/issues/24339)) ([6bdb58a](https://github.com/vm0-ai/vm0/commit/6bdb58a6cf3859e8ec4dbc4e7b6df7b3b27c9e35))
+
+
+### Bug Fixes
+
+* **platform:** unify chat event loading and scroll effects ([#24335](https://github.com/vm0-ai/vm0/issues/24335)) ([96010a8](https://github.com/vm0-ai/vm0/commit/96010a882f8cc27087ac8a43f34a7fe6c5cb04fc))
+
+
+### Refactoring
+
+* **connectors:** finish slug terminology cleanup ([#24361](https://github.com/vm0-ai/vm0/issues/24361)) ([084ee2d](https://github.com/vm0-ai/vm0/commit/084ee2d7d0c17dc1b5c126ea65e768cb595a8154))
+* remove i18n rollout switches ([#24291](https://github.com/vm0-ai/vm0/issues/24291)) ([696032b](https://github.com/vm0-ai/vm0/commit/696032bd429b20aec580400e3526ffa92620663f))
+
+
+### Performance Improvements
+
+* **api:** reduce queue-first claim database round trips ([#24356](https://github.com/vm0-ai/vm0/issues/24356)) ([916fe6a](https://github.com/vm0-ai/vm0/commit/916fe6a4b27c36e73702ac73153ddfa0ed0da33b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.260.0
+    * @vm0/core bumped to 8.499.0
+    * @vm0/db bumped to 1.160.0
+
+## [1.361.1](https://github.com/vm0-ai/vm0/compare/api-v1.361.0...api-v1.361.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* apply context-tiered pricing to managed models ([#24266](https://github.com/vm0-ai/vm0/issues/24266)) ([0f487e5](https://github.com/vm0-ai/vm0/commit/0f487e5b7631b4dbfde8c7bc3f706b829d74e364))
+
+
+### Refactoring
+
+* **connectors:** remove legacy catalog compatibility refs ([#24324](https://github.com/vm0-ai/vm0/issues/24324)) ([ca59b0b](https://github.com/vm0-ai/vm0/commit/ca59b0b941f31da480d2e3ffa3cbe583cb52fe59))
+* **runner:** remove retired claim capability surface ([#24325](https://github.com/vm0-ai/vm0/issues/24325)) ([a7685e3](https://github.com/vm0-ai/vm0/commit/a7685e306da319ac85d2c4d23fc366719768b025))
+
+
+### Performance Improvements
+
+* **api:** stop blocked stale-session preparation retries ([#24317](https://github.com/vm0-ai/vm0/issues/24317)) ([48fc1ed](https://github.com/vm0-ai/vm0/commit/48fc1edec5b804c410e7eaa7b2bed5582726ad4b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.259.2
+    * @vm0/core bumped to 8.498.1
+    * @vm0/db bumped to 1.159.2
+
+## [1.361.0](https://github.com/vm0-ai/vm0/compare/api-v1.360.0...api-v1.361.0) (2026-07-31)
+
+
+### Features
+
+* **mail:** enable reply follow-up and improve gmail handoff ([#24155](https://github.com/vm0-ai/vm0/issues/24155)) ([10e9949](https://github.com/vm0-ai/vm0/commit/10e9949ff98f5c50f50d5f2ec0307b80d87b4587))
+
+
+### Bug Fixes
+
+* preserve app URL through runner environment ([#24213](https://github.com/vm0-ai/vm0/issues/24213)) ([4171443](https://github.com/vm0-ai/vm0/commit/41714431c6f035a8fb551e57804d92cbb1f71954))
+
+
+### Refactoring
+
+* **api:** switch terminal event indexes ([#24305](https://github.com/vm0-ai/vm0/issues/24305)) ([31e6f39](https://github.com/vm0-ai/vm0/commit/31e6f39fa511f721f8cc3f7cf3a9ba614346f21b))
+* **browser:** remove usage compatibility paths ([#24284](https://github.com/vm0-ai/vm0/issues/24284)) ([a32baa4](https://github.com/vm0-ai/vm0/commit/a32baa495af5176df3279a32bc3d4dfa7915da61))
+* **runner:** remove cancellation recovery capability ([#24318](https://github.com/vm0-ai/vm0/issues/24318)) ([065a83d](https://github.com/vm0-ai/vm0/commit/065a83d12e68176a84fef19bfd415b32c686897d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.259.1
+    * @vm0/core bumped to 8.498.0
+    * @vm0/db bumped to 1.159.1
+
 ## [1.360.0](https://github.com/vm0-ai/vm0/compare/api-v1.359.3...api-v1.360.0) (2026-07-31)
 
 

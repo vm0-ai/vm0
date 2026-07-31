@@ -404,9 +404,9 @@ export function zeroConnectorList(args: {
     const storedRowsPromise = db
       .select({
         id: connectors.id,
-        type: sql`${connectors.connectorSlug}`
+        connectorSlug: sql`${connectors.connectorSlug}`
           .mapWith(pgTextDecoder)
-          .as("type"),
+          .as("connector_slug"),
         authMethod: connectors.authMethod,
         externalId: connectors.externalId,
         externalUsername: connectors.externalUsername,
@@ -449,20 +449,20 @@ export function zeroConnectorList(args: {
       snapshot,
       featureStates,
     });
-    // Feature switches filter visible refs for discovery only. Stored
+    // Feature switches filter visible slugs for discovery only. Stored
     // connections remain manageable and executable after rollout is disabled.
     const now = nowDate();
     const connectorList: ConnectorWithRuntimeMethod[] = storedRows.map(
       (row) => {
         const runtimeMethod = getConnectorRuntimeMethod({
           snapshot,
-          connectorSlug: row.type,
+          connectorSlug: row.connectorSlug,
           authMethodId: row.authMethod,
           requireExecutable: true,
         });
         if (runtimeMethod === undefined) {
           throw new Error(
-            `Stored connector ${row.type}:${row.authMethod} has no executable runtime method`,
+            `Stored connector ${row.connectorSlug}:${row.authMethod} has no executable runtime method`,
           );
         }
         return {
@@ -539,7 +539,6 @@ function storedConnectorBySlug(args: {
     const oauthRows = await db
       .select({
         id: connectors.id,
-        type: connectors.connectorSlug,
         authMethod: connectors.authMethod,
         externalId: connectors.externalId,
         externalUsername: connectors.externalUsername,
@@ -572,7 +571,7 @@ function storedConnectorBySlug(args: {
       });
       if (runtimeMethod === undefined) {
         throw new Error(
-          `Stored connector ${oauthRow.type}:${oauthRow.authMethod} has no executable runtime method`,
+          `Stored connector ${args.connectorSlug}:${oauthRow.authMethod} has no executable runtime method`,
         );
       }
       return storedConnectorRowToResponse(oauthRow, runtimeMethod, nowDate());

@@ -8,7 +8,7 @@ import type { Db, ReadonlyDb } from "../external/db";
 const storedOAuthStateSelection = Object.freeze({
   id: connectorOauthStates.id,
   state: connectorOauthStates.state,
-  type: connectorOauthStates.connectorSlug,
+  connectorSlug: connectorOauthStates.connectorSlug,
   customConnectorId: connectorOauthStates.customConnectorId,
   connectorRevision: connectorOauthStates.connectorRevision,
   authMethod: connectorOauthStates.authMethod,
@@ -25,12 +25,7 @@ const storedOAuthStateSelection = Object.freeze({
   consumedAt: connectorOauthStates.consumedAt,
 });
 
-export type StoredOAuthState = Omit<
-  typeof connectorOauthStates.$inferSelect,
-  "connectorSlug"
-> & {
-  readonly type: typeof connectorOauthStates.$inferSelect.connectorSlug;
-};
+export type StoredOAuthState = typeof connectorOauthStates.$inferSelect;
 
 type ConnectorOAuthStateClaimResult =
   | { readonly kind: "missing" }
@@ -63,7 +58,7 @@ export async function getConnectorOAuthAuthorizationUrl(
   const [storedState] = await db
     .select({
       authorizationUrl: connectorOauthStates.authorizationUrl,
-      type: connectorOauthStates.connectorSlug,
+      connectorSlug: connectorOauthStates.connectorSlug,
       consumedAt: connectorOauthStates.consumedAt,
       expiresAt: connectorOauthStates.expiresAt,
     })
@@ -77,7 +72,7 @@ export async function getConnectorOAuthAuthorizationUrl(
   }
 
   if (
-    storedState.type !== args.connectorSlug ||
+    storedState.connectorSlug !== args.connectorSlug ||
     storedState.consumedAt ||
     storedState.expiresAt <= nowDate() ||
     !storedState.authorizationUrl
@@ -101,7 +96,7 @@ export async function getConnectorOAuthStateStatus(
 ): Promise<ConnectorOAuthStateStatus> {
   const [storedState] = await db
     .select({
-      type: connectorOauthStates.connectorSlug,
+      connectorSlug: connectorOauthStates.connectorSlug,
       consumedAt: connectorOauthStates.consumedAt,
       expiresAt: connectorOauthStates.expiresAt,
     })
@@ -115,7 +110,7 @@ export async function getConnectorOAuthStateStatus(
   }
 
   if (
-    storedState.type !== args.connectorSlug ||
+    storedState.connectorSlug !== args.connectorSlug ||
     storedState.consumedAt ||
     storedState.expiresAt <= nowDate()
   ) {
@@ -215,7 +210,7 @@ export async function readCustomConnectorOAuthState(
     return { kind: "missing" };
   }
   if (
-    storedState.type !== null ||
+    storedState.connectorSlug !== null ||
     !storedState.customConnectorId ||
     storedState.authMethod !== "oauth2" ||
     storedState.consumedAt ||

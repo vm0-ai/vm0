@@ -35,9 +35,9 @@ import {
   type ValidatedConnectorCatalogCandidate,
 } from "./connector-catalog-artifacts/loader";
 import {
-  connectorCatalogExecutableCapabilityStates,
+  connectorCatalogExecutableCapabilityState,
   persistConnectorCatalogCompatibility,
-  type ExecutableCapabilityStates,
+  type ExecutableCapabilityState,
 } from "./connector-catalog-compatibility.service";
 import {
   connectorCatalogRejectionIsReusable,
@@ -640,7 +640,7 @@ async function commitCandidate(args: {
   readonly skillRegistrations: readonly PreparedConnectorSkillRegistration[];
   readonly pointerObservation: PointerObservation;
   readonly attemptedAt: Date;
-  readonly capabilities: ExecutableCapabilityStates;
+  readonly capability: ExecutableCapabilityState;
   readonly validator: ConnectorCatalogValidatorIdentity;
   readonly signal: AbortSignal;
 }): Promise<CandidateCommitResult> {
@@ -657,7 +657,7 @@ async function commitCandidate(args: {
         sourceId: args.sourceId,
         identity: args.candidate.identity,
         artifact: args.candidate.artifact,
-        capabilities: args.capabilities,
+        capability: args.capability,
         validator: args.validator,
       });
       return "accepted" as const;
@@ -727,7 +727,7 @@ async function rejectCandidate(args: {
 }
 
 interface ConnectorCatalogSyncRuntime {
-  readonly capabilities: ExecutableCapabilityStates;
+  readonly capability: ExecutableCapabilityState;
   readonly db: Db;
   readonly reader: ConnectorCatalogArtifactReader;
   readonly readActivePointer: (
@@ -907,7 +907,7 @@ async function commitValidatedCandidate(
     baseline,
     candidate,
     catalogGzip,
-    capabilities: runtime.capabilities,
+    capability: runtime.capability,
     validator: runtime.validator,
     skillRegistrations,
     pointerObservation,
@@ -1082,7 +1082,7 @@ export const syncConnectorCatalog$ = command(
   ): Promise<ConnectorCatalogRawSyncResponse> => {
     const source = connectorCatalogSource();
     const runtime: ConnectorCatalogSyncRuntime = {
-      capabilities: connectorCatalogExecutableCapabilityStates(),
+      capability: connectorCatalogExecutableCapabilityState(),
       db: set(writeDb$),
       source,
       signal,

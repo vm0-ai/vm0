@@ -4,6 +4,7 @@ import { now } from "../external/time";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import {
+  runnerReuseKeyTelemetryKind,
   runnerSessionAffinityLookupError,
   runnerSessionAffinityProtection,
   runnerSessionAffinityTelemetryResource,
@@ -76,6 +77,7 @@ export async function notifyRunnerJob(
     session_affinity: affinity.status,
     session_affinity_resource: runnerSessionAffinityTelemetryResource(affinity),
     history_generation_affinity: affinity.historyGenerationStatus,
+    reuse_key_kind: runnerReuseKeyTelemetryKind(args.reuseKey),
   };
   // Queue-relative actions are cumulative boundaries. Affinity and publish
   // durations are nested children and must not be added to those boundaries.

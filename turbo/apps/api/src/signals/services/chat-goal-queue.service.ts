@@ -1,7 +1,4 @@
-import {
-  chatEvents,
-  type ChatEventGoalSnapshot,
-} from "@vm0/db/schema/chat-event";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -79,9 +76,6 @@ export async function admitGoalQueueEvent(
     readonly objectiveBrief: string;
   },
 ): Promise<GoalQueueAdmission> {
-  const goalSnapshot: ChatEventGoalSnapshot = {
-    objectiveBrief: args.objectiveBrief,
-  };
   return await db.transaction(async (tx) => {
     if (!(await lockChatQueueThread(tx, args.chatThreadId))) {
       throw new Error("Goal chat thread no longer exists");
@@ -95,7 +89,14 @@ export async function admitGoalQueueEvent(
       content: null,
       runId: null,
       runGroupId: args.goalId,
-      goalSnapshot,
+      userMessage: createUserMessageDocument({
+        text: null,
+        nonContentPart: {
+          type: "goal",
+          goalBrief: args.objectiveBrief,
+        },
+      }),
+      goalBrief: args.objectiveBrief,
     });
     if (!inserted) {
       throw new Error("Goal queue event insert returned no row");
@@ -104,7 +105,7 @@ export async function admitGoalQueueEvent(
   });
 }
 
-function noGoalChangeAfterQueueEvent(db: Pick<Db, "select">) {
+export function noGoalChangeAfterQueueEvent(db: Pick<Db, "select">) {
   return notExists(
     db
       .select({ id: laterGoalChange.id })
@@ -213,42 +214,6 @@ export async function loadGoalQueueTarget(
   };
 }
 
-/** Final-claim goal snapshot check after expensive run preparation. */
-export async function goalQueueEventMatchesActiveGoal(
-  db: Pick<Db, "select">,
-  args: {
-    readonly chatThreadId: string;
-    readonly goalId: string;
-    readonly eventId: string;
-    readonly orgId: string;
-    readonly userId: string;
-  },
-): Promise<boolean> {
-  const [goal] = await db
-    .select({
-      status: threadGoals.status,
-    })
-    .from(threadGoals)
-    .innerJoin(
-      chatEvents,
-      and(
-        eq(chatEvents.id, args.eventId),
-        eq(chatEvents.chatThreadId, threadGoals.chatThreadId),
-      ),
-    )
-    .where(
-      and(
-        eq(threadGoals.id, args.goalId),
-        eq(threadGoals.chatThreadId, args.chatThreadId),
-        eq(threadGoals.orgId, args.orgId),
-        eq(threadGoals.ownerUserId, args.userId),
-        noGoalChangeAfterQueueEvent(db),
-      ),
-    )
-    .limit(1);
-  return goal?.status === "active";
-}
-
 async function pendingGoalEventStillExists(
   db: Pick<Db, "select">,
   args: { readonly chatThreadId: string; readonly eventId: string },
@@ -311,7 +276,13 @@ export async function rejectGoalQueueEvent(
     const rejected = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.chatThreadId,
       eventType: "input.rejected",
-      userMessage: createUserMessageDocument({ text: objectiveBrief }),
+      userMessage: createUserMessageDocument({
+        text: null,
+        nonContentPart: {
+          type: "goal",
+          goalBrief: objectiveBrief,
+        },
+      }),
       runId: null,
       error: args.reason,
     });

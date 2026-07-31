@@ -680,7 +680,7 @@ function createVoiceSegmentCapture(
 
   return async (reason, upload): Promise<RecordedVoiceSegment> => {
     const previousCapture = captureQueue;
-    const nextCapture = Promise.withResolvers<void>();
+    const nextCapture = createDeferredPromise<void>(options.signal);
     captureQueue = nextCapture.promise;
 
     await previousCapture;
@@ -700,7 +700,7 @@ function createVoiceSegmentCapture(
         options.signal.throwIfAborted();
       })(),
       () => {
-        nextCapture.resolve();
+        nextCapture.resolve(undefined);
       },
     );
 

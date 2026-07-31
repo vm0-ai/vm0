@@ -14,6 +14,7 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runOutputMaterializations } from "@vm0/db/schema/run-output-materialization";
 import {
+  chatEventTerminalPredicate,
   chatEvents,
   type ChatEventGenerationTemplate,
   type ChatEventRecommendedFollowups,
@@ -1299,7 +1300,7 @@ async function insertAssistantErrorEvent(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly lifecycleEvent: "failed" | "cancelled";
-  readonly cancellationRecoveryCapable: boolean;
+  readonly hasCancellationRecoveryState: boolean;
   readonly getFormattedError: () => Promise<string>;
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
@@ -1398,7 +1399,10 @@ async function insertAssistantErrorEvent(args: {
 
   await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
   await publishThreadListChangedSafely(args.userId);
-  if (args.lifecycleEvent === "cancelled" && args.cancellationRecoveryCapable) {
+  if (
+    args.lifecycleEvent === "cancelled" &&
+    args.hasCancellationRecoveryState
+  ) {
     await publishChatThreadDetailChangedSafely(args.userId, args.threadId);
   }
   return {
@@ -1427,7 +1431,10 @@ async function teamsRunLifecycleMarkerExists(
     .select({ id: chatEvents.id })
     .from(chatEvents)
     .where(
-      and(eq(chatEvents.runId, runId), isNotNull(chatEvents.runLifecycleEvent)),
+      and(
+        eq(chatEvents.runId, runId),
+        chatEventTerminalPredicate(chatEvents.eventType),
+      ),
     )
     .limit(1);
   return marker !== undefined;
@@ -2021,7 +2028,7 @@ async function handleFailedChatCallback(args: {
   readonly runId: string;
   readonly chatThread: ChatThreadForRunRow;
   readonly errorMessage: string;
-  readonly cancellationRecoveryCapable: boolean;
+  readonly hasCancellationRecoveryState: boolean;
   readonly getFormattedError: () => Promise<string>;
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
@@ -2041,7 +2048,7 @@ async function handleFailedChatCallback(args: {
     threadId: args.chatThread.chatThreadId,
     userId: args.chatThread.userId,
     lifecycleEvent,
-    cancellationRecoveryCapable: args.cancellationRecoveryCapable,
+    hasCancellationRecoveryState: args.hasCancellationRecoveryState,
     getFormattedError: args.getFormattedError,
     slackDelivery: args.slackDelivery,
     feishuDelivery: args.feishuDelivery,
@@ -2612,17 +2619,9 @@ function loadQueuedMessageSessionState(
         }),
         loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
       ]);
-      const inlineTemplatesEnabled = isFeatureEnabled(
-        FeatureSwitchKey.StructuredPromptInlineTemplates,
-        featureSwitchContext,
-      );
       const incompleteContext =
         args.queuedMessage.triggerSource === "web"
-          ? await loadWebChatIncompleteContext(
-              args.db,
-              args.threadId,
-              inlineTemplatesEnabled,
-            )
+          ? await loadWebChatIncompleteContext(args.db, args.threadId)
           : "";
       return [
         sessionResolution.action === "rotated",
@@ -3768,7 +3767,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
         runId: args.runId,
         chatThread: args.chatThread,
         errorMessage: args.errorMessage,
-        cancellationRecoveryCapable:
+        hasCancellationRecoveryState:
           args.run.cancellationRecoveryCompleted !== null,
         getFormattedError: () => {
           return args.dependencies.formatRunError(

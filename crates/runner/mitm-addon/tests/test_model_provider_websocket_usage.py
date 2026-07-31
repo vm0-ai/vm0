@@ -390,8 +390,10 @@ class TestModelProviderWebSocketUsage:
         _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
         _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
-    def test_model_websocket_late_same_id_snapshot_does_not_mix_input_partition(
-        self, tmp_path, real_flow
+    def test_model_websocket_late_output_reuses_long_context_tier_for_duplicates(
+        self,
+        tmp_path,
+        real_flow,
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
@@ -402,12 +404,196 @@ class TestModelProviderWebSocketUsage:
                 {
                     "type": "response.completed",
                     "response": {
-                        "id": "resp_ws_partition",
+                        "id": "resp_ws_long_context",
                         "model": "gpt-5.5",
+                        "usage": {"input_tokens": 272_001},
+                    },
+                }
+            ).encode(),
+            json.dumps(
+                {
+                    "type": "response.done",
+                    "response": {
+                        "id": "resp_ws_long_context",
+                        "model": "gpt-5.5",
+                        "usage": {"output_tokens": 12},
+                    },
+                }
+            ).encode(),
+            json.dumps(
+                {
+                    "type": "response.done",
+                    "response": {
+                        "id": "resp_ws_long_context",
+                        "model": "gpt-5.5",
+                        "usage": {"output_tokens": 7},
+                    },
+                }
+            ).encode(),
+        )
+
+        expected_billing_rows = [
+            ("gpt-5.5", "tokens.input.long_context", 272_001),
+            ("gpt-5.5", "tokens.output.long_context", 12),
+        ]
+        _assert_usage_event_rows(
+            webhook.usage_events(),
+            "provider",
+            expected_billing_rows,
+        )
+        _assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            [
+                ("gpt-5.5", "tokens.input", 272_001),
+                ("gpt-5.5", "tokens.output", 12),
+            ],
+        )
+        underbilling_entries = [
+            entry
+            for entry in read_jsonl_entries_after_flush(
+                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+            )
+            if entry.get("type") == "usage_underbilling"
+        ]
+        assert underbilling_entries == []
+
+    def test_model_websocket_explicit_zero_input_selects_base_tier_for_late_output(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        webhook = self._run_websocket_messages_and_end(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_ws_zero_input",
+                        "model": "gpt-5.5",
+                        "usage": {"input_tokens": 0},
+                    },
+                }
+            ).encode(),
+            json.dumps(
+                {
+                    "type": "response.done",
+                    "response": {
+                        "id": "resp_ws_zero_input",
+                        "model": "gpt-5.5",
+                        "usage": {"output_tokens": 12},
+                    },
+                }
+            ).encode(),
+        )
+
+        _assert_usage_event_rows(
+            webhook.usage_events(),
+            "provider",
+            [("gpt-5.5", "tokens.output", 12)],
+        )
+        _assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            [("gpt-5.5", "tokens.output", 12)],
+        )
+
+    def test_model_websocket_output_without_input_skips_unclassifiable_billing(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        webhook = self._run_websocket_messages_and_end(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.done",
+                    "response": {
+                        "id": "resp_ws_missing_input",
+                        "model": "gpt-5.5",
+                        "usage": {"output_tokens": 12},
+                    },
+                }
+            ).encode(),
+        )
+
+        assert webhook.usage_events() == []
+        _assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            [("gpt-5.5", "tokens.output", 12)],
+        )
+        [entry] = [
+            entry
+            for entry in read_jsonl_entries_after_flush(
+                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+            )
+            if entry.get("type") == "usage_underbilling"
+        ]
+        assert entry["reason"] == "model_long_context_tier_unresolved"
+        assert entry["underbilling_class"] == "risk"
+        assert entry["run_id"] == "run-abc-123"
+        assert entry["provider"] == "gpt-5.5"
+
+    def test_model_websocket_tier_state_is_bounded_and_terminally_released(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        for index in range(101):
+            feed_websocket_server_message(
+                flow,
+                json.dumps(
+                    {
+                        "type": "response.completed",
+                        "response": {
+                            "id": f"resp_ws_tier_{index}",
+                            "model": "gpt-5.5",
+                            "usage": {"input_tokens": 0},
+                        },
+                    }
+                ).encode(),
+            )
+
+        tiers = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_TIERS]
+        assert isinstance(tiers, dict)
+        assert len(tiers) == 100
+        assert "resp_ws_tier_0" not in tiers
+        assert tiers["resp_ws_tier_100"].tier == "base"
+        assert tiers["resp_ws_tier_100"].committed is False
+
+        mitm_addon.websocket_end(flow)
+
+        assert metadata_keys.MODEL_PROVIDER_USAGE_TIERS not in flow.metadata
+
+    def test_model_websocket_late_same_id_snapshot_does_not_mix_input_partition(
+        self, tmp_path, real_flow
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.6-sol"
+        mitm_addon.responseheaders(flow)
+
+        webhook = self._run_websocket_messages_and_end(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_ws_partition",
+                        "model": "gpt-5.6-sol",
                         "usage": {
-                            "input_tokens": 100,
+                            "input_tokens": 300_000,
                             "output_tokens": 0,
-                            "input_tokens_details": {"cached_tokens": 20},
+                            "input_tokens_details": {"cached_tokens": 20_000},
                         },
                     },
                 }
@@ -417,13 +603,13 @@ class TestModelProviderWebSocketUsage:
                     "type": "response.done",
                     "response": {
                         "id": "resp_ws_partition",
-                        "model": "gpt-5.5",
+                        "model": "gpt-5.6-sol",
                         "usage": {
-                            "input_tokens": 100,
+                            "input_tokens": 300_000,
                             "output_tokens": 40,
                             "input_tokens_details": {
-                                "cached_tokens": 20,
-                                "cache_write_tokens": 30,
+                                "cached_tokens": 20_000,
+                                "cache_write_tokens": 30_000,
                             },
                         },
                     },
@@ -436,21 +622,23 @@ class TestModelProviderWebSocketUsage:
         assert len(events) == len(by_category) == 3
         assert len({event["idempotencyKey"] for event in events}) == 3
         assert by_category == {
-            "tokens.input": 80,
-            "tokens.output": 40,
-            "tokens.cache_read": 20,
+            "tokens.input.long_context": 280_000,
+            "tokens.output.long_context": 40,
+            "tokens.cache_read.long_context": 20_000,
         }
         observation_events = webhook.model_usage_observation_events()
         observations_by_category = compact_observation_quantities(observation_events)
         assert len(observation_events) == 2
         assert len({event["idempotencyKey"] for event in observation_events}) == 2
-        assert observations_by_category == by_category
+        assert observations_by_category == {
+            "tokens.input": 280_000,
+            "tokens.output": 40,
+            "tokens.cache_read": 20_000,
+        }
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert model_provider_usage_sources(flow) == {}
 
-    def test_model_websocket_zero_frame_model_is_used_by_later_positive_frame(
-        self, tmp_path, real_flow
-    ):
+    def test_model_websocket_zero_frame_does_not_commit_base_tier(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
@@ -471,7 +659,7 @@ class TestModelProviderWebSocketUsage:
                     "type": "response.done",
                     "response": {
                         "id": "resp_ws_1",
-                        "usage": {"input_tokens": 20, "output_tokens": 12},
+                        "usage": {"input_tokens": 272_001, "output_tokens": 12},
                     },
                 }
             ).encode(),
@@ -479,11 +667,18 @@ class TestModelProviderWebSocketUsage:
 
         assert model_provider_usage_sources(flow) == {}
         expected_rows = [
-            ("gpt-5.5", "tokens.input", 20),
-            ("gpt-5.5", "tokens.output", 12),
+            ("gpt-5.5", "tokens.input.long_context", 272_001),
+            ("gpt-5.5", "tokens.output.long_context", 12),
         ]
         _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
+        _assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            [
+                ("gpt-5.5", "tokens.input", 272_001),
+                ("gpt-5.5", "tokens.output", 12),
+            ],
+        )
 
     def test_model_websocket_zero_frame_without_model_releases_source(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)

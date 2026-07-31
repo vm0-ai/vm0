@@ -83,6 +83,109 @@ class TestReportModelProviderUsage:
         for event in body["events"]:
             uuid.UUID(event["idempotencyKey"])
 
+    @pytest.mark.parametrize(
+        ("provider", "input_tokens", "expected_suffix"),
+        [
+            ("gpt-5.5", 272_000, ""),
+            ("gpt-5.5", 272_001, ".long_context"),
+            ("gpt-5.6-sol", 272_001, ".long_context"),
+            ("gpt-5.6-terra", 272_001, ".long_context"),
+            ("gpt-5.6-luna", 272_001, ".long_context"),
+            ("MiniMax-M3", 512_000, ""),
+            ("MiniMax-M3", 512_001, ".long_context"),
+            ("claude-opus-4-6", 300_000, ""),
+        ],
+    )
+    def test_classifies_long_context_usage_at_model_boundary(
+        self,
+        real_flow,
+        usage_webhook_api,
+        provider,
+        input_tokens,
+        expected_suffix,
+    ):
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = provider
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
+            "tokens.input": input_tokens,
+            "tokens.output": 7,
+        }
+
+        with usage_webhook_api() as webhook:
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.flush_usage_events(trigger="test")
+
+        by_category = {event["category"]: event["quantity"] for event in webhook.usage_events()}
+        assert by_category == {
+            f"tokens.input{expected_suffix}": input_tokens,
+            f"tokens.output{expected_suffix}": 7,
+        }
+
+    def test_cache_partitions_select_long_context_without_changing_observation(
+        self,
+        real_flow,
+        usage_webhook_api,
+    ):
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.6-sol"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
+            "tokens.input": 200_000,
+            "tokens.output": 9,
+            "tokens.cache_read": 70_000,
+            "tokens.cache_creation": 2_001,
+        }
+
+        with usage_webhook_api() as webhook:
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.report_model_provider_usage_observation(flow, "run-abc-123")
+            usage.flush_usage_events(trigger="test")
+
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
+            "tokens.input.long_context": 200_000,
+            "tokens.output.long_context": 9,
+            "tokens.cache_read.long_context": 70_000,
+            "tokens.cache_creation.long_context": 2_001,
+        }
+        assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
+            "tokens.input": 200_000,
+            "tokens.output": 9,
+            "tokens.cache_read": 70_000,
+            "tokens.cache_creation": 2_001,
+        }
+
+    def test_aggregate_buffer_keeps_base_and_long_context_items_separate(
+        self,
+        real_flow,
+        usage_webhook_api,
+    ):
+        flows = []
+        for input_tokens in (10, 272_001):
+            flow = real_flow(with_response=False, host="api.openai.com")
+            flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+            flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+            flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
+                "tokens.input": input_tokens,
+            }
+            flows.append(flow)
+
+        with usage_webhook_api() as webhook:
+            for flow in flows:
+                usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.flush_usage_events(trigger="test")
+
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
+            "tokens.input": 10,
+            "tokens.input.long_context": 272_001,
+        }
+
     def test_falls_back_to_response_model_then_unknown(self, real_flow, usage_webhook_api):
         """Provider falls back only when selected vm0 model metadata is absent."""
         flow = real_flow(with_response=False, host="api.anthropic.com")

@@ -32,11 +32,11 @@ tail -f /dev/null
     let runtime = common::guest_runtime_from_process_env()?;
 
     let masker = SecretMasker::from_raw("");
-    let checkpoints = [common::VirtualTimeCheckpoint {
-        file: runtime.paths.system_log_file(),
-        needle: "Claude stdin writer failed, SIGTERM",
-        advance: runtime.config.post_result_sigkill_grace,
-    }];
+    let checkpoints = [common::VirtualTimeCheckpoint::new(
+        runtime.paths.system_log_file(),
+        "Claude stdin writer failed, SIGTERM",
+        runtime.config.post_result_sigkill_grace,
+    )];
 
     // The write-failure log and SIGKILL deadline are committed in one poll.
     // Keep the outer timeout as a real subprocess/reaping regression bound.

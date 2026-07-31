@@ -1,7 +1,6 @@
 import { command, type Command } from "ccstate";
 import { createElement } from "react";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
 import { initTheme$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
@@ -88,10 +87,7 @@ import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
 
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
-import {
-  featureSwitch$,
-  reloadFeatureSwitch$,
-} from "./external/feature-switch.ts";
+import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 import { reloadBillingStatus$ } from "./zero-page/billing.ts";
 import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
 
@@ -439,14 +435,10 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
   await set(initRoutes$, ROUTE_CONFIG, signal);
 });
 
-const setupFeatureSwitches$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    await set(reloadFeatureSwitch$, signal);
-    if (get(featureSwitch$)[FeatureSwitchKey.LanguagePreference] === true) {
-      await set(syncLocalePreference$, signal);
-    }
-  },
-);
+const setupFeatureSwitches$ = command(async ({ set }, signal: AbortSignal) => {
+  await set(reloadFeatureSwitch$, signal);
+  await set(syncLocalePreference$, signal);
+});
 
 function showSuccessToastAfterMount(message: string): void {
   const showToast = () => {

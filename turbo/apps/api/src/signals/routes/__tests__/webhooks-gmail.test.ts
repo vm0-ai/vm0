@@ -35,7 +35,7 @@ import {
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { chatEventDisplayText } from "./helpers/chat-event";
+import { chatEventAutomationPart } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { replaceBddVm0ApiKeys } from "../../../test-fixtures/chat-events";
 
@@ -573,7 +573,7 @@ async function workflowAutomationBriefs(
       return event.eventType === "input.prompt";
     })
     .map((event) => {
-      return event.workflowSnapshot?.triggerBrief;
+      return chatEventAutomationPart(event)?.automationBrief;
     });
 }
 
@@ -587,7 +587,7 @@ async function workflowRunIds(
   return events.flatMap((message) => {
     if (
       message.eventType !== "input.prompt" ||
-      !chatEventDisplayText(message)?.startsWith(`/${WORKFLOW_NAME}`) ||
+      chatEventAutomationPart(message)?.workflowName !== WORKFLOW_NAME ||
       !message.runId
     ) {
       return [];

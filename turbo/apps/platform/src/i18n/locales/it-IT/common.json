@@ -2019,16 +2019,7 @@
         "verifying": "Attendi mentre verifichiamo la connessione."
       },
       "feishu": {
-        "back": "Torna alle impostazioni Feishu",
-        "checkingTitle": "Verifica dello stato dell'account…",
-        "connectDescription": "Collega il tuo account {{brandName}} a questo bot Feishu in modo da poter lavorare con il tuo agente direttamente da Feishu.",
-        "connectTitle": "Connetti a Feishu",
-        "errorFallback": "Impossibile connettere Feishu. Apri un nuovo link di connessione e riprova.",
-        "invalidDescription": "Apri un nuovo link di connessione da Feishu e riprova.",
-        "open": "Apri Feishu",
-        "successDescription": "Sei connesso. Invia un messaggio in Feishu per iniziare a chattare.",
-        "successDescriptionNamed": "Sei connesso a {{bot}}. Invia un messaggio in Feishu per iniziare a chattare.",
-        "successTitle": "Connesso a Feishu!"
+        "connectTitle": "Connetti a Feishu"
       },
       "github": {
         "accountFallback": "questo account GitHub",
@@ -2273,10 +2264,14 @@
         "moreOptions": "Altre opzioni per {{bot}}",
         "pageDescription": "Gestisci il routing dei bot per questa area di lavoro",
         "permissions": {
-          "description": "Apri Autorizzazioni e ambiti nella console per sviluppatori di Feishu e aggiungi tutti gli ambiti elencati di seguito per l'identità utente. Questi ambiti di collaborazione consentono al connettore di utilizzare messaggi, file, documenti, fogli di calcolo, Base, Wiki, Presentazioni, lavagne, ricerca, calendari, attività e contatti di base.",
-          "hint": "Dopo aver modificato le autorizzazioni, crea e pubblica una nuova versione dell'app affinché la schermata di consenso OAuth possa concederle.",
-          "label": "Ambiti OAuth",
-          "title": "Abilita le autorizzazioni del connettore"
+          "description": "Nella console per sviluppatori di Feishu, apri Autorizzazioni e ambiti, scegli Importazione/esportazione in blocco > Importa e incolla il JSON seguente. Verranno importati tutti gli ambiti del connettore gestito per l'identità utente.",
+          "hint": "Conferma le autorizzazioni importate per l'identità utente, quindi crea e pubblica una nuova versione dell'app affinché la schermata di consenso OAuth possa concederle.",
+          "label": "JSON degli ambiti del token utente",
+          "menuAlt": "Pagina Autorizzazioni e ambiti di Feishu con il menu di importazione/esportazione in blocco degli ambiti evidenziato",
+          "menuLabel": "Apri l'importazione/esportazione in blocco degli ambiti",
+          "reviewAlt": "Finestra di importazione/esportazione in blocco degli ambiti di Feishu con il JSON importato e il pulsante di revisione evidenziato",
+          "reviewLabel": "Incolla il JSON e rivedi i nuovi ambiti",
+          "title": "Importa gli ambiti del token utente"
         },
         "publish": {
           "allMembersAlt": "Impostazioni di disponibilità Feishu con Tutti i membri selezionati",
@@ -2310,7 +2305,7 @@
           "done": "Fatto",
           "events": "Eventi",
           "next": "Avanti",
-          "permissions": "Autorizzazioni",
+          "permissions": "Ambiti",
           "publish": "Pubblica",
           "redirect": "Reindirizzamento",
           "tokens": "Gettoni",

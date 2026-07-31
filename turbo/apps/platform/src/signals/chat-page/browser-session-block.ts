@@ -60,12 +60,13 @@ export interface BrowserSessionSignals extends BrowserSessionDescriptor {
 
 export interface BrowserLifecycleOptimisticEvents {
   readonly append$: Command<
-    void,
+    Promise<void>,
     [
       {
         readonly eventId: string;
         readonly eventType: "browser.started" | "browser.stopped";
       },
+      AbortSignal,
     ]
   >;
 }
@@ -191,10 +192,15 @@ function createStartBrowserSignals({
     const eventId = crypto.randomUUID();
     set(startingState$, true);
     if (optimisticEvents) {
-      set(optimisticEvents.append$, {
-        eventId,
-        eventType: "browser.started",
-      });
+      await set(
+        optimisticEvents.append$,
+        {
+          eventId,
+          eventType: "browser.started",
+        },
+        signal,
+      );
+      signal.throwIfAborted();
     }
     const started = await settle(
       accept(
@@ -243,10 +249,15 @@ function createStopBrowserSignals({
     signal.throwIfAborted();
     set(stoppingState$, true);
     if (optimisticEvents) {
-      set(optimisticEvents.append$, {
-        eventId,
-        eventType: "browser.stopped",
-      });
+      await set(
+        optimisticEvents.append$,
+        {
+          eventId,
+          eventType: "browser.stopped",
+        },
+        signal,
+      );
+      signal.throwIfAborted();
     }
     if (current.ok && current.value) {
       const stoppedAt = nowDate().toISOString();

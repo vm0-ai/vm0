@@ -196,6 +196,12 @@ export default [
     },
   },
   {
+    files: ["src/signals/utils.ts"],
+    rules: {
+      "api/no-new-promise": "off",
+    },
+  },
+  {
     files: ["src/lib/db-raw-rows.ts"],
     rules: {
       // This is the single reviewed boundary that turns driver rows into

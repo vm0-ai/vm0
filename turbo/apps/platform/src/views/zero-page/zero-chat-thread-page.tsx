@@ -8,7 +8,6 @@ import type {
 import {
   useGet,
   useSet,
-  useLoadableState,
   useLastLoadable,
   useLastResolved,
   useLoadable,
@@ -86,7 +85,6 @@ import {
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
-  ChatEvent as ChatEventContract,
   ChatEventUsagePayload,
   FeedbackNotePart,
   ChatFollowupsEvent,
@@ -333,9 +331,25 @@ type RecommendedFollowup = NonNullable<
   ChatFollowupsEvent["recommendedFollowups"]
 >[number];
 
+type UserMessageNonContentPart = Extract<
+  UserMessagePart,
+  { readonly type: "source" | "automation" | "goal" }
+>;
+
+function isUserMessageNonContentPart(
+  part: UserMessagePart,
+): part is UserMessageNonContentPart {
+  return (
+    part.type === "source" || part.type === "automation" || part.type === "goal"
+  );
+}
+
 function isInputChatEvent(event: ChatEvent): event is ChatInputEvent {
   return (
-    event.eventType === "input.prompt" || event.eventType === "input.rejected"
+    event.eventType === "input.prompt" ||
+    event.eventType === "input.automation" ||
+    event.eventType === "input.goal" ||
+    event.eventType === "input.rejected"
   );
 }
 
@@ -349,9 +363,25 @@ function visibleUserMessage(
   return inputEvent?.userMessage;
 }
 
+function userMessageNonContentPart(
+  document: UserMessageDocument | undefined,
+): UserMessageNonContentPart | undefined {
+  return document?.parts.find(isUserMessageNonContentPart);
+}
+
+function eventNonContentPart(
+  event: EnrichedChatEvent,
+): UserMessageNonContentPart | undefined {
+  return userMessageNonContentPart(
+    isInputChatEvent(event) ? event.userMessage : undefined,
+  );
+}
+
 function chatEventAttachments(event: ChatEvent) {
   return isInputChatEvent(event) || event.eventType === "run.completed"
-    ? event.attachFiles
+    ? "attachFiles" in event
+      ? event.attachFiles
+      : undefined
     : undefined;
 }
 
@@ -2609,13 +2639,7 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
   const threadSettledInServer = useGet(thread.threadSettledInServer$);
   const hasEvents = useLastResolved(thread.hasEvents$);
-  const hasNewEventsState = useLoadableState(thread.hasNewEvents$);
-  if (
-    !renderedGroupsReady ||
-    !threadSettledInServer ||
-    hasEvents !== false ||
-    hasNewEventsState === "loading"
-  ) {
+  if (!renderedGroupsReady || !threadSettledInServer || hasEvents !== false) {
     return null;
   }
   return (
@@ -3290,15 +3314,11 @@ function runGroupFoldSourceLabel(fold: RunGroupFold): string {
 
 function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
   for (const event of runGroupFoldEvents(fold)) {
-    if (isWorkflowUserMessage(event)) {
-      return normalizedInlineLabel(workflowMessageBody(event));
-    }
-    const workflowSnapshot = event.workflowSnapshot;
+    const part = eventNonContentPart(event);
     const label =
-      workflowSnapshot?.triggerBrief?.trim() ||
-      workflowSnapshot?.description?.trim() ||
-      workflowSnapshot?.displayName?.trim() ||
-      workflowSnapshot?.name?.trim();
+      part?.type === "automation"
+        ? part.automationBrief?.trim() || part.workflowName.trim()
+        : null;
     if (label) {
       return normalizedInlineLabel(label);
     }
@@ -3308,7 +3328,8 @@ function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
 
 function runGroupFoldGoalLabel(fold: RunGroupFold): string {
   const goalEvent = runGroupFoldEvents(fold).find(isGoalUserMessage);
-  const content = goalEvent ? goalUserMessageBrief(goalEvent) : null;
+  const part = goalEvent ? eventNonContentPart(goalEvent) : undefined;
+  const content = part?.type === "goal" ? part.goalBrief.trim() : null;
   return content
     ? normalizedInlineLabel(content)
     : i18n
@@ -3318,27 +3339,10 @@ function runGroupFoldGoalLabel(fold: RunGroupFold): string {
         .toLocaleLowerCase(i18n.resolvedLanguage);
 }
 
-function goalUserMessageBrief(event: EnrichedChatEvent): string | null {
-  return (
-    event.goalSnapshot?.objectiveBrief?.trim() ||
-    (isInputChatEvent(event)
-      ? messageDocumentToDisplayText(event.userMessage)?.trim()
-      : null) ||
-    null
-  );
-}
-
 function isGoalUserMessage(
   event: EnrichedChatEvent,
 ): event is EnrichedChatEvent & ChatInputEvent {
-  return (
-    isInputChatEvent(event) &&
-    (event.isGoalRun === true ||
-      (event.eventType === "input.rejected" &&
-        event.goalSnapshot !== undefined)) &&
-    !hasWorkflowMessageMetadata(event) &&
-    goalUserMessageBrief(event) !== null
-  );
+  return isInputChatEvent(event) && eventNonContentPart(event)?.type === "goal";
 }
 
 function isGoalRunGroupFold(fold: RunGroupFold): boolean {
@@ -3483,15 +3487,8 @@ function RunGroupFoldRow({
 }
 
 function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
-  const renderedGroupsReadyLoadable = useLastLoadable(
-    thread.visibleRenderedChatGroupsReady$,
-  );
-  const sessionError = resolveSessionError(renderedGroupsReadyLoadable);
-  const hasEvents = useLastResolved(thread.hasEvents$);
-  const hasNewEventsState = useLoadableState(thread.hasNewEvents$);
-  const skeletonVisible =
-    hasEvents === false && hasNewEventsState === "loading";
-  if (!skeletonVisible || sessionError) {
+  const indexedDbEventsLoading = useGet(thread.indexedDbEventsLoading$);
+  if (!indexedDbEventsLoading) {
     return null;
   }
 
@@ -3560,8 +3557,8 @@ function ChatHistoryBackfillSkeleton({
   thread: ChatThreadSignals;
 }) {
   const { t } = useTranslation();
-  const progress = useLastResolved(thread.historyBackfillProgress$);
-  if (progress === null || progress === undefined) {
+  const historyBackfillPending = useGet(thread.historyBackfillPending$);
+  if (!historyBackfillPending) {
     return null;
   }
   return (
@@ -3876,21 +3873,11 @@ function useChatComposerWorkflowEvents(
   queuedEvents: readonly QueuedChatEventItem[],
 ) {
   const { t } = useTranslation();
-  const workflowAutomations =
-    useLastResolved(thread.headerAutomations.automations$) ?? [];
   const skipEvent = useSet(thread.skipAutomationEvent$);
   const pageSignal = useGet(pageSignal$);
   const pendingEventIds = new Set(
     queuedEvents.flatMap((event) => {
       return event.kind === "automation" ? [event.id] : [];
-    }),
-  );
-  const workflowLabelsByAutomationId = new Map(
-    workflowAutomations.map((automation) => {
-      return [
-        automation.id,
-        automation.workflowDisplayName?.trim() || automation.workflowName,
-      ] as const;
     }),
   );
   const workflowEventItems: WorkflowEventComposerItem[] = queuedEvents.flatMap(
@@ -3901,8 +3888,8 @@ function useChatComposerWorkflowEvents(
       return {
         id: event.id,
         text:
-          event.triggerBrief?.trim() ||
-          workflowLabelsByAutomationId.get(event.automationId) ||
+          event.automationBrief?.trim() ||
+          event.workflowName.trim() ||
           t(($) => {
             return $.chat.queue.automationEvent;
           }),
@@ -4233,8 +4220,8 @@ function equalQueuedEventItems(
       ? left.text === right.text
       : left.kind === "automation" &&
           right.kind === "automation" &&
-          left.automationId === right.automationId &&
-          left.triggerBrief === right.triggerBrief;
+          left.workflowName === right.workflowName &&
+          left.automationBrief === right.automationBrief;
   });
 }
 
@@ -6245,8 +6232,6 @@ function AssistantRecoveryActions({
         triggerClassName="h-8 w-auto min-w-[9rem] bg-background text-sm"
         compactTrigger
         resolveDefaultSelection={false}
-        allowedFrameworks={recovery.actions.selectModel.allowedFrameworks}
-        excludedModel={recovery.actions.selectModel.excludedModel ?? undefined}
       />
       <Button
         type="button"
@@ -6582,50 +6567,8 @@ function PagedUserGroup({
 function isWorkflowUserMessage(
   event: EnrichedChatEvent,
 ): event is EnrichedChatEvent & ChatInputEvent {
-  return isInputChatEvent(event) && hasWorkflowMessageMetadata(event);
-}
-
-function hasWorkflowMessageMetadata(event: EnrichedChatEvent): boolean {
-  return event.workflowSnapshot !== undefined;
-}
-
-function workflowSnapshotTitle(
-  workflowSnapshot: NonNullable<EnrichedChatEvent["workflowSnapshot"]>,
-): string {
   return (
-    workflowSnapshot.displayName?.trim() ||
-    workflowSnapshot.name.trim() ||
-    i18n.t(($) => {
-      return $.chat.templates.categories.workflow;
-    })
-  );
-}
-
-function workflowMessageBrief(
-  workflowSnapshot: NonNullable<EnrichedChatEvent["workflowSnapshot"]>,
-): string | null {
-  const brief =
-    workflowSnapshot.triggerBrief?.trim() ||
-    workflowSnapshot.description?.trim() ||
-    "";
-  return brief.length > 0 ? brief : null;
-}
-
-function workflowMessageBody(
-  event: EnrichedChatEvent & ChatInputEvent,
-): string {
-  const workflowSnapshot = event.workflowSnapshot;
-  if (!workflowSnapshot) {
-    return (
-      messageDocumentToDisplayText(event.userMessage)?.trim() ||
-      i18n.t(($) => {
-        return $.chat.templates.categories.workflow;
-      })
-    );
-  }
-  return (
-    workflowMessageBrief(workflowSnapshot) ??
-    workflowSnapshotTitle(workflowSnapshot)
+    isInputChatEvent(event) && eventNonContentPart(event)?.type === "automation"
   );
 }
 
@@ -6976,26 +6919,61 @@ const annotationIconImgs = {
   github: settingsIconAssetUrl("github"),
 } as const;
 
-function MessageAnnotation({
-  annotation,
-}: {
-  annotation: NonNullable<ChatEventContract["annotation"]>;
-}) {
+function MessageAnnotation({ part }: { part: UserMessageNonContentPart }) {
   const { t } = useTranslation();
+  const className =
+    "mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end " +
+    "rounded-md px-1.5 text-xs font-medium text-muted-foreground";
+  if (part.type === "automation") {
+    return (
+      <div
+        aria-label={t(
+          ($) => {
+            return $.chat.workflows.named;
+          },
+          {
+            title: part.workflowName,
+          },
+        )}
+        className={className}
+        title={part.workflowName}
+      >
+        <IconRoute size={15} stroke={1.8} className="shrink-0" />
+        <span className="min-w-0 truncate">{part.workflowName}</span>
+      </div>
+    );
+  }
+  if (part.type === "goal") {
+    return (
+      <div
+        aria-label={t(($) => {
+          return $.chat.queue.goal;
+        })}
+        className={className}
+      >
+        <IconTarget size={15} stroke={1.8} className="shrink-0" />
+        <span>
+          {t(($) => {
+            return $.chat.queue.goal;
+          })}
+        </span>
+      </div>
+    );
+  }
   const sourceLabel =
-    annotation.kind === "slack"
+    part.kind === "slack"
       ? t(($) => {
           return $.chat.origins.slack;
         })
-      : annotation.kind === "feishu"
+      : part.kind === "feishu"
         ? t(($) => {
             return $.chat.origins.feishu;
           })
-        : annotation.kind === "teams"
+        : part.kind === "teams"
           ? t(($) => {
               return $.chat.origins.teams;
             })
-          : annotation.kind === "telegram"
+          : part.kind === "telegram"
             ? t(($) => {
                 return $.chat.origins.telegram;
               })
@@ -7003,7 +6981,7 @@ function MessageAnnotation({
                 return $.chat.origins.github;
               });
   const openLabel =
-    annotation.kind === "feishu"
+    part.kind === "feishu"
       ? t(($) => {
           return $.chat.origins.openChat;
         })
@@ -7011,19 +6989,19 @@ function MessageAnnotation({
           return $.chat.origins.openMessage;
         });
   const ariaLabel =
-    annotation.kind === "slack"
+    part.kind === "slack"
       ? t(($) => {
           return $.chat.origins.openSlackMessage;
         })
-      : annotation.kind === "feishu"
+      : part.kind === "feishu"
         ? t(($) => {
             return $.chat.origins.openFeishuChat;
           })
-        : annotation.kind === "teams"
+        : part.kind === "teams"
           ? t(($) => {
               return $.chat.origins.openTeamsMessage;
             })
-          : annotation.kind === "telegram"
+          : part.kind === "telegram"
             ? t(($) => {
                 return $.chat.origins.openTelegramMessage;
               })
@@ -7032,17 +7010,17 @@ function MessageAnnotation({
               });
   const content = (
     <>
-      {annotation.kind === "slack" ? (
+      {part.kind === "slack" ? (
         <IconBrandSlack size={15} stroke={1.8} className="shrink-0" />
       ) : (
         <img
-          src={annotationIconImgs[annotation.kind]}
+          src={annotationIconImgs[part.kind]}
           alt=""
           className="size-[15px] shrink-0 object-contain"
         />
       )}
       <span className="shrink-0">{sourceLabel}</span>
-      {annotation.href ? (
+      {part.href ? (
         <>
           <span className="shrink-0">·</span>
           <span className="min-w-0 truncate">{openLabel}</span>
@@ -7051,15 +7029,12 @@ function MessageAnnotation({
       ) : null}
     </>
   );
-  const className =
-    "mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end " +
-    "rounded-md px-1.5 text-xs font-medium text-muted-foreground";
-  if (!annotation.href) {
+  if (!part.href) {
     return <div className={className}>{content}</div>;
   }
   return (
     <a
-      href={annotation.href}
+      href={part.href}
       target="_blank"
       rel="noreferrer"
       aria-label={ariaLabel}
@@ -7483,7 +7458,14 @@ function UserMessageFeedbackGroup({
   );
 }
 
-type UserMessageStandalonePart = Exclude<UserMessagePart, { type: "feedback" }>;
+type UserMessageContentPart = Exclude<
+  UserMessagePart,
+  { readonly type: "source" | "automation" | "goal" }
+>;
+type UserMessageStandalonePart = Exclude<
+  UserMessageContentPart,
+  { readonly type: "feedback" }
+>;
 
 function UserMessagePartView({
   part,
@@ -7541,13 +7523,18 @@ function UserMessageView({
   agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
 }) {
   const partOccurrences = new Map<string, number>();
-  const bodyParts = document.parts.filter((part) => {
-    return !isElevatedUserMessagePart(
-      part,
-      elevatedFileIds,
-      inlineTemplatesEnabled,
-    );
-  });
+  const bodyParts = document.parts.filter(
+    (part): part is UserMessageContentPart => {
+      return (
+        !isUserMessageNonContentPart(part) &&
+        !isElevatedUserMessagePart(
+          part,
+          elevatedFileIds,
+          inlineTemplatesEnabled,
+        )
+      );
+    },
+  );
   if (bodyParts.length === 0) {
     return null;
   }
@@ -7642,10 +7629,13 @@ function UserMessageContent({
         return part.type === "template";
       });
   const hasBody = document.parts.some((part) => {
-    return !isElevatedUserMessagePart(
-      part,
-      imageAttachmentIds,
-      inlineTemplatesEnabled,
+    return (
+      !isUserMessageNonContentPart(part) &&
+      !isElevatedUserMessagePart(
+        part,
+        imageAttachmentIds,
+        inlineTemplatesEnabled,
+      )
     );
   });
 
@@ -7690,20 +7680,24 @@ function WorkflowUserMessage({
   event: EnrichedChatEvent & ChatInputEvent;
 }) {
   const { t } = useTranslation();
-  const workflowSnapshot = event.workflowSnapshot;
-  if (!workflowSnapshot) {
+  const part = eventNonContentPart(event);
+  if (part?.type !== "automation") {
     return null;
   }
-  const workflowTitle = workflowSnapshotTitle(workflowSnapshot);
-  const workflowBody = workflowMessageBody(event);
+  const workflowTitle =
+    part.workflowName.trim() ||
+    t(($) => {
+      return $.chat.templates.categories.workflow;
+    });
+  const workflowBody = part.automationBrief?.trim();
   const bubbleClassName =
     "zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden whitespace-pre-wrap transition-colors duration-150";
-  const body = (
+  const body = workflowBody ? (
     <div className={bubbleClassName}>
       <div className="px-4 py-3">{workflowBody}</div>
     </div>
-  );
-  const workflowId = workflowSnapshot.id;
+  ) : null;
+  const workflowId = part.workflowId;
   const linked = workflowId !== undefined;
 
   return (
@@ -7715,22 +7709,8 @@ function WorkflowUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
-          <div
-            aria-label={t(
-              ($) => {
-                return $.chat.workflows.named;
-              },
-              {
-                title: workflowTitle,
-              },
-            )}
-            className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
-            title={workflowTitle}
-          >
-            <IconRoute size={15} stroke={1.8} className="shrink-0" />
-            <span className="min-w-0 truncate">{workflowTitle}</span>
-          </div>
-          {linked ? (
+          <MessageAnnotation part={part} />
+          {linked && body ? (
             <Link
               pathname={ROUTES.workflowDetailAutomations}
               options={{
@@ -7744,7 +7724,7 @@ function WorkflowUserMessage({
                   return $.chat.workflows.open;
                 },
                 {
-                  title: workflowSnapshotTitle(workflowSnapshot),
+                  title: workflowTitle,
                 },
               )}
             >
@@ -7761,15 +7741,14 @@ function WorkflowUserMessage({
 
 function GoalUserMessage({
   event,
-  bodyBlocks,
-  openLightbox,
 }: {
   event: EnrichedChatEvent & ChatInputEvent;
-  bodyBlocks: BodyRenderBlock[];
-  openLightbox: (url: string) => void;
 }) {
-  const { t } = useTranslation();
-  const objectiveBrief = event.goalSnapshot?.objectiveBrief?.trim();
+  const part = eventNonContentPart(event);
+  if (part?.type !== "goal") {
+    return null;
+  }
+  const goalBrief = part.goalBrief.trim();
   return (
     <div
       data-role="user"
@@ -7779,36 +7758,10 @@ function GoalUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
-          <div
-            aria-label={t(($) => {
-              return $.chat.queue.goal;
-            })}
-            className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
-          >
-            <IconTarget size={15} stroke={1.8} className="shrink-0" />
-            <span>
-              {t(($) => {
-                return $.chat.queue.goal;
-              })}
-            </span>
-          </div>
-          {objectiveBrief ? (
+          <MessageAnnotation part={part} />
+          {goalBrief ? (
             <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden ring-1 ring-emerald-900/10">
-              <div className="px-4 py-3 whitespace-pre-wrap">
-                {objectiveBrief}
-              </div>
-            </div>
-          ) : bodyBlocks.length > 0 ? (
-            <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden ring-1 ring-emerald-900/10">
-              <div className="px-4 py-3">
-                <BodyContentBlocks
-                  blocks={bodyBlocks}
-                  openLightbox={openLightbox}
-                  hardBreaks
-                  escapeMarkdownHtml
-                  markdownMediaPreview={false}
-                />
-              </div>
+              <div className="px-4 py-3 whitespace-pre-wrap">{goalBrief}</div>
             </div>
           ) : null}
         </div>
@@ -7837,15 +7790,15 @@ function resolvePagedUserMessageRendering({
   userMessage: UserMessageDocument | undefined;
   inlineTemplates: boolean;
 }) {
-  const legacyContent =
-    event.eventType === "input.automation"
-      ? (event.triggerBrief ?? "")
-      : (event.content ?? "");
+  const legacyContent = event.content ?? "";
   const { cleanContent, parsed } = parseInlineAttachments(
     inputEvent ? "" : legacyContent,
   );
   const canonicalUserMessage = userMessage;
-  const attachFiles = inputEvent?.attachFiles;
+  const attachFiles =
+    inputEvent && "attachFiles" in inputEvent
+      ? inputEvent.attachFiles
+      : undefined;
   const copyText = canonicalUserMessage
     ? (messageDocumentToPrompt(canonicalUserMessage, {
         inlineTemplates,
@@ -7932,15 +7885,10 @@ function PagedUserMessage({
   }
 
   if (isGoalUserMessage(event)) {
-    return (
-      <GoalUserMessage
-        event={event}
-        bodyBlocks={bodyBlocks}
-        openLightbox={openLightbox}
-      />
-    );
+    return <GoalUserMessage event={event} />;
   }
 
+  const nonContentPart = eventNonContentPart(event);
   return (
     <div
       data-role="user"
@@ -7950,8 +7898,8 @@ function PagedUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          {event.annotation ? (
-            <MessageAnnotation annotation={event.annotation} />
+          {nonContentPart?.type === "source" ? (
+            <MessageAnnotation part={nonContentPart} />
           ) : null}
           {canonicalUserMessage ? (
             <UserMessageContent

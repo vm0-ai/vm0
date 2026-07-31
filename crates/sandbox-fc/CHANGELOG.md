@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.167](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.166...sandbox-fc-v0.37.167) (2026-07-31)
+
+
+### Refactoring
+
+* **sandbox-fc:** extract network pool firewall ([#24326](https://github.com/vm0-ai/vm0/issues/24326)) ([161af9d](https://github.com/vm0-ai/vm0/commit/161af9d52ddcec3ced28d36cf3d15ea43930fb17))
+
 ## [0.37.166](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.165...sandbox-fc-v0.37.166) (2026-07-31)
 
 ## [0.37.165](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.164...sandbox-fc-v0.37.165) (2026-07-31)

@@ -38,16 +38,16 @@ async fn post_result_reap_escalates_to_sigkill_when_sigterm_ignored()
         .agent_execution_timeout
         .expect("test config should set an execution timeout");
     let checkpoints = [
-        common::VirtualTimeCheckpoint {
-            file: runtime.paths.agent_log_file(),
-            needle: common::MOCK_TERMINATION_READY_EVENT,
-            advance: execution_timeout,
-        },
-        common::VirtualTimeCheckpoint {
-            file: runtime.paths.system_log_file(),
-            needle: "Agent execution deadline reached during post-result cleanup",
-            advance: runtime.config.post_result_sigkill_grace,
-        },
+        common::VirtualTimeCheckpoint::new(
+            runtime.paths.agent_log_file(),
+            common::MOCK_TERMINATION_READY_EVENT,
+            execution_timeout,
+        ),
+        common::VirtualTimeCheckpoint::new(
+            runtime.paths.system_log_file(),
+            "Agent execution deadline reached during post-result cleanup",
+            runtime.config.post_result_sigkill_grace,
+        ),
     ];
 
     // The mock fence proves result ingestion armed cleanup before the

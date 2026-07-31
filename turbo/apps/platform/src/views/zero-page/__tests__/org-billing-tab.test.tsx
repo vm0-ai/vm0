@@ -10,7 +10,6 @@ import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
@@ -253,9 +252,6 @@ describe("organization billing settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=billing",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     await waitFor(() => {

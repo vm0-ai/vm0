@@ -352,6 +352,7 @@ export async function publishRunnerJobNotification(
   runId: string,
   profile: string,
   metadata?: {
+    /** Raw key required for runner-local affinity matching; it stays on the internal runner-group channel. */
     readonly reuseKey: string | null;
     readonly cliAgentSessionId: string | null;
     readonly historyGenerationAffinityProtectedUntil: string | null;

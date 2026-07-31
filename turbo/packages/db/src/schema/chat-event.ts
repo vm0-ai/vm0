@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import {
@@ -29,7 +29,6 @@ export type {
   ChatEventAttachFiles,
   ChatEventGenerationTemplate,
   ChatEventGoalEvent,
-  ChatEventGoalSnapshot,
   ChatEventIllustrationGenerationTemplate,
   ChatEventPresentationGenerationTemplate,
   ChatEventRecommendedFollowup,
@@ -44,6 +43,14 @@ export type {
   ChatEventWebsiteGenerationTemplate,
   ChatEventWorkflowGenerationTemplate,
 } from "@vm0/db/jsonb-contracts/chat-event";
+
+/**
+ * Shared literal predicate for partial-index selection and ON CONFLICT
+ * inference. Keep the values inline rather than parameterizing this condition.
+ */
+export function chatEventTerminalPredicate(eventType: SQLWrapper): SQL {
+  return sql`${eventType} IN ('run.completed', 'run.failed', 'run.cancelled')`;
+}
 
 /**
  * Physical storage for the immutable ChatEvent stream.
@@ -148,9 +155,7 @@ export const chatEvents = pgTable(
         .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
       index("idx_chat_events_thread_run_terminal_created")
         .on(table.chatThreadId, table.createdAt.desc())
-        .where(
-          sql`${table.eventType} IN ('run.completed', 'run.failed', 'run.cancelled')`,
-        ),
+        .where(chatEventTerminalPredicate(table.eventType)),
       index("idx_chat_events_run_id").on(table.runId),
       index("chat_events_usage_run_id_idx")
         .on(table.runId)
@@ -185,9 +190,7 @@ export const chatEvents = pgTable(
         .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
       uniqueIndex("chat_events_run_terminal_unique")
         .on(table.runId)
-        .where(
-          sql`${table.eventType} IN ('run.completed', 'run.failed', 'run.cancelled')`,
-        ),
+        .where(chatEventTerminalPredicate(table.eventType)),
       uniqueIndex("chat_events_run_thinking_unique")
         .on(table.runId)
         .where(sql`${table.thinking} IS NOT NULL`),

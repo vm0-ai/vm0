@@ -21,7 +21,6 @@ import {
   NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
-  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
@@ -285,19 +284,10 @@ export const rustConstantBindings = [
   },
   {
     rustModulePath: ["runners"],
-    rustConstName: "RUNNER_CANCELLATION_RECOVERY_CAPABILITY",
-    value: rustString(RUNNER_CANCELLATION_RECOVERY_CAPABILITY),
-    rustDoc: [
-      "Claim capability for cooperative user-cancellation recovery.",
-      "Supporting runners advertise this value so the API can activate the cancellation recovery barrier.",
-    ],
-  },
-  {
-    rustModulePath: ["runners"],
     rustConstName: "RUNNER_CANCELLATION_RECOVERY_GRACE_MS",
     value: rustU64(RUNNER_CANCELLATION_RECOVERY_GRACE_MS),
     rustDoc: [
-      "Maximum cooperative user-cancellation recovery window enforced by capable runners.",
+      "Maximum cooperative user-cancellation recovery window enforced by runners.",
       "The API stale barrier remains longer than this runner-owned deadline so delivery latency cannot release a healthy recovery early.",
     ],
   },

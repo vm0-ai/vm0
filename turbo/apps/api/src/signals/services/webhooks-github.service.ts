@@ -41,6 +41,7 @@ import {
 } from "./github-chat-ingress.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
+import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import { dispatchGithubLabelWorkflowAutomations$ } from "./github-workflow-event.service";
@@ -1285,7 +1286,16 @@ async function insertGitHubChatInput(args: {
         id: chatEventId,
         chatThreadId: args.route.chatThreadId,
         eventType: "input.prompt",
-        userMessage: createUserMessageDocument({ text: args.prompt }),
+        userMessage: createUserMessageDocument({
+          text: args.prompt,
+          nonContentPart: createChatEventSourcePart({
+            kind: "github",
+            repo: args.params.repo,
+            subjectNumber: issueNumber,
+            subjectKind: args.params.subjectKind,
+            triggerCommentId: args.params.commentId ?? null,
+          }),
+        }),
         runId: null,
         triggerSource: "github",
         encryptedParams,

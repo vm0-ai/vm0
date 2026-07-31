@@ -27,6 +27,7 @@ from host_normalization import (
     translate_idna_dot_separators,
 )
 from path_security import has_unsafe_url_path
+from runtime_url_parsing import split_runtime_url
 from url_syntax import (
     has_raw_whitespace,
     has_unsafe_runtime_url_syntax,
@@ -204,7 +205,7 @@ def _split_base_match_url(
         return None
 
     try:
-        parts = urlsplit(value)
+        parts = split_runtime_url(value)
     except ValueError:
         return None
     if not parts.scheme or not parts.netloc:

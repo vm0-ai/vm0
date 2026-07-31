@@ -7,6 +7,7 @@ import {
   type TeamsConnectStatus,
 } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import {
+  FEISHU_OAUTH_SCOPES,
   zeroFeishuConnectContract,
   type FeishuConnectStatus,
 } from "@vm0/api-contracts/contracts/zero-feishu-connect";
@@ -423,7 +424,6 @@ describe("works page", () => {
       context,
       path: "/settings/strapi",
       featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
         [FeatureSwitchKey.StrapiIntegration]: true,
       },
     });
@@ -484,6 +484,8 @@ describe("works page", () => {
           isConnected: false,
           appId: "cli_member",
           callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
+          connectUrl:
+            "https://www.vm0.test/api/zero/feishu/oauth/connect?state=incomplete",
           callbackVerified: true,
           messageReceived: true,
           tenantKey: "tenant-member",
@@ -500,7 +502,7 @@ describe("works page", () => {
     await expect(screen.findByText("Feishu bots")).resolves.toBeInTheDocument();
     expect(queryRole("button", "Add bot")).toBeNull();
     expect(screen.getByText("Setup incomplete")).toBeInTheDocument();
-    expect(queryRole("link", "Connect")).toBeNull();
+    expect(queryRole("button", "Connect")).toBeNull();
 
     expect(queryRole("button", "More options for Member bot")).toBeNull();
   });
@@ -577,13 +579,30 @@ describe("works page", () => {
     ).toBeInTheDocument();
 
     click(getRole("button", "Next"));
+    expect(screen.getByText("Import user token scopes")).toBeInTheDocument();
+    expect(screen.getByText("Scopes")).toBeInTheDocument();
     expect(
-      screen.getByText("Enable connector permissions"),
+      screen.getByRole("img", {
+        name: "Feishu Permissions & Scopes page with the Batch import/export scopes menu highlighted",
+      }),
     ).toBeInTheDocument();
-    expect(screen.getByText("OAuth scopes")).toBeInTheDocument();
-    expect(document.body).toHaveTextContent("im:message.send_as_user");
-    expect(document.body).toHaveTextContent("drive:drive");
-    expect(document.body).toHaveTextContent("docx:document");
+    click(getRole("button", "Show next Feishu guide image"));
+    expect(
+      screen.getByRole("img", {
+        name: "Feishu Batch import/export scopes dialog with the imported JSON and review button highlighted",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("User token scope JSON")).toBeInTheDocument();
+    expect(
+      JSON.parse(
+        screen.getByTestId("feishu-user-scope-import-json").textContent ?? "",
+      ),
+    ).toStrictEqual({
+      scopes: {
+        tenant: [],
+        user: [...FEISHU_OAUTH_SCOPES],
+      },
+    });
 
     click(getRole("button", "Next"));
     expect(screen.getByText("Configure event delivery")).toBeInTheDocument();
@@ -741,9 +760,7 @@ describe("works page", () => {
       screen.getByText("Configure the OAuth redirect URL"),
     ).toBeInTheDocument();
     click(getRole("button", "Next"));
-    expect(
-      screen.getByText("Enable connector permissions"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Import user token scopes")).toBeInTheDocument();
     click(getRole("button", "Next"));
     expect(
       screen.getByRole("img", {

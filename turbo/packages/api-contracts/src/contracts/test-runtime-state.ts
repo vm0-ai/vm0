@@ -39,7 +39,7 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     mode: z.enum([
       "remove",
       "malformed",
-      "legacy-capability",
+      "capability-mismatch",
       "catalog-mismatch",
       "authority-mismatch",
       "inconsistent",

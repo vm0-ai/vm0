@@ -375,6 +375,27 @@ const userMessagePartSchema = z.discriminatedUnion("type", [
   userMessageTemplatePartSchema,
   z
     .object({
+      type: z.literal("source"),
+      kind: z.enum(["slack", "feishu", "teams", "telegram", "github"]),
+      href: z.string().url().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("automation"),
+      workflowName: z.string().min(1),
+      workflowId: z.string().uuid().optional(),
+      automationBrief: z.string().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("goal"),
+      goalBrief: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("file"),
       fileId: z.string().min(1),
       filenameSnapshot: z.string().min(1),
@@ -402,28 +423,23 @@ const userMessagePartSchema = z.discriminatedUnion("type", [
 const userMessageDocumentSchema = z
   .object({
     version: z.literal(1),
-    parts: z.array(userMessagePartSchema).min(1),
-  })
-  .strict();
-
-const workflowSnapshotSchema = z.object({
-  id: z.string().uuid().optional(),
-  agentId: z.string().uuid().optional(),
-  name: z.string(),
-  displayName: z.string().nullable(),
-  description: z.string().nullable(),
-  automationId: z.string().uuid().optional(),
-  triggerBrief: z.string().nullable().optional(),
-});
-
-const goalSnapshotSchema = z.object({
-  objectiveBrief: z.string().min(1),
-});
-
-const chatEventAnnotationSchema = z
-  .object({
-    kind: z.enum(["slack", "feishu", "teams", "telegram", "github"]),
-    href: z.string().url().optional(),
+    parts: z
+      .array(userMessagePartSchema)
+      .min(1)
+      .refine(
+        (parts) => {
+          return (
+            parts.filter((part) => {
+              return (
+                part.type === "source" ||
+                part.type === "automation" ||
+                part.type === "goal"
+              );
+            }).length <= 1
+          );
+        },
+        { message: "A user message may contain at most one non-content part" },
+      ),
   })
   .strict();
 
@@ -434,15 +450,12 @@ const chatEventBaseSchema = z.object({
   runId: z.string().optional(),
   runGroupId: z.string().optional(),
   triggerSource: triggerSourceSchema.optional(),
-  annotation: chatEventAnnotationSchema.optional(),
   isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
-  goalSnapshot: goalSnapshotSchema.optional(),
   revokesEventId: z.string().optional(),
   /** Server-assigned strict position within the chat thread. */
   seqId: z.number().int().positive(),
   sequenceNumber: z.number().nullable().optional(),
-  workflowSnapshot: workflowSnapshotSchema.optional(),
   createdAt: z.string(),
 });
 
@@ -478,9 +491,8 @@ const inputAutomationEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.automation"),
     content: z.null(),
-    automationId: z.string().uuid(),
+    userMessage: userMessageDocumentSchema.optional(),
     triggerSource: triggerSourceSchema,
-    triggerBrief: z.string().nullable(),
   })
   .strict();
 
@@ -488,18 +500,16 @@ const inputGoalEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.goal"),
     content: z.null(),
+    userMessage: userMessageDocumentSchema,
     // Queue association stays server-side; the public event preserves only
-    // the non-sensitive goal snapshot and stream ordering contract.
+    // the user-facing document and stream ordering contract.
     runId: z.never().optional(),
     runGroupId: z.never().optional(),
     triggerSource: z.never().optional(),
-    annotation: z.never().optional(),
     isGoalRun: z.never().optional(),
     runEventId: z.never().optional(),
-    goalSnapshot: goalSnapshotSchema,
     revokesEventId: z.never().optional(),
     sequenceNumber: z.never().optional(),
-    workflowSnapshot: z.never().optional(),
   })
   .strict();
 
@@ -509,8 +519,6 @@ const inputRejectedEventSchema = chatEventBaseSchema
     content: z.null(),
     userMessage: userMessageDocumentSchema,
     error: z.string(),
-    automationId: z.string().uuid().optional(),
-    triggerBrief: z.string().nullable().optional(),
     attachFiles: z.array(resolvedAttachFileSchema).optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
   })
@@ -1625,7 +1633,13 @@ export function chatEventResponse(event: ChatEvent): ChatEvent {
 
 export type ChatInputEvent = Extract<
   ChatEvent,
-  { eventType: "input.prompt" | "input.automation" | "input.rejected" }
+  {
+    eventType:
+      | "input.prompt"
+      | "input.automation"
+      | "input.goal"
+      | "input.rejected";
+  }
 >;
 export type ChatUserMessageEvent = Extract<
   ChatEvent,

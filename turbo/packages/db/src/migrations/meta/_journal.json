@@ -5482,6 +5482,34 @@
       "when": 1785481682874,
       "tag": "0782_add_runner_job_queue_reuse_key",
       "breakpoints": true
+    },
+    {
+      "idx": 783,
+      "version": "7",
+      "when": 1785484828737,
+      "tag": "0783_remove_browser_usage_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 784,
+      "version": "7",
+      "when": 1785488776593,
+      "tag": "0784_remove_legacy_connector_catalog_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 785,
+      "version": "7",
+      "when": 1785489578000,
+      "tag": "0785_backfill_chat_event_user_message_parts",
+      "breakpoints": true
+    },
+    {
+      "idx": 786,
+      "version": "7",
+      "when": 1785495667349,
+      "tag": "0786_add_deepseek_v4_flash",
+      "breakpoints": true
     }
   ]
 }

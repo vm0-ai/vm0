@@ -15,20 +15,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
       true,
     );
-    expect(isFeatureEnabled(FeatureSwitchKey.LanguagePreference, {})).toBe(
-      true,
-    );
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.BrazilianPortugueseLocale, {}),
-    ).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.JapaneseLocale, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.KoreanLocale, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.IndonesianLocale, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.GermanLocale, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.SpanishLocale, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.ItalianLocale, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.FrenchLocale, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.HindiLocale, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroMailReplyFollowUp, {})).toBe(
       true,
     );
@@ -68,6 +54,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
       false,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.DeepSeekV4Flash, {})).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -141,18 +128,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
-      true,
-    );
-    expect(staffOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.KoreanLocale]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.IndonesianLocale]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.GermanLocale]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.SpanishLocale]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ItalianLocale]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.FrenchLocale]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.HindiLocale]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
@@ -166,6 +141,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.SlackDmSessionRouting]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
       staffOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
@@ -177,6 +153,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.DeepSeekV4Flash]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -184,18 +161,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
-      true,
-    );
-    expect(otherOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.KoreanLocale]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.IndonesianLocale]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.GermanLocale]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.SpanishLocale]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.ItalianLocale]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.FrenchLocale]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.HindiLocale]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
@@ -212,6 +177,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.SlackDmSessionRouting]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
       otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
@@ -223,6 +189,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.DeepSeekV4Flash]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -269,36 +236,6 @@ describe("user-overridable switches", () => {
       FeatureSwitchKey.ZeroMailReplyFollowUp,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.LanguagePreference,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.BrazilianPortugueseLocale,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.JapaneseLocale,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.KoreanLocale,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.IndonesianLocale,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.GermanLocale,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.SpanishLocale,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.ItalianLocale,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.FrenchLocale,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.HindiLocale,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroBrowser,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
@@ -306,6 +243,9 @@ describe("user-overridable switches", () => {
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.StrapiIntegration,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.DeepSeekV4Flash,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.StructuredPromptInlineTemplates,
@@ -321,24 +261,16 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.PwaChatKeyboardGestures]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-        [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
-        [FeatureSwitchKey.JapaneseLocale]: true,
-        [FeatureSwitchKey.KoreanLocale]: true,
-        [FeatureSwitchKey.IndonesianLocale]: true,
-        [FeatureSwitchKey.GermanLocale]: true,
-        [FeatureSwitchKey.SpanishLocale]: true,
-        [FeatureSwitchKey.ItalianLocale]: true,
-        [FeatureSwitchKey.FrenchLocale]: true,
-        [FeatureSwitchKey.HindiLocale]: true,
         [FeatureSwitchKey.ZeroBrowser]: true,
+        [FeatureSwitchKey.DeepSeekV4Flash]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({
       [FeatureSwitchKey.ZeroBrowser]: true,
+      [FeatureSwitchKey.DeepSeekV4Flash]: true,
       [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,
-      [FeatureSwitchKey.JapaneseLocale]: true,
       [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
     });
   });

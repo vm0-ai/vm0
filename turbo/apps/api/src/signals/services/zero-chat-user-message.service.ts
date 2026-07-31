@@ -23,6 +23,11 @@ interface UserMessageFile {
   readonly contentType: string;
 }
 
+type UserMessageNonContentPart = Extract<
+  UserMessagePart,
+  { readonly type: "source" | "automation" | "goal" }
+>;
+
 export function requiredUserMessageForEvent(
   eventType: ChatEventType,
   document: UserMessageDocument | null,
@@ -39,6 +44,7 @@ export function requiredUserMessageForEvent(
 function maybeCreateUserMessageDocument(args: {
   readonly text: string | null;
   readonly files?: readonly UserMessageFile[];
+  readonly nonContentPart?: UserMessageNonContentPart;
 }): UserMessageDocument | null {
   const parts: UserMessagePart[] = (args.files ?? []).map((file) => {
     return {
@@ -51,16 +57,20 @@ function maybeCreateUserMessageDocument(args: {
   if (args.text !== null && args.text.length > 0) {
     parts.push({ type: "text", text: args.text });
   }
+  if (args.nonContentPart) {
+    parts.push(args.nonContentPart);
+  }
   return parts.length > 0 ? { version: 1, parts } : null;
 }
 
 export function createUserMessageDocument(args: {
   readonly text: string | null;
   readonly files?: readonly UserMessageFile[];
+  readonly nonContentPart?: UserMessageNonContentPart;
 }): UserMessageDocument {
   const document = maybeCreateUserMessageDocument(args);
   if (!document) {
-    throw new Error("User message must contain text or files");
+    throw new Error("User message must contain at least one part");
   }
   return document;
 }
@@ -265,6 +275,13 @@ export function projectUserMessage(
       flushInlinePrompt();
       promptBlocks.push(webFilePrompt(part));
       displayBlocks.push(`[File: ${part.filenameSnapshot}]`);
+      continue;
+    }
+    if (
+      part.type === "source" ||
+      part.type === "automation" ||
+      part.type === "goal"
+    ) {
       continue;
     }
     if (options.inlineTemplates === true) {

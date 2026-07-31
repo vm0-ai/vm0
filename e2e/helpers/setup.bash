@@ -148,7 +148,7 @@ configure_e2e_model_provider() {
 }
 
 connect_e2e_connector() {
-    local connector_type="$1"
+    local connector_slug="$1"
     local values_json="$2"
     local auth_method="${3:-api-token}"
     local payload
@@ -156,7 +156,7 @@ connect_e2e_connector() {
         --arg authMethod "$auth_method" \
         --argjson values "$values_json" \
         '{authMethod: $authMethod, values: $values}')
-    e2e_api_curl "/api/zero/connectors/$connector_type/manual-grant" \
+    e2e_api_curl "/api/zero/connectors/$connector_slug/manual-grant" \
         -X POST \
         -d "$payload" >/dev/null
 }

@@ -5,7 +5,6 @@ import {
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -163,16 +162,10 @@ function mockBillingCapabilities(modelCapabilities: {
   });
 }
 
-async function openModelSettings(
-  heading = "Models",
-  languagePreference = false,
-): Promise<void> {
+async function openModelSettings(heading = "Models"): Promise<void> {
   detachedSetupPage({
     context,
     path: "/?settings=model",
-    featureSwitches: languagePreference
-      ? { [FeatureSwitchKey.LanguagePreference]: true }
-      : undefined,
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -569,7 +562,7 @@ describe("personal model providers settings", () => {
       supportedLocales: ["en-US", "ja-JP"],
     });
 
-    await openModelSettings("モデル", true);
+    await openModelSettings("モデル");
 
     const claudeCodeRow = await screen.findByTestId(
       "oauth-card-claude-code-oauth-token",
@@ -615,7 +608,7 @@ describe("personal model providers settings", () => {
       supportedLocales: ["en-US", "es-ES"],
     });
 
-    await openModelSettings("Modelos", true);
+    await openModelSettings("Modelos");
 
     const claudeCodeRow = await screen.findByTestId(
       "oauth-card-claude-code-oauth-token",
@@ -789,7 +782,7 @@ describe("personal model providers settings", () => {
       supportedLocales: ["en-US", "pt-BR"],
     });
 
-    await openModelSettings("Modelos", true);
+    await openModelSettings("Modelos");
 
     click(screen.getByText("Adicionar modelo"));
     const policyDialog = screen.getByRole("dialog", {

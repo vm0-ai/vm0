@@ -400,7 +400,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     }
   });
 
-  it("does not auto-open from a cached browser start superseded by a remote stop", async () => {
+  it("keeps a sidebar opened from cached browser state when remote sync later stops it", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
     mockSidebarThread();
@@ -458,7 +458,7 @@ describe("zero chat thread IndexedDB fallback", () => {
       ).resolves.toBeInTheDocument();
       expect(
         document.querySelector("[data-browser-session-sidebar]"),
-      ).toBeNull();
+      ).toBeInstanceOf(HTMLElement);
     } finally {
       runtimeDb.close();
     }
@@ -528,7 +528,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     }
   });
 
-  it("shows the message skeleton until an uncached remote thread is confirmed empty", async () => {
+  it("hides the message skeleton after IndexedDB loads without waiting for remote events", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
     mockSidebarThread();
@@ -547,13 +547,11 @@ describe("zero chat thread IndexedDB fallback", () => {
       await messageListRequested.promise;
 
       await waitFor(() => {
-        expect(document.querySelector("[data-chat-skeleton]")).toBeInstanceOf(
-          HTMLElement,
-        );
+        expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
       });
       expect(
-        screen.queryByText("Send a message to start the conversation"),
-      ).not.toBeInTheDocument();
+        screen.getByText("Send a message to start the conversation"),
+      ).toBeInTheDocument();
       expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
 
       initialMessageList.resolve();

@@ -4,7 +4,6 @@ import {
   zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
 } from "@vm0/api-contracts/contracts/zero-org-members";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { describe, expect, it } from "vitest";
@@ -218,16 +217,10 @@ function mockMembersStory(): void {
   );
 }
 
-async function openMembersTab(
-  heading = "People",
-  languagePreference = false,
-): Promise<void> {
+async function openMembersTab(heading = "People"): Promise<void> {
   detachedSetupPage({
     context,
     path: "/?settings=people",
-    featureSwitches: languagePreference
-      ? { [FeatureSwitchKey.LanguagePreference]: true }
-      : undefined,
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -417,7 +410,7 @@ describe("organization members settings", () => {
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
     });
-    await openMembersTab("Pessoas", true);
+    await openMembersTab("Pessoas");
 
     const settingsDialog = screen.getByRole("dialog", {
       name: "Configurações",

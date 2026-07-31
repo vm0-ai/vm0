@@ -10,7 +10,6 @@ const REVOKED_EVENT_ID = "00000000-0000-4000-8000-000000000011";
 const REVOKE_EVENT_ID = "00000000-0000-4000-8000-000000000012";
 const QUEUED_EVENT_ID = "00000000-0000-4000-8000-000000000013";
 const AUTOMATION_EVENT_ID = "00000000-0000-4000-8000-000000000014";
-const AUTOMATION_ID = "00000000-0000-4000-8000-000000000015";
 const EVENTS_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/events`;
 
 function promptEvent(args: {
@@ -80,9 +79,17 @@ describe("zero chat queued command", () => {
                 threadId: THREAD_ID,
                 eventType: "input.automation",
                 content: null,
-                automationId: AUTOMATION_ID,
                 triggerSource: "workflow-event",
-                triggerBrief: "  Gmail   label applied ",
+                userMessage: {
+                  version: 1,
+                  parts: [
+                    {
+                      type: "automation",
+                      workflowName: "daily-digest",
+                      automationBrief: "  Gmail   label applied ",
+                    },
+                  ],
+                },
                 seqId: 4,
                 createdAt: "2026-07-29T10:03:00.000Z",
               },

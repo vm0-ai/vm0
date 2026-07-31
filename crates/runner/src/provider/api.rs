@@ -1,6 +1,5 @@
 //! [`JobProvider`] backed by an Ably control plane + HTTP polling + REST API.
 
-use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -11,8 +10,7 @@ use tracing::{error, info, warn};
 
 use api_contracts::generated::{
     constants::runners::{
-        NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE, RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-        RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
+        NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     routes,
 };
@@ -49,7 +47,6 @@ use sandbox::SandboxId;
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody {
     telemetry: ClaimRequestTelemetry,
-    capabilities: [&'static str; 1],
 }
 
 #[derive(Serialize)]
@@ -554,7 +551,7 @@ impl JobProvider for ApiProvider {
                         return None;
                     }
                     let run_id = job.run_id;
-                    let reuse_key = job.reuse_key().map(Cow::into_owned);
+                    let reuse_key = job.reuse_key().map(str::to_owned);
                     let cli_agent_session_id = job.cli_agent_session_id;
                     let history_generation_run_id = job.history_generation_run_id;
                     let history_generation_affinity_protected_until =
@@ -1119,7 +1116,6 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
     };
 
     ClaimRequestBody {
-        capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
         telemetry: ClaimRequestTelemetry {
             discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
             job_discovered_to_claim_request_ms: claim_telemetry_duration_ms(
@@ -2015,10 +2011,7 @@ mod tests {
         assert!(!body.to_string().contains("historyHash"));
         assert!(!body.to_string().contains("cacheKey"));
         assert!(!body.to_string().contains("path"));
-        assert_eq!(
-            body["capabilities"],
-            serde_json::json!([RUNNER_CANCELLATION_RECOVERY_CAPABILITY])
-        );
+        assert!(body.get("capabilities").is_none());
     }
 
     #[test]

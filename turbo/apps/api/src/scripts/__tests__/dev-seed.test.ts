@@ -124,6 +124,12 @@ describe("buildVm0ApiKeys", () => {
           model: "deepseek-v4-pro",
           vendor: "deepseek",
         }),
+        expect.objectContaining({
+          apiKey: "dev-deepseek-key",
+          label: "dev-seed",
+          model: "deepseek-v4-flash",
+          vendor: "deepseek",
+        }),
       ]),
     );
     expect(
@@ -273,6 +279,12 @@ describe("buildVm0ApiKeys", () => {
           apiKey: "provider-deepseek-key",
           label: "dev-seed",
           model: "deepseek-v4-pro",
+          vendor: "deepseek",
+        }),
+        expect.objectContaining({
+          apiKey: "provider-deepseek-key",
+          label: "dev-seed",
+          model: "deepseek-v4-flash",
           vendor: "deepseek",
         }),
       ]),

@@ -75,7 +75,6 @@ describe("browser session page", () => {
         context,
         path: `/browsers/${threadId}`,
         featureSwitches: {
-          [FeatureSwitchKey.LanguagePreference]: true,
           [FeatureSwitchKey.ZeroBrowser]: true,
         },
       });

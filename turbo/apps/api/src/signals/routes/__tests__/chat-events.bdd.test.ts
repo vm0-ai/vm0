@@ -20,12 +20,12 @@ import {
   type ChatEvent,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
 import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
@@ -140,6 +140,13 @@ const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
 const API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES = [
   "api_dispatch_validate_thread_session_snapshot_thread",
   "api_dispatch_update_thread_session_binding",
+] as const;
+const API_DISPATCH_QUEUE_FIRST_ADMISSION_ACTION_TYPES = [
+  "api_dispatch_resolve_queue_first_admission",
+] as const;
+const API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES = [
+  "api_dispatch_resolve_queue_first_claim_snapshot",
+  "api_dispatch_persist_queue_first_replacement",
 ] as const;
 const API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES = [
   "api_dispatch_queue_first_thread_lock_wait",
@@ -806,6 +813,7 @@ async function upsertOrgModelProvider(
   body: {
     readonly type:
       | "anthropic-api-key"
+      | "deepseek-codex"
       | "deepseek-api-key"
       | "openai-api-key"
       | "openrouter-api-key"
@@ -1003,6 +1011,7 @@ describe("CHAT-02: web chat send and client ids", () => {
       [
         "api_dispatch_admission_lock_held",
         "api_dispatch_claim_queue_first_message",
+        ...API_DISPATCH_QUEUE_FIRST_ADMISSION_ACTION_TYPES,
       ],
       "nested",
     );
@@ -1197,9 +1206,7 @@ describe("CHAT-02: interrupting active chat runs", () => {
       prompt: "long task to interrupt",
     });
     await api.heartbeatRunner(runnerGroup);
-    const firstClaim = await api.claimRunnerJob(first.runId, {
-      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
-    });
+    const firstClaim = await api.claimRunnerJob(first.runId);
     context.mocks.ably.publish.mockClear();
 
     const interruptId = randomUUID();
@@ -1265,6 +1272,14 @@ describe("CHAT-02: interrupting active chat runs", () => {
           message.eventType === "run.cancelled" &&
           message.runId === first.runId &&
           message.runLifecycleEvent === "cancelled"
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      assistantMessages(messages.events).filter((message) => {
+        return (
+          message.runId === first.runId &&
+          isChatRunTerminalEventType(message.eventType)
         );
       }),
     ).toHaveLength(1);
@@ -1685,6 +1700,11 @@ describe("CHAT-02: org queue markers", () => {
       API_DISPATCH_QUEUED_PERSISTENCE_ACTION_TYPES,
       "nested",
     );
+    expect(
+      queuedTimingEvents.filter((event) => {
+        return event.op_type === "api_dispatch_resolve_queue_first_admission";
+      }),
+    ).toHaveLength(1);
 
     const queuedThread = queuedRun.body.threadId;
     const beforeDequeue = await waitForThreadMessages(
@@ -2379,6 +2399,59 @@ describe("CHAT-02: model-first provider policies", () => {
       }
     }
   }, 90_000);
+
+  it("routes DeepSeek V4 Flash through the native Responses adapter", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "deepseek-codex",
+      secret: "selected-deepseek-responses-key",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "deepseek-v4-flash",
+        isDefault: true,
+        defaultProviderType: "deepseek-codex",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "run with DeepSeek Responses",
+      model: "deepseek-v4-flash",
+    });
+    const { claim } = await claimChatRun(runnerGroup, run.runId);
+    const environment = claimEnvironment(claim);
+
+    expect(claim.cliAgentType).toBe("codex");
+    expect(environment.OPENAI_API_KEY).toBe(
+      modelProviderSecretPlaceholder("deepseek-codex", "DEEPSEEK_API_KEY"),
+    );
+    expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com");
+    expect(environment.OPENAI_MODEL).toBe("deepseek-v4-flash");
+    expect(environment.ANTHROPIC_MODEL).toBeUndefined();
+    expect(claim.codexRuntimeConfig).toMatchObject({
+      providerId: "vm0-model",
+      name: "DeepSeek",
+      baseUrl: "https://api.deepseek.com",
+      envKey: "OPENAI_API_KEY",
+      requiresOpenaiAuth: false,
+      wireApi: "responses",
+      supportsWebsockets: false,
+      modelCatalog: {
+        models: [
+          expect.objectContaining({
+            slug: "deepseek-v4-flash",
+            default_reasoning_level: "high",
+          }),
+        ],
+      },
+    });
+
+    await cancelChatRun(actor, run.runId);
+  });
 
   it("recovers a removed thread model through the current workspace route", async () => {
     const { actor, agentId, runnerGroup, providerId } =
@@ -3383,6 +3456,196 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(primary.actor, primarySecond.runId);
   }, 90_000);
 
+  it("does not repeat preparation after a competing run changes the binding", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for binding admission");
+    }
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const established = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish the binding before competing sends",
+    });
+    const establishedClaim = await claimChatRun(runnerGroup, established.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(established.runId, establishedClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: actor.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    const firstEventId = randomUUID();
+    const secondEventId = randomUUID();
+    const requests = [
+      {
+        eventId: firstEventId,
+        prompt: "first competing binding send",
+        response: chat.requestSendEvent(
+          actor,
+          {
+            agentId,
+            threadId: established.threadId,
+            prompt: "first competing binding send",
+            clientEventId: firstEventId,
+          },
+          [201],
+        ),
+      },
+      {
+        eventId: secondEventId,
+        prompt: "second competing binding send",
+        response: chat.requestSendEvent(
+          actor,
+          {
+            agentId,
+            threadId: established.threadId,
+            prompt: "second competing binding send",
+            clientEventId: secondEventId,
+          },
+          [201],
+        ),
+      },
+    ] as const;
+
+    await expect
+      .poll(async () => {
+        const messages = await chat.listThreadEvents(
+          actor,
+          established.threadId,
+        );
+        return requests.every(({ eventId }) => {
+          return messages.events.some((event) => {
+            return event.id === eventId;
+          });
+        });
+      })
+      .toBe(true);
+    await expect.poll(admissionLock.waiterCount).toBe(2);
+
+    admissionLock.release();
+    const responses = await Promise.all(
+      requests.map(({ response }) => {
+        return response;
+      }),
+    );
+    await admissionLock.done;
+
+    const winners = responses.flatMap((response, index) => {
+      if (response.status !== 201 || response.body.runId === null) {
+        return [];
+      }
+      return [
+        {
+          eventId: requests[index]!.eventId,
+          runId: response.body.runId,
+        },
+      ];
+    });
+    expect(winners).toHaveLength(1);
+    const winner = winners[0];
+    if (!winner) {
+      throw new Error("Expected one competing send to create a run");
+    }
+    const loser = requests.find(({ eventId }) => {
+      return eventId !== winner.eventId;
+    });
+    if (!loser) {
+      throw new Error("Expected one competing send to lose admission");
+    }
+    expect(
+      responses.filter((response) => {
+        return response.status === 201 && response.body.runId === null;
+      }),
+    ).toHaveLength(1);
+
+    const messages = await chat.listThreadEvents(actor, established.threadId);
+    expect(
+      userMessages(messages.events).filter((message) => {
+        return (
+          message.revokesEventId === winner.eventId &&
+          message.runId === winner.runId
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      userMessages(messages.events).filter((message) => {
+        return (
+          message.revokesEventId === loser.eventId &&
+          message.runId !== undefined
+        );
+      }),
+    ).toHaveLength(0);
+    const queuedLoser = userMessages(messages.events).find((message) => {
+      return message.id === loser.eventId;
+    });
+    if (!queuedLoser) {
+      throw new Error("Expected the losing message to remain queued");
+    }
+    expect(queuedLoser.runId).toBeUndefined();
+    expect(chatEventDisplayText(queuedLoser)).toBe(loser.prompt);
+    await expect(
+      readThreadSessionBinding(context, established.threadId),
+    ).resolves.toMatchObject({
+      agent_session_run_id: winner.runId,
+    });
+
+    const staleBlockedAdmission = sandboxOperationEvents().find((event) => {
+      return (
+        event.op_type === "api_dispatch_resolve_queue_first_admission" &&
+        event.queue_first_admission_result === "blocked" &&
+        event.thread_session_snapshot_state === "binding_changed" &&
+        event.queue_first_launch_outcome === "claim_lost"
+      );
+    });
+    expect(staleBlockedAdmission).toBeDefined();
+    const discardedRunId = staleBlockedAdmission?.run_id;
+    if (typeof discardedRunId !== "string") {
+      throw new Error("Expected blocked admission timing to identify its run");
+    }
+    const lostTimingEvents = apiDispatchTimingEventsForRun(discardedRunId);
+    for (const actionType of [
+      "api_dispatch_prepare_run_context",
+      "api_dispatch_build_runner_job_payload",
+      "api_dispatch_insert_run_with_concurrency",
+      "api_dispatch_admission_lock_wait",
+      "api_dispatch_resolve_queue_first_admission",
+      "api_dispatch_claim_queue_first_message",
+    ]) {
+      expect(
+        lostTimingEvents.filter((event) => {
+          return event.op_type === actionType;
+        }),
+      ).toHaveLength(1);
+    }
+    expect(
+      sandboxOperationEvents().filter((event) => {
+        return (
+          event.op_type === "chat_thread_session_binding_retry" &&
+          event.chat_thread_id === established.threadId
+        );
+      }),
+    ).toHaveLength(0);
+
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: established.threadId,
+        revokesEventId: loser.eventId,
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    await cancelChatRun(actor, winner.runId);
+  }, 90_000);
+
   it("retries preparation when the canonical binding changes", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     if (!actor.orgId) {
@@ -3465,6 +3728,26 @@ describe("CHAT-02: run-level model overrides", () => {
         retry_reason: "binding_changed",
       }),
     );
+    const retryTimingEvents = apiDispatchTimingEventsForRun(second.runId);
+    for (const actionType of [
+      "api_dispatch_prepare_run_context",
+      "api_dispatch_build_runner_job_payload",
+      "api_dispatch_insert_run_with_concurrency",
+      "api_dispatch_resolve_queue_first_admission",
+    ]) {
+      expect(
+        retryTimingEvents.filter((event) => {
+          return event.op_type === actionType;
+        }),
+      ).toHaveLength(2);
+    }
+    expect(retryTimingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type: "api_dispatch_resolve_queue_first_admission",
+        queue_first_admission_result: "idle",
+        thread_session_snapshot_state: "binding_changed",
+      }),
+    );
     const secondBinding = await readThreadSessionBinding(
       context,
       first.threadId,
@@ -3536,6 +3819,26 @@ describe("CHAT-02: run-level model overrides", () => {
         binding_action: "retried",
         resolution_action: "reused",
         retry_reason: "session_changed",
+      }),
+    );
+    const retryTimingEvents = apiDispatchTimingEventsForRun(second.runId);
+    for (const actionType of [
+      "api_dispatch_prepare_run_context",
+      "api_dispatch_build_runner_job_payload",
+      "api_dispatch_insert_run_with_concurrency",
+      "api_dispatch_resolve_queue_first_admission",
+    ]) {
+      expect(
+        retryTimingEvents.filter((event) => {
+          return event.op_type === actionType;
+        }),
+      ).toHaveLength(2);
+    }
+    expect(retryTimingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type: "api_dispatch_resolve_queue_first_admission",
+        queue_first_admission_result: "idle",
+        thread_session_snapshot_state: "session_changed",
       }),
     );
     const secondBinding = await readThreadSessionBinding(
@@ -4448,6 +4751,11 @@ describe("CHAT-02: generation templates and attachments", () => {
             status: "draft",
           },
         },
+        {
+          type: "source",
+          kind: "slack",
+          href: "https://vm0.slack.com/archives/C123/p456",
+        },
       ],
     };
 
@@ -5277,6 +5585,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
 
     const fileId = randomUUID();
+    const secondFileId = randomUUID();
     const queuedId = randomUUID();
     const queued = await chat.requestSendEvent(
       actor,
@@ -5293,6 +5602,12 @@ describe("CHAT-02: queued attachments on auto-send", () => {
             contentType: "text/plain",
             size: 12,
           },
+          {
+            id: secondFileId,
+            filename: "details.json",
+            contentType: "application/json",
+            size: 24,
+          },
         ],
       },
       [201],
@@ -5308,6 +5623,11 @@ describe("CHAT-02: queued attachments on auto-send", () => {
           id: fileId,
           filename: "notes.txt",
           contentType: "text/plain",
+        }),
+        expect.objectContaining({
+          id: secondFileId,
+          filename: "details.json",
+          contentType: "application/json",
         }),
       ],
     });
@@ -5340,13 +5660,22 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     await expect(readChatEventInputParamsFixture(queuedId)).resolves.toBeNull();
     expect(promoted.content).toBeNull();
     expect(chatEventDisplayText(promoted)).toBe("queued with attachment");
-    expect(promoted.attachFiles?.[0]).toMatchObject({
-      id: fileId,
-      filename: "notes.txt",
-      contentType: "text/plain",
-      size: 12,
-      url: expect.stringContaining(`${fileId}/notes.txt`),
-    });
+    expect(promoted.attachFiles).toMatchObject([
+      {
+        id: fileId,
+        filename: "notes.txt",
+        contentType: "text/plain",
+        size: 12,
+        url: expect.stringContaining(`${fileId}/notes.txt`),
+      },
+      {
+        id: secondFileId,
+        filename: "details.json",
+        contentType: "application/json",
+        size: 24,
+        url: expect.stringContaining(`${secondFileId}/details.json`),
+      },
+    ]);
     const original = userMessages(messages.events).find((message) => {
       return message.id === queuedId;
     });
@@ -5364,6 +5693,10 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     expect(followUp.prompt).toContain("queued with attachment");
     expect(followUp.prompt).toContain("[Web file] notes.txt (text/plain)");
     expect(followUp.prompt).toContain(`[ID] ${fileId}`);
+    expect(followUp.prompt).toContain(
+      "[Web file] details.json (application/json)",
+    );
+    expect(followUp.prompt).toContain(`[ID] ${secondFileId}`);
     await cancelChatRun(actor, promoted.runId);
   }, 90_000);
 });
@@ -5722,11 +6055,31 @@ describe("CHAT-02: shared user message queue", () => {
     );
     await expect
       .poll(() => {
-        return apiDispatchActionTypes(apiDispatchTimingEventsForRun(runId)).has(
-          "api_dispatch_claim_queue_first_message",
+        const actionTypes = apiDispatchActionTypes(
+          apiDispatchTimingEventsForRun(runId),
         );
+        return [
+          "api_dispatch_claim_queue_first_message",
+          ...API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES,
+        ].every((actionType) => {
+          return actionTypes.has(actionType);
+        });
       })
       .toBe(true);
+    const claimTimingEvents = apiDispatchTimingEventsForRun(runId);
+    expectApiDispatchSpanKind(
+      claimTimingEvents,
+      API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES,
+      "nested",
+    );
+    for (const actionType of API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES) {
+      expect(claimTimingEvents).toContainEqual(
+        expect.objectContaining({
+          op_type: actionType,
+          queue_first_association_kind: "user_message",
+        }),
+      );
+    }
 
     await cancelChatRun(actor, runId);
   }, 90_000);

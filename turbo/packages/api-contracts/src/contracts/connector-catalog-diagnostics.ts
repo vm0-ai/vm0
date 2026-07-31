@@ -27,23 +27,11 @@ export const connectorCatalogCompatibilityReasonSchema = z.enum([
   "missing-platform-configuration",
 ]);
 
-export const connectorCatalogFilteredAuthMethodSchema = z
-  .object({
-    connectorSlug: connectorSlugSchema.optional(),
-    // TODO(#24186): Remove after the prepared Platform receiver is required.
-    connectorRef: connectorSlugSchema,
-    authMethodId: connectorAuthMethodIdSchema,
-    reasons: z.array(connectorCatalogCompatibilityReasonSchema).min(1),
-  })
-  .refine(
-    ({ connectorSlug, connectorRef }) => {
-      return connectorSlug === undefined || connectorSlug === connectorRef;
-    },
-    {
-      message: "connectorSlug and connectorRef must match",
-      path: ["connectorSlug"],
-    },
-  );
+export const connectorCatalogFilteredAuthMethodSchema = z.object({
+  connectorSlug: connectorSlugSchema,
+  authMethodId: connectorAuthMethodIdSchema,
+  reasons: z.array(connectorCatalogCompatibilityReasonSchema).min(1),
+});
 
 export const connectorCatalogFilteredAuthMethodsSchema = z.array(
   connectorCatalogFilteredAuthMethodSchema,

@@ -1,6 +1,7 @@
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
+import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   chatEvents,
@@ -10,21 +11,41 @@ import {
 } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
-import { and, eq, exists, isNull, notExists, sql, type SQL } from "drizzle-orm";
+import { threadGoals } from "@vm0/db/schema/thread-goal";
+import {
+  zeroWorkflowAutomations,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
+import {
+  and,
+  asc,
+  eq,
+  exists,
+  isNull,
+  notExists,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
-import { pgNullDecoder } from "../../lib/db-structured-result";
+import {
+  pgBooleanDecoder,
+  pgNullDecoder,
+} from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
 import {
-  hasPendingUserChatQueueEvent,
   listPendingChatQueueEvents,
   loadPendingChatQueueEvent,
   lockChatQueueThread,
+  pendingChatQueueEventCondition,
 } from "./chat-event-queue.service";
 import {
   insertChatEvent,
+  type LoadedChatEventReplacementTarget,
+  type NewChatEvent,
   revokeChatEvent,
+  replaceLoadedChatEvent,
   replaceChatEvent,
 } from "./zero-chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
@@ -35,7 +56,7 @@ import {
   decryptPersistentSecretsMap,
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
-import { goalQueueEventMatchesActiveGoal } from "./chat-goal-queue.service";
+import { noGoalChangeAfterQueueEvent } from "./chat-goal-queue.service";
 import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
 import { agentphoneDeliveryTargetSchema } from "./agentphone-chat-callback-payload";
 import { githubDeliveryTargetSchema } from "./github-chat-callback-payload";
@@ -120,6 +141,16 @@ const queuedChatEvent = alias(chatEvents, "queued_chat_event");
 const queuedChatEventRevoker = alias(chatEvents, "queued_chat_event_revoker");
 const queuedEncryptedParams = chatEventInputParams.encryptedParams;
 const queuedAttachFileMetadata = chatEventInputParams.attachFileMetadata;
+const queueFirstReplacementTargetFields = {
+  id: chatEvents.id,
+  chatThreadId: chatEvents.chatThreadId,
+  createdAt: chatEvents.createdAt,
+  eventType: chatEvents.eventType,
+  contextType: chatEvents.contextType,
+  contextId: chatEvents.contextId,
+  encryptedParams: queuedEncryptedParams,
+  attachFileMetadata: queuedAttachFileMetadata,
+} as const;
 
 export interface QueuedUserMessage {
   readonly id: string;
@@ -174,6 +205,16 @@ export type QueueFirstRunClaimResult =
       readonly morningBriefDeliveryId?: string;
     }
   | { readonly kind: "lost" };
+
+export type QueueFirstRunAdmission =
+  | { readonly kind: "blocked" }
+  | { readonly kind: "idle" };
+
+export type QueueFirstRunSessionSnapshotState =
+  | "binding_changed"
+  | "current"
+  | "session_changed"
+  | "unvalidated";
 
 /**
  * Establish the thread-first lock order shared by every event-backed queue
@@ -312,41 +353,50 @@ export async function loadNextUnclaimedQueuedUserMessageId(
   return head?.eventType === "input.prompt" ? head.id : null;
 }
 
-async function hasUnclaimedQueuedUserMessage(
-  db: Db,
-  threadId: string,
-): Promise<boolean> {
-  return await hasPendingUserChatQueueEvent(db, threadId);
+type QueueFirstClaimArgs = QueueFirstRunAssociation & {
+  readonly admission: QueueFirstRunAdmission;
+  readonly runId: string;
+  readonly timing: ApiDispatchTimingCollector;
+};
+
+interface QueueFirstClaimSnapshot {
+  readonly target: LoadedChatEventReplacementTarget;
+  readonly replacement: NewChatEvent;
 }
 
-interface ClaimedUserMessage {
-  readonly createdAt: Date;
+function queueFirstHeadPriority(): SQL {
+  return sql`CASE ${chatEvents.eventType}
+    WHEN 'input.prompt' THEN 0
+    WHEN 'input.automation' THEN 1
+    WHEN 'input.goal' THEN 2
+    ELSE 3
+  END`;
 }
 
-/**
- * Append the run-associated replacement for a pending user event. The revoke
- * edge on the replacement is the atomic queue claim.
- */
-async function appendClaimedUserMessage(
+function replacementTargetFromQueueHead(
+  head: LoadedChatEventReplacementTarget,
+): LoadedChatEventReplacementTarget {
+  return {
+    id: head.id,
+    chatThreadId: head.chatThreadId,
+    createdAt: head.createdAt,
+    eventType: head.eventType,
+    contextType: head.contextType,
+    contextId: head.contextId,
+    encryptedParams: head.encryptedParams,
+    attachFileMetadata: head.attachFileMetadata,
+  };
+}
+
+async function resolveUserQueueFirstClaimSnapshot(
   db: DbTransaction,
-  args: {
-    readonly threadId: string;
-    readonly eventId: string;
-    readonly runId: string;
-  },
-): Promise<ClaimedUserMessage | null> {
-  const pending = await loadPendingChatQueueEvent(db, {
-    chatThreadId: args.threadId,
-    eventId: args.eventId,
-  });
-  if (pending?.eventType !== "input.prompt") {
-    return null;
-  }
-  const [queued] = await db
+  args: Extract<QueueFirstClaimArgs, { readonly kind: "user_message" }>,
+): Promise<QueueFirstClaimSnapshot | null> {
+  const [head] = await db
     .select({
+      ...queueFirstReplacementTargetFields,
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
-      attachFileMetadata: queuedAttachFileMetadata,
       generationTemplate: chatEvents.generationTemplate,
       triggerSource: chatEvents.triggerSource,
     })
@@ -357,84 +407,227 @@ async function appendClaimedUserMessage(
     )
     .where(
       and(
-        eq(chatEvents.id, args.eventId),
         eq(chatEvents.chatThreadId, args.threadId),
-        chatEventTypeIn(["input.prompt"]),
-        isNull(chatEvents.runId),
+        pendingChatQueueEventCondition(db),
       ),
+    )
+    .orderBy(
+      queueFirstHeadPriority(),
+      asc(chatEvents.createdAt),
+      asc(chatEvents.id),
     )
     .for("update", { of: chatEvents })
     .limit(1);
-  if (!queued) {
+  if (!head || head.eventType !== "input.prompt" || head.id !== args.eventId) {
     return null;
   }
-  if (!queued.userMessage) {
+  if (!head.userMessage) {
     throw new Error("Queued input event is missing userMessage");
   }
+  return {
+    target: replacementTargetFromQueueHead(head),
+    replacement: {
+      chatThreadId: args.threadId,
+      eventType: "input.prompt",
+      userMessage: head.userMessage,
+      runId: args.runId,
+      attachFiles: head.attachFiles ? [...head.attachFiles] : null,
+      attachFileMetadata: head.attachFileMetadata
+        ? [...head.attachFileMetadata]
+        : null,
+      generationTemplate: head.generationTemplate,
+      ...(head.triggerSource ? { triggerSource: head.triggerSource } : {}),
+    },
+  };
+}
 
-  const claimed = await replaceChatEvent(db, args.eventId, {
-    chatThreadId: args.threadId,
-    eventType: "input.prompt",
-    userMessage: queued.userMessage,
-    runId: args.runId,
-    attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
-    attachFileMetadata: queued.attachFileMetadata
-      ? [...queued.attachFileMetadata]
-      : null,
-    generationTemplate: queued.generationTemplate,
-    ...(queued.triggerSource ? { triggerSource: queued.triggerSource } : {}),
-  });
-  if (!claimed) {
+async function resolveWorkflowQueueFirstClaimSnapshot(
+  db: DbTransaction,
+  args: Extract<QueueFirstClaimArgs, { readonly kind: "workflow_event" }>,
+): Promise<QueueFirstClaimSnapshot | null> {
+  const [head] = await db
+    .select({
+      ...queueFirstReplacementTargetFields,
+      automationId: chatAutomationContext.automationId,
+      triggerSource: chatEvents.triggerSource,
+      triggerBrief: chatAutomationContext.triggerBrief,
+      userMessage: chatEvents.userMessage,
+      workflowId: zeroWorkflows.id,
+      workflowName: zeroWorkflows.name,
+    })
+    .from(chatEvents)
+    .leftJoin(
+      chatEventInputParams,
+      eq(chatEventInputParams.eventId, chatEvents.id),
+    )
+    .leftJoin(
+      chatAutomationContext,
+      and(
+        eq(chatEvents.contextType, "automation"),
+        eq(chatAutomationContext.id, chatEvents.contextId),
+      ),
+    )
+    .leftJoin(
+      zeroWorkflowAutomations,
+      eq(zeroWorkflowAutomations.id, chatAutomationContext.automationId),
+    )
+    .leftJoin(
+      zeroWorkflows,
+      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
+    )
+    .where(
+      and(
+        eq(chatEvents.chatThreadId, args.threadId),
+        pendingChatQueueEventCondition(db),
+      ),
+    )
+    .orderBy(
+      queueFirstHeadPriority(),
+      asc(chatEvents.createdAt),
+      asc(chatEvents.id),
+    )
+    .for("update", { of: chatEvents })
+    .limit(1);
+  if (
+    !head ||
+    head.eventType !== "input.automation" ||
+    head.id !== args.eventId ||
+    head.automationId !== args.runGroupId
+  ) {
     return null;
   }
-  return claimed;
+  const userMessage =
+    head.userMessage ??
+    (head.workflowName === null
+      ? null
+      : createUserMessageDocument({
+          text: null,
+          nonContentPart: {
+            type: "automation",
+            workflowName: head.workflowName,
+            ...(head.workflowId === null
+              ? {}
+              : { workflowId: head.workflowId }),
+            ...(head.triggerBrief === null
+              ? {}
+              : { automationBrief: head.triggerBrief }),
+          },
+        }));
+  if (!userMessage) {
+    throw new Error("Workflow queue event is missing its user message");
+  }
+  return {
+    target: replacementTargetFromQueueHead(head),
+    replacement: {
+      chatThreadId: args.threadId,
+      eventType: "input.prompt",
+      userMessage,
+      runId: args.runId,
+      runGroupId: args.runGroupId,
+      ...(head.triggerSource ? { triggerSource: head.triggerSource } : {}),
+    },
+  };
 }
 
-type GoalQueueFirstRunAssociation = Extract<
-  QueueFirstRunAssociation,
-  { readonly kind: "goal_event" }
-> & { readonly runId: string };
-
-async function claimGoalQueueFirstRunAssociation(
+async function resolveGoalQueueFirstClaimSnapshot(
   db: DbTransaction,
-  args: GoalQueueFirstRunAssociation,
-): Promise<QueueFirstRunClaimResult> {
-  const pending = await listPendingChatQueueEvents(db, args.threadId);
-  const goalMatches = await goalQueueEventMatchesActiveGoal(db, {
-    chatThreadId: args.threadId,
-    goalId: args.goalId,
-    eventId: args.eventId,
-    orgId: args.orgId,
-    userId: args.userId,
-  });
-  const head = pending[0];
+  args: Extract<QueueFirstClaimArgs, { readonly kind: "goal_event" }>,
+): Promise<QueueFirstClaimSnapshot | null> {
+  const [head] = await db
+    .select({
+      ...queueFirstReplacementTargetFields,
+      goalId: threadGoals.id,
+      goalStatus: threadGoals.status,
+      goalSnapshotCurrent:
+        noGoalChangeAfterQueueEvent(db).mapWith(pgBooleanDecoder),
+      userMessage: chatEvents.userMessage,
+      goalBrief: chatGoalContext.objectiveBrief,
+    })
+    .from(chatEvents)
+    .leftJoin(
+      chatEventInputParams,
+      eq(chatEventInputParams.eventId, chatEvents.id),
+    )
+    .leftJoin(
+      threadGoals,
+      and(
+        eq(threadGoals.id, args.goalId),
+        eq(threadGoals.chatThreadId, chatEvents.chatThreadId),
+        eq(threadGoals.orgId, args.orgId),
+        eq(threadGoals.ownerUserId, args.userId),
+        eq(chatEvents.runGroupId, threadGoals.id),
+      ),
+    )
+    .leftJoin(
+      chatGoalContext,
+      and(
+        eq(chatEvents.contextType, "goal"),
+        eq(chatGoalContext.id, chatEvents.contextId),
+      ),
+    )
+    .where(
+      and(
+        eq(chatEvents.chatThreadId, args.threadId),
+        pendingChatQueueEventCondition(db),
+      ),
+    )
+    .orderBy(
+      queueFirstHeadPriority(),
+      asc(chatEvents.createdAt),
+      asc(chatEvents.id),
+    )
+    .for("update", { of: chatEvents })
+    .limit(1);
   if (
-    head?.eventType !== "input.goal" ||
+    !head ||
+    head.eventType !== "input.goal" ||
     head.id !== args.eventId ||
-    !goalMatches
+    head.goalId !== args.goalId ||
+    head.goalStatus !== "active" ||
+    !head.goalSnapshotCurrent
   ) {
-    return { kind: "lost" };
+    return null;
   }
-
-  const claimed = await replaceChatEvent(db, args.eventId, {
-    chatThreadId: args.threadId,
-    eventType: "input.prompt",
-    userMessage: createUserMessageDocument({ text: args.prompt }),
-    runId: args.runId,
-    runGroupId: args.goalId,
-    triggerSource: "workflow-event",
-  });
-  if (!claimed) {
-    throw new Error("Claimed goal queue event disappeared");
+  const userMessage =
+    head.userMessage ??
+    (head.goalBrief
+      ? createUserMessageDocument({
+          text: null,
+          nonContentPart: {
+            type: "goal",
+            goalBrief: head.goalBrief,
+          },
+        })
+      : null);
+  if (!userMessage) {
+    throw new Error("Goal queue event is missing its user message");
   }
-  return { kind: "claimed", createdAt: claimed.createdAt };
+  return {
+    target: replacementTargetFromQueueHead(head),
+    replacement: {
+      chatThreadId: args.threadId,
+      eventType: "input.prompt",
+      userMessage,
+      runId: args.runId,
+      runGroupId: args.goalId,
+      triggerSource: "workflow-event",
+    },
+  };
 }
 
-/**
- * Authoritatively arbitrate a queue-first launch inside its final persistence
- * transaction. Successful launches acquire the organization admission lock
- * first; failed launches do not acquire that lock or create active state.
- */
+async function resolveQueueFirstClaimSnapshot(
+  db: DbTransaction,
+  args: QueueFirstClaimArgs,
+): Promise<QueueFirstClaimSnapshot | null> {
+  if (args.kind === "user_message") {
+    return await resolveUserQueueFirstClaimSnapshot(db, args);
+  }
+  if (args.kind === "workflow_event") {
+    return await resolveWorkflowQueueFirstClaimSnapshot(db, args);
+  }
+  return await resolveGoalQueueFirstClaimSnapshot(db, args);
+}
+
 function queueFirstRunAdmissionBlocked(
   db: DbTransaction,
   args: { readonly apiStartTime: number; readonly threadId: string },
@@ -445,18 +638,24 @@ function queueFirstRunAdmissionBlocked(
   });
 }
 
-export async function claimQueueFirstRunAssociation(
+/**
+ * Resolve the transaction-scoped thread admission consumed by queue claim.
+ * Successful launches hold the organization admission lock; failed launches
+ * preserve their existing thread-only arbitration.
+ */
+export async function resolveQueueFirstRunAdmission(
   db: DbTransaction,
-  args: QueueFirstRunAssociation & {
+  args: {
     readonly apiStartTime: number;
-    readonly runId: string;
-    readonly timing: ApiDispatchTimingCollector;
+    readonly sessionSnapshotState: QueueFirstRunSessionSnapshotState;
     readonly threadAlreadyLocked?: true;
+    readonly threadId: string;
+    readonly timing: ApiDispatchTimingCollector;
   },
-): Promise<QueueFirstRunClaimResult> {
-  let outcome: "claimed" | "lost" | "error" = "error";
+): Promise<QueueFirstRunAdmission> {
+  let outcome: QueueFirstRunAdmission["kind"] | undefined;
   return await args.timing.measure(
-    "api_dispatch_claim_queue_first_message",
+    "api_dispatch_resolve_queue_first_admission",
     "nested",
     async () => {
       const threadExists =
@@ -469,81 +668,59 @@ export async function claimQueueFirstRunAssociation(
           },
         ));
       if (!threadExists) {
-        outcome = "lost";
-        return { kind: "lost" };
+        outcome = "blocked";
+        return { kind: "blocked" };
       }
 
       if (await queueFirstRunAdmissionBlocked(db, args)) {
+        outcome = "blocked";
+        return { kind: "blocked" };
+      }
+
+      outcome = "idle";
+      return { kind: "idle" };
+    },
+    () => {
+      return {
+        ...(outcome ? { queue_first_admission_result: outcome } : {}),
+        thread_session_snapshot_state: args.sessionSnapshotState,
+      };
+    },
+  );
+}
+
+export async function claimQueueFirstRunAssociation(
+  db: DbTransaction,
+  args: QueueFirstClaimArgs,
+): Promise<QueueFirstRunClaimResult> {
+  let outcome: "claimed" | "lost" | "error" = "error";
+  const claimDimensions = {
+    queue_first_association_kind: args.kind,
+  };
+  return await args.timing.measure(
+    "api_dispatch_claim_queue_first_message",
+    "nested",
+    async () => {
+      if (args.admission.kind === "blocked") {
         outcome = "lost";
         return { kind: "lost" };
       }
 
-      if (args.kind === "goal_event") {
-        const claim = await claimGoalQueueFirstRunAssociation(db, args);
-        outcome = claim.kind;
-        return claim;
-      }
-
-      if (args.kind === "workflow_event") {
-        if (await hasUnclaimedQueuedUserMessage(db, args.threadId)) {
-          outcome = "lost";
-          return { kind: "lost" };
-        }
-
-        const pending = await listPendingChatQueueEvents(db, args.threadId);
-        const head = pending[0];
-        const [automationEvent] = await db
-          .select({
-            automationId: chatAutomationContext.automationId,
-            triggerSource: chatEvents.triggerSource,
-          })
-          .from(chatEvents)
-          .leftJoin(
-            chatAutomationContext,
-            and(
-              eq(chatEvents.contextType, "automation"),
-              eq(chatAutomationContext.id, chatEvents.contextId),
-            ),
-          )
-          .where(eq(chatEvents.id, args.eventId))
-          .limit(1);
-        if (
-          head?.eventType !== "input.automation" ||
-          head?.id !== args.eventId ||
-          automationEvent?.automationId !== args.runGroupId
-        ) {
-          outcome = "lost";
-          return { kind: "lost" };
-        }
-
-        const claimed = await replaceChatEvent(db, args.eventId, {
-          chatThreadId: args.threadId,
-          eventType: "input.prompt",
-          userMessage: createUserMessageDocument({ text: args.prompt }),
-          runId: args.runId,
-          runGroupId: args.runGroupId,
-          ...(automationEvent.triggerSource
-            ? { triggerSource: automationEvent.triggerSource }
-            : {}),
-        });
-        if (!claimed) {
-          throw new Error("Claimed workflow queue event disappeared");
-        }
-
-        outcome = "claimed";
-        return { kind: "claimed", createdAt: claimed.createdAt };
-      }
-
-      const headEventId = await loadNextUnclaimedQueuedUserMessageId(
-        db,
-        args.threadId,
+      const snapshot = await args.timing.measure(
+        "api_dispatch_resolve_queue_first_claim_snapshot",
+        "nested",
+        async () => {
+          return await resolveQueueFirstClaimSnapshot(db, args);
+        },
+        claimDimensions,
       );
-      if (headEventId !== args.eventId) {
+      if (!snapshot) {
         outcome = "lost";
         return { kind: "lost" };
       }
 
       if (
+        args.kind === "user_message" &&
         !(await lockUnclaimedMorningBriefDelivery(
           db,
           args.morningBriefDeliveryId,
@@ -553,12 +730,22 @@ export async function claimQueueFirstRunAssociation(
         return { kind: "lost" };
       }
 
-      const claimed = await appendClaimedUserMessage(db, {
-        threadId: args.threadId,
-        eventId: args.eventId,
-        runId: args.runId,
-      });
+      const claimed = await args.timing.measure(
+        "api_dispatch_persist_queue_first_replacement",
+        "nested",
+        async () => {
+          return await replaceLoadedChatEvent(
+            db,
+            snapshot.target,
+            snapshot.replacement,
+          );
+        },
+        claimDimensions,
+      );
       if (!claimed) {
+        if (args.kind !== "user_message") {
+          throw new Error(`Claimed ${args.kind} queue event disappeared`);
+        }
         outcome = "lost";
         return { kind: "lost" };
       }
@@ -567,7 +754,7 @@ export async function claimQueueFirstRunAssociation(
       return {
         kind: "claimed",
         createdAt: claimed.createdAt,
-        ...(args.morningBriefDeliveryId
+        ...(args.kind === "user_message" && args.morningBriefDeliveryId
           ? { morningBriefDeliveryId: args.morningBriefDeliveryId }
           : {}),
       };

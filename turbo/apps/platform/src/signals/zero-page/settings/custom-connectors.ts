@@ -113,6 +113,37 @@ export const reloadCustomConnectorAuthorizedAgents$ = command(({ set }) => {
   });
 });
 
+export const setCustomConnectorAgentAuthorization$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly agentId: string;
+      readonly connectorId: string;
+      readonly authorized: boolean;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+    await withCleanup(
+      accept(
+        client.update({
+          params: { id: args.agentId },
+          body: {
+            enabledIds: [args.connectorId],
+            operation: args.authorized ? "add" : "remove",
+          },
+          fetchOptions: { signal },
+        }),
+        [200],
+      ),
+      () => {
+        set(reloadCustomConnectorAuthorizedAgents$);
+      },
+    );
+    signal.throwIfAborted();
+  },
+);
+
 const bumpReload$ = command(({ set }) => {
   set(internalReload$, (v) => {
     return v + 1;
@@ -481,6 +512,7 @@ type DialogState =
   | { kind: "edit"; connector: CustomConnectorResponse }
   | { kind: "rename"; connector: CustomConnectorResponse }
   | { kind: "connect"; connector: CustomConnectorResponse }
+  | { kind: "access"; connector: CustomConnectorResponse }
   | { kind: "delete"; connector: CustomConnectorResponse };
 
 const internalDialog$ = state<DialogState>({ kind: "none" });
@@ -534,6 +566,11 @@ export const openCustomConnectorConnectDialog$ = command(
       authMethod: connector.authMode === "oauth" ? "oauth2" : "api",
     });
     set(internalDialog$, { kind: "connect", connector });
+  },
+);
+export const openCustomConnectorAccessDialog$ = command(
+  ({ set }, connector: CustomConnectorResponse) => {
+    set(internalDialog$, { kind: "access", connector });
   },
 );
 export const openCustomConnectorDeleteDialog$ = command(

@@ -37,8 +37,6 @@ export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX = 256;
 export const NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE = "RUN_TERMINAL";
-export const RUNNER_CANCELLATION_RECOVERY_CAPABILITY =
-  "user-cancellation-recovery-v1";
 export const RUNNER_CANCELLATION_RECOVERY_GRACE_MS = 90_000;
 export const CANCELLATION_RECOVERY_STALE_AFTER_MS =
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS + 30_000;
@@ -513,10 +511,6 @@ export const resumeSessionSchema = z.union([
   resumeSessionRefSchema,
 ]);
 
-// Capability names are intentionally open-ended so a newer runner can claim
-// jobs through an older API; the API ignores capabilities it does not know.
-export const runnerClaimCapabilitySchema = z.string().min(1);
-
 export const secretConnectorMetadataSchema = z.object({
   sourceType: z.enum(["connector", "model-provider", "platform-secret"]),
   sourceUserId: z.string().optional(),
@@ -554,8 +548,6 @@ export const storedExecutionContextSchema = z.object({
   encryptedSecrets: z.string().nullable(),
   // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`) to
   // their connector or provider owner. Keys are env aliases, not storage secret names.
-  // TODO(#23619): Split connector slugs from provider keys before renaming this
-  // persisted runner field.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   // Same keys as secretConnectorMap; adds source details when the owner alone
   // is not enough to locate access storage (for example, personal model providers).
@@ -642,8 +634,6 @@ export const executionContextSchema = z.object({
   encryptedSecrets: z.string().nullable(),
   // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`) to
   // their connector or provider owner. Keys are env aliases, not storage secret names.
-  // TODO(#23619): Split connector slugs from provider keys before renaming this
-  // runner wire field.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   // Same keys as secretConnectorMap; adds source details when the owner alone
   // is not enough to locate access storage (for example, personal model providers).
@@ -703,7 +693,6 @@ export const runnersJobClaimContract = c.router({
     }),
     body: z.object({
       telemetry: runnerClaimTelemetrySchema.optional(),
-      capabilities: z.array(runnerClaimCapabilitySchema).optional(),
     }),
     responses: {
       200: executionContextSchema,
@@ -883,5 +872,3 @@ export type SessionHistorySizeBucket = z.infer<
 export type SessionAffinityResource = z.infer<
   typeof sessionAffinityResourceSchema
 >;
-
-export type RunnerClaimCapability = z.infer<typeof runnerClaimCapabilitySchema>;

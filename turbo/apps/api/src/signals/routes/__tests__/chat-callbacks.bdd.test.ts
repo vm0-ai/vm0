@@ -9,10 +9,7 @@ import type {
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron";
-import {
-  CANCELLATION_RECOVERY_STALE_AFTER_MS,
-  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-} from "@vm0/api-contracts/contracts/runners";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -28,7 +25,6 @@ import {
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
   invalidatePendingChatEventInputParamsFixture,
-  markCancellationRecoveryUnsupportedFixture,
   readChatEventContextFixture,
   removeAcknowledgedCancellationLifecycleFixture,
 } from "../../../test-fixtures/chat-events";
@@ -361,22 +357,13 @@ async function createGoalForRun(
   );
 }
 
-async function claimChatRunJob(
-  runnerGroup: string,
-  runId: string,
-  capabilities?: readonly string[],
-) {
+async function claimChatRunJob(runnerGroup: string, runId: string) {
   await api.heartbeatRunner(runnerGroup);
   let claim: Awaited<ReturnType<typeof api.requestClaimRunnerJob>> | undefined;
   await expect
     .poll(
       async () => {
-        claim = await api.requestClaimRunnerJob(
-          true,
-          runId,
-          [200, 404],
-          capabilities === undefined ? {} : { capabilities: [...capabilities] },
-        );
+        claim = await api.requestClaimRunnerJob(true, runId, [200, 404]);
         return claim.status;
       },
       { interval: 100, timeout: 10_000 },
@@ -391,9 +378,8 @@ async function claimChatRunJob(
 async function claimChatRun(
   runnerGroup: string,
   runId: string,
-  capabilities?: readonly string[],
 ): Promise<{ readonly authorization: string }> {
-  const claim = await claimChatRunJob(runnerGroup, runId, capabilities);
+  const claim = await claimChatRunJob(runnerGroup, runId);
   return { authorization: `Bearer ${claim.sandboxToken}` };
 }
 
@@ -642,11 +628,17 @@ function isGoalContinuationUserMessage(
   message: UserMessage,
   objectiveBrief: string,
 ): boolean {
+  if (!("userMessage" in message) || !message.userMessage) {
+    return false;
+  }
+  const goalPart = message.userMessage.parts.find((part) => {
+    return part.type === "goal";
+  });
   return (
     message.isGoalRun === true &&
     message.runId !== undefined &&
-    (message.goalSnapshot?.objectiveBrief === objectiveBrief ||
-      chatEventDisplayText(message)?.includes("# Active thread goal") === true)
+    goalPart?.type === "goal" &&
+    goalPart.goalBrief === objectiveBrief
   );
 }
 
@@ -1606,16 +1598,17 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     const goalContinuation = userMessages(messages.events).find((message) => {
       return isGoalContinuationUserMessage(message, goalBrief);
     });
-    expect(goalContinuation?.goalSnapshot).toStrictEqual({
-      objectiveBrief: goalBrief,
+    if (!goalContinuation || !("userMessage" in goalContinuation)) {
+      throw new Error("Expected a goal continuation user message");
+    }
+    expect(goalContinuation.userMessage).toStrictEqual({
+      version: 1,
+      parts: [{ type: "goal", goalBrief }],
     });
-    expect(goalContinuation?.content).toBeNull();
-    expect(chatEventDisplayText(goalContinuation!)).toContain(
-      "# Active thread goal",
-    );
-    expect(chatEventDisplayText(goalContinuation!)).toContain(goalObjective);
+    expect(goalContinuation.content).toBeNull();
+    expect(chatEventDisplayText(goalContinuation)).toBe("");
 
-    if (!goalContinuation?.runId) {
+    if (!goalContinuation.runId) {
       throw new Error("Expected goal continuation run id");
     }
     const goalContext = await waitForRunContext(actor, goalContinuation.runId);
@@ -1708,7 +1701,10 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         revokesEventId: goalEventId,
         content: null,
         error: "Goal continuation no longer matches the active goal",
-        goalSnapshot: { objectiveBrief },
+        userMessage: {
+          version: 1,
+          parts: [{ type: "goal", goalBrief: objectiveBrief }],
+        },
       }),
     );
     const rejected = events.events.find((event) => {
@@ -1720,7 +1716,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     if (rejected?.eventType !== "input.rejected") {
       throw new Error("Expected the invalidated goal event to be rejected");
     }
-    expect(chatEventDisplayText(rejected)).toBe(objectiveBrief);
+    expect(chatEventDisplayText(rejected)).toBe("");
     const admittedContext = await readChatEventContextFixture(goalEventId);
     const rejectedContext = await readChatEventContextFixture(rejected.id);
     expect(admittedContext).toMatchObject({
@@ -1793,11 +1789,12 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     expect(rejectedGoalEvent).toMatchObject({
       eventType: "input.rejected",
       content: null,
-      goalSnapshot: { objectiveBrief: "pause after claim failure" },
+      userMessage: {
+        version: 1,
+        parts: [{ type: "goal", goalBrief: "pause after claim failure" }],
+      },
     });
-    expect(chatEventDisplayText(rejectedGoalEvent)).toBe(
-      "pause after claim failure",
-    );
+    expect(chatEventDisplayText(rejectedGoalEvent)).toBe("");
     expect(JSON.stringify(rejectedGoalEvent?.userMessage)).not.toContain(
       rejectedGoalEvent.error,
     );
@@ -1948,7 +1945,10 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         id: goalEventId,
         eventType: "input.goal",
         content: null,
-        goalSnapshot: { objectiveBrief: goalBrief },
+        userMessage: {
+          version: 1,
+          parts: [{ type: "goal", goalBrief }],
+        },
       }),
     );
     expect(
@@ -2088,99 +2088,6 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
 });
 
 describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
-  it("ignores unknown claim capabilities without disabling recovery", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const run = await startChatRun(actor, {
-      agentId,
-      prompt: "cancel an unknown-capability run",
-    });
-    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
-      "future-cancellation-recovery-v2",
-    ]);
-    const queuedEventId = await queueChatEvent(actor, {
-      agentId,
-      threadId: run.threadId,
-      prompt: "continue after an unknown capability",
-    });
-
-    context.mocks.ably.publish.mockClear();
-    await api.requestCancelRun(actor, run.runId, [200]);
-    await flushWaitUntilForTest();
-    await waitForRunStatus(actor, run.runId, "cancelled");
-    await expectCancellationRecoveryPending(actor, run.threadId, true);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
-      runId: run.runId,
-      mode: "cooperative",
-    });
-    const beforeCompletion = await chat.listThreadEvents(actor, run.threadId);
-    expect(
-      userMessages(beforeCompletion.events).filter((event) => {
-        return (
-          event.revokesEventId === queuedEventId && event.runId !== undefined
-        );
-      }),
-    ).toHaveLength(0);
-
-    await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 1, error: "Run cancelled" },
-      sandboxHeaders,
-      [200],
-    );
-    await flushWaitUntilForTest();
-    const replacementRunId = await waitForQueuedEventReplacement(
-      actor,
-      run.threadId,
-      queuedEventId,
-    );
-    expect(replacementRunId).not.toBe(run.runId);
-    await expectCancellationRecoveryPending(actor, run.threadId, false);
-
-    await api.requestCancelRun(actor, replacementRunId, [200]);
-    await waitForRunStatus(actor, replacementRunId, "cancelled");
-    await flushWaitUntilForTest();
-  }, 90_000);
-
-  it("preserves immediate release for a historical unsupported claim", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const run = await startChatRun(actor, {
-      agentId,
-      prompt: "cancel a historical unsupported run",
-    });
-    await claimChatRun(runnerGroup, run.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-    ]);
-    await markCancellationRecoveryUnsupportedFixture({ runId: run.runId });
-    const queuedEventId = await queueChatEvent(actor, {
-      agentId,
-      threadId: run.threadId,
-      prompt: "continue after historical cancellation",
-    });
-
-    context.mocks.ably.publish.mockClear();
-    await api.requestCancelRun(actor, run.runId, [200]);
-    const replacementRunId = await waitForQueuedEventReplacement(
-      actor,
-      run.threadId,
-      queuedEventId,
-    );
-    expect(replacementRunId).not.toBe(run.runId);
-    await expectCancellationRecoveryPending(actor, run.threadId, false);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
-      runId: run.runId,
-      mode: "hard",
-    });
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadDetailChanged:${run.threadId}`,
-      null,
-    );
-
-    await api.requestCancelRun(actor, replacementRunId, [200]);
-    await waitForRunStatus(actor, replacementRunId, "cancelled");
-    await flushWaitUntilForTest();
-  }, 90_000);
-
   it("preserves immediate release when a pending run is cancelled", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2252,10 +2159,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       agentId,
       prompt: "cancel before the recovery completion",
     });
-    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-      "future-cancellation-recovery-v2",
-    ]);
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
     await expectCancellationRecoveryPending(actor, run.threadId, false);
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
@@ -2348,9 +2252,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       agentId,
       prompt: "cancel before losing detached terminal processing",
     });
-    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-    ]);
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: run.threadId,
@@ -2407,9 +2309,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       agentId,
       prompt: "delay the cancellation lifecycle callback",
     });
-    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-    ]);
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: run.threadId,
@@ -2492,9 +2392,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       agentId,
       prompt: "race completion with cancellation",
     });
-    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-    ]);
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
     await checkpointChatRun(run.runId, sandboxHeaders);
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
@@ -2551,9 +2449,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       agentId,
       prompt: "cancel without a recovery completion",
     });
-    await claimChatRun(runnerGroup, run.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-    ]);
+    await claimChatRun(runnerGroup, run.runId);
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: run.threadId,
@@ -2638,12 +2534,8 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       agentId,
       prompt: "cancel before a healthy recovery drain",
     });
-    await claimChatRun(runnerGroup, poisonedRun.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-    ]);
-    await claimChatRun(runnerGroup, healthyRun.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-    ]);
+    await claimChatRun(runnerGroup, poisonedRun.runId);
+    await claimChatRun(runnerGroup, healthyRun.runId);
     const poisonedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: poisonedRun.threadId,

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.10](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.9...guest-download-v0.22.10) (2026-07-31)
+
+
+### Refactoring
+
+* **guest-download:** decouple telemetry from scheduling ([#24294](https://github.com/vm0-ai/vm0/issues/24294)) ([f1f6d40](https://github.com/vm0-ai/vm0/commit/f1f6d40d1304ea58fe9e31f7a05e045ce511e833))
+
 ## [0.22.9](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.8...guest-download-v0.22.9) (2026-07-30)
 
 ## [0.22.8](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.7...guest-download-v0.22.8) (2026-07-30)

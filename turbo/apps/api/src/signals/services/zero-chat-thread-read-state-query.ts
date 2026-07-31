@@ -1,9 +1,11 @@
-import { and, desc, eq } from "drizzle-orm";
-import { chatEvents } from "@vm0/db/schema/chat-event";
+import { and, desc, eq, sql } from "drizzle-orm";
+import {
+  chatEventTerminalPredicate,
+  chatEvents,
+} from "@vm0/db/schema/chat-event";
 import type { chatThreads } from "@vm0/db/schema/chat-thread";
 
 import type { Db } from "../external/db";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 export function latestRunFinishEventSubquery(
   db: Pick<Db, "select">,
@@ -17,10 +19,10 @@ export function latestRunFinishEventSubquery(
     .where(
       and(
         eq(chatEvents.chatThreadId, threadId),
-        chatEventTypeIn(["run.completed", "run.failed", "run.cancelled"]),
+        chatEventTerminalPredicate(chatEvents.eventType),
       ),
     )
-    .orderBy(desc(chatEvents.createdAt), desc(chatEvents.id))
+    .orderBy(sql`${desc(chatEvents.createdAt)} NULLS LAST`, desc(chatEvents.id))
     .limit(1)
     .as("latest_run_finish_message");
 }

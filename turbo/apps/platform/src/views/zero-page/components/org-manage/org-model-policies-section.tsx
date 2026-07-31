@@ -1710,8 +1710,11 @@ export function OrgModelPoliciesSection() {
   const modelCapabilitiesLoadable = useLoadable(modelPlanCapabilities$);
   const lastModelCapabilities = useLastResolved(modelPlanCapabilities$);
   const pageSignal = useGet(pageSignal$);
+  const featureSwitches = useGet(featureSwitch$);
   const customGatewaysEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.CustomModelGateways] ?? false;
+    featureSwitches[FeatureSwitchKey.CustomModelGateways] ?? false;
+  const deepSeekV4FlashEnabled =
+    featureSwitches[FeatureSwitchKey.DeepSeekV4Flash] ?? false;
   const openAddModelDialog = useSet(openAddModelPolicyDialog$);
   const openEditModelDialog = useSet(openEditModelPolicyDialog$);
   const openSettingsBillingPlans = useSet(openSettingsBillingPlans$);
@@ -1752,7 +1755,11 @@ export function OrgModelPoliciesSection() {
     }),
   );
   const addableModels = SUPPORTED_RUN_MODELS.filter((model) => {
-    return isOpenAIOrAnthropicModel(model) && !configuredModels.has(model);
+    return (
+      (isOpenAIOrAnthropicModel(model) ||
+        (deepSeekV4FlashEnabled && model === "deepseek-v4-flash")) &&
+      !configuredModels.has(model)
+    );
   });
 
   const submit = (next: UpdateOrgModelPolicy[]) => {

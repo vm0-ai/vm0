@@ -175,7 +175,7 @@ function validCustomFeishuState(
   if (
     !context?.providerContext ||
     context.providerContext.provider !== "feishu" ||
-    storedState.type !== null ||
+    storedState.connectorSlug !== null ||
     storedState.customConnectorId !== context.connectorId ||
     storedState.connectorRevision !== context.connectorRevision ||
     storedState.authMethod !== "oauth2"

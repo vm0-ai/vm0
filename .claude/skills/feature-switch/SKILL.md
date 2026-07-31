@@ -141,7 +141,7 @@ const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
 | `turbo/packages/core/src/feature-switch.ts` | Registry and evaluation logic |
 | `turbo/apps/platform/src/signals/external/feature-switch.ts` | Client-side reactive state with override layers |
 | `turbo/apps/platform/src/views/zero-page/zero-sidebar.tsx` | Sidebar nav items with `featureGate` |
-| `turbo/packages/core/src/contracts/connectors.ts` | Connector type definitions with `featureFlag` field |
+| `turbo/apps/api/src/signals/services/connector-catalog-artifacts/source.ts` | External connector auth-method schema with `featureSwitch` field |
 | `turbo/apps/api/src/signals/auth/tokens.ts` | Token capability gating |
 
 ## Override Layers

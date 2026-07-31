@@ -242,6 +242,75 @@ function clipboardFileItem(file: File): DataTransferItem {
   } as DataTransferItem;
 }
 
+const BODY_LINK_PREVIEWS = {
+  audio: "https://cdn.vm7.io/artifacts/test/body-audio/briefing.mp3",
+  video: "https://cdn.vm7.io/artifacts/test/body-video/demo.mp4",
+  image: "https://cdn.vm7.io/artifacts/test/body-image/chart.png",
+  markdown: "https://cdn.vm7.io/artifacts/test/body-markdown/release-notes.md",
+  csv: "https://cdn.vm7.io/artifacts/test/body-csv/launch-metrics.csv",
+  pdf: "https://cdn.vm7.io/artifacts/test/body-pdf/rollout-plan.pdf",
+  html: "https://cdn.vm7.io/artifacts/test/body-html/launch-site.html",
+  archive: "https://cdn.vm7.io/artifacts/test/body-file/archive.bin",
+} as const;
+
+// Renders one assistant message carrying every supported preview link type and
+// waits until each parsed chip is on screen. The media and document preview
+// specs share this setup so that each spec opens only its own previews within
+// the default test timeout.
+async function setupBodyLinkPreviews(): Promise<void> {
+  const { audio, video, image, markdown, csv, pdf, html, archive } =
+    BODY_LINK_PREVIEWS;
+  context.mocks.http.get(markdown, () => {
+    return new Response("# Release notes\n\nBody link rollout is ready.", {
+      headers: { "Content-Type": "text/markdown" },
+    });
+  });
+  context.mocks.http.get(csv, () => {
+    return new Response("metric,value\nactivation,87", {
+      headers: { "Content-Type": "text/csv" },
+    });
+  });
+  context.mocks.http.get(archive, () => {
+    return new Response(null, { status: 500 });
+  });
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    chatEvents: [
+      {
+        id: "msg-body-preview-links",
+        role: "assistant",
+        content: `Generated preview links:\n\n${audio}\n${video}\n${image}\n${markdown}\n${csv}\n${pdf}\n[Launch site](${html})\n${archive}`,
+        runId: "run-body-previews",
+        createdAt: "2026-03-10T00:00:00Z",
+      },
+    ],
+  });
+
+  detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+  await waitFor(() => {
+    expect(screen.getByText("Generated preview links:")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open audio preview for briefing.mp3"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
+    expect(screen.getByAltText("chart.png")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open markdown preview for release-notes.md"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open csv preview for launch-metrics.csv"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open pdf preview for rollout-plan.pdf"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open html preview for Launch site"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Download archive.bin")).toBeInTheDocument();
+  });
+}
+
 describe("zero attachment chips", () => {
   it("shows pending upload progress for composer attachments", async () => {
     context.mocks.upload.pending({
@@ -856,9 +925,22 @@ describe("zero attachment chips", () => {
           id: "msg-canonical-slack-input",
           role: "user",
           content: "Review the source notes",
-          annotation: {
-            kind: "slack",
-            href: "https://example.slack.com/archives/C123/p123456789",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Review the source notes" },
+              {
+                type: "file",
+                fileId: assetId,
+                filenameSnapshot: "source-notes.md",
+                contentType: "text/markdown",
+              },
+              {
+                type: "source",
+                kind: "slack",
+                href: "https://example.slack.com/archives/C123/p123456789",
+              },
+            ],
           },
           attachFiles: [
             {
@@ -901,9 +983,22 @@ describe("zero attachment chips", () => {
           id: "msg-failed-slack-input",
           role: "user",
           content: "Use this attachment",
-          annotation: {
-            kind: "slack",
-            href: "https://example.slack.com/archives/C123/p123456790",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Use this attachment" },
+              {
+                type: "file",
+                fileId: assetId,
+                filenameSnapshot: "expired.pdf",
+                contentType: "application/pdf",
+              },
+              {
+                type: "source",
+                kind: "slack",
+                href: "https://example.slack.com/archives/C123/p123456790",
+              },
+            ],
           },
           attachFiles: [
             {
@@ -2283,70 +2378,8 @@ describe("zero attachment chips", () => {
     expect(screen.getByTestId("artifact-sidebar")).toBe(sidebar);
   });
 
-  it("opens media and file previews parsed from chat message links", async () => {
-    const audioUrl =
-      "https://cdn.vm7.io/artifacts/test/body-audio/briefing.mp3";
-    const videoUrl = "https://cdn.vm7.io/artifacts/test/body-video/demo.mp4";
-    const imageUrl = "https://cdn.vm7.io/artifacts/test/body-image/chart.png";
-    const markdownUrl =
-      "https://cdn.vm7.io/artifacts/test/body-markdown/release-notes.md";
-    const csvUrl =
-      "https://cdn.vm7.io/artifacts/test/body-csv/launch-metrics.csv";
-    const pdfUrl =
-      "https://cdn.vm7.io/artifacts/test/body-pdf/rollout-plan.pdf";
-    const htmlUrl =
-      "https://cdn.vm7.io/artifacts/test/body-html/launch-site.html";
-    const archiveUrl =
-      "https://cdn.vm7.io/artifacts/test/body-file/archive.bin";
-    context.mocks.http.get(markdownUrl, () => {
-      return new Response("# Release notes\n\nBody link rollout is ready.", {
-        headers: { "Content-Type": "text/markdown" },
-      });
-    });
-    context.mocks.http.get(csvUrl, () => {
-      return new Response("metric,value\nactivation,87", {
-        headers: { "Content-Type": "text/csv" },
-      });
-    });
-    context.mocks.http.get(archiveUrl, () => {
-      return new Response(null, { status: 500 });
-    });
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      chatEvents: [
-        {
-          id: "msg-body-preview-links",
-          role: "assistant",
-          content: `Generated preview links:\n\n${audioUrl}\n${videoUrl}\n${imageUrl}\n${markdownUrl}\n${csvUrl}\n${pdfUrl}\n[Launch site](${htmlUrl})\n${archiveUrl}`,
-          runId: "run-body-previews",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    await waitFor(() => {
-      expect(screen.getByText("Generated preview links:")).toBeInTheDocument();
-      expect(
-        screen.getByLabelText("Open audio preview for briefing.mp3"),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
-      expect(screen.getByAltText("chart.png")).toBeInTheDocument();
-      expect(
-        screen.getByLabelText("Open markdown preview for release-notes.md"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByLabelText("Open csv preview for launch-metrics.csv"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByLabelText("Open pdf preview for rollout-plan.pdf"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByLabelText("Open html preview for Launch site"),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText("Download archive.bin")).toBeInTheDocument();
-    });
+  it("opens media previews parsed from chat message links", async () => {
+    await setupBodyLinkPreviews();
 
     const bodyVideoPreview = screen.getByLabelText("Preview demo.mp4");
     expect(bodyVideoPreview).toHaveClass(
@@ -2417,6 +2450,10 @@ describe("zero attachment chips", () => {
         screen.queryByTestId("attachment-lightbox"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("opens document previews parsed from chat message links", async () => {
+    await setupBodyLinkPreviews();
 
     click(screen.getByLabelText("Open markdown preview for release-notes.md"));
 

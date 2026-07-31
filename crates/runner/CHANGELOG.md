@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.151.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.2...runner-rs-v0.151.3) (2026-07-31)
+
+
+### Refactoring
+
+* **connectors:** finish slug terminology cleanup ([#24361](https://github.com/vm0-ai/vm0/issues/24361)) ([084ee2d](https://github.com/vm0-ai/vm0/commit/084ee2d7d0c17dc1b5c126ea65e768cb595a8154))
+
+
+### Performance Improvements
+
+* **python:** avoid caching request urls ([#24354](https://github.com/vm0-ai/vm0/issues/24354)) ([1246a8c](https://github.com/vm0-ai/vm0/commit/1246a8cdfa220e71cb57224b1089ee1f1a0aa98b))
+
+## [0.151.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.1...runner-rs-v0.151.2) (2026-07-31)
+
+
+### Bug Fixes
+
+* apply context-tiered pricing to managed models ([#24266](https://github.com/vm0-ai/vm0/issues/24266)) ([0f487e5](https://github.com/vm0-ai/vm0/commit/0f487e5b7631b4dbfde8c7bc3f706b829d74e364))
+* **runner:** retry network policy refresh transport failures ([#24323](https://github.com/vm0-ai/vm0/issues/24323)) ([bf87328](https://github.com/vm0-ai/vm0/commit/bf87328fcdb95e39e423d3e1ddf7f1fd7b3afc3e))
+
+## [0.151.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.0...runner-rs-v0.151.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* preserve app URL through runner environment ([#24213](https://github.com/vm0-ai/vm0/issues/24213)) ([4171443](https://github.com/vm0-ai/vm0/commit/41714431c6f035a8fb551e57804d92cbb1f71954))
+
+
+### Documentation
+
+* **runner:** document restored session identity contracts ([#24295](https://github.com/vm0-ai/vm0/issues/24295)) ([d7c6be8](https://github.com/vm0-ai/vm0/commit/d7c6be8e303597ad7ac4c4e7ef95ef687c77bb9e))
+
+
+### Refactoring
+
+* **mitm-addon:** split catalog cache tests by contract ([#24293](https://github.com/vm0-ai/vm0/issues/24293)) ([6667f89](https://github.com/vm0-ai/vm0/commit/6667f8950ffe31f0ffaea7582d7505e5408c4b3d))
+* **runner:** remove cancellation recovery capability ([#24318](https://github.com/vm0-ai/vm0/issues/24318)) ([065a83d](https://github.com/vm0-ai/vm0/commit/065a83d12e68176a84fef19bfd415b32c686897d))
+
 ## [0.151.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.7...runner-rs-v0.151.0) (2026-07-31)
 
 

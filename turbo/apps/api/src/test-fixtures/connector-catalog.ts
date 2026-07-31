@@ -2,13 +2,12 @@ import { createHash } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { getConnectorAuthProviderRegistrationCapabilities } from "@vm0/connectors/auth-providers";
-import type { ConnectorCatalogCompatibilityEvaluationPayload } from "@vm0/db/jsonb-contracts/connector-catalog";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import { mockOptionalEnv } from "../lib/env";
 import { writeDb$ } from "../signals/external/db";
@@ -24,7 +23,6 @@ import {
 } from "../signals/services/connector-catalog-artifacts/relationships";
 import {
   connectorCatalogExecutableCapabilityState,
-  connectorCatalogExecutableCapabilityStates,
   persistConnectorCatalogCompatibility,
 } from "../signals/services/connector-catalog-compatibility.service";
 import { connectorCatalogSource } from "../signals/services/connector-catalog-source";
@@ -92,7 +90,7 @@ export async function installApiTestConnectorCatalog(
   const catalogDigest = sha256Digest(rawBytes);
   const catalogGzip = encodeConnectorCatalogSnapshot(rawBytes);
   const source = connectorCatalogSource();
-  const capabilities = connectorCatalogExecutableCapabilityStates();
+  const capability = connectorCatalogExecutableCapabilityState();
   const activatedAt = nowDate();
   const db = store.set(writeDb$);
   const syncStateValues = {
@@ -160,7 +158,7 @@ export async function installApiTestConnectorCatalog(
         catalogDigest,
       },
       artifact: catalog,
-      capabilities,
+      capability,
       validator: currentConnectorCatalogValidatorIdentity(),
     });
   });
@@ -248,7 +246,7 @@ interface ApiTestConnectorCatalogCompatibilityEvaluation {
   readonly capabilityDigest: string;
   readonly validationAuthority: ConnectorCatalogValidationAuthority | null;
   readonly evaluatedAt: string;
-  readonly payload: ConnectorCatalogCompatibilityEvaluationPayload;
+  readonly payload: unknown;
 }
 
 export async function readApiTestConnectorCatalogCompatibilityEvaluations(): Promise<
@@ -406,17 +404,58 @@ export async function invalidateApiTestConnectorCatalogCompatibility(): Promise<
   const updated = await db
     .update(connectorCatalogCompatibilityEvaluation)
     .set({
-      filteredAuthMethods: [
-        {
-          connectorRef: "external-test",
-          authMethodId: "api-token",
-          reasons: [],
-        },
-      ],
+      filteredAuthMethods: {
+        filteredAuthMethods: [
+          {
+            connectorSlug: "external-test",
+            authMethodId: "api-token",
+            reasons: [],
+          },
+        ],
+      },
     })
     .where(currentApiTestConnectorCatalogCompatibilityWhere(identity))
     .returning({ sourceId: connectorCatalogCompatibilityEvaluation.sourceId });
   requireSingleCatalogMutation(updated, "compatibility corruption");
+}
+
+export async function insertApiTestLegacyConnectorCatalogCompatibilityEvaluation(
+  capabilityDigest: string,
+): Promise<void> {
+  const identity = await currentApiTestConnectorCatalogIdentity();
+  const validator = currentConnectorCatalogValidatorIdentity();
+  const evaluatedAt = nowDate();
+  const legacyPayload = JSON.stringify([
+    {
+      connectorRef: "external-test",
+      authMethodId: "api-token",
+      reasons: ["missing-grant-provider"],
+    },
+  ]);
+  const db = store.set(writeDb$);
+  await db.execute(sql`
+    INSERT INTO ${connectorCatalogCompatibilityEvaluation} (
+      "source_id",
+      "schema_version",
+      "catalog_version",
+      "catalog_digest",
+      "executable_capability_digest",
+      "catalog_validation_backend_version",
+      "catalog_validation_build_commit_sha",
+      "evaluated_at",
+      "filtered_auth_methods"
+    ) VALUES (
+      ${identity.sourceId},
+      ${SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION},
+      ${identity.catalogVersion},
+      ${identity.catalogDigest},
+      ${capabilityDigest},
+      ${validator.backendVersion},
+      ${validator.buildCommitSha},
+      ${evaluatedAt},
+      ${legacyPayload}::jsonb
+    )
+  `);
 }
 
 export async function deleteApiTestConnectorCatalogCompatibility(): Promise<void> {

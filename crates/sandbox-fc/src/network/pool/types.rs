@@ -225,6 +225,25 @@ impl CheckedNetnsPoolConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum NamespaceDeleteOutcome {
+    Deleted,
+    Abandoned,
+}
+
+impl NamespaceDeleteOutcome {
+    pub(super) fn combine(outcomes: impl IntoIterator<Item = Self>) -> Self {
+        if outcomes
+            .into_iter()
+            .all(|outcome| matches!(outcome, Self::Deleted))
+        {
+            Self::Deleted
+        } else {
+            Self::Abandoned
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NetnsReleaseOutcome {
     Released,

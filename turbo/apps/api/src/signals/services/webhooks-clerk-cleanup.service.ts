@@ -375,17 +375,20 @@ const revokeOrgConnectorTokens$ = command(
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
     const rows = await db
-      .select({ userId: connectors.userId, type: connectors.connectorSlug })
+      .select({
+        userId: connectors.userId,
+        connectorSlug: connectors.connectorSlug,
+      })
       .from(connectors)
       .where(eq(connectors.orgId, orgId));
     signal.throwIfAborted();
 
     for (const row of rows) {
-      const parsed = connectorSlugSchema.safeParse(row.type);
+      const parsed = connectorSlugSchema.safeParse(row.connectorSlug);
       if (!parsed.success) {
-        L.warn("unknown connector type, skipping revocation", {
+        L.warn("unknown connector slug, skipping revocation", {
           orgId,
-          type: row.type,
+          connectorSlug: row.connectorSlug,
         });
         continue;
       }
@@ -414,17 +417,20 @@ const revokeUserConnectorTokens$ = command(
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
     const rows = await db
-      .select({ orgId: connectors.orgId, type: connectors.connectorSlug })
+      .select({
+        orgId: connectors.orgId,
+        connectorSlug: connectors.connectorSlug,
+      })
       .from(connectors)
       .where(eq(connectors.userId, userId));
     signal.throwIfAborted();
 
     for (const row of rows) {
-      const parsed = connectorSlugSchema.safeParse(row.type);
+      const parsed = connectorSlugSchema.safeParse(row.connectorSlug);
       if (!parsed.success) {
-        L.warn("unknown connector type, skipping revocation", {
+        L.warn("unknown connector slug, skipping revocation", {
           userId,
-          type: row.type,
+          connectorSlug: row.connectorSlug,
         });
         continue;
       }

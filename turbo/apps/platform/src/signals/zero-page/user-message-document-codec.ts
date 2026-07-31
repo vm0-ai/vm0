@@ -788,6 +788,13 @@ export function messageDocumentToDisplayText(
       );
       continue;
     }
+    if (
+      part.type === "source" ||
+      part.type === "automation" ||
+      part.type === "goal"
+    ) {
+      continue;
+    }
     if (part.type === "template") {
       const templateLabel = i18n.t(
         ($) => {

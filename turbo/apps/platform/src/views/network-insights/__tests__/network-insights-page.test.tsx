@@ -8,7 +8,6 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -661,9 +660,6 @@ describe("network insights page", () => {
     detachedSetupPage({
       context,
       path: "/insights",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     await waitFor(() => {

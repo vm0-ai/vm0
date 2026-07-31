@@ -49,7 +49,6 @@ import {
   onRejection,
   settleIncludingAbort,
 } from "../utils";
-import { connectorCatalogExecutableCapabilityStates } from "../services/connector-catalog-compatibility.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,
@@ -374,13 +373,11 @@ async function mutateRunnerJobConnectorPermissionBaseline(
       )`;
       break;
     }
-    case "legacy-capability": {
-      const legacyCapabilityDigest =
-        connectorCatalogExecutableCapabilityStates().legacy.digest;
+    case "capability-mismatch": {
       executionContext = sql`jsonb_set(
         ${runnerJobQueue.executionContext},
         '{connectorPermissionBaseline,catalogIdentity,capabilityDigest}',
-        to_jsonb(${legacyCapabilityDigest}::text),
+        '"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"'::jsonb,
         true
       )`;
       break;

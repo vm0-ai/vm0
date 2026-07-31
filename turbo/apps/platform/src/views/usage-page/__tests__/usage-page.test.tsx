@@ -1,6 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { zeroUsageInsightContract } from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -211,9 +210,6 @@ describe("/usage page", () => {
     detachedSetupPage({
       context,
       path: "/usage",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     await waitFor(() => {
@@ -249,9 +245,6 @@ describe("/usage page", () => {
     detachedSetupPage({
       context,
       path: "/usage",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     await waitFor(() => {
@@ -291,9 +284,6 @@ describe("/usage page", () => {
     detachedSetupPage({
       context,
       path: "/usage",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     await waitFor(() => {
@@ -337,9 +327,6 @@ describe("/usage page", () => {
     detachedSetupPage({
       context,
       path: "/usage",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     await waitFor(() => {
@@ -374,9 +361,6 @@ describe("/usage page", () => {
     detachedSetupPage({
       context,
       path: "/usage",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     await waitFor(() => {

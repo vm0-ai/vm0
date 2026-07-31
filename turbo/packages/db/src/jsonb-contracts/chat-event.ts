@@ -103,7 +103,3 @@ export type ChatEventGoalEvent =
       readonly status: "paused" | "blocked" | "complete";
     }
   | { readonly type: "cleared" };
-
-export interface ChatEventGoalSnapshot {
-  readonly objectiveBrief: string;
-}

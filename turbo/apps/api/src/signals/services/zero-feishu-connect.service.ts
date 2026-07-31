@@ -636,8 +636,21 @@ export const updateFeishuInstallationAgent$ = command(
       )
       .returning({ id: feishuOrgInstallations.id });
     signal.throwIfAborted();
-    return rows.length > 0
-      ? { kind: "ok" }
-      : { kind: "installation_not_found" };
+    if (rows.length === 0) {
+      return { kind: "installation_not_found" };
+    }
+    if (args.setupCompleted) {
+      await set(
+        ensureFeishuCustomConnector$,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          installationId: args.installationId,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+    }
+    return { kind: "ok" };
   },
 );

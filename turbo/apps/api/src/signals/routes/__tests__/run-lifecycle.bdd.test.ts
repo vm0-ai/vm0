@@ -14,7 +14,6 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
-  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
   type Job as RunnerJob,
 } from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -2151,10 +2150,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, created.runId, [200]);
   });
 
-  it("returns canonical storage manifests with and without the retired capability", async () => {
+  it("returns canonical storage manifests without API-only ownership fields", async () => {
     const api = createRunsApi(context);
     const { actor, runnerGroup } = await entitledRunActor();
-    const composeName = `bdd-storage-capability-${randomUUID().slice(0, 8)}`;
+    const composeName = `bdd-storage-manifest-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
       version: "1",
       agents: {
@@ -2192,34 +2191,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(mount).not.toHaveProperty("userId");
     }
 
-    const retiredCapabilityRun = await api.createDirectRun(actor, {
-      agentComposeVersionId: compose.versionId,
-      prompt: "retired storage capability claim",
-    });
-    // Receiver versions deployed before capability retirement keep sending this
-    // open-ended claim field while the new API rolls out.
-    const retiredCapabilityClaim = await api.claimRunnerJob(
-      retiredCapabilityRun.runId,
-      {
-        capabilities: ["storage-mounts-v1"],
-      },
-    );
-    const retiredCapabilityManifest = expectCanonicalStorageManifest(
-      retiredCapabilityClaim.storageManifest,
-    );
-    if (!retiredCapabilityManifest) {
-      throw new Error("Expected canonical mounts for the retired capability");
-    }
-    expect(retiredCapabilityManifest).not.toHaveProperty("storages");
-    expect(retiredCapabilityManifest).not.toHaveProperty("artifacts");
-    expect(retiredCapabilityManifest.storageMounts).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "memory", writeback: true }),
-      ]),
-    );
-
     await api.requestCancelRun(actor, canonicalRun.runId, [200]);
-    await api.requestCancelRun(actor, retiredCapabilityRun.runId, [200]);
   });
 
   it("persists canonical mounts across session continuation", async () => {
@@ -3623,6 +3595,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         expect(events[0]).toStrictEqual(
           expect.objectContaining({
             session_affinity_resource: resource,
+            reuse_key_kind: "session",
           }),
         );
       }
@@ -3828,6 +3801,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           session_affinity: "protected",
           session_affinity_resource: "reusableSandbox",
           history_generation_affinity: "protected",
+          reuse_key_kind: "session",
         }),
       );
     }
@@ -4550,6 +4524,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
           session_affinity: "no_session",
           session_affinity_resource: "none",
           history_generation_affinity: "no_session",
+          reuse_key_kind: "none",
         }),
       );
     }
@@ -5383,6 +5358,76 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       }),
     ).toContain("model-provider:openai-api-key");
     expect(claim.billableFirewalls).toContain("model-provider:openai-api-key");
+    expect(claim.modelUsageProvider).toBe(selectedModel);
+
+    await api.requestCancelRun(actor, sent.body.runId, [200]);
+  });
+
+  it("claims vm0 DeepSeek V4 Flash runs with the Responses adapter", async () => {
+    const api = createRunsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const selectedModel = "deepseek-v4-flash";
+    await seedVm0ManagedModelKey(selectedModel);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: selectedModel,
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "vm0 built-in DeepSeek Responses model provider",
+        model: selectedModel,
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the DeepSeek chat send to create a run");
+    }
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(sent.body.runId);
+
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment).toMatchObject({
+      OPENAI_API_KEY: modelProviderPlaceholder(
+        "deepseek-codex",
+        "DEEPSEEK_API_KEY",
+      ),
+      OPENAI_BASE_URL: "https://api.deepseek.com",
+      OPENAI_MODEL: selectedModel,
+    });
+    expect(claim.environment).not.toHaveProperty("ANTHROPIC_MODEL");
+    expect(claim.codexRuntimeConfig).toMatchObject({
+      providerId: "vm0-model",
+      name: "DeepSeek",
+      baseUrl: "https://api.deepseek.com",
+      envKey: "OPENAI_API_KEY",
+      wireApi: "responses",
+      supportsWebsockets: false,
+      modelCatalog: {
+        models: [
+          expect.objectContaining({
+            slug: selectedModel,
+            default_reasoning_level: "high",
+          }),
+        ],
+      },
+    });
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("model-provider:deepseek-codex");
+    expect(claim.billableFirewalls).toContain("model-provider:deepseek-codex");
     expect(claim.modelUsageProvider).toBe(selectedModel);
 
     await api.requestCancelRun(actor, sent.body.runId, [200]);
@@ -8277,7 +8322,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         path: "full_invalid_baseline",
       },
       {
-        mode: "legacy-capability",
+        mode: "capability-mismatch",
         path: "full_incompatible_baseline",
       },
       {
@@ -9190,7 +9235,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]` to publish a directory containing `index.html` to a public URL that users can open; for HTML presentations, include `--artifact-kind presentation-html`",
       "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime",
       "for HTML presentations, include `--artifact-kind presentation-html`; run `zero host --help`",
-      "zero connector status <type>",
+      "zero connector status <slug>",
       "zero connector check --help",
       "An attached generation template takes precedence",
       "Without an attached generation template",
@@ -9204,10 +9249,10 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero whoami --permissions",
       "skip permissions already allowed",
       "Diagnose failed connector requests before attributing them to Zero permission policy",
-      "zero connector check --url <FAILED_URL> --method <METHOD> [--connector <connector-ref>]",
+      "zero connector check --url <FAILED_URL> --method <METHOD> [--connector <slug>]",
       "Only request access when the check reports a deny or ask outcome",
       "Request missing permissions",
-      "zero connector permission-request <connector-ref> --permission <name>",
+      "zero connector permission-request <slug> --permission <name>",
       "one command per permission",
       "all generated links in one response, one link per line",
       "The user chooses the grant duration",
@@ -9281,7 +9326,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
     expect(claim.disallowedTools).not.toContain("WebFetch");
-    expect(claim.environment?.VM0_APP_URL).toBe(appUrl);
+    expect(claim.environment?.ZERO_APP_URL).toBe(appUrl);
+    expect(claim.environment?.VM0_APP_URL).toBeUndefined();
     expect(claim.environment?.APP_URL).toBeUndefined();
     expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
     expect(claim.environment?.ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED).toBe("1");
@@ -9618,9 +9664,7 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
       context.signal,
     );
     await api.heartbeatRunner(runnerGroup);
-    await api.claimRunnerJob(run.runId, {
-      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
-    });
+    await api.claimRunnerJob(run.runId);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     await flushWaitUntilForTest();

@@ -309,6 +309,21 @@ def test_long_malformed_control_line_recovers_for_next_event() -> None:
     assert handler.events == [("target", b"ok")]
 
 
+def test_long_malformed_control_line_does_not_retain_cross_chunk_continuation() -> None:
+    max_control_line_bytes = 16
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler, max_control_line_bytes=max_control_line_bytes)
+
+    scanner.feed(b"x" * (max_control_line_bytes + 1))
+    for _ in range(64):
+        scanner.feed(b"y" * 4096)
+        assert len(scanner._line_buf) <= max_control_line_bytes
+
+    scanner.feed(b"\nevent: target\ndata: ok\n\n")
+
+    assert handler.events == [("target", b"ok")]
+
+
 def test_long_malformed_control_line_discards_current_event() -> None:
     handler = _CaptureHandler({"target"})
     scanner = SseUsageScanner(handler)

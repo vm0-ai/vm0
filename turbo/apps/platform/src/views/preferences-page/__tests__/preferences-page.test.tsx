@@ -201,9 +201,6 @@ describe("preferences page", () => {
     detachedSetupPage({
       context,
       path: "/settings",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     await waitFor(() => {

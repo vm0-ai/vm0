@@ -692,12 +692,7 @@ async fn handle_ably_message_with_network_policy_refresh(
                         notif.run_id,
                         profile.to_owned(),
                         notification_received_at,
-                        notif.reuse_key.map(str::to_owned).or_else(|| {
-                            // TODO(deployment-compatibility): Remove this fallback after the next release.
-                            notif
-                                .cli_agent_session_id
-                                .map(|session_id| format!("session:{session_id}"))
-                        }),
+                        notif.reuse_key.map(str::to_owned),
                         notif.cli_agent_session_id.map(str::to_owned),
                         notif.affinity_protected_until.map(str::to_owned),
                     )
@@ -854,8 +849,8 @@ fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<CancelNot
             );
             CancelNotificationMode::Hard
         }
-        // Older APIs omitted the mode. Defaulting to hard preserves their
-        // pre-capability cancellation behavior during mixed deployments.
+        // Default to hard cancellation when the API omits the mode so a
+        // malformed or stale notification still stops the run safely.
         None => CancelNotificationMode::Hard,
     };
     Some(CancelNotification { run_id, mode })
@@ -1897,6 +1892,7 @@ mod tests {
                 "runId": "00000000-0000-0000-0000-000000000001",
                 "profile": "vm0/default",
                 "cliAgentSessionId": "sess-ably",
+                "reuseKey": "thread:chat-thread",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
                 "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
                 "affinityProtectedUntil": "2999-01-01T00:00:00.000Z",
@@ -1913,7 +1909,7 @@ mod tests {
         );
         assert_eq!(candidate.profile_name(), "vm0/default");
         let candidate = candidate.into_job_candidate();
-        assert_eq!(candidate.reuse_key(), Some("session:sess-ably"));
+        assert_eq!(candidate.reuse_key(), Some("thread:chat-thread"));
         assert_eq!(candidate.cli_agent_session_id(), Some("sess-ably"));
         assert_eq!(
             candidate.history_generation_run_id(),

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
@@ -20,8 +22,10 @@ import {
   cn,
 } from "@vm0/ui";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorPermissionMetadata } from "../../../../signals/connector-domain.ts";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { agents$ } from "../../../../signals/agent.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { applyUserPermissionGrants$ } from "../../../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../../../signals/user-permission-grants.ts";
@@ -38,6 +42,10 @@ import {
   type ConnectorAgentAccessRow,
 } from "../../../../signals/zero-page/settings/connector-access-management.ts";
 import {
+  customConnectorAuthorizedAgentsById$,
+  setCustomConnectorAgentAuthorization$,
+} from "../../../../signals/zero-page/settings/custom-connectors.ts";
+import {
   savePermissionDraftPolicies,
   type ApplyUserPermissionGrants,
 } from "../../../../signals/zero-page/settings/permission-grant-save.ts";
@@ -46,6 +54,7 @@ import { LoadingSwitch } from "../../../components/loading-switch.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { AvatarFromUrl } from "../../zero-sidebar-shared.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
+import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
 import { PermissionsDialog } from "./permissions-dialog.tsx";
 import { i18n } from "../../../../i18n/index.ts";
 
@@ -282,6 +291,7 @@ function LoadingAgents() {
 function ConnectorAccessDialog({
   onClose,
   connectorLabel,
+  headerIcon,
   rows,
   rowsLoaded,
   metadata,
@@ -293,6 +303,7 @@ function ConnectorAccessDialog({
 }: {
   readonly onClose: () => void;
   readonly connectorLabel: string;
+  readonly headerIcon: ReactNode;
   readonly rows: readonly ConnectorAgentAccessRow[];
   readonly rowsLoaded: boolean;
   readonly metadata: PlatformConnectorPermissionMetadata | null;
@@ -317,7 +328,7 @@ function ConnectorAccessDialog({
         <DialogHeader className="shrink-0 gap-2">
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-              <ConnectorIcon icon={metadata?.icon} size={22} />
+              {headerIcon}
             </span>
             <div className="min-w-0">
               <DialogTitle className="text-base">
@@ -493,6 +504,7 @@ export function ConnectorAccessManagementDialog({
       <ConnectorAccessDialog
         onClose={onClose}
         connectorLabel={connectorLabel}
+        headerIcon={<ConnectorIcon icon={metadata?.icon} size={22} />}
         rows={filterRows(rows, search)}
         rowsLoaded={rowsLoadable.state === "hasData"}
         metadata={metadata}
@@ -516,5 +528,112 @@ export function ConnectorAccessManagementDialog({
         }}
       />
     </>
+  );
+}
+
+export function CustomConnectorAccessManagementDialog({
+  connector,
+  onClose,
+}: {
+  readonly connector: CustomConnectorResponse;
+  readonly onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const agentsLoadable = useLastLoadable(agents$);
+  const authorizedAgentsByIdLoadable = useLastLoadable(
+    customConnectorAuthorizedAgentsById$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  const search = useGet(connectorAccessManagementSearch$);
+  const pendingSavingAgentId = useGet(connectorAccessManagementSavingAgentId$);
+  const setSearch = useSet(setConnectorAccessManagementSearch$);
+  const setSavingAgentId = useSet(setConnectorAccessManagementSavingAgentId$);
+  const [authorizationLoadable, setAuthorization] = useLoadableSet(
+    setCustomConnectorAgentAuthorization$,
+  );
+  const rowsLoaded =
+    agentsLoadable.state === "hasData" &&
+    authorizedAgentsByIdLoadable.state === "hasData";
+  const authorizedAgentIds = new Set(
+    authorizedAgentsByIdLoadable.state === "hasData"
+      ? (authorizedAgentsByIdLoadable.data.get(connector.id) ?? []).map(
+          (agent) => {
+            return agent.id;
+          },
+        )
+      : [],
+  );
+  const rows: readonly ConnectorAgentAccessRow[] =
+    agentsLoadable.state === "hasData"
+      ? agentsLoadable.data.map((agent) => {
+          return {
+            agent,
+            authorized: authorizedAgentIds.has(agent.id),
+            grants: [],
+          };
+        })
+      : [];
+  const savingAgentId =
+    authorizationLoadable.state === "loading" ? pendingSavingAgentId : null;
+
+  const close = () => {
+    setSearch("");
+    setSavingAgentId(null);
+    onClose();
+  };
+
+  return (
+    <ConnectorAccessDialog
+      onClose={close}
+      connectorLabel={connector.displayName}
+      headerIcon={
+        <CustomConnectorIcon
+          id={connector.id}
+          displayName={connector.displayName}
+          size={22}
+        />
+      }
+      rows={filterRows(rows, search)}
+      rowsLoaded={rowsLoaded}
+      metadata={null}
+      savingAgentId={savingAgentId}
+      search={search}
+      onSearchChange={setSearch}
+      onToggle={(row, authorized) => {
+        if (savingAgentId !== null) {
+          return;
+        }
+        setSavingAgentId(row.agent.id);
+        detach(
+          withCleanup(
+            (async () => {
+              await setAuthorization(
+                {
+                  agentId: row.agent.id,
+                  connectorId: connector.id,
+                  authorized,
+                },
+                pageSignal,
+              );
+              toast.success(
+                t(
+                  ($) => {
+                    return $.connectors.access.accessUpdated;
+                  },
+                  { connector: connector.displayName },
+                ),
+              );
+            })(),
+            () => {
+              setSavingAgentId(null);
+            },
+          ),
+          Reason.DomCallback,
+        );
+      }}
+      onManage={() => {
+        return undefined;
+      }}
+    />
   );
 }

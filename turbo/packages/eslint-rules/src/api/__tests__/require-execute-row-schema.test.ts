@@ -25,6 +25,7 @@ const ruleTester = new RuleTester({
     },
   },
 });
+const untypedRuleTester = new RuleTester();
 
 const drizzlePreamble = `
     type DrizzleDatabase =
@@ -411,6 +412,18 @@ ruleTester.run("require-execute-row-schema", requireExecuteRowSchema, {
     },
     {
       code: `${drizzlePreamble}
+        const result = await db.ex\\u0065cute(query);
+      `,
+      errors: [{ messageId: "rawResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        const result = await db["e\\x78ecute"](query);
+      `,
+      errors: [{ messageId: "rawResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
         const execute = db.execute.bind(db);
       `,
       errors: [{ messageId: "executeReference" }],
@@ -421,5 +434,20 @@ ruleTester.run("require-execute-row-schema", requireExecuteRowSchema, {
       `,
       errors: [{ messageId: "executeReference" }],
     },
+    {
+      code: `${drizzlePreamble}
+        const { ["e\\x78ecute"]: run } = db;
+      `,
+      errors: [{ messageId: "executeReference" }],
+    },
   ],
 });
+
+untypedRuleTester.run(
+  "require-execute-row-schema without parser services",
+  requireExecuteRowSchema,
+  {
+    valid: ["const value = 1;"],
+    invalid: [],
+  },
+);

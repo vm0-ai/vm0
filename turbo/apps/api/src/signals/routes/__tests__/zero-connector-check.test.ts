@@ -40,12 +40,15 @@ const store = createStore();
 
 interface ConnectedFixture {
   readonly actor: ApiTestUser;
-  readonly type: "github" | "reap";
+  readonly connectorSlug: "github" | "reap";
 }
 
 const trackConnectedFixture = createFixtureTracker<ConnectedFixture>(
   async (fixture) => {
-    await connectorsApi.deleteConnectorBySlug(fixture.actor, fixture.type);
+    await connectorsApi.deleteConnectorBySlug(
+      fixture.actor,
+      fixture.connectorSlug,
+    );
   },
 );
 const trackOrgMembershipFixture = createFixtureTracker<OrgMembershipFixture>(
@@ -153,7 +156,9 @@ async function connectReap(
       apiBaseUrl,
     },
   );
-  await trackConnectedFixture(Promise.resolve({ actor, type: "reap" }));
+  await trackConnectedFixture(
+    Promise.resolve({ actor, connectorSlug: "reap" }),
+  );
   return connector.id;
 }
 
@@ -611,7 +616,7 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
       userId: owner.userId,
     });
     await trackConnectedFixture(
-      Promise.resolve({ actor: owner, type: "github" }),
+      Promise.resolve({ actor: owner, connectorSlug: "github" }),
     );
     await setConnectorVariableOwner(context, {
       connectorId: foreignConnectorId,

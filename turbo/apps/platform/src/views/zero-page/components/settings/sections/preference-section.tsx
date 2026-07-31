@@ -11,7 +11,6 @@ import {
 } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
 import type { SendMode } from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { pageSignal$ } from "../../../../../signals/page-signal.ts";
 import {
@@ -29,7 +28,6 @@ import { TimezoneSettings } from "../timezone-settings.tsx";
 import { MorningBriefSettings } from "../morning-brief-settings.tsx";
 import { SettingsSectionHeading } from "../settings-section-heading.tsx";
 import { AccountSection } from "./account-section.tsx";
-import { featureSwitch$ } from "../../../../../signals/external/feature-switch.ts";
 import { LanguageSettings } from "../language-settings.tsx";
 
 const THEME_OPTIONS: readonly {
@@ -207,9 +205,6 @@ function EnterBlock() {
 
 export function PreferenceSection() {
   const { t } = useTranslation();
-  const features = useGet(featureSwitch$);
-  const showLanguagePreference =
-    features[FeatureSwitchKey.LanguagePreference] ?? false;
 
   return (
     <div className="flex flex-col gap-8">
@@ -232,7 +227,7 @@ export function PreferenceSection() {
           })}
         />
         <AppearanceBlock />
-        {showLanguagePreference && <LanguageSettings />}
+        <LanguageSettings />
       </section>
 
       <section className="flex flex-col gap-3">

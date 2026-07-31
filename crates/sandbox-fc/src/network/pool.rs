@@ -39,11 +39,16 @@
 //!   power loss, aborted in-flight creation tasks) are reconciled at
 //!   startup via flock-based liveness probe.
 
+use std::time::Duration;
+
 mod completion;
+mod firewall;
 mod host;
 mod naming;
 mod state;
 mod types;
+
+const HOST_NETWORK_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(crate) use naming::make_pool_dns_filter_comment;
 pub use naming::{ParsedNetnsName, parse_netns_name};

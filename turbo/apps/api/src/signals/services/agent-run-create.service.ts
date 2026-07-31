@@ -19,6 +19,7 @@ import type {
 import { modelProviderSurfaceProtocolSchema } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
 import {
   getDefaultModel,
+  getModelProviderCodexRuntimeConfig,
   getModelProviderFirewall,
   getModelProviderEnvBindings,
   getFrameworkForType,
@@ -217,8 +218,11 @@ import {
   claimQueueFirstRunAssociation,
   recordQueueFirstClaimedRun,
   recordQueueFirstFailedRun,
+  resolveQueueFirstRunAdmission,
+  type QueueFirstRunAdmission,
   type QueueFirstRunAssociation,
   type QueueFirstRunClaimResult,
+  type QueueFirstRunSessionSnapshotState,
 } from "./zero-chat-queued-event.service";
 import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
 import {
@@ -1700,6 +1704,7 @@ function modelProviderEnvironment(args: {
       .replaceAll("$secret", environmentSecret)
       .replaceAll("$model", runtimeModel);
   }
+  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(args.type);
 
   return {
     id: args.id,
@@ -1707,6 +1712,7 @@ function modelProviderEnvironment(args: {
     environment,
     secrets,
     selectedModel: model,
+    ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
     ...modelProviderFirewallAuthMaps(args.type, args.sourceUserId, [
       args.config.secretName,
     ]),
@@ -1949,6 +1955,7 @@ async function vm0ModelProviderEnvironment(
   if (!apiKey || !secretName) {
     return null;
   }
+  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(concreteType);
 
   return {
     id: null,
@@ -1962,6 +1969,7 @@ async function vm0ModelProviderEnvironment(
     ),
     secrets: { [secretName]: apiKey },
     selectedModel,
+    ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
   };
 }
 
@@ -5835,13 +5843,13 @@ async function checkRunConcurrencyPreflight(args: {
   });
 }
 
-async function claimQueueFirstAssociationForLaunch(args: {
+async function resolveQueueFirstAdmissionForLaunch(args: {
   readonly tx: DbTransaction;
   readonly createArgs: CreateAgentRunArgs;
-  readonly identity: LaunchRunIdentity;
+  readonly sessionSnapshotState: QueueFirstRunSessionSnapshotState;
+  readonly threadAlreadyLocked?: true;
   readonly timing: ApiDispatchTimingCollector;
-  readonly validatedThreadSession: ValidatedThreadSessionSnapshot | undefined;
-}): Promise<QueueFirstRunClaimResult | undefined> {
+}): Promise<QueueFirstRunAdmission | undefined> {
   const association = args.createArgs.queueFirstAssociation;
   if (!association) {
     return undefined;
@@ -5849,14 +5857,34 @@ async function claimQueueFirstAssociationForLaunch(args: {
   if (association.threadId !== args.createArgs.chatThreadId) {
     throw new Error("Queue-first association must match the run chat thread");
   }
+  return await resolveQueueFirstRunAdmission(args.tx, {
+    apiStartTime: args.createArgs.apiStartTime,
+    sessionSnapshotState: args.sessionSnapshotState,
+    threadId: association.threadId,
+    timing: args.timing,
+    ...(args.threadAlreadyLocked ? { threadAlreadyLocked: true } : {}),
+  });
+}
+
+async function claimQueueFirstAssociationForLaunch(args: {
+  readonly tx: DbTransaction;
+  readonly admission: QueueFirstRunAdmission | undefined;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly identity: LaunchRunIdentity;
+  readonly timing: ApiDispatchTimingCollector;
+}): Promise<QueueFirstRunClaimResult | undefined> {
+  const association = args.createArgs.queueFirstAssociation;
+  if (!association) {
+    return undefined;
+  }
+  if (!args.admission) {
+    throw new Error("Queue-first claim requires resolved thread admission");
+  }
   return await claimQueueFirstRunAssociation(args.tx, {
     ...association,
-    apiStartTime: args.createArgs.apiStartTime,
+    admission: args.admission,
     runId: args.identity.runId,
     timing: args.timing,
-    ...(args.validatedThreadSession?.chatThreadId === association.threadId
-      ? { threadAlreadyLocked: true }
-      : {}),
   });
 }
 
@@ -5872,12 +5900,18 @@ async function commitFailedLaunch(args: {
   const message = runFailureMessage(args.error);
   const committed = await args.db.transaction(
     async (tx): Promise<FailedLaunchCommitResult> => {
+      const queueFirstAdmission = await resolveQueueFirstAdmissionForLaunch({
+        tx,
+        createArgs: args.createArgs,
+        sessionSnapshotState: "unvalidated",
+        timing: args.timing,
+      });
       const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
         tx,
+        admission: queueFirstAdmission,
         createArgs: args.createArgs,
         identity: args.identity,
         timing: args.timing,
-        validatedThreadSession: undefined,
       });
       if (queueFirstClaim?.kind === "lost") {
         return { kind: "queue-first-claim-lost" };
@@ -6332,7 +6366,27 @@ async function commitPreparedLaunchUnderLock(
     timing: args.timing,
   });
   if (threadSessionValidation?.kind === "thread-session-snapshot-stale") {
-    return threadSessionValidation;
+    const queueFirstAdmission = await resolveQueueFirstAdmissionForLaunch({
+      tx,
+      createArgs: args.createArgs,
+      sessionSnapshotState: threadSessionValidation.reason,
+      threadAlreadyLocked: true,
+      timing: args.timing,
+    });
+    if (!queueFirstAdmission || queueFirstAdmission.kind === "idle") {
+      return threadSessionValidation;
+    }
+    const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
+      tx,
+      admission: queueFirstAdmission,
+      createArgs: args.createArgs,
+      identity: args.identity,
+      timing: args.timing,
+    });
+    if (queueFirstClaim?.kind !== "lost") {
+      throw new Error("Blocked queue-first admission must lose its claim");
+    }
+    return { kind: "queue-first-claim-lost" };
   }
   const validatedThreadSession = threadSessionValidation;
   const concurrency = await args.timing.measure(
@@ -6350,12 +6404,19 @@ async function commitPreparedLaunchUnderLock(
     if (!args.encryptedQueuedParams) {
       return { kind: "queue-payload-required" };
     }
+    const queueFirstAdmission = await resolveQueueFirstAdmissionForLaunch({
+      tx,
+      createArgs: args.createArgs,
+      sessionSnapshotState: validatedThreadSession ? "current" : "unvalidated",
+      ...(validatedThreadSession ? { threadAlreadyLocked: true } : {}),
+      timing: args.timing,
+    });
     const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
       tx,
+      admission: queueFirstAdmission,
       createArgs: args.createArgs,
       identity: args.identity,
       timing: args.timing,
-      validatedThreadSession,
     });
     if (queueFirstClaim?.kind === "lost") {
       return { kind: "queue-first-claim-lost" };
@@ -6369,12 +6430,19 @@ async function commitPreparedLaunchUnderLock(
     );
   }
 
+  const queueFirstAdmission = await resolveQueueFirstAdmissionForLaunch({
+    tx,
+    createArgs: args.createArgs,
+    sessionSnapshotState: validatedThreadSession ? "current" : "unvalidated",
+    ...(validatedThreadSession ? { threadAlreadyLocked: true } : {}),
+    timing: args.timing,
+  });
   const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
     tx,
+    admission: queueFirstAdmission,
     createArgs: args.createArgs,
     identity: args.identity,
     timing: args.timing,
-    validatedThreadSession,
   });
   if (queueFirstClaim?.kind === "lost") {
     return { kind: "queue-first-claim-lost" };

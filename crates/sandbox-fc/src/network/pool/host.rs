@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::File;
 use std::future::Future;
-use std::io::Write;
 use std::os::fd::AsRawFd;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(test)]
 use std::time::Duration;
 
 use nix::errno::Errno;
@@ -13,26 +13,27 @@ use nix::fcntl::{Flock, FlockArg};
 use tracing::{error, info, warn};
 
 use crate::command::{
-    CommandError, IgnoredCommandOutcome, exec_ignore_errors_with_timeout, exec_status_with_timeout,
+    IgnoredCommandOutcome, exec_ignore_errors_with_timeout, exec_status_with_timeout,
     exec_with_timeout,
 };
 use crate::guest_dns_netfilter_trace::{
     GuestDnsNetfilterTraceAttachment, GuestDnsNetfilterTraceReader,
 };
-use crate::guest_dns_readiness::GUEST_DNS_READINESS_PACKET_BYTES;
 use crate::paths::LockPaths;
 
 use super::super::error::{NetworkError, Result};
 use super::super::{GUEST_NETWORK, GuestNetwork};
-use super::naming::{
-    MAX_NAMESPACES, MAX_POOLS, NS_PREFIX, format_hex_index, generate_veth_ip_pair,
-    make_host_device, make_host_device_iptables_pattern, make_ns_name,
-    make_pool_dns_filter_comment, parse_netns_name,
+use super::HOST_NETWORK_COMMAND_TIMEOUT;
+use super::firewall::{
+    FirewallSnapshot, NamespaceFirewallConfig, apply_namespace_guest_dns_trace_rules,
+    apply_namespace_rules, delete_ipv4_rules_by_comment, delete_rules_with_comments,
+    setup_namespace_masquerade,
 };
-use super::types::NetnsInfo;
-
-const NETNS_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
-const GUEST_DNS_READINESS_IPV4: &str = "8.8.8.8/32";
+use super::naming::{
+    MAX_NAMESPACES, MAX_POOLS, format_hex_index, generate_veth_ip_pair, make_host_device,
+    make_ns_name, parse_netns_name,
+};
+use super::types::{NamespaceDeleteOutcome, NetnsInfo};
 
 // Each namespace starts two `ip` children concurrently. A 16-wide window caps
 // that fanout at 32 processes. At the 256-namespace hard limit, sixteen
@@ -104,106 +105,30 @@ impl ConntrackFlushOutcome {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum NamespaceDeleteOutcome {
-    Deleted,
-    Abandoned,
-}
-
-impl NamespaceDeleteOutcome {
-    fn from_best_effort(outcomes: impl IntoIterator<Item = IgnoredCommandOutcome>) -> Self {
-        if outcomes
-            .into_iter()
-            .all(|outcome| outcome.completed_without_timeout())
-        {
-            Self::Deleted
-        } else {
-            Self::Abandoned
-        }
+fn namespace_delete_outcome_from_best_effort(
+    outcomes: impl IntoIterator<Item = IgnoredCommandOutcome>,
+) -> NamespaceDeleteOutcome {
+    if outcomes
+        .into_iter()
+        .all(|outcome| outcome.completed_without_timeout())
+    {
+        NamespaceDeleteOutcome::Deleted
+    } else {
+        NamespaceDeleteOutcome::Abandoned
     }
 }
 
 /// Shorthand: run `ip <args>`, discard stdout.
 async fn exec_ip(args: &[&str]) -> Result<()> {
-    exec_status_with_timeout("ip", args, NETNS_COMMAND_TIMEOUT).await?;
+    exec_status_with_timeout("ip", args, HOST_NETWORK_COMMAND_TIMEOUT).await?;
     Ok(())
-}
-
-/// Prepend an unbounded xtables lock wait to a mutating firewall command.
-///
-/// The surrounding command timeout remains the sole deadline so an exhausted
-/// wait is classified as a timeout instead of a completed non-zero exit.
-fn xtables_args<'a>(args: &[&'a str]) -> Vec<&'a str> {
-    let mut waited_args = Vec::with_capacity(args.len() + 1);
-    waited_args.push("--wait");
-    waited_args.extend_from_slice(args);
-    waited_args
-}
-
-async fn exec_xtables_status_with_timeout(
-    program: &str,
-    args: &[&str],
-    timeout: Duration,
-) -> std::result::Result<(), CommandError> {
-    let args = xtables_args(args);
-    exec_status_with_timeout(program, &args, timeout).await
-}
-
-/// Observe and restrict the runner-managed DNS port by pool-facing interface.
-///
-/// dnsmasq's default socket mode avoids per-address listener churn by using
-/// wildcard sockets. These INPUT rules preserve the old kernel-level listener
-/// isolation: public, management, and other runners' interfaces see the port as
-/// unreachable, while REDIRECT traffic arriving on this pool's veths increments
-/// a counter-only rule and continues to dnsmasq under the later INPUT policy.
-/// Both address families are covered because dnsmasq can create IPv4 and IPv6
-/// wildcard sockets.
-pub(super) async fn setup_dns_input_filter(pool_index: u32, dns_port: u16) -> Result<String> {
-    let pool_idx = format_hex_index(pool_index);
-    let interface = make_host_device_iptables_pattern(&pool_idx);
-    let comment = make_pool_dns_filter_comment(pool_index);
-    let firewall = vec![FirewallRestoreTable {
-        table: "filter",
-        rules: ["udp", "tcp"]
-            .into_iter()
-            .flat_map(|protocol| {
-                [
-                    format!(
-                        "-I INPUT 1 -i {interface} -p {protocol} --dport {dns_port} -m comment --comment {comment}"
-                    ),
-                    format!(
-                        "-I INPUT 1 ! -i {interface} -p {protocol} --dport {dns_port} -m comment --comment {comment} -j REJECT"
-                    ),
-                ]
-            })
-            .collect(),
-    }];
-    let (ipv4, ipv6) = tokio::join!(
-        apply_firewall_rules_with_restore("iptables-restore", &firewall),
-        apply_firewall_rules_with_restore("ip6tables-restore", &firewall),
-    );
-    if let Err(error) = ipv4.and(ipv6) {
-        if matches!(
-            delete_pool_firewall_rules_by_comment(&comment).await,
-            NamespaceDeleteOutcome::Abandoned
-        ) {
-            warn!(
-                comment,
-                "failed to roll back partial DNS input filter; startup orphan reconciliation will retry"
-            );
-        }
-        return Err(error);
-    }
-
-    info!(dns_port, interface, comment, "DNS input filter installed");
-    Ok(comment)
 }
 
 pub(super) async fn enable_host_ip_forwarding() -> Result<()> {
     exec_status_with_timeout(
         "sysctl",
         &["-w", "net.ipv4.ip_forward=1"],
-        NETNS_COMMAND_TIMEOUT,
+        HOST_NETWORK_COMMAND_TIMEOUT,
     )
     .await?;
     Ok(())
@@ -308,20 +233,7 @@ async fn setup_namespace_routing(
         "netns", "exec", name, "ip", "route", "add", "default", "via", host_ip,
     ])
     .await?;
-    let mut iptables_command_args = vec!["netns", "exec", name, "iptables"];
-    iptables_command_args.extend(xtables_args(&[
-        "-t",
-        "nat",
-        "-A",
-        "POSTROUTING",
-        "-s",
-        &src,
-        "-o",
-        PEER_DEVICE,
-        "-j",
-        "MASQUERADE",
-    ]));
-    exec_ip(&iptables_command_args).await?;
+    setup_namespace_masquerade(name, &src, PEER_DEVICE).await?;
     exec_ip(&[
         "netns",
         "exec",
@@ -334,138 +246,13 @@ async fn setup_namespace_routing(
     Ok(())
 }
 
-/// Build the complete host firewall transaction for one namespace.
-#[derive(Clone, Copy)]
-struct NamespaceFirewallConfig<'a> {
-    default_iface: &'a str,
-    proxy_port: Option<u16>,
-    dns_port: Option<u16>,
-}
-
-fn namespace_firewall_restore_tables(
-    name: &str,
-    host_device: &str,
-    peer_ip: &str,
-    config: NamespaceFirewallConfig<'_>,
-) -> Vec<FirewallRestoreTable> {
-    let NamespaceFirewallConfig {
-        default_iface,
-        proxy_port,
-        dns_port,
-    } = config;
-    let peer = format!("{peer_ip}/32");
-
-    // Reject forged source addresses before conntrack and NAT attribute them
-    // to this namespace. This remains independent of host rp_filter settings.
-    let raw = vec![format!(
-        "-I PREROUTING 1 -i {host_device} ! -s {peer} -m comment --comment {name} -j DROP"
-    )];
-
-    // Establish the base outbound and return paths before inserting the
-    // optional logging and DNS guards ahead of the terminating ACCEPT rules.
-    let mut nat = vec![format!(
-        "-A POSTROUTING -s {peer} -o {default_iface} -j MASQUERADE -m comment --comment {name}"
-    )];
-    let mut filter = vec![
-        format!(
-            "-A FORWARD -i {host_device} -s {peer} -o {default_iface} -j ACCEPT -m comment --comment {name}"
-        ),
-        format!(
-            "-A FORWARD -i {default_iface} -o {host_device} -d {peer} -m state --state RELATED,ESTABLISHED -j ACCEPT -m comment --comment {name}"
-        ),
-    ];
-
-    if let Some(port) = proxy_port {
-        // The dedicated DNS rules own ports 53 and 853 when DNS proxying is
-        // enabled; otherwise all outbound TCP keeps the proxy behavior.
-        let dns_exclusions = if dns_port.is_some() {
-            " -m multiport ! --dports 53,853"
-        } else {
-            ""
-        };
-        nat.push(format!(
-            "-A PREROUTING -i {host_device} -s {peer} -p tcp{dns_exclusions} -j REDIRECT --to-port {port} -m comment --comment {name}"
-        ));
-        // LOG is non-terminating and must precede the ACCEPT rules.
-        filter.push(format!(
-            "-I FORWARD 1 -i {host_device} -s {peer} ! -p tcp -m limit --limit 10/sec --limit-burst 50 -j LOG --log-prefix VM0:{peer_ip}: --log-level 4 -m comment --comment {name}"
-        ));
-    }
-
-    if let Some(port) = dns_port {
-        // Redirect standard DNS to dnsmasq, then block attempts to bypass it
-        // over external DNS and DNS-over-TLS forwarding paths.
-        for protocol in ["udp", "tcp"] {
-            nat.push(format!(
-                "-A PREROUTING -i {host_device} -s {peer} -p {protocol} --dport 53 -j REDIRECT --to-port {port} -m comment --comment {name}"
-            ));
-        }
-        for (protocol, port) in [("udp", "53"), ("tcp", "53"), ("tcp", "853")] {
-            filter.push(format!(
-                "-I FORWARD 1 -i {host_device} -s {peer} -p {protocol} --dport {port} -j DROP -m comment --comment {name}"
-            ));
-        }
-    }
-
-    vec![
-        FirewallRestoreTable {
-            table: "raw",
-            rules: raw,
-        },
-        FirewallRestoreTable {
-            table: "nat",
-            rules: nat,
-        },
-        FirewallRestoreTable {
-            table: "filter",
-            rules: filter,
-        },
-    ]
-}
-
-fn namespace_guest_dns_trace_restore_tables(
-    name: &str,
-    host_device: &str,
-    peer_ip: &str,
-) -> Vec<FirewallRestoreTable> {
-    let peer = format!("{peer_ip}/32");
-    vec![FirewallRestoreTable {
-        table: "raw",
-        rules: vec![
-            format!(
-                "-I PREROUTING 1 -i {host_device} -s {peer} -d {GUEST_DNS_READINESS_IPV4} -p udp --dport 53 -m length --length {GUEST_DNS_READINESS_PACKET_BYTES} -m comment --comment {name} -j TRACE"
-            ),
-            format!(
-                "-I PREROUTING 1 -i {host_device} -s {peer} -d {GUEST_DNS_READINESS_IPV4} -p tcp --dport 53 -m comment --comment {name} -j TRACE"
-            ),
-        ],
-    }]
-}
-
-async fn apply_namespace_guest_dns_trace_rules(
-    command: &str,
-    name: &str,
-    host_device: &str,
-    peer_ip: &str,
-) -> bool {
-    let firewall = namespace_guest_dns_trace_restore_tables(name, host_device, peer_ip);
-    match apply_firewall_rules_with_restore(command, &firewall).await {
-        Ok(()) => true,
-        Err(error) => {
-            warn!(
-                name,
-                host_device,
-                %error,
-                "root netfilter trace rules unavailable; namespace remains usable"
-            );
-            false
-        }
-    }
-}
-
 pub(super) async fn get_default_interface() -> Result<String> {
-    let result =
-        exec_with_timeout("ip", &["route", "get", "8.8.8.8"], NETNS_COMMAND_TIMEOUT).await?;
+    let result = exec_with_timeout(
+        "ip",
+        &["route", "get", "8.8.8.8"],
+        HOST_NETWORK_COMMAND_TIMEOUT,
+    )
+    .await?;
     let iface = result
         .split_whitespace()
         .skip_while(|&w| w != "dev")
@@ -475,26 +262,10 @@ pub(super) async fn get_default_interface() -> Result<String> {
     Ok(iface)
 }
 
-/// Delete IPv4 iptables rules with the exact `comment`.
-async fn delete_iptables_rules_by_comment(comment: &str) -> NamespaceDeleteOutcome {
-    Ipv4FirewallSnapshot::capture()
-        .await
-        .delete_rules_with_comments(&BTreeSet::from([comment.to_string()]))
-        .await
-}
-
-/// Delete pool-scoped IPv4 and IPv6 firewall rules with the exact `comment`.
-pub(super) async fn delete_pool_firewall_rules_by_comment(comment: &str) -> NamespaceDeleteOutcome {
-    FirewallSnapshot::capture()
-        .await
-        .delete_rules_with_comments(&BTreeSet::from([comment.to_string()]))
-        .await
-}
-
 /// Delete a namespace's network resources (iptables, veth, netns).
 async fn delete_namespace_resources(ns_name: &str, host_device: &str) -> NamespaceDeleteOutcome {
     info!(name = %ns_name, "deleting namespace");
-    let iptables = delete_iptables_rules_by_comment(ns_name).await;
+    let iptables = delete_ipv4_rules_by_comment(ns_name).await;
     let outcome = delete_namespace_link_and_netns(ns_name, host_device).await;
     if matches!(iptables, NamespaceDeleteOutcome::Deleted)
         && matches!(outcome, NamespaceDeleteOutcome::Deleted)
@@ -534,17 +305,7 @@ async fn delete_network_resources(
         comments.insert(comment);
     }
 
-    let firewall = if includes_ipv6 {
-        FirewallSnapshot::capture()
-            .await
-            .delete_rules_with_comments(&comments)
-            .await
-    } else {
-        Ipv4FirewallSnapshot::capture()
-            .await
-            .delete_rules_with_comments(&comments)
-            .await
-    };
+    let firewall = delete_rules_with_comments(&comments, includes_ipv6).await;
 
     let namespace_outcome = delete_namespace_resources_bounded(
         namespaces
@@ -553,7 +314,7 @@ async fn delete_network_resources(
             .collect(),
     )
     .await;
-    combine_namespace_delete_outcomes([firewall, namespace_outcome])
+    NamespaceDeleteOutcome::combine([firewall, namespace_outcome])
 }
 
 async fn delete_namespace_resources_bounded(
@@ -686,10 +447,10 @@ async fn delete_namespace_link_and_netns(
     let del_link_args = ["link", "del", host_device];
     let del_ns_args = ["netns", "del", ns_name];
     let (link, netns) = tokio::join!(
-        exec_ignore_errors_with_timeout("ip", &del_link_args, NETNS_COMMAND_TIMEOUT),
-        exec_ignore_errors_with_timeout("ip", &del_ns_args, NETNS_COMMAND_TIMEOUT),
+        exec_ignore_errors_with_timeout("ip", &del_link_args, HOST_NETWORK_COMMAND_TIMEOUT),
+        exec_ignore_errors_with_timeout("ip", &del_ns_args, HOST_NETWORK_COMMAND_TIMEOUT),
     );
-    NamespaceDeleteOutcome::from_best_effort([link, netns])
+    namespace_delete_outcome_from_best_effort([link, netns])
 }
 
 /// Flush conntrack entries for a given IP address.
@@ -702,8 +463,8 @@ async fn flush_conntrack(peer_ip: &str) -> ConntrackFlushOutcome {
     let src_args = ["-D", "-s", peer_ip];
     let dst_args = ["-D", "-d", peer_ip];
     let (src, dst) = tokio::join!(
-        exec_ignore_errors_with_timeout("conntrack", &src_args, NETNS_COMMAND_TIMEOUT),
-        exec_ignore_errors_with_timeout("conntrack", &dst_args, NETNS_COMMAND_TIMEOUT),
+        exec_ignore_errors_with_timeout("conntrack", &src_args, HOST_NETWORK_COMMAND_TIMEOUT),
+        exec_ignore_errors_with_timeout("conntrack", &dst_args, HOST_NETWORK_COMMAND_TIMEOUT),
     );
     if conntrack_flush_is_trusted(src, dst) {
         if conntrack_command_missing(src, dst)
@@ -911,8 +672,7 @@ async fn create_namespace_inner(
     create_netns_with_tap(name, sn.tap_name, sn.tap_mac, &gw_with_prefix).await?;
     setup_veth_pair(name, host_device, host_ip, peer_ip).await?;
     setup_namespace_routing(name, host_ip, sn.gateway_ip, sn.prefix_len).await?;
-    let firewall = namespace_firewall_restore_tables(name, host_device, peer_ip, firewall_config);
-    apply_firewall_rules_with_restore("iptables-restore", &firewall).await?;
+    apply_namespace_rules(name, host_device, peer_ip, firewall_config).await?;
 
     Ok(())
 }
@@ -921,114 +681,6 @@ async fn create_namespace_inner(
 enum SnapshotSource<T> {
     Captured(T),
     Abandoned,
-}
-
-#[derive(Debug)]
-struct FirewallTableSnapshot {
-    table: &'static str,
-    rules_by_pool: SnapshotSource<BTreeMap<u32, Vec<String>>>,
-}
-
-#[derive(Clone, Debug)]
-struct FirewallRestoreTable {
-    table: &'static str,
-    rules: Vec<String>,
-}
-
-struct FirewallRestoreSelection {
-    tables: Vec<FirewallRestoreTable>,
-    sources_complete: bool,
-}
-
-#[derive(Clone, Copy)]
-enum FirewallRestoreMode {
-    Apply,
-    Delete,
-}
-
-#[derive(Debug)]
-struct Ipv4FirewallSnapshot {
-    raw: FirewallTableSnapshot,
-    nat: FirewallTableSnapshot,
-    filter: FirewallTableSnapshot,
-}
-
-impl Ipv4FirewallSnapshot {
-    async fn capture() -> Self {
-        let (raw, nat, filter) = tokio::join!(
-            capture_firewall_table("iptables-save", "raw"),
-            capture_firewall_table("iptables-save", "nat"),
-            capture_firewall_table("iptables-save", "filter"),
-        );
-        Self { raw, nat, filter }
-    }
-
-    fn extend_candidate_pool_indexes(&self, indexes: &mut BTreeSet<u32>) {
-        for table in [&self.raw, &self.nat, &self.filter] {
-            extend_candidate_pool_indexes(table, indexes);
-        }
-    }
-
-    async fn delete_pool_rules(&self, pool_index: u32) -> NamespaceDeleteOutcome {
-        delete_firewall_restore_selection(
-            "iptables-restore",
-            firewall_restore_tables_for_pool([&self.raw, &self.nat, &self.filter], pool_index),
-        )
-        .await
-    }
-
-    async fn delete_rules_with_comments(
-        &self,
-        comments: &BTreeSet<String>,
-    ) -> NamespaceDeleteOutcome {
-        delete_firewall_restore_selection(
-            "iptables-restore",
-            firewall_restore_tables_with_comments([&self.raw, &self.nat, &self.filter], comments),
-        )
-        .await
-    }
-}
-
-#[derive(Debug)]
-struct FirewallSnapshot {
-    ipv4: Ipv4FirewallSnapshot,
-    ipv6_filter: FirewallTableSnapshot,
-}
-
-impl FirewallSnapshot {
-    async fn capture() -> Self {
-        let (ipv4, ipv6_filter) = tokio::join!(
-            Ipv4FirewallSnapshot::capture(),
-            capture_firewall_table("ip6tables-save", "filter"),
-        );
-        Self { ipv4, ipv6_filter }
-    }
-
-    fn extend_candidate_pool_indexes(&self, indexes: &mut BTreeSet<u32>) {
-        self.ipv4.extend_candidate_pool_indexes(indexes);
-        extend_candidate_pool_indexes(&self.ipv6_filter, indexes);
-    }
-
-    async fn delete_pool_rules(&self, pool_index: u32) -> NamespaceDeleteOutcome {
-        let ipv6 = firewall_restore_tables_for_pool([&self.ipv6_filter], pool_index);
-        let (ipv4, ipv6_filter) = tokio::join!(
-            self.ipv4.delete_pool_rules(pool_index),
-            delete_firewall_restore_selection("ip6tables-restore", ipv6),
-        );
-        combine_namespace_delete_outcomes([ipv4, ipv6_filter])
-    }
-
-    async fn delete_rules_with_comments(
-        &self,
-        comments: &BTreeSet<String>,
-    ) -> NamespaceDeleteOutcome {
-        let ipv6 = firewall_restore_tables_with_comments([&self.ipv6_filter], comments);
-        let (ipv4, ipv6_filter) = tokio::join!(
-            self.ipv4.delete_rules_with_comments(comments),
-            delete_firewall_restore_selection("ip6tables-restore", ipv6),
-        );
-        combine_namespace_delete_outcomes([ipv4, ipv6_filter])
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1072,72 +724,15 @@ impl ReconciliationSnapshot {
     }
 }
 
-async fn capture_firewall_table(
-    save_command: &'static str,
-    table: &'static str,
-) -> FirewallTableSnapshot {
-    let rules_by_pool =
-        match exec_with_timeout(save_command, &["-t", table], NETNS_COMMAND_TIMEOUT).await {
-            Ok(output) => {
-                let mut rules_by_pool: BTreeMap<u32, Vec<String>> = BTreeMap::new();
-                for line in output.lines() {
-                    if let Some(pool_index) = firewall_rule_pool_index(line) {
-                        rules_by_pool
-                            .entry(pool_index)
-                            .or_default()
-                            .push(line.to_string());
-                    }
-                }
-                SnapshotSource::Captured(rules_by_pool)
-            }
+async fn capture_namespaces() -> SnapshotSource<BTreeMap<u32, Vec<NamespaceResources>>> {
+    let output =
+        match exec_with_timeout("ip", &["netns", "list"], HOST_NETWORK_COMMAND_TIMEOUT).await {
+            Ok(output) => output,
             Err(error) => {
-                warn!(save_command, table, %error, "failed to capture firewall rules for cleanup");
-                SnapshotSource::Abandoned
+                error!(%error, "failed to capture namespaces for startup reconciliation");
+                return SnapshotSource::Abandoned;
             }
         };
-    FirewallTableSnapshot {
-        table,
-        rules_by_pool,
-    }
-}
-
-fn firewall_rule_pool_index(line: &str) -> Option<u32> {
-    firewall_rule_comment(line).and_then(pool_index_from_comment)
-}
-
-fn firewall_rule_comment(line: &str) -> Option<&str> {
-    if !line.starts_with("-A ") {
-        return None;
-    }
-
-    let mut tokens = line.split_whitespace();
-    while let Some(token) = tokens.next() {
-        if token == "--comment" {
-            return tokens.next().map(|comment| comment.trim_matches('"'));
-        }
-    }
-    None
-}
-
-fn pool_index_from_comment(comment: &str) -> Option<u32> {
-    if let Some(parsed) = parse_netns_name(comment) {
-        return Some(parsed.pool_index);
-    }
-
-    let suffix = comment.strip_prefix(NS_PREFIX)?;
-    let pool_hex = suffix.strip_suffix("-dns")?;
-    let pool_index = u32::from_str_radix(pool_hex, 16).ok()?;
-    (pool_index < MAX_POOLS && format_hex_index(pool_index) == pool_hex).then_some(pool_index)
-}
-
-async fn capture_namespaces() -> SnapshotSource<BTreeMap<u32, Vec<NamespaceResources>>> {
-    let output = match exec_with_timeout("ip", &["netns", "list"], NETNS_COMMAND_TIMEOUT).await {
-        Ok(output) => output,
-        Err(error) => {
-            error!(%error, "failed to capture namespaces for startup reconciliation");
-            return SnapshotSource::Abandoned;
-        }
-    };
 
     let mut namespaces_by_pool: BTreeMap<u32, Vec<NamespaceResources>> = BTreeMap::new();
     for name in output
@@ -1160,191 +755,6 @@ async fn capture_namespaces() -> SnapshotSource<BTreeMap<u32, Vec<NamespaceResou
     SnapshotSource::Captured(namespaces_by_pool)
 }
 
-fn extend_candidate_pool_indexes(snapshot: &FirewallTableSnapshot, indexes: &mut BTreeSet<u32>) {
-    if let SnapshotSource::Captured(rules_by_pool) = &snapshot.rules_by_pool {
-        indexes.extend(rules_by_pool.keys().copied());
-    }
-}
-
-fn combine_namespace_delete_outcomes(
-    outcomes: impl IntoIterator<Item = NamespaceDeleteOutcome>,
-) -> NamespaceDeleteOutcome {
-    if outcomes
-        .into_iter()
-        .all(|outcome| matches!(outcome, NamespaceDeleteOutcome::Deleted))
-    {
-        NamespaceDeleteOutcome::Deleted
-    } else {
-        NamespaceDeleteOutcome::Abandoned
-    }
-}
-
-fn firewall_restore_tables_for_pool<'a>(
-    snapshots: impl IntoIterator<Item = &'a FirewallTableSnapshot>,
-    pool_index: u32,
-) -> FirewallRestoreSelection {
-    select_firewall_restore_tables(snapshots, |rules_by_pool| {
-        rules_by_pool
-            .get(&pool_index)
-            .into_iter()
-            .flatten()
-            .cloned()
-            .collect()
-    })
-}
-
-fn firewall_restore_tables_with_comments<'a>(
-    snapshots: impl IntoIterator<Item = &'a FirewallTableSnapshot>,
-    comments: &BTreeSet<String>,
-) -> FirewallRestoreSelection {
-    select_firewall_restore_tables(snapshots, |rules_by_pool| {
-        rules_by_pool
-            .values()
-            .flatten()
-            .filter(|line| {
-                firewall_rule_comment(line).is_some_and(|comment| comments.contains(comment))
-            })
-            .cloned()
-            .collect()
-    })
-}
-
-fn select_firewall_restore_tables<'a>(
-    snapshots: impl IntoIterator<Item = &'a FirewallTableSnapshot>,
-    select_rules: impl Fn(&BTreeMap<u32, Vec<String>>) -> Vec<String>,
-) -> FirewallRestoreSelection {
-    let mut selection = FirewallRestoreSelection {
-        tables: Vec::new(),
-        sources_complete: true,
-    };
-    for snapshot in snapshots {
-        match &snapshot.rules_by_pool {
-            SnapshotSource::Captured(rules_by_pool) => {
-                selection.tables.push(FirewallRestoreTable {
-                    table: snapshot.table,
-                    rules: select_rules(rules_by_pool),
-                });
-            }
-            SnapshotSource::Abandoned => selection.sources_complete = false,
-        }
-    }
-    selection
-}
-
-fn firewall_restore_payload(
-    tables: &[FirewallRestoreTable],
-    mode: FirewallRestoreMode,
-) -> std::result::Result<String, &'static str> {
-    let mut payload = String::new();
-    for table in tables {
-        if table.rules.is_empty() {
-            continue;
-        }
-        payload.push('*');
-        payload.push_str(table.table);
-        payload.push('\n');
-        for rule in &table.rules {
-            match mode {
-                FirewallRestoreMode::Apply => payload.push_str(rule),
-                FirewallRestoreMode::Delete => {
-                    payload.push_str("-D ");
-                    payload.push_str(
-                        rule.strip_prefix("-A ")
-                            .ok_or("captured firewall rule has an invalid append form")?,
-                    );
-                }
-            }
-            payload.push('\n');
-        }
-        payload.push_str("COMMIT\n");
-    }
-    Ok(payload)
-}
-
-async fn delete_firewall_restore_selection(
-    command: &str,
-    selection: FirewallRestoreSelection,
-) -> NamespaceDeleteOutcome {
-    let outcome = delete_firewall_rules_with_restore(command, selection.tables).await;
-    combine_namespace_delete_outcomes([
-        outcome,
-        if selection.sources_complete {
-            NamespaceDeleteOutcome::Deleted
-        } else {
-            NamespaceDeleteOutcome::Abandoned
-        },
-    ])
-}
-
-async fn delete_firewall_rules_with_restore(
-    command: &str,
-    tables: Vec<FirewallRestoreTable>,
-) -> NamespaceDeleteOutcome {
-    let payload = match firewall_restore_payload(&tables, FirewallRestoreMode::Delete) {
-        Ok(payload) => payload,
-        Err(error) => {
-            warn!(command, error, "failed to build firewall restore input");
-            return NamespaceDeleteOutcome::Abandoned;
-        }
-    };
-    if payload.is_empty() {
-        return NamespaceDeleteOutcome::Deleted;
-    }
-
-    match run_firewall_restore(command, &payload).await {
-        Ok(()) => NamespaceDeleteOutcome::Deleted,
-        Err(error) => {
-            warn!(command, %error, "firewall restore did not complete cleanly");
-            NamespaceDeleteOutcome::Abandoned
-        }
-    }
-}
-
-async fn apply_firewall_rules_with_restore(
-    command: &str,
-    tables: &[FirewallRestoreTable],
-) -> Result<()> {
-    let payload = firewall_restore_payload(tables, FirewallRestoreMode::Apply)
-        .map_err(|error| NetworkError::Prerequisite(error.into()))?;
-    if payload.is_empty() {
-        return Ok(());
-    }
-    run_firewall_restore(command, &payload).await?;
-    Ok(())
-}
-
-async fn run_firewall_restore(
-    command: &str,
-    payload: &str,
-) -> std::result::Result<(), CommandError> {
-    let mut file = match tempfile::NamedTempFile::new() {
-        Ok(file) => file,
-        Err(error) => {
-            return Err(CommandError {
-                command: command.to_string(),
-                detail: format!("failed to create firewall restore input: {error}"),
-            });
-        }
-    };
-    if let Err(error) = file.write_all(payload.as_bytes()) {
-        return Err(CommandError {
-            command: command.to_string(),
-            detail: format!("failed to write firewall restore input: {error}"),
-        });
-    }
-    let Some(path) = file.path().to_str() else {
-        return Err(CommandError {
-            command: command.to_string(),
-            detail: format!(
-                "firewall restore input path is not UTF-8: {}",
-                file.path().display()
-            ),
-        });
-    };
-
-    exec_xtables_status_with_timeout(command, &["--noflush", path], NETNS_COMMAND_TIMEOUT).await
-}
-
 /// Clean up all captured resources matching a given pool index.
 ///
 /// Deletes orphaned host firewall rules first, then deletes captured
@@ -1365,7 +775,7 @@ async fn cleanup_namespaces_from_snapshot(
     let idx_str = format_hex_index(index);
     info!(count = namespaces.len(), index = %idx_str, "cleaning up orphaned namespaces");
     let namespace_outcome = delete_namespace_resources_bounded(namespaces.clone()).await;
-    combine_namespace_delete_outcomes([firewall, namespace_outcome])
+    NamespaceDeleteOutcome::combine([firewall, namespace_outcome])
 }
 
 /// Clean orphans from `own_index` and captured pool indexes with no active
@@ -1626,7 +1036,7 @@ mod tests {
     #[test]
     fn namespace_delete_outcome_abandons_uncertain_commands() {
         assert_eq!(
-            NamespaceDeleteOutcome::from_best_effort([
+            namespace_delete_outcome_from_best_effort([
                 IgnoredCommandOutcome::Success,
                 IgnoredCommandOutcome::NonZero,
             ]),
@@ -1642,195 +1052,14 @@ mod tests {
             IgnoredCommandOutcome::Timeout,
         ] {
             assert_eq!(
-                NamespaceDeleteOutcome::from_best_effort(
-                    [IgnoredCommandOutcome::Success, outcome,]
-                ),
+                namespace_delete_outcome_from_best_effort([
+                    IgnoredCommandOutcome::Success,
+                    outcome,
+                ]),
                 NamespaceDeleteOutcome::Abandoned,
                 "uncertain command outcome was treated as deleted: {outcome:?}"
             );
         }
-    }
-
-    #[tokio::test]
-    async fn xtables_status_prepends_bare_wait() {
-        exec_xtables_status_with_timeout("test", &["=", "--wait"], Duration::from_secs(1))
-            .await
-            .unwrap();
-    }
-
-    #[tokio::test]
-    #[cfg(unix)]
-    async fn firewall_restore_applies_insert_and_append_rules_in_one_waiting_mutation() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = tempfile::tempdir().unwrap();
-        let command = dir.path().join("verify-restore");
-        std::fs::write(
-            &command,
-            r#"#!/bin/sh
-[ "$1" = "--wait" ] || exit 2
-[ "$2" = "--noflush" ] || exit 3
-EXPECTED='*raw
--I PREROUTING 1 -m comment --comment vm0-ns-00-00 -j DROP
-COMMIT
-*filter
--A FORWARD -m comment --comment vm0-ns-00-00 -j ACCEPT
-COMMIT'
-[ "$(cat "$3")" = "$EXPECTED" ] || exit 4
-"#,
-        )
-        .unwrap();
-        std::fs::set_permissions(&command, std::fs::Permissions::from_mode(0o755)).unwrap();
-
-        apply_firewall_rules_with_restore(
-            command.to_str().unwrap(),
-            &[
-                FirewallRestoreTable {
-                    table: "raw",
-                    rules: vec!["-I PREROUTING 1 -m comment --comment vm0-ns-00-00 -j DROP".into()],
-                },
-                FirewallRestoreTable {
-                    table: "filter",
-                    rules: vec!["-A FORWARD -m comment --comment vm0-ns-00-00 -j ACCEPT".into()],
-                },
-            ],
-        )
-        .await
-        .unwrap();
-    }
-
-    #[test]
-    fn guest_dns_trace_rules_match_only_readiness_udp_and_dns_tcp() {
-        let tables =
-            namespace_guest_dns_trace_restore_tables("vm0-ns-00-01", "vm0-ve-00-01", "10.200.0.2");
-
-        assert_eq!(tables.len(), 1);
-        assert_eq!(tables[0].table, "raw");
-        assert_eq!(
-            tables[0].rules,
-            vec![
-                "-I PREROUTING 1 -i vm0-ve-00-01 -s 10.200.0.2/32 -d 8.8.8.8/32 -p udp --dport 53 -m length --length 67 -m comment --comment vm0-ns-00-01 -j TRACE",
-                "-I PREROUTING 1 -i vm0-ve-00-01 -s 10.200.0.2/32 -d 8.8.8.8/32 -p tcp --dport 53 -m comment --comment vm0-ns-00-01 -j TRACE",
-            ]
-        );
-    }
-
-    #[tokio::test]
-    async fn guest_dns_trace_rule_failure_is_best_effort() {
-        let applied = apply_namespace_guest_dns_trace_rules(
-            "false",
-            "vm0-ns-00-01",
-            "vm0-ve-00-01",
-            "10.200.0.2",
-        )
-        .await;
-
-        assert!(!applied);
-    }
-
-    #[tokio::test]
-    #[cfg(unix)]
-    async fn firewall_restore_batches_tables_in_one_waiting_mutation() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = tempfile::tempdir().unwrap();
-        let command = dir.path().join("verify-restore");
-        std::fs::write(
-            &command,
-            r#"#!/bin/sh
-[ "$1" = "--wait" ] || exit 2
-[ "$2" = "--noflush" ] || exit 3
-EXPECTED='*raw
--D PREROUTING -m comment --comment vm0-ns-00-00 -j DROP
-COMMIT
-*filter
--D FORWARD -m comment --comment vm0-ns-00-00 -j ACCEPT
-COMMIT'
-[ "$(cat "$3")" = "$EXPECTED" ] || exit 4
-"#,
-        )
-        .unwrap();
-        std::fs::set_permissions(&command, std::fs::Permissions::from_mode(0o755)).unwrap();
-
-        let outcome = delete_firewall_rules_with_restore(
-            command.to_str().unwrap(),
-            vec![
-                FirewallRestoreTable {
-                    table: "raw",
-                    rules: vec!["-A PREROUTING -m comment --comment vm0-ns-00-00 -j DROP".into()],
-                },
-                FirewallRestoreTable {
-                    table: "nat",
-                    rules: Vec::new(),
-                },
-                FirewallRestoreTable {
-                    table: "filter",
-                    rules: vec!["-A FORWARD -m comment --comment vm0-ns-00-00 -j ACCEPT".into()],
-                },
-            ],
-        )
-        .await;
-
-        assert_eq!(outcome, NamespaceDeleteOutcome::Deleted);
-    }
-
-    #[tokio::test]
-    async fn firewall_restore_nonzero_is_abandoned() {
-        let outcome = delete_firewall_rules_with_restore(
-            "false",
-            vec![FirewallRestoreTable {
-                table: "raw",
-                rules: vec!["-A PREROUTING -j DROP".into()],
-            }],
-        )
-        .await;
-
-        assert_eq!(outcome, NamespaceDeleteOutcome::Abandoned);
-    }
-
-    #[tokio::test]
-    #[cfg(unix)]
-    async fn incomplete_snapshot_deletes_captured_rules_and_remains_abandoned() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = tempfile::tempdir().unwrap();
-        let command = dir.path().join("verify-restore");
-        let called = dir.path().join("called");
-        std::fs::write(
-            &command,
-            format!(
-                r#"#!/bin/sh
-[ "$1" = "--wait" ] || exit 2
-[ "$2" = "--noflush" ] || exit 3
-EXPECTED='*raw
--D PREROUTING -m comment --comment vm0-ns-00-00 -j DROP
-COMMIT'
-[ "$(cat "$3")" = "$EXPECTED" ] || exit 4
-touch "{}"
-"#,
-                called.display()
-            ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&command, std::fs::Permissions::from_mode(0o755)).unwrap();
-
-        let captured = FirewallTableSnapshot {
-            table: "raw",
-            rules_by_pool: SnapshotSource::Captured(BTreeMap::from([(
-                0,
-                vec!["-A PREROUTING -m comment --comment vm0-ns-00-00 -j DROP".into()],
-            )])),
-        };
-        let abandoned = FirewallTableSnapshot {
-            table: "filter",
-            rules_by_pool: SnapshotSource::Abandoned,
-        };
-        let selection = firewall_restore_tables_for_pool([&captured, &abandoned], 0);
-
-        let outcome = delete_firewall_restore_selection(command.to_str().unwrap(), selection).await;
-
-        assert!(called.exists());
-        assert_eq!(outcome, NamespaceDeleteOutcome::Abandoned);
     }
 
     #[test]

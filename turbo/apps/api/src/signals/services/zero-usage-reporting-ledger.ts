@@ -20,38 +20,17 @@ import {
   type FinalizedUsageRelation,
 } from "./finalized-usage-relation";
 import { normalizeFinalizedUsagePeriod } from "./finalized-usage-time";
+import {
+  MODEL_CACHE_CREATION_TOKEN_CATEGORIES,
+  MODEL_CACHE_READ_TOKEN_CATEGORIES,
+  MODEL_INPUT_TOKEN_CATEGORIES,
+  MODEL_OUTPUT_TOKEN_CATEGORIES,
+} from "./model-token-categories";
 
 const MODEL_USAGE_KIND = "model";
-const TOKEN_CATEGORY_INPUT = "tokens.input";
-const TOKEN_CATEGORY_OUTPUT = "tokens.output";
-const TOKEN_CATEGORY_CACHE_READ = "tokens.cache_read";
-const TOKEN_CATEGORY_CACHE_CREATION = "tokens.cache_creation";
-
-const INPUT_TOKEN_CATEGORIES = [
-  TOKEN_CATEGORY_INPUT,
-  "tokens.input.text",
-  "tokens.input.audio",
-] as const;
-
-const OUTPUT_TOKEN_CATEGORIES = [
-  TOKEN_CATEGORY_OUTPUT,
-  "tokens.output.text",
-  "tokens.output.audio",
-] as const;
-
-const CACHE_READ_TOKEN_CATEGORIES = [
-  TOKEN_CATEGORY_CACHE_READ,
-  "tokens.input.cached_text",
-  "tokens.input.cached_audio",
-] as const;
-
-const CACHE_CREATION_TOKEN_CATEGORIES = [
-  TOKEN_CATEGORY_CACHE_CREATION,
-] as const;
-
 const ALL_CACHE_TOKEN_CATEGORIES = [
-  ...CACHE_READ_TOKEN_CATEGORIES,
-  ...CACHE_CREATION_TOKEN_CATEGORIES,
+  ...MODEL_CACHE_READ_TOKEN_CATEGORIES,
+  ...MODEL_CACHE_CREATION_TOKEN_CATEGORIES,
 ] as const;
 const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
 
@@ -93,22 +72,22 @@ export async function getMemberUsageTotals(
     userId: usage.userId,
     inputTokens: finalizedUsageTokenSum(
       usage,
-      INPUT_TOKEN_CATEGORIES,
+      MODEL_INPUT_TOKEN_CATEGORIES,
       "input_tokens",
     ),
     outputTokens: finalizedUsageTokenSum(
       usage,
-      OUTPUT_TOKEN_CATEGORIES,
+      MODEL_OUTPUT_TOKEN_CATEGORIES,
       "output_tokens",
     ),
     cacheReadInputTokens: finalizedUsageTokenSum(
       usage,
-      CACHE_READ_TOKEN_CATEGORIES,
+      MODEL_CACHE_READ_TOKEN_CATEGORIES,
       "cache_read_input_tokens",
     ),
     cacheCreationInputTokens: finalizedUsageTokenSum(
       usage,
-      CACHE_CREATION_TOKEN_CATEGORIES,
+      MODEL_CACHE_CREATION_TOKEN_CATEGORIES,
       "cache_creation_input_tokens",
     ),
     creditsCharged: usageCreditsSum(usage, "credits_charged"),
@@ -127,22 +106,22 @@ export function buildFinalizedUsageRunTotalsSubquery(db: Db, orgId: string) {
     runId: usage.runId,
     inputTokens: finalizedUsageTokenSum(
       usage,
-      INPUT_TOKEN_CATEGORIES,
+      MODEL_INPUT_TOKEN_CATEGORIES,
       "input_tokens_sum",
     ),
     outputTokens: finalizedUsageTokenSum(
       usage,
-      OUTPUT_TOKEN_CATEGORIES,
+      MODEL_OUTPUT_TOKEN_CATEGORIES,
       "output_tokens_sum",
     ),
     cacheReadInputTokens: finalizedUsageTokenSum(
       usage,
-      CACHE_READ_TOKEN_CATEGORIES,
+      MODEL_CACHE_READ_TOKEN_CATEGORIES,
       "cache_read_input_tokens_sum",
     ),
     cacheCreationInputTokens: finalizedUsageTokenSum(
       usage,
-      CACHE_CREATION_TOKEN_CATEGORIES,
+      MODEL_CACHE_CREATION_TOKEN_CATEGORIES,
       "cache_creation_input_tokens_sum",
     ),
     cacheTokens: finalizedUsageTokenSum(

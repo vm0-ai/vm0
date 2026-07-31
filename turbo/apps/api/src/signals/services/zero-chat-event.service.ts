@@ -9,8 +9,8 @@ import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
+  chatEventTerminalPredicate,
   chatEvents,
-  type ChatEventGoalSnapshot,
 } from "@vm0/db/schema/chat-event";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
@@ -20,7 +20,7 @@ import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEventAssetRefs } from "@vm0/db/schema/run-uploaded-file";
-import { eq, isNotNull, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
@@ -126,21 +126,23 @@ type InputPromptEvent = ChatEventIdentity &
     readonly encryptedParams?: string | null;
   };
 
-type InputAutomationEvent = ChatEventIdentity & {
-  readonly eventType: "input.automation";
-  readonly content?: null;
-  readonly automationId: string;
-  readonly triggerSource: TriggerSource;
-  readonly triggerBrief: string | null;
-  readonly encryptedParams: string;
-};
+type InputAutomationEvent = ChatEventIdentity &
+  Pick<ChatEventInputPayload, "userMessage"> & {
+    readonly eventType: "input.automation";
+    readonly content?: null;
+    readonly automationId: string;
+    readonly triggerSource: TriggerSource;
+    readonly triggerBrief: string | null;
+    readonly encryptedParams: string;
+  };
 
-type InputGoalEvent = ChatEventIdentity & {
-  readonly eventType: "input.goal";
-  readonly content?: null;
-  readonly runGroupId: string;
-  readonly goalSnapshot: ChatEventGoalSnapshot;
-};
+type InputGoalEvent = ChatEventIdentity &
+  Pick<ChatEventInputPayload, "userMessage"> & {
+    readonly eventType: "input.goal";
+    readonly content?: null;
+    readonly runGroupId: string;
+    readonly goalBrief: string;
+  };
 
 type InputRejectedEvent = ChatEventIdentity &
   ChatEventDisplayContext &
@@ -301,6 +303,17 @@ type ChatEventContextPointer = Pick<
 interface StoredChatEventContextPointer {
   readonly contextType: NonNullable<ChatEventInsert["contextType"]> | null;
   readonly contextId: string | null;
+}
+
+export interface LoadedChatEventReplacementTarget extends StoredChatEventContextPointer {
+  readonly id: string;
+  readonly chatThreadId: string;
+  readonly createdAt: Date;
+  readonly eventType: NonNullable<ChatEventInsert["eventType"]>;
+  readonly encryptedParams: string | null;
+  readonly attachFileMetadata:
+    | typeof chatEventInputParams.$inferSelect.attachFileMetadata
+    | null;
 }
 
 type NewDisplayContext =
@@ -482,14 +495,13 @@ function newDisplayContext(
     };
   }
 
-  const goalSnapshot =
-    "goalSnapshot" in values ? values.goalSnapshot : undefined;
-  if (goalSnapshot !== null && goalSnapshot !== undefined) {
+  const goalBrief = "goalBrief" in values ? values.goalBrief : undefined;
+  if (goalBrief !== undefined) {
     return {
       type: "goal",
       id: eventId,
       chatThreadId: values.chatThreadId,
-      objectiveBrief: goalSnapshot.objectiveBrief,
+      objectiveBrief: goalBrief,
     };
   }
 
@@ -620,8 +632,8 @@ function persistedChatEventValues(
   >,
 ): PersistedChatEvent {
   const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
-  const { goalSnapshot: _goalSnapshot, ...persistedValues } = {
-    goalSnapshot: undefined,
+  const { goalBrief: _goalBrief, ...persistedValues } = {
+    goalBrief: undefined,
     ...values,
   };
   return {
@@ -741,7 +753,7 @@ export async function insertChatEvent(
           ? await query
               .onConflictDoNothing({
                 target: chatEvents.runId,
-                where: isNotNull(chatEvents.runLifecycleEvent),
+                where: chatEventTerminalPredicate(chatEvents.eventType),
               })
               .returning({
                 id: chatEvents.id,
@@ -816,6 +828,7 @@ export async function replaceChatEvent(
 ): Promise<ChatEventCommandResult | null> {
   const [target] = await tx
     .select({
+      id: chatEvents.id,
       chatThreadId: chatEvents.chatThreadId,
       createdAt: chatEvents.createdAt,
       eventType: chatEvents.eventType,
@@ -834,10 +847,20 @@ export async function replaceChatEvent(
   if (!target) {
     throw new Error("Cannot revoke a missing chat event");
   }
+  return await replaceLoadedChatEvent(tx, target, replacement, options);
+}
+
+/** Append a replacement for a target already loaded by an authoritative read. */
+export async function replaceLoadedChatEvent(
+  tx: ChatEventWriteTransaction,
+  target: LoadedChatEventReplacementTarget,
+  replacement: NewChatEvent,
+  options?: { readonly preserveAssetRefs?: boolean },
+): Promise<ChatEventCommandResult | null> {
   if (target.chatThreadId !== replacement.chatThreadId) {
     throw new Error("Cannot revoke a chat event from another thread");
   }
-  if (replacement.id === eventId) {
+  if (replacement.id === target.id) {
     throw new Error("A chat event cannot revoke itself");
   }
   const createdAt =
@@ -884,7 +907,7 @@ export async function replaceChatEvent(
         },
       ),
       seqId,
-      revokesEventId: eventId,
+      revokesEventId: target.id,
     })
     .onConflictDoNothing()
     .returning({
@@ -902,31 +925,28 @@ export async function replaceChatEvent(
   }
   await insertEventInputParams(tx, inserted.id, replacementWithParams);
   if (options?.preserveAssetRefs !== false) {
-    const assetRefs = await tx
-      .select({
-        assetId: chatEventAssetRefs.assetId,
-        position: chatEventAssetRefs.position,
-      })
-      .from(chatEventAssetRefs)
-      .where(eq(chatEventAssetRefs.chatEventId, eventId));
-    if (assetRefs.length > 0) {
-      await tx
-        .insert(chatEventAssetRefs)
-        .values(
-          assetRefs.map((assetRef) => {
-            return {
-              chatEventId: inserted.id,
-              assetId: assetRef.assetId,
-              position: assetRef.position,
-            };
-          }),
-        )
-        .onConflictDoNothing();
-    }
+    await tx
+      .insert(chatEventAssetRefs)
+      .select(
+        tx
+          .select({
+            chatEventId: sql`${inserted.id}`
+              .mapWith(chatEventAssetRefs.chatEventId)
+              .as("chat_event_id"),
+            assetId: chatEventAssetRefs.assetId,
+            position: chatEventAssetRefs.position,
+            createdAt: sql`now()`
+              .mapWith(chatEventAssetRefs.createdAt)
+              .as("created_at"),
+          })
+          .from(chatEventAssetRefs)
+          .where(eq(chatEventAssetRefs.chatEventId, target.id)),
+      )
+      .onConflictDoNothing();
   }
   await tx
     .delete(chatEventInputParams)
-    .where(eq(chatEventInputParams.eventId, eventId));
+    .where(eq(chatEventInputParams.eventId, target.id));
   return inserted;
 }
 

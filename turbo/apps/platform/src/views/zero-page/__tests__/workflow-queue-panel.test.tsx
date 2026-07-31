@@ -78,9 +78,11 @@ function setupWorkflowQueuePage({
         id: EVENT_ID_1,
         eventType: "input.automation",
         content: null,
-        automationId: "e0000001-0000-4000-a000-000000000001",
         triggerSource: "workflow-event",
-        triggerBrief: null,
+        userMessage: {
+          version: 1,
+          parts: [{ type: "automation", workflowName: "customer-followup" }],
+        },
         runId: undefined,
         createdAt: "2026-07-10T01:01:00Z",
       },
@@ -88,9 +90,17 @@ function setupWorkflowQueuePage({
         id: EVENT_ID_2,
         eventType: "input.automation",
         content: null,
-        automationId: "e0000001-0000-4000-a000-000000000001",
         triggerSource: "workflow-event",
-        triggerBrief: "Webhook event third",
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "automation",
+              workflowName: "customer-followup",
+              automationBrief: "Webhook event third",
+            },
+          ],
+        },
         runId: undefined,
         createdAt: "2026-07-10T01:02:00Z",
       },
@@ -120,7 +130,7 @@ describe("workflow queue panel", () => {
       expect(
         screen.getByText("1 message and 2 events waiting"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Nightly sync")).toBeInTheDocument();
+      expect(screen.getByText("customer-followup")).toBeInTheDocument();
       expect(screen.getByText("Webhook event third")).toBeInTheDocument();
     });
 
@@ -167,7 +177,7 @@ describe("workflow queue panel", () => {
       },
     });
     await waitFor(() => {
-      expect(screen.getByText("Nightly sync")).toBeInTheDocument();
+      expect(screen.getByText("customer-followup")).toBeInTheDocument();
     });
 
     const skipButtons = queryAllByRoleFast("button").filter((candidate) => {
@@ -181,7 +191,7 @@ describe("workflow queue panel", () => {
       expect(recall?.clientEventId).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
       );
-      expect(screen.queryByText("Nightly sync")).not.toBeInTheDocument();
+      expect(screen.queryByText("customer-followup")).not.toBeInTheDocument();
       expect(screen.getByText("Webhook event third")).toBeInTheDocument();
     });
   });
