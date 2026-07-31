@@ -92,12 +92,32 @@ interface QueuedDiagram {
 }
 
 /**
+ * mermaid sizes its SVG with `width="100%"` plus an inline `max-width`. An
+ * <img> cannot resolve that percentage, so the lightbox would stretch the
+ * diagram to the full container width. Writing the viewBox's pixel size onto
+ * the element keeps the inline rendering identical and makes the standalone
+ * SVG self-describing.
+ */
+function applyIntrinsicSize(svg: SVGSVGElement): void {
+  const viewBox = (svg.getAttribute("viewBox") ?? "").split(/\s+/);
+  const width = viewBox[2];
+  const height = viewBox[3];
+  if (width === undefined || height === undefined) {
+    return;
+  }
+  svg.setAttribute("width", width);
+  svg.setAttribute("height", height);
+  svg.style.maxWidth = "";
+}
+
+/**
  * The lightbox reuses the attachment image preview, which takes a URL. The
  * rendered SVG never leaves the browser, so it is inlined as a data URL instead
  * of being uploaded.
  */
-function svgDataUrl(svg: string): string {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+function svgDataUrl(svg: SVGSVGElement): string {
+  const markup = new XMLSerializer().serializeToString(svg);
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`;
 }
 
 const renderQueuedDiagram$ = command(
@@ -125,9 +145,16 @@ const renderQueuedDiagram$ = command(
     // Safe to assign: mermaid sanitized the markup, and React owns no children
     // inside this element.
     diagram.el.innerHTML = rendered.value;
+    const svg = diagram.el.querySelector("svg");
+    if (!svg) {
+      set(setMermaidDiagramResult$, diagram.key, { status: "error" });
+      return;
+    }
+
+    applyIntrinsicSize(svg);
     set(setMermaidDiagramResult$, diagram.key, {
       status: "rendered",
-      url: svgDataUrl(rendered.value),
+      url: svgDataUrl(svg),
     });
   },
 );
