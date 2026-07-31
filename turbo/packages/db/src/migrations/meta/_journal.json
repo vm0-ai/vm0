@@ -5510,6 +5510,13 @@
       "when": 1785495667349,
       "tag": "0786_add_deepseek_v4_flash",
       "breakpoints": true
+    },
+    {
+      "idx": 787,
+      "version": "7",
+      "when": 1785498033767,
+      "tag": "0787_drop_legacy_browser_billing_storage",
+      "breakpoints": true
     }
   ]
 }

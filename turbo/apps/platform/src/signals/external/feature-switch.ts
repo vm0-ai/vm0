@@ -82,6 +82,10 @@ export const pwaChatKeyboardGesturesEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.PwaChatKeyboardGestures] ?? false;
 });
 
+export const mermaidDiagramsEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.MermaidDiagrams] ?? false;
+});
+
 export const zeroBrowserEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ZeroBrowser] ?? false;
 });

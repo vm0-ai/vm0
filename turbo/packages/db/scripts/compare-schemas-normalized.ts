@@ -32,29 +32,6 @@ interface ConstraintInfo {
   constraint_def: string;
 }
 
-// Managed-browser billing is in the declaration-first half of a two-release
-// contraction. The replacement API omits these fields, while the physical
-// objects remain for the preceding API and rollback window. Remove this
-// allowlist with the physical objects in the follow-up contraction.
-const TRANSITIONAL_BROWSER_BILLING_COLUMNS = new Set([
-  "browser_sessions.max_credits",
-  "browser_sessions.gross_credits",
-  "browser_sessions.credits_charged",
-  "browser_session_instances.billing_run_id",
-  "browser_session_instances.browser_cost_microusd",
-  "browser_session_instances.proxy_cost_microusd",
-  "browser_session_instances.proxy_used_mb",
-  "browser_session_instances.pricing_unit_price",
-  "browser_session_instances.pricing_unit_size",
-  "browser_session_instances.gross_credits",
-  "browser_session_instances.credits_charged",
-  "browser_session_instances.usage_event_id",
-  "browser_session_instances.settled_at",
-]);
-const TRANSITIONAL_BROWSER_BILLING_CONSTRAINTS = new Set([
-  "browser_session_instances.browser_session_instances_usage_event_id_usage_event_id_fk",
-]);
-
 // Get database URLs from command line args
 const db1Url = process.argv[2];
 const db2Url = process.argv[3];
@@ -83,10 +60,7 @@ async function getTableColumns(client: Client): Promise<TableColumn[]> {
       AND t.table_type = 'BASE TABLE'
     ORDER BY c.table_name, c.column_name
   `);
-  return result.rows.filter((column) => {
-    const columnName = `${column.table_name}.${column.column_name}`;
-    return !TRANSITIONAL_BROWSER_BILLING_COLUMNS.has(columnName);
-  });
+  return result.rows;
 }
 
 async function getIndexes(client: Client): Promise<IndexInfo[]> {
@@ -130,10 +104,7 @@ async function getConstraints(client: Client): Promise<ConstraintInfo[]> {
       catalog_constraint.contype,
       catalog_constraint.conname
   `);
-  return result.rows.filter((constraint) => {
-    const constraintName = `${constraint.table_name}.${constraint.constraint_name}`;
-    return !TRANSITIONAL_BROWSER_BILLING_CONSTRAINTS.has(constraintName);
-  });
+  return result.rows;
 }
 
 function normalizeColumnDefault(def: string | null): string | null {
