@@ -92,6 +92,12 @@ interface ExecutableCapabilityConfiguration {
   readonly present: boolean;
 }
 
+interface ExecutableCapabilityFacts {
+  readonly registrations: readonly ConnectorAuthProviderRegistrationCapability[];
+  readonly configuration: readonly ExecutableCapabilityConfiguration[];
+  readonly configuredNames: ReadonlySet<string>;
+}
+
 interface ConnectorCatalogCompatibilityIdentity {
   readonly catalogVersion: string;
   readonly catalogDigest: string;
@@ -138,7 +144,7 @@ function legacyRegistrationCapability(
   };
 }
 
-export function connectorCatalogExecutableCapabilityStates(): ExecutableCapabilityStates {
+function connectorCatalogExecutableCapabilityFacts(): ExecutableCapabilityFacts {
   const registrations = getConnectorAuthProviderRegistrationCapabilities();
   const configurationNames = [
     ...new Set(
@@ -155,31 +161,53 @@ export function connectorCatalogExecutableCapabilityStates(): ExecutableCapabili
       return present ? [name] : [];
     }),
   );
+  return { registrations, configuration, configuredNames };
+}
+
+function createExecutableCapabilityState(args: {
+  readonly facts: ExecutableCapabilityFacts;
+  readonly evaluatorVersion: number;
+  readonly digestRegistrations:
+    | readonly ConnectorAuthProviderRegistrationCapability[]
+    | readonly LegacyConnectorAuthProviderRegistrationCapability[];
+}): ExecutableCapabilityState {
   return {
-    legacy: {
-      digest: executableCapabilityDigest({
-        evaluatorVersion: LEGACY_EXECUTABLE_CAPABILITY_EVALUATOR_VERSION,
-        registrations: registrations.map(legacyRegistrationCapability),
-        configuration,
-      }),
-      configuredNames,
-      registrations,
-    },
-    canonical: {
-      digest: executableCapabilityDigest({
-        evaluatorVersion: CANONICAL_EXECUTABLE_CAPABILITY_EVALUATOR_VERSION,
-        registrations,
-        configuration,
-      }),
-      configuredNames,
-      registrations,
-    },
+    digest: executableCapabilityDigest({
+      evaluatorVersion: args.evaluatorVersion,
+      registrations: args.digestRegistrations,
+      configuration: args.facts.configuration,
+    }),
+    configuredNames: args.facts.configuredNames,
+    registrations: args.facts.registrations,
+  };
+}
+
+export function connectorCatalogExecutableCapabilityStates(): ExecutableCapabilityStates {
+  const facts = connectorCatalogExecutableCapabilityFacts();
+  return {
+    legacy: createExecutableCapabilityState({
+      facts,
+      evaluatorVersion: LEGACY_EXECUTABLE_CAPABILITY_EVALUATOR_VERSION,
+      digestRegistrations: facts.registrations.map(
+        legacyRegistrationCapability,
+      ),
+    }),
+    canonical: createExecutableCapabilityState({
+      facts,
+      evaluatorVersion: CANONICAL_EXECUTABLE_CAPABILITY_EVALUATOR_VERSION,
+      digestRegistrations: facts.registrations,
+    }),
   };
 }
 
 // TODO(#24184): Switch active readers only after the canonical row is observed.
 export function connectorCatalogExecutableCapabilityState(): ExecutableCapabilityState {
-  return connectorCatalogExecutableCapabilityStates().legacy;
+  const facts = connectorCatalogExecutableCapabilityFacts();
+  return createExecutableCapabilityState({
+    facts,
+    evaluatorVersion: LEGACY_EXECUTABLE_CAPABILITY_EVALUATOR_VERSION,
+    digestRegistrations: facts.registrations.map(legacyRegistrationCapability),
+  });
 }
 
 export function connectorCatalogExecutableCapabilityDigest(): string {
