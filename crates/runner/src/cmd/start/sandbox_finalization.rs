@@ -756,6 +756,10 @@ mod tests {
 
     use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
     use guest_contracts::reuse_preparation::{ReusePreparationReport, RootFilesystemCapacity};
+    use guest_contracts::session_history_identity::{
+        FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
+        SessionHistorySidecarExportMetadata,
+    };
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
     use sha2::{Digest, Sha256};
@@ -934,6 +938,38 @@ mod tests {
             hex::encode(Sha256::digest(history)),
             Some(history.len() as u64),
         )
+    }
+
+    fn test_verified_restored_session_identity(
+        framework: RestoredSessionFramework,
+        session_id: &str,
+        history: &[u8],
+    ) -> RestoredSessionIdentity {
+        let (final_framework, history_path) = match framework {
+            RestoredSessionFramework::ClaudeCode => (
+                FinalSessionHistoryFramework::ClaudeCode,
+                format!("/home/user/.claude/projects/-home-user-workspace/{session_id}.jsonl"),
+            ),
+            RestoredSessionFramework::Codex => (
+                FinalSessionHistoryFramework::Codex,
+                format!("CODEX_SEARCH:26:/home/user/.codex/sessions:{session_id}"),
+            ),
+        };
+        let metadata = FinalSessionHistoryIdentity::new(
+            final_framework,
+            hex::encode(Sha256::digest(session_id.as_bytes())),
+            FinalSessionHistoryRefKind::Blob,
+            hex::encode(Sha256::digest(history)),
+            history.len() as u64,
+            history_path,
+        )
+        .unwrap();
+        RestoredSessionIdentity::from_final_metadata(
+            metadata,
+            "/home/user/.vm0/guest-agent/runs/run-b/final-session-history-identity.json",
+            "/home/user/.vm0/guest-agent/runs/run-b",
+        )
+        .unwrap()
     }
 
     async fn seed_workspace_cache_with_sidecar(
@@ -1698,10 +1734,7 @@ mod tests {
         .await;
         let seeded_entry = cache.inspect().await.unwrap().entries.remove(0);
         let entry_dir = paths.session_workspace_cache_entry_dir(&seeded_entry.cache_key);
-        let sidecar_body_path = entry_dir.join("session-history.blob");
         let sidecar_metadata_path = entry_dir.join("session-history.metadata.json");
-        let previous_sidecar_body = tokio::fs::read(&sidecar_body_path).await.unwrap();
-        let previous_sidecar_metadata = tokio::fs::read(&sidecar_metadata_path).await.unwrap();
 
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
@@ -1723,6 +1756,13 @@ mod tests {
             workspace_image.result(),
             crate::workspace_image_cache::WorkspaceCacheCheckoutResult::Hit
         );
+        let sidecar_body_path = workspace_image
+            .probe_session_history_sidecar(&previous_identity)
+            .await
+            .unwrap()
+            .path;
+        let previous_sidecar_body = tokio::fs::read(&sidecar_body_path).await.unwrap();
+        let previous_sidecar_metadata = tokio::fs::read(&sidecar_metadata_path).await.unwrap();
         let codex_identity = test_restored_session_identity(
             RestoredSessionFramework::Codex,
             "codex-session-b",
@@ -1824,6 +1864,142 @@ mod tests {
             tokio::fs::read(sidecar.path).await.unwrap(),
             previous_history
         );
+    }
+
+    #[tokio::test]
+    async fn finalizer_replaces_previous_sidecar_after_verified_session_rotation() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let reuse_key = "thread:verified-provider-rotation";
+        let previous_history = br#"{"type":"message","content":"claude-a"}"#;
+        let previous_identity = seed_workspace_cache_with_sidecar(
+            &paths,
+            &cache,
+            reuse_key,
+            "claude-session-a",
+            previous_history,
+        )
+        .await;
+        let seeded_entry = cache.inspect().await.unwrap().entries.remove(0);
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let workspace_image = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id,
+                    sandbox_id,
+                    profile_name: "vm0/default",
+                    reuse_key: Some(reuse_key),
+                    cli_agent_session_id: None,
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: b"image".len() as u64,
+                },
+                workspace_drive_required: true,
+            })
+            .await;
+        assert_eq!(
+            workspace_image.result(),
+            crate::workspace_image_cache::WorkspaceCacheCheckoutResult::Hit
+        );
+        let previous_body_path = workspace_image
+            .probe_session_history_sidecar(&previous_identity)
+            .await
+            .unwrap()
+            .path;
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::rename(
+            paths.session_workspace_cache_current_image(&seeded_entry.cache_key),
+            paths.active_workspace_image(&sandbox_id),
+        )
+        .await
+        .unwrap();
+
+        let next_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+        let next_history = br#"{"type":"message","content":"codex-b"}"#;
+        let next_identity = test_verified_restored_session_identity(
+            RestoredSessionFramework::Codex,
+            next_session_id,
+            next_history,
+        );
+        let sandbox = MockSandbox::new(sandbox_id.to_string());
+        sandbox.push_exec_result(Ok(ExecResult::new(
+            0,
+            serde_json::to_vec(&SessionHistorySidecarExportMetadata {
+                representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+                encoded_size: next_history.len() as u64,
+            })
+            .unwrap(),
+            Vec::new(),
+        )));
+        sandbox.push_copy_file_result(Ok(next_history.to_vec()));
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "unused-context-session",
+            network_log_session,
+            RunCancellationHandle::new(),
+        );
+        context.reuse_key = Some(reuse_key.into());
+        context.cli_agent_session_id = None;
+        context.discovered_cli_agent_session_id = Some(next_session_id.into());
+        context.restored_session_identity = Some(next_identity.clone());
+        context.exit_code = 0;
+        context.workspace_image = Some(workspace_image);
+        context.workspace_image_size_bytes = b"image".len() as u64;
+        context.parking_gate.close();
+
+        let _completion_ready = finalize_sandbox_for_completion(
+            Some(Box::new(sandbox)),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        )
+        .await;
+
+        let checkout = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id: RunId::new_v4(),
+                    sandbox_id: SandboxId::new_v4(),
+                    profile_name: "vm0/default",
+                    reuse_key: Some(reuse_key),
+                    cli_agent_session_id: Some(next_session_id),
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: b"image".len() as u64,
+                },
+                workspace_drive_required: true,
+            })
+            .await;
+        assert!(
+            checkout
+                .probe_session_history_sidecar(&previous_identity)
+                .await
+                .is_err(),
+            "the verified replacement must not retain the previous identity"
+        );
+        let next_sidecar = checkout
+            .probe_session_history_sidecar(&next_identity)
+            .await
+            .unwrap();
+        assert_eq!(
+            tokio::fs::read(next_sidecar.path).await.unwrap(),
+            next_history
+        );
+        assert!(!previous_body_path.exists());
     }
 
     #[tokio::test]
