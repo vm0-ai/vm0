@@ -74,6 +74,34 @@ describe("connector/providers/box", () => {
       expect(result.userInfo.email).toBe("test@example.com");
     });
 
+    it("rejects user info without the required Box user id", async () => {
+      const tokenHandler = http.post("https://api.box.com/oauth2/token", () => {
+        return HttpResponse.json({
+          access_token: "box-test-token",
+          refresh_token: "box-refresh-token",
+          expires_in: 3600,
+          scope: "root_readwrite",
+        });
+      });
+      const meHandler = http.get("https://api.box.com/2.0/users/me", () => {
+        return HttpResponse.json({
+          name: "Test User",
+          login: "test@example.com",
+        });
+      });
+      server.use(tokenHandler, meHandler);
+
+      await expect(
+        exchangeBoxCode(
+          authCodeGrant(),
+          "client-id",
+          "client-secret",
+          "test-code",
+          "https://example.com/callback",
+        ),
+      ).rejects.toThrow("No user id in Box user info response");
+    });
+
     it("throws when Box returns an error in response body", async () => {
       const tokenHandler = http.post("https://api.box.com/oauth2/token", () => {
         return HttpResponse.json({
