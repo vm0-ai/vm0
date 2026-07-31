@@ -106,7 +106,13 @@ export const chatEvents = pgTable(
      * enforced by the NewChatEvent TypeScript write union, not by SQL.
      */
     contextType: text("context_type").$type<
-      "slack" | "feishu" | "automation" | "goal"
+      | "slack"
+      | "feishu"
+      | "teams"
+      | "telegram"
+      | "github"
+      | "automation"
+      | "goal"
     >(),
     contextId: uuid("context_id"),
     triggerSource: text("trigger_source").$type<TriggerSource>(),
@@ -232,7 +238,15 @@ export const chatEvents = pgTable(
       ),
       check(
         "chat_events_context_type_check",
-        sql`${table.contextType} IN ('slack', 'feishu', 'automation', 'goal')`,
+        sql`${table.contextType} IN (
+          'slack',
+          'feishu',
+          'teams',
+          'telegram',
+          'github',
+          'automation',
+          'goal'
+        )`,
       ),
     ];
   },

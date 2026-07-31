@@ -1862,6 +1862,12 @@ async function persistTelegramChatMessage(args: {
         runId: null,
         triggerSource: "telegram",
         encryptedParams,
+        telegramContext: {
+          chatId: delivery.chatId,
+          messageId: delivery.messageId,
+          isDm: delivery.isDM,
+          messageThreadId: delivery.messageThreadId ?? null,
+        },
         createdAt: currentTime,
       },
       "id",
