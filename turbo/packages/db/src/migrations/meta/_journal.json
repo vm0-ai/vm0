@@ -5489,6 +5489,13 @@
       "when": 1785484828737,
       "tag": "0783_remove_browser_usage_compatibility",
       "breakpoints": true
+    },
+    {
+      "idx": 784,
+      "version": "7",
+      "when": 1785488776593,
+      "tag": "0784_remove_legacy_connector_catalog_compatibility",
+      "breakpoints": true
     }
   ]
 }

@@ -40,7 +40,7 @@ import {
 import { connectorCatalogIconUrl } from "./connector-catalog-artifacts/icon";
 import { deriveConnectorCatalogFirewallPermissions } from "./connector-catalog-artifacts/relationships";
 import {
-  canonicalConnectorCatalogCompatibilityEvaluationSchema,
+  connectorCatalogCompatibilityEvaluationSchema,
   connectorCatalogExecutableCapabilityDigest,
 } from "./connector-catalog-compatibility.service";
 import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
@@ -389,10 +389,9 @@ async function readCurrentCatalog(args: {
     args.timing,
     "api_dispatch_connector_catalog_validate_compatibility",
     () => {
-      const parsed =
-        canonicalConnectorCatalogCompatibilityEvaluationSchema.safeParse(
-          row.filteredAuthMethods,
-        );
+      const parsed = connectorCatalogCompatibilityEvaluationSchema.safeParse(
+        row.filteredAuthMethods,
+      );
       if (!parsed.success) {
         log.error(
           "Rejected persisted connector catalog compatibility evaluation",
