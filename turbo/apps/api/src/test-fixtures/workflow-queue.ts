@@ -29,7 +29,7 @@ interface PreviousDeploymentWorkflowEventArgs {
  */
 export async function admitPreviousDeploymentWorkflowEventFixture(
   args: PreviousDeploymentWorkflowEventArgs,
-): Promise<void> {
+): Promise<string> {
   const [row] = await db()
     .select({
       automation: zeroWorkflowAutomations,
@@ -73,4 +73,5 @@ export async function admitPreviousDeploymentWorkflowEventFixture(
       `Expected the previous-deployment event to be inserted, got ${admission.kind}`,
     );
   }
+  return admission.eventId;
 }

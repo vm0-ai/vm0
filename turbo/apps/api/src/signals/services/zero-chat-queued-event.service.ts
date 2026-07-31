@@ -40,6 +40,7 @@ import {
 } from "../../lib/db-structured-result";
 import { db$, type Db } from "../external/db";
 import {
+  chatQueueEventPriority,
   listPendingChatQueueEvents,
   loadPendingChatQueueEvent,
   lockChatQueueThread,
@@ -423,15 +424,6 @@ interface QueueFirstClaimSnapshot {
   readonly replacement: NewChatEvent;
 }
 
-function queueFirstHeadPriority(): SQL {
-  return sql`CASE ${chatEvents.eventType}
-    WHEN 'input.prompt' THEN 0
-    WHEN 'input.automation' THEN 1
-    WHEN 'input.goal' THEN 2
-    ELSE 3
-  END`;
-}
-
 function replacementTargetFromQueueHead(
   head: LoadedChatEventReplacementTarget,
 ): LoadedChatEventReplacementTarget {
@@ -470,7 +462,7 @@ async function resolveUserQueueFirstClaimSnapshot(
       ),
     )
     .orderBy(
-      queueFirstHeadPriority(),
+      chatQueueEventPriority(),
       asc(chatEvents.createdAt),
       asc(chatEvents.id),
     )
@@ -537,7 +529,7 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
       ),
     )
     .orderBy(
-      queueFirstHeadPriority(),
+      chatQueueEventPriority(),
       asc(chatEvents.createdAt),
       asc(chatEvents.id),
     )
@@ -627,7 +619,7 @@ async function resolveGoalQueueFirstClaimSnapshot(
       ),
     )
     .orderBy(
-      queueFirstHeadPriority(),
+      chatQueueEventPriority(),
       asc(chatEvents.createdAt),
       asc(chatEvents.id),
     )
