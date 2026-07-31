@@ -83,6 +83,7 @@ interface RunnerNotification {
   readonly runId: string;
   readonly runnerGroup: string;
   readonly profile: string;
+  readonly reuseKey: string | null;
   readonly cliAgentSessionId: string | null;
   readonly historyGenerationRunId: string | undefined;
   readonly createdAt: Date;
@@ -186,6 +187,7 @@ async function insertPromotedRunnerJob(
       runnerGroup: args.payload.runnerGroup,
       profile: args.payload.profile,
       cliAgentSessionId: args.payload.cliAgentSessionId,
+      reuseKey: args.payload.reuseKey,
       executionContext: {
         ...args.payload.executionContext,
         apiStartTime: promotedAt,
@@ -342,6 +344,7 @@ async function promoteQueuedCandidate(
         runId: args.row.runId,
         runnerGroup: args.payload.runnerGroup,
         profile: args.payload.profile,
+        reuseKey: args.payload.reuseKey,
         cliAgentSessionId: args.payload.cliAgentSessionId,
         historyGenerationRunId: args.payload.historyGenerationRunId,
         createdAt: runnerJob.createdAt,

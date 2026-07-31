@@ -18,6 +18,7 @@ export async function notifyRunnerJob(
     readonly runnerGroup: string;
     readonly runId: string;
     readonly profile: string;
+    readonly reuseKey: string | null;
     readonly cliAgentSessionId: string | null;
     readonly historyGenerationRunId: string | undefined;
     readonly createdAt: Date;
@@ -32,7 +33,7 @@ export async function notifyRunnerJob(
         db,
         runnerGroup: args.runnerGroup,
         profile: args.profile,
-        cliAgentSessionId: args.cliAgentSessionId,
+        reuseKey: args.reuseKey,
         historyGenerationRunId: args.historyGenerationRunId,
         createdAt: args.createdAt,
         currentDate,
@@ -57,6 +58,7 @@ export async function notifyRunnerJob(
     args.runId,
     args.profile,
     {
+      reuseKey: args.reuseKey,
       cliAgentSessionId: args.cliAgentSessionId,
       historyGenerationAffinityProtectedUntil:
         affinity.historyGenerationProtectedUntil?.toISOString() ?? null,

@@ -87,6 +87,7 @@ describe("runner claim response contract", () => {
 
     expect(context).toMatchObject({
       runId: "00000000-0000-4000-8000-000000020985",
+      reuseKey: "thread:00000000-0000-4000-8000-000000020986",
       agentComposeVersionId:
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       modelUsageProvider: "fixture-model",
@@ -221,6 +222,29 @@ describe("runner poll response contract", () => {
 
   it("rejects a missing profile", () => {
     expect(jobSchema.safeParse(job).success).toBe(false);
+  });
+
+  it("accepts current and pre-reuse-key jobs", () => {
+    expect(
+      jobSchema.parse({
+        ...job,
+        experimentalProfile: "vm0/default",
+        reuseKey: "thread:22222222-2222-4222-8222-222222222223",
+      }).reuseKey,
+    ).toBe("thread:22222222-2222-4222-8222-222222222223");
+    expect(
+      jobSchema.parse({
+        ...job,
+        experimentalProfile: "vm0/default",
+        reuseKey: null,
+      }).reuseKey,
+    ).toBeNull();
+    expect(
+      jobSchema.parse({
+        ...job,
+        experimentalProfile: "vm0/default",
+      }).reuseKey,
+    ).toBeUndefined();
   });
 });
 
@@ -453,6 +477,7 @@ describe("runner resume session contract", () => {
 
     const heldSessionState = heldSessionStateSchema.parse({
       sessionId: "sess-123",
+      reuseKey: "thread:22222222-2222-4222-8222-222222222223",
       lastCompletedAt: "2026-07-15T00:00:00.000Z",
       reusableSandbox: {
         profile: "vm0/default",
@@ -468,6 +493,9 @@ describe("runner resume session contract", () => {
     });
     expect(heldSessionState.reusableSandbox?.historyGenerationRunId).toBe(
       historyGenerationRunId,
+    );
+    expect(heldSessionState.reuseKey).toBe(
+      "thread:22222222-2222-4222-8222-222222222223",
     );
     expect(heldSessionState.workspaceCaches).toEqual([
       {
@@ -500,6 +528,7 @@ describe("runner resume session contract", () => {
       profile: "vm0/default",
     });
     expect(heldSessionState.workspaceCaches).toBeUndefined();
+    expect(heldSessionState.reuseKey).toBeUndefined();
   });
 
   it("accepts ordered heartbeat snapshots", () => {

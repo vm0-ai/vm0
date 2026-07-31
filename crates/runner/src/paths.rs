@@ -53,34 +53,34 @@ pub(crate) fn base_dir_lock_name(base_dir: &Path) -> String {
     format!("base-dir-{hash}.lock")
 }
 
-/// Versioned digest key for host-shared session workspace image baselines.
+/// Versioned digest key for host-shared reuse-key workspace image baselines.
 ///
-/// The raw CLI session id is untrusted and must not be embedded directly in
+/// The raw reuse key is untrusted and must not be embedded directly in
 /// host paths. The working-dir argument is intentionally ignored: workspace
 /// image cache identity is based on canonical workspace semantics. The key
 /// includes the cache scope, profile, drive layout version, and logical image
 /// size so incompatible workspace images never share a host entry.
 #[cfg(test)]
-pub(crate) fn session_workspace_cache_key(session_id: &str, working_dir: &str) -> String {
-    scoped_session_workspace_cache_key("", "vm0/default", session_id, working_dir, 5)
+pub(crate) fn session_workspace_cache_key(reuse_key: &str, working_dir: &str) -> String {
+    scoped_session_workspace_cache_key("", "vm0/default", reuse_key, working_dir, 5)
 }
 
 pub(crate) fn scoped_session_workspace_cache_key(
     cache_scope: &str,
     profile_name: &str,
-    session_id: &str,
+    reuse_key: &str,
     _working_dir: &str,
     image_size_bytes: u64,
 ) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(b"session-workspace-cache:v3\0");
+    hasher.update(b"session-workspace-cache:v4\0");
     hasher.update(cache_scope.as_bytes());
     hasher.update(b"\0");
     hasher.update(profile_name.as_bytes());
     hasher.update(b"\0workspace-drive-v1\0");
     hasher.update(image_size_bytes.to_le_bytes());
     hasher.update(b"\0");
-    hasher.update(session_id.as_bytes());
+    hasher.update(reuse_key.as_bytes());
     hex::encode(hasher.finalize())
 }
 

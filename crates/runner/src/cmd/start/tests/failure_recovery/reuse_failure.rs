@@ -13,6 +13,7 @@ fn reusable_candidate(run_id: RunId, session_id: &str) -> crate::provider::JobCa
     crate::provider::JobCandidate::new(run_id, "vm0/default".into())
         .with_affinity_metadata(
             Some(session_id.to_string()),
+            Some(session_id.to_string()),
             Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
         )
         .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox))

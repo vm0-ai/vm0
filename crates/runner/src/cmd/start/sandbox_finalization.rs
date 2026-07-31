@@ -36,6 +36,7 @@ use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::run_cancellation::RunCancellationHandle;
 use crate::status::StatusTracker;
 use crate::storage_fingerprints::StorageFingerprints;
+use crate::types::reuse_key_kind;
 use crate::types::{HeldSessionState, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheState};
 use crate::workspace_image_cache::{
     WorkspaceCacheTerminalStatus, WorkspaceImageLease, WorkspaceImagePromotionContext,
@@ -60,14 +61,16 @@ fn mark_session_affinity_refresh(
 
 fn mark_workspace_cache_snapshot_promoted(
     snapshot: &HeldSessionStateSnapshot,
+    reuse_key: Option<&str>,
     session_id: Option<&str>,
     profile_name: &str,
     completed_at: &str,
     promoted: bool,
 ) -> bool {
-    if promoted && let Some(session_id) = session_id {
+    if promoted && let (Some(reuse_key), Some(session_id)) = (reuse_key, session_id) {
         snapshot.upsert_workspace_cache_state(HeldSessionState {
             session_id: session_id.to_owned(),
+            reuse_key: reuse_key.to_owned(),
             last_completed_at: completed_at.to_owned(),
             reusable_sandbox: None,
             workspace_caches: vec![WorkspaceCacheState {
@@ -83,6 +86,7 @@ pub(super) struct FinalizeContext {
     pub(super) run_id: RunId,
     pub(super) sandbox_id: SandboxId,
     pub(super) profile_name: String,
+    pub(super) reuse_key: Option<String>,
     pub(super) cli_agent_session_id: Option<String>,
     pub(super) discovered_cli_agent_session_id: Option<String>,
     pub(super) restored_session_identity: Option<RestoredSessionIdentity>,
@@ -122,6 +126,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         run_id,
         sandbox_id,
         profile_name,
+        reuse_key,
         cli_agent_session_id,
         discovered_cli_agent_session_id,
         restored_session_identity,
@@ -160,8 +165,11 @@ pub(super) async fn finalize_sandbox_for_completion(
     let resolved_cli_agent_session_id = cli_agent_session_id
         .as_deref()
         .or(discovered_cli_agent_session_id.as_deref());
-    let parkable_cli_agent_session_id = if exit_code == 0 && !cancelled && parking_gate.is_open() {
-        resolved_cli_agent_session_id.map(str::to_owned)
+    let parkable_reuse_identity = if exit_code == 0 && !cancelled && parking_gate.is_open() {
+        reuse_key
+            .as_deref()
+            .zip(resolved_cli_agent_session_id)
+            .map(|(reuse_key, session_id)| (reuse_key.to_owned(), session_id.to_owned()))
     } else {
         None
     };
@@ -179,9 +187,14 @@ pub(super) async fn finalize_sandbox_for_completion(
     let workspace_promotion_session_id = workspace_promotion
         .as_ref()
         .map(|promotion| promotion.cli_agent_session_id().to_owned());
+    let workspace_promotion_reuse_key = workspace_promotion
+        .as_ref()
+        .map(|promotion| promotion.reuse_key().to_owned());
 
     let mut session_affinity_changed = false;
-    let budget = if let Some(cli_agent_session_id) = parkable_cli_agent_session_id {
+    let budget = if let Some((reuse_key, cli_agent_session_id)) = parkable_reuse_identity {
+        let reuse_key_fingerprint = crate::paths::short_digest(&reuse_key);
+        let reuse_kind = reuse_key_kind(&reuse_key);
         // Inflate the guest balloon BEFORE acquiring the pool lock —
         // the HTTP call to Firecracker can take milliseconds, and we
         // must not block other take/park operations on it.
@@ -189,6 +202,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             run_id,
             sandbox,
             factory: Arc::clone(&factory),
+            reuse_key: reuse_key.clone(),
             cli_agent_session_id: cli_agent_session_id.clone(),
             sandbox_id,
             profile_name: profile_name.clone(),
@@ -217,7 +231,8 @@ pub(super) async fn finalize_sandbox_for_completion(
                     } = active;
                     warn!(
                         run_id = %run_id,
-                        session_id = %cli_agent_session_id,
+                        reuse_key_fingerprint = %reuse_key_fingerprint,
+                        reuse_key_kind = reuse_kind,
                         reason,
                         error,
                         "sandbox idle admission failed, destroying instead of parking"
@@ -239,6 +254,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     .await;
                     let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
                         &held_session_snapshot,
+                        Some(&reuse_key),
                         Some(&cli_agent_session_id),
                         &profile_name,
                         &completed_at,
@@ -262,7 +278,8 @@ pub(super) async fn finalize_sandbox_for_completion(
                 } => {
                     warn!(
                         run_id = %run_id,
-                        session_id = %cli_agent_session_id,
+                        reuse_key_fingerprint = %reuse_key_fingerprint,
+                        reuse_key_kind = reuse_kind,
                         reason,
                         error,
                         "parked sandbox failed idle admission, destroying instead of reusing"
@@ -283,6 +300,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     .await;
                     let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
                         &held_session_snapshot,
+                        Some(&reuse_key),
                         Some(&cli_agent_session_id),
                         &profile_name,
                         &completed_at,
@@ -301,7 +319,8 @@ pub(super) async fn finalize_sandbox_for_completion(
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             info!(
                 run_id = %run_id,
-                session_id = %cli_agent_session_id,
+                reuse_key_fingerprint = %reuse_key_fingerprint,
+                reuse_key_kind = reuse_kind,
                 "job cancelled while parking, destroying VM"
             );
             let destroy_result = destroy_active_owned_idle_payload(
@@ -313,6 +332,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             .await;
             session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
                 &held_session_snapshot,
+                Some(&reuse_key),
                 Some(&cli_agent_session_id),
                 &profile_name,
                 &completed_at,
@@ -323,7 +343,8 @@ pub(super) async fn finalize_sandbox_for_completion(
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             info!(
                 run_id = %run_id,
-                session_id = %cli_agent_session_id,
+                reuse_key_fingerprint = %reuse_key_fingerprint,
+                reuse_key_kind = reuse_kind,
                 reason = reason.as_str(),
                 admission_action = "reject_and_destroy",
                 "sandbox parked but is not reusable, destroying VM"
@@ -338,6 +359,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             .await;
             session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
                 &held_session_snapshot,
+                Some(&reuse_key),
                 Some(&cli_agent_session_id),
                 &profile_name,
                 &completed_at,
@@ -360,7 +382,8 @@ pub(super) async fn finalize_sandbox_for_completion(
                     if cancel.is_cancelled() {
                         info!(
                             run_id = %run_id,
-                            session_id = %cli_agent_session_id,
+                            reuse_key_fingerprint = %reuse_key_fingerprint,
+                            reuse_key_kind = reuse_kind,
                             "job cancelled before idle pool ownership transfer, destroying VM"
                         );
                         drop(transfer_guard);
@@ -374,6 +397,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         .await;
                         let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
                             &held_session_snapshot,
+                            Some(&reuse_key),
                             Some(&cli_agent_session_id),
                             &profile_name,
                             &completed_at,
@@ -390,7 +414,8 @@ pub(super) async fn finalize_sandbox_for_completion(
                 if cancel.is_cancelled() {
                     info!(
                         run_id = %run_id,
-                        session_id = %cli_agent_session_id,
+                        reuse_key_fingerprint = %reuse_key_fingerprint,
+                        reuse_key_kind = reuse_kind,
                         "job cancelled before idle pool ownership transfer, destroying VM"
                     );
                     drop(transfer_guard);
@@ -405,6 +430,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     .await;
                     let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
                         &held_session_snapshot,
+                        Some(&reuse_key),
                         Some(&cli_agent_session_id),
                         &profile_name,
                         &completed_at,
@@ -418,7 +444,12 @@ pub(super) async fn finalize_sandbox_for_completion(
                 let candidate = candidate.with_last_completed_at(completed_at.clone());
                 break match pool.park(candidate) {
                     ParkResult::Parked => {
-                        info!(run_id = %run_id, session_id = %cli_agent_session_id, "VM parked for reuse");
+                        info!(
+                            run_id = %run_id,
+                            reuse_key_fingerprint = %reuse_key_fingerprint,
+                            reuse_key_kind = reuse_kind,
+                            "VM parked for reuse"
+                        );
                         #[cfg(test)]
                         test_observer
                             .notify_vm_parked_for_reuse(run_id, cli_agent_session_id.clone());
@@ -448,7 +479,12 @@ pub(super) async fn finalize_sandbox_for_completion(
                         BudgetOwnership::idle_owned()
                     }
                     ParkResult::Replaced(evicted) => {
-                        info!(run_id = %run_id, session_id = %cli_agent_session_id, "VM parked, evicting previous");
+                        info!(
+                            run_id = %run_id,
+                            reuse_key_fingerprint = %reuse_key_fingerprint,
+                            reuse_key_kind = reuse_kind,
+                            "VM parked, evicting previous"
+                        );
                         cleanup_state.mark_idle_pool_owned();
                         #[cfg(test)]
                         maybe_panic_outer_job(
@@ -475,7 +511,12 @@ pub(super) async fn finalize_sandbox_for_completion(
                         BudgetOwnership::idle_owned()
                     }
                     ParkResult::Rejected(rejected) => {
-                        info!(run_id = %run_id, session_id = %cli_agent_session_id, "idle parking rejected, destroying VM");
+                        info!(
+                            run_id = %run_id,
+                            reuse_key_fingerprint = %reuse_key_fingerprint,
+                            reuse_key_kind = reuse_kind,
+                            "idle parking rejected, destroying VM"
+                        );
                         drop(transfer_guard);
                         drop(pool);
                         // Pool unchanged (park rejected) — no status
@@ -492,6 +533,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         .await;
                         session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
                             &held_session_snapshot,
+                            Some(&reuse_key),
                             Some(&cli_agent_session_id),
                             &profile_name,
                             &completed_at,
@@ -506,6 +548,9 @@ pub(super) async fn finalize_sandbox_for_completion(
         // No parkable session — stop + destroy.
         let workspace_cache_snapshot_session_id =
             resolved_cli_agent_session_id.or(workspace_promotion_session_id.as_deref());
+        let workspace_cache_snapshot_reuse_key = reuse_key
+            .as_deref()
+            .or(workspace_promotion_reuse_key.as_deref());
         let cleanup_reason = active_cleanup_reason(
             exit_code,
             cancelled,
@@ -529,6 +574,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         .await;
         session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
             &held_session_snapshot,
+            workspace_cache_snapshot_reuse_key,
             workspace_cache_snapshot_session_id,
             &profile_name,
             &completed_at,
@@ -835,6 +881,7 @@ mod tests {
                 run_id,
                 sandbox_id,
                 profile_name: "vm0/default".into(),
+                reuse_key: Some(session_id.into()),
                 cli_agent_session_id: Some(session_id.into()),
                 discovered_cli_agent_session_id: None,
                 restored_session_identity: None,
@@ -873,6 +920,7 @@ mod tests {
                     run_id,
                     sandbox_id,
                     profile_name: "vm0/default",
+                    reuse_key: Some(session_id),
                     cli_agent_session_id: Some(session_id),
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
@@ -1264,7 +1312,7 @@ mod tests {
                         .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
                             sandbox_id: seed_sandbox_id,
                             profile_name: "vm0/default",
-                            cli_agent_session_id: &session_id,
+                            reuse_key: &session_id,
                             working_dir: CANONICAL_WORKING_DIR,
                             image_size_bytes: b"image".len() as u64,
                         })
@@ -1320,6 +1368,7 @@ mod tests {
                             run_id: RunId::new_v4(),
                             sandbox_id: SandboxId::new_v4(),
                             profile_name: "vm0/default",
+                            reuse_key: Some(&session_id),
                             cli_agent_session_id: Some(&session_id),
                             working_dir: CANONICAL_WORKING_DIR,
                             image_size_bytes: b"image".len() as u64,
@@ -1423,6 +1472,7 @@ mod tests {
                     run_id,
                     sandbox_id,
                     profile_name: "vm0/default",
+                    reuse_key: Some("unused-context-session"),
                     cli_agent_session_id: None,
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
@@ -1492,6 +1542,7 @@ mod tests {
                     run_id,
                     sandbox_id,
                     profile_name: "vm0/default",
+                    reuse_key: Some("sess-mismatch"),
                     cli_agent_session_id: Some("sess-mismatch"),
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
@@ -1564,6 +1615,7 @@ mod tests {
                     run_id,
                     sandbox_id,
                     profile_name: "vm0/default",
+                    reuse_key: Some(session_id),
                     cli_agent_session_id: Some(session_id),
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
@@ -1610,9 +1662,9 @@ mod tests {
         let cache_states = cache.held_session_states().await;
         assert_eq!(cache_states.len(), 1);
         assert_eq!(cache_states[0].session_id, session_id);
-        let active_sessions = super::super::active_sessions::new_active_cli_agent_sessions();
+        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
         let snapshot_states =
-            held_session_snapshot.current_held_session_states(Vec::new(), &active_sessions, None);
+            held_session_snapshot.current_held_session_states(Vec::new(), &active_reuse_keys, None);
         assert_eq!(snapshot_states.len(), 1);
         assert_eq!(snapshot_states[0].session_id, session_id);
         assert_eq!(snapshot_states[0].workspace_caches.len(), 1);
@@ -1640,6 +1692,7 @@ mod tests {
                     run_id,
                     sandbox_id,
                     profile_name: "vm0/default",
+                    reuse_key: Some(session_id),
                     cli_agent_session_id: None,
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
@@ -1649,7 +1702,7 @@ mod tests {
             .await;
         assert_eq!(
             workspace_image.result(),
-            crate::workspace_image_cache::WorkspaceCacheCheckoutResult::NoSession
+            crate::workspace_image_cache::WorkspaceCacheCheckoutResult::Miss
         );
         tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
             .await
@@ -1667,6 +1720,7 @@ mod tests {
             RunCancellationHandle::new(),
         );
         context.factory = factory;
+        context.reuse_key = Some(session_id.into());
         context.cli_agent_session_id = None;
         context.discovered_cli_agent_session_id = Some(session_id.into());
         context.exit_code = 1;
@@ -1701,9 +1755,9 @@ mod tests {
             inspection.entries[0].last_terminal_status,
             Some(WorkspaceCacheTerminalStatus::NonzeroExit)
         );
-        let active_sessions = super::super::active_sessions::new_active_cli_agent_sessions();
+        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
         let snapshot_states =
-            held_session_snapshot.current_held_session_states(Vec::new(), &active_sessions, None);
+            held_session_snapshot.current_held_session_states(Vec::new(), &active_reuse_keys, None);
         assert_eq!(snapshot_states.len(), 1);
         assert_eq!(snapshot_states[0].session_id, session_id);
         assert_eq!(snapshot_states[0].workspace_caches.len(), 1);
@@ -1763,10 +1817,10 @@ mod tests {
         assert_eq!(overrides.destroy_call_count(), 1);
         assert!(cache.held_session_states().await.is_empty());
         assert_eq!(fixture.idle_pool.lock().await.len(), 0);
-        let active_sessions = super::super::active_sessions::new_active_cli_agent_sessions();
+        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
         assert!(
             held_session_snapshot
-                .current_held_session_states(Vec::new(), &active_sessions, None)
+                .current_held_session_states(Vec::new(), &active_reuse_keys, None)
                 .is_empty(),
             "failed post-freeze stop must not advertise session affinity"
         );
@@ -1799,6 +1853,7 @@ mod tests {
                     run_id,
                     sandbox_id,
                     profile_name: "vm0/default",
+                    reuse_key: Some("sess-new"),
                     cli_agent_session_id: Some("sess-new"),
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
@@ -1899,6 +1954,7 @@ mod tests {
             source_ip: existing_sandbox.source_ip().to_owned(),
             sandbox: existing_sandbox,
             factory: existing_factory,
+            reuse_key: session_id.into(),
             cli_agent_session_id: session_id.into(),
             sandbox_id: old_sandbox_id,
             profile_name: "vm0/default".into(),

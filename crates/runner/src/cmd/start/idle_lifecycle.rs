@@ -248,6 +248,7 @@ mod tests {
             run_id: crate::ids::RunId::new_v4(),
             sandbox,
             factory,
+            reuse_key: fixture.session_id.clone(),
             cli_agent_session_id: fixture.session_id.clone(),
             sandbox_id: fixture.sandbox_id,
             profile_name: "vm0/default".into(),

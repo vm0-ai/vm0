@@ -586,7 +586,8 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     let sandbox_id = idle_sandbox.sandbox_id();
     let ReusableIdleSandboxParts {
         sandbox,
-        cli_agent_session_id: idle_cli_agent_session_id,
+        reuse_key: idle_reuse_key,
+        cli_agent_session_id: _idle_cli_agent_session_id,
         source_ip,
         storage_fingerprints: prev_storage,
         restored_session_identity: _restored_session_identity,
@@ -594,12 +595,13 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     } = idle_sandbox.into_parts();
 
     let resume_session_error = validate_resume_session_id(&context).err();
-    let expected_promotion_session_id = if resume_session_error.is_some() {
-        idle_cli_agent_session_id.as_str()
+    let claimed_reuse_key = context.reuse_key();
+    let expected_promotion_reuse_key = if resume_session_error.is_some() {
+        idle_reuse_key.as_str()
     } else {
-        context
-            .cli_agent_session_id()
-            .unwrap_or(idle_cli_agent_session_id.as_str())
+        claimed_reuse_key
+            .as_deref()
+            .unwrap_or(idle_reuse_key.as_str())
     };
     let workspace_image = match resolve_reused_workspace_promotion(
         config.workspace_cache.as_ref(),
@@ -607,7 +609,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         run_id,
         sandbox_id,
         params,
-        expected_promotion_session_id,
+        expected_promotion_reuse_key,
     )
     .await
     {
@@ -641,6 +643,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
                         run_id,
                         sandbox_id,
                         profile_name: &params.profile_name,
+                        reuse_key: claimed_reuse_key.as_deref(),
                         cli_agent_session_id: context.cli_agent_session_id(),
                         working_dir: CANONICAL_WORKING_DIR,
                         image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
@@ -693,7 +696,7 @@ async fn resolve_reused_workspace_promotion(
     run_id: RunId,
     sandbox_id: SandboxId,
     params: &JobParams,
-    cli_agent_session_id: &str,
+    reuse_key: &str,
 ) -> Result<Option<WorkspaceImageLease>, ExecutionFailure> {
     let Some(promotion) = promotion else {
         return Ok(None);
@@ -711,12 +714,7 @@ async fn resolve_reused_workspace_promotion(
     };
 
     match reused_promotion_into_active_lease(
-        cache,
-        promotion,
-        run_id,
-        sandbox_id,
-        params,
-        cli_agent_session_id,
+        cache, promotion, run_id, sandbox_id, params, reuse_key,
     ) {
         Ok(lease) => Ok(Some(lease)),
         Err(identity_failure) => {
@@ -746,13 +744,13 @@ fn reused_promotion_into_active_lease(
     run_id: RunId,
     sandbox_id: SandboxId,
     params: &JobParams,
-    cli_agent_session_id: &str,
+    reuse_key: &str,
 ) -> Result<WorkspaceImageLease, Box<WorkspaceImagePromotionIdentityFailure>> {
     let expected = match cache
         .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: &params.profile_name,
-            cli_agent_session_id,
+            reuse_key,
             working_dir: CANONICAL_WORKING_DIR,
             image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
         })

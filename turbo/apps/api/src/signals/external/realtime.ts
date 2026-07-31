@@ -352,6 +352,7 @@ export async function publishRunnerJobNotification(
   runId: string,
   profile: string,
   metadata?: {
+    readonly reuseKey: string | null;
     readonly cliAgentSessionId: string | null;
     readonly historyGenerationAffinityProtectedUntil: string | null;
     readonly affinityProtectedUntil: string | null;
@@ -365,6 +366,7 @@ export async function publishRunnerJobNotification(
       await channel.publish("job", {
         runId,
         profile,
+        ...(metadata?.reuseKey ? { reuseKey: metadata.reuseKey } : {}),
         ...(metadata?.cliAgentSessionId
           ? { cliAgentSessionId: metadata.cliAgentSessionId }
           : {}),

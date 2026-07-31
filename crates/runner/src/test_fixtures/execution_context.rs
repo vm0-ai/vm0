@@ -4,6 +4,7 @@ use crate::types::ExecutionContext;
 pub(crate) fn execution_context_for_test(run_id: RunId) -> ExecutionContext {
     ExecutionContext {
         run_id,
+        reuse_key: None,
         prompt: "test".into(),
         append_system_prompt: None,
         vars: None,

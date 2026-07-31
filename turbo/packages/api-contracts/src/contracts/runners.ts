@@ -270,6 +270,7 @@ export const jobSchema = z.object({
   vars: z.record(z.string(), z.string()).nullable(),
   experimentalProfile: z.string(),
   cliAgentSessionId: z.string().nullable().optional(),
+  reuseKey: z.string().nullable().optional(),
   historyGenerationRunId: z.uuid().optional(),
   historyGenerationAffinityProtectedUntil: z
     .string()
@@ -286,8 +287,10 @@ export const jobSchema = z.object({
 
 export const heldSessionStateSchema = z.object({
   // Compatibility wire name. Semantically this is the Claude/Codex CLI agent
-  // session id used to route work toward a runner with a reusable sandbox.
+  // session id retained for telemetry and diagnostics.
   sessionId: z.string(),
+  // Optional while older runners drain during deployment.
+  reuseKey: z.string().optional(),
   lastCompletedAt: z.string().datetime({ offset: true }),
   reusableSandbox: z
     .object({
@@ -620,6 +623,7 @@ export const compatibleStoredExecutionContextSchema =
  */
 export const executionContextSchema = z.object({
   runId: z.uuid(),
+  reuseKey: z.string().nullable().optional(),
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),
   agentComposeVersionId: z.string().nullable(),

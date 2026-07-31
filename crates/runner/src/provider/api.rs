@@ -1,5 +1,6 @@
 //! [`JobProvider`] backed by an Ably control plane + HTTP polling + REST API.
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -553,6 +554,7 @@ impl JobProvider for ApiProvider {
                         return None;
                     }
                     let run_id = job.run_id;
+                    let reuse_key = job.reuse_key().map(Cow::into_owned);
                     let cli_agent_session_id = job.cli_agent_session_id;
                     let history_generation_run_id = job.history_generation_run_id;
                     let history_generation_affinity_protected_until =
@@ -562,7 +564,11 @@ impl JobProvider for ApiProvider {
                     let profile = job.experimental_profile;
                     info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
                     let mut candidate = JobCandidate::new(run_id, profile)
-                        .with_affinity_metadata(cli_agent_session_id, affinity_protected_until)
+                        .with_affinity_metadata(
+                            reuse_key,
+                            cli_agent_session_id,
+                            affinity_protected_until,
+                        )
                         .with_session_affinity_resource(session_affinity_resource)
                         .with_history_generation_run_id(history_generation_run_id)
                         .with_history_generation_affinity_protected_until(
@@ -1758,6 +1764,7 @@ mod tests {
             admittable_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             held_session_states: vec![crate::types::HeldSessionState {
                 session_id: "held-session-test".to_string(),
+                reuse_key: "held-session-test".to_string(),
                 last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
                 reusable_sandbox: None,
                 workspace_caches: Vec::new(),

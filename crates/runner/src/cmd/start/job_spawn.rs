@@ -4,6 +4,7 @@
 //! owns the spawned task body: executor orchestration, provider completion,
 //! deferred telemetry/network-log uploads, and outer-task panic cleanup.
 
+use std::borrow::Cow;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -14,7 +15,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tracing::{error, warn};
 
-use super::active_sessions::{ActiveCliAgentSessionGuard, ActiveCliAgentSessions};
+use super::active_sessions::{ActiveReuseKeyGuard, ActiveReuseKeys};
 use super::factory_lifecycle::SharedFactory;
 use super::heartbeat::HeldSessionStateSnapshot;
 use super::idle_lifecycle::SharedIdlePool;
@@ -75,7 +76,7 @@ pub(super) struct SpawnContext {
     pub(super) park_notify: Arc<tokio::sync::Notify>,
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
-    pub(super) active_cli_agent_sessions: ActiveCliAgentSessions,
+    pub(super) active_reuse_keys: ActiveReuseKeys,
     pub(super) held_session_snapshot: HeldSessionStateSnapshot,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     #[cfg(test)]
@@ -92,7 +93,7 @@ pub(super) struct SpawnJobRequest {
     pub(super) reuse_result: SandboxReuseResult,
     pub(super) pre_spawn_timing: RunnerPreSpawnTiming,
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
-    pub(super) active_cli_agent_session_guard: ActiveCliAgentSessionGuard,
+    pub(super) active_reuse_key_guard: ActiveReuseKeyGuard,
 }
 
 struct ExecutorInvocation {
@@ -235,6 +236,7 @@ struct FinalizationPhase {
     reuse_result: SandboxReuseResult,
     workspace_disk_mb: u32,
     profile_name: String,
+    reuse_key: Option<String>,
     cli_agent_session_id: Option<String>,
     storage_fingerprints: StorageFingerprints,
     device_rate_limits: Option<sandbox::DeviceRateLimits>,
@@ -268,6 +270,7 @@ impl FinalizationPhase {
             reuse_result,
             workspace_disk_mb,
             profile_name,
+            reuse_key,
             cli_agent_session_id,
             storage_fingerprints,
             device_rate_limits,
@@ -322,6 +325,7 @@ impl FinalizationPhase {
                 run_id,
                 sandbox_id,
                 profile_name,
+                reuse_key,
                 cli_agent_session_id,
                 discovered_cli_agent_session_id,
                 restored_session_identity,
@@ -383,7 +387,7 @@ struct CompletionPhase {
     status: Arc<StatusTracker>,
     usage_flush_tx: mpsc::Sender<()>,
     park_notify: Arc<tokio::sync::Notify>,
-    active_cli_agent_session_guard: ActiveCliAgentSessionGuard,
+    active_reuse_key_guard: ActiveReuseKeyGuard,
     cleanup_state: RunCleanupState,
 }
 
@@ -395,7 +399,7 @@ impl CompletionPhase {
             status,
             usage_flush_tx,
             park_notify,
-            active_cli_agent_session_guard,
+            active_reuse_key_guard,
             cleanup_state,
         } = self;
 
@@ -406,7 +410,7 @@ impl CompletionPhase {
         completion_ready
             .complete_and_release(provider.as_ref(), &ownership, &cleanup_state)
             .await;
-        drop(active_cli_agent_session_guard);
+        drop(active_reuse_key_guard);
         if session_affinity_changed {
             park_notify.notify_one();
         }
@@ -497,10 +501,11 @@ pub(super) fn spawn_job(
         reuse_result,
         pre_spawn_timing,
         session_history_restore_plan,
-        active_cli_agent_session_guard,
+        active_reuse_key_guard,
     } = request;
     let (context, completion_auth, active_input_source) = claimed.into_parts();
     let run_id = context.run_id;
+    let reuse_key = context.reuse_key().map(Cow::into_owned);
     let cli_agent_session_id = if executor::validate_resume_session_id(&context).is_ok() {
         context.cli_agent_session_id().map(String::from)
     } else {
@@ -601,6 +606,7 @@ pub(super) fn spawn_job(
         reuse_result,
         workspace_disk_mb,
         profile_name,
+        reuse_key,
         cli_agent_session_id,
         storage_fingerprints,
         device_rate_limits: job_device_rate_limits,
@@ -629,19 +635,12 @@ pub(super) fn spawn_job(
         .record_phase_elapsed(RunnerPreSpawnPhase::SpawnJobSetup, started_at);
     executor.pre_spawn_timing.mark_task_enqueued();
     jobs.spawn(async move {
-        let mut active_cli_agent_session_guard = active_cli_agent_session_guard;
+        let active_reuse_key_guard = active_reuse_key_guard;
         let body = async move {
             #[cfg(test)]
             maybe_panic_outer_job(outer_job_panic, OuterJobPanicPoint::ActiveOrUnknown, run_id);
 
             let executor_result = executor.execute().await;
-            if let Some(discovered_cli_agent_session_id) = executor_result
-                .outcome
-                .discovered_cli_agent_session_id
-                .as_deref()
-            {
-                active_cli_agent_session_guard.activate_late(discovered_cli_agent_session_id);
-            }
             let cancelled_for_log = job_cancel.is_cancelled();
             log_terminal_job_outcome(
                 run_id,
@@ -661,7 +660,7 @@ pub(super) fn spawn_job(
                 status,
                 usage_flush_tx,
                 park_notify,
-                active_cli_agent_session_guard,
+                active_reuse_key_guard,
                 cleanup_state: cleanup_state_for_body,
             }
             .complete(completion_ready)
@@ -879,6 +878,7 @@ mod tests {
                 reuse_result: SandboxReuseResult::PoolMiss,
                 workspace_disk_mb: 0,
                 profile_name: "vm0/default".into(),
+                reuse_key: Some(session_id.into()),
                 cli_agent_session_id: Some(session_id.into()),
                 storage_fingerprints: StorageFingerprints::default(),
                 device_rate_limits: None,
@@ -1068,11 +1068,9 @@ mod tests {
             "finalizer should send the early park refresh"
         );
 
-        let active_sessions = super::super::active_sessions::new_active_cli_agent_sessions();
-        let active_cli_agent_session_guard = ActiveCliAgentSessionGuard::new(
-            Arc::clone(&active_sessions),
-            Some(session_id.to_owned()),
-        );
+        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
+        let active_reuse_key_guard =
+            ActiveReuseKeyGuard::new(Arc::clone(&active_reuse_keys), Some(session_id.to_owned()));
         let (usage_flush_tx, _usage_flush_rx) = mpsc::channel(1);
 
         CompletionPhase {
@@ -1081,15 +1079,14 @@ mod tests {
             status: Arc::clone(&fixture.status),
             usage_flush_tx,
             park_notify: Arc::clone(&fixture.park_notify),
-            active_cli_agent_session_guard,
+            active_reuse_key_guard,
             cleanup_state: RunCleanupState::new(),
         }
         .complete(finalized.completion_ready)
         .await;
 
         assert!(
-            super::super::active_sessions::active_cli_agent_session_ids(&active_sessions)
-                .is_empty(),
+            super::super::active_sessions::active_reuse_keys(&active_reuse_keys).is_empty(),
             "completion should release the active session guard before notifying"
         );
         assert!(

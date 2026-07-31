@@ -7,8 +7,7 @@ use super::super::{
     CacheBudget, FsStats, SessionWorkspaceCache, TEST_FS_AVAILABLE_BYTES, TEST_FS_TOTAL_BYTES,
     WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity,
     WorkspaceImagePrepareRequest, WorkspaceImagePromotionIdentityMismatch,
-    WorkspaceImagePromotionIdentityRequest, WorkspaceImagePromotionOutcome,
-    WorkspaceImagePromotionRequest,
+    WorkspaceImagePromotionIdentityRequest, WorkspaceImagePromotionRequest,
 };
 use super::support::{
     TEST_PROFILE_NAME, local_cache, promote_current_cache_entry, write_current_cache_entry,
@@ -63,6 +62,7 @@ async fn promotion_does_not_overwrite_newer_cache_entry() {
                 run_id: stale_run_id,
                 sandbox_id: stale_sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace",
                 image_size_bytes: image_size,
@@ -126,6 +126,7 @@ async fn promotion_does_not_overwrite_same_completed_at_cache_entry() {
                 run_id: competing_run_id,
                 sandbox_id: competing_sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace",
                 image_size_bytes: image_size,
@@ -195,6 +196,7 @@ async fn promotion_overwrites_older_cache_entry() {
                 run_id: newer_run_id,
                 sandbox_id: newer_sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace",
                 image_size_bytes: image_size,
@@ -306,6 +308,7 @@ async fn abandoned_cache_hit_promotion_context_invalidates_consumed_entry() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace",
                 image_size_bytes,
@@ -350,6 +353,7 @@ async fn abandoned_cache_hit_promotion_context_invalidates_consumed_entry() {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace",
                 image_size_bytes,
@@ -358,124 +362,6 @@ async fn abandoned_cache_hit_promotion_context_invalidates_consumed_entry() {
         })
         .await;
     assert_eq!(next.result(), WorkspaceCacheCheckoutResult::Miss);
-}
-
-#[tokio::test]
-async fn promotion_context_preserves_existing_newer_cache_entry() {
-    let (_dir, paths, cache) = local_cache().await;
-    let session_id = "sess-preserve-existing";
-    let cache_key = write_current_cache_entry(
-        &cache,
-        RunId::new_v4(),
-        session_id,
-        "/workspace",
-        "2026-05-02T00:00:00.000Z",
-        "2026-05-02T00:00:00.000Z",
-    )
-    .await;
-    let image_size_bytes = format!("image-{session_id}").len() as u64;
-    let run_id = RunId::new_v4();
-    let sandbox_id = sandbox::SandboxId::new_v4();
-    let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
-            identity: WorkspaceImageLeaseIdentity {
-                run_id,
-                sandbox_id,
-                profile_name: TEST_PROFILE_NAME,
-                cli_agent_session_id: None,
-                working_dir: "/workspace",
-                image_size_bytes,
-            },
-            workspace_drive_required: true,
-        })
-        .await;
-    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
-    let promotion = lease
-        .into_promotion_context(WorkspaceImagePromotionRequest {
-            run_id,
-            sandbox_id,
-            cli_agent_session_id_override: Some(session_id),
-            restored_session_identity: None,
-            terminal_status: WorkspaceCacheTerminalStatus::Success,
-            completed_at: "2026-05-01T00:00:00.000Z".into(),
-            storage_fingerprints: StorageFingerprints::default(),
-        })
-        .unwrap();
-
-    let outcome = promotion.promote().await.unwrap();
-
-    assert_eq!(outcome, WorkspaceImagePromotionOutcome::PreservedExisting);
-    drop(promotion);
-    let metadata = cache
-        .read_metadata_file(&paths.session_workspace_cache_metadata(&cache_key))
-        .await
-        .unwrap();
-    assert_eq!(metadata.last_completed_at, "2026-05-02T00:00:00.000Z");
-    assert!(
-        fs::try_exists(paths.session_workspace_cache_current_image(&cache_key))
-            .await
-            .unwrap()
-    );
-}
-
-#[tokio::test]
-async fn no_lock_promotion_context_abandonment_preserves_existing_entry() {
-    let (_dir, paths, cache) = local_cache().await;
-    let session_id = "sess-no-lock-abandon";
-    let cache_key = write_current_cache_entry(
-        &cache,
-        RunId::new_v4(),
-        session_id,
-        "/workspace",
-        "2026-05-02T00:00:00.000Z",
-        "2026-05-02T00:00:00.000Z",
-    )
-    .await;
-    let image_size_bytes = format!("image-{session_id}").len() as u64;
-    let run_id = RunId::new_v4();
-    let sandbox_id = sandbox::SandboxId::new_v4();
-    let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
-            identity: WorkspaceImageLeaseIdentity {
-                run_id,
-                sandbox_id,
-                profile_name: TEST_PROFILE_NAME,
-                cli_agent_session_id: None,
-                working_dir: "/workspace",
-                image_size_bytes,
-            },
-            workspace_drive_required: true,
-        })
-        .await;
-    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
-    let promotion = lease
-        .into_promotion_context(WorkspaceImagePromotionRequest {
-            run_id,
-            sandbox_id,
-            cli_agent_session_id_override: Some(session_id),
-            restored_session_identity: None,
-            terminal_status: WorkspaceCacheTerminalStatus::Success,
-            completed_at: "2026-05-01T00:00:00.000Z".into(),
-            storage_fingerprints: StorageFingerprints::default(),
-        })
-        .unwrap();
-
-    assert!(
-        !promotion
-            .abandon_unpublished("test no lock abandon")
-            .await
-            .unwrap()
-    );
-    assert!(
-        fs::try_exists(paths.session_workspace_cache_metadata(&cache_key))
-            .await
-            .unwrap()
-    );
-    assert!(
-        fs::try_exists(paths.session_workspace_cache_current_image(&cache_key))
-            .await
-            .unwrap()
-    );
 }
 
 #[tokio::test]
@@ -502,6 +388,7 @@ async fn consumed_cache_hit_promotion_moves_active_image_back_to_cache() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-move-promote"),
                 cli_agent_session_id: Some("sess-move-promote"),
                 working_dir: "/workspace",
                 image_size_bytes: image_size,
@@ -568,6 +455,7 @@ async fn cross_filesystem_promotion_falls_back_to_sparse_copy() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace",
                 image_size_bytes: image.len() as u64,
@@ -635,6 +523,7 @@ async fn cross_filesystem_promotion_still_requires_copy_headroom() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace",
                 image_size_bytes: image.len() as u64,
@@ -690,6 +579,7 @@ async fn lock_busy_checkout_cannot_promote_without_entry_lock() {
                 run_id,
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 1024,
@@ -732,6 +622,7 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace",
                 image_size_bytes,
@@ -759,6 +650,7 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace",
                 image_size_bytes,
@@ -775,7 +667,7 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
         .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: session_id,
+            reuse_key: session_id,
             working_dir: "/workspace",
             image_size_bytes,
         })
@@ -788,6 +680,7 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace",
                 image_size_bytes,
@@ -807,6 +700,7 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace",
                 image_size_bytes,
@@ -831,6 +725,7 @@ async fn promotion_context_validates_expected_identity() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace//repo/",
                 image_size_bytes,
@@ -854,7 +749,7 @@ async fn promotion_context_validates_expected_identity() {
         .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: session_id,
+            reuse_key: session_id,
             working_dir: "/workspace/repo",
             image_size_bytes,
         })
@@ -865,7 +760,7 @@ async fn promotion_context_validates_expected_identity() {
         .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
             sandbox_id: sandbox::SandboxId::new_v4(),
             profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: session_id,
+            reuse_key: session_id,
             working_dir: "/workspace/repo",
             image_size_bytes,
         })
@@ -879,21 +774,21 @@ async fn promotion_context_validates_expected_identity() {
         .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: "sess-other",
+            reuse_key: "sess-other",
             working_dir: "/workspace/repo",
             image_size_bytes,
         })
         .unwrap();
     assert_eq!(
         promotion.validate_identity(&wrong_session),
-        Err(WorkspaceImagePromotionIdentityMismatch::CliAgentSessionId),
+        Err(WorkspaceImagePromotionIdentityMismatch::ReuseKey),
     );
 
     let wrong_size = cache
         .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: session_id,
+            reuse_key: session_id,
             working_dir: "/workspace/repo",
             image_size_bytes: image_size_bytes + 1,
         })
@@ -913,7 +808,7 @@ async fn promotion_context_validates_expected_identity() {
         .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: session_id,
+            reuse_key: session_id,
             working_dir: "/workspace/repo",
             image_size_bytes,
         })
@@ -927,7 +822,7 @@ async fn promotion_context_validates_expected_identity() {
         cache.expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: session_id,
+            reuse_key: session_id,
             working_dir: "/",
             image_size_bytes,
         }),
@@ -947,6 +842,7 @@ async fn promote_skips_symlink_active_image_without_following_it() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -1002,6 +898,7 @@ async fn promote_replaces_symlink_cache_entry_dir_without_following_it() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -1065,6 +962,7 @@ async fn promote_removes_current_image_when_metadata_write_fails() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: None,
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -1126,6 +1024,7 @@ async fn promote_removes_stale_temporary_directory_before_transfer() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: None,
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -1174,6 +1073,7 @@ async fn promote_replaces_stale_current_directory_before_rename() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: None,
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -1222,6 +1122,7 @@ async fn promote_skips_transferred_image_with_unexpected_logical_size() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-size-mismatch"),
                 cli_agent_session_id: Some("sess-size-mismatch"),
                 working_dir: "/workspace",
                 image_size_bytes: 16 * 1024 * 1024,
@@ -1268,6 +1169,7 @@ async fn promote_skips_when_capacity_lock_is_busy() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-capacity-lock"),
                 cli_agent_session_id: Some("sess-capacity-lock"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -1320,6 +1222,7 @@ async fn no_session_checkout_without_late_cli_agent_session_id_has_no_promotion_
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: None,
                 cli_agent_session_id: None,
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -1346,7 +1249,7 @@ async fn no_session_checkout_without_late_cli_agent_session_id_has_no_promotion_
 }
 
 #[tokio::test]
-async fn no_session_checkout_can_promote_with_late_discovered_cli_agent_session_id() {
+async fn no_reuse_key_checkout_cannot_promote_with_late_discovered_cli_agent_session_id() {
     let (_dir, paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
@@ -1356,6 +1259,7 @@ async fn no_session_checkout_can_promote_with_late_discovered_cli_agent_session_
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: None,
                 cli_agent_session_id: None,
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -1372,7 +1276,7 @@ async fn no_session_checkout_can_promote_with_late_discovered_cli_agent_session_
 
     assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
     assert!(
-        lease
+        !lease
             .promote(
                 run_id,
                 Some("sess-1"),
@@ -1381,71 +1285,11 @@ async fn no_session_checkout_can_promote_with_late_discovered_cli_agent_session_
                 &StorageFingerprints::default(),
             )
             .await
-            .unwrap()
+            .unwrap(),
+        "late CLI session discovery must not create affinity for a run enqueued without a reuse key"
     );
 
     let cache_key = session_workspace_cache_key("sess-1", "/workspace");
-    assert!(
-        paths
-            .session_workspace_cache_current_image(&cache_key)
-            .exists()
-    );
-    let metadata = cache
-        .read_metadata_file(&paths.session_workspace_cache_metadata(&cache_key))
-        .await
-        .unwrap();
-    assert_eq!(metadata.session_id, "sess-1");
-    assert_eq!(metadata.working_dir, "/workspace");
-    assert_eq!(metadata.logical_image_size_bytes, 5);
-}
-
-#[tokio::test]
-async fn late_session_promotion_skips_when_entry_lock_is_busy() {
-    let (_dir, paths, cache) = local_cache().await;
-    let run_id = RunId::new_v4();
-    let sandbox_id = sandbox::SandboxId::new_v4();
-    let session_id = "sess-late-lock-busy";
-    let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
-            identity: WorkspaceImageLeaseIdentity {
-                run_id,
-                sandbox_id,
-                profile_name: TEST_PROFILE_NAME,
-                cli_agent_session_id: None,
-                working_dir: "/workspace",
-                image_size_bytes: 5,
-            },
-            workspace_drive_required: false,
-        })
-        .await;
-    tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
-        .await
-        .unwrap();
-    tokio::fs::write(paths.active_workspace_image(&sandbox_id), b"image")
-        .await
-        .unwrap();
-    let promotion = lease
-        .into_promotion_context(WorkspaceImagePromotionRequest {
-            run_id,
-            sandbox_id,
-            cli_agent_session_id_override: Some(session_id),
-            restored_session_identity: None,
-            terminal_status: WorkspaceCacheTerminalStatus::Success,
-            completed_at: "2026-05-01T00:00:00.000Z".into(),
-            storage_fingerprints: StorageFingerprints::default(),
-        })
-        .unwrap();
-    let cache_key = session_workspace_cache_key(session_id, "/workspace");
-    let _held_lock = crate::lock::acquire(cache.entry_lock_path(&cache_key))
-        .await
-        .unwrap();
-
-    let outcome = tokio::time::timeout(std::time::Duration::from_secs(1), promotion.promote())
-        .await
-        .expect("late-session promotion must not block behind another runner's lock")
-        .unwrap();
-
-    assert_eq!(outcome, WorkspaceImagePromotionOutcome::SkippedUnpublished);
     assert!(
         !paths
             .session_workspace_cache_current_image(&cache_key)
@@ -1468,6 +1312,7 @@ async fn no_lock_promotion_context_survives_reuse_active_lease() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: None,
                 working_dir: "/workspace//repo/",
                 image_size_bytes: 5,
@@ -1491,7 +1336,7 @@ async fn no_lock_promotion_context_survives_reuse_active_lease() {
         .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
-            cli_agent_session_id: session_id,
+            reuse_key: session_id,
             working_dir: "/workspace//repo/",
             image_size_bytes: 5,
         })

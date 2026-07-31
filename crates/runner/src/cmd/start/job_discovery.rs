@@ -3,6 +3,7 @@
 //! `run()` owns the provider discovery future and reactor scheduling. This
 //! module owns the body that turns a discovered job into a claimed spawned job.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -12,7 +13,7 @@ use sandbox::SandboxId;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
-use super::active_sessions::ActiveCliAgentSessionGuard;
+use super::active_sessions::ActiveReuseKeyGuard;
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::{
     SharedIdlePool, add_preparing_run_with_idle_status_snapshot,
@@ -39,7 +40,7 @@ use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegist
 use crate::status::StatusTracker;
 use crate::types::{
     ExecutionContext, HeldSessionState, SandboxReuseResult, SessionAffinityResource,
-    WORKSPACE_AFFINITY_VERSION,
+    WORKSPACE_AFFINITY_VERSION, reuse_key_kind,
 };
 
 pub(super) struct DiscoveredJob {
@@ -168,13 +169,9 @@ pub(super) async fn handle_discovered_job(
     // Hide the claimed session from heartbeat affinity before unpark or
     // fallback cleanup can yield. Otherwise a concurrent heartbeat could
     // briefly advertise stale workspace-cache affinity for an active session.
-    let active_cli_agent_session_guard = ActiveCliAgentSessionGuard::new(
-        ctx.spawn_ctx.active_cli_agent_sessions.clone(),
-        if resume_session_valid {
-            claimed.context().cli_agent_session_id().map(str::to_owned)
-        } else {
-            None
-        },
+    let active_reuse_key_guard = ActiveReuseKeyGuard::new(
+        ctx.spawn_ctx.active_reuse_keys.clone(),
+        claimed.context().reuse_key().map(Cow::into_owned),
     );
 
     let (reuse_entry, active_lease, reuse_result, idle_snapshot, needs_session_affinity_refresh) =
@@ -295,7 +292,7 @@ pub(super) async fn handle_discovered_job(
             reuse_result,
             pre_spawn_timing,
             session_history_restore_plan,
-            active_cli_agent_session_guard,
+            active_reuse_key_guard,
         },
         ctx.spawn_ctx,
         ctx.jobs,
@@ -430,13 +427,13 @@ async fn prepare_affinity_protected_candidate(
     ctx: &DiscoveredJobContext<'_>,
 ) -> Option<PreparedAffinityCandidate> {
     if candidate.is_history_generation_affinity_protected()
-        && let (Some(cli_agent_session_id), Some(history_generation_run_id)) = (
-            candidate.cli_agent_session_id().map(str::to_owned),
+        && let (Some(reuse_key), Some(history_generation_run_id)) = (
+            candidate.reuse_key().map(str::to_owned),
             candidate.history_generation_run_id(),
         )
     {
         if let Some(reservation) = reserve_reusable_idle(
-            &cli_agent_session_id,
+            &reuse_key,
             profile_name,
             device_rate_limits,
             Some(history_generation_run_id),
@@ -453,10 +450,11 @@ async fn prepare_affinity_protected_candidate(
         let delay = candidate
             .history_generation_affinity_protection_remaining()
             .unwrap_or_default();
-        let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
+        let reuse_key_fingerprint = diagnostic_reuse_key_fingerprint(&reuse_key);
         info!(
             run_id = %candidate.run_id(),
-            session_fingerprint = %session_fingerprint,
+            reuse_key_fingerprint = %reuse_key_fingerprint,
+            reuse_key_kind = reuse_key_kind(&reuse_key),
             delay_ms = delay.as_millis(),
             "exact session-history generation protected by another runner, deferring claim"
         );
@@ -470,12 +468,13 @@ async fn prepare_affinity_protected_candidate(
             resource: None,
         });
     }
-    let Some(cli_agent_session_id) = candidate.cli_agent_session_id().map(str::to_owned) else {
+    let Some(reuse_key) = candidate.reuse_key().map(str::to_owned) else {
         let delay = candidate
             .affinity_protection_remaining()
             .unwrap_or_default();
         info!(
             run_id = %candidate.run_id(),
+            has_cli_agent_session_id = candidate.cli_agent_session_id().is_some(),
             delay_ms = delay.as_millis(),
             "affinity-protected candidate missing session metadata, deferring claim"
         );
@@ -485,14 +484,8 @@ async fn prepare_affinity_protected_candidate(
 
     match candidate.session_affinity_resource() {
         Some(SessionAffinityResource::ReusableSandbox) => {
-            if let Some(reservation) = reserve_reusable_idle(
-                &cli_agent_session_id,
-                profile_name,
-                device_rate_limits,
-                None,
-                ctx,
-            )
-            .await
+            if let Some(reservation) =
+                reserve_reusable_idle(&reuse_key, profile_name, device_rate_limits, None, ctx).await
             {
                 return Some(PreparedAffinityCandidate {
                     candidate,
@@ -501,14 +494,8 @@ async fn prepare_affinity_protected_candidate(
             }
         }
         Some(SessionAffinityResource::WorkspaceCache) => {
-            if let Some(reservation) = reserve_reusable_idle(
-                &cli_agent_session_id,
-                profile_name,
-                device_rate_limits,
-                None,
-                ctx,
-            )
-            .await
+            if let Some(reservation) =
+                reserve_reusable_idle(&reuse_key, profile_name, device_rate_limits, None, ctx).await
             {
                 return Some(PreparedAffinityCandidate {
                     candidate,
@@ -519,7 +506,7 @@ async fn prepare_affinity_protected_candidate(
             let held_session_states = current_local_held_session_states(ctx).await;
             let has_capable_workspace = held_session_states
                 .iter()
-                .filter(|state| state.session_id == cli_agent_session_id)
+                .filter(|state| state.reuse_key == reuse_key)
                 .flat_map(|state| &state.workspace_caches)
                 .any(|workspace| {
                     workspace.profile == profile_name
@@ -541,10 +528,11 @@ async fn prepare_affinity_protected_candidate(
     let delay = candidate
         .affinity_protection_remaining()
         .unwrap_or_default();
-    let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
+    let reuse_key_fingerprint = diagnostic_reuse_key_fingerprint(&reuse_key);
     info!(
         run_id = %candidate.run_id(),
-        session_fingerprint = %session_fingerprint,
+        reuse_key_fingerprint = %reuse_key_fingerprint,
+        reuse_key_kind = reuse_key_kind(&reuse_key),
         delay_ms = delay.as_millis(),
         "same-session affinity protected by another runner, deferring claim"
     );
@@ -552,8 +540,8 @@ async fn prepare_affinity_protected_candidate(
     None
 }
 
-fn diagnostic_session_fingerprint(session_id: &str) -> String {
-    short_digest(session_id)
+fn diagnostic_reuse_key_fingerprint(reuse_key: &str) -> String {
+    short_digest(reuse_key)
 }
 
 async fn current_local_held_session_states(
@@ -565,7 +553,7 @@ async fn current_local_held_session_states(
     };
     ctx.spawn_ctx
         .held_session_snapshot
-        .current_held_session_states(idle_states, &ctx.spawn_ctx.active_cli_agent_sessions, None)
+        .current_held_session_states(idle_states, &ctx.spawn_ctx.active_reuse_keys, None)
 }
 
 async fn acquire_local_admission_resource(
@@ -577,9 +565,9 @@ async fn acquire_local_admission_resource(
     ctx: &mut DiscoveredJobContext<'_>,
 ) -> Option<LocalAdmissionResource> {
     loop {
-        if let Some(session_id) = candidate.cli_agent_session_id()
+        if let Some(reuse_key) = candidate.reuse_key()
             && let Some(reservation) =
-                reserve_reusable_idle(session_id, profile_name, device_rate_limits, None, ctx).await
+                reserve_reusable_idle(reuse_key, profile_name, device_rate_limits, None, ctx).await
         {
             return Some(LocalAdmissionResource::Reusable(Box::new(reservation)));
         }
@@ -603,7 +591,8 @@ async fn acquire_local_admission_resource(
         let evicted = evict_oldest_idle_entry(ctx.idle_pool, ctx.status).await?;
         info!(
             run_id = %candidate.run_id(),
-            session_id = %evicted.cli_agent_session_id(),
+            reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(evicted.reuse_key()),
+            reuse_key_kind = reuse_key_kind(evicted.reuse_key()),
             profile = %evicted.profile_name(),
             vcpu = evicted.budget_vcpu(),
             memory_mb = evicted.budget_memory_mb(),
@@ -615,7 +604,7 @@ async fn acquire_local_admission_resource(
 }
 
 async fn reserve_reusable_idle(
-    session_id: &str,
+    reuse_key: &str,
     profile_name: &str,
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     history_generation_run_id: Option<RunId>,
@@ -625,12 +614,12 @@ async fn reserve_reusable_idle(
         let mut pool = ctx.idle_pool.lock().await;
         let reservation = match history_generation_run_id {
             Some(history_generation_run_id) => pool.reserve_reusable_generation(
-                session_id,
+                reuse_key,
                 profile_name,
                 device_rate_limits,
                 history_generation_run_id,
             )?,
-            None => pool.reserve_reusable(session_id, profile_name, device_rate_limits)?,
+            None => pool.reserve_reusable(reuse_key, profile_name, device_rate_limits)?,
         };
         let snapshot = pool.status_snapshot();
         (reservation, snapshot)
@@ -693,21 +682,23 @@ async fn activate_reserved_idle(
         resume_session_valid,
     } = request;
     let started_at = Instant::now();
-    let requested_session_id = context.cli_agent_session_id();
-    let reserved_session_id = reservation.cli_agent_session_id().to_owned();
+    let requested_reuse_key = context.reuse_key();
+    let reserved_reuse_key = reservation.reuse_key().to_owned();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
 
-    if !resume_session_valid || requested_session_id != Some(reserved_session_id.as_str()) {
-        let reuse_result = if requested_session_id.is_none() || !resume_session_valid {
+    if !resume_session_valid || requested_reuse_key.as_deref() != Some(reserved_reuse_key.as_str())
+    {
+        let reuse_result = if requested_reuse_key.is_none() || !resume_session_valid {
             SandboxReuseResult::NoSessionId
         } else {
             SandboxReuseResult::PoolMiss
         };
+        let reuse_key_fingerprint = diagnostic_reuse_key_fingerprint(&reserved_reuse_key);
         warn!(
             run_id = %run_id,
-            reserved_session_id = %reserved_session_id,
-            claimed_session_id = ?requested_session_id,
-            "claimed session does not match reserved idle VM, destroying before fresh fallback"
+            reuse_key_fingerprint = %reuse_key_fingerprint,
+            reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+            "claimed reuse key does not match reserved idle VM, destroying before fresh fallback"
         );
         return cleanup_reserved_for_fresh_fallback(
             reservation.into_destroy_job(),
@@ -732,7 +723,8 @@ async fn activate_reserved_idle(
         if let Err(mismatch) = validation {
             warn!(
                 run_id = %run_id,
-                session_id = %reserved_session_id,
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
+                reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
                 profile = %profile_name,
                 mismatch = mismatch.as_str(),
                 "workspace promotion identity mismatch, destroying reserved idle VM before fresh fallback"
@@ -757,8 +749,9 @@ async fn activate_reserved_idle(
         } => {
             info!(
                 run_id = %run_id,
-                session_id = %reserved_session_id,
-                "reusing pre-claim reserved idle VM for session"
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
+                reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+                "reusing pre-claim reserved idle VM for reuse key"
             );
             let idle_snapshot = ctx.idle_pool.lock().await.status_snapshot();
             ReservedActivation::Ready {
@@ -771,7 +764,8 @@ async fn activate_reserved_idle(
         IdleUnparkResult::Failed { destroy_job, error } => {
             warn!(
                 run_id = %run_id,
-                session_id = %reserved_session_id,
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
+                reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
                 error = %error,
                 "reserved idle VM unpark failed, destroying before fresh fallback"
             );
@@ -868,7 +862,7 @@ async fn try_reuse_from_pool(
             false,
         );
     }
-    let Some(cli_agent_session_id) = context.cli_agent_session_id() else {
+    let Some(reuse_key) = context.reuse_key() else {
         pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
         return (
             None,
@@ -882,20 +876,20 @@ async fn try_reuse_from_pool(
     // so unpark does not block other take/park operations.
     let (taken, snapshot) = {
         let mut pool = ctx.idle_pool.lock().await;
-        let taken = pool.take(cli_agent_session_id);
+        let taken = pool.take(&reuse_key);
         let snapshot = taken.as_ref().map(|_| pool.status_snapshot());
         (taken, snapshot)
     };
     let took_idle_session = taken.is_some();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
     let started_at = Instant::now();
-    let claimed_workspace_cache_session = ctx.spawn_ctx.exec_config.workspace_cache.is_some()
+    let claimed_workspace_cache_reuse_key = ctx.spawn_ctx.exec_config.workspace_cache.is_some()
         && ctx
             .spawn_ctx
             .held_session_snapshot
-            .might_contain_workspace_cache_session(cli_agent_session_id);
+            .might_contain_workspace_cache_reuse_key(&reuse_key);
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::HeldSessionStateRefresh, started_at);
-    let needs_session_affinity_refresh = took_idle_session || claimed_workspace_cache_session;
+    let needs_session_affinity_refresh = took_idle_session || claimed_workspace_cache_reuse_key;
     match taken {
         Some(entry)
             if entry.profile_name() == profile_name
@@ -915,7 +909,8 @@ async fn try_reuse_from_pool(
                 if let Err(mismatch) = validation {
                     warn!(
                         run_id = %run_id,
-                        session_id = %cli_agent_session_id,
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
+                        reuse_key_kind = reuse_key_kind(&reuse_key),
                         profile = %profile_name,
                         mismatch = mismatch.as_str(),
                         "workspace promotion identity mismatch, destroying idle VM and falling through to fresh create"
@@ -944,8 +939,9 @@ async fn try_reuse_from_pool(
                 } => {
                     info!(
                         run_id = %run_id,
-                        session_id = %cli_agent_session_id,
-                        "reusing idle VM for session"
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
+                        reuse_key_kind = reuse_key_kind(&reuse_key),
+                        "reusing idle VM for reuse key"
                     );
                     // Idle entry already holds budget. Drop the speculative
                     // fresh-job lease and move the idle lease to the outer job
@@ -962,7 +958,8 @@ async fn try_reuse_from_pool(
                 IdleUnparkResult::Failed { destroy_job, error } => {
                     warn!(
                         run_id = %run_id,
-                        session_id = %cli_agent_session_id,
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
+                        reuse_key_kind = reuse_key_kind(&reuse_key),
                         error = %error,
                         "unpark failed, destroying idle VM and falling through to fresh create"
                     );
@@ -980,7 +977,8 @@ async fn try_reuse_from_pool(
         Some(stale) if stale.profile_name() == profile_name => {
             info!(
                 run_id = %run_id,
-                session_id = %cli_agent_session_id,
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
+                reuse_key_kind = reuse_key_kind(&reuse_key),
                 profile = %profile_name,
                 "idle VM device rate limiter mismatch, destroying"
             );
@@ -1000,7 +998,8 @@ async fn try_reuse_from_pool(
         Some(stale) => {
             info!(
                 run_id = %run_id,
-                session_id = %cli_agent_session_id,
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
+                reuse_key_kind = reuse_key_kind(&reuse_key),
                 old_profile = %stale.profile_name(),
                 new_profile = %profile_name,
                 "idle VM profile mismatch, destroying"
@@ -1021,8 +1020,9 @@ async fn try_reuse_from_pool(
         None => {
             info!(
                 run_id = %run_id,
-                session_id = %cli_agent_session_id,
-                "no idle VM found for session"
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
+                reuse_key_kind = reuse_key_kind(&reuse_key),
+                "no idle VM found for reuse key"
             );
             (
                 None,

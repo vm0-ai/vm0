@@ -692,6 +692,12 @@ async fn handle_ably_message_with_network_policy_refresh(
                         notif.run_id,
                         profile.to_owned(),
                         notification_received_at,
+                        notif.reuse_key.map(str::to_owned).or_else(|| {
+                            // TODO(deployment-compatibility): Remove this fallback after the next release.
+                            notif
+                                .cli_agent_session_id
+                                .map(|session_id| format!("session:{session_id}"))
+                        }),
                         notif.cli_agent_session_id.map(str::to_owned),
                         notif.affinity_protected_until.map(str::to_owned),
                     )
@@ -740,6 +746,7 @@ enum JobNotificationAction {
 struct JobNotification<'a> {
     run_id: RunId,
     profile: Option<&'a str>,
+    reuse_key: Option<&'a str>,
     cli_agent_session_id: Option<&'a str>,
     session_affinity_resource: Option<SessionAffinityResource>,
     history_generation_run_id: Option<RunId>,
@@ -920,6 +927,11 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("cliAgentSessionId")
         .and_then(|v| v.as_str())
         .filter(|value| !value.is_empty());
+    let reuse_key = msg
+        .data
+        .get("reuseKey")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.is_empty());
     let affinity_protected_until = msg
         .data
         .get("affinityProtectedUntil")
@@ -954,6 +966,7 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
     Some(JobNotification {
         run_id,
         profile,
+        reuse_key,
         cli_agent_session_id,
         session_affinity_resource,
         history_generation_run_id,
@@ -1900,6 +1913,7 @@ mod tests {
         );
         assert_eq!(candidate.profile_name(), "vm0/default");
         let candidate = candidate.into_job_candidate();
+        assert_eq!(candidate.reuse_key(), Some("session:sess-ably"));
         assert_eq!(candidate.cli_agent_session_id(), Some("sess-ably"));
         assert_eq!(
             candidate.history_generation_run_id(),

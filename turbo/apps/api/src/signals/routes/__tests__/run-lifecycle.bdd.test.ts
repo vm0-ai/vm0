@@ -3308,6 +3308,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(first).toMatchObject({ status: "pending" });
     const firstClaim = await api.claimRunnerJob(first.runId);
     const cliAgentSessionId = `bdd-affinity-cli-${first.runId}`;
+    const reuseKey = `session:${cliAgentSessionId}`;
     const affinityRunnerId = randomUUID();
     const history = `bdd affinity history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
@@ -3355,6 +3356,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         heldSessionStates: [
           {
             sessionId: cliAgentSessionId,
+            reuseKey,
             lastCompletedAt: nowDate().toISOString(),
             ...(args.reusableSandbox
               ? { reusableSandbox: args.reusableSandbox }
@@ -3444,6 +3446,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(canonicalHeartbeatHolder.job?.cliAgentSessionId).toBe(
       cliAgentSessionId,
     );
+    expect(canonicalHeartbeatHolder.job?.reuseKey).toBe(reuseKey);
     expect(
       sessionAffinityProtectedUntil(canonicalHeartbeatHolder.job),
     ).toBeNull();
@@ -3480,6 +3483,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       heldSessionStates: [
         {
           sessionId: cliAgentSessionId,
+          reuseKey,
           lastCompletedAt: nowDate().toISOString(),
           reusableSandbox: { profile: "vm0/default" },
         },
@@ -3531,6 +3535,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       heldSessionStates: [
         {
           sessionId: cliAgentSessionId,
+          reuseKey,
           lastCompletedAt: nowDate().toISOString(),
           workspaceCaches: [
             { profile: "vm0/large", workspaceAffinityVersion: 1 },
@@ -3538,6 +3543,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         },
         {
           sessionId: cliAgentSessionId,
+          reuseKey,
           lastCompletedAt: nowDate().toISOString(),
         },
       ],
@@ -3748,6 +3754,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "job",
       expect.objectContaining({
         runId: protectedFollowUp.runId,
+        reuseKey,
         historyGenerationRunId: first.runId,
         affinityProtectedUntil: new Date(queueInsertedAt + 2000).toISOString(),
         sessionAffinityResource: "reusableSandbox",
@@ -3767,6 +3774,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     }
     expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
     expect(protectedPoll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(protectedPoll.body.job?.reuseKey).toBe(reuseKey);
     expect(sessionAffinityProtectedUntil(protectedPoll.body.job)).toBe(
       new Date(queueInsertedAt + 2000).toISOString(),
     );
@@ -3779,6 +3787,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     const protectedClaim = await api.claimRunnerJob(protectedFollowUp.runId);
     expect(protectedClaim.prompt).toBe("continue affinity-protected session");
+    expect(protectedClaim.reuseKey).toBe(reuseKey);
     const apiToRunnerQueueMs = sandboxOperationDurationForRun(
       protectedFollowUp.runId,
       "api_to_runner_queue",
@@ -3875,6 +3884,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     const firstClaim = await api.claimRunnerJob(first.runId);
     const cliAgentSessionId = `bdd-heartbeat-order-${first.runId}`;
+    const reuseKey = `session:${cliAgentSessionId}`;
     const history = `bdd heartbeat order history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
@@ -3916,6 +3926,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           ? [
               {
                 sessionId: cliAgentSessionId,
+                reuseKey,
                 lastCompletedAt: nowDate().toISOString(),
                 reusableSandbox: { profile: "vm0/default" },
               },
@@ -4007,6 +4018,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     const firstClaim = await api.claimRunnerJob(first.runId);
     const cliAgentSessionId = `bdd-reusable-priority-${first.runId}`;
+    const reuseKey = `session:${cliAgentSessionId}`;
     const history = `bdd reusable priority history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
@@ -4039,6 +4051,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       heldSessionStates: [
         {
           sessionId: cliAgentSessionId,
+          reuseKey,
           lastCompletedAt: nowDate().toISOString(),
           reusableSandbox: {
             profile: "vm0/default",
@@ -4115,6 +4128,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       heldSessionStates: [
         {
           sessionId: cliAgentSessionId,
+          reuseKey,
           lastCompletedAt: nowDate().toISOString(),
           reusableSandbox: { profile: "vm0/default" },
         },
@@ -4167,6 +4181,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     const firstClaim = await api.claimRunnerJob(first.runId);
     const cliAgentSessionId = `bdd-workspace-priority-${first.runId}`;
+    const reuseKey = `session:${cliAgentSessionId}`;
     const history = `bdd workspace priority history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
@@ -4199,6 +4214,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       heldSessionStates: [
         {
           sessionId: cliAgentSessionId,
+          reuseKey,
           lastCompletedAt: nowDate().toISOString(),
           workspaceCaches: [
             { profile: "vm0/default", workspaceAffinityVersion: 1 },

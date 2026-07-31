@@ -25,7 +25,7 @@ use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key, session_work
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{
     HeldSessionState, MAX_HELD_SESSION_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
-    MAX_WORKSPACE_CACHES_PER_SESSION, WORKSPACE_AFFINITY_VERSION,
+    MAX_WORKSPACE_CACHES_PER_REUSE_KEY, WORKSPACE_AFFINITY_VERSION,
     WorkspaceCacheState as HeldWorkspaceCacheState,
 };
 
@@ -103,6 +103,7 @@ fn cap_workspace_held_session_states_dedupes_and_keeps_newest() {
     let mut states: Vec<HeldSessionState> = (0..=MAX_HELD_SESSION_STATES)
         .map(|index| HeldSessionState {
             session_id: format!("sess-{index:04}"),
+            reuse_key: format!("sess-{index:04}"),
             last_completed_at: timestamp_for_index(index),
             reusable_sandbox: None,
             workspace_caches: vec![HeldWorkspaceCacheState {
@@ -113,6 +114,7 @@ fn cap_workspace_held_session_states_dedupes_and_keeps_newest() {
         .collect();
     states.push(HeldSessionState {
         session_id: "sess-0001".into(),
+        reuse_key: "sess-0001".into(),
         last_completed_at: timestamp_for_index(MAX_HELD_SESSION_STATES + 1),
         reusable_sandbox: None,
         workspace_caches: vec![HeldWorkspaceCacheState {
@@ -141,9 +143,10 @@ fn cap_workspace_held_session_states_dedupes_and_keeps_newest() {
 
 #[test]
 fn cap_workspace_held_session_states_bounds_nested_resources() {
-    let per_session = (0..=MAX_WORKSPACE_CACHES_PER_SESSION)
+    let per_session = (0..=MAX_WORKSPACE_CACHES_PER_REUSE_KEY)
         .map(|index| HeldSessionState {
             session_id: "sess-multi".into(),
+            reuse_key: "sess-multi".into(),
             last_completed_at: timestamp_for_index(index),
             reusable_sandbox: None,
             workspace_caches: vec![HeldWorkspaceCacheState {
@@ -158,7 +161,7 @@ fn cap_workspace_held_session_states_bounds_nested_resources() {
     assert_eq!(capped.len(), 1);
     assert_eq!(
         capped[0].workspace_caches.len(),
-        MAX_WORKSPACE_CACHES_PER_SESSION
+        MAX_WORKSPACE_CACHES_PER_REUSE_KEY
     );
     assert_eq!(capped[0].workspace_caches[0].profile, "vm0/profile-00");
     assert_eq!(capped[0].last_completed_at, timestamp_for_index(8));
@@ -166,6 +169,7 @@ fn cap_workspace_held_session_states_bounds_nested_resources() {
     let global = (0..=MAX_WORKSPACE_CACHES_PER_HEARTBEAT / 8)
         .map(|index| HeldSessionState {
             session_id: format!("sess-{index:04}"),
+            reuse_key: format!("sess-{index:04}"),
             last_completed_at: timestamp_for_index(index),
             reusable_sandbox: None,
             workspace_caches: (0..8)
@@ -243,6 +247,7 @@ async fn held_session_states_for_profiles_filters_and_aggregates_current_identit
         states,
         vec![HeldSessionState {
             session_id: session_id.into(),
+            reuse_key: session_id.into(),
             last_completed_at: "2026-05-01T00:00:02.000Z".into(),
             reusable_sandbox: None,
             workspace_caches: vec![
@@ -303,6 +308,7 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: Some("sess-1"),
                 working_dir: "/",
                 image_size_bytes: 1024,
@@ -323,6 +329,7 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: None,
                 cli_agent_session_id: None,
                 working_dir: "/",
                 image_size_bytes: 1024,
@@ -343,6 +350,7 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: Some("sess-1"),
                 working_dir: "/",
                 image_size_bytes: 1024,
@@ -383,6 +391,7 @@ async fn prepare_normalizes_working_dir_for_cache_identity() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace//repo/",
                 image_size_bytes: 1024,
@@ -423,7 +432,8 @@ async fn held_session_states_rejects_metadata_under_wrong_cache_key() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
-                session_id: "sess-other".into(),
+                reuse_key: "sess-other".into(),
+                cli_agent_session_id: "sess-other".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),
@@ -468,7 +478,8 @@ async fn held_session_states_rejects_unsafe_working_dir_metadata() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
-                session_id: "sess-1".into(),
+                reuse_key: "sess-1".into(),
+                cli_agent_session_id: "sess-1".into(),
                 working_dir: "/".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),

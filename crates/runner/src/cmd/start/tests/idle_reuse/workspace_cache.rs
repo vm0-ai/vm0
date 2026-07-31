@@ -20,6 +20,7 @@ fn reusable_candidate(
     crate::provider::JobCandidate::new(run_id, profile_name.to_string())
         .with_affinity_metadata(
             Some(session_id.to_string()),
+            Some(session_id.to_string()),
             Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
         )
         .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox))

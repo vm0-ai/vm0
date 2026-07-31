@@ -1,5 +1,6 @@
 {
   "runId": "00000000-0000-4000-8000-000000020985",
+  "reuseKey": "thread:00000000-0000-4000-8000-000000020986",
   "prompt": "Inspect the fixture repository",
   "appendSystemPrompt": "Use the shared contract fixture",
   "agentComposeVersionId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

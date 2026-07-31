@@ -31,6 +31,7 @@ pub(crate) struct WorkspaceImageLeaseIdentity<'a> {
     pub(crate) run_id: RunId,
     pub(crate) sandbox_id: sandbox::SandboxId,
     pub(crate) profile_name: &'a str,
+    pub(crate) reuse_key: Option<&'a str>,
     pub(crate) cli_agent_session_id: Option<&'a str>,
     pub(crate) working_dir: &'a str,
     pub(crate) image_size_bytes: u64,
@@ -52,7 +53,7 @@ pub(crate) struct WorkspaceImageActiveLeaseRequest<'a> {
 pub(crate) struct WorkspaceImagePromotionIdentityRequest<'a> {
     pub(crate) sandbox_id: sandbox::SandboxId,
     pub(crate) profile_name: &'a str,
-    pub(crate) cli_agent_session_id: &'a str,
+    pub(crate) reuse_key: &'a str,
     pub(crate) working_dir: &'a str,
     pub(crate) image_size_bytes: u64,
 }
@@ -61,7 +62,7 @@ pub(crate) struct WorkspaceImagePromotionIdentityRequest<'a> {
 pub(crate) struct WorkspaceImagePromotionIdentity {
     pub(crate) sandbox_id: sandbox::SandboxId,
     pub(crate) profile_name: String,
-    pub(crate) cli_agent_session_id: String,
+    pub(crate) reuse_key: String,
     pub(crate) working_dir: String,
     pub(crate) image_size_bytes: u64,
     pub(crate) active_image: PathBuf,
@@ -73,7 +74,7 @@ pub(crate) enum WorkspaceImagePromotionIdentityMismatch {
     UnsafeWorkingDir,
     SandboxId,
     ProfileName,
-    CliAgentSessionId,
+    ReuseKey,
     WorkingDir,
     ImageSizeBytes,
     ActiveImage,
@@ -86,7 +87,7 @@ impl WorkspaceImagePromotionIdentityMismatch {
             Self::UnsafeWorkingDir => "unsafe working directory",
             Self::SandboxId => "sandbox id mismatch",
             Self::ProfileName => "profile mismatch",
-            Self::CliAgentSessionId => "cli agent session id mismatch",
+            Self::ReuseKey => "reuse key mismatch",
             Self::WorkingDir => "working directory mismatch",
             Self::ImageSizeBytes => "image size mismatch",
             Self::ActiveImage => "active image path mismatch",

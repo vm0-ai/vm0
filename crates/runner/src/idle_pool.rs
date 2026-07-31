@@ -143,6 +143,7 @@ pub(crate) struct IdleParkRequestParts {
     pub(crate) run_id: RunId,
     pub(crate) sandbox: Box<dyn Sandbox>,
     pub(crate) factory: Arc<Box<dyn SandboxFactory>>,
+    pub(crate) reuse_key: String,
     pub(crate) cli_agent_session_id: String,
     pub(crate) sandbox_id: SandboxId,
     pub(crate) profile_name: String,
@@ -157,6 +158,7 @@ pub(crate) struct IdleParkRequestParts {
 }
 
 struct IdleSandboxMetadata {
+    reuse_key: String,
     cli_agent_session_id: String,
     /// Identity of the parked sandbox. Survives reuse (next job's `run_id`
     /// differs, but `sandbox_id` stays the same) and is the join key for
@@ -180,6 +182,10 @@ struct IdleSandboxMetadata {
 }
 
 impl IdleSandboxMetadata {
+    fn reuse_key(&self) -> &str {
+        &self.reuse_key
+    }
+
     fn cli_agent_session_id(&self) -> &str {
         &self.cli_agent_session_id
     }
@@ -292,6 +298,7 @@ impl IdleParkRequest {
             run_id,
             mut sandbox,
             factory,
+            reuse_key,
             cli_agent_session_id,
             sandbox_id,
             profile_name,
@@ -311,6 +318,7 @@ impl IdleParkRequest {
             .map(|verification| verification.runtime_dir.to_owned());
 
         let metadata = IdleSandboxMetadata {
+            reuse_key,
             cli_agent_session_id,
             sandbox_id,
             profile_name,
@@ -327,7 +335,7 @@ impl IdleParkRequest {
                 promotion.validate_stored_cache_identity(WorkspaceImagePromotionIdentityRequest {
                     sandbox_id: metadata.sandbox_id,
                     profile_name: &metadata.profile_name,
-                    cli_agent_session_id: metadata.cli_agent_session_id(),
+                    reuse_key: metadata.reuse_key(),
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: workspace_image_size_bytes,
                 })
@@ -515,6 +523,11 @@ impl IdleParkFailure {
 }
 
 impl ParkedIdleCandidate {
+    pub(crate) fn reuse_key(&self) -> &str {
+        self.metadata.reuse_key()
+    }
+
+    #[cfg(test)]
     fn cli_agent_session_id(&self) -> &str {
         self.metadata.cli_agent_session_id()
     }
@@ -627,6 +640,7 @@ pub struct ReusableIdleSandbox {
 
 pub struct ReusableIdleSandboxParts {
     pub sandbox: Box<dyn Sandbox>,
+    pub reuse_key: String,
     pub cli_agent_session_id: String,
     pub source_ip: String,
     pub storage_fingerprints: StorageFingerprints,
@@ -650,6 +664,7 @@ impl ReusableIdleSandbox {
             workspace_promotion,
         } = self;
         let IdleSandboxMetadata {
+            reuse_key,
             cli_agent_session_id,
             sandbox_id: _,
             profile_name: _,
@@ -663,6 +678,7 @@ impl ReusableIdleSandbox {
 
         ReusableIdleSandboxParts {
             sandbox,
+            reuse_key,
             cli_agent_session_id,
             source_ip,
             storage_fingerprints,
@@ -770,7 +786,7 @@ impl IdleDestroyPayload {
 pub struct IdleDestroyJob {
     payload: IdleDestroyPayload,
     budget_lease: BudgetLease,
-    cli_agent_session_id: String,
+    reuse_key: String,
     profile_name: String,
 }
 
@@ -793,7 +809,7 @@ impl IdleDestroyJob {
         let Self {
             payload,
             budget_lease,
-            cli_agent_session_id: _,
+            reuse_key: _,
             profile_name: _,
         } = self;
         let result = payload.finalize_workspace_and_destroy(context).await;
@@ -804,8 +820,8 @@ impl IdleDestroyJob {
         }
     }
 
-    pub fn cli_agent_session_id(&self) -> &str {
-        &self.cli_agent_session_id
+    pub fn reuse_key(&self) -> &str {
+        &self.reuse_key
     }
 
     pub fn profile_name(&self) -> &str {
@@ -853,6 +869,10 @@ pub enum IdleUnparkResult {
 }
 
 impl IdleEntry {
+    fn reuse_key(&self) -> &str {
+        self.metadata.reuse_key()
+    }
+
     fn cli_agent_session_id(&self) -> &str {
         self.metadata.cli_agent_session_id()
     }
@@ -950,7 +970,7 @@ impl IdleEntry {
             WorkspaceImagePromotionIdentityRequest {
                 sandbox_id: self.metadata.sandbox_id,
                 profile_name: &self.metadata.profile_name,
-                cli_agent_session_id: self.metadata.cli_agent_session_id(),
+                reuse_key: self.metadata.reuse_key(),
                 working_dir,
                 image_size_bytes,
             },
@@ -977,7 +997,7 @@ impl IdleEntry {
             ..
         } = self;
         let IdleSandboxMetadata {
-            cli_agent_session_id,
+            reuse_key,
             profile_name,
             ..
         } = metadata;
@@ -985,15 +1005,15 @@ impl IdleEntry {
         IdleDestroyJob {
             payload: resources.into_destroy_payload(workspace_promotion_policy),
             budget_lease,
-            cli_agent_session_id,
+            reuse_key,
             profile_name,
         }
     }
 }
 
 impl ReservedIdleSandbox {
-    pub fn cli_agent_session_id(&self) -> &str {
-        self.entry.cli_agent_session_id()
+    pub fn reuse_key(&self) -> &str {
+        self.entry.reuse_key()
     }
 
     pub fn validate_workspace_promotion_identity(
@@ -1020,7 +1040,7 @@ impl ReservedIdleSandbox {
     }
 }
 
-/// Pool of idle sandboxes keyed by session ID.
+/// Pool of idle sandboxes keyed by reuse key.
 ///
 /// After a job completes successfully, its sandbox can be parked here
 /// instead of being destroyed. A subsequent job for the same session
@@ -1050,7 +1070,7 @@ impl IdlePool {
     }
 
     /// Park a sandbox in the pool. Returns the previously parked destroy job
-    /// for this session if one existed (caller must destroy it).
+    /// for this reuse key if one existed (caller must destroy it).
     ///
     /// Returns `Rejected(candidate)` if parking is closed/soft-draining or at capacity.
     pub fn park(&mut self, candidate: ParkedIdleCandidate) -> ParkResult {
@@ -1073,18 +1093,18 @@ impl IdlePool {
         parked_at: Instant,
         idle_timeout: Duration,
     ) -> ParkResult {
-        let cli_agent_session_id = candidate.cli_agent_session_id().to_string();
+        let reuse_key = candidate.reuse_key().to_string();
         if !self.parking_gate.is_open() {
             return ParkResult::Rejected(candidate.into_rejected());
         }
         if self.config.max_idle > 0 && self.entries.len() >= self.config.max_idle {
-            // At capacity and this session has no existing entry to replace.
-            if !self.entries.contains_key(&cli_agent_session_id) {
+            // At capacity and this reuse key has no existing entry to replace.
+            if !self.entries.contains_key(&reuse_key) {
                 return ParkResult::Rejected(candidate.into_rejected());
             }
         }
         let entry = candidate.into_idle_entry(parked_at, idle_timeout);
-        let result = match self.entries.insert(cli_agent_session_id, entry) {
+        let result = match self.entries.insert(reuse_key, entry) {
             Some(evicted) => ParkResult::Replaced(evicted.into_destroy_job()),
             None => ParkResult::Parked,
         };
@@ -1092,8 +1112,8 @@ impl IdlePool {
         result
     }
 
-    pub fn take(&mut self, session_id: &str) -> Option<IdleEntry> {
-        let entry = self.entries.remove(session_id);
+    pub fn take(&mut self, reuse_key: &str) -> Option<IdleEntry> {
+        let entry = self.entries.remove(reuse_key);
         if entry.is_some() {
             self.bump_revision();
         }
@@ -1102,11 +1122,11 @@ impl IdlePool {
 
     pub fn has_reusable(
         &self,
-        session_id: &str,
+        reuse_key: &str,
         profile_name: &str,
         device_rate_limits: &Option<DeviceRateLimits>,
     ) -> bool {
-        self.entries.get(session_id).is_some_and(|entry| {
+        self.entries.get(reuse_key).is_some_and(|entry| {
             !entry.is_expired_at(Instant::now())
                 && entry.profile_name() == profile_name
                 && entry.device_rate_limits() == device_rate_limits
@@ -1115,35 +1135,35 @@ impl IdlePool {
 
     pub fn reserve_reusable(
         &mut self,
-        session_id: &str,
+        reuse_key: &str,
         profile_name: &str,
         device_rate_limits: &Option<DeviceRateLimits>,
     ) -> Option<ReservedIdleSandbox> {
-        if !self.has_reusable(session_id, profile_name, device_rate_limits) {
+        if !self.has_reusable(reuse_key, profile_name, device_rate_limits) {
             return None;
         }
-        let entry = self.entries.remove(session_id)?;
+        let entry = self.entries.remove(reuse_key)?;
         self.bump_revision();
         Some(ReservedIdleSandbox { entry })
     }
 
     pub fn reserve_reusable_generation(
         &mut self,
-        session_id: &str,
+        reuse_key: &str,
         profile_name: &str,
         device_rate_limits: &Option<DeviceRateLimits>,
         history_generation_run_id: RunId,
     ) -> Option<ReservedIdleSandbox> {
-        if !self.has_reusable(session_id, profile_name, device_rate_limits)
+        if !self.has_reusable(reuse_key, profile_name, device_rate_limits)
             || self
                 .entries
-                .get(session_id)
+                .get(reuse_key)
                 .and_then(|entry| entry.metadata.history_generation_run_id)
                 != Some(history_generation_run_id)
         {
             return None;
         }
-        let entry = self.entries.remove(session_id)?;
+        let entry = self.entries.remove(reuse_key)?;
         self.bump_revision();
         Some(ReservedIdleSandbox { entry })
     }
@@ -1153,17 +1173,17 @@ impl IdlePool {
         reservation: ReservedIdleSandbox,
     ) -> RestoreReservedIdleResult {
         let entry = reservation.entry;
-        let session_id = entry.cli_agent_session_id().to_owned();
+        let reuse_key = entry.reuse_key().to_owned();
         let has_capacity = self.config.max_idle == 0 || self.entries.len() < self.config.max_idle;
         if !self.parking_gate.is_open()
             || entry.is_expired_at(Instant::now())
             || !has_capacity
-            || self.entries.contains_key(&session_id)
+            || self.entries.contains_key(&reuse_key)
         {
             return RestoreReservedIdleResult::Rejected(Box::new(entry.into_destroy_job()));
         }
 
-        self.entries.insert(session_id, entry);
+        self.entries.insert(reuse_key, entry);
         self.bump_revision();
         RestoreReservedIdleResult::Restored
     }
@@ -1212,11 +1232,7 @@ impl IdlePool {
     /// Produced in a single iteration so `session_id` and `sandbox_id` can never
     /// drift out of pairing.
     pub fn status_snapshot(&self) -> IdlePoolSnapshot {
-        let mut vms: Vec<IdleVm> = self
-            .entries
-            .iter()
-            .map(|(session_id, entry)| idle_vm_for_entry(session_id, entry))
-            .collect();
+        let mut vms: Vec<IdleVm> = self.entries.values().map(idle_vm_for_entry).collect();
         vms.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
         IdlePoolSnapshot {
             revision: self.revision,
@@ -1231,7 +1247,7 @@ impl IdlePool {
             .any(|entry| entry.metadata.sandbox_id == sandbox_id)
     }
 
-    /// Return a sorted-by-session_id snapshot of the idle pool suitable
+    /// Return a reuse-key-sorted snapshot of the idle pool suitable
     /// for status.json. Produced in a single iteration so `session_id` and
     /// `sandbox_id` can never drift out of pairing.
     #[cfg(test)]
@@ -1239,7 +1255,7 @@ impl IdlePool {
         self.status_snapshot().idle_vms
     }
 
-    /// Return the list of session generations currently held in the pool,
+    /// Return the list of reuse identities currently held in the pool,
     /// sorted lexicographically for deterministic heartbeat output.
     ///
     /// Prefer [`status_snapshot`](Self::status_snapshot) when pairing with
@@ -1248,13 +1264,14 @@ impl IdlePool {
         let mut states: Vec<HeldSessionState> = self
             .entries
             .iter()
-            .filter_map(|(session_id, entry)| {
+            .filter_map(|(reuse_key, entry)| {
                 entry
                     .metadata
                     .last_completed_at
                     .as_ref()
                     .map(|last_completed_at| HeldSessionState {
-                        session_id: session_id.clone(),
+                        session_id: entry.cli_agent_session_id().to_owned(),
+                        reuse_key: reuse_key.clone(),
                         last_completed_at: last_completed_at.clone(),
                         reusable_sandbox: Some(ReusableSandboxState {
                             profile: entry.metadata.profile_name.clone(),
@@ -1264,7 +1281,7 @@ impl IdlePool {
                     })
             })
             .collect();
-        states.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
+        states.sort_unstable_by(|a, b| a.reuse_key.cmp(&b.reuse_key));
         states
     }
 
@@ -1312,9 +1329,9 @@ impl IdlePool {
     }
 }
 
-fn idle_vm_for_entry(session_id: &str, entry: &IdleEntry) -> IdleVm {
+fn idle_vm_for_entry(entry: &IdleEntry) -> IdleVm {
     IdleVm {
-        session_id: session_id.to_owned(),
+        session_id: entry.cli_agent_session_id().to_owned(),
         sandbox_id: entry.metadata.sandbox_id,
     }
 }
@@ -1389,6 +1406,17 @@ mod tests {
         }
     }
 
+    #[test]
+    fn parked_candidate_exposes_thread_reuse_key_separately_from_session_id() {
+        let candidate =
+            ParkedIdleCandidateBuilder::new("provider-session", make_budget_lease(1, 1024))
+                .with_reuse_key("thread:chat-thread")
+                .build();
+
+        assert_eq!(candidate.reuse_key(), "thread:chat-thread");
+        assert_eq!(candidate.cli_agent_session_id(), "provider-session");
+    }
+
     async fn make_idle_park_request(
         overrides: Arc<MockSandboxOverrides>,
         session_id: &str,
@@ -1414,6 +1442,7 @@ mod tests {
             run_id: RunId::new_v4(),
             sandbox,
             factory,
+            reuse_key: session_id.into(),
             cli_agent_session_id: session_id.into(),
             sandbox_id,
             profile_name: "vm0/default".into(),
@@ -1584,6 +1613,7 @@ mod tests {
             run_id: RunId::new_v4(),
             sandbox,
             factory,
+            reuse_key: session_id.into(),
             cli_agent_session_id: session_id.into(),
             sandbox_id,
             profile_name: profile_name.into(),
@@ -2100,6 +2130,7 @@ mod tests {
             vec![
                 HeldSessionState {
                     session_id: "sess-a".to_string(),
+                    reuse_key: "sess-a".to_string(),
                     last_completed_at: "2026-05-28T00:00:00.000Z".to_string(),
                     reusable_sandbox: Some(ReusableSandboxState {
                         profile: "vm0/default".to_string(),
@@ -2109,6 +2140,7 @@ mod tests {
                 },
                 HeldSessionState {
                     session_id: "sess-b".to_string(),
+                    reuse_key: "sess-b".to_string(),
                     last_completed_at: "2026-05-28T00:00:01.000Z".to_string(),
                     reusable_sandbox: Some(ReusableSandboxState {
                         profile: "vm0/default".to_string(),

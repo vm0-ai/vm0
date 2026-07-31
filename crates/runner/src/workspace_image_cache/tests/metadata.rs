@@ -31,7 +31,8 @@ async fn prepare_removes_symlink_cache_entry_without_following_it() {
         key_version: CACHE_KEY_VERSION,
         cache_scope: cache.inner.cache_scope.clone(),
         profile_name: TEST_PROFILE_NAME.into(),
-        session_id: session_id.into(),
+        reuse_key: session_id.into(),
+        cli_agent_session_id: session_id.into(),
         working_dir: "/workspace".into(),
         last_completed_at: "2026-05-01T00:00:00.000Z".into(),
         last_used_at: "2026-05-01T00:00:00.000Z".into(),
@@ -62,6 +63,7 @@ async fn prepare_removes_symlink_cache_entry_without_following_it() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(session_id),
                 cli_agent_session_id: Some(session_id),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -102,6 +104,7 @@ async fn metadata_missing_current_present_is_not_a_cache_hit() {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-no-metadata"),
                 cli_agent_session_id: Some("sess-no-metadata"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -141,7 +144,8 @@ async fn metadata_validation_rejects_metadata_mismatch() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
-                session_id: "other".into(),
+                reuse_key: "other".into(),
+                cli_agent_session_id: "other".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),
@@ -168,7 +172,7 @@ async fn metadata_validation_rejects_metadata_mismatch() {
         )
         .await;
 
-    assert!(err.unwrap_err().to_string().contains("session id mismatch"));
+    assert!(err.unwrap_err().to_string().contains("reuse key mismatch"));
 }
 
 #[tokio::test]
@@ -198,7 +202,8 @@ async fn write_metadata_replaces_stale_tmp_symlink_without_following_it() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
-                session_id: "sess-1".into(),
+                reuse_key: "sess-1".into(),
+                cli_agent_session_id: "sess-1".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
                 last_used_at: "2026-05-01T00:01:00.000Z".into(),
@@ -249,7 +254,8 @@ async fn prepare_removes_invalid_metadata_entry_and_allows_repromotion() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
-                session_id: "other".into(),
+                reuse_key: "other".into(),
+                cli_agent_session_id: "other".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),
@@ -272,6 +278,7 @@ async fn prepare_removes_invalid_metadata_entry_and_allows_repromotion() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: image_size,
@@ -308,7 +315,7 @@ async fn prepare_removes_invalid_metadata_entry_and_allows_repromotion() {
         .read_metadata_file(&paths.session_workspace_cache_metadata(&key))
         .await
         .unwrap();
-    assert_eq!(metadata.session_id, "sess-1");
+    assert_eq!(metadata.cli_agent_session_id, "sess-1");
     assert_eq!(cache.held_session_states().await.len(), 1);
 }
 
@@ -339,7 +346,8 @@ async fn metadata_validation_rejects_replaced_current_image() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
-                session_id: "sess-1".into(),
+                reuse_key: "sess-1".into(),
+                cli_agent_session_id: "sess-1".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),
@@ -408,7 +416,8 @@ async fn metadata_validation_rejects_symlink_current_image() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
-                session_id: "sess-1".into(),
+                reuse_key: "sess-1".into(),
+                cli_agent_session_id: "sess-1".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),

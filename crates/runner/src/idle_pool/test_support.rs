@@ -18,6 +18,7 @@ const DEFAULT_SANDBOX_NAME: &str = "idle-test";
 pub(crate) struct ParkedIdleCandidateBuilder {
     sandbox: Box<dyn Sandbox>,
     factory: Arc<Box<dyn SandboxFactory>>,
+    reuse_key: String,
     cli_agent_session_id: String,
     sandbox_id: SandboxId,
     profile_name: String,
@@ -36,10 +37,12 @@ impl ParkedIdleCandidateBuilder {
         session_id: impl Into<String>,
         budget_lease: BudgetLease,
     ) -> ParkedIdleCandidateBuilder {
+        let cli_agent_session_id = session_id.into();
         Self {
             sandbox: Box::new(MockSandbox::new(DEFAULT_SANDBOX_NAME)),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            cli_agent_session_id: session_id.into(),
+            reuse_key: cli_agent_session_id.clone(),
+            cli_agent_session_id,
             sandbox_id: SandboxId::new_v4(),
             profile_name: DEFAULT_PROFILE_NAME.into(),
             device_rate_limits: None,
@@ -55,6 +58,11 @@ impl ParkedIdleCandidateBuilder {
 
     pub(crate) fn with_sandbox(mut self, sandbox: Box<dyn Sandbox>) -> Self {
         self.sandbox = sandbox;
+        self
+    }
+
+    pub(crate) fn with_reuse_key(mut self, reuse_key: impl Into<String>) -> Self {
+        self.reuse_key = reuse_key.into();
         self
     }
 
@@ -108,6 +116,7 @@ impl ParkedIdleCandidateBuilder {
         let Self {
             sandbox,
             factory,
+            reuse_key,
             cli_agent_session_id,
             sandbox_id,
             profile_name,
@@ -121,6 +130,7 @@ impl ParkedIdleCandidateBuilder {
             workspace_promotion,
         } = self;
         let metadata = IdleSandboxMetadata {
+            reuse_key,
             cli_agent_session_id,
             sandbox_id,
             profile_name,

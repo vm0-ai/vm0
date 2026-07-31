@@ -30,7 +30,7 @@ function runnerSessionAffinityHolderFreshAfter(currentDate: Date): Date {
 }
 
 function reusableSandboxCondition(args: {
-  readonly sessionId: SQLWrapper;
+  readonly reuseKey: SQLWrapper;
   readonly profile: SQLWrapper;
   readonly historyGenerationRunId?: SQLWrapper;
 }): SQL {
@@ -43,7 +43,7 @@ function reusableSandboxCondition(args: {
       : sql`jsonb_build_object('profile', cast(${args.profile} as text))`;
   const heldSessionStates = sql`jsonb_build_array(
     jsonb_build_object(
-      'sessionId', cast(${args.sessionId} as text),
+      'reuseKey', cast(${args.reuseKey} as text),
       'reusableSandbox', ${reusableSandbox}
     )
   )`;
@@ -51,12 +51,12 @@ function reusableSandboxCondition(args: {
 }
 
 function capableWorkspaceCondition(args: {
-  readonly sessionId: SQLWrapper;
+  readonly reuseKey: SQLWrapper;
   readonly profile: SQLWrapper;
 }): SQL {
   const heldSessionStates = sql`jsonb_build_array(
     jsonb_build_object(
-      'sessionId', cast(${args.sessionId} as text),
+      'reuseKey', cast(${args.reuseKey} as text),
       'workspaceCaches', jsonb_build_array(
         jsonb_build_object(
           'profile', cast(${args.profile} as text),
@@ -112,15 +112,15 @@ export function runnerSessionAffinityPollPriority(args: {
   );
   const freshAfter = runnerSessionAffinityHolderFreshAfter(args.currentDate);
   const targetGenerationRunId = sql`${runnerJobQueue.executionContext}->'resumeSession'->>'historyGenerationRunId'`;
-  const sessionId = runnerJobQueue.cliAgentSessionId;
+  const reuseKey = runnerJobQueue.reuseKey;
   const profile = runnerJobQueue.profile;
   const exactCondition = reusableSandboxCondition({
-    sessionId,
+    reuseKey,
     profile,
     historyGenerationRunId: targetGenerationRunId,
   });
-  const reusableCondition = reusableSandboxCondition({ sessionId, profile });
-  const workspaceCondition = capableWorkspaceCondition({ sessionId, profile });
+  const reusableCondition = reusableSandboxCondition({ reuseKey, profile });
+  const workspaceCondition = capableWorkspaceCondition({ reuseKey, profile });
   const global = (resourceCondition: SQL) => {
     return runnerStateHas({
       db: args.db,
@@ -147,20 +147,20 @@ export function runnerSessionAffinityPollPriority(args: {
   return sql`CASE
     WHEN ${and(
       gt(runnerJobQueue.createdAt, generationProtectedAfter),
-      isNotNull(runnerJobQueue.cliAgentSessionId),
+      isNotNull(runnerJobQueue.reuseKey),
       isNotNull(targetGenerationRunId),
       hasGlobalExact,
     )}
     THEN CASE WHEN ${hasLocalExact} THEN 5 ELSE 0 END
     WHEN ${and(
       gt(runnerJobQueue.createdAt, protectedAfter),
-      isNotNull(runnerJobQueue.cliAgentSessionId),
+      isNotNull(runnerJobQueue.reuseKey),
       hasGlobalReusable,
     )}
     THEN CASE WHEN ${hasLocalReusable} THEN 4 ELSE 0 END
     WHEN ${and(
       gt(runnerJobQueue.createdAt, protectedAfter),
-      isNotNull(runnerJobQueue.cliAgentSessionId),
+      isNotNull(runnerJobQueue.reuseKey),
       hasGlobalWorkspace,
     )}
     THEN CASE
@@ -206,21 +206,21 @@ export function runnerSessionAffinityLookupError(): RunnerSessionAffinityProtect
 }
 
 function affinityProtectedUntil(
-  cliAgentSessionId: string | null,
+  reuseKey: string | null,
   createdAt: Date,
 ): Date | null {
-  if (!cliAgentSessionId) {
+  if (!reuseKey) {
     return null;
   }
   return new Date(createdAt.getTime() + RUNNER_SESSION_AFFINITY_PROTECTION_MS);
 }
 
 function historyGenerationAffinityProtectedUntil(args: {
-  readonly cliAgentSessionId: string | null;
+  readonly reuseKey: string | null;
   readonly historyGenerationRunId: string | undefined;
   readonly createdAt: Date;
 }): Date | null {
-  if (!args.cliAgentSessionId || !args.historyGenerationRunId) {
+  if (!args.reuseKey || !args.historyGenerationRunId) {
     return null;
   }
   return new Date(
@@ -238,24 +238,24 @@ async function runnerSessionAffinityHolders(args: {
   readonly db: Pick<Db, "select">;
   readonly runnerGroup: string;
   readonly profile: string;
-  readonly cliAgentSessionId: string;
+  readonly reuseKey: string;
   readonly historyGenerationRunId: string | undefined;
   readonly freshAfter: Date;
   readonly shouldLookUpExactGeneration: boolean;
 }): Promise<RunnerSessionAffinityHolders> {
   const reusableCondition = reusableSandboxCondition({
-    sessionId: sql.param(args.cliAgentSessionId),
+    reuseKey: sql.param(args.reuseKey),
     profile: sql.param(args.profile),
   });
   const workspaceCondition = capableWorkspaceCondition({
-    sessionId: sql.param(args.cliAgentSessionId),
+    reuseKey: sql.param(args.reuseKey),
     profile: sql.param(args.profile),
   });
   const exactGenerationCondition =
     args.shouldLookUpExactGeneration &&
     args.historyGenerationRunId !== undefined
       ? reusableSandboxCondition({
-          sessionId: sql.param(args.cliAgentSessionId),
+          reuseKey: sql.param(args.reuseKey),
           profile: sql.param(args.profile),
           historyGenerationRunId: sql.param(args.historyGenerationRunId),
         })
@@ -301,18 +301,15 @@ export async function runnerSessionAffinityProtection(args: {
   readonly db: Pick<Db, "select">;
   readonly runnerGroup: string;
   readonly profile: string;
-  readonly cliAgentSessionId: string | null;
+  readonly reuseKey: string | null;
   readonly historyGenerationRunId: string | undefined;
   readonly createdAt: Date;
   readonly currentDate: Date;
 }): Promise<RunnerSessionAffinityProtection> {
-  const protectedUntil = affinityProtectedUntil(
-    args.cliAgentSessionId,
-    args.createdAt,
-  );
+  const protectedUntil = affinityProtectedUntil(args.reuseKey, args.createdAt);
   const historyGenerationProtectedUntil =
     historyGenerationAffinityProtectedUntil(args);
-  if (!args.cliAgentSessionId) {
+  if (!args.reuseKey) {
     return {
       protectedUntil: null,
       status: "no_session",
@@ -341,7 +338,7 @@ export async function runnerSessionAffinityProtection(args: {
     db: args.db,
     runnerGroup: args.runnerGroup,
     profile: args.profile,
-    cliAgentSessionId: args.cliAgentSessionId,
+    reuseKey: args.reuseKey,
     historyGenerationRunId: args.historyGenerationRunId,
     freshAfter,
     shouldLookUpExactGeneration,

@@ -64,6 +64,7 @@ pub struct JobCandidate {
     poll_reason: Option<String>,
     poll_due_to_job_discovered_elapsed: Option<Duration>,
     poll_http_request_elapsed: Option<Duration>,
+    reuse_key: Option<String>,
     cli_agent_session_id: Option<String>,
     session_affinity_resource: Option<SessionAffinityResource>,
     history_generation_run_id: Option<RunId>,
@@ -97,6 +98,7 @@ impl JobCandidate {
             poll_reason: None,
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
+            reuse_key: None,
             cli_agent_session_id: None,
             session_affinity_resource: None,
             history_generation_run_id: None,
@@ -191,6 +193,10 @@ impl JobCandidate {
         self.cli_agent_session_id.as_deref()
     }
 
+    pub(crate) fn reuse_key(&self) -> Option<&str> {
+        self.reuse_key.as_deref()
+    }
+
     pub(crate) fn session_affinity_resource(&self) -> Option<SessionAffinityResource> {
         self.session_affinity_resource
     }
@@ -222,9 +228,11 @@ impl JobCandidate {
 
     pub(crate) fn with_affinity_metadata(
         mut self,
+        reuse_key: Option<String>,
         cli_agent_session_id: Option<String>,
         affinity_protected_until: Option<String>,
     ) -> Self {
+        self.reuse_key = reuse_key.filter(|reuse_key| !reuse_key.is_empty());
         self.cli_agent_session_id =
             cli_agent_session_id.filter(|session_id| !session_id.is_empty());
         self.affinity_protected_until = affinity_protected_until
@@ -584,6 +592,7 @@ mod tests {
     fn history_generation_affinity_never_outlives_session_affinity() {
         let expired_session = JobCandidate::new(RunId::nil(), "vm0/default".into())
             .with_affinity_metadata(
+                Some("session:sess-deadline".into()),
                 Some("sess-deadline".into()),
                 Some("2000-01-01T00:00:00Z".into()),
             )
@@ -592,6 +601,7 @@ mod tests {
 
         let active_session = JobCandidate::new(RunId::nil(), "vm0/default".into())
             .with_affinity_metadata(
+                Some("session:sess-deadline".into()),
                 Some("sess-deadline".into()),
                 Some("2999-01-01T00:00:01Z".into()),
             )
