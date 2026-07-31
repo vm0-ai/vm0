@@ -44,7 +44,11 @@ async fn job_with_reuse_key_parks_vm() {
     assert_eq!(c.unwrap().exit_code, 0);
 
     let pool = env.idle_pool.lock().await;
-    assert_eq!(pool.len(), 1, "VM should be parked when session is present");
+    assert_eq!(
+        pool.len(),
+        1,
+        "VM should be parked when a reuse key is present"
+    );
     assert!(pool.held_sessions().contains(&"session:sess-1".to_string()));
     drop(pool);
 
