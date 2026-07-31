@@ -16,7 +16,10 @@ def has_unsafe_path(path: str) -> bool:
     """Return True when a URL path contains or may hide unsafe path syntax."""
     if "\\" in path:
         return True
-    return any(_segment_has_unsafe_path(raw_segment) for raw_segment in path.split("/"))
+    raw_segments = path.split("/")
+    if path.isascii() and path.isprintable() and "%" not in path:
+        return any(_path_part_is_dot_segment(segment) for segment in raw_segments)
+    return any(_segment_has_unsafe_path(raw_segment) for raw_segment in raw_segments)
 
 
 def has_unsafe_url_path(url: str) -> bool:

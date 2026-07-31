@@ -1,5 +1,7 @@
 """Tests for URL path safety helpers."""
 
+from unittest.mock import patch
+
 import pytest
 
 import path_security
@@ -76,6 +78,19 @@ def test_has_unsafe_path_blocks_percent_encoded_unsafe_codepoints(path):
 @pytest.mark.parametrize(
     "path",
     [
+        "/api/\x00/admin",
+        "/api/\x1f/admin",
+        "/api/\x7f/admin",
+        "/api/\ud800/admin",
+    ],
+)
+def test_has_unsafe_path_blocks_raw_unsafe_codepoints(path):
+    assert path_security.has_unsafe_path(path) is True
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
         "/api/%ef%bc%8e%ef%bc%8e/admin",
         "/api/%ef%bc%8e./admin",
         "/api/%ef%bc%8f../admin",
@@ -117,6 +132,7 @@ def test_has_unsafe_path_blocks_invalid_percent_encoded_utf8(path):
         "/api/..hidden/admin",
         "/api/a..b/admin",
         "/api/callback;matrix=1",
+        "/api/user name",
         "/api/foo%2Fbar",
         "/api/foo%252Fbar",
         "/api/%E2%9C%93",
@@ -133,3 +149,23 @@ def test_has_unsafe_path_blocks_invalid_percent_encoded_utf8(path):
 )
 def test_has_unsafe_path_allows_regular_segments(path):
     assert path_security.has_unsafe_path(path) is False
+
+
+def test_plain_ascii_path_bypasses_compatibility_pipeline():
+    with (
+        patch.object(
+            path_security.urllib.parse,
+            "unquote_to_bytes",
+            wraps=path_security.urllib.parse.unquote_to_bytes,
+        ) as percent_decode,
+        patch.object(
+            path_security.unicodedata,
+            "normalize",
+            wraps=path_security.unicodedata.normalize,
+        ) as unicode_normalize,
+    ):
+        unsafe = path_security.has_unsafe_path("/repos/vm0-ai/vm0/issues/24254.json;view=full")
+
+    assert unsafe is False
+    percent_decode.assert_not_called()
+    unicode_normalize.assert_not_called()
