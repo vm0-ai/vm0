@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.360.0](https://github.com/vm0-ai/vm0/compare/api-v1.359.3...api-v1.360.0) (2026-07-31)
+
+
+### Features
+
+* reuse runner sandboxes by chat thread ([#24285](https://github.com/vm0-ai/vm0/issues/24285)) ([181eb2f](https://github.com/vm0-ai/vm0/commit/181eb2f6741ed448fcebf7d8108bbc1438e366ef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.259.0
+    * @vm0/core bumped to 8.497.4
+    * @vm0/db bumped to 1.159.0
+
 ## [1.359.3](https://github.com/vm0-ai/vm0/compare/api-v1.359.2...api-v1.359.3) (2026-07-31)
 
 
