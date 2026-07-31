@@ -91,10 +91,12 @@ class TestReportModelProviderUsage:
             ("gpt-5.6-sol", 272_001, ".long_context"),
             ("gpt-5.6-terra", 272_001, ".long_context"),
             ("gpt-5.6-luna", 272_001, ".long_context"),
+            ("MiniMax-M3", 512_000, ""),
+            ("MiniMax-M3", 512_001, ".long_context"),
             ("claude-opus-4-6", 300_000, ""),
         ],
     )
-    def test_classifies_openai_long_context_usage_at_normalized_boundary(
+    def test_classifies_long_context_usage_at_model_boundary(
         self,
         real_flow,
         usage_webhook_api,

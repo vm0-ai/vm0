@@ -137,13 +137,23 @@ const GPT_5_5_PRICING: readonly UsagePricingRow[] = [
   ["tokens.output", usd(30), 1_000_000],
 ];
 
-function withOpenAiLongContextPricing(
+const MINIMAX_M3_PRICING: readonly UsagePricingRow[] = [
+  ["tokens.input", usd(0.3), 1_000_000],
+  ["tokens.cache_read", usd(0.06), 1_000_000],
+  ["tokens.cache_creation", 0, 1_000_000],
+  ["tokens.output", usd(1.2), 1_000_000],
+];
+
+function withLongContextPricing(
   rows: readonly UsagePricingRow[],
+  inputFamilyMultiplier: number,
+  outputMultiplier: number,
 ): readonly UsagePricingRow[] {
   return [
     ...rows,
     ...rows.map(([category, unitPrice, unitSize]) => {
-      const multiplier = category === "tokens.output" ? 1.5 : 2;
+      const multiplier =
+        category === "tokens.output" ? outputMultiplier : inputFamilyMultiplier;
       return [
         `${category}.long_context`,
         unitPrice * multiplier,
@@ -420,12 +430,13 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.021), 1_000_000],
     ["tokens.cache_creation", 0, 1_000_000],
   ]),
-  ...usageGroup("model", "MiniMax-M3", [
-    ["tokens.input", usd(0.6), 1_000_000],
-    ["tokens.output", usd(2.4), 1_000_000],
-    ["tokens.cache_read", usd(0.12), 1_000_000],
-    ["tokens.cache_creation", 0, 1_000_000],
-  ]),
+  // MiniMax API pricing retrieved 2026-07-31 from:
+  // https://platform.minimax.io/subscribe/token-plan?tab=api-enterprise
+  ...usageGroup(
+    "model",
+    "MiniMax-M3",
+    withLongContextPricing(MINIMAX_M3_PRICING, 2, 2),
+  ),
   ...usageGroup("model", "deepseek-v4-pro", [
     ["tokens.input", usd(1.74), 1_000_000],
     ["tokens.output", usd(3.48), 1_000_000],
@@ -437,22 +448,22 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup(
     "model",
     "gpt-5.6-sol",
-    withOpenAiLongContextPricing(GPT_5_6_SOL_PRICING),
+    withLongContextPricing(GPT_5_6_SOL_PRICING, 2, 1.5),
   ),
   ...usageGroup(
     "model",
     "gpt-5.6-terra",
-    withOpenAiLongContextPricing(GPT_5_6_TERRA_PRICING),
+    withLongContextPricing(GPT_5_6_TERRA_PRICING, 2, 1.5),
   ),
   ...usageGroup(
     "model",
     "gpt-5.6-luna",
-    withOpenAiLongContextPricing(GPT_5_6_LUNA_PRICING),
+    withLongContextPricing(GPT_5_6_LUNA_PRICING, 2, 1.5),
   ),
   ...usageGroup(
     "model",
     "gpt-5.5",
-    withOpenAiLongContextPricing(GPT_5_5_PRICING),
+    withLongContextPricing(GPT_5_5_PRICING, 2, 1.5),
   ),
   // OpenRouter-backed edit helpers. Pricing retrieved 2026-07-10 from:
   // https://developers.openai.com/api/docs/models/gpt-4.1-mini
