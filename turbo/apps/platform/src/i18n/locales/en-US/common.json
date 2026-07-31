@@ -4550,6 +4550,10 @@
       "description": "This version of {{brandName}} is no longer supported. Refresh to load the latest version.",
       "title": "Update required"
     },
+    "mermaid": {
+      "diagramLabel": "Diagram",
+      "viewSource": "Diagram source"
+    },
     "notFound": {
       "description": "The page you are looking for does not exist.",
       "title": "Page not found"

@@ -4550,6 +4550,10 @@
       "description": "Diese Version von {{brandName}} wird nicht mehr unterstützt. Aktualisieren Sie, um die neueste Version zu laden.",
       "title": "Update erforderlich"
     },
+    "mermaid": {
+      "diagramLabel": "Diagramm",
+      "viewSource": "Diagrammquelle"
+    },
     "notFound": {
       "description": "Die gesuchte Seite existiert nicht.",
       "title": "Seite nicht gefunden"

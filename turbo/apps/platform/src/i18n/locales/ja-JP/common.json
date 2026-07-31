@@ -4550,6 +4550,10 @@
       "description": "このバージョンの {{brandName}} はサポートされなくなりました。更新して最新バージョンをロードします。",
       "title": "アップデートが必要です"
     },
+    "mermaid": {
+      "diagramLabel": "図",
+      "viewSource": "図のソース"
+    },
     "notFound": {
       "description": "お探しのページは存在しません。",
       "title": "ページが見つかりません"

@@ -458,6 +458,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.MermaidDiagrams]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Render ```mermaid code blocks in assistant markdown as diagrams, and tell the web chat agent that they are rendered.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ComposerSkillSubstringSearch]: {
     maintainer: "yuma@vm0.ai",
     description:

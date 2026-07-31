@@ -4550,6 +4550,10 @@
       "description": "이 버전의 {{brandName}}은 더 이상 지원되지 않습니다. 최신 버전을 불러오려면 새로 고침하세요.",
       "title": "업데이트 필요"
     },
+    "mermaid": {
+      "diagramLabel": "다이어그램",
+      "viewSource": "다이어그램 소스"
+    },
     "notFound": {
       "description": "찾으시는 페이지가 존재하지 않습니다.",
       "title": "페이지를 찾을 수 없습니다"

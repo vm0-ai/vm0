@@ -4,6 +4,7 @@ import {
   chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { StoreProvider } from "ccstate-react";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -146,6 +147,58 @@ describe("assistant markdown", () => {
       expect(video).toBeInTheDocument();
       expect(video).toHaveAttribute("controls");
     });
+  });
+
+  it("renders mermaid code blocks as diagrams", async () => {
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-testid="mermaid-svg"]'),
+      ).toBeInTheDocument();
+    });
+    expect(document.querySelector("code.language-mermaid")).toBeNull();
+    // The source stays reachable next to the diagram.
+    expect(screen.getByText("Diagram source")).toBeInTheDocument();
+  });
+
+  it("keeps the source visible when a mermaid diagram cannot be parsed", async () => {
+    mockThread("```mermaid\nthis is not a diagram\n```");
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("mermaid-diagram-fallback"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("mermaid-diagram-fallback").textContent).toBe(
+      "this is not a diagram",
+    );
+    expect(document.querySelector('[data-testid="mermaid-svg"]')).toBeNull();
+  });
+
+  it("leaves mermaid blocks as code when the feature switch is off", async () => {
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+
+    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector("code.language-mermaid"),
+      ).toBeInTheDocument();
+    });
+    expect(document.querySelector(".mermaid-block")).toBeNull();
   });
 
   it("keeps external links safe", async () => {

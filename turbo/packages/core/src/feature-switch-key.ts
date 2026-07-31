@@ -92,4 +92,5 @@ export enum FeatureSwitchKey {
   ChatThreadSidebarAutoOpen = "chatThreadSidebarAutoOpen",
   CustomConnectorCliCreate = "customConnectorCliCreate",
   CustomConnectorOAuth2 = "customConnectorOAuth2",
+  MermaidDiagrams = "mermaidDiagrams",
 }

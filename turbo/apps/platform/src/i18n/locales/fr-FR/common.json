@@ -4619,6 +4619,10 @@
       "description": "Cette version de {{brandName}} n'est plus prise en charge. Actualisez pour charger la dernière version.",
       "title": "Mise à jour requise"
     },
+    "mermaid": {
+      "diagramLabel": "Diagramme",
+      "viewSource": "Source du diagramme"
+    },
     "notFound": {
       "description": "La page que vous recherchez n'existe pas.",
       "title": "Page non trouvée"
