@@ -372,7 +372,7 @@ describe("GET /api/zero/usage/insight", () => {
       const name = `tie-agent-${String(i).padStart(2, "0")}-${suffix}`;
       names.push(name);
       const compose = await createInsightCompose(actor, name);
-      const runId = await createSourceRun(actor, compose.composeId, "cli");
+      const runId = await createSourceRun(actor, compose.composeId, "test");
       await reportRunUsage(actor, runId, [
         {
           kind: "connector",
@@ -406,7 +406,7 @@ describe("GET /api/zero/usage/insight", () => {
     mockNow(new Date("2026-07-29T00:30:00.500Z"));
     const actor = await entitledInsightActor();
     const compose = await createInsightCompose(actor);
-    const runId = await createSourceRun(actor, compose.composeId, "cli");
+    const runId = await createSourceRun(actor, compose.composeId, "test");
     await reportRunUsage(actor, runId, [
       { kind: "connector", category: "call", quantity: 1, credits: 10 },
     ]);
@@ -428,7 +428,7 @@ describe("GET /api/zero/usage/insight", () => {
   it("day window returns the selected calendar day with hourly buckets", async () => {
     const actor = await entitledInsightActor();
     const compose = await createInsightCompose(actor);
-    const runId = await createSourceRun(actor, compose.composeId, "cli");
+    const runId = await createSourceRun(actor, compose.composeId, "test");
     await reportRunUsage(actor, runId, [
       { kind: "connector", category: "call", quantity: 1, credits: 42 },
     ]);
@@ -512,8 +512,8 @@ describe("GET /api/zero/usage/insight", () => {
     }
     const orgId = actor.orgId;
     const compose = await createInsightCompose(actor);
-    const hourlyRunId = await createSourceRun(actor, compose.composeId, "cli");
-    const rawRunId = await createSourceRun(actor, compose.composeId, "cli");
+    const hourlyRunId = await createSourceRun(actor, compose.composeId, "test");
+    const rawRunId = await createSourceRun(actor, compose.composeId, "test");
     const insertProcessedEvent = async (
       runId: string,
       processedAt: Date,
