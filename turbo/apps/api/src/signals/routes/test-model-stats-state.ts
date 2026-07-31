@@ -22,6 +22,7 @@ import {
 } from "./test-oauth-provider-helpers";
 
 const actionBody$ = bodyResultOf(testModelStatsStateContract.action);
+const OBSERVATION_FIXTURE_INSERT_BATCH_SIZE = 5000;
 
 interface ModelStatsAggregationLockGate {
   holderPid: number | null;
@@ -250,6 +251,44 @@ async function insertZeroTokenObservation(
   signal.throwIfAborted();
 }
 
+async function insertAppliedObservations(
+  db: Db,
+  body: Extract<
+    TestModelStatsStateActionBody,
+    { action: "insert-applied-observations" }
+  >,
+  signal: AbortSignal,
+): Promise<void> {
+  const observedAt = new Date(body.observed_at);
+  const aggregatedAt = new Date(body.aggregated_at);
+
+  for (
+    let offset = 0;
+    offset < body.idempotency_keys.length;
+    offset += OBSERVATION_FIXTURE_INSERT_BATCH_SIZE
+  ) {
+    const idempotencyKeys = body.idempotency_keys.slice(
+      offset,
+      offset + OBSERVATION_FIXTURE_INSERT_BATCH_SIZE,
+    );
+    await db.insert(modelUsageObservation).values(
+      idempotencyKeys.map((idempotencyKey) => {
+        return {
+          idempotencyKey,
+          model: body.model,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+          observedAt,
+          aggregatedAt,
+        };
+      }),
+    );
+    signal.throwIfAborted();
+  }
+}
+
 async function deleteFixture(
   db: Db,
   body: Extract<TestModelStatsStateActionBody, { action: "delete-fixture" }>,
@@ -334,6 +373,10 @@ async function mutateModelStatsState(
     }
     case "insert-zero-token-observation": {
       await insertZeroTokenObservation(db, body, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "insert-applied-observations": {
+      await insertAppliedObservations(db, body, signal);
       return { status: 200 as const, body: { ok: true as const } };
     }
     case "delete-observations": {
