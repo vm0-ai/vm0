@@ -29,7 +29,6 @@ export type {
   ChatEventAttachFiles,
   ChatEventGenerationTemplate,
   ChatEventGoalEvent,
-  ChatEventGoalSnapshot,
   ChatEventIllustrationGenerationTemplate,
   ChatEventPresentationGenerationTemplate,
   ChatEventRecommendedFollowup,

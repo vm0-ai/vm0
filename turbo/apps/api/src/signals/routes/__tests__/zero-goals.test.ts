@@ -271,7 +271,10 @@ describe("zero goals", () => {
       threadId: goal.threadId,
       eventType: "input.goal",
       content: null,
-      goalSnapshot: { objectiveBrief: "bootstrap autonomously" },
+      userMessage: {
+        version: 1,
+        parts: [{ type: "goal", goalBrief: "bootstrap autonomously" }],
+      },
       seqId: expect.any(Number),
       createdAt: expect.any(String),
     });
@@ -287,7 +290,10 @@ describe("zero goals", () => {
       runId: goalRunId,
       revokesEventId: goalEventId,
       isGoalRun: true,
-      goalSnapshot: { objectiveBrief: "bootstrap autonomously" },
+      userMessage: {
+        version: 1,
+        parts: [{ type: "goal", goalBrief: "bootstrap autonomously" }],
+      },
     });
     if (!claimedGoalEvent) {
       throw new Error("Expected the claimed goal event");
@@ -375,7 +381,10 @@ describe("zero goals", () => {
       threadId: fixture.threadId,
       eventType: "input.goal",
       content: null,
-      goalSnapshot: { objectiveBrief },
+      userMessage: {
+        version: 1,
+        parts: [{ type: "goal", goalBrief: objectiveBrief }],
+      },
       seqId: expect.any(Number),
       createdAt: expect.any(String),
     });

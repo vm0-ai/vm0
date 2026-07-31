@@ -42,9 +42,18 @@ const chatEvents = [
     threadId: THREAD_ID,
     eventType: "input.automation",
     content: null,
-    automationId: "00000000-0000-4000-8000-000000000010",
+    userMessage: {
+      version: 1,
+      parts: [
+        {
+          type: "automation",
+          workflowName: "inbox-triage",
+          workflowId: "00000000-0000-4000-8000-000000000010",
+          automationBrief: "Gmail label applied",
+        },
+      ],
+    },
     triggerSource: "workflow-event",
-    triggerBrief: "Gmail label applied",
     createdAt: "2026-07-23T00:00:01.000Z",
   },
   {
@@ -53,8 +62,9 @@ const chatEvents = [
     threadId: THREAD_ID,
     eventType: "input.goal",
     content: null,
-    goalSnapshot: {
-      objectiveBrief: "Finish the queued goal",
+    userMessage: {
+      version: 1,
+      parts: [{ type: "goal", goalBrief: "Finish the queued goal" }],
     },
     createdAt: "2026-07-23T00:00:02.000Z",
   },
@@ -66,12 +76,17 @@ const chatEvents = [
     content: null,
     userMessage: {
       version: 1,
-      parts: [{ type: "text", text: "Run the task" }],
+      parts: [
+        {
+          type: "automation",
+          workflowName: "inbox-triage",
+          workflowId: "00000000-0000-4000-8000-000000000010",
+          automationBrief: "Gmail label applied",
+        },
+      ],
     },
     error: "Insufficient credits",
-    automationId: "00000000-0000-4000-8000-000000000010",
     triggerSource: "workflow-event",
-    triggerBrief: "Gmail label applied",
     createdAt: CREATED_AT,
   },
   {

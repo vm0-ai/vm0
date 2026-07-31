@@ -64,15 +64,17 @@ function summarizeQueuedEvent(event: ChatEvent): QueuedEventSummary | null {
     };
   }
   if (event.eventType === "input.automation") {
+    const automationPart = event.userMessage?.parts.find((part) => {
+      return part.type === "automation";
+    });
     return {
       eventId: event.id,
       eventType: event.eventType,
       createdAt: event.createdAt,
       text: compactText(
-        event.triggerBrief ??
-          event.workflowSnapshot?.triggerBrief ??
-          event.workflowSnapshot?.displayName ??
-          event.workflowSnapshot?.name,
+        automationPart?.type === "automation"
+          ? (automationPart.automationBrief ?? automationPart.workflowName)
+          : undefined,
       ),
     };
   }

@@ -133,7 +133,13 @@ describe("chat lifecycle", () => {
           content: "Check the production rollout",
           runId: "run-slack-origin",
           triggerSource: "slack",
-          annotation: { kind: "slack", href: permalink },
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Check the production rollout" },
+              { type: "source", kind: "slack", href: permalink },
+            ],
+          },
           createdAt: "2026-07-23T01:00:00Z",
         },
         {
@@ -149,7 +155,13 @@ describe("chat lifecycle", () => {
           content: "This source link was unavailable",
           runId: "run-slack-origin-without-link",
           triggerSource: "slack",
-          annotation: { kind: "slack" },
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "This source link was unavailable" },
+              { type: "source", kind: "slack" },
+            ],
+          },
           createdAt: "2026-07-23T01:02:00Z",
         },
       ],
@@ -188,7 +200,13 @@ describe("chat lifecycle", () => {
           content: "Check the Feishu conversation",
           runId: "run-feishu-origin",
           triggerSource: "feishu",
-          annotation: { kind: "feishu", href: chatOpenUrl },
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Check the Feishu conversation" },
+              { type: "source", kind: "feishu", href: chatOpenUrl },
+            ],
+          },
           createdAt: "2026-07-23T01:00:00Z",
         },
         {
@@ -204,7 +222,13 @@ describe("chat lifecycle", () => {
           content: "This source link was unavailable",
           runId: "run-feishu-origin-without-link",
           triggerSource: "feishu",
-          annotation: { kind: "feishu" },
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "This source link was unavailable" },
+              { type: "source", kind: "feishu" },
+            ],
+          },
           createdAt: "2026-07-23T01:02:00Z",
         },
       ],
@@ -242,7 +266,13 @@ describe("chat lifecycle", () => {
           role: "user",
           content: "Teams source",
           runId: "run-teams-annotation",
-          annotation: { kind: "teams", href: teamsHref },
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Teams source" },
+              { type: "source", kind: "teams", href: teamsHref },
+            ],
+          },
           createdAt: "2026-07-23T01:00:00Z",
         },
         {
@@ -250,7 +280,13 @@ describe("chat lifecycle", () => {
           role: "user",
           content: "Telegram source",
           runId: "run-telegram-annotation",
-          annotation: { kind: "telegram" },
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Telegram source" },
+              { type: "source", kind: "telegram" },
+            ],
+          },
           createdAt: "2026-07-23T01:01:00Z",
         },
         {
@@ -258,7 +294,13 @@ describe("chat lifecycle", () => {
           role: "user",
           content: "GitHub source",
           runId: "run-github-annotation",
-          annotation: { kind: "github", href: githubHref },
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "GitHub source" },
+              { type: "source", kind: "github", href: githubHref },
+            ],
+          },
           createdAt: "2026-07-23T01:02:00Z",
         },
       ],

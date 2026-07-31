@@ -86,7 +86,7 @@ export interface RunWorkflowAutomationNowArgs {
   readonly apiStartTime: number;
   // Overrides the default `/<workflowName>` slash-command prompt.
   readonly prompt?: string;
-  // Display-only source context surfaced through workflowSnapshot.triggerBrief.
+  // Display-only source context stored in the user-message automation part.
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;
   readonly appendSystemPrompt?: string;

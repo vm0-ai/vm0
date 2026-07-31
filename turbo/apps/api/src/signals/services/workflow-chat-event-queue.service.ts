@@ -8,6 +8,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
+  zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 import { and, asc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -178,6 +179,7 @@ export type PersistWorkflowQueueSourceTransition = (
 
 interface WorkflowQueueAdmissionArgs {
   readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
+  readonly workflowName: string;
   readonly chatThreadId: string;
   readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | undefined;
@@ -215,6 +217,17 @@ async function attemptWorkflowQueueAdmission(
       chatThreadId: args.chatThreadId,
       eventType: "input.automation",
       content: null,
+      userMessage: createUserMessageDocument({
+        text: null,
+        nonContentPart: {
+          type: "automation",
+          workflowName: args.workflowName,
+          workflowId: automation.workflowId,
+          ...(args.triggerBrief === undefined
+            ? {}
+            : { automationBrief: args.triggerBrief }),
+        },
+      }),
       runId: null,
       automationId: automation.id,
       triggerSource: args.triggerSource,
@@ -366,6 +379,9 @@ async function loadAutomationRejectionPayload(
       automationId: chatAutomationContext.automationId,
       triggerSource: chatEvents.triggerSource,
       triggerBrief: chatAutomationContext.triggerBrief,
+      userMessage: chatEvents.userMessage,
+      workflowId: zeroWorkflows.id,
+      workflowName: zeroWorkflows.name,
     })
     .from(chatEvents)
     .leftJoin(
@@ -374,6 +390,14 @@ async function loadAutomationRejectionPayload(
         eq(chatEvents.contextType, "automation"),
         eq(chatAutomationContext.id, chatEvents.contextId),
       ),
+    )
+    .leftJoin(
+      zeroWorkflowAutomations,
+      eq(zeroWorkflowAutomations.id, chatAutomationContext.automationId),
+    )
+    .leftJoin(
+      zeroWorkflows,
+      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
     )
     .where(eq(chatEvents.id, eventId))
     .limit(1);
@@ -414,11 +438,30 @@ export async function rejectWorkflowQueueEvent(
     if (!payload?.automationId || !payload.triggerSource) {
       return false;
     }
-    const rejectionMessage = payload.triggerBrief ?? args.reason;
+    const userMessage =
+      payload.userMessage ??
+      (payload.workflowName === null
+        ? null
+        : createUserMessageDocument({
+            text: null,
+            nonContentPart: {
+              type: "automation",
+              workflowName: payload.workflowName,
+              ...(payload.workflowId === null
+                ? {}
+                : { workflowId: payload.workflowId }),
+              ...(payload.triggerBrief === null
+                ? {}
+                : { automationBrief: payload.triggerBrief }),
+            },
+          }));
+    if (!userMessage) {
+      return false;
+    }
     const rejected = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.chatThreadId,
       eventType: "input.rejected",
-      userMessage: createUserMessageDocument({ text: rejectionMessage }),
+      userMessage,
       runId: null,
       error: args.reason,
       automationId: payload.automationId,

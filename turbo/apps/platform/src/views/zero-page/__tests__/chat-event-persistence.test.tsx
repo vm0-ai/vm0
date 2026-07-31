@@ -109,8 +109,14 @@ describe("chat event persistence", () => {
                 threadId: FIRST_THREAD_ID,
                 eventType: "input.goal" as const,
                 content: null,
-                goalSnapshot: {
-                  objectiveBrief: "Persist this goal queue marker",
+                userMessage: {
+                  version: 1 as const,
+                  parts: [
+                    {
+                      type: "goal" as const,
+                      goalBrief: "Persist this goal queue marker",
+                    },
+                  ],
                 },
                 createdAt: "2026-06-09T09:59:00Z",
                 seqId: 1,
@@ -186,8 +192,14 @@ describe("chat event persistence", () => {
           );
           expect(goalQueueEvent).toMatchObject({
             eventType: "input.goal",
-            goalSnapshot: {
-              objectiveBrief: "Persist this goal queue marker",
+            userMessage: {
+              version: 1,
+              parts: [
+                {
+                  type: "goal",
+                  goalBrief: "Persist this goal queue marker",
+                },
+              ],
             },
             seqId: 1,
             threadId: FIRST_THREAD_ID,

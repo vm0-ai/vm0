@@ -628,11 +628,17 @@ function isGoalContinuationUserMessage(
   message: UserMessage,
   objectiveBrief: string,
 ): boolean {
+  if (!("userMessage" in message) || !message.userMessage) {
+    return false;
+  }
+  const goalPart = message.userMessage.parts.find((part) => {
+    return part.type === "goal";
+  });
   return (
     message.isGoalRun === true &&
     message.runId !== undefined &&
-    (message.goalSnapshot?.objectiveBrief === objectiveBrief ||
-      chatEventDisplayText(message)?.includes("# Active thread goal") === true)
+    goalPart?.type === "goal" &&
+    goalPart.goalBrief === objectiveBrief
   );
 }
 
@@ -1592,16 +1598,17 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     const goalContinuation = userMessages(messages.events).find((message) => {
       return isGoalContinuationUserMessage(message, goalBrief);
     });
-    expect(goalContinuation?.goalSnapshot).toStrictEqual({
-      objectiveBrief: goalBrief,
+    if (!goalContinuation || !("userMessage" in goalContinuation)) {
+      throw new Error("Expected a goal continuation user message");
+    }
+    expect(goalContinuation.userMessage).toStrictEqual({
+      version: 1,
+      parts: [{ type: "goal", goalBrief }],
     });
-    expect(goalContinuation?.content).toBeNull();
-    expect(chatEventDisplayText(goalContinuation!)).toContain(
-      "# Active thread goal",
-    );
-    expect(chatEventDisplayText(goalContinuation!)).toContain(goalObjective);
+    expect(goalContinuation.content).toBeNull();
+    expect(chatEventDisplayText(goalContinuation)).toBe("");
 
-    if (!goalContinuation?.runId) {
+    if (!goalContinuation.runId) {
       throw new Error("Expected goal continuation run id");
     }
     const goalContext = await waitForRunContext(actor, goalContinuation.runId);
@@ -1694,7 +1701,10 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         revokesEventId: goalEventId,
         content: null,
         error: "Goal continuation no longer matches the active goal",
-        goalSnapshot: { objectiveBrief },
+        userMessage: {
+          version: 1,
+          parts: [{ type: "goal", goalBrief: objectiveBrief }],
+        },
       }),
     );
     const rejected = events.events.find((event) => {
@@ -1706,7 +1716,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     if (rejected?.eventType !== "input.rejected") {
       throw new Error("Expected the invalidated goal event to be rejected");
     }
-    expect(chatEventDisplayText(rejected)).toBe(objectiveBrief);
+    expect(chatEventDisplayText(rejected)).toBe("");
     const admittedContext = await readChatEventContextFixture(goalEventId);
     const rejectedContext = await readChatEventContextFixture(rejected.id);
     expect(admittedContext).toMatchObject({
@@ -1779,11 +1789,12 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     expect(rejectedGoalEvent).toMatchObject({
       eventType: "input.rejected",
       content: null,
-      goalSnapshot: { objectiveBrief: "pause after claim failure" },
+      userMessage: {
+        version: 1,
+        parts: [{ type: "goal", goalBrief: "pause after claim failure" }],
+      },
     });
-    expect(chatEventDisplayText(rejectedGoalEvent)).toBe(
-      "pause after claim failure",
-    );
+    expect(chatEventDisplayText(rejectedGoalEvent)).toBe("");
     expect(JSON.stringify(rejectedGoalEvent?.userMessage)).not.toContain(
       rejectedGoalEvent.error,
     );
@@ -1934,7 +1945,10 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         id: goalEventId,
         eventType: "input.goal",
         content: null,
-        goalSnapshot: { objectiveBrief: goalBrief },
+        userMessage: {
+          version: 1,
+          parts: [{ type: "goal", goalBrief }],
+        },
       }),
     );
     expect(

@@ -16,7 +16,7 @@ import {
   createWorkflowsBddApi,
   mockNotionConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
-import { chatEventDisplayText } from "./helpers/chat-event";
+import { chatEventAutomationPart } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -864,13 +864,13 @@ describe("POST /api/webhooks/notion", () => {
     const workflowMessage = messages.find((message) => {
       return (
         message.eventType === "input.prompt" &&
-        chatEventDisplayText(message)?.startsWith(`/${WORKFLOW_NAME}`) === true
+        chatEventAutomationPart(message)?.workflowName === WORKFLOW_NAME
       );
     });
     if (!workflowMessage?.runId) {
       throw new Error("Expected a dispatched Notion workflow run message");
     }
-    expect(workflowMessage.workflowSnapshot?.triggerBrief).toBe(
+    expect(chatEventAutomationPart(workflowMessage)?.automationBrief).toBe(
       'Notion page content updated "Launch notes v2" in Launch notes v2',
     );
 

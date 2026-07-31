@@ -77,6 +77,7 @@ import {
 import type { TelegramDeliveryTarget } from "./telegram-chat-callback-payload";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
+import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
@@ -1858,7 +1859,15 @@ async function persistTelegramChatMessage(args: {
         chatThreadId: binding.chatThreadId,
         eventType: "input.prompt",
         content: null,
-        userMessage: createUserMessageDocument({ text: args.prompt }),
+        userMessage: createUserMessageDocument({
+          text: args.prompt,
+          nonContentPart: createChatEventSourcePart({
+            kind: "telegram",
+            chatId: delivery.chatId,
+            messageId: delivery.messageId,
+            isDm: delivery.isDM,
+          }),
+        }),
         runId: null,
         triggerSource: "telegram",
         encryptedParams,

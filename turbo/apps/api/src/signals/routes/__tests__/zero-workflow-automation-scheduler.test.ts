@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   zeroAgentsByIdContract,
@@ -21,7 +20,7 @@ import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
-import { chatEventDisplayText } from "./helpers/chat-event";
+import { chatEventAutomationPart } from "./helpers/chat-event";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -158,10 +157,9 @@ async function executeDueWorkflowAutomations(
 interface WorkflowRunMessage {
   readonly runId: string;
   readonly triggerSource: string | undefined;
-  readonly automationId: string | undefined;
-  readonly hasLegacyTriggerId: boolean;
   readonly triggerBrief: string | null | undefined;
-  readonly workflowSnapshot: ChatEvent["workflowSnapshot"];
+  readonly workflowId: string | undefined;
+  readonly workflowName: string;
 }
 
 /**
@@ -173,9 +171,10 @@ async function workflowRunMessages(
 ): Promise<readonly WorkflowRunMessage[]> {
   const messages = await wf.readThreadEvents(threadId);
   return messages.flatMap((message) => {
+    const automationPart = chatEventAutomationPart(message);
     if (
       message.eventType !== "input.prompt" ||
-      !chatEventDisplayText(message)?.startsWith(`/${WORKFLOW_NAME}`) ||
+      automationPart?.workflowName !== WORKFLOW_NAME ||
       !message.runId
     ) {
       return [];
@@ -184,13 +183,9 @@ async function workflowRunMessages(
       {
         runId: message.runId,
         triggerSource: message.triggerSource,
-        automationId: message.workflowSnapshot?.automationId,
-        hasLegacyTriggerId: Object.hasOwn(
-          message.workflowSnapshot ?? {},
-          "triggerId",
-        ),
-        triggerBrief: message.workflowSnapshot?.triggerBrief,
-        workflowSnapshot: message.workflowSnapshot,
+        triggerBrief: automationPart.automationBrief,
+        workflowId: automationPart.workflowId,
+        workflowName: automationPart.workflowName,
       },
     ];
   });
@@ -588,16 +583,8 @@ describe("zero workflow automation scheduler", () => {
     });
     expect(cronCallback?.status).toBe("pending");
     expect(run).toMatchObject({
-      automationId: created.body.id,
-      hasLegacyTriggerId: false,
-    });
-    expect(run.workflowSnapshot).toStrictEqual({
-      id: scenario.workflowId,
-      agentId: scenario.agentId,
-      name: WORKFLOW_NAME,
-      displayName: null,
-      description: null,
-      automationId: created.body.id,
+      workflowId: scenario.workflowId,
+      workflowName: WORKFLOW_NAME,
       triggerBrief: expect.any(String),
     });
     await completeRunThroughSandbox(scenario, run.runId, 0);
@@ -635,16 +622,8 @@ describe("zero workflow automation scheduler", () => {
     });
     expect(loopCallback?.status).toBe("pending");
     expect(run).toMatchObject({
-      automationId: automation.automationId,
-      hasLegacyTriggerId: false,
-    });
-    expect(run.workflowSnapshot).toStrictEqual({
-      id: scenario.workflowId,
-      agentId: scenario.agentId,
-      name: WORKFLOW_NAME,
-      displayName: null,
-      description: null,
-      automationId: automation.automationId,
+      workflowId: scenario.workflowId,
+      workflowName: WORKFLOW_NAME,
       triggerBrief: expect.any(String),
     });
     await completeRunThroughSandbox(scenario, run.runId, 0);
@@ -708,9 +687,9 @@ describe("zero workflow automation scheduler", () => {
 
     await executeDueWorkflowAutomations();
     const run = await onlyWorkflowRunMessage(automation.threadId);
-    expect(run.workflowSnapshot).toMatchObject({
-      id: scenario.workflowId,
-      automationId: automation.automationId,
+    expect(run).toMatchObject({
+      workflowId: scenario.workflowId,
+      workflowName: WORKFLOW_NAME,
     });
 
     // Under the hard 1:N model a workflow belongs to exactly one agent; removing
@@ -730,10 +709,9 @@ describe("zero workflow automation scheduler", () => {
       {
         runId: run.runId,
         triggerSource: "workflow-schedule",
-        automationId: undefined,
-        hasLegacyTriggerId: false,
-        triggerBrief: undefined,
-        workflowSnapshot: undefined,
+        triggerBrief: run.triggerBrief,
+        workflowId: scenario.workflowId,
+        workflowName: WORKFLOW_NAME,
       },
     ]);
   });

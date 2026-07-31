@@ -9,12 +9,16 @@ import { createApp } from "../../../app-factory";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
+import { readChatEventContextFixture } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { chatEventDisplayText } from "./helpers/chat-event";
+import {
+  chatEventAutomationPart,
+  chatEventDisplayText,
+} from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -173,7 +177,7 @@ async function workflowRunIds(threadId: string): Promise<readonly string[]> {
   return messages.flatMap((message) => {
     if (
       message.eventType !== "input.prompt" ||
-      !chatEventDisplayText(message)?.startsWith(`/${WORKFLOW_NAME}`) ||
+      chatEventAutomationPart(message)?.workflowName !== WORKFLOW_NAME ||
       !message.runId
     ) {
       return [];
@@ -202,6 +206,20 @@ async function pendingWorkflowEvents(threadId: string) {
         !revokedIds.has(event.id)
       );
     },
+  );
+}
+
+async function pendingWorkflowAutomationIds(
+  threadId: string,
+): Promise<readonly string[]> {
+  return await Promise.all(
+    (await pendingWorkflowEvents(threadId)).map(async (event) => {
+      const eventContext = await readChatEventContextFixture(event.id);
+      if (!eventContext?.automationId) {
+        throw new Error("Expected pending workflow automation context");
+      }
+      return eventContext.automationId;
+    }),
   );
 }
 
@@ -400,11 +418,9 @@ describe("workflow automation queue controls", () => {
       runId: null,
       chatThreadId: webhookAutomation.threadId,
     });
-    expect(
-      (await pendingWorkflowEvents(webhookAutomation.threadId)).map((event) => {
-        return event.automationId;
-      }),
-    ).toStrictEqual([
+    await expect(
+      pendingWorkflowAutomationIds(webhookAutomation.threadId),
+    ).resolves.toStrictEqual([
       webhookAutomation.automationId,
       scheduleAutomation.automationId,
     ]);
@@ -468,11 +484,9 @@ describe("workflow automation queue controls", () => {
       chatThreadId: automation.threadId,
     });
 
-    expect(
-      (await pendingWorkflowEvents(automation.threadId)).map((event) => {
-        return event.automationId;
-      }),
-    ).toStrictEqual([automation.automationId]);
+    await expect(
+      pendingWorkflowAutomationIds(automation.threadId),
+    ).resolves.toStrictEqual([automation.automationId]);
     const messages = await wf.readThreadEvents(automation.threadId);
     const claimedUserMessage = messages.find((message) => {
       return (
@@ -510,10 +524,11 @@ describe("workflow automation queue controls", () => {
       expect(queued.body.runId).toBeNull();
     }
 
-    expect(
-      (await pendingWorkflowEvents(automation.threadId)).map((event) => {
-        return event.automationId;
-      }),
-    ).toStrictEqual([automation.automationId, automation.automationId]);
+    await expect(
+      pendingWorkflowAutomationIds(automation.threadId),
+    ).resolves.toStrictEqual([
+      automation.automationId,
+      automation.automationId,
+    ]);
   });
 });

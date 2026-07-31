@@ -1,6 +1,7 @@
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
+import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   chatEvents,
@@ -10,6 +11,10 @@ import {
 } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
+import {
+  zeroWorkflowAutomations,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
 import { and, eq, exists, isNull, notExists, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
@@ -404,6 +409,10 @@ type GoalQueueFirstRunAssociation = Extract<
   QueueFirstRunAssociation,
   { readonly kind: "goal_event" }
 > & { readonly runId: string };
+type WorkflowQueueFirstRunAssociation = Extract<
+  QueueFirstRunAssociation,
+  { readonly kind: "workflow_event" }
+> & { readonly runId: string };
 
 async function claimGoalQueueFirstRunAssociation(
   db: DbTransaction,
@@ -426,16 +435,126 @@ async function claimGoalQueueFirstRunAssociation(
     return { kind: "lost" };
   }
 
+  const [goalEvent] = await db
+    .select({
+      userMessage: chatEvents.userMessage,
+      goalBrief: chatGoalContext.objectiveBrief,
+    })
+    .from(chatEvents)
+    .leftJoin(
+      chatGoalContext,
+      and(
+        eq(chatEvents.contextType, "goal"),
+        eq(chatGoalContext.id, chatEvents.contextId),
+      ),
+    )
+    .where(eq(chatEvents.id, args.eventId))
+    .limit(1);
+  const userMessage =
+    goalEvent?.userMessage ??
+    (goalEvent?.goalBrief
+      ? createUserMessageDocument({
+          text: null,
+          nonContentPart: {
+            type: "goal",
+            goalBrief: goalEvent.goalBrief,
+          },
+        })
+      : null);
+  if (!userMessage) {
+    throw new Error("Goal queue event is missing its user message");
+  }
   const claimed = await replaceChatEvent(db, args.eventId, {
     chatThreadId: args.threadId,
     eventType: "input.prompt",
-    userMessage: createUserMessageDocument({ text: args.prompt }),
+    userMessage,
     runId: args.runId,
     runGroupId: args.goalId,
     triggerSource: "workflow-event",
   });
   if (!claimed) {
     throw new Error("Claimed goal queue event disappeared");
+  }
+  return { kind: "claimed", createdAt: claimed.createdAt };
+}
+
+async function claimWorkflowQueueFirstRunAssociation(
+  db: DbTransaction,
+  args: WorkflowQueueFirstRunAssociation,
+): Promise<QueueFirstRunClaimResult> {
+  if (await hasUnclaimedQueuedUserMessage(db, args.threadId)) {
+    return { kind: "lost" };
+  }
+
+  const pending = await listPendingChatQueueEvents(db, args.threadId);
+  const head = pending[0];
+  const [automationEvent] = await db
+    .select({
+      automationId: chatAutomationContext.automationId,
+      triggerSource: chatEvents.triggerSource,
+      triggerBrief: chatAutomationContext.triggerBrief,
+      userMessage: chatEvents.userMessage,
+      workflowId: zeroWorkflows.id,
+      workflowName: zeroWorkflows.name,
+    })
+    .from(chatEvents)
+    .leftJoin(
+      chatAutomationContext,
+      and(
+        eq(chatEvents.contextType, "automation"),
+        eq(chatAutomationContext.id, chatEvents.contextId),
+      ),
+    )
+    .leftJoin(
+      zeroWorkflowAutomations,
+      eq(zeroWorkflowAutomations.id, chatAutomationContext.automationId),
+    )
+    .leftJoin(
+      zeroWorkflows,
+      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
+    )
+    .where(eq(chatEvents.id, args.eventId))
+    .limit(1);
+  if (
+    head?.eventType !== "input.automation" ||
+    head.id !== args.eventId ||
+    automationEvent?.automationId !== args.runGroupId
+  ) {
+    return { kind: "lost" };
+  }
+
+  const userMessage =
+    automationEvent.userMessage ??
+    (automationEvent.workflowName === null
+      ? null
+      : createUserMessageDocument({
+          text: null,
+          nonContentPart: {
+            type: "automation",
+            workflowName: automationEvent.workflowName,
+            ...(automationEvent.workflowId === null
+              ? {}
+              : { workflowId: automationEvent.workflowId }),
+            ...(automationEvent.triggerBrief === null
+              ? {}
+              : { automationBrief: automationEvent.triggerBrief }),
+          },
+        }));
+  if (!userMessage) {
+    throw new Error("Workflow queue event is missing its user message");
+  }
+  const claimed = await replaceChatEvent(db, args.eventId, {
+    chatThreadId: args.threadId,
+    eventType: "input.prompt",
+    userMessage,
+    runId: args.runId,
+    runGroupId: args.runGroupId,
+    ...(automationEvent.triggerSource
+      ? { triggerSource: automationEvent.triggerSource }
+      : {}),
+  });
+  if (!claimed) {
+    throw new Error("Claimed workflow queue event disappeared");
   }
   return { kind: "claimed", createdAt: claimed.createdAt };
 }
@@ -526,53 +645,9 @@ export async function claimQueueFirstRunAssociation(
       }
 
       if (args.kind === "workflow_event") {
-        if (await hasUnclaimedQueuedUserMessage(db, args.threadId)) {
-          outcome = "lost";
-          return { kind: "lost" };
-        }
-
-        const pending = await listPendingChatQueueEvents(db, args.threadId);
-        const head = pending[0];
-        const [automationEvent] = await db
-          .select({
-            automationId: chatAutomationContext.automationId,
-            triggerSource: chatEvents.triggerSource,
-          })
-          .from(chatEvents)
-          .leftJoin(
-            chatAutomationContext,
-            and(
-              eq(chatEvents.contextType, "automation"),
-              eq(chatAutomationContext.id, chatEvents.contextId),
-            ),
-          )
-          .where(eq(chatEvents.id, args.eventId))
-          .limit(1);
-        if (
-          head?.eventType !== "input.automation" ||
-          head?.id !== args.eventId ||
-          automationEvent?.automationId !== args.runGroupId
-        ) {
-          outcome = "lost";
-          return { kind: "lost" };
-        }
-
-        const claimed = await replaceChatEvent(db, args.eventId, {
-          chatThreadId: args.threadId,
-          eventType: "input.prompt",
-          userMessage: createUserMessageDocument({ text: args.prompt }),
-          runId: args.runId,
-          runGroupId: args.runGroupId,
-          ...(automationEvent.triggerSource
-            ? { triggerSource: automationEvent.triggerSource }
-            : {}),
-        });
-        if (!claimed) {
-          throw new Error("Claimed workflow queue event disappeared");
-        }
-
-        outcome = "claimed";
-        return { kind: "claimed", createdAt: claimed.createdAt };
+        const claim = await claimWorkflowQueueFirstRunAssociation(db, args);
+        outcome = claim.kind;
+        return claim;
       }
 
       const headEventId = await loadNextUnclaimedQueuedUserMessageId(

@@ -11,7 +11,6 @@ import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   chatEventTerminalPredicate,
   chatEvents,
-  type ChatEventGoalSnapshot,
 } from "@vm0/db/schema/chat-event";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
@@ -127,21 +126,23 @@ type InputPromptEvent = ChatEventIdentity &
     readonly encryptedParams?: string | null;
   };
 
-type InputAutomationEvent = ChatEventIdentity & {
-  readonly eventType: "input.automation";
-  readonly content?: null;
-  readonly automationId: string;
-  readonly triggerSource: TriggerSource;
-  readonly triggerBrief: string | null;
-  readonly encryptedParams: string;
-};
+type InputAutomationEvent = ChatEventIdentity &
+  Pick<ChatEventInputPayload, "userMessage"> & {
+    readonly eventType: "input.automation";
+    readonly content?: null;
+    readonly automationId: string;
+    readonly triggerSource: TriggerSource;
+    readonly triggerBrief: string | null;
+    readonly encryptedParams: string;
+  };
 
-type InputGoalEvent = ChatEventIdentity & {
-  readonly eventType: "input.goal";
-  readonly content?: null;
-  readonly runGroupId: string;
-  readonly goalSnapshot: ChatEventGoalSnapshot;
-};
+type InputGoalEvent = ChatEventIdentity &
+  Pick<ChatEventInputPayload, "userMessage"> & {
+    readonly eventType: "input.goal";
+    readonly content?: null;
+    readonly runGroupId: string;
+    readonly goalBrief: string;
+  };
 
 type InputRejectedEvent = ChatEventIdentity &
   ChatEventDisplayContext &
@@ -483,14 +484,13 @@ function newDisplayContext(
     };
   }
 
-  const goalSnapshot =
-    "goalSnapshot" in values ? values.goalSnapshot : undefined;
-  if (goalSnapshot !== null && goalSnapshot !== undefined) {
+  const goalBrief = "goalBrief" in values ? values.goalBrief : undefined;
+  if (goalBrief !== undefined) {
     return {
       type: "goal",
       id: eventId,
       chatThreadId: values.chatThreadId,
-      objectiveBrief: goalSnapshot.objectiveBrief,
+      objectiveBrief: goalBrief,
     };
   }
 
@@ -621,8 +621,8 @@ function persistedChatEventValues(
   >,
 ): PersistedChatEvent {
   const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
-  const { goalSnapshot: _goalSnapshot, ...persistedValues } = {
-    goalSnapshot: undefined,
+  const { goalBrief: _goalBrief, ...persistedValues } = {
+    goalBrief: undefined,
     ...values,
   };
   return {

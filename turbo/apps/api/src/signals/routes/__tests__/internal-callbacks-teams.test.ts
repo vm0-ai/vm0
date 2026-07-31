@@ -841,7 +841,17 @@ describe("Teams chat callbacks", () => {
         content: null,
         userMessage: {
           version: 1,
-          parts: [{ type: "text", text: "finish the task" }],
+          parts: [
+            { type: "text", text: "finish the task" },
+            {
+              type: "source",
+              kind: "teams",
+              href:
+                "https://teams.microsoft.com/l/message/" +
+                "19%3Achannel%40thread.tacv2/activity-completed-1" +
+                `?tenantId=${encodeURIComponent(teams.fixture.teamsTenantId)}`,
+            },
+          ],
         },
       }),
     );

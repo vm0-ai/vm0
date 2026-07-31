@@ -89,8 +89,13 @@ async function expectClaimedSlackDisplayContext(
     return (
       message.eventType === "input.prompt" &&
       message.revokesEventId !== undefined &&
-      message.annotation?.kind === "slack" &&
-      message.annotation.href === messagePermalink
+      message.userMessage.parts.some((part) => {
+        return (
+          part.type === "source" &&
+          part.kind === "slack" &&
+          part.href === messagePermalink
+        );
+      })
     );
   });
   if (!claimedMessage?.revokesEventId) {
@@ -115,18 +120,30 @@ async function expectClaimedSlackDisplayContext(
 function slackInputMessageByText(
   events: readonly ChatEvent[],
   text: string,
-): ChatEvent | undefined {
-  return events.find((message) => {
-    if (
-      message.eventType !== "input.prompt" &&
-      message.eventType !== "input.rejected"
-    ) {
-      return false;
-    }
-    return message.userMessage.parts.some((part) => {
-      return part.type === "text" && part.text === text;
-    });
-  });
+):
+  | Extract<
+      ChatEvent,
+      { readonly eventType: "input.prompt" | "input.rejected" }
+    >
+  | undefined {
+  return events.find(
+    (
+      message,
+    ): message is Extract<
+      ChatEvent,
+      { readonly eventType: "input.prompt" | "input.rejected" }
+    > => {
+      if (
+        message.eventType !== "input.prompt" &&
+        message.eventType !== "input.rejected"
+      ) {
+        return false;
+      }
+      return message.userMessage.parts.some((part) => {
+        return part.type === "text" && part.text === text;
+      });
+    },
+  );
 }
 
 function sandboxOperationEventsForRun(
@@ -1582,11 +1599,12 @@ describe("INT-01: Slack app deep webhook flows", () => {
                 contentType: "text/plain",
               },
               { type: "text", text: "admit this event once" },
+              {
+                type: "source",
+                kind: "slack",
+                href: "https://vm0.slack.com/archives/C_BDD_CANONICAL_INGRESS/p2900000100",
+              },
             ],
-          },
-          annotation: {
-            kind: "slack",
-            href: "https://vm0.slack.com/archives/C_BDD_CANONICAL_INGRESS/p2900000100",
           },
           attachFiles: [
             expect.objectContaining({
@@ -1735,7 +1753,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
       (await chat.listThreadEvents(actor, canonicalChatThreadId)).events,
       "stay canonical on the same route",
     );
-    expect(stickyVisibleMessage?.annotation).toStrictEqual({ kind: "slack" });
+    expect(
+      stickyVisibleMessage?.userMessage.parts.find((part) => {
+        return part.type === "source";
+      }),
+    ).toStrictEqual({ type: "source", kind: "slack" });
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: run1Id,
@@ -2300,6 +2322,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
               {
                 type: "text",
                 text: "recover this event after admission conflict",
+              },
+              {
+                type: "source",
+                kind: "slack",
+                href: "https://vm0.slack.com/archives/C_BDD_CANONICAL_RETRY_RECOVERY/p3100000300",
               },
             ],
           },

@@ -5496,6 +5496,13 @@
       "when": 1785488776593,
       "tag": "0784_remove_legacy_connector_catalog_compatibility",
       "breakpoints": true
+    },
+    {
+      "idx": 785,
+      "version": "7",
+      "when": 1785489578000,
+      "tag": "0785_backfill_chat_event_user_message_parts",
+      "breakpoints": true
     }
   ]
 }

@@ -13064,6 +13064,465 @@ async function validateChatGoalContextBackfill(): Promise<void> {
   }
 }
 
+async function validateChatEventUserMessagePartBackfill(): Promise<void> {
+  console.log("=== Validate chat event user-message part backfill ===\n");
+  const testDb = "migration_chat_event_user_message_parts_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "00000000-0000-4000-8000-000000078501";
+  const threadId = "00000000-0000-4000-8000-000000078502";
+  const workflowId = "00000000-0000-4000-8000-000000078503";
+  const automationId = "00000000-0000-4000-8000-000000078504";
+  const automationContextId = "00000000-0000-4000-8000-000000078520";
+  const automationClaimedId = "00000000-0000-4000-8000-000000078521";
+  const automationRejectedId = "00000000-0000-4000-8000-000000078522";
+  const goalContextId = "00000000-0000-4000-8000-000000078530";
+  const goalClaimedId = "00000000-0000-4000-8000-000000078531";
+  const automationBrief = "Gmail label applied";
+  const goalBrief = "Keep the release moving";
+  const sourceFixtures = [
+    {
+      id: "00000000-0000-4000-8000-000000078510",
+      kind: "slack",
+      expected: {
+        type: "source",
+        kind: "slack",
+        href: "https://vm0.slack.com/archives/C123/p456",
+      },
+    },
+    {
+      id: "00000000-0000-4000-8000-000000078511",
+      kind: "feishu",
+      expected: {
+        type: "source",
+        kind: "feishu",
+        href: "https://applink.feishu.cn/client/chat/open?openChatId=oc_123",
+      },
+    },
+    {
+      id: "00000000-0000-4000-8000-000000078512",
+      kind: "teams",
+      expected: { type: "source", kind: "teams" },
+    },
+    {
+      id: "00000000-0000-4000-8000-000000078513",
+      kind: "telegram",
+      expected: { type: "source", kind: "telegram" },
+    },
+    {
+      id: "00000000-0000-4000-8000-000000078514",
+      kind: "github",
+      expected: {
+        type: "source",
+        kind: "github",
+        href: "https://github.com/vm0-ai/vm0/pull/24319#issuecomment-98765",
+      },
+    },
+  ] as const;
+
+  const migrationSql = await fs.readFile(
+    path.join(
+      MIGRATIONS_DIR,
+      "0785_backfill_chat_event_user_message_parts.sql",
+    ),
+    "utf8",
+  );
+  assert.doesNotMatch(migrationSql, /\bLOCK TABLE\b/u);
+  assert.match(
+    migrationSql,
+    /to_jsonb\(NEW\) - 'user_message'.*to_jsonb\(OLD\) - 'user_message'/su,
+  );
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 784);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, 'user-message-parts-user', 'user-message-parts-agent', 'user-message-parts-org')
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+          VALUES ($1, 'user-message-parts-org', 'user-message-parts-user', 'user-message-parts-agent')
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES ($1, 'user-message-parts-user', $2, 'user-message parts test')
+        `,
+        [threadId, composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_workflows" (
+            "id",
+            "org_id",
+            "agent_id",
+            "name",
+            "owner_user_id",
+            "created_by",
+            "updated_by"
+          )
+          VALUES (
+            $1,
+            'user-message-parts-org',
+            $2,
+            'daily-digest',
+            'user-message-parts-user',
+            'user-message-parts-user',
+            'user-message-parts-user'
+          )
+        `,
+        [workflowId, composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_workflow_automations" (
+            "id",
+            "org_id",
+            "workflow_id",
+            "owner_user_id",
+            "kind",
+            "schedule_type",
+            "at_time"
+          )
+          VALUES (
+            $1,
+            'user-message-parts-org',
+            $2,
+            'user-message-parts-user',
+            'schedule',
+            'once',
+            '2026-08-01 00:00:00'
+          )
+        `,
+        [automationId, workflowId],
+      );
+
+      await client.query(
+        `
+          INSERT INTO "chat_slack_context" (
+            "id",
+            "chat_thread_id",
+            "message_permalink",
+            "channel_id",
+            "message_ts"
+          )
+          VALUES ($1, $2, 'https://vm0.slack.com/archives/C123/p456', 'C123', '456')
+        `,
+        [sourceFixtures[0].id, threadId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_feishu_context" (
+            "id",
+            "chat_thread_id",
+            "chat_open_url"
+          )
+          VALUES ($1, $2, 'https://applink.feishu.cn/client/chat/open?openChatId=oc_123')
+        `,
+        [sourceFixtures[1].id, threadId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_teams_context" (
+            "id",
+            "chat_thread_id",
+            "tenant_id",
+            "conversation_id",
+            "conversation_type",
+            "activity_id"
+          )
+          VALUES ($1, $2, 'tenant-1', 'conversation-1', 'personal', 'activity-1')
+        `,
+        [sourceFixtures[2].id, threadId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_telegram_context" (
+            "id",
+            "chat_thread_id",
+            "chat_id",
+            "message_id",
+            "is_dm"
+          )
+          VALUES ($1, $2, '123456', '789', true)
+        `,
+        [sourceFixtures[3].id, threadId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_github_context" (
+            "id",
+            "chat_thread_id",
+            "repo",
+            "subject_number",
+            "subject_kind",
+            "trigger_comment_id"
+          )
+          VALUES ($1, $2, 'vm0-ai/vm0', 24319, 'pull_request', '98765')
+        `,
+        [sourceFixtures[4].id, threadId],
+      );
+
+      for (const [index, fixture] of sourceFixtures.entries()) {
+        await client.query(
+          `
+            INSERT INTO "chat_events" (
+              "id",
+              "chat_thread_id",
+              "event_type",
+              "context_type",
+              "context_id",
+              "user_message",
+              "seq_id"
+            )
+            VALUES (
+              $1,
+              $2,
+              'input.prompt',
+              $3,
+              $1,
+              jsonb_build_object(
+                'version',
+                1,
+                'parts',
+                jsonb_build_array(
+                  jsonb_build_object('type', 'text', 'text', $3::text)
+                )
+              ),
+              $4
+            )
+          `,
+          [fixture.id, threadId, fixture.kind, index + 1],
+        );
+      }
+
+      await client.query(
+        `
+          INSERT INTO "chat_automation_context" (
+            "id",
+            "chat_thread_id",
+            "automation_id",
+            "trigger_brief"
+          )
+          VALUES ($1, $2, $3, $4)
+        `,
+        [automationContextId, threadId, automationId, automationBrief],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "context_type",
+            "context_id",
+            "trigger_source",
+            "user_message",
+            "seq_id"
+          )
+          VALUES
+            ($1, $2, 'input.automation', 'automation', $1, 'workflow-event', NULL, 10),
+            (
+              $3,
+              $2,
+              'input.prompt',
+              'automation',
+              $1,
+              'workflow-event',
+              '{"version":1,"parts":[{"type":"text","text":"agent prompt copy"}]}'::jsonb,
+              11
+            ),
+            (
+              $4,
+              $2,
+              'input.rejected',
+              'automation',
+              $1,
+              'workflow-event',
+              '{"version":1,"parts":[{"type":"text","text":"agent prompt copy"}]}'::jsonb,
+              12
+            )
+        `,
+        [
+          automationContextId,
+          threadId,
+          automationClaimedId,
+          automationRejectedId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_goal_context" (
+            "id",
+            "chat_thread_id",
+            "objective_brief"
+          )
+          VALUES ($1, $2, $3)
+        `,
+        [goalContextId, threadId, goalBrief],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "context_type",
+            "context_id",
+            "user_message",
+            "seq_id"
+          )
+          VALUES
+            ($1, $2, 'input.goal', 'goal', $1, NULL, 20),
+            (
+              $3,
+              $2,
+              'input.prompt',
+              'goal',
+              $1,
+              '{"version":1,"parts":[{"type":"text","text":"full goal agent prompt"}]}'::jsonb,
+              21
+            )
+        `,
+        [goalContextId, threadId, goalClaimedId],
+      );
+
+      await applyMigrationsUpTo(client, 785);
+
+      const sourceRows = await client.query<{
+        id: string;
+        userMessage: { version: number; parts: readonly unknown[] };
+      }>(
+        `
+          SELECT "id", "user_message" AS "userMessage"
+          FROM "chat_events"
+          WHERE "id" = ANY($1::uuid[])
+          ORDER BY "seq_id"
+        `,
+        [
+          sourceFixtures.map((fixture) => {
+            return fixture.id;
+          }),
+        ],
+      );
+      assert.deepEqual(
+        sourceRows.rows.map((row) => {
+          return row.userMessage.parts[1];
+        }),
+        sourceFixtures.map((fixture) => {
+          return fixture.expected;
+        }),
+      );
+
+      const automationRows = await client.query<{
+        userMessage: unknown;
+      }>(
+        `
+          SELECT "user_message" AS "userMessage"
+          FROM "chat_events"
+          WHERE "context_type" = 'automation'
+            AND "context_id" = $1
+          ORDER BY "seq_id"
+        `,
+        [automationContextId],
+      );
+      const automationDocument = {
+        version: 1,
+        parts: [
+          {
+            type: "automation",
+            workflowName: "daily-digest",
+            workflowId,
+            automationBrief,
+          },
+        ],
+      };
+      assert.deepEqual(
+        automationRows.rows.map((row) => {
+          return row.userMessage;
+        }),
+        [automationDocument, automationDocument, automationDocument],
+      );
+
+      const goalRows = await client.query<{ userMessage: unknown }>(
+        `
+          SELECT "user_message" AS "userMessage"
+          FROM "chat_events"
+          WHERE "context_type" = 'goal'
+            AND "context_id" = $1
+          ORDER BY "seq_id"
+        `,
+        [goalContextId],
+      );
+      const goalDocument = {
+        version: 1,
+        parts: [{ type: "goal", goalBrief }],
+      };
+      assert.deepEqual(
+        goalRows.rows.map((row) => {
+          return row.userMessage;
+        }),
+        [goalDocument, goalDocument],
+      );
+
+      const contexts = await client.query<{
+        automationBrief: string;
+        goalBrief: string;
+      }>(
+        `
+          SELECT
+            "automation"."trigger_brief" AS "automationBrief",
+            "goal"."objective_brief" AS "goalBrief"
+          FROM "chat_automation_context" AS "automation"
+          CROSS JOIN "chat_goal_context" AS "goal"
+          WHERE "automation"."id" = $1
+            AND "goal"."id" = $2
+        `,
+        [automationContextId, goalContextId],
+      );
+      assert.deepEqual(contexts.rows, [{ automationBrief, goalBrief }]);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_events",
+        query: `
+          UPDATE "chat_events"
+          SET "user_message" = '{}'::jsonb
+          WHERE "id" = $1
+        `,
+        rowId: goalContextId,
+      });
+
+      console.log(
+        "   ✅ Source links and no-link cases backfill into canonical parts",
+      );
+      console.log(
+        "   ✅ Automation and goal revoke-chain carriers share display-only documents",
+      );
+      console.log(
+        "   ✅ Context state is retained and strict append-only protection is restored\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 const CHAT_EVENT_TERMINAL_INDEX_EXPANSION_PREVIOUS_MIGRATION = 777;
 const CHAT_EVENT_TERMINAL_INDEX_EXPANSION_MIGRATION = 778;
 
@@ -14840,6 +15299,7 @@ async function main(): Promise<void> {
     await validateSlackContextIdentifierBackfill();
     await validateChatAutomationContextBackfill();
     await validateChatGoalContextBackfill();
+    await validateChatEventUserMessagePartBackfill();
     await validateChatEventTerminalIndexExpansion();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
