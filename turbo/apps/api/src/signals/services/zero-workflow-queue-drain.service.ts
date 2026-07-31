@@ -24,8 +24,8 @@ import {
 
 const log = logger("ZeroWorkflowQueueDrain");
 
-// Consecutive stale events (deleted/disabled automations) skipped per drain call
-// before giving up; a successful run creation always stops the loop.
+// Consecutive stale events or claims invalidated by concurrent queue changes
+// are retried per drain call; a successful run creation always stops the loop.
 const MAX_DRAIN_ATTEMPTS = 5;
 
 interface DequeueTarget {
@@ -126,9 +126,13 @@ async function handleWorkflowLaunchResult(
   launchHint: WorkflowEventLaunch | undefined,
   signal: AbortSignal,
 ): Promise<WorkflowQueueDrainStep> {
-  if (result.kind === "ok" || result.kind === "enqueued") {
+  if (result.kind === "ok") {
     await publishQueueEventChanged(event, signal);
     return { eventId: event.id, result };
+  }
+  if (result.kind === "enqueued") {
+    await publishQueueEventChanged(event, signal);
+    return CONTINUE_DRAIN;
   }
   if (result.kind === "conflict") {
     log.debug("Consuming unfireable workflow queue event", {

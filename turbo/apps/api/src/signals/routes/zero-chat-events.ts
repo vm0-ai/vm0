@@ -97,7 +97,9 @@ import {
 } from "../services/zero-model-selection.service";
 import {
   chatThreadModelPinColumns,
+  persistedChatThreadModelSnapshotColumns,
   resolvePersistedChatThreadModel,
+  type PersistedChatThreadModelResolutionPath,
 } from "../services/zero-chat-thread-model.service";
 import {
   touchChatThreadLastMessageAt,
@@ -231,6 +233,7 @@ interface ResolvedRunConfiguration {
 interface ResolvedThreadAndRunConfiguration {
   readonly thread: ResolvedThread;
   readonly runConfiguration: ResolvedRunConfiguration;
+  readonly modelResolutionPath?: PersistedChatThreadModelResolutionPath;
 }
 
 type IncomingModelSelection = NormalSendBody["modelSelection"];
@@ -1491,6 +1494,7 @@ async function resolveThread(params: {
       id: chatThreads.id,
       computerUseHostId: chatThreads.computerUseHostId,
       cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
+      ...persistedChatThreadModelSnapshotColumns(),
     })
     .from(chatThreads)
     .where(
@@ -1505,12 +1509,16 @@ async function resolveThread(params: {
   }
 
   let runConfiguration = params.explicitRunConfiguration;
+  let persistedModelResolutionPath:
+    | PersistedChatThreadModelResolutionPath
+    | undefined;
   if (!runConfiguration) {
     const persisted = await resolvePersistedChatThreadModel({
       db: params.db,
       orgId: params.orgId,
       userId: params.userId,
       threadId: thread.id,
+      threadSnapshot: thread,
       requestedCodexServiceTier: params.requestedCodexServiceTier,
       persistRequestedCodexServiceTier: params.persistRequestedCodexServiceTier,
       codexFastModeEnabled: params.codexFastModeEnabled,
@@ -1526,6 +1534,7 @@ async function resolveThread(params: {
       providerAdmission: persisted.providerAdmission,
       codexServiceTier: persisted.runCodexServiceTier,
     };
+    persistedModelResolutionPath = persisted.resolutionPath;
   }
 
   const [sessionResolution, incompleteContext] = await Promise.all([
@@ -1556,6 +1565,9 @@ async function resolveThread(params: {
       isClientThreadRetry: false,
     },
     runConfiguration,
+    ...(persistedModelResolutionPath
+      ? { modelResolutionPath: persistedModelResolutionPath }
+      : {}),
   };
 }
 
@@ -2251,12 +2263,13 @@ function resolveTimedThread(
   explicitRunConfiguration: ResolvedRunConfiguration | undefined,
   featureSwitches: NormalSendFeatureSwitches,
 ): ReturnType<typeof resolveThread> {
+  let modelResolutionPath: PersistedChatThreadModelResolutionPath | undefined;
   return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
     "nested",
-    () => {
-      return resolveThread({
+    async () => {
+      const resolved = await resolveThread({
         db,
         orgId: args.orgId,
         userId: args.userId,
@@ -2274,6 +2287,15 @@ function resolveTimedThread(
         userMessageInlineTemplatesEnabled:
           featureSwitches.userMessageInlineTemplatesEnabled,
       });
+      if (!("status" in resolved)) {
+        modelResolutionPath = resolved.modelResolutionPath;
+      }
+      return resolved;
+    },
+    () => {
+      return modelResolutionPath
+        ? { model_resolution_path: modelResolutionPath }
+        : undefined;
     },
   );
 }

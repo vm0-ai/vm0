@@ -47,13 +47,25 @@ interface ResolvePersistedChatThreadModelParams {
   readonly orgId: string;
   readonly userId: string;
   readonly threadId: string;
+  readonly threadSnapshot?: PersistedChatThreadModelSnapshot;
   readonly fallbackSelectedModel?: string | null;
   readonly requestedCodexServiceTier?: CodexServiceTier;
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
 }
 
-interface LockedChatThreadModel {
+export function persistedChatThreadModelSnapshotColumns() {
+  return {
+    selectedModel: chatThreads.selectedModel,
+    modelProviderId: chatThreads.modelProviderId,
+    modelProviderType: chatThreads.modelProviderType,
+    modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
+    codexServiceTier: chatThreads.codexServiceTier,
+    agentComposeId: chatThreads.agentComposeId,
+  };
+}
+
+interface PersistedChatThreadModelSnapshot {
   readonly selectedModel: string | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
@@ -62,13 +74,38 @@ interface LockedChatThreadModel {
   readonly agentComposeId: string;
 }
 
+export type PersistedChatThreadModelResolutionPath =
+  | "read_only"
+  | "locked_reconciliation";
+
 export interface ResolvedPersistedChatThreadModel {
   readonly pin: ModelFirstPin;
   readonly providerAdmission: ModelFirstProviderAdmission;
   readonly runCodexServiceTier: "fast" | undefined;
   readonly persistedCodexServiceTier: CodexServiceTier | null;
   readonly selectedModelChanged: boolean;
+  readonly resolutionPath: PersistedChatThreadModelResolutionPath;
 }
+
+interface PersistedChatThreadModelEvaluation {
+  readonly pin: ModelFirstPin;
+  readonly providerAdmission: ModelFirstProviderAdmission;
+  readonly runCodexServiceTier: "fast" | undefined;
+  readonly persistedCodexServiceTier: CodexServiceTier | null;
+  readonly selectedModelChanged: boolean;
+  readonly tierChanged: boolean;
+  readonly requiresReconciliation: boolean;
+}
+
+type PersistedChatThreadModelEvaluationResult =
+  | {
+      readonly kind: "resolved";
+      readonly evaluation: PersistedChatThreadModelEvaluation;
+    }
+  | {
+      readonly kind: "error";
+      readonly error: ReturnType<typeof badRequestMessage>;
+    };
 
 interface PersistedChatThreadModelTransactionResult {
   readonly resolved:
@@ -104,16 +141,9 @@ function transactionResultWithoutPublish(
 async function loadLockedChatThreadModel(
   tx: ChatThreadModelTransaction,
   params: Pick<ResolvePersistedChatThreadModelParams, "threadId" | "userId">,
-): Promise<LockedChatThreadModel | undefined> {
+): Promise<PersistedChatThreadModelSnapshot | undefined> {
   const [thread] = await tx
-    .select({
-      selectedModel: chatThreads.selectedModel,
-      modelProviderId: chatThreads.modelProviderId,
-      modelProviderType: chatThreads.modelProviderType,
-      modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
-      codexServiceTier: chatThreads.codexServiceTier,
-      agentComposeId: chatThreads.agentComposeId,
-    })
+    .select(persistedChatThreadModelSnapshotColumns())
     .from(chatThreads)
     .where(
       and(
@@ -123,6 +153,23 @@ async function loadLockedChatThreadModel(
     )
     .limit(1)
     .for("update");
+  return thread;
+}
+
+async function loadChatThreadModel(
+  db: Db,
+  params: Pick<ResolvePersistedChatThreadModelParams, "threadId" | "userId">,
+): Promise<PersistedChatThreadModelSnapshot | undefined> {
+  const [thread] = await db
+    .select(persistedChatThreadModelSnapshotColumns())
+    .from(chatThreads)
+    .where(
+      and(
+        eq(chatThreads.id, params.threadId),
+        eq(chatThreads.userId, params.userId),
+      ),
+    )
+    .limit(1);
   return thread;
 }
 
@@ -168,7 +215,9 @@ function resolveCodexTier(args: {
   };
 }
 
-function legacyProviderPinPresent(thread: LockedChatThreadModel): boolean {
+function legacyProviderPinPresent(
+  thread: PersistedChatThreadModelSnapshot,
+): boolean {
   return (
     thread.modelProviderId !== null ||
     thread.modelProviderType !== null ||
@@ -179,7 +228,7 @@ function legacyProviderPinPresent(thread: LockedChatThreadModel): boolean {
 async function persistReconciledChatThreadModel(args: {
   readonly tx: ChatThreadModelTransaction;
   readonly params: ResolvePersistedChatThreadModelParams;
-  readonly thread: LockedChatThreadModel;
+  readonly thread: PersistedChatThreadModelSnapshot;
   readonly pin: ModelFirstPin;
   readonly persistedCodexServiceTier: CodexServiceTier | null;
   readonly selectedModelChanged: boolean;
@@ -233,27 +282,24 @@ async function persistReconciledChatThreadModel(args: {
   }
 }
 
-async function resolvePersistedChatThreadModelInTransaction(
-  tx: ChatThreadModelTransaction,
+async function evaluatePersistedChatThreadModel(
+  db: Db,
   params: ResolvePersistedChatThreadModelParams,
-): Promise<PersistedChatThreadModelTransactionResult> {
-  const thread = await loadLockedChatThreadModel(tx, params);
-  if (!thread) {
-    return transactionResultWithoutPublish(null);
-  }
-
+  thread: PersistedChatThreadModelSnapshot,
+): Promise<PersistedChatThreadModelEvaluationResult> {
   const modelResolution = await resolvePersistedModelFirstRoute({
-    db: tx,
+    db,
     orgId: params.orgId,
     userId: params.userId,
     selectedModel: thread.selectedModel ?? params.fallbackSelectedModel ?? null,
   });
   if (!modelResolution.route) {
-    return transactionResultWithoutPublish(
-      badRequestMessage(
+    return {
+      kind: "error",
+      error: badRequestMessage(
         "No valid model route is configured for this workspace",
       ),
-    );
+    };
   }
 
   const pin: ModelFirstPin = {
@@ -264,7 +310,7 @@ async function resolvePersistedChatThreadModelInTransaction(
     selectedModel: modelResolution.route.selectedModel,
   };
   const providerAdmission = await resolveModelFirstProviderAdmission({
-    db: tx,
+    db,
     orgId: params.orgId,
     userId: params.userId,
     modelPin: pin,
@@ -285,28 +331,72 @@ async function resolvePersistedChatThreadModelInTransaction(
     selectedModelChanged,
   });
   if (tier.kind === "error") {
-    return transactionResultWithoutPublish(tier.error);
+    return { kind: "error", error: tier.error };
   }
 
-  await persistReconciledChatThreadModel({
-    tx,
-    params,
-    thread,
-    pin,
-    persistedCodexServiceTier: tier.persistedCodexServiceTier,
-    selectedModelChanged,
-    tierChanged: tier.tierChanged,
-  });
   return {
-    resolved: {
+    kind: "resolved",
+    evaluation: {
       pin,
       providerAdmission,
       runCodexServiceTier: tier.runCodexServiceTier,
       persistedCodexServiceTier: tier.persistedCodexServiceTier,
       selectedModelChanged,
+      tierChanged: tier.tierChanged,
+      requiresReconciliation:
+        selectedModelChanged ||
+        tier.tierChanged ||
+        legacyProviderPinPresent(thread),
     },
-    publishThreadList: selectedModelChanged || tier.tierChanged,
-    publishThreadDetail: tier.tierChanged,
+  };
+}
+
+function resolvedPersistedChatThreadModel(
+  evaluation: PersistedChatThreadModelEvaluation,
+  resolutionPath: PersistedChatThreadModelResolutionPath,
+): ResolvedPersistedChatThreadModel {
+  return {
+    pin: evaluation.pin,
+    providerAdmission: evaluation.providerAdmission,
+    runCodexServiceTier: evaluation.runCodexServiceTier,
+    persistedCodexServiceTier: evaluation.persistedCodexServiceTier,
+    selectedModelChanged: evaluation.selectedModelChanged,
+    resolutionPath,
+  };
+}
+
+async function resolvePersistedChatThreadModelInTransaction(
+  tx: ChatThreadModelTransaction,
+  params: ResolvePersistedChatThreadModelParams,
+): Promise<PersistedChatThreadModelTransactionResult> {
+  const thread = await loadLockedChatThreadModel(tx, params);
+  if (!thread) {
+    return transactionResultWithoutPublish(null);
+  }
+
+  const evaluated = await evaluatePersistedChatThreadModel(tx, params, thread);
+  if (evaluated.kind === "error") {
+    return transactionResultWithoutPublish(evaluated.error);
+  }
+  const { evaluation } = evaluated;
+
+  await persistReconciledChatThreadModel({
+    tx,
+    params,
+    thread,
+    pin: evaluation.pin,
+    persistedCodexServiceTier: evaluation.persistedCodexServiceTier,
+    selectedModelChanged: evaluation.selectedModelChanged,
+    tierChanged: evaluation.tierChanged,
+  });
+  return {
+    resolved: resolvedPersistedChatThreadModel(
+      evaluation,
+      "locked_reconciliation",
+    ),
+    publishThreadList:
+      evaluation.selectedModelChanged || evaluation.tierChanged,
+    publishThreadDetail: evaluation.tierChanged,
   };
 }
 
@@ -315,6 +405,27 @@ export async function resolvePersistedChatThreadModel(
 ): Promise<
   ResolvedPersistedChatThreadModel | ReturnType<typeof badRequestMessage> | null
 > {
+  const thread =
+    params.threadSnapshot ?? (await loadChatThreadModel(params.db, params));
+  if (!thread) {
+    return null;
+  }
+  const evaluated = await evaluatePersistedChatThreadModel(
+    params.db,
+    params,
+    thread,
+  );
+  if (evaluated.kind === "error") {
+    return evaluated.error;
+  }
+  // An optimistic snapshot is authoritative only when this send writes
+  // nothing back to the thread.
+  if (!evaluated.evaluation.requiresReconciliation) {
+    return resolvedPersistedChatThreadModel(evaluated.evaluation, "read_only");
+  }
+
+  // Discard every optimistic decision before a possible write so a concurrent
+  // explicit model or tier update cannot be restored from the stale snapshot.
   const result = await params.db.transaction((tx) => {
     return resolvePersistedChatThreadModelInTransaction(tx, params);
   });
