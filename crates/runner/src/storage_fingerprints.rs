@@ -4,8 +4,13 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::storage_manifest::StorageManifest;
 
-/// Compact version fingerprints for storage manifest entries.
-/// Used to skip re-downloading unchanged storages on VM reuse.
+/// Fingerprints carried with reusable workspace state.
+///
+/// Known fingerprints let the storage planner reuse unchanged manifest entries. Tainted
+/// fingerprints preserve paths whose contents or removal may be uncertain after a nonzero or
+/// cancelled workspace promotion, so the next plan cleans affected paths and materializes current
+/// entries conservatively. Storage and artifact paths remain separate because the planner applies
+/// distinct behavior to each entry kind.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct StorageFingerprints {
     /// mount_path to version fingerprint for regular storages.
@@ -14,9 +19,18 @@ pub(crate) struct StorageFingerprints {
     pub(crate) artifacts: HashMap<String, StorageFingerprint>,
 }
 
+// These exact NUL-delimited values form the reserved serialized pair for a tainted fingerprint.
+// Keeping the pair within the legacy two-element value shape preserves workspace-cache metadata
+// compatibility.
 const TAINTED_STORAGE_FINGERPRINT_NAME: &str = "\0vm0-tainted-storage\0";
 const TAINTED_STORAGE_FINGERPRINT_VERSION: &str = "\0vm0-tainted-storage\0";
 
+/// A known storage identity or a fail-closed marker for uncertain filesystem state.
+///
+/// Known fingerprints serialize as the legacy two-element storage-name/version tuple. Tainted
+/// fingerprints preserve that tuple shape using the exact reserved sentinel pair above. This
+/// representation is persisted in workspace-cache metadata and must remain compatible with
+/// existing entries.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct StorageFingerprint {
     kind: StorageFingerprintKind,
@@ -32,6 +46,9 @@ enum StorageFingerprintKind {
 }
 
 impl StorageFingerprint {
+    /// Creates a known fingerprint unless both values are the exact reserved taint sentinel pair.
+    ///
+    /// Recognizing that pair here restores tainted state when persisted metadata is deserialized.
     pub(crate) fn new(
         vas_storage_name: impl Into<String>,
         vas_version_id: impl Into<String>,
@@ -51,6 +68,7 @@ impl StorageFingerprint {
         }
     }
 
+    /// Creates a fingerprint for filesystem state that must not be reused as known.
     pub(crate) fn tainted() -> Self {
         Self {
             kind: StorageFingerprintKind::Tainted,
@@ -61,6 +79,10 @@ impl StorageFingerprint {
         matches!(self.kind, StorageFingerprintKind::Tainted)
     }
 
+    /// Returns whether this fingerprint proves the exact known storage name and version.
+    ///
+    /// A tainted fingerprint never matches any input, including the reserved sentinel values. This
+    /// makes the next storage plan clean and materialize the current entry instead of reusing it.
     pub(crate) fn matches(&self, vas_storage_name: &str, vas_version_id: &str) -> bool {
         if self.is_tainted() {
             return false;
@@ -135,6 +157,11 @@ impl StorageFingerprints {
         }
     }
 
+    /// Returns tainted entries for the union of current and optional previous paths.
+    ///
+    /// A non-successful turn may not have finished removing paths that existed only in the previous
+    /// manifest. Retaining those paths preserves their cleanup obligations for the next reuse.
+    /// Storage and artifact maps are unioned independently so their entry kinds remain intact.
     pub(crate) fn tainted_paths_including(&self, previous: Option<&Self>) -> Self {
         let mut tainted = Self {
             storages: self
