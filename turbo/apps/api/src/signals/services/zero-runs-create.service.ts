@@ -279,7 +279,7 @@ function buildIntegrationToolsPrompt(
         "- Email reply handling: when a tracked reply arrives, summarize it for the user, and when a response is warranted prepare the follow-up as a new linked Gmail draft. Never send a reply automatically; the user always sends.",
         ...(mermaidDiagramsEnabled
           ? [
-              "- Diagrams in web chat: ```mermaid fenced code blocks are rendered as diagrams in the chat message itself, and the user can still open the source. When the answer needs a flowchart, sequence, state, ER, architecture, or timeline diagram, prefer a mermaid block over ASCII art, a generated image, or a hosted HTML page.",
+              "- Diagrams in web chat: ```mermaid fenced code blocks are rendered as diagrams in the chat message itself, and the user can still open the source. When the user asks for a flowchart, sequence, state, ER, class, architecture, mindmap, gantt, or timeline diagram without naming a format, answer with a mermaid block by default. Never draw box-and-arrow diagrams as ASCII art, and do not generate an image or publish an HTML page for a diagram unless the user asked for that format or mermaid cannot express the diagram.",
             ]
           : []),
         ...localFileContextLines,

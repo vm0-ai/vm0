@@ -51,6 +51,12 @@ const loadMermaid$ = command(
       suppressErrorRendering: true,
       theme: theme === "dark" ? "dark" : "default",
       fontFamily: "var(--font-family-sans)",
+      // mermaid's defaults are sized for a standalone page: 16px labels and
+      // 50px rank spacing make a five-node flowchart taller than the message
+      // around it. These match the chat body text and cut roughly a third of
+      // the height.
+      themeVariables: { fontSize: "14px" },
+      flowchart: { nodeSpacing: 30, rankSpacing: 32, padding: 8 },
     });
     return mermaid;
   },
