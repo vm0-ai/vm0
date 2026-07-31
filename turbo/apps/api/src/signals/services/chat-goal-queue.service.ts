@@ -2,6 +2,7 @@ import {
   chatEvents,
   type ChatEventGoalSnapshot,
 } from "@vm0/db/schema/chat-event";
+import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -276,10 +277,18 @@ export async function rejectGoalQueueEvent(
     }
     const [payload] = await tx
       .select({
+        goalObjectiveBrief: chatGoalContext.objectiveBrief,
         goalSnapshot: chatEvents.goalSnapshot,
         currentGoalObjectiveBrief: threadGoals.objectiveBrief,
       })
       .from(chatEvents)
+      .leftJoin(
+        chatGoalContext,
+        and(
+          eq(chatEvents.contextType, "goal"),
+          eq(chatGoalContext.id, chatEvents.contextId),
+        ),
+      )
       .leftJoin(
         threadGoals,
         and(
@@ -299,6 +308,7 @@ export async function rejectGoalQueueEvent(
       return false;
     }
     const objectiveBrief =
+      payload.goalObjectiveBrief ??
       payload.goalSnapshot?.objectiveBrief ??
       payload.currentGoalObjectiveBrief ??
       "Goal";

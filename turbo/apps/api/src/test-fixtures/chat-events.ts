@@ -5,6 +5,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
+import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEvents } from "@vm0/db/schema/chat-event";
@@ -49,6 +50,7 @@ interface ChatEventContextFixture {
   readonly triggerBrief: string | null;
   readonly slackMessagePermalink: string | null;
   readonly feishuChatOpenUrl: string | null;
+  readonly goalObjectiveBrief: string | null;
 }
 
 export async function readChatEventContextFixture(
@@ -69,7 +71,7 @@ export async function readChatEventContextFixture(
   }
 
   const contextId = event.contextId ?? event.id;
-  const [[automationContext], [slackContext], [feishuContext]] =
+  const [[automationContext], [slackContext], [feishuContext], [goalContext]] =
     await Promise.all([
       db()
         .select({
@@ -89,6 +91,11 @@ export async function readChatEventContextFixture(
         .from(chatFeishuContext)
         .where(eq(chatFeishuContext.id, contextId))
         .limit(1),
+      db()
+        .select({ objectiveBrief: chatGoalContext.objectiveBrief })
+        .from(chatGoalContext)
+        .where(eq(chatGoalContext.id, contextId))
+        .limit(1),
     ]);
   return {
     ...event,
@@ -96,6 +103,7 @@ export async function readChatEventContextFixture(
     triggerBrief: automationContext?.triggerBrief ?? null,
     slackMessagePermalink: slackContext?.messagePermalink ?? null,
     feishuChatOpenUrl: feishuContext?.chatOpenUrl ?? null,
+    goalObjectiveBrief: goalContext?.objectiveBrief ?? null,
   };
 }
 

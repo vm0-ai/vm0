@@ -18,6 +18,7 @@ import * as agentRunQueueSchema from "./schema/agent-run-queue";
 import * as chatAutomationContextSchema from "./schema/chat-automation-context";
 import * as chatEventInputParamsSchema from "./schema/chat-event-input-params";
 import * as chatFeishuContextSchema from "./schema/chat-feishu-context";
+import * as chatGoalContextSchema from "./schema/chat-goal-context";
 import * as chatSlackContextSchema from "./schema/chat-slack-context";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
@@ -139,6 +140,7 @@ export const schema = {
   ...chatAutomationContextSchema,
   ...chatEventInputParamsSchema,
   ...chatFeishuContextSchema,
+  ...chatGoalContextSchema,
   ...chatSlackContextSchema,
   ...secretSchema,
   ...modelProviderSchema,

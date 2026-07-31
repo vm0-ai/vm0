@@ -10,6 +10,7 @@ import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
+import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEventAssetRefs } from "@vm0/db/schema/run-uploaded-file";
@@ -262,6 +263,12 @@ type NewDisplayContext =
       readonly chatThreadId: string;
       readonly automationId: string;
       readonly triggerBrief: string | null;
+    }
+  | {
+      readonly type: "goal";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly objectiveBrief: string;
     };
 
 function isPendingInputEvent(values: NewChatEvent): boolean {
@@ -352,6 +359,17 @@ function newDisplayContext(
     };
   }
 
+  const goalSnapshot =
+    "goalSnapshot" in values ? values.goalSnapshot : undefined;
+  if (goalSnapshot !== null && goalSnapshot !== undefined) {
+    return {
+      type: "goal",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      objectiveBrief: goalSnapshot.objectiveBrief,
+    };
+  }
+
   return undefined;
 }
 
@@ -414,11 +432,20 @@ async function insertDisplayContext(
     });
     return;
   }
-  await tx.insert(chatAutomationContext).values({
+  if (context.type === "automation") {
+    await tx.insert(chatAutomationContext).values({
+      id: context.id,
+      chatThreadId: context.chatThreadId,
+      automationId: context.automationId,
+      triggerBrief: context.triggerBrief,
+      createdAt,
+    });
+    return;
+  }
+  await tx.insert(chatGoalContext).values({
     id: context.id,
     chatThreadId: context.chatThreadId,
-    automationId: context.automationId,
-    triggerBrief: context.triggerBrief,
+    objectiveBrief: context.objectiveBrief,
     createdAt,
   });
 }

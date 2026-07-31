@@ -46,6 +46,7 @@ import {
 } from "@vm0/db/schema/chat-event";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
+import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -146,6 +147,7 @@ type ChatEventRow = {
   readonly runEventId: string | null;
   readonly goalEvent: ChatEventGoalEvent | null;
   readonly goalSnapshot: ChatEventGoalSnapshot | null;
+  readonly goalObjectiveBrief: string | null;
   readonly error: string | null;
   readonly runLifecycleEvent: string | null;
   readonly seqId: number;
@@ -417,6 +419,7 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
         .as("trigger_source"),
       slackMessagePermalink: chatSlackContext.messagePermalink,
       feishuChatOpenUrl: chatFeishuContext.chatOpenUrl,
+      goalObjectiveBrief: chatGoalContext.objectiveBrief,
       workflowId: metadata.workflowId,
       workflowAgentId: metadata.workflowAgentId,
       workflowName: metadata.workflowName,
@@ -456,6 +459,13 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
       and(
         eq(chatEvents.contextType, "feishu"),
         eq(chatFeishuContext.id, chatEvents.contextId),
+      ),
+    )
+    .leftJoin(
+      chatGoalContext,
+      and(
+        eq(chatEvents.contextType, "goal"),
+        eq(chatGoalContext.id, chatEvents.contextId),
       ),
     );
 }
@@ -818,7 +828,10 @@ function baseChatEventFromRow(
     feishuChatOpenUrl: row.feishuChatOpenUrl ?? undefined,
     isGoalRun: row.isGoalRun || undefined,
     runEventId: row.runEventId ?? undefined,
-    goalSnapshot: row.goalSnapshot ?? undefined,
+    goalSnapshot:
+      row.goalObjectiveBrief === null
+        ? (row.goalSnapshot ?? undefined)
+        : { objectiveBrief: row.goalObjectiveBrief },
     revokesEventId: row.revokesEventId ?? undefined,
     seqId: row.seqId,
     sequenceNumber: row.sequenceNumber,
@@ -874,7 +887,7 @@ const chatEventBuilders = {
       eventType: "input.goal",
       content: null,
       goalSnapshot: requiredChatEventField(
-        row.goalSnapshot,
+        event.goalSnapshot ?? null,
         row.eventType,
         "goalSnapshot",
       ),
