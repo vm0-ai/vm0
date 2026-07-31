@@ -187,7 +187,6 @@ import {
   loadCustomConnectorPermissionBundle,
   type CustomConnectorPermissionBundle,
 } from "./custom-connector-permission-bundle.service";
-import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import {
   prepareAgentRunStorage,
   type PreparedAgentRunStorage,
@@ -3728,26 +3727,6 @@ interface BuildCustomConnectorRuntimeContextArgs {
   readonly timing?: ApiDispatchTimingCollector;
 }
 
-async function loadEffectiveCustomConnectorPermissionBundle(args: {
-  readonly row: CustomConnectorRuntimeDataRows[number];
-  readonly snapshot: ConnectorRuntimeSnapshot;
-}): Promise<CustomConnectorPermissionBundle | null | undefined> {
-  const ref = effectiveCustomConnectorPermissionBundleRef({
-    slug: args.row.connector.slug,
-    authMode: args.row.connector.authMode,
-    oauthProviderAdapter:
-      args.row.connector.oauthConfig?.providerAdapter ?? null,
-    prefixTemplates: args.row.connector.prefixTemplates,
-    permissionBundleRef: args.row.connector.permissionBundleRef,
-  });
-  return ref
-    ? ((await loadCustomConnectorPermissionBundle({
-        snapshot: args.snapshot,
-        ref,
-      })) ?? undefined)
-    : null;
-}
-
 function buildCustomConnectorPermissionPolicy(args: {
   readonly bundle: CustomConnectorPermissionBundle;
   readonly selectedPermissionNames: readonly string[];
@@ -3821,10 +3800,13 @@ async function buildCustomConnectorRuntimeContext(
       stats.recordNoAuthInjectionConnector();
       continue;
     }
-    const permissionBundle = await loadEffectiveCustomConnectorPermissionBundle(
-      { row, snapshot: args.connectorCatalogSnapshot },
-    );
-    if (permissionBundle === undefined) {
+    const permissionBundle = row.connector.permissionBundleRef
+      ? await loadCustomConnectorPermissionBundle({
+          snapshot: args.connectorCatalogSnapshot,
+          ref: row.connector.permissionBundleRef,
+        })
+      : null;
+    if (row.connector.permissionBundleRef && !permissionBundle) {
       continue;
     }
     const apis = await buildCustomConnectorRuntimeApis({

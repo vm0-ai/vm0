@@ -33,9 +33,11 @@ import {
   zeroUserPermissionGrantsContract,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
+  zeroCustomConnectorByIdContract,
   zeroCustomConnectorsContract,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { describe, expect, it } from "vitest";
@@ -609,6 +611,123 @@ describe("team page navigation", () => {
     expect(updateCalls).toBe(0);
     expect(
       screen.queryByText("Custom connectors saved"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("manages grant-required custom connector permissions from the agent auth tab", async () => {
+    const customConnector = {
+      ...createCustomConnector(),
+      permissionBundleRef: "builtin:feishu@1" as const,
+    };
+    let capturedUpdate: AgentCustomConnectorUpdate | null = null;
+    mockTeamAPIs({ customConnector });
+    context.mocks.api(
+      zeroCustomConnectorByIdContract.permissions,
+      ({ params, respond }) => {
+        expect(params.id).toBe(customConnector.id);
+        return respond(200, {
+          ref: "builtin:feishu@1",
+          permissions: [
+            {
+              name: "standard:use",
+              description: "Use standard Feishu APIs with approval.",
+            },
+            {
+              name: "messages:send-as-user",
+              description: "Send or edit messages as the connected user.",
+            },
+            {
+              name: "resources:delete",
+              description: "Delete Feishu content.",
+            },
+          ],
+          defaultPolicies: {
+            "standard:use": "ask",
+            "messages:send-as-user": "deny",
+            "resources:delete": "deny",
+          },
+        });
+      },
+    );
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledIds: [customConnector.id],
+        grants: [
+          {
+            customConnectorId: customConnector.id,
+            permissionNames: [],
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, respond }) => {
+        capturedUpdate = body;
+        return respond(200, {
+          enabledIds: [customConnector.id],
+          grants:
+            "grants" in body
+              ? body.grants
+              : [
+                  {
+                    customConnectorId: customConnector.id,
+                    permissionNames: [],
+                  },
+                ],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.CustomConnectorPermissions]: true,
+      },
+    });
+
+    await screen.findByText("Acme Search");
+    click(screen.getByLabelText("Manage Acme Search permissions"));
+
+    const messagePermission = await screen.findByText("messages:send-as-user");
+    const drawer = dialogForElement(messagePermission);
+    expect(within(drawer).queryByText("standard:use")).not.toBeInTheDocument();
+    const messageRow = messagePermission.parentElement?.parentElement;
+    if (!(messageRow instanceof HTMLElement)) {
+      throw new Error("custom connector permission row not found");
+    }
+    click(buttonByText("Allow", messageRow));
+    click(buttonByText("Apply", drawer));
+
+    await waitFor(() => {
+      expect(capturedUpdate).toStrictEqual({
+        grants: [
+          {
+            customConnectorId: customConnector.id,
+            permissionNames: ["messages:send-as-user"],
+          },
+        ],
+        operation: "add",
+      });
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+    });
+  });
+
+  it("hides custom connector permission management without a bundle", async () => {
+    mockTeamAPIs();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.CustomConnectorPermissions]: true,
+      },
+    });
+
+    await screen.findByText("Acme Search");
+    expect(
+      screen.queryByLabelText("Manage Acme Search permissions"),
     ).not.toBeInTheDocument();
   });
 

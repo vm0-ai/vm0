@@ -11,6 +11,7 @@ import type {
   CustomConnectorOAuthConfig,
   CustomConnectorOAuthConfigInput,
   CustomConnectorPermissionBundleRef,
+  CustomConnectorPermissionBundleResponse,
   CustomConnectorProposal,
   CustomConnectorQueryInjection,
   CustomConnectorResponse,
@@ -1864,6 +1865,39 @@ export function getCustomConnectorResponse(args: {
       valueMarkers: markers,
       oauthConnected: oauthConnections.has(connector.id),
     });
+  });
+}
+
+export function getCustomConnectorPermissionBundle(args: {
+  readonly orgId: string;
+  readonly connectorId: string;
+}): Computed<Promise<CustomConnectorPermissionBundleResponse | null>> {
+  return computed(async (get) => {
+    const db = get(db$);
+    const connector = await get(getCustomConnectorById(args));
+    if (!connector?.permissionBundleRef) {
+      return null;
+    }
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    const bundle = await loadCustomConnectorPermissionBundle({
+      snapshot,
+      ref: connector.permissionBundleRef,
+    });
+    if (!bundle) {
+      return null;
+    }
+    return {
+      ref: bundle.ref,
+      permissions: bundle.permissions.map((permission) => {
+        return {
+          name: permission.name,
+          ...(permission.description
+            ? { description: permission.description }
+            : {}),
+        };
+      }),
+      defaultPolicies: { ...bundle.defaultPolicies },
+    };
   });
 }
 

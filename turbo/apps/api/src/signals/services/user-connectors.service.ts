@@ -12,7 +12,6 @@ import {
 import { connectors as connectorConnections } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
-import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
@@ -24,10 +23,7 @@ import {
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
-import {
-  effectiveCustomConnectorPermissionBundleRef,
-  FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF,
-} from "./feishu-custom-connector-permissions";
+import { FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF } from "./feishu-custom-connector-permissions";
 
 type UpdateUserConnectorsResult =
   | {
@@ -367,7 +363,6 @@ async function lockZeroAgentForConnectorReplace(
 
 interface LockedCustomConnectorRow {
   readonly id: string;
-  readonly slug: string;
   readonly prefixes: readonly string[];
   readonly prefixTemplates: readonly string[];
   readonly headerTemplate: string;
@@ -375,7 +370,6 @@ interface LockedCustomConnectorRow {
   readonly headerInjections: readonly OrgCustomConnectorHeaderInjection[];
   readonly queryInjections: readonly OrgCustomConnectorQueryInjection[];
   readonly authMode: OrgCustomConnectorAuthMode;
-  readonly oauthProviderAdapter: string | null;
   readonly permissionBundleRef: string | null;
   readonly revision: number;
 }
@@ -492,7 +486,6 @@ async function lockCustomConnectorsForReplace(
     const [locked] = await db
       .select({
         id: orgCustomConnectors.id,
-        slug: orgCustomConnectors.slug,
         prefixes: orgCustomConnectors.prefixes,
         prefixTemplates: orgCustomConnectors.prefixTemplates,
         headerTemplate: orgCustomConnectors.headerTemplate,
@@ -500,21 +493,10 @@ async function lockCustomConnectorsForReplace(
         headerInjections: orgCustomConnectors.headerInjections,
         queryInjections: orgCustomConnectors.queryInjections,
         authMode: orgCustomConnectors.authMode,
-        oauthProviderAdapter: orgCustomConnectorOauthConfigs.providerAdapter,
         permissionBundleRef: orgCustomConnectors.permissionBundleRef,
         revision: orgCustomConnectors.revision,
       })
       .from(orgCustomConnectors)
-      .leftJoin(
-        orgCustomConnectorOauthConfigs,
-        and(
-          eq(
-            orgCustomConnectorOauthConfigs.connectorId,
-            orgCustomConnectors.id,
-          ),
-          eq(orgCustomConnectorOauthConfigs.orgId, orgCustomConnectors.orgId),
-        ),
-      )
       .where(
         and(
           eq(orgCustomConnectors.orgId, args.orgId),
@@ -522,7 +504,7 @@ async function lockCustomConnectorsForReplace(
           eq(orgCustomConnectors.enabled, true),
         ),
       )
-      .for("update", { of: orgCustomConnectors })
+      .for("update")
       .limit(1);
     if (locked) {
       lockedRows.push(locked);
@@ -580,16 +562,7 @@ async function lockCustomConnectorsForReplace(
     ),
     permissionBundleRefs: new Map(
       lockedRows.map((row) => {
-        return [
-          row.id,
-          effectiveCustomConnectorPermissionBundleRef({
-            slug: row.slug,
-            authMode: row.authMode,
-            oauthProviderAdapter: row.oauthProviderAdapter,
-            prefixTemplates: row.prefixTemplates,
-            permissionBundleRef: row.permissionBundleRef,
-          }),
-        ] as const;
+        return [row.id, row.permissionBundleRef] as const;
       }),
     ),
   };

@@ -4,10 +4,6 @@ import type {
   FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
 
-const FEISHU_API_PREFIX = "https://open.feishu.cn/open-apis/";
-const FEISHU_MANAGED_CONNECTOR_SLUG_PATTERN =
-  /^_feishu-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
-
 export const FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF =
   "builtin:feishu@1" satisfies CustomConnectorPermissionBundleRef;
 
@@ -192,34 +188,11 @@ export const FEISHU_CUSTOM_CONNECTOR_PERMISSIONS = [
 export const FEISHU_CUSTOM_CONNECTOR_DEFAULT_POLICIES = Object.fromEntries(
   FEISHU_CUSTOM_CONNECTOR_PERMISSIONS.map((permission) => {
     const policy: FirewallPolicyValue =
-      permission.name === "standard:use" ? "ask" : "deny";
+      permission.name === "messages:send-as-user" ||
+      permission.name === "resources:delete" ||
+      permission.name === "chats:manage"
+        ? "deny"
+        : "ask";
     return [permission.name, policy];
   }),
 ) satisfies Readonly<Record<string, FirewallPolicyValue>>;
-
-function isManagedFeishuCustomConnector(args: {
-  readonly slug: string;
-  readonly authMode: string;
-  readonly oauthProviderAdapter: string | null;
-  readonly prefixTemplates: readonly string[];
-}): boolean {
-  return (
-    FEISHU_MANAGED_CONNECTOR_SLUG_PATTERN.test(args.slug) &&
-    args.authMode === "oauth" &&
-    args.oauthProviderAdapter === "feishu" &&
-    args.prefixTemplates.length === 1 &&
-    args.prefixTemplates[0] === FEISHU_API_PREFIX
-  );
-}
-
-export function effectiveCustomConnectorPermissionBundleRef(args: {
-  readonly slug: string;
-  readonly authMode: string;
-  readonly oauthProviderAdapter: string | null;
-  readonly prefixTemplates: readonly string[];
-  readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
-}): CustomConnectorPermissionBundleRef | null {
-  return isManagedFeishuCustomConnector(args)
-    ? FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF
-    : args.permissionBundleRef;
-}

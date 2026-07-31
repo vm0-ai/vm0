@@ -1,0 +1,258 @@
+import { IconLoader2 } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
+import type { CustomConnectorPermissionBundleResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import {
+  Button,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@vm0/ui";
+import { useLoadableSet } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
+import { toast } from "@vm0/ui/components/ui/sonner";
+
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import {
+  customConnectorPermissionDraft$,
+  saveAgentCustomConnectorPermissions$,
+  setCustomConnectorPermissionDraftValue$,
+} from "../../signals/zero-page/job-detail/custom-connectors.ts";
+import { detach, Reason } from "../../signals/utils.ts";
+import { CustomConnectorIcon } from "../zero-page/components/settings/custom-connector-icon.tsx";
+import { PermissionPolicyToggle } from "../zero-page/components/settings/permission-policy-toggle.tsx";
+
+function permissionSelectionsEqual(
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string>,
+): boolean {
+  return (
+    left.size === right.size &&
+    [...left].every((permissionName) => {
+      return right.has(permissionName);
+    })
+  );
+}
+
+function LoadedCustomConnectorPermissions({
+  connectorId,
+  bundle,
+  onClose,
+}: {
+  readonly connectorId: string;
+  readonly bundle: CustomConnectorPermissionBundleResponse;
+  readonly onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const draft = useGet(customConnectorPermissionDraft$);
+  const setDraftPermission = useSet(setCustomConnectorPermissionDraftValue$);
+  const [saveLoadable, save] = useLoadableSet(
+    saveAgentCustomConnectorPermissions$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  const permissions = bundle.permissions.filter((permission) => {
+    return bundle.defaultPolicies[permission.name] === "deny";
+  });
+  const selected = new Set(
+    draft?.connectorId === connectorId ? draft.permissionNames : [],
+  );
+  const initialSelections = new Set(
+    draft?.connectorId === connectorId ? draft.initialPermissionNames : [],
+  );
+  const saving = saveLoadable.state === "loading";
+  const changed = !permissionSelectionsEqual(selected, initialSelections);
+
+  const setPermission = (permissionName: string, allow: boolean) => {
+    setDraftPermission({ permissionName, allow });
+  };
+
+  const handleApply = () => {
+    if (saving || !changed) {
+      return;
+    }
+    detach(
+      (async () => {
+        await save(
+          {
+            connectorId,
+            permissionNames: permissions
+              .map((permission) => {
+                return permission.name;
+              })
+              .filter((permissionName) => {
+                return selected.has(permissionName);
+              }),
+          },
+          pageSignal,
+        );
+        toast.success(
+          t(($) => {
+            return $.connectors.access.permissionsUpdated;
+          }),
+        );
+        onClose();
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <>
+      <div className="flex flex-1 flex-col overflow-y-auto -mx-6 px-6">
+        {permissions.map((permission) => {
+          const allowed = selected.has(permission.name);
+          return (
+            <div
+              key={permission.name}
+              className="flex items-center gap-3 border-b border-border/50 py-3 last:border-b-0"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-foreground">
+                  {permission.name}
+                </div>
+                {permission.description ? (
+                  <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                    {permission.description}
+                  </p>
+                ) : null}
+              </div>
+              <PermissionPolicyToggle
+                policy={allowed ? "allow" : "deny"}
+                disabled={saving}
+                onAllow={() => {
+                  setPermission(permission.name, true);
+                }}
+                onDeny={() => {
+                  setPermission(permission.name, false);
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <SheetFooter>
+        <Button variant="outline" onClick={onClose} disabled={saving}>
+          {t(($) => {
+            return $.connectors.actions.cancel;
+          })}
+        </Button>
+        <Button onClick={handleApply} disabled={saving || !changed}>
+          {saving
+            ? t(($) => {
+                return $.connectors.actions.saving;
+              })
+            : t(($) => {
+                return $.connectors.actions.apply;
+              })}
+        </Button>
+      </SheetFooter>
+    </>
+  );
+}
+
+export function CustomConnectorPermissionsDrawer({
+  connectorId,
+  connectorName,
+  agentName,
+  bundle,
+  loading,
+  loadError,
+  onClose,
+}: {
+  readonly connectorId: string;
+  readonly connectorName: string;
+  readonly agentName: string;
+  readonly bundle: CustomConnectorPermissionBundleResponse | null;
+  readonly loading: boolean;
+  readonly loadError: boolean;
+  readonly onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+    >
+      <SheetContent side="right">
+        <SheetHeader>
+          <div className="flex items-center gap-3">
+            <CustomConnectorIcon
+              id={connectorId}
+              displayName={connectorName}
+              size={24}
+            />
+            <SheetTitle className="text-base">
+              {t(
+                ($) => {
+                  return $.connectors.permissions.title;
+                },
+                { connector: connectorName },
+              )}
+              <span className="ml-1 text-sm font-normal text-muted-foreground">
+                {t(
+                  ($) => {
+                    return $.connectors.permissions.forTarget;
+                  },
+                  { target: agentName },
+                )}
+              </span>
+            </SheetTitle>
+          </div>
+          <SheetDescription>
+            {t(($) => {
+              return $.connectors.permissions.descriptionAgent;
+            })}
+          </SheetDescription>
+        </SheetHeader>
+
+        {bundle ? (
+          <LoadedCustomConnectorPermissions
+            key={connectorId}
+            connectorId={connectorId}
+            bundle={bundle}
+            onClose={onClose}
+          />
+        ) : (
+          <>
+            <div className="flex flex-1 items-center justify-center">
+              {loading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <IconLoader2 size={16} className="animate-spin" />
+                  {t(($) => {
+                    return $.connectors.permissions.loading;
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-destructive">
+                  {loadError
+                    ? t(($) => {
+                        return $.connectors.permissions.loadError;
+                      })
+                    : t(
+                        ($) => {
+                          return $.connectors.permissions.metadataMissing;
+                        },
+                        { connector: connectorName },
+                      )}
+                </p>
+              )}
+            </div>
+            <SheetFooter>
+              <Button variant="outline" onClick={onClose}>
+                {t(($) => {
+                  return $.connectors.actions.cancel;
+                })}
+              </Button>
+            </SheetFooter>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}

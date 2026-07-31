@@ -12,6 +12,7 @@ import { secrets } from "@vm0/db/schema/secret";
 import { nowDate } from "../external/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
+import { FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF } from "./feishu-custom-connector-permissions";
 
 const FEISHU_API_PREFIX = "https://open.feishu.cn/open-apis/";
 const FEISHU_AUTHORIZATION_URL =
@@ -174,7 +175,7 @@ function desiredConnectorDefinition(installation: FeishuConnectorInstallation) {
     queryInjections: [],
     authMode: "oauth" as const,
     enabled: true,
-    permissionBundleRef: null,
+    permissionBundleRef: FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF,
     skillMarkdown: FEISHU_SKILL_MARKDOWN,
   };
 }
@@ -200,6 +201,19 @@ function connectorDefinitionMatches(
 ): boolean {
   const desired = desiredConnectorDefinition(installation);
   return (
+    connectorDefinitionMatchesWithoutPermissionBundle(
+      connector,
+      installation,
+    ) && connector.permissionBundleRef === desired.permissionBundleRef
+  );
+}
+
+function connectorDefinitionMatchesWithoutPermissionBundle(
+  connector: typeof orgCustomConnectors.$inferSelect,
+  installation: FeishuConnectorInstallation,
+): boolean {
+  const desired = desiredConnectorDefinition(installation);
+  return (
     connector.displayName === desired.displayName &&
     isDeepStrictEqual(connector.prefixes, desired.prefixes) &&
     connector.headerName === desired.headerName &&
@@ -210,7 +224,6 @@ function connectorDefinitionMatches(
     isDeepStrictEqual(connector.queryInjections, desired.queryInjections) &&
     connector.authMode === desired.authMode &&
     connector.enabled === desired.enabled &&
-    connector.permissionBundleRef === desired.permissionBundleRef &&
     connector.skillMarkdown === desired.skillMarkdown
   );
 }
@@ -313,6 +326,26 @@ async function repairFeishuCustomConnector(
   };
 }
 
+async function backfillFeishuPermissionBundle(
+  tx: DbTransaction,
+  connectorId: string,
+  installation: FeishuConnectorInstallation,
+  signal: AbortSignal,
+): Promise<ReconciledFeishuCustomConnector> {
+  await tx
+    .update(orgCustomConnectors)
+    .set({
+      permissionBundleRef: FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF,
+      updatedAt: nowDate(),
+    })
+    .where(eq(orgCustomConnectors.id, connectorId));
+  signal.throwIfAborted();
+  return {
+    connectorId,
+    displayName: feishuCustomConnectorDisplayName(installation.botName),
+  };
+}
+
 async function reconcileFeishuCustomConnector(
   tx: DbTransaction,
   args: EnsureFeishuCustomConnectorArgs,
@@ -383,6 +416,21 @@ async function reconcileFeishuCustomConnector(
       connectorId: existing.connector.id,
       displayName: feishuCustomConnectorDisplayName(installation.botName),
     };
+  }
+  if (
+    !args.configurationChanged &&
+    connectorDefinitionMatchesWithoutPermissionBundle(
+      existing.connector,
+      installation,
+    ) &&
+    oauthConfigMatches(existing.oauthConfig, installation)
+  ) {
+    return await backfillFeishuPermissionBundle(
+      tx,
+      existing.connector.id,
+      installation,
+      signal,
+    );
   }
   return await repairFeishuCustomConnector(
     tx,

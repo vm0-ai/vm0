@@ -170,6 +170,45 @@ async function createCustomConnectorWithOptionalPrefixVariable(
   return connector;
 }
 
+describe("GET /api/zero/custom-connectors/:id/permissions", () => {
+  it("returns permission metadata for a custom connector with a bundle", async () => {
+    const actor = bdd.user();
+    const connector = await createPermissionedCustomConnector(
+      actor,
+      "permission-metadata",
+    );
+
+    const response = await connectors.readCustomConnectorPermissions(
+      actor,
+      connector.id,
+    );
+
+    expect(response.ref).toBe("builtin:slack@1");
+    expect(response.permissions).toContainEqual(
+      expect.objectContaining({ name: "chat:write" }),
+    );
+    expect(response.defaultPolicies["chat:write"]).toBe("deny");
+  });
+
+  it("returns 404 when the custom connector has no permission bundle", async () => {
+    const actor = bdd.user();
+    const connector = await createCustomConnector(actor, "no-permissions");
+
+    const response = await connectors.requestCustomConnectorPermissions(
+      actor,
+      connector.id,
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Custom connector permission bundle not found",
+        code: "NOT_FOUND",
+      },
+    });
+  });
+});
+
 describe("GET /api/zero/agents/:id/custom-connectors", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await connectors.requestAgentCustomConnectors(

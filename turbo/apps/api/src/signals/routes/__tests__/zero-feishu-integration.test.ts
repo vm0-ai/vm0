@@ -14,6 +14,7 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
+  zeroCustomConnectorByIdContract,
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
@@ -1331,6 +1332,7 @@ describe("Feishu integration", () => {
         },
       ],
       authMode: "oauth",
+      permissionBundleRef: "builtin:feishu@1",
       connected: false,
       oauthConfig: {
         providerAdapter: "feishu",
@@ -1360,6 +1362,26 @@ describe("Feishu integration", () => {
     );
     expect(skillMarkdown).not.toContain("Okou Feishu");
     expect(skillMarkdown).not.toContain(managedConnector.id);
+    const permissionBundle = await accept(
+      setupApp({ context })(zeroCustomConnectorByIdContract).permissions({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: managedConnector.id },
+      }),
+      [200],
+    );
+    expect(permissionBundle.body).toMatchObject({
+      ref: "builtin:feishu@1",
+      defaultPolicies: {
+        "standard:use": "ask",
+        "messages:send-as-user": "deny",
+        "resources:delete": "deny",
+        "sharing:manage": "ask",
+        "chats:manage": "deny",
+        "comments:write": "ask",
+        "calendar:write": "ask",
+        "tasks:write": "ask",
+      },
+    });
 
     const customConnectorOAuthClient = setupApp({ context })(
       zeroCustomConnectorOAuth2Contract,
@@ -2228,16 +2250,14 @@ describe("Feishu integration", () => {
     });
     expect(claim.networkPolicies?.[internalName]).toStrictEqual({
       allow: [],
-      deny: [
-        "messages:send-as-user",
-        "resources:delete",
+      deny: ["messages:send-as-user", "resources:delete", "chats:manage"],
+      ask: [
+        "standard:use",
         "sharing:manage",
-        "chats:manage",
         "comments:write",
         "calendar:write",
         "tasks:write",
       ],
-      ask: ["standard:use"],
       unknownPolicy: "deny",
     });
     const permissionGrant = await accept(
