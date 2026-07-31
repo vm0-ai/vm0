@@ -377,9 +377,12 @@ async function claimChatRun(
 }> {
   await api.heartbeatRunner(runnerGroup);
   const claim = await api.claimRunnerJob(runId);
+  const sandboxHeaders = {
+    authorization: `Bearer ${claim.sandboxToken}`,
+  };
   return {
     claim,
-    sandboxHeaders: { authorization: `Bearer ${claim.sandboxToken}` },
+    sandboxHeaders,
   };
 }
 
@@ -665,9 +668,17 @@ async function failChatRun(
   );
 }
 
-async function cancelChatRun(actor: ApiTestUser, runId: string): Promise<void> {
+async function cancelChatRun(
+  actor: ApiTestUser,
+  runId: string,
+  sandboxHeaders?: { readonly authorization: string },
+): Promise<void> {
   await api.requestCancelRun(actor, runId, [200]);
   await waitForRunStatus(actor, runId, "cancelled");
+  if (sandboxHeaders) {
+    await failChatRun(runId, sandboxHeaders, "Run cancelled");
+    await flushWaitUntilForTest();
+  }
 }
 
 function assistantMessages(messages: readonly ChatEvent[]): AssistantMessage[] {
@@ -2486,7 +2497,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(["claude-opus-4-6", "claude-sonnet-5"]).toContain(
       claimEnvironment(racedClaim.claim).ANTHROPIC_MODEL,
     );
-    await cancelChatRun(actor, sent.body.runId);
+    await cancelChatRun(actor, sent.body.runId, racedClaim.sandboxHeaders);
 
     const followUp = await sendChatRun(actor, {
       agentId,
@@ -2596,9 +2607,9 @@ describe("CHAT-02: model-first provider policies", () => {
     expect((await readThreadProjection(actor, fast.threadId)).serviceTier).toBe(
       "priority",
     );
-    const { claim } = await claimChatRun(runnerGroup, fast.runId);
-    const environment = claimEnvironment(claim);
-    expect(claim.cliAgentType).toBe("codex");
+    const fastClaim = await claimChatRun(runnerGroup, fast.runId);
+    const environment = claimEnvironment(fastClaim.claim);
+    expect(fastClaim.claim.cliAgentType).toBe("codex");
     expect(environment.OPENAI_MODEL).toBe("gpt-5.6-sol");
     expect(environment.VM0_CODEX_SERVICE_TIER).toBe("fast");
     expect(environment.CHATGPT_ACCESS_TOKEN).toBe(
@@ -2607,7 +2618,7 @@ describe("CHAT-02: model-first provider policies", () => {
         "CHATGPT_ACCESS_TOKEN",
       ),
     );
-    await cancelChatRun(actor, fast.runId);
+    await cancelChatRun(actor, fast.runId, fastClaim.sandboxHeaders);
     expect((await readThreadProjection(actor, fast.threadId)).serviceTier).toBe(
       "priority",
     );
@@ -5416,7 +5427,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       { bearer: zeroTokenFromClaim(grantedClaim.claim) },
       [200],
     );
-    await cancelChatRun(actor, granted.runId);
+    await cancelChatRun(actor, granted.runId, grantedClaim.sandboxHeaders);
 
     // Follow-up sends without the field stay granted via the sticky host.
     const sticky = await sendChatRun(actor, {
@@ -5430,7 +5441,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       { bearer: zeroTokenFromClaim(stickyClaim.claim) },
       [200],
     );
-    await cancelChatRun(actor, sticky.runId);
+    await cancelChatRun(actor, sticky.runId, stickyClaim.sandboxHeaders);
 
     // An explicit null clears the sticky host: the next run on the same
     // thread is no longer granted.
@@ -5446,7 +5457,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       { bearer: zeroTokenFromClaim(clearedClaim.claim) },
       [403],
     );
-    await cancelChatRun(actor, cleared.runId);
+    await cancelChatRun(actor, cleared.runId, clearedClaim.sandboxHeaders);
 
     mockNow(now() + 91_000);
     const staleGranted = await sendChatRun(actor, {
@@ -5824,7 +5835,7 @@ describe("CHAT-02: shared user message queue", () => {
     await expect(
       readChatEventInputParamsFixture(replayedPreviewMessageId),
     ).resolves.toBeNull();
-    await cancelChatRun(actor, previewRunId);
+    await cancelChatRun(actor, previewRunId, previewClaim.sandboxHeaders);
 
     const mockMessages = await waitForThreadMessages(
       actor,
@@ -6497,7 +6508,7 @@ describe("CHAT-02: shared user message queue", () => {
       agentId,
       prompt: "thread deletion after queue-first launch anchor",
     });
-    await claimChatRun(runnerGroup, anchor.runId);
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
     const messageId = randomUUID();
     const prompt = "queued auto-send deleted before its marker";
     const queued = await chat.requestSendEvent(
@@ -6540,7 +6551,13 @@ describe("CHAT-02: shared user message queue", () => {
       }
     });
 
-    await cancelChatRun(actor, anchor.runId);
+    await api.requestCancelRun(actor, anchor.runId, [200]);
+    await waitForRunStatus(actor, anchor.runId, "cancelled");
+    await failChatRun(
+      anchor.runId,
+      anchorClaim.sandboxHeaders,
+      "Run cancelled",
+    );
     await queuePublishStarted.promise;
 
     const runList = await api.listAgentRuns(actor, {
@@ -6721,7 +6738,7 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, promoted.runId);
   }, 90_000);
 
-  it("auto-fires queued messages when the active run is cancelled", async () => {
+  it("auto-fires queued messages after cancellation recovery completes", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -6729,7 +6746,7 @@ describe("CHAT-02: shared user message queue", () => {
       agentId,
       prompt: "queue-first anchor to cancel",
     });
-    await claimChatRun(runnerGroup, anchor.runId);
+    const { sandboxHeaders } = await claimChatRun(runnerGroup, anchor.runId);
 
     const queuedId = randomUUID();
     const queued = await chat.requestSendEvent(
@@ -6744,10 +6761,21 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(queued.body).toMatchObject({ runId: null });
 
-    // Cancelling the anchor frees the thread; the cancel side effects drain
-    // the queue, so the queued message gets a fresh associated row without
-    // waiting for a completed-run callback or another send (#21392).
-    await cancelChatRun(actor, anchor.runId);
+    // Cancellation is public immediately, but a claimed run keeps the thread
+    // barrier until the runner reports cancellation recovery.
+    await api.requestCancelRun(actor, anchor.runId, [200]);
+    await waitForRunStatus(actor, anchor.runId, "cancelled");
+    const beforeRecovery = await chat.listThreadEvents(actor, anchor.threadId);
+    expect(
+      userMessages(beforeRecovery.events).filter((message) => {
+        return (
+          message.revokesEventId === queuedId && message.runId !== undefined
+        );
+      }),
+    ).toHaveLength(0);
+
+    await failChatRun(anchor.runId, sandboxHeaders, "Run cancelled");
+    await flushWaitUntilForTest();
     const messages = await waitForThreadMessages(
       actor,
       anchor.threadId,

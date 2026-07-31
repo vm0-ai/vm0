@@ -60,9 +60,10 @@ export const agentRuns = pgTable(
     // "profileMismatch" | "deviceLimitMismatch" | "unparkFailed". Null means
     // unknown (old runner or historical row).
     sandboxReuseResult: varchar("sandbox_reuse_result", { length: 50 }),
-    // Null means the claim did not advertise cancellation recovery support.
-    // False/true records whether recovery completion has been reported; the
-    // barrier is active only while the public run status is cancelled.
+    // Null identifies a historical claim without cancellation recovery.
+    // Current claims initialize false; false/true records whether recovery
+    // completion has been reported. The barrier is active only while the
+    // public run status is cancelled.
     cancellationRecoveryCompleted: boolean("cancellation_recovery_completed"),
     result: jsonb("result").$type<AgentRunResult>(),
     error: text("error"),
