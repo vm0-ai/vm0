@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.501.1](https://github.com/vm0-ai/vm0/compare/core-v8.501.0...core-v8.501.1) (2026-08-01)
+
+
+### Refactoring
+
+* remove DeepSeek V4 Flash feature switch ([#24411](https://github.com/vm0-ai/vm0/issues/24411)) ([e589e06](https://github.com/vm0-ai/vm0/commit/e589e0624d057086451eccac56d20302f6754a5d))
+
 ## [8.501.0](https://github.com/vm0-ai/vm0/compare/core-v8.500.0...core-v8.501.0) (2026-07-31)
 
 
