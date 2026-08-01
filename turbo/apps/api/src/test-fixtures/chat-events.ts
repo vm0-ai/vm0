@@ -202,22 +202,24 @@ export async function readChatEventContextFixture(
 }
 
 export async function useLegacyFeishuTenantKeyFixture(
-  eventId: string,
+  runId: string,
   tenantKey: string,
-): Promise<void> {
+): Promise<{ readonly previousTenantKey: string | null }> {
   const [context] = await db()
     .select({
       id: chatFeishuContext.id,
       installationId: chatFeishuContext.installationId,
+      tenantKey: chatFeishuContext.tenantKey,
     })
     .from(chatEvents)
     .innerJoin(
       chatFeishuContext,
       eq(chatFeishuContext.id, chatEvents.contextId),
     )
-    .where(eq(chatEvents.id, eventId))
+    .where(eq(chatEvents.runId, runId))
     .limit(1);
-  if (!context?.installationId) {
+  const installationId = context?.installationId;
+  if (!context || !installationId) {
     throw new Error("Expected a Feishu launch context fixture");
   }
   await db().transaction(async (tx) => {
@@ -228,8 +230,9 @@ export async function useLegacyFeishuTenantKeyFixture(
     await tx
       .update(feishuOrgInstallations)
       .set({ feishuTenantKey: null })
-      .where(eq(feishuOrgInstallations.id, context.installationId));
+      .where(eq(feishuOrgInstallations.id, installationId));
   });
+  return { previousTenantKey: context.tenantKey };
 }
 
 const annotationProjectionInputs = [

@@ -2391,17 +2391,11 @@ describe("Feishu integration", () => {
       null,
     );
     const run = await findRun(actor, "do the Feishu task");
-    const pendingParams = requireValue(
-      await findPendingChatEventInputParamsByPromptFixture(
-        "do the Feishu task",
-      ),
-      "Expected pending Feishu launch params",
+    const legacyTenantKeyFixture = await useLegacyFeishuTenantKeyFixture(
+      run.id,
+      TENANT_KEY,
     );
-    expect(
-      (await readChatEventContextFixture(pendingParams.eventId))
-        ?.feishuTenantKey,
-    ).toBeNull();
-    await useLegacyFeishuTenantKeyFixture(pendingParams.eventId, TENANT_KEY);
+    expect(legacyTenantKeyFixture.previousTenantKey).toBeNull();
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
       setupApp({ context })(chatThreadsContract).events({
