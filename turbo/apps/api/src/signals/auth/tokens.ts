@@ -33,11 +33,18 @@ const CONDITIONAL_CAPABILITIES = [
   ["browser:read", FeatureSwitchKey.ZeroBrowser],
   ["browser:write", FeatureSwitchKey.ZeroBrowser],
   ["connector:write", FeatureSwitchKey.CustomConnectorCliCreate],
+  ["image-recognition:write", FeatureSwitchKey.ZeroImageRecognition],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
   "agent:delete",
 ] as const satisfies readonly ZeroCapability[];
+
+interface ZeroTokenOptions {
+  readonly computerUseHostId?: string;
+  readonly cloudBrowserEnabled?: boolean;
+  readonly imageRecognitionAvailable?: boolean;
+}
 
 const jwtBaseSchema = z.object({
   userId: z.string().min(1),
@@ -140,6 +147,29 @@ function isZeroCapabilityEnabled(
       ? { userId, orgId, overrides }
       : { userId, orgId },
   );
+}
+
+function isCapabilityAvailableToAgent(
+  capability: ZeroCapability,
+  options: ZeroTokenOptions | undefined,
+): boolean {
+  if (
+    AGENT_EXCLUDED_CAPABILITIES.some((excludedCapability) => {
+      return excludedCapability === capability;
+    })
+  ) {
+    return false;
+  }
+  if (capability === "computer-use:write") {
+    return options?.computerUseHostId !== undefined;
+  }
+  if (capability === "browser:read" || capability === "browser:write") {
+    return options?.cloudBrowserEnabled === true;
+  }
+  if (capability === "image-recognition:write") {
+    return options?.imageRecognitionAvailable === true;
+  }
+  return true;
 }
 
 const getJwtKey = singleton((): Buffer => {
@@ -300,28 +330,12 @@ export function generateZeroToken(
   runId: string,
   orgId: string,
   overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
-  options?: {
-    readonly computerUseHostId?: string;
-    readonly cloudBrowserEnabled?: boolean;
-  },
+  options?: ZeroTokenOptions,
 ): string {
   const nowSeconds = Math.floor(now() / 1000);
   const capabilities: ZeroCapability[] = [];
   for (const capability of ZERO_CAPABILITIES) {
-    if (capability === "computer-use:write" && !options?.computerUseHostId) {
-      continue;
-    }
-    if (
-      (capability === "browser:read" || capability === "browser:write") &&
-      options?.cloudBrowserEnabled !== true
-    ) {
-      continue;
-    }
-    if (
-      AGENT_EXCLUDED_CAPABILITIES.some((excludedCapability) => {
-        return excludedCapability === capability;
-      })
-    ) {
+    if (!isCapabilityAvailableToAgent(capability, options)) {
       continue;
     }
     if (isZeroCapabilityEnabled(capability, userId, orgId, overrides)) {

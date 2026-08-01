@@ -22,6 +22,7 @@ import {
   getModelProviderCodexRuntimeConfig,
   getModelProviderFirewall,
   getModelProviderEnvBindings,
+  getModelImageInputSupport,
   getFrameworkForType,
   getProviderRuntimeModel,
   getSecretNameForType,
@@ -69,8 +70,10 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
+  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomConnectorSkillName,
@@ -299,6 +302,8 @@ type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
   "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `zero web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
+const ZERO_IMAGE_RECOGNITION_PROMPT =
+  '# Image Recognition Fallback\n\nThis run\'s selected model cannot inspect images directly. To inspect one local PNG, JPEG, or WebP image up to 20 MB, run `zero recognize --file <image-path> --prompt "<instruction>"`.';
 
 function withZeroTokenSecret(
   body: CreateRunBody,
@@ -317,21 +322,26 @@ function withPendingZeroTokenSecret(body: CreateRunBody): CreateRunBody {
   return withZeroTokenSecret(body, "__pending_zero_token__");
 }
 
-function withFinalFrameworkAppendSystemPrompt(
+function withFinalRunAppendSystemPrompt(
   body: CreateRunBody,
   framework: SupportedFramework,
   chatThreadId: string | undefined,
+  imageRecognitionAvailable: boolean,
 ): CreateRunBody {
-  if (framework !== "codex" || body.triggerSource !== "web" || !chatThreadId) {
+  const appendedParts: string[] = [];
+  if (imageRecognitionAvailable) {
+    appendedParts.push(ZERO_IMAGE_RECOGNITION_PROMPT);
+  }
+  if (framework === "codex" && body.triggerSource === "web" && chatThreadId) {
+    appendedParts.push(CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT);
+  }
+  if (appendedParts.length === 0) {
     return body;
   }
 
   return {
     ...body,
-    appendSystemPrompt: [
-      body.appendSystemPrompt,
-      CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT,
-    ]
+    appendSystemPrompt: [body.appendSystemPrompt, ...appendedParts]
       .filter((part): part is string => {
         return Boolean(part);
       })
@@ -5639,6 +5649,7 @@ interface BuildRunnerJobPayloadInput {
   readonly includeZeroTokenSecret: boolean | undefined;
   readonly zeroTokenComputerUseHostId: string | undefined;
   readonly zeroTokenCloudBrowserEnabled: boolean | undefined;
+  readonly imageRecognitionAvailable: boolean;
   readonly chatThreadId: string | undefined;
   readonly extraEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
@@ -5671,18 +5682,15 @@ function buildRunnerJobPayload(
             args.run.id,
             args.orgId,
             featureSwitchOverrides,
-            args.zeroTokenComputerUseHostId ||
-              args.zeroTokenCloudBrowserEnabled === true
-              ? {
-                  ...(args.zeroTokenComputerUseHostId
-                    ? {
-                        computerUseHostId: args.zeroTokenComputerUseHostId,
-                      }
-                    : {}),
-                  cloudBrowserEnabled:
-                    args.zeroTokenCloudBrowserEnabled === true,
-                }
-              : undefined,
+            {
+              ...(args.zeroTokenComputerUseHostId
+                ? {
+                    computerUseHostId: args.zeroTokenComputerUseHostId,
+                  }
+                : {}),
+              cloudBrowserEnabled: args.zeroTokenCloudBrowserEnabled === true,
+              imageRecognitionAvailable: args.imageRecognitionAvailable,
+            },
           ),
         )
       : args.body;
@@ -6522,6 +6530,7 @@ function buildAtomicLaunchPayload(
     includeZeroTokenSecret: args.createArgs.includeZeroTokenSecret,
     zeroTokenComputerUseHostId: args.createArgs.zeroTokenComputerUseHostId,
     zeroTokenCloudBrowserEnabled: args.createArgs.zeroTokenCloudBrowserEnabled,
+    imageRecognitionAvailable: args.context.imageRecognitionAvailable,
     chatThreadId: args.createArgs.chatThreadId,
     extraEnvironment: args.createArgs.extraEnvironment,
     userTimezone: args.context.userTimezone,
@@ -6581,6 +6590,7 @@ interface PreparedRunContext {
   readonly additionalVolumeSources: AdditionalVolumeSources;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly imageRecognitionAvailable: boolean;
 }
 
 async function resolveRunModelProvider(
@@ -7331,6 +7341,21 @@ function prepareRunOutputMetadata(args: {
   };
 }
 
+function isImageRecognitionAvailableForRun(args: {
+  readonly includeZeroTokenSecret: boolean | undefined;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly selectedModel: string | undefined;
+}): boolean {
+  return (
+    args.includeZeroTokenSecret === true &&
+    isFeatureEnabled(
+      FeatureSwitchKey.ZeroImageRecognition,
+      args.featureSwitchContext,
+    ) &&
+    getModelImageInputSupport(args.selectedModel) === "unsupported"
+  );
+}
+
 function prepareRunContext(input: {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
@@ -7454,6 +7479,13 @@ function prepareRunContext(input: {
         additionalVolumeSources: outputMetadata.additionalVolumeSources,
         userTimezone,
         featureSwitchContext: bodyContext.featureSwitchContext,
+        imageRecognitionAvailable: isImageRecognitionAvailableForRun({
+          includeZeroTokenSecret: args.includeZeroTokenSecret,
+          featureSwitchContext: bodyContext.featureSwitchContext,
+          selectedModel:
+            runtimeContext.modelProvider?.selectedModel ??
+            args.selectedModelOverride,
+        }),
       };
     },
   );
@@ -7791,13 +7823,14 @@ function finalizePreparedRunContext(
 ): PreparedRunContext {
   return {
     ...prepared.context,
-    body: withFinalFrameworkAppendSystemPrompt(
+    body: withFinalRunAppendSystemPrompt(
       {
         ...prepared.context.body,
         appendSystemPrompt: finalAppendSystemPrompt,
       },
       prepared.context.framework,
       prepared.args.chatThreadId,
+      prepared.context.imageRecognitionAvailable,
     ),
   };
 }

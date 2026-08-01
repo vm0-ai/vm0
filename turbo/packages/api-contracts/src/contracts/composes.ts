@@ -51,6 +51,7 @@ export const ZERO_CAPABILITIES = [
   "scrape:read",
   "people-search:read",
   "web-search:read",
+  "image-recognition:write",
   "finance:read",
   "computer-use:write",
   "browser:read",
@@ -169,6 +170,10 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "web-search:read": {
       group: "Web Search",
       label: "Use managed web search",
+    },
+    "image-recognition:write": {
+      group: "Image Recognition",
+      label: "Recognize uploaded images",
     },
     "finance:read": {
       group: "Finance",
