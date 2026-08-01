@@ -15,9 +15,9 @@
     "check-types": "NODE_OPTIONS=--max-old-space-size=3072 tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-kms": "^3.1095.0",
-    "@aws-sdk/client-s3": "^3.1095.0",
-    "@aws-sdk/s3-request-presigner": "^3.1095.0",
+    "@aws-sdk/client-kms": "^3.1098.0",
+    "@aws-sdk/client-s3": "^3.1098.0",
+    "@aws-sdk/s3-request-presigner": "^3.1098.0",
     "@axiomhq/js": "^1.5.0",
     "@axiomhq/logging": "^0.1.6",
     "@clerk/backend": "^3.13.1",
