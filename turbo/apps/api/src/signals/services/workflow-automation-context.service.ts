@@ -1,9 +1,13 @@
-import type { ZeroWorkflowEventType } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowEventTypeSchema } from "@vm0/api-contracts/contracts/zero-workflows";
+import { z } from "zod";
 
-export type WorkflowAutomationEventType =
-  | ZeroWorkflowEventType
-  | "schedule"
-  | "manual";
+export const workflowAutomationEventTypeSchema = zeroWorkflowEventTypeSchema.or(
+  z.enum(["schedule", "manual"]),
+);
+
+export type WorkflowAutomationEventType = z.infer<
+  typeof workflowAutomationEventTypeSchema
+>;
 
 export type WorkflowAutomationEventPayload = Readonly<Record<string, unknown>>;
 
@@ -346,6 +350,20 @@ export function workflowAutomationTrigger(args: {
   readonly eventPayload: WorkflowAutomationEventPayload;
 }): string {
   return TRIGGER_RENDERERS[args.eventType](args.eventPayload);
+}
+
+export function storedWorkflowAutomationContext(args: {
+  readonly workflowName: string;
+  readonly eventType: WorkflowAutomationEventType;
+  readonly eventPayload: WorkflowAutomationEventPayload;
+}): WorkflowAutomationContext {
+  return {
+    workflowName: args.workflowName,
+    eventType: args.eventType,
+    trigger: workflowAutomationTrigger(args),
+    notes: EVENT_NOTES[args.eventType],
+    event: args.eventPayload,
+  };
 }
 
 /**

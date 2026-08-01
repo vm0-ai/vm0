@@ -18,6 +18,10 @@ import {
 } from "./workflow-chat-event-queue.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import {
+  buildWorkflowAutomationQueuedLaunchMaterial,
+  type WorkflowAutomationQueuedLaunchMaterial,
+} from "./workflow-automation-queued-launch-context.service";
+import {
   launchQueuedWorkflowAutomation$,
   type RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-launch.service";
@@ -32,6 +36,47 @@ interface DequeueTarget {
   readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   readonly agentId: string;
   readonly workflowName: string;
+}
+
+async function loadWorkflowQueueLaunchMaterial(
+  event: PendingWorkflowQueueEvent,
+  target: DequeueTarget,
+): Promise<WorkflowAutomationQueuedLaunchMaterial | null> {
+  const storedMaterial = buildWorkflowAutomationQueuedLaunchMaterial({
+    workflowName: event.workflowName,
+    eventType: event.workflowAutomationEventType,
+    eventPayload: event.workflowAutomationEventPayload,
+    automation: target.automation,
+    agentId: target.agentId,
+    chatThreadId: event.chatThreadId,
+  });
+  if (storedMaterial) {
+    return storedMaterial;
+  }
+  if (!event.encryptedParams) {
+    return null;
+  }
+  const legacyParams = await decryptWorkflowQueueEventParams(
+    event.encryptedParams,
+    {
+      userId: target.automation.ownerUserId,
+      orgId: target.automation.orgId,
+    },
+  );
+  if (!legacyParams) {
+    return null;
+  }
+  return {
+    workflowName: target.workflowName,
+    prompt: legacyParams.prompt,
+    appendSystemPrompt: legacyParams.appendSystemPrompt,
+    callbacks: legacyParams.callbacks,
+    activePreviousRunPolicy: legacyParams.activePreviousRunPolicy,
+    recordLastRunId: legacyParams.recordLastRunId,
+    recordLastRunAt: legacyParams.recordLastRunAt,
+    allowClaimedOnceScheduleAutomation:
+      legacyParams.allowClaimedOnceScheduleAutomation,
+  };
 }
 
 async function loadDequeueTarget(
@@ -213,15 +258,12 @@ export const drainWorkflowQueueForThread$ = command(
         continue;
       }
 
-      const params = await decryptWorkflowQueueEventParams(
-        event.encryptedParams,
-        {
-          userId: target.automation.ownerUserId,
-          orgId: target.automation.orgId,
-        },
+      const launchMaterial = await loadWorkflowQueueLaunchMaterial(
+        event,
+        target,
       );
       signal.throwIfAborted();
-      if (!params) {
+      if (!launchMaterial) {
         log.error("Consuming undecryptable workflow queue event", {
           eventId: event.id,
           automationId: event.automationId,
@@ -249,22 +291,22 @@ export const drainWorkflowQueueForThread$ = command(
           due: {
             automation: target.automation,
             agentId: target.agentId,
-            workflowName: target.workflowName,
+            workflowName: launchMaterial.workflowName,
             chatThreadId: event.chatThreadId,
             allowClaimedOnceScheduleAutomation:
-              params.allowClaimedOnceScheduleAutomation,
+              launchMaterial.allowClaimedOnceScheduleAutomation,
           },
           queueEventId: event.id,
           queueEventCreatedAt: event.createdAt,
           apiStartTime: launchHint?.apiStartTime ?? args.apiStartTime ?? now(),
-          prompt: params.prompt,
+          prompt: launchMaterial.prompt,
           triggerBrief: event.triggerBrief ?? undefined,
           triggerSource: event.triggerSource,
-          appendSystemPrompt: params.appendSystemPrompt,
-          callbacks: params.callbacks,
-          activePreviousRunPolicy: params.activePreviousRunPolicy,
-          recordLastRunId: params.recordLastRunId,
-          recordLastRunAt: params.recordLastRunAt,
+          appendSystemPrompt: launchMaterial.appendSystemPrompt,
+          callbacks: launchMaterial.callbacks,
+          activePreviousRunPolicy: launchMaterial.activePreviousRunPolicy,
+          recordLastRunId: launchMaterial.recordLastRunId,
+          recordLastRunAt: launchMaterial.recordLastRunAt,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,
           timing: launchHint?.timing,
         },

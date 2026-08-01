@@ -41,8 +41,10 @@ import {
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   completeRunWithoutCallbacksFixture,
+  decryptWorkflowEventInputParamsFixture,
   holdChatEventQueueAdmissionLockFixture,
   holdOrgAdmissionLockFixture,
+  invalidatePendingChatEventInputParamsFixture,
   readChatEventContextFixture,
   readChatEventInputParamsFixture,
   setQueuedUserMessageCreatedAtFixture,
@@ -631,9 +633,18 @@ describe("workflow queue", () => {
       eventId: thirdEvent.id,
       encryptedParams: expect.any(String),
     });
+    await expect(
+      decryptWorkflowEventInputParamsFixture(thirdEvent.id, {
+        orgId: scenario.orgId,
+        userId: scenario.userId,
+      }),
+    ).resolves.toStrictEqual({ version: 1 });
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
       firstRunId,
     ]);
+
+    // Complete context wins without reading the transitional marker blob.
+    await invalidatePendingChatEventInputParamsFixture(secondEvent.id);
 
     // Completing the run drains exactly one event into the next run.
     const dequeuedAt = secondApiStartTime + 10_000;
