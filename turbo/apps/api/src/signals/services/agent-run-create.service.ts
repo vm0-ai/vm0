@@ -115,11 +115,23 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { PersistedStorageMount } from "@vm0/db/types";
-import { and, count, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  eq,
+  inArray,
+  isNotNull,
+  or,
+  sql,
+  type SQL,
+  type SQLWrapper,
+  type WithSubquery,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
 import {
+  nullableDriverValueDecoder,
   pgInt8ToBigIntDecoder,
   pgNullDecoder,
   pgTextDecoder,
@@ -480,6 +492,21 @@ interface ThreadSessionBindingWrite {
   readonly agentSessionRunId: string;
   readonly action: ThreadSessionBindingAction;
 }
+
+type PersistedAtomicLaunchRows =
+  | {
+      readonly kind: "pending";
+      readonly run: RunRecord;
+      readonly runnerJobCreatedAt: Date;
+      readonly threadSessionBinding: ThreadSessionBindingWrite | undefined;
+    }
+  | {
+      readonly kind: "queued";
+      readonly run: RunRecord;
+      readonly queueDepth: number;
+      readonly telemetryTimestamp: string;
+      readonly threadSessionBinding: ThreadSessionBindingWrite | undefined;
+    };
 
 type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
 const CUSTOM_CONNECTOR_AUTH_REF_TTL_MS = 5 * 60 * 60 * 1000;
@@ -5018,70 +5045,45 @@ async function prepareRunCallbackRows(args: {
   );
 }
 
-async function insertZeroRunRecord(
-  tx: Db,
-  args: {
-    readonly runId: string;
-    readonly body: CreateRunBody;
-    readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly zeroRunModelPin: ZeroRunModelPin | undefined;
-    readonly chatThreadId: string | undefined;
-    readonly zeroRunMetadata: ZeroRunMetadata | undefined;
-    readonly apiStartedAt: Date | null;
-  },
-): Promise<void> {
-  const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
-  await tx.insert(zeroRuns).values({
-    id: args.runId,
-    triggerSource: args.body.triggerSource,
-    workflowAutomationId: metadata.workflowAutomationId ?? null,
-    triggerBrief: metadata.triggerBrief ?? null,
-    runGroupId: metadata.runGroupId ?? null,
-    goalId: metadata.goalId ?? null,
-    triggerAgentId: metadata.triggerAgentId ?? null,
-    ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
-    chatThreadId: args.chatThreadId ?? null,
-    apiStartedAt: args.apiStartedAt,
-  });
+interface LaunchRunRowsArgs {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly identity: LaunchRunIdentity;
+  readonly status: LaunchRunStatus;
+  readonly resolved: ResolvedCompose;
+  readonly body: CreateRunBody;
+  readonly runStorageMounts: readonly PersistedStorageMount[] | undefined;
+  readonly sessionStorageMounts: readonly PersistedStorageMount[] | undefined;
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly zeroRunModelPin: ZeroRunModelPin | undefined;
+  readonly callbackRows: readonly AgentRunCallbackInsert[];
+  readonly chatThreadId: string | undefined;
+  readonly zeroRunMetadata: ZeroRunMetadata | undefined;
+  readonly apiStartTime: number;
+  readonly runnerGroup: string | undefined;
+  readonly error: string | undefined;
 }
 
-async function insertLaunchRunRows(
-  tx: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-    readonly identity: LaunchRunIdentity;
-    readonly status: LaunchRunStatus;
-    readonly resolved: ResolvedCompose;
-    readonly body: CreateRunBody;
-    readonly runStorageMounts: readonly PersistedStorageMount[] | undefined;
-    readonly sessionStorageMounts: readonly PersistedStorageMount[] | undefined;
-    readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly zeroRunModelPin: ZeroRunModelPin | undefined;
-    readonly callbackRows: readonly AgentRunCallbackInsert[];
-    readonly chatThreadId: string | undefined;
-    readonly zeroRunMetadata: ZeroRunMetadata | undefined;
-    readonly apiStartTime: number;
-    readonly runnerGroup: string | undefined;
-    readonly error: string | undefined;
-  },
-): Promise<{ readonly createdAt: Date }> {
-  if (args.identity.shouldCreateSession) {
-    await tx.insert(agentSessions).values({
-      id: args.identity.sessionId,
-      userId: args.userId,
-      orgId: args.orgId,
-      agentComposeId: args.resolved.composeId,
-      storageMounts: args.sessionStorageMounts
-        ? [...args.sessionStorageMounts]
-        : null,
-      conversationId: null,
-    });
-  }
+function launchSessionValues(
+  args: LaunchRunRowsArgs,
+): typeof agentSessions.$inferInsert {
+  return {
+    id: args.identity.sessionId,
+    userId: args.userId,
+    orgId: args.orgId,
+    agentComposeId: args.resolved.composeId,
+    storageMounts: args.sessionStorageMounts
+      ? [...args.sessionStorageMounts]
+      : null,
+    conversationId: null,
+  };
+}
 
-  const createdAt = nowDate();
-  const completedAt = args.status === "failed" ? createdAt : undefined;
-  const runValues: typeof agentRuns.$inferInsert = {
+function launchRunValues(
+  args: LaunchRunRowsArgs,
+  createdAt: Date,
+): typeof agentRuns.$inferInsert {
+  return {
     id: args.identity.runId,
     createdAt,
     userId: args.userId,
@@ -5097,20 +5099,40 @@ async function insertLaunchRunRows(
     sessionId: args.identity.sessionId,
     lastHeartbeatAt: createdAt,
     runnerGroup: args.runnerGroup ?? null,
-    completedAt: completedAt ?? null,
+    completedAt: args.status === "failed" ? createdAt : null,
     error: args.error ?? null,
   };
-  await tx.insert(agentRuns).values(runValues);
+}
 
-  await insertZeroRunRecord(tx, {
-    runId: args.identity.runId,
-    body: args.body,
-    modelProvider: args.modelProvider,
-    zeroRunModelPin: args.zeroRunModelPin,
-    chatThreadId: args.chatThreadId,
-    zeroRunMetadata: args.zeroRunMetadata,
+function launchZeroRunValues(
+  args: LaunchRunRowsArgs,
+): typeof zeroRuns.$inferInsert {
+  const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
+  return {
+    id: args.identity.runId,
+    triggerSource: args.body.triggerSource,
+    workflowAutomationId: metadata.workflowAutomationId ?? null,
+    triggerBrief: metadata.triggerBrief ?? null,
+    runGroupId: metadata.runGroupId ?? null,
+    goalId: metadata.goalId ?? null,
+    triggerAgentId: metadata.triggerAgentId ?? null,
+    ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
+    chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
-  });
+  };
+}
+
+async function insertLaunchRunRows(
+  tx: Db,
+  args: LaunchRunRowsArgs,
+): Promise<{ readonly createdAt: Date }> {
+  if (args.identity.shouldCreateSession) {
+    await tx.insert(agentSessions).values(launchSessionValues(args));
+  }
+
+  const createdAt = nowDate();
+  await tx.insert(agentRuns).values(launchRunValues(args, createdAt));
+  await tx.insert(zeroRuns).values(launchZeroRunValues(args));
 
   if (args.callbackRows.length > 0) {
     await tx.insert(agentRunCallbacks).values([...args.callbackRows]);
@@ -5762,62 +5784,372 @@ function buildRunnerJobPayload(
   });
 }
 
-async function insertRunnerJobQueueRow(
-  tx: DbTransaction,
-  args: {
-    readonly runId: string;
-    readonly payload: RunnerJobPayload;
-  },
-): Promise<Date> {
-  const timestamps = runnerJobQueueTimestamps();
-  const [runnerJob] = await tx
-    .insert(runnerJobQueue)
-    .values({
-      runId: args.runId,
-      runnerGroup: args.payload.runnerGroup,
-      profile: args.payload.profile,
-      cliAgentSessionId: args.payload.cliAgentSessionId,
-      reuseKey: args.payload.reuseKey,
-      executionContext: args.payload.executionContext,
-      ...timestamps,
-    })
-    .returning({ createdAt: runnerJobQueue.createdAt });
-  if (!runnerJob) {
-    throw new Error("Runner job queue insert returned no row");
-  }
-  return runnerJob.createdAt;
+function preparedLaunchRowsArgs(args: {
+  readonly commit: CommitPreparedLaunchArgs;
+  readonly status: Extract<LaunchRunStatus, "pending" | "queued">;
+  readonly runnerGroup: string;
+}): LaunchRunRowsArgs {
+  return {
+    userId: args.commit.createArgs.userId,
+    orgId: args.commit.createArgs.orgId,
+    identity: args.commit.identity,
+    status: args.status,
+    resolved: args.commit.context.resolved,
+    body: args.commit.context.body,
+    runStorageMounts: args.commit.launch.runStorageMounts,
+    sessionStorageMounts: args.commit.launch.sessionStorageMounts,
+    modelProvider: args.commit.context.modelProvider,
+    zeroRunModelPin: args.commit.createArgs.zeroRunModelPin,
+    callbackRows: args.commit.callbackRows,
+    chatThreadId: args.commit.createArgs.chatThreadId,
+    zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
+    apiStartTime: args.commit.createArgs.apiStartTime,
+    runnerGroup: args.runnerGroup,
+    error: undefined,
+  };
 }
 
-async function persistRunCustomConnectorAuthRefs(
-  tx: DbTransaction,
-  args: {
-    readonly runId: string;
-    readonly refs: readonly CustomConnectorAuthRef[];
-  },
-): Promise<void> {
+interface PersistAtomicLaunchRowsArgs {
+  readonly tx: DbTransaction;
+  readonly commit: CommitPreparedLaunchArgs;
+  readonly status: Extract<LaunchRunStatus, "pending" | "queued">;
+  readonly payload: RunnerJobPayload;
+  readonly validatedThreadSession: ValidatedThreadSessionSnapshot | undefined;
+}
+
+type ReturnedIdCte = WithSubquery & { readonly id: SQLWrapper };
+
+function returnedCteId(cte: ReturnedIdCte): SQL {
+  // Child mutations read the returned key so their dependency is explicit;
+  // data-modifying CTE declaration order alone does not order execution.
+  return sql`(SELECT ${cte.id} FROM ${cte})`;
+}
+
+function nullableReturnedCteId(cte: ReturnedIdCte | undefined): SQL {
+  return cte ? sql`(SELECT ${cte.id} FROM ${cte})` : sql`NULL`;
+}
+
+function appendLaunchCallbackCte(args: {
+  readonly tx: DbTransaction;
+  readonly ctes: WithSubquery[];
+  readonly callbacks: readonly AgentRunCallbackInsert[];
+  readonly insertedRun: ReturnedIdCte;
+}): void {
+  if (args.callbacks.length === 0) {
+    return;
+  }
+  const insertedCallbacks = args.tx.$with("inserted_launch_callbacks").as(
+    args.tx.insert(agentRunCallbacks).values(
+      args.callbacks.map((callback) => {
+        return { ...callback, runId: returnedCteId(args.insertedRun) };
+      }),
+    ),
+  );
+  args.ctes.push(insertedCallbacks);
+}
+
+function appendLaunchCustomConnectorAuthRefCte(args: {
+  readonly tx: DbTransaction;
+  readonly ctes: WithSubquery[];
+  readonly refs: readonly CustomConnectorAuthRef[];
+  readonly insertedRun: ReturnedIdCte;
+}): void {
   if (args.refs.length === 0) {
     return;
   }
-
-  await tx
-    .delete(agentRunCustomConnectorAuthRefs)
-    .where(eq(agentRunCustomConnectorAuthRefs.runId, args.runId));
-
   const expiresAt = new Date(now() + CUSTOM_CONNECTOR_AUTH_REF_TTL_MS);
-  await tx.insert(agentRunCustomConnectorAuthRefs).values(
-    args.refs.map((ref) => {
-      return {
-        runId: args.runId,
-        secretName: ref.secretName,
-        connectorId: ref.connectorId,
-        connectorRevision: ref.connectorRevision,
-        kind: ref.kind,
-        key: ref.key,
-        encryptedValue: ref.encryptedValue,
-        expiresAt,
-      };
+  const insertedRefs = args.tx
+    .$with("inserted_launch_custom_connector_auth_refs")
+    .as(
+      args.tx.insert(agentRunCustomConnectorAuthRefs).values(
+        args.refs.map((ref) => {
+          return {
+            runId: returnedCteId(args.insertedRun),
+            secretName: ref.secretName,
+            connectorId: ref.connectorId,
+            connectorRevision: ref.connectorRevision,
+            kind: ref.kind,
+            key: ref.key,
+            encryptedValue: ref.encryptedValue,
+            expiresAt,
+          };
+        }),
+      ),
+    );
+  args.ctes.push(insertedRefs);
+}
+
+function launchThreadBindingCte(args: {
+  readonly tx: DbTransaction;
+  readonly chatThreadId: string | undefined;
+  readonly identity: LaunchRunIdentity;
+  readonly insertedRun: ReturnedIdCte;
+  readonly validatedThreadSession: ValidatedThreadSessionSnapshot | undefined;
+}) {
+  if (!args.chatThreadId || !args.validatedThreadSession) {
+    return undefined;
+  }
+  if (args.validatedThreadSession.chatThreadId !== args.chatThreadId) {
+    throw new Error("Validated chat thread does not match binding target");
+  }
+  return args.tx.$with("updated_launch_thread_binding").as(
+    args.tx
+      .update(chatThreads)
+      .set({
+        agentSessionId: args.identity.sessionId,
+        agentSessionRunId: returnedCteId(args.insertedRun),
+      })
+      .where(eq(chatThreads.id, args.chatThreadId))
+      .returning({ id: chatThreads.id }),
+  );
+}
+
+function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
+  const rowsArgs = preparedLaunchRowsArgs({
+    commit: args.commit,
+    status: args.status,
+    runnerGroup: args.payload.runnerGroup,
+  });
+  const createdAt = nowDate();
+  const ctes: WithSubquery[] = [];
+  const insertedSession = rowsArgs.identity.shouldCreateSession
+    ? args.tx
+        .$with("inserted_launch_session")
+        .as(
+          args.tx
+            .insert(agentSessions)
+            .values(launchSessionValues(rowsArgs))
+            .returning({ id: agentSessions.id }),
+        )
+    : undefined;
+  if (insertedSession) {
+    ctes.push(insertedSession);
+  }
+
+  const insertedRun = args.tx.$with("inserted_launch_run").as(
+    args.tx
+      .insert(agentRuns)
+      .values({
+        ...launchRunValues(rowsArgs, createdAt),
+        sessionId: insertedSession
+          ? returnedCteId(insertedSession)
+          : rowsArgs.identity.sessionId,
+      })
+      .returning({ id: agentRuns.id, createdAt: agentRuns.createdAt }),
+  );
+  ctes.push(insertedRun);
+
+  const insertedZeroRun = args.tx.$with("inserted_launch_zero_run").as(
+    args.tx.insert(zeroRuns).values({
+      ...launchZeroRunValues(rowsArgs),
+      id: returnedCteId(insertedRun),
     }),
   );
+  ctes.push(insertedZeroRun);
+
+  appendLaunchCallbackCte({
+    tx: args.tx,
+    ctes,
+    callbacks: rowsArgs.callbackRows,
+    insertedRun,
+  });
+  appendLaunchCustomConnectorAuthRefCte({
+    tx: args.tx,
+    ctes,
+    refs: args.commit.launch.customConnectorAuthRefs,
+    insertedRun,
+  });
+  const chatThreadId = args.commit.createArgs.chatThreadId;
+  const updatedThread = launchThreadBindingCte({
+    tx: args.tx,
+    chatThreadId,
+    identity: rowsArgs.identity,
+    insertedRun,
+    validatedThreadSession: args.validatedThreadSession,
+  });
+  return { rowsArgs, createdAt, ctes, insertedRun, updatedThread };
+}
+
+type AtomicLaunchCteContext = ReturnType<typeof buildAtomicLaunchCteContext>;
+
+function atomicThreadSessionBinding(args: {
+  readonly context: AtomicLaunchCteContext;
+  readonly commit: CommitPreparedLaunchArgs;
+  readonly validatedThreadSession: ValidatedThreadSessionSnapshot | undefined;
+  readonly boundThreadId: string | null;
+  readonly runId: string;
+}): ThreadSessionBindingWrite | undefined {
+  if (!args.boundThreadId) {
+    return undefined;
+  }
+  if (!args.validatedThreadSession) {
+    throw new Error("Atomic thread binding requires a validated snapshot");
+  }
+  return {
+    chatThreadId: args.boundThreadId,
+    agentSessionId: args.context.rowsArgs.identity.sessionId,
+    agentSessionRunId: args.runId,
+    action: threadSessionBindingAction({
+      identity: args.context.rowsArgs.identity,
+      previousAgentSessionId: args.validatedThreadSession.agentSessionId,
+      resolution: args.commit.createArgs.threadSessionResolution,
+    }),
+  };
+}
+
+async function persistPendingAtomicLaunch(
+  args: PersistAtomicLaunchRowsArgs,
+  context: AtomicLaunchCteContext,
+): Promise<Extract<PersistedAtomicLaunchRows, { readonly kind: "pending" }>> {
+  const timestamps = runnerJobQueueTimestamps();
+  const insertedQueue = args.tx.$with("inserted_launch_runner_job").as(
+    args.tx
+      .insert(runnerJobQueue)
+      .values({
+        runId: returnedCteId(context.insertedRun),
+        runnerGroup: args.payload.runnerGroup,
+        profile: args.payload.profile,
+        cliAgentSessionId: args.payload.cliAgentSessionId,
+        reuseKey: args.payload.reuseKey,
+        executionContext: args.payload.executionContext,
+        ...timestamps,
+      })
+      .returning({
+        runId: runnerJobQueue.runId,
+        createdAt: runnerJobQueue.createdAt,
+      }),
+  );
+  const ctes = [...context.ctes, insertedQueue];
+  if (context.updatedThread) {
+    ctes.push(context.updatedThread);
+  }
+  const [row] = await args.tx
+    .with(...ctes)
+    .select({
+      runId: context.insertedRun.id,
+      createdAt: context.insertedRun.createdAt,
+      runnerJobCreatedAt: insertedQueue.createdAt,
+      boundThreadId: nullableReturnedCteId(context.updatedThread).mapWith(
+        nullableDriverValueDecoder(pgTextDecoder),
+      ),
+    })
+    .from(context.insertedRun)
+    .innerJoin(insertedQueue, eq(insertedQueue.runId, context.insertedRun.id));
+  if (!row || (context.updatedThread && !row.boundThreadId)) {
+    throw new Error("Atomic pending launch persistence returned no row");
+  }
+  return {
+    kind: "pending",
+    run: runRecordFromLaunchIdentity(
+      context.rowsArgs.identity,
+      "pending",
+      row.createdAt,
+    ),
+    runnerJobCreatedAt: row.runnerJobCreatedAt,
+    threadSessionBinding: atomicThreadSessionBinding({
+      context,
+      commit: args.commit,
+      validatedThreadSession: args.validatedThreadSession,
+      boundThreadId: row.boundThreadId,
+      runId: row.runId,
+    }),
+  };
+}
+
+async function persistQueuedAtomicLaunch(
+  args: PersistAtomicLaunchRowsArgs,
+  context: AtomicLaunchCteContext,
+): Promise<Extract<PersistedAtomicLaunchRows, { readonly kind: "queued" }>> {
+  if (!args.commit.encryptedQueuedParams) {
+    throw new Error("Missing encrypted queued runner job payload");
+  }
+  const insertedQueue = args.tx.$with("inserted_launch_run_queue").as(
+    args.tx
+      .insert(agentRunQueue)
+      .values({
+        runId: returnedCteId(context.insertedRun),
+        userId: args.commit.createArgs.userId,
+        orgId: args.commit.createArgs.orgId,
+        encryptedParams: args.commit.encryptedQueuedParams,
+        createdAt: context.createdAt,
+        expiresAt: sql`now() + interval '2 hours'`,
+      })
+      .returning({ runId: agentRunQueue.runId }),
+  );
+  const ctes = [...context.ctes, insertedQueue];
+  if (context.updatedThread) {
+    ctes.push(context.updatedThread);
+  }
+  const visibleQueueDepth = args.tx
+    .select({ depth: count().as("depth") })
+    .from(agentRunQueue)
+    .where(eq(agentRunQueue.orgId, args.commit.createArgs.orgId))
+    .as("visible_launch_queue_depth");
+  const [row] = await args.tx
+    .with(...ctes)
+    .select({
+      runId: context.insertedRun.id,
+      createdAt: context.insertedRun.createdAt,
+      queueDepth: sql`(${visibleQueueDepth.depth} + 1)`.mapWith(
+        pgInt8ToBigIntDecoder,
+      ),
+      boundThreadId: nullableReturnedCteId(context.updatedThread).mapWith(
+        nullableDriverValueDecoder(pgTextDecoder),
+      ),
+    })
+    .from(context.insertedRun)
+    .innerJoin(insertedQueue, eq(insertedQueue.runId, context.insertedRun.id))
+    .crossJoin(visibleQueueDepth);
+  if (!row || (context.updatedThread && !row.boundThreadId)) {
+    throw new Error("Atomic queued launch persistence returned no row");
+  }
+  return {
+    kind: "queued",
+    run: runRecordFromLaunchIdentity(
+      context.rowsArgs.identity,
+      "queued",
+      row.createdAt,
+    ),
+    queueDepth: Number(row.queueDepth),
+    telemetryTimestamp: nowDate().toISOString(),
+    threadSessionBinding: atomicThreadSessionBinding({
+      context,
+      commit: args.commit,
+      validatedThreadSession: args.validatedThreadSession,
+      boundThreadId: row.boundThreadId,
+      runId: row.runId,
+    }),
+  };
+}
+
+async function persistAtomicLaunchRows(
+  args: PersistAtomicLaunchRowsArgs,
+): Promise<PersistedAtomicLaunchRows> {
+  const context = buildAtomicLaunchCteContext(args);
+  const persisted = await args.commit.timing.measure(
+    "api_dispatch_persist_atomic_launch",
+    "nested",
+    async () => {
+      return args.status === "pending"
+        ? await persistPendingAtomicLaunch(args, context)
+        : await persistQueuedAtomicLaunch(args, context);
+    },
+  );
+
+  const chatThreadId = args.commit.createArgs.chatThreadId;
+  if (chatThreadId && !args.validatedThreadSession) {
+    const threadSessionBinding = await persistUnvalidatedThreadSessionBinding(
+      args.tx,
+      {
+        chatThreadId,
+        identity: context.rowsArgs.identity,
+        resolution: args.commit.createArgs.threadSessionResolution,
+        timing: args.commit.timing,
+      },
+    );
+    return { ...persisted, threadSessionBinding };
+  }
+  return persisted;
 }
 
 async function checkRunConcurrencyPreflight(args: {
@@ -5995,41 +6327,11 @@ async function commitFailedLaunch(args: {
     : response;
 }
 
-async function insertAtomicLaunchRunRecord(args: {
+async function activatePreparedLaunchUsageAllowance(args: {
   readonly tx: DbTransaction;
   readonly commit: CommitPreparedLaunchArgs;
-  readonly status: Extract<LaunchRunStatus, "pending" | "queued">;
-  readonly runnerGroup: string;
-}): Promise<RunRecord> {
-  const { createdAt } = await args.commit.timing.measure(
-    "api_dispatch_insert_run_record",
-    "nested",
-    async () => {
-      return await insertLaunchRunRows(args.tx, {
-        userId: args.commit.createArgs.userId,
-        orgId: args.commit.createArgs.orgId,
-        identity: args.commit.identity,
-        status: args.status,
-        resolved: args.commit.context.resolved,
-        body: args.commit.context.body,
-        runStorageMounts: args.commit.launch.runStorageMounts,
-        sessionStorageMounts: args.commit.launch.sessionStorageMounts,
-        modelProvider: args.commit.context.modelProvider,
-        zeroRunModelPin: args.commit.createArgs.zeroRunModelPin,
-        callbackRows: args.commit.callbackRows,
-        chatThreadId: args.commit.createArgs.chatThreadId,
-        zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
-        apiStartTime: args.commit.createArgs.apiStartTime,
-        runnerGroup: args.runnerGroup,
-        error: undefined,
-      });
-    },
-  );
-  const run = runRecordFromLaunchIdentity(
-    args.commit.identity,
-    args.status,
-    createdAt,
-  );
+  readonly run: RunRecord;
+}): Promise<void> {
   if (args.commit.context.modelProvider?.type === "vm0") {
     await args.commit.timing.measure(
       "api_dispatch_activate_usage_allowance_windows",
@@ -6037,62 +6339,60 @@ async function insertAtomicLaunchRunRecord(args: {
       async () => {
         await activateUsageAllowanceWindowsForRun(args.tx, {
           orgId: args.commit.createArgs.orgId,
-          runId: run.id,
-          runCreatedAt: run.createdAt,
+          runId: args.run.id,
+          runCreatedAt: args.run.createdAt,
         });
       },
     );
   }
-  return run;
 }
 
-async function persistThreadSessionBinding(
+function threadSessionBindingAction(args: {
+  readonly identity: LaunchRunIdentity;
+  readonly previousAgentSessionId: string | null;
+  readonly resolution: ChatThreadSessionResolution | undefined;
+}): ThreadSessionBindingAction {
+  return (
+    args.resolution?.action ??
+    (args.previousAgentSessionId === null
+      ? "initialized"
+      : args.previousAgentSessionId === args.identity.sessionId
+        ? "reused"
+        : "rotated")
+  );
+}
+
+async function persistUnvalidatedThreadSessionBinding(
   tx: DbTransaction,
   args: {
-    readonly chatThreadId: string | undefined;
+    readonly chatThreadId: string;
     readonly identity: LaunchRunIdentity;
     readonly resolution: ChatThreadSessionResolution | undefined;
     readonly timing: ApiDispatchTimingCollector;
-    readonly validatedThreadSession: ValidatedThreadSessionSnapshot | undefined;
   },
-): Promise<ThreadSessionBindingWrite | undefined> {
-  if (!args.chatThreadId) {
-    return undefined;
-  }
+): Promise<ThreadSessionBindingWrite> {
   const chatThreadId = args.chatThreadId;
-
-  let previousAgentSessionId: string | null;
-  if (args.validatedThreadSession) {
-    if (args.validatedThreadSession.chatThreadId !== chatThreadId) {
-      throw new Error("Validated chat thread does not match binding target");
-    }
-    previousAgentSessionId = args.validatedThreadSession.agentSessionId;
-  } else {
-    const [thread] = await args.timing.measure(
-      "api_dispatch_load_thread_session_binding",
-      "nested",
-      async () => {
-        return await tx
-          .select({ agentSessionId: chatThreads.agentSessionId })
-          .from(chatThreads)
-          .where(eq(chatThreads.id, chatThreadId))
-          .for("update")
-          .limit(1);
-      },
-    );
-    if (!thread) {
-      throw new Error("Chat thread not found while persisting session binding");
-    }
-    previousAgentSessionId = thread.agentSessionId;
+  const [thread] = await args.timing.measure(
+    "api_dispatch_load_thread_session_binding",
+    "nested",
+    async () => {
+      return await tx
+        .select({ agentSessionId: chatThreads.agentSessionId })
+        .from(chatThreads)
+        .where(eq(chatThreads.id, chatThreadId))
+        .for("update")
+        .limit(1);
+    },
+  );
+  if (!thread) {
+    throw new Error("Chat thread not found while persisting session binding");
   }
 
-  const action: ThreadSessionBindingAction =
-    args.resolution?.action ??
-    (previousAgentSessionId === null
-      ? "initialized"
-      : previousAgentSessionId === args.identity.sessionId
-        ? "reused"
-        : "rotated");
+  const action = threadSessionBindingAction({
+    identity: args.identity,
+    previousAgentSessionId: thread.agentSessionId,
+    resolution: args.resolution,
+  });
   const [updated] = await args.timing.measure(
     "api_dispatch_update_thread_session_binding",
     "nested",
@@ -6232,68 +6532,32 @@ async function commitQueuedPreparedLaunch(
     throw new Error("Missing encrypted queued runner job payload");
   }
 
-  const run = await insertAtomicLaunchRunRecord({
+  const persisted = await persistAtomicLaunchRows({
     tx,
     commit: args,
     status: "queued",
-    runnerGroup: payload.runnerGroup,
+    payload,
+    validatedThreadSession,
+  });
+  if (persisted.kind !== "queued") {
+    throw new Error("Queued launch persistence returned a pending result");
+  }
+  await activatePreparedLaunchUsageAllowance({
+    tx,
+    commit: args,
+    run: persisted.run,
   });
   if (queueFirstClaim) {
     await recordQueueFirstClaimedRun(tx, {
       claim: queueFirstClaim,
-      runId: run.id,
+      runId: persisted.run.id,
     });
   }
-  await args.timing.measure(
-    "api_dispatch_persist_custom_connector_auth_refs",
-    "nested",
-    async () => {
-      await persistRunCustomConnectorAuthRefs(tx, {
-        runId: args.identity.runId,
-        refs: args.launch.customConnectorAuthRefs,
-      });
-    },
-  );
-  await args.timing.measure(
-    "api_dispatch_insert_agent_run_queue",
-    "nested",
-    async () => {
-      await tx.insert(agentRunQueue).values({
-        runId: args.identity.runId,
-        userId: args.createArgs.userId,
-        orgId: args.createArgs.orgId,
-        encryptedParams: args.encryptedQueuedParams,
-        createdAt: run.createdAt,
-        expiresAt: sql`now() + interval '2 hours'`,
-      });
-    },
-  );
-  const [depthRow] = await args.timing.measure(
-    "api_dispatch_count_agent_run_queue_depth",
-    "nested",
-    async () => {
-      return await tx
-        .select({ depth: count() })
-        .from(agentRunQueue)
-        .where(eq(agentRunQueue.orgId, args.createArgs.orgId));
-    },
-  );
-  const threadSessionBinding = await persistThreadSessionBinding(tx, {
-    chatThreadId: args.createArgs.chatThreadId,
-    identity: args.identity,
-    resolution: args.createArgs.threadSessionResolution,
-    timing: args.timing,
-    validatedThreadSession,
-  });
   return {
-    kind: "queued",
-    run,
+    ...persisted,
     runnerJobPayload: payload,
-    queueDepth: Number(depthRow?.depth ?? 0),
-    telemetryTimestamp: nowDate().toISOString(),
     runContextSnapshot: args.launch.runContextSnapshot,
     queueFirstClaim,
-    threadSessionBinding,
   };
 }
 
@@ -6304,59 +6568,32 @@ async function commitPendingPreparedLaunch(
   queueFirstClaim: QueueFirstRunClaimed | undefined,
   validatedThreadSession: ValidatedThreadSessionSnapshot | undefined,
 ): Promise<Extract<AtomicLaunchCommitResult, { readonly kind: "pending" }>> {
-  const run = await insertAtomicLaunchRunRecord({
+  const persisted = await persistAtomicLaunchRows({
     tx,
     commit: args,
     status: "pending",
-    runnerGroup: payload.runnerGroup,
+    payload,
+    validatedThreadSession,
+  });
+  if (persisted.kind !== "pending") {
+    throw new Error("Pending launch persistence returned a queued result");
+  }
+  await activatePreparedLaunchUsageAllowance({
+    tx,
+    commit: args,
+    run: persisted.run,
   });
   if (queueFirstClaim) {
     await recordQueueFirstClaimedRun(tx, {
       claim: queueFirstClaim,
-      runId: run.id,
+      runId: persisted.run.id,
     });
   }
-  const runnerJobCreatedAt = await args.timing.measure(
-    "api_dispatch_persist_runner_job_queue",
-    "top_level",
-    async () => {
-      await args.timing.measure(
-        "api_dispatch_persist_custom_connector_auth_refs",
-        "nested",
-        async () => {
-          await persistRunCustomConnectorAuthRefs(tx, {
-            runId: args.identity.runId,
-            refs: args.launch.customConnectorAuthRefs,
-          });
-        },
-      );
-      return await args.timing.measure(
-        "api_dispatch_insert_runner_job_queue",
-        "nested",
-        async () => {
-          return await insertRunnerJobQueueRow(tx, {
-            runId: args.identity.runId,
-            payload,
-          });
-        },
-      );
-    },
-  );
-  const threadSessionBinding = await persistThreadSessionBinding(tx, {
-    chatThreadId: args.createArgs.chatThreadId,
-    identity: args.identity,
-    resolution: args.createArgs.threadSessionResolution,
-    timing: args.timing,
-    validatedThreadSession,
-  });
   return {
-    kind: "pending",
-    run,
+    ...persisted,
     runnerJobPayload: payload,
-    runnerJobCreatedAt,
     runContextSnapshot: args.launch.runContextSnapshot,
     queueFirstClaim,
-    threadSessionBinding,
   };
 }
 
