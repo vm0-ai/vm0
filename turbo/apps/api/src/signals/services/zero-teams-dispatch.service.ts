@@ -54,11 +54,8 @@ import {
 } from "./integration-model-route.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
-import {
-  teamsDeliveryTargetSchema,
-  type TeamsDeliveryTarget,
-} from "./teams-chat-callback-payload";
 import { ensureTeamsChatThreadRoute } from "./teams-chat-ingress.service";
+import { formatTeamsFileForContext } from "./teams-prompt";
 import type { TeamsFileTokenPayload } from "./teams-file-token";
 import {
   updateUserModelPreference$,
@@ -179,18 +176,6 @@ type TeamsMessageDispatchResult =
       readonly kind: "accepted" | "queued";
       readonly runId?: string;
     };
-
-function nonEmpty(value: string | null | undefined): string | undefined {
-  return value && value.length > 0 ? value : undefined;
-}
-
-function optionalLine(
-  label: string,
-  value: string | null | undefined,
-): string[] {
-  const normalized = nonEmpty(value);
-  return normalized ? [`${label}: ${normalized}`] : [];
-}
 
 function isTeamsBotCommand(value: string): value is TeamsBotCommand {
   return (
@@ -537,30 +522,6 @@ function teamsPromptFiles(activity: TeamsMessageActivity): TeamsPromptFile[] {
     const file = teamsPromptFile(activity, attachment);
     return file ? [file] : [];
   });
-}
-
-function formatTeamsFileForContext(file: TeamsPromptFile): string {
-  return [
-    `[Teams file] ${file.name} (${file.contentType})`,
-    ...(file.sourceId ? [`   [Teams attachment ID] ${file.sourceId}`] : []),
-    `   [ID] ${file.fileId}`,
-  ].join("\n");
-}
-
-function appendTeamsFilesToPrompt(
-  prompt: string,
-  files: readonly TeamsPromptFile[],
-): string {
-  if (files.length === 0) {
-    return prompt;
-  }
-
-  const fileContext = files.map(formatTeamsFileForContext).join("\n");
-  return [prompt, fileContext]
-    .filter((part) => {
-      return part.length > 0;
-    })
-    .join("\n\n");
 }
 
 function graphAttachmentContent(
@@ -1517,65 +1478,6 @@ async function fetchTeamsPromptContext(args: {
   };
 }
 
-function buildTeamsPrompt(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly installation: TeamsInstallation;
-  readonly threadContext: string;
-}): string {
-  const recipient = args.activity.recipient;
-  return [
-    "# Current Integration",
-    "You are currently running inside: Microsoft Teams",
-    `Tenant ID: ${args.activity.tenantId}`,
-    ...optionalLine("Tenant name", args.activity.tenantName),
-    ...optionalLine("Team ID", args.activity.teamId),
-    ...optionalLine("Team name", args.activity.teamName),
-    ...optionalLine("Channel ID", args.activity.channelId),
-    `Conversation ID: ${args.activity.conversationId}`,
-    ...optionalLine("Conversation type", args.activity.conversationType),
-    `Thread ID: ${args.activity.threadId}`,
-    ...optionalLine("Activity ID", args.activity.activityId),
-    ...optionalLine("Teams app ID", args.activity.teamsAppId),
-    ...optionalLine("Bot ID", recipient?.id ?? args.installation.botId),
-    ...optionalLine("Bot name", recipient?.name ?? args.installation.botName),
-    args.threadContext,
-  ]
-    .filter((line): line is string => {
-      return line.length > 0;
-    })
-    .join("\n");
-}
-
-function teamsDeliveryTarget(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly installation: TeamsInstallation;
-  readonly connection: TeamsConnection;
-  readonly threadId: string;
-  readonly files: readonly TeamsPromptFile[];
-}): TeamsDeliveryTarget {
-  return teamsDeliveryTargetSchema.parse({
-    tenantId: args.activity.tenantId,
-    tenantName: args.activity.tenantName,
-    teamId: args.activity.teamId,
-    teamName: args.activity.teamName,
-    channelId: args.activity.channelId,
-    conversationId: args.activity.conversationId,
-    conversationType: args.activity.conversationType,
-    threadId: args.threadId,
-    activityId: args.activity.activityId,
-    serviceUrl: args.activity.serviceUrl,
-    connectionId: args.connection.id,
-    teamsUserId: args.activity.sender.id,
-    teamsUserDisplayName: args.activity.sender.name,
-    teamsUserPrincipalName: args.activity.sender.userPrincipalName,
-    botId: args.activity.recipient?.id ?? args.installation.botId,
-    botName: args.activity.recipient?.name ?? args.installation.botName,
-    files: args.files.map((file) => {
-      return { fileId: file.fileId, ...file.payload };
-    }),
-  });
-}
-
 interface CanonicalTeamsLaunchContext {
   readonly tenantId: string;
   readonly tenantName: string | null;
@@ -1628,13 +1530,6 @@ function canonicalTeamsLaunchContext(args: {
     messageText: args.activity.text,
     messageFiles: args.messageFiles,
   };
-}
-
-function promptForTeamsRun(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly promptFiles: readonly TeamsPromptFile[];
-}): string {
-  return appendTeamsFilesToPrompt(args.activity.text, args.promptFiles);
 }
 
 function teamsChatMessageId(
@@ -1691,31 +1586,8 @@ async function persistTeamsChatMessage(args: {
     threadContext: args.promptContext.text,
     messageFiles: [...args.promptFiles, ...args.promptContext.files],
   });
-  const delivery = teamsDeliveryTarget({
-    activity: args.activity,
-    installation: args.installation,
-    connection: args.connection,
-    threadId,
-    files: launchContext.messageFiles,
-  });
-  const prompt = promptForTeamsRun(args);
   const encryptedParams = await encryptQueuedUserMessageRunParams(
-    {
-      version: 1,
-      prompt,
-      appendSystemPrompt: buildTeamsPrompt({
-        activity: args.activity,
-        installation: args.installation,
-        threadContext: args.promptContext.text,
-      }),
-      teamsDelivery: delivery,
-      userInfoExtras: {
-        teamsUserDisplayName: args.activity.sender.name ?? undefined,
-        teamsUserPrincipalName:
-          args.activity.sender.userPrincipalName ?? undefined,
-        teamsUserId: args.activity.sender.id,
-      },
-    },
+    { version: 1 },
     {
       orgId: args.installation.orgId,
       userId: args.connection.vm0UserId,
@@ -1742,9 +1614,9 @@ async function persistTeamsChatMessage(args: {
           }),
           nonContentPart: createChatEventSourcePart({
             kind: "teams",
-            tenantId: delivery.tenantId,
-            channelId: delivery.channelId,
-            activityId: delivery.activityId,
+            tenantId: launchContext.tenantId,
+            channelId: launchContext.channelId,
+            activityId: launchContext.activityId,
           }),
         }),
         runId: null,
