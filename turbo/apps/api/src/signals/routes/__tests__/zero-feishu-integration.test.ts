@@ -33,7 +33,6 @@ import {
   findPendingChatEventInputParamsByPromptFixture,
   readChatEventContextFixture,
   readChatEventInputParamsFixture,
-  replaceFeishuLaunchMaterialWithLegacyParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
@@ -3023,44 +3022,6 @@ describe("Feishu integration", () => {
         userId: secondActor.userId,
       }),
     ).resolves.toStrictEqual({ version: 1 });
-    const queuedFeishuContext = await readChatEventContextFixture(
-      queuedFeishuParams.eventId,
-    );
-    if (
-      !queuedFeishuContext?.feishuInstallationId ||
-      !queuedFeishuContext.feishuConnectionId ||
-      !queuedFeishuContext.feishuChatId ||
-      !queuedFeishuContext.feishuMessageId ||
-      queuedFeishuContext.feishuReplyInThread === null ||
-      !queuedFeishuContext.feishuSenderOpenId
-    ) {
-      throw new Error("Expected queued Feishu launch context");
-    }
-    const legacyPrompt = "legacy queued Feishu prompt";
-    const legacySystemPrompt = "legacy queued Feishu system prompt";
-    await replaceFeishuLaunchMaterialWithLegacyParamsFixture(
-      queuedFeishuParams.eventId,
-      {
-        orgId: secondOrgId,
-        userId: secondActor.userId,
-        prompt: legacyPrompt,
-        appendSystemPrompt: legacySystemPrompt,
-        feishuDelivery: {
-          installationId: queuedFeishuContext.feishuInstallationId,
-          connectionId: queuedFeishuContext.feishuConnectionId,
-          chatId: queuedFeishuContext.feishuChatId,
-          messageId: queuedFeishuContext.feishuMessageId,
-          threadId: firstMessageId,
-          replyInThread: queuedFeishuContext.feishuReplyInThread,
-          ...(queuedFeishuContext.feishuReactionId
-            ? { reactionId: queuedFeishuContext.feishuReactionId }
-            : {}),
-          files: [...(queuedFeishuContext.feishuMessageFiles ?? [])],
-        },
-        feishuDisplayName: "Canonical Group User",
-        feishuOpenId: queuedFeishuContext.feishuSenderOpenId,
-      },
-    );
     await runsApi.heartbeatRunner(runnerGroup);
     const firstClaim = await runsApi.claimRunnerJob(firstRun.id);
     const firstCliSessionId = `bdd-feishu-canonical-group-${firstRun.id}`;
@@ -3072,14 +3033,14 @@ describe("Feishu integration", () => {
       assistantText: "First canonical group answer",
     });
 
-    const secondRun = await findRun(secondActor, legacyPrompt);
+    const secondRun = await findRun(secondActor, secondPrompt);
     await expect(
       readChatEventInputParamsFixture(queuedFeishuParams.eventId),
     ).resolves.toBeNull();
     await runsApi.heartbeatRunner(runnerGroup);
     const secondClaim = await runsApi.claimRunnerJob(secondRun.id);
-    expect(secondClaim.prompt).toBe(legacyPrompt);
-    expect(secondClaim.appendSystemPrompt).toContain(legacySystemPrompt);
+    expect(secondClaim.prompt).toBe(secondPrompt);
+    expect(secondClaim.appendSystemPrompt).toContain("Scope: Group mention");
     expect(secondClaim.resumeSession?.sessionId).toBe(firstCliSessionId);
     await runsApi.requestCancelRun(secondActor, secondRun.id, [200]);
     await flushWaitUntilForTest();

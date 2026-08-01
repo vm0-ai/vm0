@@ -2815,8 +2815,7 @@ function queuedIntegrationDeliveries(
 > {
   return {
     slackDelivery: slackLaunchMaterial?.slackDelivery,
-    feishuDelivery:
-      feishuLaunchMaterial?.feishuDelivery ?? sourceParams?.feishuDelivery,
+    feishuDelivery: feishuLaunchMaterial?.feishuDelivery,
     teamsDelivery: sourceParams?.teamsDelivery,
     telegramDelivery: sourceParams?.telegramDelivery,
     agentphoneDelivery: sourceParams?.agentphoneDelivery,
@@ -2845,7 +2844,6 @@ async function resolveSlackQueuedLaunchMaterial(
 
 async function resolveFeishuQueuedLaunchMaterial(
   args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
 ): Promise<FeishuQueuedLaunchMaterial | null> {
   if (args.queuedMessage.triggerSource !== "feishu") {
     return null;
@@ -2859,14 +2857,7 @@ async function resolveFeishuQueuedLaunchMaterial(
   if (material) {
     return material;
   }
-  if (
-    sourceParams?.prompt === undefined ||
-    sourceParams.appendSystemPrompt === undefined ||
-    !sourceParams.feishuDelivery
-  ) {
-    throw new Error("Feishu queue item is missing launch material");
-  }
-  return null;
+  throw new Error("Feishu queue item is missing launch material");
 }
 
 function queuedMessagePrompt(args: {
@@ -2885,7 +2876,10 @@ function queuedMessagePrompt(args: {
     return args.slackLaunchMaterial.prompt;
   }
   if (args.triggerSource === "feishu") {
-    return args.feishuLaunchMaterial?.prompt ?? args.sourceParams?.prompt ?? "";
+    if (!args.feishuLaunchMaterial) {
+      throw new Error("Feishu queue item is missing launch material");
+    }
+    return args.feishuLaunchMaterial.prompt;
   }
   if (args.triggerSource === "workflow-schedule") {
     return args.sourceParams?.prompt ?? args.projectedPrompt;
@@ -2908,11 +2902,10 @@ function queuedIntegrationPrompt(args: {
     return args.slackLaunchMaterial.appendSystemPrompt;
   }
   if (args.triggerSource === "feishu") {
-    return (
-      args.feishuLaunchMaterial?.appendSystemPrompt ??
-      args.sourceParams?.appendSystemPrompt ??
-      buildWebChatPrompt()
-    );
+    if (!args.feishuLaunchMaterial) {
+      throw new Error("Feishu queue item is missing launch material");
+    }
+    return args.feishuLaunchMaterial.appendSystemPrompt;
   }
   return args.sourceParams?.appendSystemPrompt ?? buildWebChatPrompt();
 }
@@ -2950,10 +2943,7 @@ async function loadQueuedLaunchMaterials(args: CreateQueuedChatRunInputArgs) {
     throw new Error("Canonical integration queue item is missing run params");
   }
   const slackLaunchMaterial = await resolveSlackQueuedLaunchMaterial(args);
-  const feishuLaunchMaterial = await resolveFeishuQueuedLaunchMaterial(
-    args,
-    sourceParams,
-  );
+  const feishuLaunchMaterial = await resolveFeishuQueuedLaunchMaterial(args);
   return { sourceParams, slackLaunchMaterial, feishuLaunchMaterial };
 }
 
