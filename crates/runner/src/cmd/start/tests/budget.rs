@@ -260,9 +260,9 @@ async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
 
     wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
 
-    let sessions = idle_pool.lock().await.held_sessions();
+    let reuse_keys = idle_pool.lock().await.held_reuse_keys();
     assert_eq!(
-        sessions,
+        reuse_keys,
         vec!["sess-old-active".to_string()],
         "expired idle entry should be reclaimed before oldest active entry"
     );
@@ -351,9 +351,9 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
 
     wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
 
-    let sessions = idle_pool.lock().await.held_sessions();
+    let reuse_keys = idle_pool.lock().await.held_reuse_keys();
     assert_eq!(
-        sessions,
+        reuse_keys,
         vec!["sess-new-active".to_string()],
         "expired entry and oldest active entry should be reclaimed"
     );

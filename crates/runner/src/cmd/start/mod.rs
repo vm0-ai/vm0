@@ -72,9 +72,9 @@ use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::status::{StatusTracker, remove_stale_status_file};
-use crate::workspace_image_cache::SessionWorkspaceCache;
+use crate::workspace_image_cache::WorkspaceImageCache;
 
-mod active_sessions;
+mod active_reuse_keys;
 mod factory_lifecycle;
 mod heartbeat;
 mod identity;
@@ -89,7 +89,7 @@ mod ownership;
 mod sandbox_finalization;
 mod signals;
 
-use active_sessions::new_active_reuse_keys;
+use active_reuse_keys::new_active_reuse_keys;
 use factory_lifecycle::{shutdown_factory_instances, shutdown_runtime, start_factories};
 use heartbeat::{
     HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeartbeatController,
@@ -685,7 +685,7 @@ async fn run_start_with_home(
         session_history_probe: SessionHistoryProbe::default(),
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
         home: home.clone(),
-        workspace_cache: Some(SessionWorkspaceCache::shared(
+        workspace_cache: Some(WorkspaceImageCache::shared(
             paths.clone(),
             &home,
             &group_name,

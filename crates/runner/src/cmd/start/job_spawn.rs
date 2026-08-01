@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tracing::{error, warn};
 
-use super::active_sessions::{ActiveReuseKeyGuard, ActiveReuseKeys};
+use super::active_reuse_keys::{ActiveReuseKeyGuard, ActiveReuseKeys};
 use super::factory_lifecycle::SharedFactory;
 use super::heartbeat::WorkspaceCacheStateSnapshot;
 use super::idle_lifecycle::SharedIdlePool;
@@ -1067,7 +1067,7 @@ mod tests {
             "finalizer should send the early park refresh"
         );
 
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
         let active_reuse_key_guard =
             ActiveReuseKeyGuard::new(Arc::clone(&active_reuse_keys), Some(session_id.to_owned()));
         let (usage_flush_tx, _usage_flush_rx) = mpsc::channel(1);
@@ -1085,7 +1085,7 @@ mod tests {
         .await;
 
         assert!(
-            super::super::active_sessions::active_reuse_keys(&active_reuse_keys).is_empty(),
+            super::super::active_reuse_keys::active_reuse_keys(&active_reuse_keys).is_empty(),
             "completion should release the active reuse-key guard before notifying"
         );
         assert!(

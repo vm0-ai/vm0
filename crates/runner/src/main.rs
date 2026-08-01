@@ -99,7 +99,7 @@ enum Command {
     Kill(cmd::KillArgs),
     /// Clean up unused runner resources, artifacts, logs, and caches
     Gc(cmd::GcArgs),
-    /// Inspect and clean up session workspace image cache entries
+    /// Inspect and clean up workspace image cache entries
     WorkspaceImageCache(cmd::WorkspaceImageCacheArgs),
     /// Runtime health diagnostics for all runners on the host
     Doctor(cmd::DoctorArgs),

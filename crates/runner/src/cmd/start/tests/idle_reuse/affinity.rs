@@ -1,7 +1,7 @@
 use super::super::super::*;
 use super::super::support::{
     context_with_session, minimal_context, mock_run_config, push_job, seed_idle_pool, shutdown,
-    test_profiles, two_profiles, wait_budget_count, wait_idle_pool_sessions,
+    test_profiles, two_profiles, wait_budget_count, wait_idle_pool_reuse_keys,
 };
 
 use crate::types::SandboxReuseResult;
@@ -23,7 +23,7 @@ async fn session_affinity_reuses_idle_vm() {
 
     let run_handle = tokio::spawn(run(config));
 
-    // Push job for same session — should reuse the idle VM.
+    // Push job for same reuse key — should reuse the idle VM.
     let run_id = RunId::new_v4();
     push_job(
         &env,
@@ -51,7 +51,7 @@ async fn session_affinity_reuses_idle_vm() {
     );
 
     // After reuse + re-park: pool should still have 1 entry, budget count=1.
-    wait_idle_pool_sessions(&idle_pool, &["sess-reuse"], Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&idle_pool, &["sess-reuse"], Duration::from_secs(5)).await;
     {
         let pool = idle_pool.lock().await;
         assert_eq!(pool.len(), 1, "VM should be re-parked after reuse");
@@ -137,7 +137,7 @@ async fn invalid_resume_session_does_not_reuse_idle_vm() {
     let error = completion.error.as_deref().expect("error should be set");
     assert!(error.contains("invalid session_id"));
     assert!(!error.contains(invalid_session_id));
-    wait_idle_pool_sessions(&idle_pool, &[invalid_session_id], Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&idle_pool, &[invalid_session_id], Duration::from_secs(5)).await;
 
     shutdown(&env, run_handle).await;
 }
@@ -157,7 +157,7 @@ async fn profile_mismatch_destroys_stale_vm() {
 
     let run_handle = tokio::spawn(run(config));
 
-    // Push job for "vm0/large" (4vcpu) with same session — profile mismatch.
+    // Push job for "vm0/large" (4vcpu) with same reuse key — profile mismatch.
     let run_id = RunId::new_v4();
     push_job(
         &env,

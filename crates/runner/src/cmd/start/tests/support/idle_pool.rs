@@ -8,7 +8,7 @@ use crate::paths::RunnerPaths;
 use crate::resource_budget::BudgetLease;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::workspace_image_cache::{
-    SessionWorkspaceCache, WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity,
+    WorkspaceCacheTerminalStatus, WorkspaceImageCache, WorkspaceImageLeaseIdentity,
     WorkspaceImagePrepareRequest, WorkspaceImagePromotionRequest,
 };
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
@@ -169,7 +169,8 @@ async fn seed_idle_pool_with_overrides_and_generation(
 }
 
 pub(in super::super) struct WorkspacePromotionSeedSpec<'a> {
-    pub(in super::super) session_id: &'a str,
+    pub(in super::super) provider_session_id: &'a str,
+    pub(in super::super) reuse_key: &'a str,
     pub(in super::super) profile_name: &'a str,
     pub(in super::super) vcpu: u32,
     pub(in super::super) memory_mb: u32,
@@ -179,7 +180,7 @@ pub(in super::super) struct WorkspacePromotionSeedSpec<'a> {
 pub(in super::super) async fn seed_idle_pool_with_workspace_promotion(
     pool: &SharedIdlePool,
     budget: &Arc<ResourceBudget>,
-    cache: &SessionWorkspaceCache,
+    cache: &WorkspaceImageCache,
     paths: &RunnerPaths,
     spec: WorkspacePromotionSeedSpec<'_>,
 ) -> SandboxId {
@@ -191,8 +192,7 @@ pub(in super::super) async fn seed_idle_pool_with_workspace_promotion(
                 run_id,
                 sandbox_id,
                 profile_name: spec.profile_name,
-                reuse_key: Some(spec.session_id),
-                cli_agent_session_id: Some(spec.session_id),
+                reuse_key: Some(spec.reuse_key),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: spec.image_size_bytes,
             },
@@ -210,7 +210,6 @@ pub(in super::super) async fn seed_idle_pool_with_workspace_promotion(
         .into_promotion_context(WorkspaceImagePromotionRequest {
             run_id,
             sandbox_id,
-            cli_agent_session_id_override: Some(spec.session_id),
             restored_session_identity: None,
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: TEST_SESSION_LAST_COMPLETED_AT.into(),
@@ -219,7 +218,8 @@ pub(in super::super) async fn seed_idle_pool_with_workspace_promotion(
         .expect("workspace image should be promotable");
     let budget_lease = ResourceBudget::try_reserve_lease(budget, spec.vcpu, spec.memory_mb)
         .expect("reserve budget");
-    let candidate = ParkedIdleCandidateBuilder::new(spec.session_id, budget_lease)
+    let candidate = ParkedIdleCandidateBuilder::new(spec.provider_session_id, budget_lease)
+        .with_reuse_key(spec.reuse_key)
         .with_mock_sandbox_name("idle-workspace-promotion-test")
         .with_sandbox_id(sandbox_id)
         .with_profile_name(spec.profile_name)
@@ -233,9 +233,9 @@ pub(in super::super) async fn seed_idle_pool_with_workspace_promotion(
 }
 
 pub(in super::super) async fn seed_workspace_cache_state(
-    cache: &SessionWorkspaceCache,
+    cache: &WorkspaceImageCache,
     paths: &RunnerPaths,
-    session_id: &str,
+    reuse_key: &str,
     profile_name: &str,
     image_size_bytes: u64,
 ) {
@@ -247,8 +247,7 @@ pub(in super::super) async fn seed_workspace_cache_state(
                 run_id,
                 sandbox_id,
                 profile_name,
-                reuse_key: Some(session_id),
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(reuse_key),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes,
             },
@@ -266,7 +265,6 @@ pub(in super::super) async fn seed_workspace_cache_state(
         lease
             .promote(
                 run_id,
-                None,
                 WorkspaceCacheTerminalStatus::Success,
                 TEST_SESSION_LAST_COMPLETED_AT.into(),
                 &StorageFingerprints::default(),

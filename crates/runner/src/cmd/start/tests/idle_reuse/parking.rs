@@ -2,7 +2,7 @@ use super::super::super::*;
 use super::super::support::{
     context_with_session, minimal_context, mock_run_config, mock_run_config_with_overrides,
     push_job, seed_idle_pool, shutdown, test_profiles, wait_budget_count,
-    wait_idle_pool_session_states, wait_idle_pool_sessions, wait_sandbox_lifecycle_counts,
+    wait_idle_pool_reuse_keys, wait_idle_pool_session_states, wait_sandbox_lifecycle_counts,
 };
 
 use crate::types::SandboxReuseResult;
@@ -20,7 +20,7 @@ fn context_with_session_opt(
 ) -> crate::types::ExecutionContext {
     let mut ctx = minimal_context(run_id);
     if let Some(sid) = session_id {
-        ctx.reuse_key = Some(format!("session:{sid}"));
+        ctx.reuse_key = Some(format!("thread:idle-{sid}"));
         ctx.resume_session = Some(crate::types::ResumeSession::inline(
             sid.to_string(),
             String::new(),
@@ -47,7 +47,10 @@ async fn job_with_session_parks_vm() {
 
     let pool = env.idle_pool.lock().await;
     assert_eq!(pool.len(), 1, "VM should be parked when session is present");
-    assert!(pool.held_sessions().contains(&"session:sess-1".to_string()));
+    assert!(
+        pool.held_reuse_keys()
+            .contains(&"thread:idle-sess-1".to_string())
+    );
     drop(pool);
 
     shutdown(&env, run_handle).await;
@@ -108,12 +111,12 @@ async fn successful_job_parks_in_idle_pool() {
     assert_eq!(completion.unwrap().exit_code, 0);
 
     // VM should be parked in idle pool, holding budget.
-    wait_idle_pool_sessions(&idle_pool, &["sess-park"], Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&idle_pool, &["sess-park"], Duration::from_secs(5)).await;
     {
         let pool = idle_pool.lock().await;
         assert_eq!(pool.len(), 1, "VM should be parked");
         assert!(
-            pool.held_sessions().contains(&"sess-park".to_string()),
+            pool.held_reuse_keys().contains(&"sess-park".to_string()),
             "parked session should be sess-park"
         );
     }
@@ -158,21 +161,21 @@ async fn job_without_session_destroys_sandbox() {
 }
 
 // -----------------------------------------------------------------------
-// Test 19: Two sequential jobs for same session → take + reuse + re-park
+// Test 19: Two sequential jobs for same reuse key → take + reuse + re-park
 //
-// Exercises the full session affinity cycle: park → take → reuse → park.
+// Exercises the full reuse cycle: park → take → reuse → park.
 // After two jobs the pool should have exactly 1 entry (the second job's
 // VM) and the budget count should be 1.
 // -----------------------------------------------------------------------
 
 #[tokio::test(start_paused = true)]
-async fn sequential_same_session_reuse_cycle() {
+async fn sequential_same_reuse_key_cycle() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
-    // Job 1: parks VM for session "sess-seq".
+    // Job 1: parks VM for reuse key "sess-seq".
     let id1 = RunId::new_v4();
     push_job(
         &env,
@@ -188,7 +191,7 @@ async fn sequential_same_session_reuse_cycle() {
     wait_idle_pool_session_states(&idle_pool, &["sess-seq"], Duration::from_secs(5)).await;
     assert_eq!(idle_pool.lock().await.len(), 1, "job 1 VM should be parked");
 
-    // Job 2: same session → take → reuse → re-park.
+    // Job 2: same reuse key → take → reuse → re-park.
     let id2 = RunId::new_v4();
     push_job(
         &env,
@@ -206,7 +209,7 @@ async fn sequential_same_session_reuse_cycle() {
         Some(SandboxReuseResult::Reused),
         "job 2 should reuse the first job's parked VM",
     );
-    wait_idle_pool_sessions(&idle_pool, &["sess-seq"], Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&idle_pool, &["sess-seq"], Duration::from_secs(5)).await;
 
     assert_eq!(
         idle_pool.lock().await.len(),
@@ -254,7 +257,7 @@ async fn same_thread_reuses_vm_across_provider_session_change() {
     );
     wait_idle_pool_session_states(&idle_pool, &["provider-session-b"], Duration::from_secs(5))
         .await;
-    wait_idle_pool_sessions(&idle_pool, &[reuse_key], Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&idle_pool, &[reuse_key], Duration::from_secs(5)).await;
 
     shutdown(&env, run_handle).await;
 }
@@ -303,7 +306,7 @@ async fn park_evicts_via_discovered_cli_agent_session_id() {
     let pool = idle_pool.lock().await;
     assert_eq!(pool.len(), 1, "pool should have the newly parked entry");
     assert_eq!(
-        pool.held_sessions(),
+        pool.held_reuse_keys(),
         vec!["sess-evict"],
         "parked session should match discovered_cli_agent_session_id"
     );
@@ -316,7 +319,7 @@ async fn park_evicts_via_discovered_cli_agent_session_id() {
 // Tests 23-25: park / unpark idle-transition orchestration (#9102)
 // -----------------------------------------------------------------------
 
-/// Two sequential jobs on the same session produce park=2 / unpark=1:
+/// Two sequential jobs on the same reuse key produce park=2 / unpark=1:
 /// the first job's post-exit park, plus the second job's take (unpark)
 /// and post-exit re-park. Verifies the full reuse cycle drives the
 /// new trait hooks symmetrically.
@@ -345,7 +348,7 @@ async fn reuse_cycle_invokes_park_and_unpark_symmetrically() {
     wait_sandbox_lifecycle_counts(&counter, 1, 0, Duration::from_secs(5)).await;
     wait_idle_pool_session_states(&idle_pool, &["sess-reuse-cycle"], Duration::from_secs(5)).await;
 
-    // Job 2: same session → take (unpark) → run → re-park.
+    // Job 2: same reuse key → take (unpark) → run → re-park.
     let id2 = RunId::new_v4();
     push_job(
         &env,
@@ -400,7 +403,7 @@ async fn park_called_when_vm_enters_idle_pool() {
     assert!(c.is_some(), "job should complete");
 
     wait_sandbox_lifecycle_counts(&counter, 1, 0, Duration::from_secs(5)).await;
-    wait_idle_pool_sessions(&idle_pool, &["sess-park-hook"], Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&idle_pool, &["sess-park-hook"], Duration::from_secs(5)).await;
     assert_eq!(
         counter.park_call_count(),
         1,
