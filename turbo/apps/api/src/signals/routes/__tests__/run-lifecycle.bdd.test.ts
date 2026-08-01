@@ -1182,6 +1182,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         feature_switch_context_source: "preloaded",
       }),
     );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_context_load_user_timezone",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        user_timezone_source: "preloaded",
+      }),
+    );
     expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
@@ -1278,6 +1288,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "test-oauth-secret",
       "fixture-confidential-secret",
     ]);
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(created.runId);
+    expect(claim.appendSystemPrompt ?? "").toContain("Timezone: UTC");
+    expect(claim.userTimezone).toBeUndefined();
 
     const {
       actor: warmActor,
@@ -1537,8 +1551,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
   });
 
   it("retains direct plan admission and emits create timing", async () => {
+    const bdd = createBddApi(context);
     const api = createRunsApi(context);
-    const { actor } = await entitledRunActor();
+    const { actor, runnerGroup } = await entitledRunActor();
+    await bdd.updateUserTimezone(actor, "Asia/Shanghai");
     const prompt = "direct service dispatch timing should not leak prompt";
     const composeName = `bdd-direct-service-timing-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
@@ -1634,6 +1650,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         feature_switch_context_source: "database",
       }),
     );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_context_load_user_timezone",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        user_timezone_source: "database",
+      }),
+    );
     expectApiDispatchSpanKind(
       timingEvents,
       ["api_dispatch_pre_create_agent_run"],
@@ -1646,6 +1672,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "fixture-confidential-secret",
     ]);
 
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(created.runId);
+    expect(claim.userTimezone).toBe("Asia/Shanghai");
     await api.requestCancelRun(actor, created.runId, [200]);
 
     if (!actor.orgId) {
@@ -9623,6 +9652,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain("Name: BDD User");
     expect(appendSystemPrompt).toContain(`Email: ${actor.email}`);
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
+    expect(claim.userTimezone).toBe("America/Los_Angeles");
 
     expect(claim.featureFlags).toMatchObject({
       [FeatureSwitchKey.ZeroChatMessaging]: false,
