@@ -5559,6 +5559,13 @@
       "when": 1785574307618,
       "tag": "0793_contract_chat_event_run_lifecycle_event",
       "breakpoints": true
+    },
+    {
+      "idx": 794,
+      "version": "7",
+      "when": 1785575941106,
+      "tag": "0794_superb_firebird",
+      "breakpoints": true
     }
   ]
 }

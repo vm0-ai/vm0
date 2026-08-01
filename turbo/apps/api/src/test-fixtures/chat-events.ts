@@ -5,6 +5,7 @@ import type {
   ChatSlackMentionDisplayNames,
   ChatSlackMessageFiles,
 } from "@vm0/db/jsonb-contracts/chat-slack-context";
+import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -90,8 +91,25 @@ interface ChatEventContextFixture {
   readonly feishuConnectionId: string | null;
   readonly feishuInstallationId: string | null;
   readonly teamsTenantId: string | null;
+  readonly teamsTeamId: string | null;
   readonly teamsChannelId: string | null;
+  readonly teamsConversationId: string | null;
+  readonly teamsConversationType: string | null;
   readonly teamsActivityId: string | null;
+  readonly teamsThreadContext: string | null;
+  readonly teamsMessageText: string | null;
+  readonly teamsMessageFiles: ChatTeamsMessageFiles | null;
+  readonly teamsTenantName: string | null;
+  readonly teamsTeamName: string | null;
+  readonly teamsThreadId: string | null;
+  readonly teamsServiceUrl: string | null;
+  readonly teamsAppId: string | null;
+  readonly teamsBotId: string | null;
+  readonly teamsBotName: string | null;
+  readonly teamsSenderUserId: string | null;
+  readonly teamsSenderDisplayName: string | null;
+  readonly teamsSenderPrincipalName: string | null;
+  readonly teamsConnectionId: string | null;
   readonly telegramChatId: string | null;
   readonly telegramMessageId: string | null;
   readonly telegramIsDm: boolean | null;
@@ -141,8 +159,25 @@ export async function readChatEventContextFixture(
       feishuConnectionId: chatFeishuContext.connectionId,
       feishuInstallationId: chatFeishuContext.installationId,
       teamsTenantId: chatTeamsContext.tenantId,
+      teamsTeamId: chatTeamsContext.teamId,
       teamsChannelId: chatTeamsContext.channelId,
+      teamsConversationId: chatTeamsContext.conversationId,
+      teamsConversationType: chatTeamsContext.conversationType,
       teamsActivityId: chatTeamsContext.activityId,
+      teamsThreadContext: chatTeamsContext.threadContext,
+      teamsMessageText: chatTeamsContext.messageText,
+      teamsMessageFiles: chatTeamsContext.messageFiles,
+      teamsTenantName: chatTeamsContext.tenantName,
+      teamsTeamName: chatTeamsContext.teamName,
+      teamsThreadId: chatTeamsContext.threadId,
+      teamsServiceUrl: chatTeamsContext.serviceUrl,
+      teamsAppId: chatTeamsContext.teamsAppId,
+      teamsBotId: chatTeamsContext.botId,
+      teamsBotName: chatTeamsContext.botName,
+      teamsSenderUserId: chatTeamsContext.senderUserId,
+      teamsSenderDisplayName: chatTeamsContext.senderDisplayName,
+      teamsSenderPrincipalName: chatTeamsContext.senderPrincipalName,
+      teamsConnectionId: chatTeamsContext.connectionId,
       telegramChatId: chatTelegramContext.chatId,
       telegramMessageId: chatTelegramContext.messageId,
       telegramIsDm: chatTelegramContext.isDm,
@@ -221,6 +256,20 @@ const annotationProjectionInputs = [
         conversationId: "19:conversation@thread.tacv2",
         conversationType: "channel",
         activityId: "activity-1",
+        threadContext: "",
+        messageText: "teams channel linked",
+        messageFiles: [],
+        tenantName: "Tenant One",
+        teamName: "Team One",
+        threadId: "activity-1",
+        serviceUrl: "https://smba.trafficmanager.net/amer/",
+        teamsAppId: "teams-app-1",
+        botId: "28:bot-1",
+        botName: "Okou",
+        senderUserId: "29:user-1",
+        senderDisplayName: "Ada Lovelace",
+        senderPrincipalName: "ada@example.com",
+        connectionId: "00000000-0000-4000-8000-000000000003",
       },
     },
   },
@@ -235,6 +284,20 @@ const annotationProjectionInputs = [
         conversationId: "a:personal-conversation",
         conversationType: "personal",
         activityId: "activity-dm",
+        threadContext: "",
+        messageText: "teams personal unlinked",
+        messageFiles: [],
+        tenantName: "Tenant One",
+        teamName: null,
+        threadId: "direct-message:agent-1:default",
+        serviceUrl: "https://smba.trafficmanager.net/amer/",
+        teamsAppId: "teams-app-1",
+        botId: null,
+        botName: null,
+        senderUserId: "29:user-1",
+        senderDisplayName: null,
+        senderPrincipalName: null,
+        connectionId: "00000000-0000-4000-8000-000000000003",
       },
     },
   },
@@ -425,6 +488,20 @@ export async function seedChatEventAnnotationProjectionFixture(
         conversationId: "19:reject-conversation@thread.tacv2",
         conversationType: "channel",
         activityId: "activity-rejected",
+        threadContext: "",
+        messageText: "rejected annotation",
+        messageFiles: [],
+        tenantName: "Tenant Two",
+        teamName: "Team Two",
+        threadId: "activity-rejected",
+        serviceUrl: "https://smba.trafficmanager.net/amer/",
+        teamsAppId: "teams-app-2",
+        botId: "28:bot-2",
+        botName: "Okou",
+        senderUserId: "29:user-2",
+        senderDisplayName: "Grace Hopper",
+        senderPrincipalName: "grace@example.com",
+        connectionId: "00000000-0000-4000-8000-000000000004",
       },
     });
     await replaceChatEvent(tx, rejectedPendingId, {

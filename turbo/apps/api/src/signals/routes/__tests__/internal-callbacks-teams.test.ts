@@ -14,7 +14,9 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
+  decryptChatEventInputParamsFixture,
   findPendingChatEventInputParamsByPromptFixture,
+  readChatEventContextFixture,
   readChatEventInputParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -649,6 +651,57 @@ describe("Teams chat callbacks", () => {
     if (!queuedParams) {
       throw new Error("Expected queued Teams transport params");
     }
+    await expect(
+      readChatEventContextFixture(queuedParams.eventId),
+    ).resolves.toMatchObject({
+      contextType: "teams",
+      teamsTenantId: teams.fixture.teamsTenantId,
+      teamsTeamId: null,
+      teamsChannelId: null,
+      teamsConversationId: `a:personal-${teams.fixture.teamsUserId}`,
+      teamsConversationType: "personal",
+      teamsActivityId: "activity-queue-params-second",
+      teamsThreadContext: "",
+      teamsMessageText: queuedPrompt,
+      teamsMessageFiles: [],
+      teamsTenantName: teams.fixture.teamsTenantName,
+      teamsTeamName: null,
+      teamsThreadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-4-6`,
+      teamsServiceUrl: teams.fixture.serviceUrl,
+      teamsAppId: BOT_APP_ID,
+      teamsBotId: "28:bot-1",
+      teamsBotName: "Zero",
+      teamsSenderUserId: teams.fixture.teamsUserId,
+      teamsSenderDisplayName: "Ada Lovelace",
+      teamsSenderPrincipalName: "ada@example.com",
+      teamsConnectionId: expect.any(String),
+    });
+    await expect(
+      decryptChatEventInputParamsFixture(queuedParams.eventId, {
+        orgId: teams.fixture.orgId,
+        userId: teams.fixture.userId,
+      }),
+    ).resolves.toMatchObject({
+      version: 1,
+      prompt: queuedPrompt,
+      appendSystemPrompt: expect.stringContaining(
+        "You are currently running inside: Microsoft Teams",
+      ),
+      teamsDelivery: {
+        tenantId: teams.fixture.teamsTenantId,
+        conversationId: `a:personal-${teams.fixture.teamsUserId}`,
+        threadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-4-6`,
+        serviceUrl: teams.fixture.serviceUrl,
+        teamsUserId: teams.fixture.teamsUserId,
+        botId: "28:bot-1",
+        botName: "Zero",
+      },
+      userInfoExtras: {
+        teamsUserDisplayName: "Ada Lovelace",
+        teamsUserPrincipalName: "ada@example.com",
+        teamsUserId: teams.fixture.teamsUserId,
+      },
+    });
     await completeSandboxRun({
       runId: firstRunId,
       sandboxToken: firstClaim.sandboxToken,
