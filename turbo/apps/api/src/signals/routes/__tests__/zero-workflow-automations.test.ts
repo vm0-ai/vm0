@@ -2304,7 +2304,9 @@ describe("zero workflow automations", () => {
   });
 
   it("runs a one-time automation immediately in its bound chat thread", async () => {
-    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    const requestedAt = Date.UTC(2026, 7, 1, 12, 34, 56);
+    mockNow(requestedAt);
+    const runnerGroup = runs.configureRunnerGroup();
     const { workflowId } = await setupFixture();
     const created = await accept(
       automationsClient().create({
@@ -2376,6 +2378,33 @@ describe("zero workflow automations", () => {
       ]),
     );
     expect(JSON.stringify(timingEvents)).not.toContain(WORKFLOW_NAME);
+
+    await runs.heartbeatRunner(runnerGroup);
+    const claim = await runs.claimRunnerJob(run.body.runId);
+    const requestedAtIso = new Date(requestedAt).toISOString();
+    expect(claim.prompt).toBe(
+      `/${WORKFLOW_NAME}\nTrigger: manual run requested at ${requestedAtIso}.`,
+    );
+    expect(claim.appendSystemPrompt).toContain(
+      [
+        "# Current context",
+        `Run created by workflow automation "${WORKFLOW_NAME}".`,
+        `Trigger: manual run requested at ${requestedAtIso}.`,
+        `Procedure: skill "${WORKFLOW_NAME}".`,
+        "Output destination: this web chat thread, read by the user.",
+        "",
+        "# This run's event",
+        JSON.stringify(
+          {
+            automationId: created.body.id,
+            trigger: "manual",
+            requestedAt: requestedAtIso,
+          },
+          null,
+          2,
+        ),
+      ].join("\n"),
+    );
 
     const automation = await wf.readAutomation(created.body.id);
     expect(typeof automation.lastRunAt).toBe("string");

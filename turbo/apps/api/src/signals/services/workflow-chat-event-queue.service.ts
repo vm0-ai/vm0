@@ -65,11 +65,14 @@ const workflowQueueEventParamsWireSchema = z.object({
     .optional(),
   recordLastRunId: z.boolean().optional(),
   recordLastRunAt: z.boolean().optional(),
-  activePreviousRunPolicy: z.enum(["block", "allow"]),
+  activePreviousRunPolicy: z.enum(["block", "allow"]).optional(),
   allowClaimedOnceScheduleAutomation: z.boolean().optional(),
 });
 
-/** Queue-only run parameters retained as persistent-secret ciphertext. */
+/**
+ * The current writer encrypts only the version marker. Optional fields remain
+ * readable until historical pending automation events have drained.
+ */
 export interface WorkflowQueueEventParams {
   readonly version: 1;
   readonly prompt?: string;
@@ -81,7 +84,7 @@ export interface WorkflowQueueEventParams {
   }[];
   readonly recordLastRunId?: boolean;
   readonly recordLastRunAt?: boolean;
-  readonly activePreviousRunPolicy: "block" | "allow";
+  readonly activePreviousRunPolicy?: "block" | "allow";
   readonly allowClaimedOnceScheduleAutomation?: boolean;
 }
 
@@ -302,7 +305,10 @@ export interface PendingWorkflowQueueEvent {
   readonly chatThreadId: string;
   readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | null;
-  readonly encryptedParams: string;
+  readonly workflowName: string | null;
+  readonly workflowAutomationEventType: string | null;
+  readonly workflowAutomationEventPayload: WorkflowAutomationEventPayload | null;
+  readonly encryptedParams: string | null;
   readonly createdAt: Date;
 }
 
@@ -344,6 +350,9 @@ export async function loadNextWorkflowQueueEvent(
         chatThreadId: chatEvents.chatThreadId,
         triggerSource: chatEvents.triggerSource,
         triggerBrief: chatAutomationContext.triggerBrief,
+        workflowName: chatAutomationContext.workflowName,
+        workflowAutomationEventType: chatAutomationContext.eventType,
+        workflowAutomationEventPayload: chatAutomationContext.eventPayload,
         encryptedParams: chatEventInputParams.encryptedParams,
         createdAt: chatEvents.createdAt,
       })
@@ -365,7 +374,7 @@ export async function loadNextWorkflowQueueEvent(
     if (!event) {
       return null;
     }
-    if (!event.automationId || !event.triggerSource || !event.encryptedParams) {
+    if (!event.automationId || !event.triggerSource) {
       throw new Error(
         `Workflow queue event ${event.id} is missing its typed payload`,
       );
@@ -374,7 +383,6 @@ export async function loadNextWorkflowQueueEvent(
       ...event,
       automationId: event.automationId,
       triggerSource: event.triggerSource,
-      encryptedParams: event.encryptedParams,
     };
   });
 }

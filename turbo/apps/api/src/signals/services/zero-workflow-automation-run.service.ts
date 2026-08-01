@@ -11,6 +11,7 @@ import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
+import { persistedWorkflowAutomationEventPayload } from "./workflow-automation-context.service";
 import type {
   RunWorkflowAutomationNowArgs,
   RunWorkflowAutomationResult,
@@ -26,29 +27,11 @@ export {
   type RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-launch.service";
 
-function queueEventParams(
-  args: RunWorkflowAutomationNowArgs,
-): WorkflowQueueEventParams {
+function queueEventParams(): WorkflowQueueEventParams {
+  // Keep only the wire-version marker until the encrypted-params fallback is
+  // removed after historical pending automation events have drained.
   return {
     version: 1,
-    ...(args.prompt !== undefined ? { prompt: args.prompt } : {}),
-    ...(args.appendSystemPrompt !== undefined
-      ? { appendSystemPrompt: args.appendSystemPrompt }
-      : {}),
-    ...(args.callbacks ? { callbacks: args.callbacks } : {}),
-    ...(args.recordLastRunId !== undefined
-      ? { recordLastRunId: args.recordLastRunId }
-      : {}),
-    ...(args.recordLastRunAt !== undefined
-      ? { recordLastRunAt: args.recordLastRunAt }
-      : {}),
-    activePreviousRunPolicy: args.activePreviousRunPolicy ?? "block",
-    ...(args.due.allowClaimedOnceScheduleAutomation !== undefined
-      ? {
-          allowClaimedOnceScheduleAutomation:
-            args.due.allowClaimedOnceScheduleAutomation,
-        }
-      : {}),
   };
 }
 
@@ -83,12 +66,15 @@ export const runWorkflowAutomationNow$ = command(
           automation,
           workflowName: args.automationContext.workflowName,
           workflowAutomationEventType: args.automationContext.eventType,
-          workflowAutomationEventPayload: args.automationContext.event,
+          workflowAutomationEventPayload:
+            persistedWorkflowAutomationEventPayload(
+              args.automationContext.event,
+            ),
           chatThreadId,
           triggerSource: args.triggerSource ?? "workflow-schedule",
           triggerBrief: args.triggerBrief,
           coalescePendingScheduleRun: args.coalescePendingScheduleRun !== false,
-          params: queueEventParams(args),
+          params: queueEventParams(),
           persistSourceTransition: args.persistSourceTransition,
         });
       },

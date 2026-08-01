@@ -35,6 +35,7 @@ import {
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
 import { decryptQueuedUserMessageRunParams } from "../signals/services/zero-chat-queued-event.service";
+import { decryptWorkflowQueueEventParams } from "../signals/services/workflow-chat-event-queue.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -551,6 +552,17 @@ export async function decryptChatEventInputParamsFixture(
     return null;
   }
   return await decryptQueuedUserMessageRunParams(row.encryptedParams, ctx);
+}
+
+export async function decryptWorkflowEventInputParamsFixture(
+  eventId: string,
+  ctx: { readonly orgId: string; readonly userId: string },
+) {
+  const row = await readChatEventInputParamsFixture(eventId);
+  if (!row) {
+    return null;
+  }
+  return await decryptWorkflowQueueEventParams(row.encryptedParams, ctx);
 }
 
 export async function findPendingChatEventInputParamsByPromptFixture(

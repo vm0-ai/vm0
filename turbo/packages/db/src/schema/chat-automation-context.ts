@@ -29,8 +29,9 @@ export const chatAutomationContext = pgTable(
     /**
      * Server-private workflow automation launch material retained permanently.
      * Raw third-party content is intentionally retained as its only database
-     * copy; read paths must project only explicitly required columns, and no
-     * caller may project the entire row.
+     * copy. Server-only object-key ordering metadata preserves byte-identical
+     * prompt rendering and is stripped at claim. Read paths must project only
+     * explicitly required columns, and no caller may project the entire row.
      */
     eventPayload: jsonb("event_payload").$type<JsonObject>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),

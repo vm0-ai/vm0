@@ -160,12 +160,15 @@ function workflowAutomationRunMetadata(
  * render). Cron and once both use the cron callback; once carries no
  * cronExpression so it does not recur.
  */
-function buildWorkflowAutomationCallbacks(
+export function buildWorkflowAutomationCallbacks(
   automation: AutomationRow,
   agentId: string,
   chatThreadId: string,
 ): InternalRunCallbackInput[] {
   const callbacks: InternalRunCallbackInput[] = [];
+  if (automation.kind !== "schedule") {
+    return buildChatOnlyWorkflowAutomationCallbacks(chatThreadId, agentId);
+  }
   if (automation.scheduleType === "loop") {
     callbacks.push({
       internalKind: "workflow-automation:loop",

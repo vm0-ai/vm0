@@ -4,6 +4,11 @@ import {
   EVENT_NOTES,
   EVENT_POLICY,
   TRIGGER_RENDERERS,
+  persistedWorkflowAutomationEventPayload,
+  restoredWorkflowAutomationEventPayload,
+  storedWorkflowAutomationContext,
+  workflowAutomationAppendSystemPrompt,
+  workflowAutomationPrompt,
   workflowAutomationTrigger,
   type WorkflowAutomationEventPolicy,
   type WorkflowAutomationEventType,
@@ -24,6 +29,24 @@ const manualPolicy = {
   recordLastRunId: true,
   recordLastRunAt: true,
 } as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function reverseObjectKeys(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(reverseObjectKeys);
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+  const result: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value).reverse()) {
+    result[key] = reverseObjectKeys(item);
+  }
+  return result;
+}
 
 interface WorkflowAutomationContextCase {
   readonly eventType: WorkflowAutomationEventType;
@@ -259,6 +282,10 @@ const cases: readonly WorkflowAutomationContextCase[] = [
     payload: {
       receivedAt: "2026-08-01T12:00:04.000Z",
       deliveryId: "delivery-webhook",
+      body: {
+        event: "vm0-timing-sensitive-ping",
+        value: "vm0-timing-secret-value",
+      },
     },
     trigger:
       "signed workflow webhook received an HTTP POST at 2026-08-01T12:00:04.000Z (delivery delivery-webhook).",
@@ -309,6 +336,36 @@ describe("workflow automation context lookup contracts", () => {
       ).toBe(trigger);
       expect(EVENT_NOTES[eventType]).toStrictEqual(notes);
       expect(EVENT_POLICY[eventType]).toStrictEqual(policy);
+
+      const persistedPayload = reverseObjectKeys(
+        persistedWorkflowAutomationEventPayload(payload),
+      );
+      if (!isRecord(persistedPayload)) {
+        throw new Error("Expected persisted event payload to be an object");
+      }
+      const restoredPayload =
+        restoredWorkflowAutomationEventPayload(persistedPayload);
+      if (!restoredPayload) {
+        throw new Error("Expected persisted event payload key order");
+      }
+      const legacyContext = {
+        workflowName: "workflow-context-test",
+        eventType,
+        trigger,
+        notes,
+        event: payload,
+      };
+      const restoredContext = storedWorkflowAutomationContext({
+        workflowName: legacyContext.workflowName,
+        eventType,
+        eventPayload: restoredPayload,
+      });
+      expect(workflowAutomationPrompt(restoredContext)).toBe(
+        workflowAutomationPrompt(legacyContext),
+      );
+      expect(workflowAutomationAppendSystemPrompt(restoredContext)).toBe(
+        workflowAutomationAppendSystemPrompt(legacyContext),
+      );
     },
   );
 
