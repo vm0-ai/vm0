@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.364.4](https://github.com/vm0-ai/vm0/compare/api-v1.364.3...api-v1.364.4) (2026-08-01)
+
+
+### Refactoring
+
+* require teams launch context ([#24478](https://github.com/vm0-ai/vm0/issues/24478)) ([fbe4afa](https://github.com/vm0-ai/vm0/commit/fbe4afa86637fe8c03b219fcf6a6adf6a5595de7))
+
+
+### Performance Improvements
+
+* **api:** consolidate atomic launch persistence ([#24477](https://github.com/vm0-ai/vm0/issues/24477)) ([7dd295e](https://github.com/vm0-ai/vm0/commit/7dd295e67382be4216326457faec55a33c8b2e72))
+
 ## [1.364.3](https://github.com/vm0-ai/vm0/compare/api-v1.364.2...api-v1.364.3) (2026-08-01)
 
 

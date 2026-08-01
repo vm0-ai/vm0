@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.675.6](https://github.com/vm0-ai/vm0/compare/app-v0.675.5...app-v0.675.6) (2026-08-01)
+
+
+### Bug Fixes
+
+* **platform:** stack preference setting rows on narrow screens ([#24473](https://github.com/vm0-ai/vm0/issues/24473)) ([1e1657c](https://github.com/vm0-ai/vm0/commit/1e1657cb369ef4889c0fb68ae39a2cece4b40073))
+
 ## [0.675.5](https://github.com/vm0-ai/vm0/compare/app-v0.675.4...app-v0.675.5) (2026-08-01)
 
 
