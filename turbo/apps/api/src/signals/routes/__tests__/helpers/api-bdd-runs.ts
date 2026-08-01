@@ -243,6 +243,7 @@ function runnerHeartbeatBody(
     readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
     readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
     readonly runningCount?: RunnerHeartbeatBody["runningCount"];
+    readonly heldSandboxStates?: RunnerHeartbeatBody["heldSandboxStates"];
     readonly heldSessionStates?: RunnerHeartbeatBody["heldSessionStates"];
     readonly heldWorkspaceStates?: RunnerHeartbeatBody["heldWorkspaceStates"];
     readonly mode?: RunnerHeartbeatBody["mode"];
@@ -261,6 +262,9 @@ function runnerHeartbeatBody(
     allocatedMemoryMb: args.allocatedMemoryMb ?? 0,
     runningCount: args.runningCount ?? 0,
     admittableProfiles: args.admittableProfiles ?? ["vm0/default"],
+    ...(args.heldSandboxStates === undefined
+      ? {}
+      : { heldSandboxStates: args.heldSandboxStates }),
     heldSessionStates: args.heldSessionStates ?? [],
     heldWorkspaceStates: args.heldWorkspaceStates ?? [],
     mode: args.mode ?? "running",
@@ -1089,6 +1093,7 @@ export function createRunsApi(context: TestContext) {
         readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
         readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
         readonly runningCount?: RunnerHeartbeatBody["runningCount"];
+        readonly heldSandboxStates?: RunnerHeartbeatBody["heldSandboxStates"];
         readonly heldSessionStates?: RunnerHeartbeatBody["heldSessionStates"];
         readonly heldWorkspaceStates?: RunnerHeartbeatBody["heldWorkspaceStates"];
         readonly mode?: RunnerHeartbeatBody["mode"];

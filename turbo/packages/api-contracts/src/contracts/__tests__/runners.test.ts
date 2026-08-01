@@ -9,6 +9,7 @@ import {
   elapsedSinceApiStartMs,
   executionContextSchema,
   heartbeatBodySchema,
+  heldSandboxStateSchema,
   heldSessionStateSchema,
   heldWorkspaceStateSchema,
   jobSchema,
@@ -492,6 +493,19 @@ describe("runner resume session contract", () => {
       "thread:22222222-2222-4222-8222-222222222223",
     );
 
+    const heldSandboxState = heldSandboxStateSchema.parse({
+      reuseKey: "thread:22222222-2222-4222-8222-222222222223",
+      lastCompletedAt: "2026-07-15T00:00:00.000Z",
+      reusableSandbox: {
+        profile: "vm0/default",
+        historyGenerationRunId,
+      },
+    });
+    expect(heldSandboxState).not.toHaveProperty("sessionId");
+    expect(heldSandboxState.reusableSandbox.historyGenerationRunId).toBe(
+      historyGenerationRunId,
+    );
+
     const heldWorkspaceState = heldWorkspaceStateSchema.parse({
       reuseKey: "thread:22222222-2222-4222-8222-222222222223",
       lastCompletedAt: "2026-07-15T00:00:00.000Z",
@@ -544,6 +558,13 @@ describe("runner resume session contract", () => {
         ...heartbeat,
         snapshotGeneration: 7,
         snapshotSequence: 42,
+        heldSandboxStates: [
+          {
+            reuseKey: "thread:current",
+            lastCompletedAt: "2026-07-15T00:00:00.000Z",
+            reusableSandbox: { profile: "vm0/default" },
+          },
+        ],
       }).success,
     ).toBe(true);
     expect(

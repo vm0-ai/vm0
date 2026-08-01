@@ -3421,16 +3421,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         snapshotGeneration: 1,
         snapshotSequence: nextAffinitySnapshotSequence(),
         admittableProfiles: args.admittableProfiles,
-        heldSessionStates: args.reusableSandbox
+        heldSandboxStates: args.reusableSandbox
           ? [
               {
-                sessionId: cliAgentSessionId,
                 reuseKey,
                 lastCompletedAt,
                 reusableSandbox: args.reusableSandbox,
               },
             ]
           : [],
+        heldSessionStates: [],
         heldWorkspaceStates: args.workspaceCaches
           ? [
               {
@@ -3557,6 +3557,28 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       sessionAffinityResource(canonicalHeartbeatHolder.job),
     ).toBeUndefined();
+
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: affinityRunnerId,
+      group: runnerGroup,
+      snapshotGeneration: 1,
+      snapshotSequence: nextAffinitySnapshotSequence(),
+      admittableProfiles: [],
+      heldSandboxStates: [],
+      heldSessionStates: [
+        {
+          sessionId: cliAgentSessionId,
+          reuseKey,
+          lastCompletedAt: nowDate().toISOString(),
+          reusableSandbox: { profile: "vm0/default" },
+        },
+      ],
+    });
+    const currentEmptyWins = await pollFollowUp(
+      "ignore legacy state when current state is explicitly empty",
+    );
+    expect(sessionAffinityProtectedUntil(currentEmptyWins.job)).toBeNull();
+    expect(sessionAffinityResource(currentEmptyWins.job)).toBeUndefined();
 
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: affinityRunnerId,

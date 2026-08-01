@@ -109,11 +109,11 @@ async fn reuse_take_clears_idle_status_while_job_is_active() {
     assert!(
         post_take_heartbeats.iter().any(|heartbeat| {
             heartbeat
-                .held_session_states
+                .held_sandbox_states
                 .iter()
-                .all(|state| state.session_id != "sess-reuse-status")
+                .all(|state| state.reuse_key != "sess-reuse-status")
         }),
-        "post-take heartbeat should stop advertising the active session; heartbeats: {post_take_heartbeats:?}"
+        "post-take heartbeat should stop advertising the active reuse key; heartbeats: {post_take_heartbeats:?}"
     );
 
     gate.notify_one();

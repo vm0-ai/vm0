@@ -55,13 +55,15 @@ struct ActiveRunState {
     phase_started_at: DateTime<Utc>,
 }
 
-/// One parked (idle) sandbox's identity: the `session_id` it's keyed by in
-/// the idle pool and the `sandbox_id` of the Firecracker VM kept alive for
-/// reuse. Pairing these as a struct (rather than parallel arrays) matches
-/// `ActiveRun` and avoids the "indexed-by-position" bug class.
+/// One parked sandbox's reuse identity and Firecracker sandbox identity.
+///
+/// The serialized `session_id` name is retained only so old runner tooling can
+/// read status written during the #24486 rollout. Current ownership is keyed by
+/// `reuse_key`; #24489 removes the compatibility wire name after rollout.
 #[derive(Debug, Clone, Serialize)]
 pub struct IdleVm {
-    pub session_id: String,
+    #[serde(rename = "session_id")]
+    pub reuse_key: String,
     pub sandbox_id: SandboxId,
 }
 
@@ -846,11 +848,11 @@ mod tests {
                     1,
                     vec![
                         IdleVm {
-                            session_id: "sess-1".into(),
+                            reuse_key: "sess-1".into(),
                             sandbox_id: sb1,
                         },
                         IdleVm {
-                            session_id: "sess-2".into(),
+                            reuse_key: "sess-2".into(),
                             sandbox_id: sb2,
                         },
                     ],
@@ -881,7 +883,7 @@ mod tests {
                 .set_idle_info_at_revision(
                     2,
                     vec![IdleVm {
-                        session_id: "fresh".into(),
+                        reuse_key: "fresh".into(),
                         sandbox_id: fresh_id,
                     }],
                 )
@@ -892,7 +894,7 @@ mod tests {
                 .set_idle_info_at_revision(
                     1,
                     vec![IdleVm {
-                        session_id: "stale".into(),
+                        reuse_key: "stale".into(),
                         sandbox_id: stale_id,
                     }],
                 )
@@ -920,7 +922,7 @@ mod tests {
                 .set_idle_info_at_revision(
                     1,
                     vec![IdleVm {
-                        session_id: "sess-replaced".into(),
+                        reuse_key: "sess-replaced".into(),
                         sandbox_id: original_id,
                     }],
                 )
@@ -938,7 +940,7 @@ mod tests {
                 .set_idle_info_at_revision(
                     3,
                     vec![IdleVm {
-                        session_id: "sess-replaced".into(),
+                        reuse_key: "sess-replaced".into(),
                         sandbox_id: replacement_id,
                     }],
                 )
@@ -974,7 +976,7 @@ mod tests {
                 .set_idle_info_at_revision(
                     2,
                     vec![IdleVm {
-                        session_id: "fresh".into(),
+                        reuse_key: "fresh".into(),
                         sandbox_id: idle_id,
                     }],
                 )
@@ -987,7 +989,7 @@ mod tests {
                     active_id,
                     1,
                     vec![IdleVm {
-                        session_id: "stale".into(),
+                        reuse_key: "stale".into(),
                         sandbox_id: stale_id,
                     }],
                 )
@@ -1023,7 +1025,7 @@ mod tests {
                     active_id,
                     1,
                     vec![IdleVm {
-                        session_id: "fresh-create-after-reuse-miss".into(),
+                        reuse_key: "fresh-create-after-reuse-miss".into(),
                         sandbox_id: idle_id,
                     }],
                 )

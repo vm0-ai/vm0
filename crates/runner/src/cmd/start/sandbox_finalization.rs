@@ -162,11 +162,8 @@ pub(super) async fn finalize_sandbox_for_completion(
     let resolved_cli_agent_session_id = cli_agent_session_id
         .as_deref()
         .or(discovered_cli_agent_session_id.as_deref());
-    let parkable_reuse_identity = if exit_code == 0 && !cancelled && parking_gate.is_open() {
-        reuse_key
-            .as_deref()
-            .zip(resolved_cli_agent_session_id)
-            .map(|(reuse_key, session_id)| (reuse_key.to_owned(), session_id.to_owned()))
+    let parkable_reuse_key = if exit_code == 0 && !cancelled && parking_gate.is_open() {
+        reuse_key.clone()
     } else {
         None
     };
@@ -185,7 +182,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         .map(|promotion| promotion.reuse_key().to_owned());
 
     let mut session_affinity_changed = false;
-    let budget = if let Some((reuse_key, cli_agent_session_id)) = parkable_reuse_identity {
+    let budget = if let Some(reuse_key) = parkable_reuse_key {
         let reuse_key_fingerprint = crate::paths::short_digest(&reuse_key);
         let reuse_kind = reuse_key_kind(&reuse_key);
         // Inflate the guest balloon BEFORE acquiring the pool lock —
@@ -196,7 +193,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             sandbox,
             factory: Arc::clone(&factory),
             reuse_key: reuse_key.clone(),
-            cli_agent_session_id: cli_agent_session_id.clone(),
+            cli_agent_session_id: resolved_cli_agent_session_id.map(str::to_owned),
             sandbox_id,
             profile_name: profile_name.clone(),
             device_rate_limits: device_rate_limits.clone(),
@@ -238,7 +235,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                             run_id,
                             sandbox_id,
                             profile_name: &profile_name,
-                            cli_agent_session_id: Some(&cli_agent_session_id),
+                            cli_agent_session_id: resolved_cli_agent_session_id,
                             reason,
                             network_log_session: network_log_session.take(),
                             network_log_drain: network_log_drain.clone(),
@@ -438,8 +435,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                             "VM parked for reuse"
                         );
                         #[cfg(test)]
-                        test_observer
-                            .notify_vm_parked_for_reuse(run_id, cli_agent_session_id.clone());
+                        test_observer.notify_vm_parked_for_reuse(run_id, reuse_key.clone());
                         cleanup_state.mark_idle_pool_owned();
                         #[cfg(test)]
                         maybe_panic_outer_job(
@@ -531,13 +527,8 @@ pub(super) async fn finalize_sandbox_for_completion(
             }
         }
     } else {
-        // No parkable session — stop + destroy.
-        let cleanup_reason = active_cleanup_reason(
-            exit_code,
-            cancelled,
-            parking_gate.is_open(),
-            resolved_cli_agent_session_id,
-        );
+        // No parkable reuse key — stop + destroy.
+        let cleanup_reason = active_cleanup_reason(exit_code, cancelled, parking_gate.is_open());
         let destroy_result = stop_and_destroy_sandbox(
             sandbox,
             &**factory,
@@ -625,22 +616,15 @@ async fn close_network_log_session(
     }
 }
 
-fn active_cleanup_reason(
-    exit_code: i32,
-    cancelled: bool,
-    parking_open: bool,
-    resolved_cli_agent_session_id: Option<&str>,
-) -> &'static str {
+fn active_cleanup_reason(exit_code: i32, cancelled: bool, parking_open: bool) -> &'static str {
     if cancelled {
         "cancelled"
     } else if exit_code != 0 {
         "nonzero_exit"
     } else if !parking_open {
         "parking_closed"
-    } else if resolved_cli_agent_session_id.is_none() {
-        "no_session"
     } else {
-        "not_parkable"
+        "no_reuse_key"
     }
 }
 
@@ -2348,7 +2332,7 @@ mod tests {
             sandbox: existing_sandbox,
             factory: existing_factory,
             reuse_key: session_id.into(),
-            cli_agent_session_id: session_id.into(),
+            cli_agent_session_id: Some(session_id.into()),
             sandbox_id: old_sandbox_id,
             profile_name: "vm0/default".into(),
             device_rate_limits: None,

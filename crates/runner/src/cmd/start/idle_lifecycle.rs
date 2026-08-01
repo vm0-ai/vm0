@@ -250,7 +250,7 @@ mod tests {
             sandbox,
             factory,
             reuse_key: fixture.reuse_key.clone(),
-            cli_agent_session_id: provider_session_id.into(),
+            cli_agent_session_id: Some(provider_session_id.into()),
             sandbox_id: fixture.sandbox_id,
             profile_name: "vm0/default".into(),
             device_rate_limits: None,

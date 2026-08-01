@@ -1047,7 +1047,7 @@ mod tests {
         IdlePoolSnapshot {
             revision: 1,
             idle_vms: vec![IdleVm {
-                session_id: "sess-removed-from-pool".into(),
+                reuse_key: "sess-removed-from-pool".into(),
                 sandbox_id: SandboxId::new_v4(),
             }],
         }

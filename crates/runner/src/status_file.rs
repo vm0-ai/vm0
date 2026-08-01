@@ -119,7 +119,8 @@ pub(crate) struct StatusActiveRun {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct StatusIdleVm {
-    pub(crate) session_id: String,
+    #[serde(rename = "session_id")]
+    pub(crate) reuse_key: String,
     pub(crate) sandbox_id: String,
 }
 
@@ -194,7 +195,7 @@ mod tests {
             "2026-04-13T00:00:01.000Z"
         );
         assert_eq!(status.idle_vms.len(), 1);
-        assert_eq!(status.idle_vms[0].session_id, "sess-1");
+        assert_eq!(status.idle_vms[0].reuse_key, "sess-1");
     }
 
     #[tokio::test]

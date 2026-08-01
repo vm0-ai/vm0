@@ -828,7 +828,7 @@ fn classify_claim_failure(error: &ClaimApiError) -> ClaimFailureDecision {
 }
 
 fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
-    let sessions = state.held_session_states.len();
+    let reusable_sandboxes = state.held_sandbox_states.len();
     let workspace_states = state.held_workspace_states.len();
     if let RunnerError::ApiTransport(api_error) = error {
         let request = &api_error.request;
@@ -848,7 +848,7 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
             runner_group = %state.group,
             mode = %state.mode,
             running = state.running_count,
-            sessions,
+            reusable_sandboxes,
             workspace_states,
             "heartbeat failed"
         );
@@ -862,7 +862,7 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
         runner_group = %state.group,
         mode = %state.mode,
         running = state.running_count,
-        sessions,
+        reusable_sandboxes,
         workspace_states,
         "heartbeat failed"
     );
@@ -1337,6 +1337,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "hash"
             | "historyRef"
             | "hostPolicy"
+            | "heldSandboxStates"
             | "heldSessionStates"
             | "heldWorkspaceStates"
             | "instructionsTargetFilename"
@@ -1762,6 +1763,14 @@ mod tests {
             allocated_memory_mb: 4096,
             running_count: 1,
             admittable_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
+            held_sandbox_states: vec![crate::types::HeldSandboxState {
+                reuse_key: "thread:heartbeat-test".to_string(),
+                last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
+                reusable_sandbox: crate::types::ReusableSandboxState {
+                    profile: crate::profile::DEFAULT_PROFILE.to_string(),
+                    history_generation_run_id: None,
+                },
+            }],
             held_session_states: vec![crate::types::HeldSessionState {
                 session_id: "held-session-test".to_string(),
                 reuse_key: "thread:heartbeat-test".to_string(),
@@ -1917,7 +1926,7 @@ mod tests {
         assert_eq!(event_field(event, "runner_group"), "vm0/test");
         assert_eq!(event_field(event, "mode"), "running");
         assert_eq!(event_field(event, "running"), "1");
-        assert_eq!(event_field(event, "sessions"), "1");
+        assert_eq!(event_field(event, "reusable_sandboxes"), "1");
         assert_eq!(event_field(event, "workspace_states"), "1");
         assert_eq!(event_field(event, "endpoint"), "heartbeat");
         assert_eq!(event_field(event, "method"), "POST");
@@ -1973,7 +1982,7 @@ mod tests {
         let event = captured_event(&events, "heartbeat failed");
 
         assert_eq!(event.level, Level::WARN);
-        assert_eq!(event_field(event, "sessions"), "1");
+        assert_eq!(event_field(event, "reusable_sandboxes"), "1");
         assert_eq!(event_field(event, "workspace_states"), "1");
         let event_debug = format!("{event:#?}");
         assert!(
