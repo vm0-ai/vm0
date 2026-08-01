@@ -381,7 +381,7 @@ function canonicalSlackLaunchContext(args: {
     messageFiles: args.event.files ?? [],
     mentionDisplayNames: args.mentionDisplayNames,
     senderDisplayName: args.userInfoExtras.slackDisplayName ?? null,
-    senderUserId: args.userInfoExtras.slackUserId ?? null,
+    senderUserId: args.event.user,
     channelType: slackChannelType(args.event),
     threadTs,
     routeThreadTs: threadTs === args.routeThreadTs ? null : args.routeThreadTs,
