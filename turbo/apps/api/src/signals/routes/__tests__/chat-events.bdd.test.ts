@@ -159,7 +159,6 @@ const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
 ] as const;
 const API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES = [
   "api_dispatch_validate_thread_session_snapshot_thread",
-  "api_dispatch_update_thread_session_binding",
 ] as const;
 const API_DISPATCH_QUEUE_FIRST_ADMISSION_ACTION_TYPES = [
   "api_dispatch_resolve_queue_first_admission",
@@ -172,10 +171,8 @@ const API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES = [
   "api_dispatch_queue_first_thread_lock_wait",
   "api_dispatch_load_thread_session_binding",
 ] as const;
-const API_DISPATCH_QUEUED_PERSISTENCE_ACTION_TYPES = [
-  "api_dispatch_persist_custom_connector_auth_refs",
-  "api_dispatch_insert_agent_run_queue",
-  "api_dispatch_count_agent_run_queue_depth",
+const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
+  "api_dispatch_persist_atomic_launch",
 ] as const;
 const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "org_id",
@@ -1745,8 +1742,21 @@ describe("CHAT-02: org queue markers", () => {
     );
     expectApiDispatchSpanKind(
       queuedTimingEvents,
-      API_DISPATCH_QUEUED_PERSISTENCE_ACTION_TYPES,
+      API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES,
       "nested",
+    );
+    expectNoApiDispatchActions(queuedTimingEvents, [
+      "api_dispatch_insert_run_record",
+      "api_dispatch_persist_custom_connector_auth_refs",
+      "api_dispatch_insert_agent_run_queue",
+      "api_dispatch_count_agent_run_queue_depth",
+      "api_dispatch_update_thread_session_binding",
+    ]);
+    expect(sandboxOperationEventsForRun(queuedRun.body.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "enqueue_zero_run",
+        queue_depth: 1,
+      }),
     );
     expect(
       queuedTimingEvents.filter((event) => {
