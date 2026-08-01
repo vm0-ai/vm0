@@ -11,6 +11,7 @@ import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
+import { persistedWorkflowAutomationEventPayload } from "./workflow-automation-context.service";
 import type {
   RunWorkflowAutomationNowArgs,
   RunWorkflowAutomationResult,
@@ -65,7 +66,10 @@ export const runWorkflowAutomationNow$ = command(
           automation,
           workflowName: args.automationContext.workflowName,
           workflowAutomationEventType: args.automationContext.eventType,
-          workflowAutomationEventPayload: args.automationContext.event,
+          workflowAutomationEventPayload:
+            persistedWorkflowAutomationEventPayload(
+              args.automationContext.event,
+            ),
           chatThreadId,
           triggerSource: args.triggerSource ?? "workflow-schedule",
           triggerBrief: args.triggerBrief,

@@ -19,10 +19,135 @@ export interface WorkflowAutomationEventPolicy {
 
 type TriggerRenderer = (payload: WorkflowAutomationEventPayload) => string;
 
+const EVENT_PAYLOAD_OBJECT_KEY_ORDER = "__vm0EventPayloadObjectKeyOrderV1";
+const eventPayloadObjectKeyOrderSchema = z.array(
+  z.object({
+    path: z.array(z.union([z.string(), z.number()])),
+    keys: z.array(z.string()),
+  }),
+);
+
+interface EventPayloadObjectKeyOrder {
+  readonly path: readonly (string | number)[];
+  readonly keys: readonly string[];
+}
+
 function isEventPayload(
   value: object,
 ): value is WorkflowAutomationEventPayload {
   return !Array.isArray(value);
+}
+
+function collectEventPayloadObjectKeyOrder(
+  value: unknown,
+  path: readonly (string | number)[],
+  result: EventPayloadObjectKeyOrder[],
+): void {
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      collectEventPayloadObjectKeyOrder(item, [...path, index], result);
+    }
+    return;
+  }
+  if (typeof value !== "object" || value === null || !isEventPayload(value)) {
+    return;
+  }
+  const keys = Object.keys(value);
+  result.push({ path, keys });
+  for (const key of keys) {
+    collectEventPayloadObjectKeyOrder(value[key], [...path, key], result);
+  }
+}
+
+function eventPayloadPathKey(path: readonly (string | number)[]): string {
+  return JSON.stringify(path);
+}
+
+function restoreEventPayloadObjectKeyOrder(
+  value: unknown,
+  path: readonly (string | number)[],
+  keyOrder: ReadonlyMap<string, readonly string[]>,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item, index) => {
+      return restoreEventPayloadObjectKeyOrder(
+        item,
+        [...path, index],
+        keyOrder,
+      );
+    });
+  }
+  if (typeof value !== "object" || value === null || !isEventPayload(value)) {
+    return value;
+  }
+  const persistedKeys = Object.keys(value).filter((key) => {
+    return path.length > 0 || key !== EVENT_PAYLOAD_OBJECT_KEY_ORDER;
+  });
+  const persistedKeySet = new Set(persistedKeys);
+  const orderedKeys = keyOrder.get(eventPayloadPathKey(path))?.filter((key) => {
+    return persistedKeySet.has(key);
+  });
+  const knownKeys = new Set(orderedKeys ?? []);
+  const result: Record<string, unknown> = {};
+  for (const key of [
+    ...(orderedKeys ?? []),
+    ...persistedKeys.filter((persistedKey) => {
+      return !knownKeys.has(persistedKey);
+    }),
+  ]) {
+    result[key] = restoreEventPayloadObjectKeyOrder(
+      value[key],
+      [...path, key],
+      keyOrder,
+    );
+  }
+  return result;
+}
+
+/**
+ * JSONB reorders object keys. Persist their original order alongside the values
+ * so claim can reproduce the pre-queue system prompt byte for byte.
+ */
+export function persistedWorkflowAutomationEventPayload(
+  payload: WorkflowAutomationEventPayload,
+): WorkflowAutomationEventPayload {
+  if (EVENT_PAYLOAD_OBJECT_KEY_ORDER in payload) {
+    throw new Error("Workflow automation event payload uses a reserved field");
+  }
+  const objectKeyOrder: EventPayloadObjectKeyOrder[] = [];
+  collectEventPayloadObjectKeyOrder(payload, [], objectKeyOrder);
+  return {
+    ...payload,
+    [EVENT_PAYLOAD_OBJECT_KEY_ORDER]: objectKeyOrder,
+  };
+}
+
+/** Rows admitted before key-order metadata was written must use the blob. */
+export function restoredWorkflowAutomationEventPayload(
+  payload: WorkflowAutomationEventPayload,
+): WorkflowAutomationEventPayload | null {
+  const parsed = eventPayloadObjectKeyOrderSchema.safeParse(
+    payload[EVENT_PAYLOAD_OBJECT_KEY_ORDER],
+  );
+  if (!parsed.success) {
+    return null;
+  }
+  const keyOrder = new Map(
+    parsed.data.map((entry) => {
+      return [eventPayloadPathKey(entry.path), entry.keys] as const;
+    }),
+  );
+  const restored = restoreEventPayloadObjectKeyOrder(payload, [], keyOrder);
+  if (
+    typeof restored !== "object" ||
+    restored === null ||
+    !isEventPayload(restored)
+  ) {
+    throw new Error(
+      "Stored workflow automation event payload is not an object",
+    );
+  }
+  return restored;
 }
 
 function objectField(

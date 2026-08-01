@@ -1,5 +1,6 @@
 import {
   EVENT_POLICY,
+  restoredWorkflowAutomationEventPayload,
   storedWorkflowAutomationContext,
   workflowAutomationAppendSystemPrompt,
   workflowAutomationEventTypeSchema,
@@ -40,10 +41,16 @@ export function buildWorkflowAutomationQueuedLaunchMaterial(args: {
     return null;
   }
   const eventType = workflowAutomationEventTypeSchema.parse(args.eventType);
+  const eventPayload = restoredWorkflowAutomationEventPayload(
+    args.eventPayload,
+  );
+  if (!eventPayload) {
+    return null;
+  }
   const context = storedWorkflowAutomationContext({
     workflowName: args.workflowName,
     eventType,
-    eventPayload: args.eventPayload,
+    eventPayload,
   });
   return {
     workflowName: args.workflowName,
