@@ -65,7 +65,6 @@ import {
 import { noGoalChangeAfterQueueEvent } from "./chat-goal-queue.service";
 import { agentphoneDeliveryTargetSchema } from "./agentphone-chat-callback-payload";
 import { githubDeliveryTargetSchema } from "./github-chat-callback-payload";
-import { teamsDeliveryTargetSchema } from "./teams-chat-callback-payload";
 import { telegramDeliveryTargetSchema } from "./telegram-chat-callback-payload";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
@@ -89,7 +88,6 @@ const queuedUserMessageRunParamsSchema = z.object({
   version: z.literal(1),
   prompt: z.string().optional(),
   appendSystemPrompt: z.string().optional(),
-  teamsDelivery: teamsDeliveryTargetSchema.optional(),
   telegramDelivery: telegramDeliveryTargetSchema.optional(),
   agentphoneDelivery: agentphoneDeliveryTargetSchema.optional(),
   githubDelivery: githubDeliveryTargetSchema.optional(),
@@ -105,9 +103,6 @@ const queuedUserMessageRunParamsSchema = z.object({
     .object({
       slackDisplayName: z.string().optional(),
       slackUserId: z.string().optional(),
-      teamsUserDisplayName: z.string().optional(),
-      teamsUserPrincipalName: z.string().optional(),
-      teamsUserId: z.string().optional(),
       telegramDisplayName: z.string().optional(),
       telegramUsername: z.string().optional(),
       telegramUserId: z.string().optional(),
