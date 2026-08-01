@@ -3268,20 +3268,118 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("exposes same-session affinity metadata to runner poll responses", async () => {
+  it("resumes a CLI session without reuse affinity when no chat thread exists", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     const first = await api.createRun(actor, {
       agentId,
-      prompt: "start affinity-protected session",
+      prompt: "start a no-thread CLI session",
       modelProvider: "anthropic-api-key",
     });
-    expect(first).toMatchObject({ status: "pending" });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    const cliAgentSessionId = `bdd-no-thread-cli-${first.runId}`;
+    const history = `bdd no-thread history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: randomUUID(),
+      group: runnerGroup,
+      admittableProfiles: [],
+      heldSessionStates: [
+        {
+          sessionId: cliAgentSessionId,
+          reuseKey: `session:${cliAgentSessionId}`,
+          lastCompletedAt: nowDate().toISOString(),
+          reusableSandbox: { profile: "vm0/default" },
+        },
+      ],
+    });
+
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue the no-thread CLI session",
+      modelProvider: "anthropic-api-key",
+    });
+    const poll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (poll.status !== 200) {
+      throw new Error("Expected no-thread continuation poll to succeed");
+    }
+    expect(poll.body.job?.runId).toBe(resumed.runId);
+    expect(poll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(poll.body.job?.reuseKey).toBeNull();
+    expect(sessionAffinityProtectedUntil(poll.body.job)).toBeNull();
+
+    const resumedClaim = await api.claimRunnerJob(resumed.runId);
+    expect(resumedClaim.reuseKey).toBeNull();
+    expect(resumedClaim.resumeSession).toMatchObject({
+      sessionId: cliAgentSessionId,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: expect.any(String),
+      },
+    });
+
+    const resumedHistory = `bdd resumed no-thread history ${resumed.runId}`;
+    const resumedHistoryHash = createHash("sha256")
+      .update(resumedHistory)
+      .digest("hex");
+    mockSessionHistoryBlob(resumedHistoryHash, resumedHistory);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: resumed.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: resumedHistoryHash,
+      },
+      { authorization: `Bearer ${resumedClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: resumed.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${resumedClaim.sandboxToken}` },
+      [200],
+    );
+    const completed = await api.readRun(actor, resumed.runId);
+    expect(completed.status).toBe("completed");
+  });
+
+  it("exposes same-thread affinity metadata to runner poll responses", async () => {
+    const api = createRunsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const first = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "start affinity-protected session",
+    });
     const firstClaim = await api.claimRunnerJob(first.runId);
     const cliAgentSessionId = `bdd-affinity-cli-${first.runId}`;
-    const reuseKey = `session:${cliAgentSessionId}`;
+    const reuseKey = `thread:${first.threadId}`;
     const affinityRunnerId = randomUUID();
     const history = `bdd affinity history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
@@ -3301,6 +3399,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
+    await flushWaitUntilForTest();
 
     let affinitySnapshotSequence = 0;
     function nextAffinitySnapshotSequence(): number {
@@ -3346,11 +3445,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       cancelAfterPoll = true,
       pollAtMs?: number,
     ) {
-      const run = await api.createRun(actor, {
+      const run = await sendChatRunMessage(actor, {
         agentId,
-        sessionId: first.sessionId,
+        threadId: first.threadId,
         prompt,
-        modelProvider: "anthropic-api-key",
       });
       if (pollAtMs !== undefined) {
         mockNow(pollAtMs);
@@ -3366,8 +3464,20 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(poll.body.job?.runId).toBe(run.runId);
       if (cancelAfterPoll) {
         await api.requestCancelRun(actor, run.runId, [200]);
+        await flushWaitUntilForTest();
       }
       return { run, job: poll.body.job };
+    }
+
+    async function waitForCancellation(runId: string): Promise<void> {
+      await expect
+        .poll(async () => {
+          const events = await chat.listThreadEvents(actor, first.threadId);
+          return events.events.some((event) => {
+            return event.eventType === "run.cancelled" && event.runId === runId;
+          });
+        })
+        .toBe(true);
     }
 
     function rawHeartbeatBody(
@@ -3621,7 +3731,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         expect(events[0]).toStrictEqual(
           expect.objectContaining({
             session_affinity_resource: resource,
-            reuse_key_kind: "session",
+            reuse_key_kind: "thread",
           }),
         );
       }
@@ -3651,6 +3761,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expect(unavailableClaim.prompt).toBe("continue when holder is full");
     await api.requestCancelRun(actor, unavailableHolder.run.runId, [200]);
+    await webhooks.requestAgentComplete(
+      {
+        runId: unavailableHolder.run.runId,
+        exitCode: 1,
+        error: "Run cancelled",
+      },
+      { authorization: `Bearer ${unavailableClaim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+    await waitForCancellation(unavailableHolder.run.runId);
 
     mockNow(now() - 60_000);
     onTestFinished(() => {
@@ -3734,11 +3855,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       .toBe(true);
 
     context.mocks.ably.publish.mockClear();
-    const protectedFollowUpRequest = api.createRun(actor, {
+    const protectedFollowUpRequest = sendChatRunMessage(actor, {
       agentId,
-      sessionId: first.sessionId,
+      threadId: first.threadId,
       prompt: "continue affinity-protected session",
-      modelProvider: "anthropic-api-key",
     });
     await expect
       .poll(async () => {
@@ -3787,6 +3907,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const protectedClaim = await api.claimRunnerJob(protectedFollowUp.runId);
     expect(protectedClaim.prompt).toBe("continue affinity-protected session");
     expect(protectedClaim.reuseKey).toBe(reuseKey);
+    if (typeof protectedClaim.apiStartTime !== "number") {
+      throw new Error("Expected the chat run to retain its API start time");
+    }
     const apiToRunnerQueueMs = sandboxOperationDurationForRun(
       protectedFollowUp.runId,
       "api_to_runner_queue",
@@ -3799,7 +3922,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       protectedFollowUp.runId,
       "api_to_claim_request",
     );
-    expect(apiToRunnerQueueMs).toBe(queueInsertedAt - requestStartedAt);
+    expect(protectedClaim.apiStartTime).toBeGreaterThanOrEqual(
+      requestStartedAt,
+    );
+    expect(apiToRunnerQueueMs).toBe(
+      queueInsertedAt - protectedClaim.apiStartTime,
+    );
     expect(runnerQueueToClaimRequestMs).toBe(0);
     expect(apiToRunnerQueueMs + runnerQueueToClaimRequestMs).toBe(
       apiToClaimRequestMs,
@@ -3827,11 +3955,22 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           session_affinity: "protected",
           session_affinity_resource: "reusableSandbox",
           history_generation_affinity: "protected",
-          reuse_key_kind: "session",
+          reuse_key_kind: "thread",
         }),
       );
     }
     await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
+    await webhooks.requestAgentComplete(
+      {
+        runId: protectedFollowUp.runId,
+        exitCode: 1,
+        error: "Run cancelled",
+      },
+      { authorization: `Bearer ${protectedClaim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+    await waitForCancellation(protectedFollowUp.runId);
 
     const generationExpiredAt = now();
     const generationExpiredFollowUp = await pollFollowUp(
@@ -3850,12 +3989,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       generationExpiredFollowUp.run.runId,
       [200],
     );
+    await flushWaitUntilForTest();
 
-    const expiredFollowUp = await api.createRun(actor, {
+    const expiredFollowUp = await sendChatRunMessage(actor, {
       agentId,
-      sessionId: first.sessionId,
+      threadId: first.threadId,
       prompt: "continue after affinity protection expires",
-      modelProvider: "anthropic-api-key",
     });
     mockNow(now() + 60_000);
     const expiredClaim = await api.requestClaimRunnerJob(
@@ -3877,14 +4016,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    const first = await api.createRun(actor, {
+    const first = await sendChatRunMessage(actor, {
       agentId,
       prompt: "start ordered-heartbeat session",
-      modelProvider: "anthropic-api-key",
     });
     const firstClaim = await api.claimRunnerJob(first.runId);
     const cliAgentSessionId = `bdd-heartbeat-order-${first.runId}`;
-    const reuseKey = `session:${cliAgentSessionId}`;
+    const reuseKey = `thread:${first.threadId}`;
     const history = `bdd heartbeat order history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
@@ -3903,6 +4041,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
+    await flushWaitUntilForTest();
 
     const runnerId = randomUUID();
     const baseTime = now();
@@ -3936,11 +4075,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     }
 
     async function expectReusableAffinity(expected: boolean): Promise<void> {
-      const followUp = await api.createRun(actor, {
+      const followUp = await sendChatRunMessage(actor, {
         agentId,
-        sessionId: first.sessionId,
+        threadId: first.threadId,
         prompt: `check ordered heartbeat affinity ${expected}`,
-        modelProvider: "anthropic-api-key",
       });
       const poll = await api.requestPollRunner(
         true,
@@ -3957,6 +4095,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         expect(sessionAffinityProtectedUntil(poll.body.job)).toBeNull();
       }
       await api.requestCancelRun(actor, followUp.runId, [200]);
+      await flushWaitUntilForTest();
     }
 
     await heartbeat({
@@ -4011,14 +4150,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    const first = await api.createRun(actor, {
+    const first = await sendChatRunMessage(actor, {
       agentId,
       prompt: "start reusable-priority session",
-      modelProvider: "anthropic-api-key",
     });
     const firstClaim = await api.claimRunnerJob(first.runId);
     const cliAgentSessionId = `bdd-reusable-priority-${first.runId}`;
-    const reuseKey = `session:${cliAgentSessionId}`;
+    const reuseKey = `thread:${first.threadId}`;
     const history = `bdd reusable priority history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
@@ -4037,6 +4175,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
+    await flushWaitUntilForTest();
 
     const affinityRunnerId = randomUUID();
     const priorityBase = now();
@@ -4061,11 +4200,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ],
     });
 
-    const protectedFollowUp = await api.createRun(actor, {
+    const protectedFollowUp = await sendChatRunMessage(actor, {
       agentId,
-      sessionId: first.sessionId,
+      threadId: first.threadId,
       prompt: "verify reusable holder protection",
-      modelProvider: "anthropic-api-key",
     });
     const protectedPoll = await api.requestPollRunner(
       true,
@@ -4083,6 +4221,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "reusableSandbox",
     );
     await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
+    await flushWaitUntilForTest();
 
     const olderGeneric = await api.createRun(actor, {
       agentId,
@@ -4090,11 +4229,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       modelProvider: "anthropic-api-key",
     });
     mockNow(priorityBase + 1);
-    const newerReusable = await api.createRun(actor, {
+    const newerReusable = await sendChatRunMessage(actor, {
       agentId,
-      sessionId: first.sessionId,
+      threadId: first.threadId,
       prompt: "newer exact reusable work",
-      modelProvider: "anthropic-api-key",
     });
 
     const genericPriorityPoll = await api.requestPollRunner(
@@ -4174,14 +4312,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    const first = await api.createRun(actor, {
+    const first = await sendChatRunMessage(actor, {
       agentId,
       prompt: "start workspace-priority session",
-      modelProvider: "anthropic-api-key",
     });
     const firstClaim = await api.claimRunnerJob(first.runId);
     const cliAgentSessionId = `bdd-workspace-priority-${first.runId}`;
-    const reuseKey = `session:${cliAgentSessionId}`;
+    const reuseKey = `thread:${first.threadId}`;
     const history = `bdd workspace priority history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
@@ -4200,6 +4337,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
+    await flushWaitUntilForTest();
 
     const workspaceRunnerId = randomUUID();
     const priorityBase = now();
@@ -4229,11 +4367,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       modelProvider: "anthropic-api-key",
     });
     mockNow(priorityBase + 1);
-    const newerWorkspace = await api.createRun(actor, {
+    const newerWorkspace = await sendChatRunMessage(actor, {
       agentId,
-      sessionId: first.sessionId,
+      threadId: first.threadId,
       prompt: "newer capable workspace work",
-      modelProvider: "anthropic-api-key",
     });
 
     const fifoPoll = await api.requestPollRunner(

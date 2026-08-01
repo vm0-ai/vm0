@@ -100,9 +100,11 @@ pub(super) fn write_job_with_active_input(dir: &std::path::Path, job_id: RunId, 
         crate::profile::DEFAULT_PROFILE,
         job_id,
         prompt,
-        Some(crate::profile::DEFAULT_PROFILE),
-        None,
-        Some(true),
+        JobOptions {
+            profile: Some(crate::profile::DEFAULT_PROFILE),
+            active_input: Some(true),
+            ..JobOptions::default()
+        },
     );
 }
 
@@ -117,9 +119,32 @@ pub(super) fn write_job_with_session(
         crate::profile::DEFAULT_PROFILE,
         job_id,
         prompt,
-        Some(crate::profile::DEFAULT_PROFILE),
-        Some(session_id),
-        None,
+        JobOptions {
+            profile: Some(crate::profile::DEFAULT_PROFILE),
+            session_id: Some(session_id),
+            ..JobOptions::default()
+        },
+    );
+}
+
+pub(super) fn write_job_with_affinity(
+    dir: &std::path::Path,
+    job_id: RunId,
+    prompt: &str,
+    reuse_key: Option<&str>,
+    session_id: Option<&str>,
+) {
+    write_job_in_partition_with_options(
+        dir,
+        crate::profile::DEFAULT_PROFILE,
+        job_id,
+        prompt,
+        JobOptions {
+            profile: Some(crate::profile::DEFAULT_PROFILE),
+            reuse_key,
+            session_id,
+            ..JobOptions::default()
+        },
     );
 }
 
@@ -135,10 +160,19 @@ pub(super) fn write_job_in_partition(
         partition_profile,
         job_id,
         prompt,
-        json_profile,
-        None,
-        None,
+        JobOptions {
+            profile: json_profile,
+            ..JobOptions::default()
+        },
     );
+}
+
+#[derive(Default)]
+struct JobOptions<'a> {
+    profile: Option<&'a str>,
+    reuse_key: Option<&'a str>,
+    session_id: Option<&'a str>,
+    active_input: Option<bool>,
 }
 
 fn write_job_in_partition_with_options(
@@ -146,9 +180,7 @@ fn write_job_in_partition_with_options(
     partition_profile: &str,
     job_id: RunId,
     prompt: &str,
-    json_profile: Option<&str>,
-    session_id: Option<&str>,
-    active_input: Option<bool>,
+    options: JobOptions<'_>,
 ) {
     let req = JobRequest {
         job_id,
@@ -158,10 +190,11 @@ fn write_job_in_partition_with_options(
         environment: None,
         secret_environment: None,
         user_timezone: None,
-        profile: json_profile.map(String::from),
-        session_id: session_id.map(String::from),
+        profile: options.profile.map(String::from),
+        reuse_key: options.reuse_key.map(String::from),
+        session_id: options.session_id.map(String::from),
         feature_flags: None,
-        active_input,
+        active_input: options.active_input,
     };
     let json = serde_json::to_vec(&req).unwrap();
     let job_dir = local_queue::profile_jobs_dir(dir, partition_profile).unwrap();
@@ -188,6 +221,7 @@ pub(super) fn write_job_with_environments(
         secret_environment,
         user_timezone: None,
         profile: Some(crate::profile::DEFAULT_PROFILE.into()),
+        reuse_key: None,
         session_id: None,
         feature_flags: None,
         active_input: None,
