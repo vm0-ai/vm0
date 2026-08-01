@@ -2222,12 +2222,14 @@ function createSyncRemoteEventsCommand({
   threadId,
   persistentEvents$,
   hasReachedOldestEvent$,
+  initialRemoteEventsResolved$,
   mergePersistentEvents$,
   dataSource,
 }: {
   threadId: string;
   persistentEvents$: PersistentChatEvents$;
   hasReachedOldestEvent$: Computed<boolean>;
+  initialRemoteEventsResolved$: State<boolean>;
   mergePersistentEvents$: Command<
     Promise<void>,
     [PersistedChatEvent[], AbortSignal]
@@ -2249,12 +2251,16 @@ function createSyncRemoteEventsCommand({
     async function syncEventsAfter(): Promise<void> {
       const requestedSinceSeqId = sinceSeqId;
       const isInitialPage = requestedSinceSeqId === undefined;
+      const resolvesInitialRemoteEvents = !get(initialRemoteEventsResolved$);
       const events = await set(
         dataSource.listEventsAfter$,
         { threadId, sinceSeqId: requestedSinceSeqId },
         signal,
       );
       signal.throwIfAborted();
+      if (resolvesInitialRemoteEvents) {
+        set(initialRemoteEventsResolved$, true);
+      }
       L.debug("syncRemoteMessages$ listEventsAfter result", {
         threadId,
         sinceSeqId: requestedSinceSeqId ?? null,
@@ -2501,7 +2507,6 @@ function createIndexedDbEventCacheSignals({
   persistentEvents$: PersistentChatEvents$;
   registerBodyBlocks: BodyBlocksRenderer;
 }) {
-  const indexedDbEventsLoading$ = state(true);
   const loadIndexedDbEventsIntoPersistentEvents$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
       const result = await settle(
@@ -2509,7 +2514,6 @@ function createIndexedDbEventCacheSignals({
         signal,
       );
       if (!result.ok) {
-        set(indexedDbEventsLoading$, false);
         throw result.error;
       }
       if (result.value.length > 0) {
@@ -2525,17 +2529,11 @@ function createIndexedDbEventCacheSignals({
           return mergeRegisteredEvents([previous, registeredEvents]);
         });
       }
-      set(indexedDbEventsLoading$, false);
       signal.throwIfAborted();
     },
   );
 
-  return {
-    indexedDbEventsLoading$: computed((get) => {
-      return get(indexedDbEventsLoading$);
-    }),
-    loadIndexedDbEventsIntoPersistentEvents$,
-  };
+  return { loadIndexedDbEventsIntoPersistentEvents$ };
 }
 
 function createMailDraftCardSignalsById(
@@ -2683,6 +2681,47 @@ function createPagedEventProjections({
   };
 }
 
+function createRemoteEventSyncSignals({
+  threadId,
+  persistentEvents$,
+  projections,
+  mergePersistentEvents$,
+  dataSource,
+}: {
+  threadId: string;
+  persistentEvents$: PersistentChatEvents$;
+  projections: Pick<
+    ReturnType<typeof createPagedEventProjections>,
+    "hasReachedOldestEvent$" | "rawEvents$"
+  >;
+  mergePersistentEvents$: Command<
+    Promise<void>,
+    [PersistedChatEvent[], AbortSignal]
+  >;
+  dataSource: ChatThreadRemote;
+}) {
+  const initialRemoteEventsResolved$ = state(false);
+  const chatSkeletonVisible$ = computed((get): boolean => {
+    return (
+      !get(initialRemoteEventsResolved$) &&
+      get(projections.rawEvents$).length === 0
+    );
+  });
+  const syncRemoteEvents$ = createSyncRemoteEventsCommand({
+    threadId,
+    persistentEvents$,
+    hasReachedOldestEvent$: projections.hasReachedOldestEvent$,
+    initialRemoteEventsResolved$,
+    mergePersistentEvents$,
+    dataSource,
+  });
+  return {
+    initialRemoteEventsResolved$,
+    chatSkeletonVisible$,
+    syncRemoteEvents$,
+  };
+}
+
 function createEventChangeEffects(
   threadId: string,
   rawEvents$: Computed<ChatEventProjectionEntry[]>,
@@ -2820,6 +2859,13 @@ function createPagedEvents(
       signal.throwIfAborted();
     },
   );
+  const remoteEventSync = createRemoteEventSyncSignals({
+    threadId,
+    persistentEvents$: persistentChatEvents$,
+    projections,
+    mergePersistentEvents$,
+    dataSource,
+  });
   const initializeIndexedDbEvents$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const scrollPosition = get(effects.scroll.threadScrollPosition$);
@@ -2843,21 +2889,13 @@ function createPagedEvents(
       signal.throwIfAborted();
     },
   );
-  const syncRemoteEvents$ = createSyncRemoteEventsCommand({
-    threadId,
-    persistentEvents$: persistentChatEvents$,
-    hasReachedOldestEvent$: projections.hasReachedOldestEvent$,
-    mergePersistentEvents$,
-    dataSource,
-  });
 
   return {
     scroll: effects.scroll,
     sidebar: effects.sidebar,
-    indexedDbEventsLoading$: indexedDbEventCache.indexedDbEventsLoading$,
+    ...remoteEventSync,
     initializeIndexedDbEvents$,
     mergePersistentEvents$,
-    syncRemoteEvents$,
     appendOptimisticEvent$,
     ...projections,
     ...resources.publicSignals,
@@ -2986,6 +3024,7 @@ function createEventRunIndicatorState(
 interface RunTrackingDeps {
   threadId: string;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
+  initialRemoteEventsResolved$: State<boolean>;
   initializeIndexedDbEvents$: Command<Promise<void>, [AbortSignal]>;
   mergePersistentEvents$: Command<
     Promise<void>,
@@ -3230,6 +3269,7 @@ function createMarkThreadReadIfNeeded({
 
 function createOnSubscribedCommand({
   threadId,
+  initialRemoteEventsResolved$,
   syncRemoteEvents$,
   reloadArtifacts$,
   reloadMailDrafts$,
@@ -3239,6 +3279,7 @@ function createOnSubscribedCommand({
 }: Pick<
   RunTrackingDeps,
   | "threadId"
+  | "initialRemoteEventsResolved$"
   | "syncRemoteEvents$"
   | "reloadArtifacts$"
   | "reloadMailDrafts$"
@@ -3263,7 +3304,9 @@ function createOnSubscribedCommand({
       get(dataSource.cancellationRecoveryPending$),
       set(reloadComposerWorkflows$, signal),
     ];
-    if (!get(optimisticCreateUnsettled$)) {
+    if (get(optimisticCreateUnsettled$)) {
+      set(initialRemoteEventsResolved$, true);
+    } else {
       catchUpPromises.push(set(syncRemoteEvents$, signal));
     }
     await Promise.all(catchUpPromises);
@@ -3303,6 +3346,7 @@ function createReceiveSyncedEventsCommand({
 function createRunTracking({
   threadId,
   latestRunFinishCreatedAt$,
+  initialRemoteEventsResolved$,
   initializeIndexedDbEvents$,
   mergePersistentEvents$,
   syncRemoteEvents$,
@@ -3330,6 +3374,7 @@ function createRunTracking({
 
   const onSubscribed$ = createOnSubscribedCommand({
     threadId,
+    initialRemoteEventsResolved$,
     syncRemoteEvents$,
     reloadArtifacts$,
     reloadMailDrafts$,
@@ -4675,7 +4720,7 @@ function publicChatThreadEventSignals(
     latestAssistantTextCreatedAt$: events.latestAssistantTextCreatedAt$,
     visibleRenderedChatGroups$: events.visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$: events.visibleRenderedChatGroupsReady$,
-    indexedDbEventsLoading$: events.indexedDbEventsLoading$,
+    chatSkeletonVisible$: events.chatSkeletonVisible$,
     eventImageGroups$: events.eventImageGroups$,
     artifactSignalsForUrl: events.artifactSignalsForUrl,
     agentReferenceSignalsForId: events.agentReferenceSignalsForId,
@@ -4774,6 +4819,7 @@ export function createChatThreadSignals(
   const runTracking = createRunTracking({
     threadId,
     latestRunFinishCreatedAt$: events.latestRunFinishCreatedAt$,
+    initialRemoteEventsResolved$: events.initialRemoteEventsResolved$,
     initializeIndexedDbEvents$: events.initializeIndexedDbEvents$,
     mergePersistentEvents$: events.mergePersistentEvents$,
     syncRemoteEvents$: events.syncRemoteEvents$,

@@ -168,7 +168,7 @@ export interface ChatThreadSignals {
   // -- Paged events (sole rendering path) ----------------------------------
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
-  indexedDbEventsLoading$: Computed<boolean>;
+  chatSkeletonVisible$: Computed<boolean>;
   visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
   visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
