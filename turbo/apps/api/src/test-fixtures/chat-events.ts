@@ -31,6 +31,10 @@ import {
 } from "../signals/services/zero-chat-event.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
+import {
+  decryptQueuedUserMessageRunParams,
+  encryptQueuedUserMessageRunParams,
+} from "../signals/services/zero-chat-queued-event.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -418,6 +422,68 @@ export async function readChatEventInputParamsFixture(
     .where(eq(chatEventInputParams.eventId, eventId))
     .limit(1);
   return row ?? null;
+}
+
+export async function decryptChatEventInputParamsFixture(
+  eventId: string,
+  ctx: { readonly orgId: string; readonly userId: string },
+) {
+  const row = await readChatEventInputParamsFixture(eventId);
+  if (!row) {
+    return null;
+  }
+  return await decryptQueuedUserMessageRunParams(row.encryptedParams, ctx);
+}
+
+export async function replaceSlackLaunchMaterialWithLegacyParamsFixture(args: {
+  readonly eventId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly prompt: string;
+  readonly appendSystemPrompt: string;
+  readonly channelId: string;
+  readonly threadTs: string;
+}): Promise<void> {
+  const encryptedParams = await encryptQueuedUserMessageRunParams(
+    {
+      version: 1,
+      prompt: args.prompt,
+      appendSystemPrompt: args.appendSystemPrompt,
+      slackDelivery: {
+        channelId: args.channelId,
+        threadTs: args.threadTs,
+      },
+    },
+    { orgId: args.orgId, userId: args.userId },
+  );
+  await db().transaction(async (tx) => {
+    const [event] = await tx
+      .select({ contextId: chatEvents.contextId })
+      .from(chatEvents)
+      .where(eq(chatEvents.id, args.eventId))
+      .limit(1);
+    if (!event?.contextId) {
+      throw new Error("Expected legacy Slack fixture context");
+    }
+    await tx
+      .update(chatSlackContext)
+      .set({
+        conversationContext: null,
+        messageText: null,
+        messageFiles: null,
+        mentionDisplayNames: null,
+        senderDisplayName: null,
+        senderUserId: null,
+        channelType: null,
+        threadTs: null,
+        routeThreadTs: null,
+      })
+      .where(eq(chatSlackContext.id, event.contextId));
+    await tx
+      .update(chatEventInputParams)
+      .set({ encryptedParams })
+      .where(eq(chatEventInputParams.eventId, args.eventId));
+  });
 }
 
 export async function findPendingChatEventInputParamsByPromptFixture(

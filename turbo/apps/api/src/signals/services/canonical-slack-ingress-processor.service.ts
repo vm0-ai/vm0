@@ -10,7 +10,6 @@ import { logger } from "../../lib/log";
 import {
   enrichMessageContent,
   fetchConversationContexts,
-  formatCurrentMessageFiles,
   type SlackFile,
 } from "../../lib/slack-webhook-context";
 import { nowDate } from "../external/time";
@@ -103,70 +102,8 @@ function slackPhysicalThreadTs(event: SlackAgentEvent): string {
   return event.thread_ts ?? event.ts;
 }
 
-function buildSlackSystemPrompt(args: {
-  readonly botUserId: string;
-  readonly channelId: string;
-  readonly channelType: "channel" | "dm" | "group_dm";
-  readonly threadTs: string;
-  readonly executionContext: string;
-}): string {
-  const typeLabel =
-    args.channelType === "dm"
-      ? "Direct message"
-      : args.channelType === "group_dm"
-        ? "Group direct message"
-        : "Channel";
-  return [
-    "# Current Integration",
-    "You are currently running inside: Slack",
-    `Your bot user ID: ${args.botUserId}`,
-    `Channel ID: ${args.channelId}`,
-    `Channel type: ${typeLabel}`,
-    `Thread ID: ${args.threadTs}`,
-    args.executionContext,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
 function stripBotMention(text: string, botUserId: string): string {
   return text.replaceAll(`<@${botUserId}>`, "").trim();
-}
-
-function canonicalSlackFilesPrompt(
-  files: readonly SlackFile[] | undefined,
-  assets: readonly CanonicalSlackInputAsset[],
-): string {
-  if (!files || files.length === 0) {
-    return "";
-  }
-  const assetByPosition = new Map(
-    assets.map((asset) => {
-      return [asset.position, asset] as const;
-    }),
-  );
-  return files
-    .flatMap((file, position) => {
-      const asset = assetByPosition.get(position);
-      if (asset?.status === "ready") {
-        return [
-          `[Web file] ${asset.filename} (${asset.contentType})\n   [ID] ${asset.assetId}`,
-        ];
-      }
-      return [formatCurrentMessageFiles([file])];
-    })
-    .filter(Boolean)
-    .join("\n");
-}
-
-function canonicalSlackAgentPrompt(
-  messagePrompt: string,
-  files: readonly SlackFile[] | undefined,
-  assets: readonly CanonicalSlackInputAsset[],
-): string {
-  return [messagePrompt, canonicalSlackFilesPrompt(files, assets)]
-    .filter(Boolean)
-    .join("\n\n");
 }
 
 async function claimIngress(db: Db, ingressId: string, currentTime: Date) {
@@ -381,7 +318,7 @@ function canonicalSlackLaunchContext(args: {
     messageFiles: args.event.files ?? [],
     mentionDisplayNames: args.mentionDisplayNames,
     senderDisplayName: args.userInfoExtras.slackDisplayName ?? null,
-    senderUserId: args.event.user,
+    senderUserId: args.userInfoExtras.slackUserId ?? null,
     channelType: slackChannelType(args.event),
     threadTs,
     routeThreadTs: threadTs === args.routeThreadTs ? null : args.routeThreadTs,
@@ -538,31 +475,9 @@ const persistClaimedCanonicalSlackIngress$ = command(
         error: permalinkResult.error,
       });
     }
-    const agentPrompt = canonicalSlackAgentPrompt(
-      enriched.prompt,
-      event.files,
-      canonicalAssets,
-    );
-
     const encryptedParams = await encryptQueuedUserMessageRunParams(
       {
         version: 1,
-        prompt: agentPrompt,
-        appendSystemPrompt: buildSlackSystemPrompt({
-          botUserId: ingress.botUserId,
-          channelId: ingress.channelId,
-          channelType: slackChannelType(event),
-          threadTs,
-          executionContext: context.executionContext,
-        }),
-        slackDelivery: {
-          channelId: ingress.channelId,
-          threadTs,
-          ...(threadTs === ingress.threadTs
-            ? {}
-            : { routeThreadTs: ingress.threadTs }),
-        },
-        userInfoExtras: enriched.userInfoExtras,
       },
       { orgId, userId: ingress.userId },
     );
