@@ -152,6 +152,21 @@ e2e_api_curl() {
     curl -fsS "${hdrs[@]}" "$@" "$base$path"
 }
 
+e2e_cron_curl() {
+    local path="$1"; shift
+    local base
+    if [[ -z "${CRON_SECRET:-}" ]]; then
+        echo "CRON_SECRET is required" >&2
+        return 1
+    fi
+    base=$(e2e_api_url) || return 1
+    local -a hdrs=(-H "Authorization: Bearer $CRON_SECRET")
+    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+        hdrs+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+    fi
+    curl -fsS "${hdrs[@]}" "$@" "$base$path"
+}
+
 configure_e2e_model_provider() {
     local provider_type="$1"
     local secret="$2"
@@ -325,13 +340,8 @@ zero_usage_runs_response() {
     e2e_api_curl "/api/zero/usage/runs?runId=$run_id&pageSize=1"
 }
 
-settle_zero_usage_run() {
-    local run_id="$1"
-    local payload
-    payload=$(jq -nc --arg runId "$run_id" '{run_id: $runId}')
-    e2e_api_curl "/api/test/usage-settlement/process" \
-        -X POST \
-        -d "$payload" >/dev/null
+process_zero_usage_events() {
+    e2e_cron_curl "/api/cron/process-usage-events" >/dev/null
 }
 
 zero_run_response() {
@@ -378,7 +388,7 @@ wait_for_zero_usage_run() {
     local count=""
 
     while (( SECONDS - start < timeout )); do
-        settle_zero_usage_run "$run_id" || return 1
+        process_zero_usage_events || return 1
         if body=$(zero_usage_runs_response "$run_id" 2>&1); then
             count=$(printf '%s' "$body" | jq -r '.runs | length')
             if [[ "$count" == "1" ]]; then

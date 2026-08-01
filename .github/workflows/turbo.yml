@@ -2692,6 +2692,7 @@ jobs:
           RUNNER_CHUNK_COUNT: ${{ needs.deploy-runner-prepare.outputs.chunk-count }}
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
           USE_MOCK_CLAUDE: "true"
           USE_MOCK_CODEX: "true"
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
