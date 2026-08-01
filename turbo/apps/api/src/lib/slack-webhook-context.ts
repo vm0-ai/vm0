@@ -424,7 +424,7 @@ function formatContextForAgent(
   )}\n\n---`;
 }
 
-export function formatCurrentMessageFiles(files: readonly SlackFile[]): string {
+function formatCurrentMessageFiles(files: readonly SlackFile[]): string {
   return files.map(formatFileInfo).join("\n");
 }
 
@@ -436,7 +436,7 @@ export interface SlackPromptAsset {
   readonly status: "pending" | "ready" | "failed";
 }
 
-export function canonicalSlackFilesPrompt(
+function canonicalSlackFilesPrompt(
   files: readonly SlackFile[] | undefined,
   assets: readonly SlackPromptAsset[],
 ): string {
