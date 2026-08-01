@@ -30,7 +30,6 @@ export const chatFeishuContext = pgTable("chat_feishu_context", {
   messageText: text("message_text"),
   messageFiles: jsonb("message_files").$type<ChatFeishuMessageFiles>(),
   chatType: text("chat_type").$type<"group" | "p2p" | "topic_group">(),
-  tenantKey: text("tenant_key"),
   chatId: text("chat_id"),
   messageId: text("message_id"),
   threadId: text("thread_id"),

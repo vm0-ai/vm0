@@ -33,7 +33,6 @@ import {
   findPendingChatEventInputParamsByPromptFixture,
   readChatEventContextFixture,
   readChatEventInputParamsFixture,
-  useLegacyFeishuTenantKeyFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
@@ -2391,11 +2390,6 @@ describe("Feishu integration", () => {
       null,
     );
     const run = await findRun(actor, "do the Feishu task");
-    const legacyTenantKeyFixture = await useLegacyFeishuTenantKeyFixture(
-      run.id,
-      TENANT_KEY,
-    );
-    expect(legacyTenantKeyFixture.previousTenantKey).toBeNull();
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
       setupApp({ context })(chatThreadsContract).events({
@@ -2536,7 +2530,6 @@ describe("Feishu integration", () => {
         },
       ],
       feishuChatType: "p2p",
-      feishuTenantKey: TENANT_KEY,
       feishuChatId: "oc_feishu_dm",
       feishuMessageId: firstMessageId,
       feishuThreadId: firstMessageId,

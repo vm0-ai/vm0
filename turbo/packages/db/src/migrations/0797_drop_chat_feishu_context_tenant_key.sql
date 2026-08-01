@@ -1,0 +1,1 @@
+ALTER TABLE "chat_feishu_context" DROP COLUMN "tenant_key";
