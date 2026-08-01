@@ -10,11 +10,11 @@ import {
 } from "drizzle-orm/pg-core";
 import type {
   RunnerAdmittableProfiles,
-  RunnerHeldSessionStates,
+  RunnerHeldSandboxStates,
   RunnerHeldWorkspaceStates,
 } from "@vm0/db/jsonb-contracts/runner-state";
 export type {
-  RunnerHeldSessionState,
+  RunnerHeldSandboxState,
   RunnerHeldWorkspaceState,
 } from "@vm0/db/jsonb-contracts/runner-state";
 
@@ -42,8 +42,10 @@ export const runnerState = pgTable(
       .$type<RunnerAdmittableProfiles>()
       .default([])
       .notNull(),
+    // Physical and Drizzle names remain stable during the #24486 rollout;
+    // #24489 renames them after old API instances and rollback support drain.
     heldSessionStates: jsonb("held_session_states")
-      .$type<RunnerHeldSessionStates>()
+      .$type<RunnerHeldSandboxStates>()
       .default([])
       .notNull(),
     heldWorkspaceStates: jsonb("held_workspace_states")

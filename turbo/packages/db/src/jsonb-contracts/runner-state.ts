@@ -1,7 +1,6 @@
 export type RunnerAdmittableProfiles = string[];
 
-export interface RunnerHeldSessionState {
-  readonly sessionId: string;
+export interface RunnerHeldSandboxState {
   readonly reuseKey: string;
   readonly lastCompletedAt: string;
   readonly reusableSandbox: {
@@ -10,7 +9,7 @@ export interface RunnerHeldSessionState {
   };
 }
 
-export type RunnerHeldSessionStates = RunnerHeldSessionState[];
+export type RunnerHeldSandboxStates = RunnerHeldSandboxState[];
 
 interface RunnerHeldWorkspaceCache {
   readonly profile: string;

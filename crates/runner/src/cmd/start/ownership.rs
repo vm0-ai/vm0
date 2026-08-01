@@ -191,7 +191,7 @@ mod tests {
         IdlePoolSnapshot {
             revision: 1,
             idle_vms: vec![IdleVm {
-                session_id: session_id.to_string(),
+                reuse_key: session_id.to_string(),
                 sandbox_id,
             }],
         }

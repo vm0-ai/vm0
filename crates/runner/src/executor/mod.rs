@@ -587,7 +587,6 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     let ReusableIdleSandboxParts {
         sandbox,
         reuse_key: idle_reuse_key,
-        cli_agent_session_id: _idle_cli_agent_session_id,
         source_ip,
         storage_fingerprints: prev_storage,
         restored_session_identity: _restored_session_identity,

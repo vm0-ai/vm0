@@ -13,7 +13,7 @@ import {
   storedConnectorPermissionBaselineSchema,
   type CompatibleStoredExecutionContext,
   type ExecutionContext,
-  type HeldSessionState,
+  type HeldSandboxState,
   type HeldWorkspaceState,
   type SessionHistoryDownloadSource,
   type StoredConnectorPermissionBaseline,
@@ -30,7 +30,7 @@ import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import {
   runnerState,
-  type RunnerHeldSessionState as PersistedRunnerHeldSessionState,
+  type RunnerHeldSandboxState as PersistedRunnerHeldSandboxState,
   type RunnerHeldWorkspaceState as PersistedRunnerHeldWorkspaceState,
 } from "@vm0/db/schema/runner-state";
 import {
@@ -371,12 +371,11 @@ function isOfficialRunnerGroup(group: string): boolean {
   return group.split("/")[0] === "vm0";
 }
 
-function canonicalizeHeldSessionStates(
-  states: readonly HeldSessionState[],
-): PersistedRunnerHeldSessionState[] {
+function canonicalizeHeldSandboxStates(
+  states: readonly HeldSandboxState[],
+): PersistedRunnerHeldSandboxState[] {
   return states.map((state) => {
     return {
-      sessionId: state.sessionId,
       reuseKey: state.reuseKey,
       lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
       reusableSandbox: {
@@ -440,8 +439,10 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage("Invalid runner group");
   }
 
-  const heldSessionStates = canonicalizeHeldSessionStates(
-    body.data.heldSessionStates,
+  // Old runners omit the exact field. #24489 removes this fallback after the
+  // #24486 runner rollout and rollback window complete.
+  const heldSandboxStates = canonicalizeHeldSandboxStates(
+    body.data.heldSandboxStates ?? body.data.heldSessionStates,
   );
   const heldWorkspaceStates = canonicalizeHeldWorkspaceStates(
     body.data.heldWorkspaceStates,
@@ -468,7 +469,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       allocatedMemoryMb: body.data.allocatedMemoryMb,
       runningCount: body.data.runningCount,
       admittableProfiles,
-      heldSessionStates,
+      heldSessionStates: heldSandboxStates,
       heldWorkspaceStates,
       mode: body.data.mode,
       lastSeenAt: currentDate,
@@ -487,7 +488,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         allocatedMemoryMb: body.data.allocatedMemoryMb,
         runningCount: body.data.runningCount,
         admittableProfiles,
-        heldSessionStates,
+        heldSessionStates: heldSandboxStates,
         heldWorkspaceStates,
         mode: body.data.mode,
         lastSeenAt: currentDate,

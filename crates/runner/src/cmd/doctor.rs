@@ -817,7 +817,7 @@ impl ActiveRun {
 }
 
 struct IdleVm {
-    session_id: String,
+    reuse_key: String,
     sandbox_id: String,
 }
 
@@ -845,7 +845,7 @@ async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
         .idle_vms
         .into_iter()
         .map(|vm| IdleVm {
-            session_id: vm.session_id,
+            reuse_key: vm.reuse_key,
             sandbox_id: vm.sandbox_id,
         })
         .collect();
@@ -1294,8 +1294,8 @@ fn print_report(
 
 fn format_idle_vm_diagnostic_line(vm: &IdleVm) -> String {
     format!(
-        "      - session id {} -> sandbox {}",
-        vm.session_id, vm.sandbox_id
+        "      - reuse key {} -> sandbox {}",
+        vm.reuse_key, vm.sandbox_id
     )
 }
 
@@ -1541,12 +1541,12 @@ mod tests {
             started_at: "2026-01-01T00:00:00.000Z".into(),
             active_runs,
             // Tests only need sandbox_id lookup for idle VMs; synthesize a
-            // placeholder session_id.
+            // placeholder reuse key.
             idle_vms: idle_sandboxes
                 .into_iter()
                 .enumerate()
                 .map(|(i, sbid)| IdleVm {
-                    session_id: format!("sess-{i}"),
+                    reuse_key: format!("thread:test-{i}"),
                     sandbox_id: sbid.into(),
                 })
                 .collect(),
@@ -2389,14 +2389,14 @@ mod tests {
     }
 
     #[test]
-    fn idle_vm_diagnostic_line_includes_session_id() {
-        let raw_session_id = "sess-sensitive-doctor-17975";
+    fn idle_vm_diagnostic_line_includes_reuse_key() {
+        let reuse_key = "thread:doctor-17975";
         let line = format_idle_vm_diagnostic_line(&IdleVm {
-            session_id: raw_session_id.into(),
+            reuse_key: reuse_key.into(),
             sandbox_id: "sandbox-123".into(),
         });
 
-        assert!(line.contains(raw_session_id));
+        assert!(line.contains(reuse_key));
         assert!(line.contains("sandbox-123"));
     }
 

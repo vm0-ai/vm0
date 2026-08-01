@@ -19,7 +19,7 @@ use crate::resource_budget::BudgetLease;
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::status::IdleVm;
 use crate::storage_fingerprints::StorageFingerprints;
-use crate::types::{HeldSessionState, ReusableSandboxState};
+use crate::types::{HeldSandboxState, HeldSessionState, ReusableSandboxState};
 use crate::workspace_image_cache::{
     WorkspaceImageCache, WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityMismatch,
     WorkspaceImagePromotionIdentityRequest,
@@ -144,7 +144,7 @@ pub(crate) struct IdleParkRequestParts {
     pub(crate) sandbox: Box<dyn Sandbox>,
     pub(crate) factory: Arc<Box<dyn SandboxFactory>>,
     pub(crate) reuse_key: String,
-    pub(crate) cli_agent_session_id: String,
+    pub(crate) cli_agent_session_id: Option<String>,
     pub(crate) sandbox_id: SandboxId,
     pub(crate) profile_name: String,
     pub(crate) device_rate_limits: Option<DeviceRateLimits>,
@@ -159,7 +159,7 @@ pub(crate) struct IdleParkRequestParts {
 
 struct IdleSandboxMetadata {
     reuse_key: String,
-    cli_agent_session_id: String,
+    cli_agent_session_id: Option<String>,
     /// Identity of the parked sandbox. Survives reuse (next job's `run_id`
     /// differs, but `sandbox_id` stays the same) and is the join key for
     /// doctor / kill / workspace-dir naming.
@@ -174,7 +174,7 @@ struct IdleSandboxMetadata {
     /// was parked. Missing means reuse must fall back to materialize+restore.
     restored_session_identity: Option<RestoredSessionIdentity>,
     history_generation_run_id: Option<RunId>,
-    /// Local terminal timestamp for this parked session.
+    /// Local terminal timestamp for this parked sandbox.
     ///
     /// `None` is reserved for synthetic test entries and means the VM is not
     /// advertised for reuse affinity.
@@ -186,8 +186,8 @@ impl IdleSandboxMetadata {
         &self.reuse_key
     }
 
-    fn cli_agent_session_id(&self) -> &str {
-        &self.cli_agent_session_id
+    fn cli_agent_session_id(&self) -> Option<&str> {
+        self.cli_agent_session_id.as_deref()
     }
 
     fn with_last_completed_at(mut self, last_completed_at: String) -> Self {
@@ -528,7 +528,7 @@ impl ParkedIdleCandidate {
     }
 
     #[cfg(test)]
-    fn cli_agent_session_id(&self) -> &str {
+    fn cli_agent_session_id(&self) -> Option<&str> {
         self.metadata.cli_agent_session_id()
     }
 
@@ -641,7 +641,6 @@ pub struct ReusableIdleSandbox {
 pub struct ReusableIdleSandboxParts {
     pub sandbox: Box<dyn Sandbox>,
     pub reuse_key: String,
-    pub cli_agent_session_id: String,
     pub source_ip: String,
     pub storage_fingerprints: StorageFingerprints,
     pub restored_session_identity: Option<RestoredSessionIdentity>,
@@ -665,7 +664,7 @@ impl ReusableIdleSandbox {
         } = self;
         let IdleSandboxMetadata {
             reuse_key,
-            cli_agent_session_id,
+            cli_agent_session_id: _,
             sandbox_id: _,
             profile_name: _,
             device_rate_limits: _,
@@ -679,7 +678,6 @@ impl ReusableIdleSandbox {
         ReusableIdleSandboxParts {
             sandbox,
             reuse_key,
-            cli_agent_session_id,
             source_ip,
             storage_fingerprints,
             restored_session_identity,
@@ -873,7 +871,7 @@ impl IdleEntry {
         self.metadata.reuse_key()
     }
 
-    fn cli_agent_session_id(&self) -> &str {
+    fn cli_agent_session_id(&self) -> Option<&str> {
         self.metadata.cli_agent_session_id()
     }
 
@@ -1227,13 +1225,13 @@ impl IdlePool {
         job
     }
 
-    /// Return a revisioned sorted-by-session_id snapshot suitable for status.json.
+    /// Return a revisioned reuse-key-sorted snapshot suitable for status.json.
     ///
-    /// Produced in a single iteration so `session_id` and `sandbox_id` can never
+    /// Produced in a single iteration so `reuse_key` and `sandbox_id` can never
     /// drift out of pairing.
     pub fn status_snapshot(&self) -> IdlePoolSnapshot {
         let mut vms: Vec<IdleVm> = self.entries.values().map(idle_vm_for_entry).collect();
-        vms.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
+        vms.sort_unstable_by(|a, b| a.reuse_key.cmp(&b.reuse_key));
         IdlePoolSnapshot {
             revision: self.revision,
             idle_vms: vms,
@@ -1248,20 +1246,20 @@ impl IdlePool {
     }
 
     /// Return a reuse-key-sorted snapshot of the idle pool suitable
-    /// for status.json. Produced in a single iteration so `session_id` and
+    /// for status.json. Produced in a single iteration so `reuse_key` and
     /// `sandbox_id` can never drift out of pairing.
     #[cfg(test)]
     pub fn held_snapshot(&self) -> Vec<IdleVm> {
         self.status_snapshot().idle_vms
     }
 
-    /// Return the list of reuse identities currently held in the pool,
-    /// sorted lexicographically for deterministic heartbeat output.
+    /// Return every reusable sandbox currently held in the pool, sorted by
+    /// reuse key for deterministic heartbeat output.
     ///
     /// Prefer [`status_snapshot`](Self::status_snapshot) when pairing with
     /// sandbox IDs — it produces both views from a single iteration.
-    pub fn held_session_states(&self) -> Vec<HeldSessionState> {
-        let mut states: Vec<HeldSessionState> = self
+    pub fn held_sandbox_states(&self) -> Vec<HeldSandboxState> {
+        let mut states: Vec<HeldSandboxState> = self
             .entries
             .iter()
             .filter_map(|(reuse_key, entry)| {
@@ -1269,8 +1267,7 @@ impl IdlePool {
                     .metadata
                     .last_completed_at
                     .as_ref()
-                    .map(|last_completed_at| HeldSessionState {
-                        session_id: entry.cli_agent_session_id().to_owned(),
+                    .map(|last_completed_at| HeldSandboxState {
                         reuse_key: reuse_key.clone(),
                         last_completed_at: last_completed_at.clone(),
                         reusable_sandbox: ReusableSandboxState {
@@ -1278,6 +1275,29 @@ impl IdlePool {
                             history_generation_run_id: entry.metadata.history_generation_run_id,
                         },
                     })
+            })
+            .collect();
+        states.sort_unstable_by(|a, b| a.reuse_key.cmp(&b.reuse_key));
+        states
+    }
+
+    /// Legacy heartbeat projection for old API instances. Entries without a
+    /// real provider session ID remain available through `heldSandboxStates`
+    /// and are intentionally absent here.
+    pub fn held_session_states(&self) -> Vec<HeldSessionState> {
+        let mut states: Vec<HeldSessionState> = self
+            .entries
+            .iter()
+            .filter_map(|(reuse_key, entry)| {
+                Some(HeldSessionState {
+                    session_id: entry.cli_agent_session_id()?.to_owned(),
+                    reuse_key: reuse_key.clone(),
+                    last_completed_at: entry.metadata.last_completed_at.clone()?,
+                    reusable_sandbox: ReusableSandboxState {
+                        profile: entry.metadata.profile_name.clone(),
+                        history_generation_run_id: entry.metadata.history_generation_run_id,
+                    },
+                })
             })
             .collect();
         states.sort_unstable_by(|a, b| a.reuse_key.cmp(&b.reuse_key));
@@ -1330,7 +1350,7 @@ impl IdlePool {
 
 fn idle_vm_for_entry(entry: &IdleEntry) -> IdleVm {
     IdleVm {
-        session_id: entry.cli_agent_session_id().to_owned(),
+        reuse_key: entry.reuse_key().to_owned(),
         sandbox_id: entry.metadata.sandbox_id,
     }
 }
@@ -1338,7 +1358,7 @@ fn idle_vm_for_entry(entry: &IdleEntry) -> IdleVm {
 /// Result of a `park` operation.
 #[must_use]
 pub enum ParkResult {
-    /// Successfully parked; no previous entry for this session.
+    /// Successfully parked; no previous entry for this reuse key.
     Parked,
     /// Successfully parked; the returned job destroys the replaced idle VM.
     Replaced(IdleDestroyJob),
@@ -1394,7 +1414,7 @@ mod tests {
         parked_at: Instant,
         idle_timeout: Duration,
     ) -> ParkResult {
-        assert_eq!(candidate.cli_agent_session_id(), session_id);
+        assert_eq!(candidate.cli_agent_session_id(), Some(session_id));
         pool.park_at_for_test(candidate, parked_at, idle_timeout)
     }
 
@@ -1413,7 +1433,7 @@ mod tests {
                 .build();
 
         assert_eq!(candidate.reuse_key(), "thread:chat-thread");
-        assert_eq!(candidate.cli_agent_session_id(), "provider-session");
+        assert_eq!(candidate.cli_agent_session_id(), Some("provider-session"));
     }
 
     async fn make_idle_park_request(
@@ -1442,7 +1462,7 @@ mod tests {
             sandbox,
             factory,
             reuse_key: session_id.into(),
-            cli_agent_session_id: session_id.into(),
+            cli_agent_session_id: Some(session_id.into()),
             sandbox_id,
             profile_name: "vm0/default".into(),
             device_rate_limits: None,
@@ -1472,7 +1492,7 @@ mod tests {
         };
 
         assert_eq!(overrides.park_call_count(), 1);
-        assert_eq!(candidate.cli_agent_session_id(), "session-1");
+        assert_eq!(candidate.cli_agent_session_id(), Some("session-1"));
     }
 
     #[tokio::test]
@@ -1613,7 +1633,7 @@ mod tests {
             sandbox,
             factory,
             reuse_key: session_id.into(),
-            cli_agent_session_id: session_id.into(),
+            cli_agent_session_id: Some(session_id.into()),
             sandbox_id,
             profile_name: profile_name.into(),
             device_rate_limits: None,
@@ -1632,7 +1652,7 @@ mod tests {
         };
 
         assert_eq!(overrides.park_call_count(), 1);
-        assert_eq!(candidate.cli_agent_session_id(), session_id);
+        assert_eq!(candidate.cli_agent_session_id(), Some(session_id));
         assert_eq!(candidate.sandbox_id(), sandbox_id);
         assert_eq!(candidate.metadata.profile_name, profile_name);
         assert_eq!(
@@ -1656,7 +1676,6 @@ mod tests {
         let sandbox = *sandbox;
         assert_eq!(sandbox.sandbox_id(), sandbox_id);
         let reused_parts = sandbox.into_parts();
-        assert_eq!(reused_parts.cli_agent_session_id, session_id);
         assert_eq!(reused_parts.source_ip, source_ip);
         assert_eq!(
             reused_parts.restored_session_identity,
@@ -1859,14 +1878,14 @@ mod tests {
     }
 
     #[test]
-    fn park_uses_candidate_session_as_pool_key() {
+    fn park_uses_candidate_reuse_key_as_pool_key() {
         let mut pool = IdlePool::new(pool_config(0));
         let result = pool.park(make_candidate_for("candidate-session", 2, 2048));
         assert!(matches!(result, ParkResult::Parked));
 
         assert!(
             pool.take("caller-provided-session").is_none(),
-            "park no longer accepts a separate session key"
+            "park no longer accepts a separate reuse key"
         );
         assert!(pool.take("candidate-session").is_some());
     }
@@ -1878,7 +1897,7 @@ mod tests {
     }
 
     #[test]
-    fn park_same_session_evicts_previous() {
+    fn park_same_reuse_key_evicts_previous() {
         let mut pool = IdlePool::new(pool_config(0));
 
         let _ = pool.park(make_candidate_for("session-1", 2, 2048));
@@ -1987,7 +2006,7 @@ mod tests {
         assert_eq!(pool.len(), 1);
         assert_eq!(snapshot.revision, before_revision);
         assert_eq!(snapshot.idle_vms.len(), 1);
-        assert_eq!(snapshot.idle_vms[0].session_id, "fresh");
+        assert_eq!(snapshot.idle_vms[0].reuse_key, "fresh");
         assert_eq!(snapshot.idle_vms[0].sandbox_id, fresh_sandbox_id);
     }
 
@@ -2030,9 +2049,9 @@ mod tests {
         assert_eq!(pool.len(), 2);
         assert_eq!(snapshot.revision, before_revision + 1);
         assert_eq!(snapshot.idle_vms.len(), 2);
-        assert_eq!(snapshot.idle_vms[0].session_id, "sess-a");
+        assert_eq!(snapshot.idle_vms[0].reuse_key, "sess-a");
         assert_eq!(snapshot.idle_vms[0].sandbox_id, retained_a_sandbox_id);
-        assert_eq!(snapshot.idle_vms[1].session_id, "sess-b");
+        assert_eq!(snapshot.idle_vms[1].reuse_key, "sess-b");
         assert_eq!(snapshot.idle_vms[1].sandbox_id, retained_b_sandbox_id);
     }
 
@@ -2162,9 +2181,9 @@ mod tests {
 
         let vms = pool.held_snapshot();
         assert_eq!(vms.len(), 2);
-        assert_eq!(vms[0].session_id, "sess-a");
+        assert_eq!(vms[0].reuse_key, "sess-a");
         assert_eq!(vms[0].sandbox_id, sid_a);
-        assert_eq!(vms[1].session_id, "sess-b");
+        assert_eq!(vms[1].reuse_key, "sess-b");
         assert_eq!(vms[1].sandbox_id, sid_b);
     }
 

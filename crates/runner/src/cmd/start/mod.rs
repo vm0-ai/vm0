@@ -886,7 +886,7 @@ enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
     IdleCleanupProcessed { expired_count: usize },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
-    VmParkedForReuse { run_id: RunId, session_id: String },
+    VmParkedForReuse { run_id: RunId, reuse_key: String },
     UsageFlushRequested,
 }
 
@@ -992,8 +992,8 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id });
     }
 
-    fn notify_vm_parked_for_reuse(&self, run_id: RunId, session_id: String) {
-        self.record(StartLoopEvent::VmParkedForReuse { run_id, session_id });
+    fn notify_vm_parked_for_reuse(&self, run_id: RunId, reuse_key: String) {
+        self.record(StartLoopEvent::VmParkedForReuse { run_id, reuse_key });
     }
 
     fn notify_usage_flush_requested(&self) {
@@ -1039,8 +1039,8 @@ impl StartLoopTestObserver {
         self.wait_for(timeout, "VM parked for reuse", |event| match event {
             StartLoopEvent::VmParkedForReuse {
                 run_id: observed_run_id,
-                session_id,
-            } if *observed_run_id == run_id => Some(session_id.clone()),
+                reuse_key,
+            } if *observed_run_id == run_id => Some(reuse_key.clone()),
             _ => None,
         })
         .await
