@@ -2680,12 +2680,10 @@ function slackQueuedMessageAdmissionFailure(
 
 function teamsQueuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
   teamsLaunchMaterial: TeamsQueuedLaunchMaterial | null,
   error: QueuedMessageModelRouteError,
 ): TeamsQueuedMessageAdmissionFailure | null {
-  const teamsDelivery =
-    teamsLaunchMaterial?.teamsDelivery ?? sourceParams?.teamsDelivery;
+  const teamsDelivery = teamsLaunchMaterial?.teamsDelivery;
   if (args.queuedMessage.triggerSource !== "teams" || !teamsDelivery) {
     return null;
   }
@@ -2796,12 +2794,7 @@ function queuedMessageAdmissionFailure(
 ): QueuedMessageAdmissionFailure | null {
   return (
     slackQueuedMessageAdmissionFailure(args, slackLaunchMaterial, error) ??
-    teamsQueuedMessageAdmissionFailure(
-      args,
-      sourceParams,
-      teamsLaunchMaterial,
-      error,
-    ) ??
+    teamsQueuedMessageAdmissionFailure(args, teamsLaunchMaterial, error) ??
     telegramQueuedMessageAdmissionFailure(args, sourceParams, error) ??
     agentPhoneQueuedMessageAdmissionFailure(args, sourceParams, error) ??
     githubQueuedMessageAdmissionFailure(args, sourceParams, error) ??
@@ -2827,8 +2820,7 @@ function queuedIntegrationDeliveries(
   return {
     slackDelivery: slackLaunchMaterial?.slackDelivery,
     feishuDelivery: feishuLaunchMaterial?.feishuDelivery,
-    teamsDelivery:
-      teamsLaunchMaterial?.teamsDelivery ?? sourceParams?.teamsDelivery,
+    teamsDelivery: teamsLaunchMaterial?.teamsDelivery,
     telegramDelivery: sourceParams?.telegramDelivery,
     agentphoneDelivery: sourceParams?.agentphoneDelivery,
     githubDelivery: sourceParams?.githubDelivery,
@@ -2874,7 +2866,6 @@ async function resolveFeishuQueuedLaunchMaterial(
 
 async function resolveTeamsQueuedLaunchMaterial(
   args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
 ): Promise<TeamsQueuedLaunchMaterial | null> {
   if (args.queuedMessage.triggerSource !== "teams") {
     return null;
@@ -2888,14 +2879,7 @@ async function resolveTeamsQueuedLaunchMaterial(
   if (material) {
     return material;
   }
-  if (
-    sourceParams?.prompt === undefined ||
-    sourceParams.appendSystemPrompt === undefined ||
-    !sourceParams.teamsDelivery
-  ) {
-    throw new Error("Teams queue item is missing launch material");
-  }
-  return null;
+  throw new Error("Teams queue item is missing launch material");
 }
 
 function queuedMessagePrompt(args: {
@@ -2921,7 +2905,10 @@ function queuedMessagePrompt(args: {
     return args.feishuLaunchMaterial.prompt;
   }
   if (args.triggerSource === "teams") {
-    return args.teamsLaunchMaterial?.prompt ?? args.sourceParams?.prompt ?? "";
+    if (!args.teamsLaunchMaterial) {
+      throw new Error("Teams queue item is missing launch material");
+    }
+    return args.teamsLaunchMaterial.prompt;
   }
   if (args.triggerSource === "workflow-schedule") {
     return args.sourceParams?.prompt ?? args.projectedPrompt;
@@ -2951,11 +2938,10 @@ function queuedIntegrationPrompt(args: {
     return args.feishuLaunchMaterial.appendSystemPrompt;
   }
   if (args.triggerSource === "teams") {
-    return (
-      args.teamsLaunchMaterial?.appendSystemPrompt ??
-      args.sourceParams?.appendSystemPrompt ??
-      buildWebChatPrompt()
-    );
+    if (!args.teamsLaunchMaterial) {
+      throw new Error("Teams queue item is missing launch material");
+    }
+    return args.teamsLaunchMaterial.appendSystemPrompt;
   }
   return args.sourceParams?.appendSystemPrompt ?? buildWebChatPrompt();
 }
@@ -2994,10 +2980,7 @@ async function loadQueuedLaunchMaterials(args: CreateQueuedChatRunInputArgs) {
   }
   const slackLaunchMaterial = await resolveSlackQueuedLaunchMaterial(args);
   const feishuLaunchMaterial = await resolveFeishuQueuedLaunchMaterial(args);
-  const teamsLaunchMaterial = await resolveTeamsQueuedLaunchMaterial(
-    args,
-    sourceParams,
-  );
+  const teamsLaunchMaterial = await resolveTeamsQueuedLaunchMaterial(args);
   return {
     sourceParams,
     slackLaunchMaterial,

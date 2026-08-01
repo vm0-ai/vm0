@@ -18,7 +18,6 @@ import {
   findPendingChatEventInputParamsByPromptFixture,
   readChatEventContextFixture,
   readChatEventInputParamsFixture,
-  replaceTeamsLaunchMaterialWithLegacyParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
@@ -686,68 +685,6 @@ describe("Teams chat callbacks", () => {
       }),
     ).resolves.toStrictEqual({ version: 1 });
 
-    const legacyPrompt = "claim legacy Teams launch params";
-    await postTeamsPersonalMessage({
-      fixture: teams.fixture,
-      activityId: "activity-queue-params-legacy",
-      text: legacyPrompt,
-    });
-    const legacyParams =
-      await findPendingChatEventInputParamsByPromptFixture(legacyPrompt);
-    if (!legacyParams) {
-      throw new Error("Expected queued legacy Teams params");
-    }
-    const legacyContext = await readChatEventContextFixture(
-      legacyParams.eventId,
-    );
-    if (!legacyContext?.teamsConnectionId) {
-      throw new Error("Expected queued legacy Teams context");
-    }
-    const legacyIntegrationPrompt = [
-      "# Current Integration",
-      "You are currently running inside: Microsoft Teams",
-      `Tenant ID: ${teams.fixture.teamsTenantId}`,
-      `Tenant name: ${teams.fixture.teamsTenantName}`,
-      `Conversation ID: a:personal-${teams.fixture.teamsUserId}`,
-      "Conversation type: personal",
-      "Thread ID: activity-queue-params-legacy",
-      "Activity ID: activity-queue-params-legacy",
-      `Teams app ID: ${BOT_APP_ID}`,
-      "Bot ID: 28:bot-1",
-      "Bot name: Zero",
-    ].join("\n");
-    await replaceTeamsLaunchMaterialWithLegacyParamsFixture(
-      legacyParams.eventId,
-      {
-        orgId: teams.fixture.orgId,
-        userId: teams.fixture.userId,
-        prompt: legacyPrompt,
-        appendSystemPrompt: legacyIntegrationPrompt,
-        teamsDelivery: {
-          tenantId: teams.fixture.teamsTenantId,
-          tenantName: teams.fixture.teamsTenantName,
-          teamId: null,
-          teamName: null,
-          channelId: null,
-          conversationId: `a:personal-${teams.fixture.teamsUserId}`,
-          conversationType: "personal",
-          threadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-4-6`,
-          activityId: "activity-queue-params-legacy",
-          serviceUrl: teams.fixture.serviceUrl,
-          connectionId: legacyContext.teamsConnectionId,
-          teamsUserId: teams.fixture.teamsUserId,
-          teamsUserDisplayName: "Ada Lovelace",
-          teamsUserPrincipalName: "ada@example.com",
-          botId: "28:bot-1",
-          botName: "Zero",
-          files: [],
-        },
-        teamsUserDisplayName: "Ada Lovelace",
-        teamsUserPrincipalName: "ada@example.com",
-        teamsUserId: teams.fixture.teamsUserId,
-      },
-    );
-
     await completeSandboxRun({
       runId: firstRunId,
       sandboxToken: firstClaim.sandboxToken,
@@ -780,17 +717,6 @@ describe("Teams chat callbacks", () => {
       sandboxToken: queuedClaim.sandboxToken,
       exitCode: 0,
     });
-    const legacyRunId = await runIdForPrompt(teams.actor, legacyPrompt);
-    const legacyClaim = await claimTeamsRun({
-      runnerGroup: teams.runnerGroup,
-      runId: legacyRunId,
-    });
-    expect(legacyClaim.prompt).toBe(legacyPrompt);
-    expect(legacyClaim.appendSystemPrompt).toContain(legacyIntegrationPrompt);
-    await expect(
-      readChatEventInputParamsFixture(legacyParams.eventId),
-    ).resolves.toBeNull();
-    await runsApi.requestCancelRun(teams.actor, legacyRunId, [200]);
   });
 
   it("falls back to installation bot identity when the activity omits it", async () => {
