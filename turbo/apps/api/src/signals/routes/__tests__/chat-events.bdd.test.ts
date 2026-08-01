@@ -2467,16 +2467,18 @@ describe("CHAT-02: model-first provider policies", () => {
       await threadLock.done;
     });
 
-    const sentPromise = sendChatRun(actor, {
-      agentId,
-      threadId: thread.id,
-      prompt: "continue without reconciling the thread model",
-    });
-    await expect.poll(threadLock.firstBlockedStatementKind).toBe("update");
-
-    threadLock.release();
-    const sent = await sentPromise;
-    await threadLock.done;
+    const [sent] = await Promise.all([
+      sendChatRun(actor, {
+        agentId,
+        threadId: thread.id,
+        prompt: "continue without reconciling the thread model",
+      }),
+      (async () => {
+        await expect.poll(threadLock.firstBlockedStatementKind).toBe("update");
+        threadLock.release();
+        await threadLock.done;
+      })(),
+    ]);
     expect(apiDispatchTimingEventsForRun(sent.runId)).toContainEqual(
       expect.objectContaining({
         op_type:
@@ -2513,6 +2515,7 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
 
     await seedVm0ManagedModelKey("gpt-5.6-terra");
     await api.updateOrgModelPolicies(actor, [
@@ -2533,18 +2536,20 @@ describe("CHAT-02: model-first provider policies", () => {
       threadLock.release();
       await threadLock.done;
     });
-    const recoveredPromise = sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "continue through the current workspace default",
-    });
-    await expect
-      .poll(threadLock.firstBlockedStatementKind)
-      .toBe("select_for_update");
-
-    threadLock.release();
-    const recovered = await recoveredPromise;
-    await threadLock.done;
+    const [recovered] = await Promise.all([
+      sendChatRun(actor, {
+        agentId,
+        threadId: first.threadId,
+        prompt: "continue through the current workspace default",
+      }),
+      (async () => {
+        await expect
+          .poll(threadLock.firstBlockedStatementKind)
+          .toBe("select_for_update");
+        threadLock.release();
+        await threadLock.done;
+      })(),
+    ]);
     expect(apiDispatchTimingEventsForRun(recovered.runId)).toContainEqual(
       expect.objectContaining({
         op_type:
