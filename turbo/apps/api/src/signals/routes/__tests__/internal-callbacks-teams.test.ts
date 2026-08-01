@@ -666,7 +666,7 @@ describe("Teams chat callbacks", () => {
       teamsMessageFiles: [],
       teamsTenantName: teams.fixture.teamsTenantName,
       teamsTeamName: null,
-      teamsThreadId: `direct-message:${teams.defaultAgentId}:default`,
+      teamsThreadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-4-6`,
       teamsServiceUrl: teams.fixture.serviceUrl,
       teamsAppId: BOT_APP_ID,
       teamsBotId: "28:bot-1",
@@ -690,7 +690,7 @@ describe("Teams chat callbacks", () => {
       teamsDelivery: {
         tenantId: teams.fixture.teamsTenantId,
         conversationId: `a:personal-${teams.fixture.teamsUserId}`,
-        threadId: `direct-message:${teams.defaultAgentId}:default`,
+        threadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-4-6`,
         serviceUrl: teams.fixture.serviceUrl,
         teamsUserId: teams.fixture.teamsUserId,
         botId: "28:bot-1",
