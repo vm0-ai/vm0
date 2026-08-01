@@ -10,13 +10,18 @@ from tests.connector_diagnostic_helpers import (
     record_connector_diagnostic_requestheaders_context,
     write_connector_diagnostic_capture_registry,
     write_connector_diagnostic_catalog_cache,
+    write_shared_base_diagnostic_catalog,
 )
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
 )
-from tests.request_handler_helpers import _vm_without_firewalls, _write_registry
+from tests.request_handler_helpers import (
+    _single_firewall_vm,
+    _vm_without_firewalls,
+    _write_registry,
+)
 
 
 def _drain_connector_diagnostic_response_stream(flow, *, upstream_chunk: bytes = b"upstream"):
@@ -80,6 +85,86 @@ async def test_replaces_unauthenticated_connector_401_body(tmp_path, real_flow, 
     assert proxy_entry["type"] == "connector_diagnostic"
     assert proxy_entry["connector"] == "fal"
     assert proxy_entry["upstream_status"] == 401
+
+
+async def test_active_shared_base_owner_preserves_ordinary_allow_401(tmp_path, real_flow, mitm_ctx):
+    write_shared_base_diagnostic_catalog(
+        tmp_path,
+        active_permissions=[
+            {
+                "name": "messages-read",
+                "rules": ["GET /messages/{id}"],
+            }
+        ],
+        inactive_permissions=[
+            {
+                "name": "other-read",
+                "rules": ["GET /other/{id}"],
+            }
+        ],
+    )
+    # Keep the catalog owner active while a nonmatching runtime base forces ordinary Allow.
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="active-shared",
+            api_entry={
+                "base": "https://shared.example.com/runtime",
+                "auth": {
+                    "headers": {
+                        "Authorization": "Bearer ${{ secrets.ACTIVE_TOKEN }}",
+                    }
+                },
+                "permissions": [
+                    {
+                        "name": "runtime-read",
+                        "rules": ["GET /{path+}"],
+                    }
+                ],
+            },
+            network_policy={
+                "allow": ["runtime-read"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    upstream_body = b"upstream auth error"
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        path="/messages/123",
+        method="GET",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        record_connector_diagnostic_requestheaders_context(flow)
+        flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map({"content-type": "text/plain"}),
+            content=upstream_body,
+        )
+        mitm_addon.responseheaders(flow)
+        assert response_stream(flow)(upstream_body) == upstream_body
+        mitm_addon.response(flow)
+
+    assert flow.response.status_code == 401
+    assert flow.response.headers["content-type"] == "text/plain"
+    assert flow.response.content == upstream_body
+    assert metadata_keys.FIREWALL_ERROR not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
+    [network_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert network_entry["status"] == 401
+    assert network_entry["response_size"] == len(upstream_body)
+    assert "firewall_error" not in network_entry
+    assert "connector_diagnostic_slug" not in network_entry
+    [proxy_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert proxy_entry["type"] == "http_error"
+    assert proxy_entry["status"] == 401
 
 
 async def test_streams_unauthenticated_connector_401_diagnostic_without_upstream_body(
