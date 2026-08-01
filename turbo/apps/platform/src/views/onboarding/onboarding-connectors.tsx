@@ -30,18 +30,20 @@ function parseConnectorSlugs(values: readonly string[]): ConnectorSlug[] {
 }
 
 export function OnboardingConnectorSetup({
-  connectorIds,
-  requiredIds,
+  connectorSlugs,
+  requiredConnectorSlugs,
   variant = "workflow",
   children,
 }: {
-  readonly connectorIds: readonly string[];
-  readonly requiredIds?: readonly string[];
+  readonly connectorSlugs: readonly string[];
+  readonly requiredConnectorSlugs?: readonly string[];
   readonly variant?: ConnectorSetupVariant;
   readonly children?: ReactNode;
 }) {
-  const connectorSlugs = parseConnectorSlugs(connectorIds);
-  const requiredSet = new Set(parseConnectorSlugs(requiredIds ?? []));
+  const validConnectorSlugs = parseConnectorSlugs(connectorSlugs);
+  const requiredSet = new Set(
+    parseConnectorSlugs(requiredConnectorSlugs ?? []),
+  );
   const pageSignal = useGet(pageSignal$);
   const connectorCatalogItemsLoadable = useLastLoadable(
     allConnectorCatalogItems$,
@@ -55,7 +57,7 @@ export function OnboardingConnectorSetup({
   const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
   const justConnectedSlugs = useGet(justConnectedSlugs$);
 
-  if (connectorSlugs.length === 0 && children === undefined) {
+  if (validConnectorSlugs.length === 0 && children === undefined) {
     return null;
   }
 
@@ -74,7 +76,7 @@ export function OnboardingConnectorSetup({
             : "mt-6 flex flex-col gap-3",
         )}
       >
-        {connectorSlugs.map((connectorSlug) => {
+        {validConnectorSlugs.map((connectorSlug) => {
           const item = connectorCatalogItems.find((candidate) => {
             return candidate.slug === connectorSlug;
           });

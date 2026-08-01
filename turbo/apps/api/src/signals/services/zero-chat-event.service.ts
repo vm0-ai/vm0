@@ -3,6 +3,12 @@ import { randomUUID } from "node:crypto";
 
 import { isValidChatEventRevocation } from "@vm0/api-contracts/contracts/chat-events";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
+import type {
+  ChatSlackMentionDisplayNames,
+  ChatSlackMessageFiles,
+} from "@vm0/db/jsonb-contracts/chat-slack-context";
+import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
@@ -40,6 +46,15 @@ type ChatEventDisplayContext =
         readonly messagePermalink: string | null;
         readonly channelId: string;
         readonly messageTs: string;
+        readonly conversationContext: string;
+        readonly messageText: string;
+        readonly messageFiles: ChatSlackMessageFiles;
+        readonly mentionDisplayNames: ChatSlackMentionDisplayNames;
+        readonly senderDisplayName: string | null;
+        readonly senderUserId: string | null;
+        readonly channelType: "channel" | "dm" | "group_dm";
+        readonly threadTs: string;
+        readonly routeThreadTs: string | null;
       };
       readonly feishuContext?: never;
       readonly teamsContext?: never;
@@ -50,6 +65,19 @@ type ChatEventDisplayContext =
       readonly slackContext?: never;
       readonly feishuContext: {
         readonly chatOpenUrl: string;
+        readonly conversationHistory: string;
+        readonly messageText: string;
+        readonly messageFiles: ChatFeishuMessageFiles;
+        readonly chatType: "group" | "p2p" | "topic_group";
+        readonly tenantKey: string;
+        readonly chatId: string;
+        readonly messageId: string;
+        readonly threadId: string;
+        readonly replyInThread: boolean;
+        readonly reactionId: string | null;
+        readonly senderOpenId: string;
+        readonly connectionId: string;
+        readonly installationId: string;
       };
       readonly teamsContext?: never;
       readonly telegramContext?: never;
@@ -65,6 +93,20 @@ type ChatEventDisplayContext =
         readonly conversationId: string;
         readonly conversationType: string | null;
         readonly activityId: string | null;
+        readonly threadContext: string;
+        readonly messageText: string;
+        readonly messageFiles: ChatTeamsMessageFiles;
+        readonly tenantName: string | null;
+        readonly teamName: string | null;
+        readonly threadId: string;
+        readonly serviceUrl: string;
+        readonly teamsAppId: string | null;
+        readonly botId: string | null;
+        readonly botName: string | null;
+        readonly senderUserId: string;
+        readonly senderDisplayName: string | null;
+        readonly senderPrincipalName: string | null;
+        readonly connectionId: string;
       };
       readonly telegramContext?: never;
       readonly githubContext?: never;
@@ -320,12 +362,34 @@ type NewDisplayContext =
       readonly messagePermalink: string | null;
       readonly channelId: string;
       readonly messageTs: string;
+      readonly conversationContext: string;
+      readonly messageText: string;
+      readonly messageFiles: ChatSlackMessageFiles;
+      readonly mentionDisplayNames: ChatSlackMentionDisplayNames;
+      readonly senderDisplayName: string | null;
+      readonly senderUserId: string | null;
+      readonly channelType: "channel" | "dm" | "group_dm";
+      readonly threadTs: string;
+      readonly routeThreadTs: string | null;
     }
   | {
       readonly type: "feishu";
       readonly id: string;
       readonly chatThreadId: string;
       readonly chatOpenUrl: string;
+      readonly conversationHistory: string;
+      readonly messageText: string;
+      readonly messageFiles: ChatFeishuMessageFiles;
+      readonly chatType: "group" | "p2p" | "topic_group";
+      readonly tenantKey: string;
+      readonly chatId: string;
+      readonly messageId: string;
+      readonly threadId: string;
+      readonly replyInThread: boolean;
+      readonly reactionId: string | null;
+      readonly senderOpenId: string;
+      readonly connectionId: string;
+      readonly installationId: string;
     }
   | {
       readonly type: "teams";
@@ -337,6 +401,20 @@ type NewDisplayContext =
       readonly conversationId: string;
       readonly conversationType: string | null;
       readonly activityId: string | null;
+      readonly threadContext: string;
+      readonly messageText: string;
+      readonly messageFiles: ChatTeamsMessageFiles;
+      readonly tenantName: string | null;
+      readonly teamName: string | null;
+      readonly threadId: string;
+      readonly serviceUrl: string;
+      readonly teamsAppId: string | null;
+      readonly botId: string | null;
+      readonly botName: string | null;
+      readonly senderUserId: string;
+      readonly senderDisplayName: string | null;
+      readonly senderPrincipalName: string | null;
+      readonly connectionId: string;
     }
   | {
       readonly type: "telegram";
@@ -421,6 +499,15 @@ function newDisplayContext(
       messagePermalink: slackContext.messagePermalink,
       channelId: slackContext.channelId,
       messageTs: slackContext.messageTs,
+      conversationContext: slackContext.conversationContext,
+      messageText: slackContext.messageText,
+      messageFiles: slackContext.messageFiles,
+      mentionDisplayNames: slackContext.mentionDisplayNames,
+      senderDisplayName: slackContext.senderDisplayName,
+      senderUserId: slackContext.senderUserId,
+      channelType: slackContext.channelType,
+      threadTs: slackContext.threadTs,
+      routeThreadTs: slackContext.routeThreadTs,
     };
   }
 
@@ -431,7 +518,7 @@ function newDisplayContext(
       type: "feishu",
       id: eventId,
       chatThreadId: values.chatThreadId,
-      chatOpenUrl: feishuContext.chatOpenUrl,
+      ...feishuContext,
     };
   }
 
@@ -542,6 +629,15 @@ async function insertDisplayContext(
       messagePermalink: context.messagePermalink,
       channelId: context.channelId,
       messageTs: context.messageTs,
+      conversationContext: context.conversationContext,
+      messageText: context.messageText,
+      messageFiles: context.messageFiles,
+      mentionDisplayNames: context.mentionDisplayNames,
+      senderDisplayName: context.senderDisplayName,
+      senderUserId: context.senderUserId,
+      channelType: context.channelType,
+      threadTs: context.threadTs,
+      routeThreadTs: context.routeThreadTs,
       createdAt,
     });
     return;
@@ -551,6 +647,19 @@ async function insertDisplayContext(
       id: context.id,
       chatThreadId: context.chatThreadId,
       chatOpenUrl: context.chatOpenUrl,
+      conversationHistory: context.conversationHistory,
+      messageText: context.messageText,
+      messageFiles: context.messageFiles,
+      chatType: context.chatType,
+      tenantKey: context.tenantKey,
+      chatId: context.chatId,
+      messageId: context.messageId,
+      threadId: context.threadId,
+      replyInThread: context.replyInThread,
+      reactionId: context.reactionId,
+      senderOpenId: context.senderOpenId,
+      connectionId: context.connectionId,
+      installationId: context.installationId,
       createdAt,
     });
     return;
@@ -565,6 +674,20 @@ async function insertDisplayContext(
       conversationId: context.conversationId,
       conversationType: context.conversationType,
       activityId: context.activityId,
+      threadContext: context.threadContext,
+      messageText: context.messageText,
+      messageFiles: context.messageFiles,
+      tenantName: context.tenantName,
+      teamName: context.teamName,
+      threadId: context.threadId,
+      serviceUrl: context.serviceUrl,
+      teamsAppId: context.teamsAppId,
+      botId: context.botId,
+      botName: context.botName,
+      senderUserId: context.senderUserId,
+      senderDisplayName: context.senderDisplayName,
+      senderPrincipalName: context.senderPrincipalName,
+      connectionId: context.connectionId,
       createdAt,
     });
     return;

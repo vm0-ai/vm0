@@ -5531,6 +5531,41 @@
       "when": 1785515490435,
       "tag": "0789_glamorous_fixer",
       "breakpoints": true
+    },
+    {
+      "idx": 790,
+      "version": "7",
+      "when": 1785556484903,
+      "tag": "0790_bored_talisman",
+      "breakpoints": true
+    },
+    {
+      "idx": 791,
+      "version": "7",
+      "when": 1785559801767,
+      "tag": "0791_perfect_aqueduct",
+      "breakpoints": true
+    },
+    {
+      "idx": 792,
+      "version": "7",
+      "when": 1785567354104,
+      "tag": "0792_romantic_cable",
+      "breakpoints": true
+    },
+    {
+      "idx": 793,
+      "version": "7",
+      "when": 1785574307618,
+      "tag": "0793_contract_chat_event_run_lifecycle_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 794,
+      "version": "7",
+      "when": 1785575941106,
+      "tag": "0794_superb_firebird",
+      "breakpoints": true
     }
   ]
 }

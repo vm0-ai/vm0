@@ -135,6 +135,25 @@ const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
   "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
 ] as const;
+const API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE =
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_persisted_model";
+const API_DISPATCH_EXISTING_THREAD_PARALLEL_ACTION_TYPE =
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_session_context_parallel";
+const API_DISPATCH_EXISTING_THREAD_PARALLEL_CHILD_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_session",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_incomplete_context",
+] as const;
+const API_DISPATCH_EXISTING_THREAD_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
+  API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE,
+  API_DISPATCH_EXISTING_THREAD_PARALLEL_ACTION_TYPE,
+  ...API_DISPATCH_EXISTING_THREAD_PARALLEL_CHILD_ACTION_TYPES,
+] as const;
+const API_DISPATCH_EXPLICIT_EXISTING_THREAD_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
+  API_DISPATCH_EXISTING_THREAD_PARALLEL_ACTION_TYPE,
+  ...API_DISPATCH_EXISTING_THREAD_PARALLEL_CHILD_ACTION_TYPES,
+] as const;
 const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_entrypoint_gap",
 ] as const;
@@ -495,6 +514,30 @@ function expectApiDispatchSpanKind(
       expect.objectContaining({
         span_kind: spanKind,
       }),
+    );
+  }
+}
+
+function expectApiDispatchParallelGroupContainsChildren(
+  events: readonly Record<string, unknown>[],
+  parentActionType: string,
+  childActionTypes: readonly string[],
+): void {
+  const durationForAction = (actionType: string): number => {
+    const matchingEvents = events.filter((event) => {
+      return event.op_type === actionType;
+    });
+    expect(matchingEvents).toHaveLength(1);
+    const durationMs = matchingEvents[0]?.duration_ms;
+    if (typeof durationMs !== "number") {
+      throw new Error(`Expected timing duration for ${actionType}`);
+    }
+    return durationMs;
+  };
+  const parentDurationMs = durationForAction(parentActionType);
+  for (const childActionType of childActionTypes) {
+    expect(parentDurationMs).toBeGreaterThanOrEqual(
+      durationForAction(childActionType),
     );
   }
 }
@@ -1019,6 +1062,10 @@ describe("CHAT-02: web chat send and client ids", () => {
     expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
     );
     expect(timingEvents).toContainEqual(
       expect.objectContaining({
@@ -2458,6 +2505,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const thread = await chat.createThread(actor, { agentId });
+    const prompt = "continue without reconciling the thread model";
     const threadLock = await holdChatThreadRowLockFixture({
       threadId: thread.id,
       signal: context.signal,
@@ -2467,23 +2515,41 @@ describe("CHAT-02: model-first provider policies", () => {
       await threadLock.done;
     });
 
-    const sentPromise = sendChatRun(actor, {
-      agentId,
-      threadId: thread.id,
-      prompt: "continue without reconciling the thread model",
-    });
-    await expect.poll(threadLock.firstBlockedStatementKind).toBe("update");
-
-    threadLock.release();
-    const sent = await sentPromise;
-    await threadLock.done;
-    expect(apiDispatchTimingEventsForRun(sent.runId)).toContainEqual(
+    const [sent] = await Promise.all([
+      sendChatRun(actor, {
+        agentId,
+        threadId: thread.id,
+        prompt,
+      }),
+      (async () => {
+        await expect.poll(threadLock.firstBlockedStatementKind).toBe("update");
+        threadLock.release();
+        await threadLock.done;
+      })(),
+    ]);
+    const timingEvents = apiDispatchTimingEventsForRun(sent.runId);
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
+      "nested",
+    );
+    expectApiDispatchParallelGroupContainsChildren(
+      timingEvents,
+      API_DISPATCH_EXISTING_THREAD_PARALLEL_ACTION_TYPE,
+      API_DISPATCH_EXISTING_THREAD_PARALLEL_CHILD_ACTION_TYPES,
+    );
+    expect(timingEvents).toContainEqual(
       expect.objectContaining({
         op_type:
           "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
         model_resolution_path: "read_only",
       }),
     );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      prompt,
+      thread.id,
+      agentId,
+    ]);
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 
@@ -2513,6 +2579,7 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
 
     await seedVm0ManagedModelKey("gpt-5.6-terra");
     await api.updateOrgModelPolicies(actor, [
@@ -2533,19 +2600,32 @@ describe("CHAT-02: model-first provider policies", () => {
       threadLock.release();
       await threadLock.done;
     });
-    const recoveredPromise = sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "continue through the current workspace default",
-    });
-    await expect
-      .poll(threadLock.firstBlockedStatementKind)
-      .toBe("select_for_update");
-
-    threadLock.release();
-    const recovered = await recoveredPromise;
-    await threadLock.done;
-    expect(apiDispatchTimingEventsForRun(recovered.runId)).toContainEqual(
+    const [recovered] = await Promise.all([
+      sendChatRun(actor, {
+        agentId,
+        threadId: first.threadId,
+        prompt: "continue through the current workspace default",
+      }),
+      (async () => {
+        await expect
+          .poll(threadLock.firstBlockedStatementKind)
+          .toBe("select_for_update");
+        threadLock.release();
+        await threadLock.done;
+      })(),
+    ]);
+    const timingEvents = apiDispatchTimingEventsForRun(recovered.runId);
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
+      "nested",
+    );
+    expectApiDispatchParallelGroupContainsChildren(
+      timingEvents,
+      API_DISPATCH_EXISTING_THREAD_PARALLEL_ACTION_TYPE,
+      API_DISPATCH_EXISTING_THREAD_PARALLEL_CHILD_ACTION_TYPES,
+    );
+    expect(timingEvents).toContainEqual(
       expect.objectContaining({
         op_type:
           "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
@@ -3288,6 +3368,20 @@ describe("CHAT-02: run-level model overrides", () => {
       prompt: "switch to sonnet",
       model: "claude-sonnet-4-6",
     });
+    const secondTimingEvents = apiDispatchTimingEventsForRun(second.runId);
+    expectApiDispatchSpanKind(
+      secondTimingEvents,
+      API_DISPATCH_EXPLICIT_EXISTING_THREAD_ACTION_TYPES,
+      "nested",
+    );
+    expectNoApiDispatchActions(secondTimingEvents, [
+      API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE,
+    ]);
+    expectApiDispatchParallelGroupContainsChildren(
+      secondTimingEvents,
+      API_DISPATCH_EXISTING_THREAD_PARALLEL_ACTION_TYPE,
+      API_DISPATCH_EXISTING_THREAD_PARALLEL_CHILD_ACTION_TYPES,
+    );
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
     expect(appended).toContain("# Web Chat Run Context");
@@ -3539,36 +3633,39 @@ describe("CHAT-02: run-level model overrides", () => {
 
     const firstEventId = randomUUID();
     const secondEventId = randomUUID();
-    const requests = [
-      {
-        eventId: firstEventId,
-        prompt: "first competing binding send",
-        response: chat.requestSendEvent(
-          actor,
-          {
-            agentId,
-            threadId: established.threadId,
-            prompt: "first competing binding send",
-            clientEventId: firstEventId,
-          },
-          [201],
-        ),
-      },
-      {
-        eventId: secondEventId,
-        prompt: "second competing binding send",
-        response: chat.requestSendEvent(
-          actor,
-          {
-            agentId,
-            threadId: established.threadId,
-            prompt: "second competing binding send",
-            clientEventId: secondEventId,
-          },
-          [201],
-        ),
-      },
-    ] as const;
+    const firstRequest = {
+      eventId: firstEventId,
+      prompt: "first competing binding send",
+      response: chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: established.threadId,
+          prompt: "first competing binding send",
+          clientEventId: firstEventId,
+        },
+        [201],
+      ),
+    } as const;
+    // Make the queue head the first admission-lock waiter so the second
+    // prepared request observes the binding committed by the first.
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+
+    const secondRequest = {
+      eventId: secondEventId,
+      prompt: "second competing binding send",
+      response: chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: established.threadId,
+          prompt: "second competing binding send",
+          clientEventId: secondEventId,
+        },
+        [201],
+      ),
+    } as const;
+    const requests = [firstRequest, secondRequest] as const;
 
     await expect
       .poll(async () => {

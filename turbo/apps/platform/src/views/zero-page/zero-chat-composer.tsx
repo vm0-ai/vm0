@@ -859,7 +859,7 @@ function workflowTemplateMatchesSearch(
     item.title,
     item.id,
     item.description,
-    item.connectors.join(" "),
+    item.connectorSlugs.join(" "),
   ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
@@ -1242,18 +1242,18 @@ function WebsiteTemplateGrid({
 }
 
 function WorkflowTemplateConnectorIcons({
-  connectors,
+  connectorSlugs,
   compact = false,
   limit = compact ? 3 : 5,
   withDivider = false,
 }: {
-  connectors: readonly string[];
+  connectorSlugs: readonly ConnectorSlug[];
   compact?: boolean;
   limit?: number;
   withDivider?: boolean;
 }) {
   const catalogConnectors = useLastResolved(allConnectorCatalogItems$);
-  const visibleConnectors = connectors.flatMap((connectorSlug) => {
+  const visibleConnectors = connectorSlugs.flatMap((connectorSlug) => {
     const connector = catalogConnectors?.find((candidate) => {
       return candidate.slug === connectorSlug;
     });
@@ -1328,7 +1328,7 @@ function WorkflowTemplateCard({
       </p>
       <div className="mt-auto flex items-center gap-2 pt-3.5">
         <WorkflowTemplateConnectorIcons
-          connectors={item.connectors}
+          connectorSlugs={item.connectorSlugs}
           limit={4}
         />
         <button

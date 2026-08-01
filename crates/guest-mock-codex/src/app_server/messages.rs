@@ -124,7 +124,7 @@ pub(super) fn agent_message_item_started_notification(
     })
 }
 
-fn assistant_item_completed_notification(thread_id: &str, turn_id: &str) -> Value {
+pub(super) fn assistant_item_completed_notification(thread_id: &str, turn_id: &str) -> Value {
     json!({
         "method": "item/completed",
         "params": {

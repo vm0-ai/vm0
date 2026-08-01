@@ -1,8 +1,9 @@
 import { optionalEnv } from "../../lib/env";
-import { tapError } from "../utils";
+import { readBoundedResponseText, safeJsonParse } from "../utils";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_ERROR_RESPONSE_MAX_BYTES = 64 * 1024;
 
 export interface OpenRouterTextPart {
   readonly type: "text";
@@ -39,21 +40,132 @@ interface OpenRouterTextGeneration {
   readonly usage?: OpenRouterUsage;
 }
 
+interface OpenRouterChoice {
+  readonly finish_reason: string | null;
+  readonly native_finish_reason?: string | null;
+  readonly error?: unknown;
+  readonly message?: {
+    readonly content?: unknown;
+  };
+}
+
 interface OpenRouterResponse {
   readonly usage?: OpenRouterUsage;
-  readonly choices: readonly {
-    readonly finish_reason: string | null;
-    readonly native_finish_reason?: string | null;
-    readonly message: {
-      readonly content: string;
-    };
-  }[];
+  readonly error?: unknown;
+  readonly choices?: readonly OpenRouterChoice[];
 }
 
 interface OpenRouterGenerateTextOptions {
   readonly signal?: AbortSignal;
   readonly responseFormat?: { readonly type: "json_object" };
   readonly temperature?: number;
+}
+
+export class OpenRouterRequestError extends Error {
+  readonly status: number;
+  readonly errorType: string | undefined;
+
+  constructor(args: {
+    readonly message: string;
+    readonly status: number;
+    readonly errorType?: string;
+  }) {
+    const errorType = args.errorType ? ` (${args.errorType})` : "";
+    super(`${args.message}: ${String(args.status)}${errorType}`);
+    this.name = "OpenRouterRequestError";
+    this.status = args.status;
+    this.errorType = args.errorType;
+  }
+}
+
+function objectProperty(value: unknown, property: string): unknown | undefined {
+  if (typeof value !== "object" || value === null || !(property in value)) {
+    return undefined;
+  }
+  return value[property as keyof typeof value];
+}
+
+function openRouterErrorType(value: unknown): string | undefined {
+  const error = objectProperty(value, "error") ?? value;
+  const metadata = objectProperty(error, "metadata");
+  const errorType = objectProperty(metadata, "error_type");
+  return typeof errorType === "string" &&
+    /^[a-z][a-z0-9_]{0,127}$/u.test(errorType)
+    ? errorType
+    : undefined;
+}
+
+function openRouterRequestError(args: {
+  readonly message: string;
+  readonly status: number;
+  readonly value: unknown;
+}): OpenRouterRequestError {
+  const errorType = openRouterErrorType(args.value);
+  return new OpenRouterRequestError({
+    message: args.message,
+    status: args.status,
+    ...(errorType === undefined ? {} : { errorType }),
+  });
+}
+
+async function ensureOpenRouterResponseOk(response: Response): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+  const errorBody = await readBoundedResponseText(
+    response,
+    OPENROUTER_ERROR_RESPONSE_MAX_BYTES,
+  );
+  const errorValue =
+    errorBody.kind === "text" ? safeJsonParse(errorBody.text) : undefined;
+  throw openRouterRequestError({
+    message: "OpenRouter request failed",
+    status: response.status,
+    value: errorValue,
+  });
+}
+
+function parseOpenRouterGeneration(
+  data: OpenRouterResponse,
+): OpenRouterTextGeneration {
+  const choice = data.choices?.[0];
+  if (!choice) {
+    if (data.error !== undefined) {
+      throw openRouterRequestError({
+        message: "OpenRouter request failed",
+        status: 502,
+        value: data,
+      });
+    }
+    throw new Error("OpenRouter returned no choices");
+  }
+  if (choice.finish_reason === "error") {
+    throw openRouterRequestError({
+      message: "OpenRouter completion failed",
+      status: 502,
+      value: choice.error ?? data.error,
+    });
+  }
+  if (choice.finish_reason !== "stop") {
+    const nativeReason = choice.native_finish_reason
+      ? ` (native: ${choice.native_finish_reason})`
+      : "";
+    throw new Error(
+      `OpenRouter completion finished with ${choice.finish_reason ?? "unknown"}${nativeReason}`,
+    );
+  }
+
+  const rawContent = choice.message?.content;
+  if (typeof rawContent !== "string") {
+    throw new Error("OpenRouter returned invalid content");
+  }
+  const content = rawContent.trim();
+  if (!content) {
+    throw new Error("OpenRouter returned empty content");
+  }
+  return data.usage === undefined
+    ? { text: content }
+    : { text: content, usage: data.usage };
 }
 
 /**
@@ -118,31 +230,7 @@ export async function generateTextWithUsage(
     }),
     signal: options?.signal,
   });
-
-  if (!response.ok) {
-    const text = (await tapError(response.text())) ?? "unknown error";
-    throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
-  }
-
+  await ensureOpenRouterResponseOk(response);
   const data = (await response.json()) as OpenRouterResponse;
-  const choice = data.choices[0];
-  if (!choice) {
-    throw new Error("OpenRouter returned no choices");
-  }
-  if (choice.finish_reason !== "stop") {
-    const nativeReason = choice.native_finish_reason
-      ? ` (native: ${choice.native_finish_reason})`
-      : "";
-    throw new Error(
-      `OpenRouter completion finished with ${choice.finish_reason ?? "unknown"}${nativeReason}`,
-    );
-  }
-
-  const content = choice.message.content.trim();
-  if (!content) {
-    throw new Error("OpenRouter returned empty content");
-  }
-  return data.usage === undefined
-    ? { text: content }
-    : { text: content, usage: data.usage };
+  return parseOpenRouterGeneration(data);
 }

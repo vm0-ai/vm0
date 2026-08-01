@@ -45,6 +45,10 @@ set -euo pipefail
 BIN_DIR=$1; SVC=$2; GROUP=$3; RUNNER_DIR=$4; GROUP_DIR=$5
 UNIT="vm0-runner-${SVC}.service"
 SESSION_ID="e2e-keepalive-test-session"
+CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
+ISOLATED_CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
+TAMPER_CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
+OVERLAP_CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
 OVERLAP_SUBMIT_PID=""
 OVERLAP_EXEC_PID=""
 
@@ -95,34 +99,37 @@ for _ in $(seq 1 30); do
 done
 [ -n "$INVOCATION_ID" ] || fail "runner invocation ID unavailable"
 
-# Turn 1: submit job with session ID and sandboxReuse flag — creates a marker file in guest
+# Turn 1: submit a thread-bound job with provider session resume — creates a marker file in guest
 echo "--- Turn 1: create marker file ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  --chat-thread-id "$CHAT_THREAD_ID" \
   --session-id "$SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt 'touch /tmp/keepalive-marker && echo turn1-done' \
   || fail "Turn 1 failed"
 
-# Turn 2: submit job with same session ID and flag — should reuse the VM.
+# Turn 2: submit with the same chat thread — should reuse the VM.
 # If VM was reused, the marker file from turn 1 still exists (exit 0).
 # If a new VM was created, the file is missing and test exits non-zero.
 echo "--- Turn 2: verify marker file persists (VM reused) ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  --chat-thread-id "$CHAT_THREAD_ID" \
   --session-id "$SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt 'test -f /tmp/keepalive-marker' \
   || fail "Turn 2: marker file not found — VM was not reused"
 echo "PASS: Turn 2 completed (VM reused, filesystem persisted)"
 
-# Turn 3: submit with a DIFFERENT session — should create a new VM.
-# The marker file must NOT exist in the new VM (session isolation).
-echo "--- Turn 3: different session creates new VM ---"
+# Turn 3: keep the provider session but use a different chat thread — should create a new VM.
+# The marker file must NOT exist in the new VM (thread isolation).
+echo "--- Turn 3: different chat thread creates new VM ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
-  --session-id "different-session" \
+  --chat-thread-id "$ISOLATED_CHAT_THREAD_ID" \
+  --session-id "$SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt 'test ! -f /tmp/keepalive-marker' \
-  || fail "Turn 3: marker file found — session isolation broken"
-echo "PASS: Turn 3 completed (new VM for different session)"
+  || fail "Turn 3: marker file found — chat thread isolation broken"
+echo "PASS: Turn 3 completed (new VM for different chat thread)"
 
 # A privileged guest can stack an unrelated mount over the canonical workspace
 # after a turn starts. Idle admission must reject that sandbox, so the next turn
@@ -130,6 +137,7 @@ echo "PASS: Turn 3 completed (new VM for different session)"
 TAMPER_SESSION_ID="e2e-keepalive-tampered-mount"
 echo "--- Tamper turn 1: replace canonical workspace mount before idle admission ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  --chat-thread-id "$TAMPER_CHAT_THREAD_ID" \
   --session-id "$TAMPER_SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt 'set -eu
@@ -140,6 +148,7 @@ sudo mount -t tmpfs -o size=1m tmpfs /home/user/workspace' \
 
 echo "--- Tamper turn 2: rejected sandbox is replaced with a valid fresh mount ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  --chat-thread-id "$TAMPER_CHAT_THREAD_ID" \
   --session-id "$TAMPER_SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt 'set -eu
@@ -155,6 +164,7 @@ echo "PASS: tampered workspace mount was rejected before reuse"
 OVERLAP_SESSION_ID="e2e-keepalive-overlapping-exec"
 echo "--- Overlap turn 1: hold supervised turn open ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  --chat-thread-id "$OVERLAP_CHAT_THREAD_ID" \
   --session-id "$OVERLAP_SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt 'set -eu
@@ -244,6 +254,7 @@ grep -F 'normal operations busy while preparing park' <<<"$OVERLAP_LOGS" >/dev/n
 
 echo "--- Overlap turn 2: busy sandbox was not reused ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  --chat-thread-id "$OVERLAP_CHAT_THREAD_ID" \
   --session-id "$OVERLAP_SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt 'set -eu

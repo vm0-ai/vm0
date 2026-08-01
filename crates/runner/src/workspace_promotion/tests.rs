@@ -295,16 +295,17 @@ async fn parked_workspace_promotion_unparks_and_freezes_before_publish() {
     assert!(promoted);
     let states = fixture.cache.held_workspace_states().await;
     assert_eq!(states.len(), 1);
-    assert_eq!(states[0].reuse_key, fixture.session_id);
+    assert_eq!(states[0].reuse_key, fixture.reuse_key);
 }
 
 #[tokio::test]
 async fn active_workspace_promotion_exports_session_history_sidecar() {
+    let reuse_key = "thread:active-sidecar-promote";
     let session_id = "sess-active-sidecar-promote";
     let history = br#"{"type":"message","content":"cached"}"#;
     let restored_identity = test_restored_session_identity(session_id, history);
     let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
-        session_id,
+        reuse_key,
         Some(&restored_identity),
     )
     .await;
@@ -382,8 +383,7 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: "vm0/default",
-                reuse_key: Some(session_id),
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(reuse_key),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
             },
@@ -400,11 +400,12 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn active_workspace_promotion_keeps_history_read_failure_warning() {
+    let reuse_key = "thread:active-sidecar-read-failure";
     let session_id = "sess-active-sidecar-read-failure";
     let history = br#"{"type":"message","content":"read failure"}"#;
     let restored_identity = test_restored_session_identity(session_id, history);
     let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
-        session_id,
+        reuse_key,
         Some(&restored_identity),
     )
     .await;
@@ -433,13 +434,14 @@ async fn active_workspace_promotion_keeps_history_read_failure_warning() {
 }
 
 #[tokio::test]
-async fn late_session_sidecar_staging_is_protected_from_gc() {
+async fn session_history_sidecar_staging_is_protected_from_gc() {
+    let reuse_key = "thread:late-sidecar-gc";
     let session_id = "sess-late-sidecar-gc";
     let history = br#"{"type":"message","content":"late cached"}"#;
     let restored_identity = test_restored_session_identity(session_id, history);
-    let fixture = WorkspacePromotionFixture::new_late_session_with_restored_session_identity(
-        session_id,
-        &restored_identity,
+    let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
+        reuse_key,
+        Some(&restored_identity),
     )
     .await;
     let cache = fixture.cache.clone();
@@ -486,8 +488,7 @@ async fn late_session_sidecar_staging_is_protected_from_gc() {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: "vm0/default",
-                reuse_key: Some(session_id),
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(reuse_key),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
             },
@@ -503,13 +504,14 @@ async fn late_session_sidecar_staging_is_protected_from_gc() {
 }
 
 #[tokio::test]
-async fn late_session_sidecar_staging_cleans_source_and_unlocks_when_cancelled() {
+async fn session_history_sidecar_staging_cleans_source_and_unlocks_when_cancelled() {
+    let reuse_key = "thread:late-sidecar-cancelled";
     let session_id = "sess-late-sidecar-cancelled";
     let history = br#"{"type":"message","content":"cancelled"}"#;
     let restored_identity = test_restored_session_identity(session_id, history);
-    let fixture = WorkspacePromotionFixture::new_late_session_with_restored_session_identity(
-        session_id,
-        &restored_identity,
+    let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
+        reuse_key,
+        Some(&restored_identity),
     )
     .await;
     let cache = fixture.cache.clone();
@@ -551,8 +553,7 @@ async fn late_session_sidecar_staging_cleans_source_and_unlocks_when_cancelled()
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: "vm0/default",
-                reuse_key: Some(session_id),
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(reuse_key),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
             },
@@ -563,13 +564,14 @@ async fn late_session_sidecar_staging_cleans_source_and_unlocks_when_cancelled()
 }
 
 #[tokio::test]
-async fn late_session_sidecar_staging_cleans_source_and_unlocks_after_freeze_failure() {
+async fn session_history_sidecar_staging_cleans_source_and_unlocks_after_freeze_failure() {
+    let reuse_key = "thread:late-sidecar-freeze-failure";
     let session_id = "sess-late-sidecar-freeze-failure";
     let history = br#"{"type":"message","content":"freeze"}"#;
     let restored_identity = test_restored_session_identity(session_id, history);
-    let fixture = WorkspacePromotionFixture::new_late_session_with_restored_session_identity(
-        session_id,
-        &restored_identity,
+    let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
+        reuse_key,
+        Some(&restored_identity),
     )
     .await;
     let cache = fixture.cache.clone();
@@ -605,8 +607,7 @@ async fn late_session_sidecar_staging_cleans_source_and_unlocks_after_freeze_fai
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: "vm0/default",
-                reuse_key: Some(session_id),
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(reuse_key),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
             },
@@ -643,7 +644,7 @@ async fn parked_workspace_promotion_unpark_error_skips_cache() {
 async fn parked_workspace_promotion_unpark_error_abandons_consumed_cache_hit() {
     let fixture = WorkspacePromotionFixture::new_from_cache_hit("sess-hit-unpark-error").await;
     let cache = fixture.cache.clone();
-    let session_id = fixture.session_id.clone();
+    let reuse_key = fixture.reuse_key.clone();
     let overrides = Arc::new(MockSandboxOverrides::new());
     overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
         transition: sandbox::SandboxIdleTransition::Unpark,
@@ -661,52 +662,58 @@ async fn parked_workspace_promotion_unpark_error_abandons_consumed_cache_hit() {
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
     assert_eq!(
-        WorkspacePromotionFixture::checkout_result(&cache, &session_id).await,
+        WorkspacePromotionFixture::checkout_result(&cache, &reuse_key).await,
         WorkspaceCacheCheckoutResult::Miss
     );
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn parked_workspace_promotion_warning_hashes_reuse_key() {
-    let reuse_key = "thread:sensitive-promotion-17975";
-    let fixture = WorkspacePromotionFixture::new(reuse_key).await;
-    let overrides = Arc::new(MockSandboxOverrides::new());
-    overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
-        transition: sandbox::SandboxIdleTransition::Unpark,
-        message: "simulated unpark failure".into(),
-    }));
-    let mut sandbox = mock_sandbox_with_overrides(fixture.sandbox_id, Arc::clone(&overrides)).await;
+async fn parked_workspace_promotion_warning_hashes_and_classifies_reuse_key() {
+    for (reuse_key, expected_kind) in [
+        ("thread:sensitive-promotion-17975", "thread"),
+        ("opaque-sensitive-promotion-17975", "other"),
+    ] {
+        let fixture = WorkspacePromotionFixture::new(reuse_key).await;
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+            transition: sandbox::SandboxIdleTransition::Unpark,
+            message: "simulated unpark failure".into(),
+        }));
+        let mut sandbox =
+            mock_sandbox_with_overrides(fixture.sandbox_id, Arc::clone(&overrides)).await;
 
-    let (prepared, events) = capture_promotion_events(prepare_workspace_image_from_parked_sandbox(
-        sandbox.as_mut(),
-        Some(fixture.promotion),
-        "test",
-    ))
-    .await;
+        let (prepared, events) =
+            capture_promotion_events(prepare_workspace_image_from_parked_sandbox(
+                sandbox.as_mut(),
+                Some(fixture.promotion),
+                "test",
+            ))
+            .await;
 
-    assert!(prepared.is_none());
-    let event = captured_event(
-        &events,
-        "workspace image cache promotion skipped because idle sandbox unpark failed",
-    );
-    assert_eq!(
-        event
-            .fields
-            .get("reuse_key_fingerprint")
-            .map(String::as_str),
-        Some(crate::paths::short_digest(reuse_key).as_str())
-    );
-    assert_eq!(
-        event.fields.get("reuse_key_kind").map(String::as_str),
-        Some("thread")
-    );
-    assert!(
-        event
-            .fields
-            .values()
-            .all(|value| !value.contains(reuse_key)),
-        "workspace promotion logs must not contain the raw reuse key"
-    );
+        assert!(prepared.is_none());
+        let event = captured_event(
+            &events,
+            "workspace image cache promotion skipped because idle sandbox unpark failed",
+        );
+        assert_eq!(
+            event
+                .fields
+                .get("reuse_key_fingerprint")
+                .map(String::as_str),
+            Some(crate::paths::short_digest(reuse_key).as_str())
+        );
+        assert_eq!(
+            event.fields.get("reuse_key_kind").map(String::as_str),
+            Some(expected_kind)
+        );
+        assert!(
+            event
+                .fields
+                .values()
+                .all(|value| !value.contains(reuse_key)),
+            "workspace promotion logs must not contain the raw reuse key"
+        );
+    }
 }
 
 #[tokio::test]

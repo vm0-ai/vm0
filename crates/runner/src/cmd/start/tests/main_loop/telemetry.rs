@@ -17,7 +17,7 @@ async fn telemetry_flush_includes_start_loop_claim_phase_spans() {
                 .body_includes("runner_claim_resume_session_validation")
                 .body_includes("runner_claim_device_rate_limits")
                 .body_includes("runner_claim_idle_reuse_lookup")
-                .body_includes("runner_claim_held_session_state_refresh")
+                .body_includes("runner_claim_workspace_cache_state_lookup")
                 .body_includes("runner_claim_active_status_publish")
                 .body_includes("runner_claim_spawn_job_setup")
                 .body_includes("runner_claim_task_schedule_wait");
@@ -61,7 +61,7 @@ async fn telemetry_flush_includes_reuse_hit_claim_phase_spans() {
                 .path("/api/webhooks/agent/telemetry")
                 .body_includes("sandbox_reuse_hit")
                 .body_includes("runner_claim_idle_reuse_lookup")
-                .body_includes("runner_claim_held_session_state_refresh")
+                .body_includes("runner_claim_workspace_cache_state_lookup")
                 .body_includes("runner_claim_idle_unpark")
                 .body_includes("runner_claim_task_schedule_wait");
             then.status(200)

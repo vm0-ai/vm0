@@ -222,6 +222,39 @@ describe("auth tokens", () => {
     );
   });
 
+  it("gates image recognition on both the rollout and run eligibility", () => {
+    const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+    const ineligibleToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      staffOrgId,
+    );
+    const eligibleToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      staffOrgId,
+      undefined,
+      { imageRecognitionAvailable: true },
+    );
+    const rolloutDisabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      staffOrgId,
+      { [FeatureSwitchKey.ZeroImageRecognition]: false },
+      { imageRecognitionAvailable: true },
+    );
+
+    expect(verifyZeroToken(ineligibleToken)?.capabilities).not.toContain(
+      "image-recognition:write",
+    );
+    expect(verifyZeroToken(eligibleToken)?.capabilities).toContain(
+      "image-recognition:write",
+    );
+    expect(verifyZeroToken(rolloutDisabledToken)?.capabilities).not.toContain(
+      "image-recognition:write",
+    );
+  });
+
   it("gates browser capabilities on both the rollout and thread access", () => {
     const defaultToken = generateZeroToken(
       "user_zero",

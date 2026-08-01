@@ -764,7 +764,6 @@ pub(super) async fn prepare_workspace_image(
                 sandbox_id,
                 profile_name,
                 reuse_key,
-                cli_agent_session_id: context.cli_agent_session_id(),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
             },

@@ -8,7 +8,7 @@ use super::support::assert_no_completion_for_run;
 
 use crate::idle_pool::ParkingState;
 use crate::paths::RunnerPaths;
-use crate::workspace_image_cache::SessionWorkspaceCache;
+use crate::workspace_image_cache::WorkspaceImageCache;
 use sandbox_mock::MockLifecycleGate;
 
 fn severe_memory_retention() -> sandbox::SandboxParkOutcome {
@@ -118,7 +118,7 @@ async fn assert_workspace_cache_after_park_cleanup(
     let (mut config, env) =
         mock_run_config_with_overrides(profiles, 8, 32768, 4, Arc::clone(&overrides));
     let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
-    let workspace_cache = SessionWorkspaceCache::shared(
+    let workspace_cache = WorkspaceImageCache::shared(
         runner_paths.clone(),
         &config.paths.home,
         &config.runner.group,
@@ -433,7 +433,7 @@ async fn assert_workspace_cache_after_late_cancellation(
     let (mut config, env) =
         mock_run_config_with_overrides(profiles, 8, 32768, 4, Arc::clone(&overrides));
     let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
-    let workspace_cache = SessionWorkspaceCache::shared(
+    let workspace_cache = WorkspaceImageCache::shared(
         runner_paths.clone(),
         &config.paths.home,
         &config.runner.group,
@@ -608,7 +608,7 @@ async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
     wait_budget_count(&budget, 1, Duration::from_secs(2)).await;
     let pool = idle_pool.lock().await;
     assert_eq!(pool.len(), 1);
-    assert_eq!(pool.held_sessions(), vec!["sess-existing"]);
+    assert_eq!(pool.held_reuse_keys(), vec!["sess-existing"]);
     drop(pool);
 
     shutdown(&env, run_handle).await;

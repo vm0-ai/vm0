@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::paths::RunnerPaths;
 use crate::types::{SandboxReuseResult, SessionAffinityResource};
-use crate::workspace_image_cache::SessionWorkspaceCache;
+use crate::workspace_image_cache::WorkspaceImageCache;
 
 const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
 
@@ -297,7 +297,7 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     wait_cancel_token_removed(&env.cancel_tokens, conflict_run_id, Duration::from_secs(5)).await;
     assert_eq!(
-        idle_pool.lock().await.held_sessions(),
+        idle_pool.lock().await.held_reuse_keys(),
         vec![session_id.to_string()],
         "claim conflict should restore the exact idle reservation"
     );
@@ -348,7 +348,7 @@ async fn reusable_affinity_reservation_is_restored_after_claim_conflict() {
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
     assert_eq!(
-        idle_pool.lock().await.held_sessions(),
+        idle_pool.lock().await.held_reuse_keys(),
         vec![session_id.to_string()],
         "lost claim should restore the generic reusable reservation"
     );
@@ -444,12 +444,11 @@ async fn generation_protected_different_idle_sandbox_defers_before_claim() {
     );
     assert_eq!(env.handle.deferred_poll_delays().len(), 1);
     let pool = idle_pool.lock().await;
-    assert_eq!(pool.held_sessions(), vec![session_id.to_string()]);
+    assert_eq!(pool.held_reuse_keys(), vec![session_id.to_string()]);
     assert_eq!(
         pool.held_session_states()[0]
             .reusable_sandbox
-            .as_ref()
-            .and_then(|sandbox| sandbox.history_generation_run_id),
+            .history_generation_run_id,
         Some(held_generation_run_id),
         "the different generation must remain available for fallback after expiry"
     );
@@ -485,7 +484,7 @@ async fn affinity_protected_candidate_without_local_session_defers_before_claim(
 
     assert!(
         env.handle.claim_candidates().is_empty(),
-        "runner must not claim a protected same-session candidate unless it holds the session"
+        "runner must not claim a protected same-reuse-key candidate without local reusable state"
     );
     assert_eq!(
         env.handle.deferred_poll_delays().len(),
@@ -559,7 +558,7 @@ async fn affinity_protected_candidate_without_resource_defers_even_when_session_
     );
     assert_eq!(env.handle.deferred_poll_delays().len(), 1);
     assert_eq!(
-        idle_pool.lock().await.held_sessions(),
+        idle_pool.lock().await.held_reuse_keys(),
         vec![session_id.to_string()]
     );
 
@@ -778,13 +777,14 @@ async fn expired_generation_protection_preserves_local_session_claim() {
 
 #[tokio::test]
 async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspace() {
-    let session_id = "sess-cache-local";
+    let reuse_key = "thread:cache-local";
+    let provider_session_id = "provider-session-cache-local";
     let image_size_bytes = 1024 * 1024;
     let mut profiles = test_profiles();
     profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 1;
     let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
     let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
-    let workspace_cache = SessionWorkspaceCache::shared(
+    let workspace_cache = WorkspaceImageCache::shared(
         runner_paths.clone(),
         &config.paths.home,
         &config.runner.group,
@@ -792,15 +792,15 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
     seed_workspace_cache_state(
         &workspace_cache,
         &runner_paths,
-        session_id,
+        reuse_key,
         "vm0/default",
         image_size_bytes,
     )
     .await;
-    let cache_key = crate::paths::scoped_session_workspace_cache_key(
+    let cache_key = crate::paths::scoped_workspace_image_cache_key(
         &config.runner.group,
         "vm0/default",
-        session_id,
+        reuse_key,
         CANONICAL_WORKING_DIR,
         image_size_bytes,
     );
@@ -817,15 +817,15 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     let reusable_protected_run_id = RunId::new_v4();
-    env.provider.set_claim_result(
-        reusable_protected_run_id,
-        Some(context_with_session(reusable_protected_run_id, session_id)),
-    );
+    let mut reusable_context = context_with_session(reusable_protected_run_id, provider_session_id);
+    reusable_context.reuse_key = Some(reuse_key.into());
+    env.provider
+        .set_claim_result(reusable_protected_run_id, Some(reusable_context));
     env.handle
         .discover_tx
         .send(reusable_affinity_protected_candidate(
             reusable_protected_run_id,
-            session_id,
+            reuse_key,
         ))
         .unwrap();
     wait_discover_entered(&env, Duration::from_secs(5)).await;
@@ -837,18 +837,16 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
 
     tokio::fs::remove_dir_all(&cache_entry_dir).await.unwrap();
     let generation_protected_run_id = RunId::new_v4();
-    env.provider.set_claim_result(
-        generation_protected_run_id,
-        Some(context_with_session(
-            generation_protected_run_id,
-            session_id,
-        )),
-    );
+    let mut generation_context =
+        context_with_session(generation_protected_run_id, provider_session_id);
+    generation_context.reuse_key = Some(reuse_key.into());
+    env.provider
+        .set_claim_result(generation_protected_run_id, Some(generation_context));
     env.handle
         .discover_tx
         .send(generation_affinity_protected_candidate(
             generation_protected_run_id,
-            session_id,
+            reuse_key,
             RunId::new_v4(),
         ))
         .unwrap();
@@ -860,12 +858,14 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
     assert_eq!(env.handle.deferred_poll_delays().len(), 2);
 
     let run_id = RunId::new_v4();
+    let mut workspace_context = context_with_session(run_id, provider_session_id);
+    workspace_context.reuse_key = Some(reuse_key.into());
     env.provider
-        .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
+        .set_claim_result(run_id, Some(workspace_context));
     env.handle
         .discover_tx
         .send(
-            workspace_affinity_protected_candidate(run_id, session_id)
+            workspace_affinity_protected_candidate(run_id, reuse_key)
                 .with_history_generation_run_id(Some(RunId::new_v4())),
         )
         .unwrap();
@@ -899,13 +899,14 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
 
 #[tokio::test]
 async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
-    let session_id = "sess-cache-saturated";
+    let reuse_key = "thread:cache-saturated";
+    let provider_session_id = "provider-session-cache-saturated";
     let image_size_bytes = 1024 * 1024;
     let mut profiles = test_profiles();
     profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 1;
     let (mut config, env) = mock_run_config(profiles, 2, 4096, 1);
     let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
-    let workspace_cache = SessionWorkspaceCache::shared(
+    let workspace_cache = WorkspaceImageCache::shared(
         runner_paths.clone(),
         &config.paths.home,
         &config.runner.group,
@@ -913,7 +914,7 @@ async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
     seed_workspace_cache_state(
         &workspace_cache,
         &runner_paths,
-        session_id,
+        reuse_key,
         "vm0/default",
         image_size_bytes,
     )
@@ -937,11 +938,12 @@ async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     let run_id = RunId::new_v4();
-    env.provider
-        .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
+    let mut context = context_with_session(run_id, provider_session_id);
+    context.reuse_key = Some(reuse_key.into());
+    env.provider.set_claim_result(run_id, Some(context));
     env.handle
         .discover_tx
-        .send(workspace_affinity_protected_candidate(run_id, session_id))
+        .send(workspace_affinity_protected_candidate(run_id, reuse_key))
         .unwrap();
 
     wait_discover_entered(&env, Duration::from_secs(5)).await;
@@ -955,7 +957,7 @@ async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
         "workspace-selected work should defer when fresh budget is unavailable"
     );
     assert_eq!(
-        idle_pool.lock().await.held_sessions(),
+        idle_pool.lock().await.held_reuse_keys(),
         vec!["sess-unrelated-idle".to_string()],
         "affinity deferral must happen before candidate-aware reclamation"
     );
@@ -1149,7 +1151,7 @@ async fn duplicate_discovery_deduplicated() {
         .unwrap();
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     assert_eq!(
-        idle_pool.lock().await.held_sessions(),
+        idle_pool.lock().await.held_reuse_keys(),
         vec![session_id.to_string()],
         "duplicate rejection should restore the reusable reservation"
     );

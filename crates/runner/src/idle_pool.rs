@@ -21,7 +21,7 @@ use crate::status::IdleVm;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::{HeldSessionState, ReusableSandboxState};
 use crate::workspace_image_cache::{
-    SessionWorkspaceCache, WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityMismatch,
+    WorkspaceImageCache, WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityMismatch,
     WorkspaceImagePromotionIdentityRequest,
 };
 use crate::workspace_promotion::{
@@ -131,7 +131,7 @@ impl Default for ParkingGate {
     }
 }
 
-/// One-shot request to transition an active sandbox into same-session idle
+/// One-shot request to transition an active sandbox into same-reuse-key idle
 /// ownership.
 #[must_use = "idle park requests own active sandbox and budget; call park_for_idle"]
 pub(crate) struct IdleParkRequest {
@@ -230,7 +230,7 @@ enum WorkspacePromotionPolicy {
 /// Active-owned sandbox after `Sandbox::park()` succeeds, before idle-pool
 /// ownership is accepted.
 ///
-/// This state proves only same-session idle park. It does not imply clean
+/// This state proves only same-reuse-key idle park. It does not imply clean
 /// cross-run reuse, snapshot readiness, or any broader VM correctness.
 #[must_use = "parked idle candidates must be accepted by the idle pool or explicitly destroyed"]
 pub struct ParkedIdleCandidate {
@@ -958,7 +958,7 @@ impl IdleEntry {
 
     pub fn validate_workspace_promotion_identity(
         &self,
-        cache: &SessionWorkspaceCache,
+        cache: &WorkspaceImageCache,
         working_dir: &str,
         image_size_bytes: u64,
     ) -> Result<(), WorkspaceImagePromotionIdentityMismatch> {
@@ -1018,7 +1018,7 @@ impl ReservedIdleSandbox {
 
     pub fn validate_workspace_promotion_identity(
         &self,
-        cache: &SessionWorkspaceCache,
+        cache: &WorkspaceImageCache,
         working_dir: &str,
         image_size_bytes: u64,
     ) -> Result<(), WorkspaceImagePromotionIdentityMismatch> {
@@ -1043,7 +1043,7 @@ impl ReservedIdleSandbox {
 /// Pool of idle sandboxes keyed by reuse key.
 ///
 /// After a job completes successfully, its sandbox can be parked here
-/// instead of being destroyed. A subsequent job for the same session
+/// instead of being destroyed. A subsequent job for the same reuse key
 /// can reuse the parked sandbox, skipping VM creation and startup.
 pub struct IdlePool {
     entries: HashMap<String, IdleEntry>,
@@ -1273,10 +1273,10 @@ impl IdlePool {
                         session_id: entry.cli_agent_session_id().to_owned(),
                         reuse_key: reuse_key.clone(),
                         last_completed_at: last_completed_at.clone(),
-                        reusable_sandbox: Some(ReusableSandboxState {
+                        reusable_sandbox: ReusableSandboxState {
                             profile: entry.metadata.profile_name.clone(),
                             history_generation_run_id: entry.metadata.history_generation_run_id,
-                        }),
+                        },
                     })
             })
             .collect();
@@ -1285,10 +1285,10 @@ impl IdlePool {
     }
 
     #[cfg(test)]
-    pub fn held_sessions(&self) -> Vec<String> {
-        let mut sessions: Vec<String> = self.entries.keys().cloned().collect();
-        sessions.sort_unstable();
-        sessions
+    pub fn held_reuse_keys(&self) -> Vec<String> {
+        let mut reuse_keys: Vec<String> = self.entries.keys().cloned().collect();
+        reuse_keys.sort_unstable();
+        reuse_keys
     }
 
     /// Number of idle VMs in the pool.
@@ -2098,13 +2098,13 @@ mod tests {
     }
 
     #[test]
-    fn held_sessions() {
+    fn held_reuse_keys() {
         let mut pool = IdlePool::new(pool_config(0));
         let _ = pool.park(make_candidate_for("s1", 2, 2048));
         let _ = pool.park(make_candidate_for("s2", 2, 2048));
 
-        let sessions = pool.held_sessions();
-        assert_eq!(sessions, vec!["s1", "s2"]);
+        let reuse_keys = pool.held_reuse_keys();
+        assert_eq!(reuse_keys, vec!["s1", "s2"]);
     }
 
     #[test]
@@ -2131,19 +2131,19 @@ mod tests {
                     session_id: "sess-a".to_string(),
                     reuse_key: "sess-a".to_string(),
                     last_completed_at: "2026-05-28T00:00:00.000Z".to_string(),
-                    reusable_sandbox: Some(ReusableSandboxState {
+                    reusable_sandbox: ReusableSandboxState {
                         profile: "vm0/default".to_string(),
                         history_generation_run_id: Some(history_generation_run_id),
-                    }),
+                    },
                 },
                 HeldSessionState {
                     session_id: "sess-b".to_string(),
                     reuse_key: "sess-b".to_string(),
                     last_completed_at: "2026-05-28T00:00:01.000Z".to_string(),
-                    reusable_sandbox: Some(ReusableSandboxState {
+                    reusable_sandbox: ReusableSandboxState {
                         profile: "vm0/default".to_string(),
                         history_generation_run_id: None,
-                    }),
+                    },
                 },
             ],
         );

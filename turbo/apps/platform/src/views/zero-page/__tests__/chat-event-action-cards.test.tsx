@@ -2618,7 +2618,7 @@ describe("chat event action cards", () => {
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
-  it("completes catalog-visible connectors without a bundled type", async () => {
+  it("completes catalog-visible connectors without a bundled definition", async () => {
     const user = userEvent.setup({ delay: null });
     const connectorAuthorizeUrl = `${window.location.origin}/connectors/future-connector/authorize?agentId=${AGENT_ID}`;
     let connected = false;

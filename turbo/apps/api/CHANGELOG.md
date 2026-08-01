@@ -1,5 +1,89 @@
 # Changelog
 
+## [1.364.3](https://github.com/vm0-ai/vm0/compare/api-v1.364.2...api-v1.364.3) (2026-08-01)
+
+
+### Refactoring
+
+* claim teams launch context ([#24475](https://github.com/vm0-ai/vm0/issues/24475)) ([75ed773](https://github.com/vm0-ai/vm0/commit/75ed773b61f040a276107741348fadd92870b775))
+
+## [1.364.2](https://github.com/vm0-ai/vm0/compare/api-v1.364.1...api-v1.364.2) (2026-08-01)
+
+
+### Refactoring
+
+* dual-write teams launch context ([#24471](https://github.com/vm0-ai/vm0/issues/24471)) ([78bb591](https://github.com/vm0-ai/vm0/commit/78bb591f1014cfc52411ddb841ff474689a97bbd))
+
+
+### Performance Improvements
+
+* **api:** attribute existing thread resolution latency ([#24467](https://github.com/vm0-ai/vm0/issues/24467)) ([696094d](https://github.com/vm0-ai/vm0/commit/696094de291ab4ed2155283c7351443244edec7e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.2
+    * @vm0/connectors bumped to 1.202.4
+    * @vm0/core bumped to 8.502.2
+    * @vm0/db bumped to 1.160.6
+
+## [1.364.1](https://github.com/vm0-ai/vm0/compare/api-v1.364.0...api-v1.364.1) (2026-08-01)
+
+
+### Refactoring
+
+* assemble slack launch prompts at claim ([#24435](https://github.com/vm0-ai/vm0/issues/24435)) ([a9b89b7](https://github.com/vm0-ai/vm0/commit/a9b89b71385641a76b5238fd88fab0ebc1bed31b))
+* claim feishu launch context ([#24461](https://github.com/vm0-ai/vm0/issues/24461)) ([624554d](https://github.com/vm0-ai/vm0/commit/624554dd2525ea9217559f5b156f667f7904ede6))
+* **connectors:** finish slug terminology cleanup ([#24437](https://github.com/vm0-ai/vm0/issues/24437)) ([52f9935](https://github.com/vm0-ai/vm0/commit/52f99350a1d1e171054d8751e8da8b20b6f0ee15))
+* **connectors:** retire compatibility sweeper ([#24433](https://github.com/vm0-ai/vm0/issues/24433)) ([863e6c4](https://github.com/vm0-ai/vm0/commit/863e6c4757198299a34adedcd9f75f836d75a93c))
+* dual-write feishu launch context ([#24455](https://github.com/vm0-ai/vm0/issues/24455)) ([57a0d59](https://github.com/vm0-ai/vm0/commit/57a0d599e71f939f08d7b96dfa95687c4446acef))
+* dual-write slack launch context ([#24424](https://github.com/vm0-ai/vm0/issues/24424)) ([4c3c6e4](https://github.com/vm0-ai/vm0/commit/4c3c6e43806bb3f1dbd0043b9d6bceff96f4ef08))
+* make chat threads the sole runner reuse key ([#24440](https://github.com/vm0-ai/vm0/issues/24440)) ([61dc78f](https://github.com/vm0-ai/vm0/commit/61dc78fd9b32e0a154285e12fc7f6434cc86122c))
+* remove slack launch params fallback ([#24447](https://github.com/vm0-ai/vm0/issues/24447)) ([8bd98fc](https://github.com/vm0-ai/vm0/commit/8bd98fc5b4b78211c92bc1cc4a2b28033bf85758))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.1
+    * @vm0/core bumped to 8.502.1
+    * @vm0/db bumped to 1.160.5
+
+## [1.364.0](https://github.com/vm0-ai/vm0/compare/api-v1.363.2...api-v1.364.0) (2026-08-01)
+
+
+### Features
+
+* add conditional image recognition fallback ([#24390](https://github.com/vm0-ai/vm0/issues/24390)) ([376a6fa](https://github.com/vm0-ai/vm0/commit/376a6fa3068e6d3033592b7702dbe8872dc51da4))
+
+
+### Bug Fixes
+
+* trigger api platform and runner releases ([#24389](https://github.com/vm0-ai/vm0/issues/24389)) ([5e32b07](https://github.com/vm0-ai/vm0/commit/5e32b07956572689916ff1348deab37be627ab0f))
+
+
+### Refactoring
+
+* add held workspace state persistence ([#24398](https://github.com/vm0-ai/vm0/issues/24398)) ([da44913](https://github.com/vm0-ai/vm0/commit/da44913e105f9c9aaf62c5aebca5f5e7952eafdf))
+* **api:** stop selecting legacy run lifecycle column ([#24414](https://github.com/vm0-ai/vm0/issues/24414)) ([d9e27a7](https://github.com/vm0-ai/vm0/commit/d9e27a7a866f3532f8376228eef24e37df1347ae))
+
+
+### Performance Improvements
+
+* **api:** delete usage sources after rollup ([#24403](https://github.com/vm0-ai/vm0/issues/24403)) ([930e331](https://github.com/vm0-ai/vm0/commit/930e3314a554328905053f65a8becf6c78281f8e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.0
+    * @vm0/core bumped to 8.502.0
+    * @vm0/db bumped to 1.160.4
+
 ## [1.363.2](https://github.com/vm0-ai/vm0/compare/api-v1.363.1...api-v1.363.2) (2026-08-01)
 
 

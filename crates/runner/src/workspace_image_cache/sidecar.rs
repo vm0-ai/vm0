@@ -21,9 +21,8 @@ use super::types::{
     WorkspaceSessionHistorySidecarPromotionSource, WorkspaceSessionHistorySidecarPublication,
     WorkspaceSessionHistorySidecarRepresentation,
 };
-use super::{SessionWorkspaceCache, entry::CacheEntryPaths};
+use super::{WorkspaceImageCache, entry::CacheEntryPaths};
 
-const LEGACY_SESSION_HISTORY_SIDECAR_FORMAT_VERSION: u8 = 1;
 const SESSION_HISTORY_SIDECAR_FORMAT_VERSION: u8 = 2;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -37,7 +36,7 @@ impl WorkspaceSessionHistorySidecarBodySlot {
     const ALL: [Self; 2] = [Self::First, Self::Second];
 
     fn next(metadata: Option<&WorkspaceSessionHistorySidecarMetadata>) -> Self {
-        match metadata.and_then(|metadata| metadata.body_slot) {
+        match metadata.map(|metadata| metadata.body_slot) {
             Some(Self::First) => Self::Second,
             Some(Self::Second) | None => Self::First,
         }
@@ -51,14 +50,9 @@ impl WorkspaceSessionHistorySidecarBodySlot {
     }
 }
 
-fn session_history_sidecar_body_paths(paths: &CacheEntryPaths) -> [std::path::PathBuf; 3] {
-    let [first_body_path, second_body_path] = WorkspaceSessionHistorySidecarBodySlot::ALL
-        .map(|body_slot| paths.entry_dir().join(body_slot.file_name()));
-    [
-        paths.session_history_sidecar().to_path_buf(),
-        first_body_path,
-        second_body_path,
-    ]
+fn session_history_sidecar_body_paths(paths: &CacheEntryPaths) -> [std::path::PathBuf; 2] {
+    WorkspaceSessionHistorySidecarBodySlot::ALL
+        .map(|body_slot| paths.entry_dir().join(body_slot.file_name()))
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -73,8 +67,7 @@ struct WorkspaceSessionHistorySidecarMetadata {
     representation: WorkspaceSessionHistorySidecarRepresentation,
     encoded_size: u64,
     body_file: WorkspaceImageFileIdentity,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    body_slot: Option<WorkspaceSessionHistorySidecarBodySlot>,
+    body_slot: WorkspaceSessionHistorySidecarBodySlot,
 }
 
 impl WorkspaceSessionHistorySidecarMetadata {
@@ -100,32 +93,19 @@ impl WorkspaceSessionHistorySidecarMetadata {
             representation: source.representation,
             encoded_size: source.encoded_size,
             body_file: WorkspaceImageFileIdentity::from_metadata(body_metadata),
-            body_slot: Some(body_slot),
+            body_slot,
         })
     }
 
-    fn body_path(&self, paths: &CacheEntryPaths) -> Option<std::path::PathBuf> {
-        match (self.version, self.body_slot) {
-            (LEGACY_SESSION_HISTORY_SIDECAR_FORMAT_VERSION, None) => {
-                Some(paths.session_history_sidecar().to_path_buf())
-            }
-            (SESSION_HISTORY_SIDECAR_FORMAT_VERSION, Some(body_slot)) => {
-                Some(paths.entry_dir().join(body_slot.file_name()))
-            }
-            _ => None,
-        }
+    fn body_path(&self, paths: &CacheEntryPaths) -> std::path::PathBuf {
+        paths.entry_dir().join(self.body_slot.file_name())
     }
 
     fn validate_for_request(
         &self,
         expected: &RestoredSessionIdentity,
     ) -> Result<(), WorkspaceSessionHistorySidecarMiss> {
-        let supported_format = match self.version {
-            LEGACY_SESSION_HISTORY_SIDECAR_FORMAT_VERSION => self.body_slot.is_none(),
-            SESSION_HISTORY_SIDECAR_FORMAT_VERSION => self.body_slot.is_some(),
-            _ => false,
-        };
-        if !supported_format {
+        if self.version != SESSION_HISTORY_SIDECAR_FORMAT_VERSION {
             return Err(WorkspaceSessionHistorySidecarMiss::InvalidMetadata);
         }
         if self.encoded_size == 0 || self.encoded_size > RESUME_SESSION_HISTORY_MAX_BYTES {
@@ -170,7 +150,7 @@ impl WorkspaceSessionHistorySidecarMetadata {
     }
 }
 
-impl SessionWorkspaceCache {
+impl WorkspaceImageCache {
     pub(super) async fn probe_session_history_sidecar(
         &self,
         cache_key: &str,
@@ -181,9 +161,7 @@ impl SessionWorkspaceCache {
             .read_session_history_sidecar_metadata(paths.session_history_sidecar_metadata())
             .await?;
         metadata.validate_for_request(expected)?;
-        let body_path = metadata
-            .body_path(&paths)
-            .ok_or(WorkspaceSessionHistorySidecarMiss::InvalidMetadata)?;
+        let body_path = metadata.body_path(&paths);
         let body_metadata = fs::symlink_metadata(&body_path).await.map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 WorkspaceSessionHistorySidecarMiss::BodyMissing
@@ -275,8 +253,7 @@ impl SessionWorkspaceCache {
             return Ok(());
         };
         ensure_workspace_cache_entry_dir(paths.entry_dir()).await?;
-        let tmp_metadata_path =
-            self.session_workspace_cache_tmp_sidecar_metadata(cache_key, run_id);
+        let tmp_metadata_path = self.workspace_image_cache_tmp_sidecar_metadata(cache_key, run_id);
         let sidecar_metadata_path = paths.session_history_sidecar_metadata();
         let sidecar_body_path = paths.entry_dir().join(body_slot.file_name());
         let _ = remove_workspace_cache_path_if_exists(&tmp_metadata_path).await;
@@ -310,13 +287,10 @@ impl SessionWorkspaceCache {
         let paths = self.entry_paths(cache_key);
         let metadata_result =
             remove_workspace_cache_path_if_exists(paths.session_history_sidecar_metadata()).await;
-        let [legacy_body_path, first_body_path, second_body_path] =
-            session_history_sidecar_body_paths(&paths);
-        let legacy_body_result = remove_workspace_cache_path_if_exists(&legacy_body_path).await;
+        let [first_body_path, second_body_path] = session_history_sidecar_body_paths(&paths);
         let first_body_result = remove_workspace_cache_path_if_exists(&first_body_path).await;
         let second_body_result = remove_workspace_cache_path_if_exists(&second_body_path).await;
         metadata_result?;
-        legacy_body_result?;
         first_body_result?;
         second_body_result?;
         Ok(())

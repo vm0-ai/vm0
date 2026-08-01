@@ -38,7 +38,6 @@ import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import {
   addFeishuThinkingReaction,
-  buildFeishuSystemPrompt,
   dispatchConnectedFeishuCommand$,
   loadFeishuConversationHistory,
   markFeishuMessageReceived,
@@ -243,6 +242,65 @@ interface PersistedCanonicalFeishuIngress {
   readonly receivedAt: Date;
 }
 
+interface CanonicalFeishuLaunchContext {
+  readonly conversationHistory: string;
+  readonly messageText: string;
+  readonly messageFiles: {
+    readonly fileId: string;
+    readonly messageId: string;
+    readonly fileKey: string;
+    readonly type: "file" | "image";
+  }[];
+  readonly chatType: "group" | "p2p" | "topic_group";
+  readonly tenantKey: string;
+  readonly chatId: string;
+  readonly messageId: string;
+  readonly threadId: string;
+  readonly replyInThread: boolean;
+  readonly reactionId: string | null;
+  readonly senderOpenId: string;
+  readonly connectionId: string;
+  readonly installationId: string;
+}
+
+function canonicalFeishuLaunchContext(args: {
+  readonly message: FeishuInboundMessage;
+  readonly connectionId: string;
+  readonly reactionId: string | undefined;
+  readonly conversationHistory: string;
+  readonly files: readonly FeishuPromptFile[];
+}): CanonicalFeishuLaunchContext {
+  return {
+    conversationHistory: args.conversationHistory,
+    messageText: args.message.text,
+    messageFiles: [
+      ...(args.message.file ? [args.message.file] : []),
+      ...args.files,
+    ].map((file) => {
+      return {
+        fileId: file.fileId,
+        messageId: file.messageId,
+        fileKey: file.fileKey,
+        type: file.type,
+      };
+    }),
+    chatType: args.message.chatType,
+    tenantKey: args.message.tenantKey,
+    chatId: args.message.chatId,
+    messageId: args.message.messageId,
+    threadId:
+      args.message.threadId ??
+      args.message.rootId ??
+      args.message.parentId ??
+      args.message.messageId,
+    replyInThread: shouldReplyInFeishuThread(args.message),
+    reactionId: args.reactionId ?? null,
+    senderOpenId: args.message.openId,
+    connectionId: args.connectionId,
+    installationId: args.message.installationId,
+  };
+}
+
 function feishuInboundUserMessage(
   message: FeishuInboundMessage,
   chatOpenUrl: string,
@@ -272,11 +330,10 @@ async function persistCanonicalFeishuIngress(args: {
   readonly agentId: string;
   readonly selectedModel: string | null;
   readonly reactionId: string | undefined;
-  readonly files: readonly FeishuPromptFile[];
-  readonly appendSystemPrompt: string;
+  readonly launchContext: CanonicalFeishuLaunchContext;
   readonly signal: AbortSignal;
 }): Promise<PersistedCanonicalFeishuIngress> {
-  const threadId = canonicalThreadId({
+  const routeThreadId = canonicalThreadId({
     message: args.message,
     agentId: args.agentId,
     selectedModel: args.selectedModel,
@@ -284,7 +341,7 @@ async function persistCanonicalFeishuIngress(args: {
   const route = await ensureFeishuChatThreadRoute(args.db, {
     connectionId: args.connection.id,
     chatId: args.message.chatId,
-    threadId,
+    threadId: routeThreadId,
     userId: args.connection.vm0UserId,
     orgId: args.installation.orgId,
     agentComposeId: args.agentId,
@@ -296,32 +353,6 @@ async function persistCanonicalFeishuIngress(args: {
   const encryptedParams = await encryptQueuedUserMessageRunParams(
     {
       version: 1,
-      prompt: args.message.text,
-      appendSystemPrompt: args.appendSystemPrompt,
-      feishuDelivery: {
-        installationId: args.message.installationId,
-        connectionId: args.connection.id,
-        chatId: args.message.chatId,
-        messageId: args.message.messageId,
-        threadId,
-        replyInThread: shouldReplyInFeishuThread(args.message),
-        reactionId: args.reactionId,
-        files: [
-          ...(args.message.file ? [args.message.file] : []),
-          ...args.files,
-        ].map((file) => {
-          return {
-            fileId: file.fileId,
-            messageId: file.messageId,
-            fileKey: file.fileKey,
-            type: file.type,
-          };
-        }),
-      },
-      userInfoExtras: {
-        feishuDisplayName: args.connection.feishuUserName ?? undefined,
-        feishuOpenId: args.message.openId,
-      },
     },
     {
       orgId: args.installation.orgId,
@@ -344,6 +375,7 @@ async function persistCanonicalFeishuIngress(args: {
         encryptedParams,
         feishuContext: {
           chatOpenUrl,
+          ...args.launchContext,
         },
         createdAt: args.ingress.createdAt,
       },
@@ -541,10 +573,12 @@ async function processClaimedIngress(args: {
     agentId: effectiveAgent.agent.id,
     selectedModel,
     reactionId,
-    files: history.files,
-    appendSystemPrompt: buildFeishuSystemPrompt({
+    launchContext: canonicalFeishuLaunchContext({
       message,
-      history: history.text,
+      connectionId: connection.id,
+      reactionId,
+      conversationHistory: history.text,
+      files: history.files,
     }),
     signal: args.signal,
   });

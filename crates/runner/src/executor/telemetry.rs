@@ -46,8 +46,7 @@ impl RunnerPreSpawnPhase {
             }
             Self::DeviceRateLimits => "runner_claim_device_rate_limits",
             Self::IdleReuseLookup => "runner_claim_idle_reuse_lookup",
-            // Keep the established action type stable for existing telemetry consumers.
-            Self::WorkspaceCacheStateLookup => "runner_claim_held_session_state_refresh",
+            Self::WorkspaceCacheStateLookup => "runner_claim_workspace_cache_state_lookup",
             Self::WorkspacePromotionValidation => "runner_claim_workspace_promotion_validation",
             Self::IdleUnpark => "runner_claim_idle_unpark",
             Self::ActiveStatusPublish => "runner_claim_active_status_publish",
@@ -223,8 +222,7 @@ pub(super) fn record_workspace_cache_result(
     let action_type = match result {
         WorkspaceCacheCheckoutResult::Hit => "workspace_image_cache_hit",
         WorkspaceCacheCheckoutResult::Miss => "workspace_image_cache_miss",
-        // Keep the established action type stable for existing telemetry consumers.
-        WorkspaceCacheCheckoutResult::NoReuseKey => "workspace_image_cache_no_session",
+        WorkspaceCacheCheckoutResult::NoReuseKey => "workspace_image_cache_no_reuse_key",
         WorkspaceCacheCheckoutResult::InvalidWorkingDir => {
             "workspace_image_cache_invalid_working_dir"
         }

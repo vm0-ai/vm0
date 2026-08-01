@@ -49,7 +49,6 @@ import {
   deleteApiTestConnectorCatalogCompatibility,
   deleteApiTestConnectorCatalogCompatibilityEvaluation,
   invalidateApiTestConnectorCatalogCompatibility,
-  insertApiTestLegacyConnectorCatalogCompatibilityEvaluation,
   mockApiTestConnectorProviderConfiguration,
   readApiTestConnectorCatalogCompatibilityEvaluations,
   readApiTestConnectorCatalogValidationAuthority,
@@ -105,7 +104,6 @@ const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
 const EXPECTED_CAPABILITY_DIGEST =
   "sha256:f28faa130eeea8dbc27f816003b6fe162dc1792dd27f5e9173856c5bedb7eea7";
-const DRAINING_WRITER_CAPABILITY_DIGEST = `sha256:${"d".repeat(64)}`;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
@@ -5074,39 +5072,7 @@ describe("connector catalog executable compatibility", () => {
     expect(evaluation?.payload).toStrictEqual({
       filteredAuthMethods: expectedMethods,
     });
-    expect(JSON.stringify(evaluation?.payload)).not.toContain("connectorRef");
     expect(wireMethods).toStrictEqual(expectedMethods);
-  });
-
-  it("removes a draining writer array on current-authority reconciliation", async () => {
-    configureSource();
-    mockApiTestConnectorProviderConfiguration();
-    const release = buildRelease({
-      version: "2026-07-31.draining-writer-evaluation",
-    });
-    serveObjects(catalogObjects([release], release));
-    await syncCatalog();
-    const beforeLegacyWrite =
-      await readApiTestConnectorCatalogCompatibilityEvaluations();
-    expect(beforeLegacyWrite).toHaveLength(1);
-
-    await insertApiTestLegacyConnectorCatalogCompatibilityEvaluation(
-      DRAINING_WRITER_CAPABILITY_DIGEST,
-    );
-    const afterLegacyWrite =
-      await readApiTestConnectorCatalogCompatibilityEvaluations();
-    expect(afterLegacyWrite).toHaveLength(2);
-    expect(
-      afterLegacyWrite.filter(({ payload }) => {
-        return Array.isArray(payload);
-      }),
-    ).toHaveLength(1);
-
-    mockNow(new Date("2026-07-31T08:01:00.000Z"));
-    expect((await syncCatalog()).body.outcome).toBe("unchanged");
-    await expect(
-      readApiTestConnectorCatalogCompatibilityEvaluations(),
-    ).resolves.toStrictEqual(beforeLegacyWrite);
   });
 
   it("fails closed and reconciles a missing compatibility evaluation", async () => {

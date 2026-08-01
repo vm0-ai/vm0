@@ -20,9 +20,7 @@ use super::metadata::{
 };
 use super::path_safety::is_safe_guest_working_dir;
 use super::types::{CacheBudget, FsStats};
-use super::{
-    CACHE_FORMAT_VERSION, CACHE_KEY_VERSION, SessionWorkspaceCache, WORKSPACE_DRIVE_LAYOUT,
-};
+use super::{CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceImageCache};
 
 pub(super) struct GcCandidate {
     pub(super) cache_key: String,
@@ -81,7 +79,7 @@ pub(super) fn gc_budget_satisfied(
                 >= budget.min_free_bytes)
 }
 
-impl SessionWorkspaceCache {
+impl WorkspaceImageCache {
     pub(crate) async fn gc(&self, dry_run: bool) -> RunnerResult<u64> {
         let _capacity_lock = crate::lock::acquire(self.capacity_lock_path()).await?;
         self.gc_locked(dry_run).await
@@ -146,8 +144,7 @@ impl SessionWorkspaceCache {
                     "[dry-run] would delete workspace image cache entry"
                 );
             } else if let Err(e) =
-                fs::remove_dir_all(self.session_workspace_cache_entry_dir(&candidate.cache_key))
-                    .await
+                fs::remove_dir_all(self.workspace_image_cache_entry_dir(&candidate.cache_key)).await
             {
                 warn!(
                     cache_key = candidate.cache_key,
@@ -204,7 +201,7 @@ impl SessionWorkspaceCache {
         entry: &GcCacheEntry,
         dry_run: bool,
     ) -> RunnerResult<GcEntryInventory> {
-        let current = self.session_workspace_cache_current_image(&entry.cache_key);
+        let current = self.workspace_image_cache_current_image(&entry.cache_key);
         let current_metadata = match fs::symlink_metadata(&current).await {
             Ok(metadata) => metadata,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -214,7 +211,7 @@ impl SessionWorkspaceCache {
             }
             Err(e) => return Err(e.into()),
         };
-        let metadata_path = self.session_workspace_cache_metadata(&entry.cache_key);
+        let metadata_path = self.workspace_image_cache_metadata(&entry.cache_key);
         let metadata = match self.read_metadata_file(&metadata_path).await {
             Ok(metadata) => metadata,
             Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -408,9 +405,6 @@ impl SessionWorkspaceCache {
         if metadata.format_version != CACHE_FORMAT_VERSION {
             return Some("metadata format version mismatch");
         }
-        if metadata.key_version != CACHE_KEY_VERSION {
-            return Some("metadata key version mismatch");
-        }
         if metadata.drive_layout != WORKSPACE_DRIVE_LAYOUT {
             return Some("drive layout mismatch");
         }
@@ -517,12 +511,12 @@ impl SessionWorkspaceCache {
     }
 
     pub(super) async fn gc_candidate(&self, cache_key: String) -> Option<GcCandidate> {
-        let entry_dir = self.session_workspace_cache_entry_dir(&cache_key);
+        let entry_dir = self.workspace_image_cache_entry_dir(&cache_key);
         if !cache_entry_dir_is_dir(&entry_dir).await.ok()? {
             return None;
         }
-        let metadata_path = self.session_workspace_cache_metadata(&cache_key);
-        let current_path = self.session_workspace_cache_current_image(&cache_key);
+        let metadata_path = self.workspace_image_cache_metadata(&cache_key);
+        let current_path = self.workspace_image_cache_current_image(&cache_key);
         let file_metadata = fs::symlink_metadata(&current_path).await.ok()?;
         if !file_metadata.is_file() {
             return None;

@@ -45,6 +45,7 @@ set -euo pipefail
 BIN_DIR=$1; SVC=$2; GROUP=$3; RUNNER_DIR=$4; GROUP_DIR=$5
 UNIT="vm0-runner-${SVC}.service"
 SESSION_ID="e2e-process-containment-session"
+CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
 
 fail() { echo "FAIL: $1"; exit 1; }
 
@@ -103,6 +104,7 @@ PROMPT
 
 echo "--- Turn 1: leave detached user/root descendants ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  --chat-thread-id "$CHAT_THREAD_ID" \
   --session-id "$SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt "$LEAK_PROMPT" \
@@ -144,6 +146,7 @@ PROMPT
 
 echo "--- Turn 2: prove descendants are gone and only this turn is owned ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  --chat-thread-id "$CHAT_THREAD_ID" \
   --session-id "$SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt "$VERIFY_PROMPT" \
@@ -151,6 +154,7 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
 
 echo "--- Turn 3: prove healthy Turn 2 cleanup was also reusable ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  --chat-thread-id "$CHAT_THREAD_ID" \
   --session-id "$SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt 'test -f /tmp/vm0-process-containment/vm-reuse-marker' \

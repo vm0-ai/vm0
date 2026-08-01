@@ -69,8 +69,7 @@ pub(crate) use types::{
     WorkspaceSessionHistorySidecarRepresentation,
 };
 
-const CACHE_FORMAT_VERSION: u32 = 1;
-const CACHE_KEY_VERSION: u32 = 1;
+const CACHE_FORMAT_VERSION: u32 = 2;
 const WORKSPACE_DRIVE_LAYOUT: &str = "workspace-drive-v1";
 const GIB: u64 = 1024 * 1024 * 1024;
 const MIN_FREE_BYTES_FLOOR: u64 = 50 * GIB;
@@ -82,11 +81,11 @@ const TEST_FS_TOTAL_BYTES: u64 = 2_000 * GIB;
 const TEST_FS_AVAILABLE_BYTES: u64 = 1_000 * GIB;
 
 #[derive(Clone)]
-pub(crate) struct SessionWorkspaceCache {
-    inner: Arc<SessionWorkspaceCacheInner>,
+pub(crate) struct WorkspaceImageCache {
+    inner: Arc<WorkspaceImageCacheInner>,
 }
 
-struct SessionWorkspaceCacheInner {
+struct WorkspaceImageCacheInner {
     paths: RunnerPaths,
     cache_dir: PathBuf,
     lock_dir: PathBuf,
@@ -103,7 +102,7 @@ struct TemporaryPathStats {
     allocated_bytes: u64,
 }
 
-impl SessionWorkspaceCache {
+impl WorkspaceImageCache {
     #[cfg(test)]
     pub(crate) fn new(paths: RunnerPaths) -> Self {
         let cache_dir = paths.workspace_image_cache_dir();
@@ -150,7 +149,7 @@ impl SessionWorkspaceCache {
         #[cfg(not(test))]
         {
             Self {
-                inner: Arc::new(SessionWorkspaceCacheInner {
+                inner: Arc::new(WorkspaceImageCacheInner {
                     paths,
                     cache_dir,
                     lock_dir,
@@ -169,7 +168,7 @@ impl SessionWorkspaceCache {
         fs_stats: FsStats,
     ) -> Self {
         Self {
-            inner: Arc::new(SessionWorkspaceCacheInner {
+            inner: Arc::new(WorkspaceImageCacheInner {
                 paths,
                 cache_dir,
                 lock_dir,

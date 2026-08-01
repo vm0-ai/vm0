@@ -1,3 +1,4 @@
+import type { ChatSlackMessageFile } from "@vm0/db/jsonb-contracts/chat-slack-context";
 import type { WebClient } from "@slack/web-api";
 
 import {
@@ -7,22 +8,7 @@ import {
   type SlackUserInfoResolver,
 } from "../signals/external/slack-message-client";
 
-export interface SlackFile {
-  readonly id?: string;
-  readonly name?: string;
-  readonly title?: string;
-  readonly mimetype?: string;
-  readonly filetype?: string;
-  readonly pretty_type?: string;
-  readonly size?: number;
-  readonly original_w?: string;
-  readonly original_h?: string;
-  readonly thumb_360?: string;
-  readonly thumb_480?: string;
-  readonly permalink?: string;
-  readonly permalink_public?: string;
-  readonly url_private_download?: string;
-}
+export type SlackFile = ChatSlackMessageFile;
 
 interface SlackAttachment {
   readonly image_url?: string;
@@ -311,7 +297,7 @@ function formatAttachmentImage(attachment: SlackAttachment): string | null {
   return parts.join("\n");
 }
 
-function resolveUserMentions(
+export function resolveUserMentions(
   text: string,
   userInfoMap?: Map<string, SlackUserInfo>,
   includeSlackUserId = true,
@@ -438,8 +424,78 @@ function formatContextForAgent(
   )}\n\n---`;
 }
 
-export function formatCurrentMessageFiles(files: readonly SlackFile[]): string {
+function formatCurrentMessageFiles(files: readonly SlackFile[]): string {
   return files.map(formatFileInfo).join("\n");
+}
+
+export interface SlackPromptAsset {
+  readonly assetId: string;
+  readonly position: number;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly status: "pending" | "ready" | "failed";
+}
+
+function canonicalSlackFilesPrompt(
+  files: readonly SlackFile[] | undefined,
+  assets: readonly SlackPromptAsset[],
+): string {
+  if (!files || files.length === 0) {
+    return "";
+  }
+  const assetByPosition = new Map(
+    assets.map((asset) => {
+      return [asset.position, asset] as const;
+    }),
+  );
+  return files
+    .flatMap((file, position) => {
+      const asset = assetByPosition.get(position);
+      if (asset?.status === "ready") {
+        return [
+          `[Web file] ${asset.filename} (${asset.contentType})\n   [ID] ${asset.assetId}`,
+        ];
+      }
+      return [formatCurrentMessageFiles([file])];
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function canonicalSlackAgentPrompt(
+  messagePrompt: string,
+  files: readonly SlackFile[] | undefined,
+  assets: readonly SlackPromptAsset[],
+): string {
+  return [messagePrompt, canonicalSlackFilesPrompt(files, assets)]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function buildSlackSystemPrompt(args: {
+  readonly botUserId: string;
+  readonly channelId: string;
+  readonly channelType: "channel" | "dm" | "group_dm";
+  readonly threadTs: string;
+  readonly executionContext: string;
+}): string {
+  const typeLabel =
+    args.channelType === "dm"
+      ? "Direct message"
+      : args.channelType === "group_dm"
+        ? "Group direct message"
+        : "Channel";
+  return [
+    "# Current Integration",
+    "You are currently running inside: Slack",
+    `Your bot user ID: ${args.botUserId}`,
+    `Channel ID: ${args.channelId}`,
+    `Channel type: ${typeLabel}`,
+    `Thread ID: ${args.threadTs}`,
+    args.executionContext,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function countBucket(count: number): string {
@@ -594,6 +650,7 @@ export async function enrichMessageContent(opts: {
     readonly slackDisplayName?: string;
     readonly slackUserId?: string;
   };
+  readonly mentionDisplayNames: Readonly<Record<string, string>>;
 }> {
   let prompt = opts.messageContent;
   let displayContent = opts.messageContent;
@@ -630,5 +687,11 @@ export async function enrichMessageContent(opts: {
           slackUserId: currentUser.id,
         }
       : {},
+    mentionDisplayNames: Object.fromEntries(
+      mentionedIds.flatMap((userId) => {
+        const displayName = userInfoMap.get(userId)?.name;
+        return displayName ? [[userId, displayName]] : [];
+      }),
+    ),
   };
 }

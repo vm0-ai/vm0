@@ -829,6 +829,7 @@ fn classify_claim_failure(error: &ClaimApiError) -> ClaimFailureDecision {
 
 fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
     let sessions = state.held_session_states.len();
+    let workspace_states = state.held_workspace_states.len();
     if let RunnerError::ApiTransport(api_error) = error {
         let request = &api_error.request;
         warn!(
@@ -848,6 +849,7 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
             mode = %state.mode,
             running = state.running_count,
             sessions,
+            workspace_states,
             "heartbeat failed"
         );
         return;
@@ -861,6 +863,7 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
         mode = %state.mode,
         running = state.running_count,
         sessions,
+        workspace_states,
         "heartbeat failed"
     );
 }
@@ -1761,11 +1764,21 @@ mod tests {
             admittable_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             held_session_states: vec![crate::types::HeldSessionState {
                 session_id: "held-session-test".to_string(),
-                reuse_key: "held-session-test".to_string(),
+                reuse_key: "thread:heartbeat-test".to_string(),
                 last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
-                reusable_sandbox: None,
+                reusable_sandbox: crate::types::ReusableSandboxState {
+                    profile: crate::profile::DEFAULT_PROFILE.to_string(),
+                    history_generation_run_id: None,
+                },
             }],
-            held_workspace_states: Vec::new(),
+            held_workspace_states: vec![crate::types::HeldWorkspaceState {
+                reuse_key: "thread:heartbeat-test".to_string(),
+                last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
+                workspace_caches: vec![crate::types::WorkspaceCacheCapability {
+                    profile: crate::profile::DEFAULT_PROFILE.to_string(),
+                    workspace_affinity_version: crate::types::WORKSPACE_AFFINITY_VERSION,
+                }],
+            }],
             mode: "running".to_string(),
         }
     }
@@ -1905,6 +1918,7 @@ mod tests {
         assert_eq!(event_field(event, "mode"), "running");
         assert_eq!(event_field(event, "running"), "1");
         assert_eq!(event_field(event, "sessions"), "1");
+        assert_eq!(event_field(event, "workspace_states"), "1");
         assert_eq!(event_field(event, "endpoint"), "heartbeat");
         assert_eq!(event_field(event, "method"), "POST");
         assert_eq!(
@@ -1935,6 +1949,37 @@ mod tests {
         assert!(
             !event_debug.contains("runner-token") && !event_debug.contains("held-session-test"),
             "event should not include bearer token or heartbeat body: {event_debug}"
+        );
+    }
+
+    #[tokio::test]
+    async fn heartbeat_status_failure_logs_held_state_counts_without_body() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let server_task = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            read_http_request(&mut socket).await;
+            write_http_status_response(&mut socket, 500).await;
+        });
+        let provider = api_provider_for_test(
+            api_url,
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+        let state = heartbeat_state_for_test();
+
+        let (_, events) = capture_api_provider_events(provider.heartbeat(&state)).await;
+        server_task.await.unwrap();
+        let event = captured_event(&events, "heartbeat failed");
+
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(event_field(event, "sessions"), "1");
+        assert_eq!(event_field(event, "workspace_states"), "1");
+        let event_debug = format!("{event:#?}");
+        assert!(
+            !event_debug.contains("held-session-test")
+                && !event_debug.contains("thread:heartbeat-test"),
+            "event should not include heartbeat body: {event_debug}"
         );
     }
 

@@ -143,7 +143,7 @@ use crate::proxy::{MitmJsonlFlushHandle, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, SandboxReuseResult};
 use crate::workspace_image_cache::{
-    SessionWorkspaceCache, WorkspaceImageActiveLeaseRequest, WorkspaceImageLease,
+    WorkspaceImageActiveLeaseRequest, WorkspaceImageCache, WorkspaceImageLease,
     WorkspaceImageLeaseIdentity, WorkspaceImagePromotionContext,
     WorkspaceImagePromotionIdentityFailure, WorkspaceImagePromotionIdentityMismatch,
     WorkspaceImagePromotionIdentityRequest,
@@ -182,7 +182,7 @@ pub struct ExecutorConfig {
     pub(crate) session_history_probe: SessionHistoryProbe,
     pub(crate) fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission,
     pub home: HomePaths,
-    pub workspace_cache: Option<SessionWorkspaceCache>,
+    pub workspace_cache: Option<WorkspaceImageCache>,
 }
 
 /// Per-job VM parameters resolved from the profile config.
@@ -642,7 +642,6 @@ pub(crate) async fn execute_job_reuse_with_hooks(
                         sandbox_id,
                         profile_name: &params.profile_name,
                         reuse_key: claimed_reuse_key,
-                        cli_agent_session_id: context.cli_agent_session_id(),
                         working_dir: CANONICAL_WORKING_DIR,
                         image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
                     },
@@ -689,7 +688,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
 }
 
 async fn resolve_reused_workspace_promotion(
-    cache: Option<&SessionWorkspaceCache>,
+    cache: Option<&WorkspaceImageCache>,
     promotion: Option<WorkspaceImagePromotionContext>,
     run_id: RunId,
     sandbox_id: SandboxId,
@@ -737,7 +736,7 @@ async fn resolve_reused_workspace_promotion(
 }
 
 fn reused_promotion_into_active_lease(
-    cache: &SessionWorkspaceCache,
+    cache: &WorkspaceImageCache,
     promotion: WorkspaceImagePromotionContext,
     run_id: RunId,
     sandbox_id: SandboxId,

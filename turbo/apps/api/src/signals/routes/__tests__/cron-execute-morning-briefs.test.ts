@@ -137,15 +137,15 @@ async function executeMorningBriefsCron(): Promise<void> {
 
 async function connectOauthConnector(
   actor: ApiTestUser,
-  type: "github" | "gmail" | "google-calendar",
+  connectorSlug: "github" | "gmail" | "google-calendar",
   code: string,
 ): Promise<void> {
-  const oauth = await connectors.startOauth(actor, type, "oauth");
+  const oauth = await connectors.startOauth(actor, connectorSlug, "oauth");
   const state = new URL(oauth.authorizationUrl).searchParams.get("state");
   if (!state) {
-    throw new Error(`Expected ${type} OAuth state`);
+    throw new Error(`Expected ${connectorSlug} OAuth state`);
   }
-  await connectors.completeOauthCallback(type, { code, state });
+  await connectors.completeOauthCallback(connectorSlug, { code, state });
 }
 
 function mockMorningBriefDataSources(gmailAfterSeconds: number[]): void {

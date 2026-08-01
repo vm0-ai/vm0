@@ -84,7 +84,6 @@ describe("zero connector permission-request command", () => {
     expect(logCalls).toContain("[Manage Slack permissions]");
     expect(logCalls).toContain("/agents/agent-abc-123/permissions?");
     expect(logCalls).toContain("connectorSlug=slack");
-    expect(logCalls).not.toContain("ref=");
     expect(logCalls).toContain(
       `permission=${encodeURIComponent(SLACK_READ_PERMISSION)}`,
     );
@@ -136,7 +135,6 @@ describe("zero connector permission-request command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("connectorSlug=slack");
-    expect(logCalls).not.toContain("ref=");
     expect(logCalls).toContain("action=allow");
     expect(logCalls).toContain("threadId=thread-abc-123");
     expect(logCalls).toContain(
