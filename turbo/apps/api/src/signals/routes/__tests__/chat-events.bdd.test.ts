@@ -3539,36 +3539,39 @@ describe("CHAT-02: run-level model overrides", () => {
 
     const firstEventId = randomUUID();
     const secondEventId = randomUUID();
-    const requests = [
-      {
-        eventId: firstEventId,
-        prompt: "first competing binding send",
-        response: chat.requestSendEvent(
-          actor,
-          {
-            agentId,
-            threadId: established.threadId,
-            prompt: "first competing binding send",
-            clientEventId: firstEventId,
-          },
-          [201],
-        ),
-      },
-      {
-        eventId: secondEventId,
-        prompt: "second competing binding send",
-        response: chat.requestSendEvent(
-          actor,
-          {
-            agentId,
-            threadId: established.threadId,
-            prompt: "second competing binding send",
-            clientEventId: secondEventId,
-          },
-          [201],
-        ),
-      },
-    ] as const;
+    const firstRequest = {
+      eventId: firstEventId,
+      prompt: "first competing binding send",
+      response: chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: established.threadId,
+          prompt: "first competing binding send",
+          clientEventId: firstEventId,
+        },
+        [201],
+      ),
+    } as const;
+    // Make the queue head the first admission-lock waiter so the second
+    // prepared request observes the binding committed by the first.
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+
+    const secondRequest = {
+      eventId: secondEventId,
+      prompt: "second competing binding send",
+      response: chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: established.threadId,
+          prompt: "second competing binding send",
+          clientEventId: secondEventId,
+        },
+        [201],
+      ),
+    } as const;
+    const requests = [firstRequest, secondRequest] as const;
 
     await expect
       .poll(async () => {
