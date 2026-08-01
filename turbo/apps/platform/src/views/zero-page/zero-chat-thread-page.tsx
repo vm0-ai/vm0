@@ -3487,8 +3487,8 @@ function RunGroupFoldRow({
 }
 
 function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
-  const indexedDbEventsLoading = useGet(thread.indexedDbEventsLoading$);
-  if (!indexedDbEventsLoading) {
+  const chatSkeletonVisible = useGet(thread.chatSkeletonVisible$);
+  if (!chatSkeletonVisible) {
     return null;
   }
 
