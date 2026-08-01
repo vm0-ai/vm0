@@ -428,7 +428,7 @@ zero_chat_run_with_model() {
     local agent_id="$1"
     local prompt="$2"
     local selected_model="$3"
-    local real_agent_in_preview="${4:-true}"
+    local real_agent_in_preview="${4:-false}"
     local payload body client_event_id
     client_event_id=$(cat /proc/sys/kernel/random/uuid)
 
@@ -455,7 +455,7 @@ zero_chat_run_with_model_selection() {
     local prompt="$2"
     local model_provider_id="$3"
     local selected_model="$4"
-    local real_agent_in_preview="${5:-true}"
+    local real_agent_in_preview="${5:-false}"
     local payload body client_event_id
     client_event_id=$(cat /proc/sys/kernel/random/uuid)
 

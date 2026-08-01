@@ -8,6 +8,7 @@
 # Prerequisites:
 #   - VM0_API_BACKEND_URL environment variable must be set
 #   - VERCEL_AUTOMATION_BYPASS_SECRET for Vercel bypass
+#   - USE_MOCK_CLAUDE must be "true" on the server
 #
 # Usage: ./generate-test-token.sh <email> <output-json>
 #   email: test user email (default: dev+clerk_test+serial@vm0-e2e.ai)

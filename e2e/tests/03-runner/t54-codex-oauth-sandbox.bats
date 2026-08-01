@@ -100,7 +100,7 @@ teardown_file() {
 @test "t54-1: codex agent run completes with codex-oauth provider" {
     run run_compose_fixture "$AGENT_NAME" \
         "Reply with exactly RESULT=579" \
-        '{"modelProviderType":"codex-oauth-token","realAgentInPreview":false}'
+        '{"modelProviderType":"codex-oauth-token"}'
 
     assert_success
     # Mock codex echoes the prompt back; the sentinel just proves the run
@@ -181,7 +181,7 @@ teardown_file() {
 
     run run_compose_fixture "$AGENT_NAME" \
         "Reply with exactly RESULT=579" \
-        '{"modelProviderType":"codex-oauth-token","realAgentInPreview":false}'
+        '{"modelProviderType":"codex-oauth-token"}'
 
     assert_success
     assert_output --partial "RESULT=579"

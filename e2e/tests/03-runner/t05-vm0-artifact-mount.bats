@@ -69,8 +69,7 @@ teardown() {
     # Step 2: Run agent with artifact, list files
     # Use extended timeout for CI environments which may be slower
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-ls -la && cat test-file.txt && cat subdir/nested.txt" \
+        "ls -la && cat test-file.txt && cat subdir/nested.txt" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
@@ -98,8 +97,7 @@ ls -la && cat test-file.txt && cat subdir/nested.txt" \
     # Simple run that should complete
     # Use extended timeout for CI environments which may be slower
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-echo done" \
+        "echo done" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 

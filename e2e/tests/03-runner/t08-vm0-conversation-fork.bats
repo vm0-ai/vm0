@@ -76,8 +76,7 @@ teardown_file() {
     # Step 2: Run agent (~15s)
     echo "# Running agent..."
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-echo 'hello world'" \
+        "echo 'hello world'" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
@@ -114,8 +113,7 @@ echo 'hello world'" \
     # Step 2: Run agent to create initial conversation (~15s)
     echo "# Running agent to create conversation..."
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-echo 'original run' && cat version.txt && echo 200 > counter.txt" \
+        "echo 'original run' && cat version.txt && echo 200 > counter.txt" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
@@ -145,8 +143,7 @@ echo 'original run' && cat version.txt && echo 200 > counter.txt" \
     # but with a different (newer) artifact version
     echo "# Forking from conversation with new artifact..."
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-cat version.txt && cat counter.txt && ls" \
+        "cat version.txt && cat counter.txt && ls" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" --arg conversationId "$conversation_id" \
             '{
                 conversationId: $conversationId,

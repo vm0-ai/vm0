@@ -68,8 +68,7 @@ teardown() {
     # Run agent with operation that doesn't create any files
     # This tests the storage webhook handling of empty zip uploads
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-echo 'hello world'" \
+        "echo 'hello world'" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
@@ -94,8 +93,7 @@ echo 'hello world'" \
     # Run agent that only reads files (no modifications)
     # The storage webhook should handle unchanged artifact content correctly
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-cat data.txt && cat subdir/nested.txt" \
+        "cat data.txt && cat subdir/nested.txt" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 

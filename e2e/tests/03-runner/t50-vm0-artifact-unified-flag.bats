@@ -61,8 +61,7 @@ teardown() {
 
     # Step 2: Run with an artifact name only, which resolves to latest.
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-cat /home/user/workspace/marker.txt" \
+        "cat /home/user/workspace/marker.txt" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
@@ -89,8 +88,7 @@ cat /home/user/workspace/marker.txt" \
 
     # Step 3: Run agent with --artifact name:version to pin to version 1
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-cat /home/user/workspace/marker.txt" \
+        "cat /home/user/workspace/marker.txt" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" --arg version "$VERSION1" \
             '{artifacts: [{name: $name, version: $version, mountPath: "/home/user/workspace"}]}')"
 

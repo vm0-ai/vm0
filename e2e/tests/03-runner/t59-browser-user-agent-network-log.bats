@@ -27,8 +27,7 @@ teardown_file() {
 
 @test "t59-0: browser User-Agent marker appears in network logs" {
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-curl -sS -o /dev/null -w 'BROWSER_STATUS=%{http_code}\n' -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36' https://example.com"
+        "curl -sS -o /dev/null -w 'BROWSER_STATUS=%{http_code}\n' -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36' https://example.com"
 
     assert_success
     assert_output --partial "BROWSER_STATUS=200"

@@ -333,8 +333,7 @@ EOF
     # without depending on Next external rewrites to preserve preview guard
     # headers. The web-to-api rewrite is covered by web rewrite tests.
     run run_zero_agent_via_chat "$COMPOSE_ID" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' -H 'x-vm0-test-endpoint-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${TEST_OAUTH_PROVIDER_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
+        "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' -H 'x-vm0-test-endpoint-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${TEST_OAUTH_PROVIDER_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
 
     echo "$output"
     assert_success
@@ -409,8 +408,7 @@ EOF
     assert_success
 
     run run_zero_agent_via_chat "$COMPOSE_ID" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' -H 'x-vm0-test-endpoint-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${TEST_OAUTH_PROVIDER_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
+        "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' -H 'x-vm0-test-endpoint-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${TEST_OAUTH_PROVIDER_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
 
     echo "$output"
     assert_success

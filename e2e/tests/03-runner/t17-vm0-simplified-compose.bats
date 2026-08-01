@@ -51,8 +51,7 @@ EOF
     echo "# Running agent to verify instructions is mounted..."
     # The instructions is mounted at /home/user/.claude/CLAUDE.md
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-cat /home/user/.claude/CLAUDE.md" \
+        "cat /home/user/.claude/CLAUDE.md" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success
@@ -83,8 +82,7 @@ EOF
 
     echo "# Running agent to verify gh cli is installed in base image..."
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-gh --version" \
+        "gh --version" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success

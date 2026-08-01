@@ -30,7 +30,7 @@ _run_fixture_request() {
         --arg selectorValue "$selector_value" \
         --arg prompt "$prompt" \
         --argjson overrides "$overrides" \
-        '{realAgentInPreview: true} + $overrides + {prompt: $prompt} + {($selectorKey): $selectorValue}'
+        '$overrides + {prompt: $prompt} + {($selectorKey): $selectorValue}'
 }
 
 # POST a complete structured run request and print the compact create response.
@@ -134,9 +134,6 @@ run_fixture() {
 
 # Resolve a seeded compose name to its ID, then execute a structured request.
 # Optional fields are supplied as one JSON object; no CLI flags are parsed.
-# Runner E2E uses the real agent runtime by default. Tests whose subject is a
-# mock-agent protocol or injected failure must opt out explicitly with
-# `{ "realAgentInPreview": false }`.
 # Usage: run_compose_fixture <compose-name> <prompt> [overrides-json]
 run_compose_fixture() {
     local compose_name="$1" prompt="$2" overrides="${3:-}" compose_id request

@@ -68,7 +68,7 @@ teardown() {
     # Step 2: Run agent with a simple command
     echo "# Step 2: Running agent to trigger telemetry collection..."
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command \`echo 'hello from agent'\` and include its output." \
+        "echo 'hello from agent'" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
@@ -88,7 +88,7 @@ teardown() {
 
     # Step 4: Verify agent events (default log view)
     echo "# Step 4: Fetching agent events (default)..."
-    # The real Claude runtime emits init and successful completion events.
+    # Mock-claude produces: Claude Code Started, text, tool calls, Completed
     wait_for_log "$RUN_ID" -- '"subtype":"init"' '"subtype":"success"'
     echo "# Agent events contain expected event types"
 

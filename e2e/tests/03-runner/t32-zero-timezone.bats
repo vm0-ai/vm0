@@ -59,9 +59,7 @@ setup() {
 @test "user timezone preference is injected into the sandbox" {
     set_e2e_timezone "Asia/Tokyo"
 
-    run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-echo TZ=\$TZ"
+    run run_compose_fixture "$AGENT_NAME" "echo TZ=\$TZ"
     assert_success
     assert_output --partial "TZ=Asia/Tokyo"
 }
@@ -87,9 +85,7 @@ volumes:
 EOF
     seed_compose_fixture "$TEST_DIR/vm0-tz-override.yaml" >/dev/null
 
-    run run_compose_fixture "$override_agent_name" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-echo TZ=\$TZ"
+    run run_compose_fixture "$override_agent_name" "echo TZ=\$TZ"
     assert_success
     assert_output --partial "TZ=Europe/London"
 }

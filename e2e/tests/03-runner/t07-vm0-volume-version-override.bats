@@ -108,8 +108,7 @@ teardown_file() {
     # Step 3: Override the compose volume alias to version 1 (~15s).
     echo "# Running agent with volume version override..."
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-cat /home/user/data/data.txt" \
+        "cat /home/user/data/data.txt" \
         "$(jq -nc \
             --arg artifactName "$ARTIFACT_NAME" \
             --arg volumeAlias "$VOLUME_ALIAS" \

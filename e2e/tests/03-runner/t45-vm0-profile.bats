@@ -36,8 +36,7 @@ EOF
     assert_success
 
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-claude --version && gh --version" \
+        "claude --version && gh --version" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success
@@ -65,8 +64,7 @@ EOF
     assert_success
 
     run run_compose_fixture "$AGENT_NAME" \
-        "Run the exact Bash command below, wait for it to finish, and include its output:
-agent-browser open 'data:text/html,%3Ctitle%3EVM0%20Browser%20E2E%3C%2Ftitle%3E' && agent-browser get title && agent-browser close" \
+        "agent-browser open 'data:text/html,%3Ctitle%3EVM0%20Browser%20E2E%3C%2Ftitle%3E' && agent-browser get title && agent-browser close" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success

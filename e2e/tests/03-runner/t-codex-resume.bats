@@ -51,9 +51,7 @@ teardown_file() {
 
 @test "t-codex-resume-1: continue resumes codex thread from session" {
     # Initial turn: creates a codex thread and writes the first mock session file.
-    run run_compose_fixture "$AGENT_NAME" \
-        "first turn" \
-        '{"realAgentInPreview":false}'
+    run run_compose_fixture "$AGENT_NAME" "first turn"
     assert_success
     assert_output --partial '"type":"thread.started"'
     assert_output --partial "first turn"
@@ -71,9 +69,7 @@ teardown_file() {
     # Continue the run: framework-aware restore_session resolves the
     # codex thread_id from the prior session, restores that history into
     # Codex's rollout filename shape, and the next turn renders.
-    run continue_run_fixture "$session_id" \
-        "second turn" \
-        '{"realAgentInPreview":false}'
+    run continue_run_fixture "$session_id" "second turn"
     assert_success
     assert_output --partial '"type":"thread.started"'
     assert_output --partial "second turn"
