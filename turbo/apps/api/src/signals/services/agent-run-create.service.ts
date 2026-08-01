@@ -131,6 +131,7 @@ import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
 import {
+  nullableDriverValueDecoder,
   pgInt8ToBigIntDecoder,
   pgNullDecoder,
   pgTextDecoder,
@@ -5824,12 +5825,8 @@ function returnedCteId(cte: ReturnedIdCte): SQL {
   return sql`(SELECT ${cte.id} FROM ${cte})`;
 }
 
-function nullableReturnedCteId(
-  cte: ReturnedIdCte | undefined,
-): SQL<string | null> {
-  return cte
-    ? sql<string | null>`(SELECT ${cte.id} FROM ${cte})`
-    : sql<string | null>`NULL`;
+function nullableReturnedCteId(cte: ReturnedIdCte | undefined): SQL {
+  return cte ? sql`(SELECT ${cte.id} FROM ${cte})` : sql`NULL`;
 }
 
 function appendLaunchCallbackCte(args: {
@@ -5985,14 +5982,16 @@ function atomicThreadSessionBinding(args: {
   if (!args.boundThreadId) {
     return undefined;
   }
+  if (!args.validatedThreadSession) {
+    throw new Error("Atomic thread binding requires a validated snapshot");
+  }
   return {
     chatThreadId: args.boundThreadId,
     agentSessionId: args.context.rowsArgs.identity.sessionId,
     agentSessionRunId: args.runId,
     action: threadSessionBindingAction({
       identity: args.context.rowsArgs.identity,
-      previousAgentSessionId:
-        args.validatedThreadSession?.agentSessionId ?? null,
+      previousAgentSessionId: args.validatedThreadSession.agentSessionId,
       resolution: args.commit.createArgs.threadSessionResolution,
     }),
   };
@@ -6030,7 +6029,9 @@ async function persistPendingAtomicLaunch(
       runId: context.insertedRun.id,
       createdAt: context.insertedRun.createdAt,
       runnerJobCreatedAt: insertedQueue.createdAt,
-      boundThreadId: nullableReturnedCteId(context.updatedThread),
+      boundThreadId: nullableReturnedCteId(context.updatedThread).mapWith(
+        nullableDriverValueDecoder(pgTextDecoder),
+      ),
     })
     .from(context.insertedRun)
     .innerJoin(insertedQueue, eq(insertedQueue.runId, context.insertedRun.id));
@@ -6092,7 +6093,9 @@ async function persistQueuedAtomicLaunch(
       queueDepth: sql`(${visibleQueueDepth.depth} + 1)`.mapWith(
         pgInt8ToBigIntDecoder,
       ),
-      boundThreadId: nullableReturnedCteId(context.updatedThread),
+      boundThreadId: nullableReturnedCteId(context.updatedThread).mapWith(
+        nullableDriverValueDecoder(pgTextDecoder),
+      ),
     })
     .from(context.insertedRun)
     .innerJoin(insertedQueue, eq(insertedQueue.runId, context.insertedRun.id))
