@@ -35,20 +35,18 @@ type FeishuLaunchContextRow = Pick<
   | "installationId"
 > & {
   readonly tenantKey: string | null;
-  readonly legacyTenantKey: string | null;
   readonly routeThreadId: string;
   readonly feishuDisplayName: string | null;
 };
 
 function requiredFeishuLaunchContext(row: FeishuLaunchContextRow | undefined) {
-  const tenantKey = row?.tenantKey ?? row?.legacyTenantKey ?? null;
   if (
     !row ||
     row.conversationHistory === null ||
     row.messageText === null ||
     row.messageFiles === null ||
     row.chatType === null ||
-    tenantKey === null ||
+    row.tenantKey === null ||
     row.chatId === null ||
     row.messageId === null ||
     row.threadId === null ||
@@ -65,7 +63,7 @@ function requiredFeishuLaunchContext(row: FeishuLaunchContextRow | undefined) {
     messageText: row.messageText,
     messageFiles: row.messageFiles,
     chatType: row.chatType,
-    tenantKey,
+    tenantKey: row.tenantKey,
     chatId: row.chatId,
     messageId: row.messageId,
     threadId: row.threadId,
@@ -92,7 +90,6 @@ async function loadFeishuLaunchContext(
       messageFiles: chatFeishuContext.messageFiles,
       chatType: chatFeishuContext.chatType,
       tenantKey: feishuOrgInstallations.feishuTenantKey,
-      legacyTenantKey: chatFeishuContext.tenantKey,
       chatId: chatFeishuContext.chatId,
       messageId: chatFeishuContext.messageId,
       threadId: chatFeishuContext.threadId,
