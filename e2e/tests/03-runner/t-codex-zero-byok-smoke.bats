@@ -77,8 +77,8 @@ EOF
 
 teardown() {
     # Best-effort cleanup; never mask the actual test failure.
-    if [[ -n "${THREAD_ID:-}" ]]; then
-        _codex_zero_curl "/api/zero/chat-threads/$THREAD_ID" -X DELETE >/dev/null 2>&1 || true
+    if [[ -n "${LAST_THREAD_ID:-}" ]]; then
+        _codex_zero_curl "/api/zero/chat-threads/$LAST_THREAD_ID" -X DELETE >/dev/null 2>&1 || true
     fi
 }
 
@@ -94,25 +94,16 @@ teardown_file() {
 @test "t-codex-zero-byok-smoke-1: gpt-5.5 via zero web layer" {
     # Trigger a real run by hitting the same unified chat endpoint the web
     # composer uses. This both creates the thread (with eager-pin) and
-    # dispatches the codex run in one call. Sets LAST_RUN_ID + LAST_THREAD_ID.
+    # dispatches the codex run in one call. A known transient model-capacity
+    # response gets up to two fresh attempts; all other failures remain fatal.
     #
     # Called directly (no `run`) because bats `run` executes in a subshell —
     # `export` from the helper would not propagate back to this scope, and
     # LAST_THREAD_ID / LAST_RUN_ID would arrive empty. The helper returns
     # non-zero on failure, which fails the test naturally.
-    send_chat_run_message "$AGENT_ID" \
+    run_codex_chat_with_capacity_retry "$AGENT_ID" \
         "Compute 123+456 and reply with exactly: RESULT=<answer>" \
         "gpt-5.5"
-
-    THREAD_ID="$LAST_THREAD_ID"
-    [[ -n "$THREAD_ID" ]] || fail "Could not extract thread id from chat/messages response"
-    export THREAD_ID
-
-    # Wait for the assistant message to terminate. Resets LAST_RUN_ID to the
-    # terminal assistant row's runId and LAST_MSG_CONTENT to that run's latest
-    # non-blank assistant content. Also called without `run` so its exports
-    # survive the subshell boundary.
-    wait_for_chat_assistant_done "$THREAD_ID"
 
     # Assert: real codex produced the expected sentinel. The selected model's
     # policy routes to openai-api-key, so a real (non-mock) codex completion
@@ -123,15 +114,9 @@ teardown_file() {
 }
 
 @test "t-codex-zero-byok-smoke-2: gpt-5.6-luna via zero web layer" {
-    send_chat_run_message "$AGENT_ID" \
+    run_codex_chat_with_capacity_retry "$AGENT_ID" \
         "Compute 234+567 and reply with exactly: LUNA_RESULT=<answer>" \
         "gpt-5.6-luna"
-
-    THREAD_ID="$LAST_THREAD_ID"
-    [[ -n "$THREAD_ID" ]] || fail "Could not extract thread id from chat/messages response"
-    export THREAD_ID
-
-    wait_for_chat_assistant_done "$THREAD_ID"
 
     [[ "$LAST_MSG_CONTENT" == *"LUNA_RESULT=801"* ]] \
         || fail "Expected 'LUNA_RESULT=801' in assistant content, got: $LAST_MSG_CONTENT"

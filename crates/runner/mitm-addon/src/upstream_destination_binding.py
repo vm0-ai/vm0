@@ -509,13 +509,13 @@ def flow_matches_normalized_destination(
             allowed_kinds=allowed_kinds,
         ) and _server_binding_matches_current_destination(server, binding)
 
-    matching_client_bindings = _matching_client_bindings(
-        flow.client_conn,
-        host=destination.host,
-        port=destination.port,
-        allowed_kinds=allowed_kinds,
-    )
     if bool(getattr(server, "connected", False)):
+        matching_client_bindings = _matching_client_bindings(
+            flow.client_conn,
+            host=destination.host,
+            port=destination.port,
+            allowed_kinds=allowed_kinds,
+        )
         return (
             _client_binding_connected_endpoint(
                 client=flow.client_conn,

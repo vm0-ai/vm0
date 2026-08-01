@@ -5531,6 +5531,20 @@
       "when": 1785515490435,
       "tag": "0789_glamorous_fixer",
       "breakpoints": true
+    },
+    {
+      "idx": 790,
+      "version": "7",
+      "when": 1785556484903,
+      "tag": "0790_bored_talisman",
+      "breakpoints": true
+    },
+    {
+      "idx": 791,
+      "version": "7",
+      "when": 1785559801767,
+      "tag": "0791_perfect_aqueduct",
+      "breakpoints": true
     }
   ]
 }

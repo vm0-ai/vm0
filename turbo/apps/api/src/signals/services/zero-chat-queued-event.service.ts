@@ -88,15 +88,8 @@ const queuedUserMessageTriggerSourceSchema = z.enum([
 
 const queuedUserMessageRunParamsSchema = z.object({
   version: z.literal(1),
-  prompt: z.string(),
-  appendSystemPrompt: z.string(),
-  slackDelivery: z
-    .object({
-      channelId: z.string(),
-      threadTs: z.string(),
-      routeThreadTs: z.string().optional(),
-    })
-    .optional(),
+  prompt: z.string().optional(),
+  appendSystemPrompt: z.string().optional(),
   feishuDelivery: z
     .object({
       installationId: z.string(),

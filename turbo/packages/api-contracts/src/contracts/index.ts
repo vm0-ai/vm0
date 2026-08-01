@@ -144,6 +144,19 @@ export {
   type TestAgentRunsContract,
 } from "./test-agent-runs";
 export {
+  ZERO_RECOGNITION_MAX_FILE_BYTES,
+  ZERO_RECOGNITION_MAX_PROMPT_CHARS,
+  ZERO_RECOGNITION_MAX_TEXT_CHARS,
+  zeroRecognitionContract,
+  zeroRecognitionImageMimeTypeSchema,
+  zeroRecognitionRequestSchema,
+  zeroRecognitionResponseSchema,
+  type ZeroRecognitionContract,
+  type ZeroRecognitionImageMimeType,
+  type ZeroRecognitionRequest,
+  type ZeroRecognitionResponse,
+} from "./zero-recognition";
+export {
   zeroModelPoliciesMainContract,
   type ZeroModelPoliciesMainContract,
 } from "./zero-model-policies";

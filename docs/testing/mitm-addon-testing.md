@@ -55,6 +55,15 @@ uv run --no-sync python -m pytest \
 uv run --no-sync python -m pytest -v tests/
 ```
 
+Run auth.base forwarder contracts independently when working on one ownership
+area:
+
+```bash
+uv run --no-sync python -m pytest tests/test_auth_base_forwarder_security.py
+uv run --no-sync python -m pytest tests/test_auth_base_forwarder_protocol.py
+uv run --no-sync python -m pytest tests/test_auth_base_forwarder_lifecycle.py
+```
+
 Run the same static checks used by CI:
 
 ```bash
@@ -165,7 +174,9 @@ tests must not resolve a different mitmproxy version from production.
 | `test_compiled_firewall_permission_aggregation.py`      | Compiled firewall denied-permission aggregation and deduplication                                                    |
 | `test_compiled_firewall_rule_specificity_precedence.py` | Compiled firewall rule ordering and rule specificity precedence                                                      |
 | `test_firewall_auth.py`                                 | Firewall auth header resolution, fetching, forwarding, and cleanup                                                   |
-| `test_auth_base_forwarder.py`                           | Low-level auth.base forwarding, header filtering, and cleanup                                                        |
+| `test_auth_base_forwarder_security.py`                  | Auth-base destination validation, SSRF rejection, and validated TCP/TLS construction                                 |
+| `test_auth_base_forwarder_protocol.py`                  | Auth-base HTTP framing, header filtering, body bounds, and synchronous cleanup                                       |
+| `test_auth_base_forwarder_lifecycle.py`                 | Auth-base abort, admission, deadlines, cancellation, concurrency, worker, and shutdown behavior                      |
 | `test_firewall_rewrite_success.py`                      | Firewall auth URL rewrite success behavior                                                                           |
 | `test_firewall_rewrite_forwarding.py`                   | Firewall auth URL rewrite forwarding behavior                                                                        |
 | `test_firewall_rewrite_safety.py`                       | Firewall auth URL rewrite fail-closed and safety behavior                                                            |

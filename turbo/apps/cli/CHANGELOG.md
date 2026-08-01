@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.274.0](https://github.com/vm0-ai/vm0/compare/cli-v9.273.3...cli-v9.274.0) (2026-08-01)
+
+
+### Features
+
+* add conditional image recognition fallback ([#24390](https://github.com/vm0-ai/vm0/issues/24390)) ([376a6fa](https://github.com/vm0-ai/vm0/commit/376a6fa3068e6d3033592b7702dbe8872dc51da4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.261.0
+    * @vm0/core bumped to 8.502.0
+
 ## [9.273.3](https://github.com/vm0-ai/vm0/compare/cli-v9.273.2...cli-v9.273.3) (2026-08-01)
 
 

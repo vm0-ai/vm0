@@ -12,6 +12,7 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import {
+  decryptChatEventInputParamsFixture,
   findPendingChatEventInputParamsByPromptFixture,
   readChatEventContextFixture,
   readChatEventInputParamsFixture,
@@ -307,6 +308,14 @@ async function pollSlackRun(runnerGroup: string): Promise<string> {
     runnerGroup,
     "Expected a Slack-triggered run in the runner queue",
   );
+}
+
+async function requirePendingChatEventInputParams(prompt: string) {
+  const params = await findPendingChatEventInputParamsByPromptFixture(prompt);
+  if (!params) {
+    throw new Error(`Expected queued input params for ${prompt}`);
+  }
+  return params;
 }
 
 async function pollQueuedWebAndSlackRuns(args: {
@@ -1454,6 +1463,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     }
     const orgId = actor.orgId;
     const slackUserId = uniqueSlackUserId();
+    const mentionedSlackUserId = uniqueSlackUserId();
     const { teamId, botUserId } = await integrations.installSlackWorkspace(
       actor,
       {
@@ -1473,7 +1483,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const event = {
       type: "app_mention",
       user: slackUserId,
-      text: `<@${botUserId}> admit this event once`,
+      text: `<@${botUserId}> admit this event once with <@${mentionedSlackUserId}>`,
       ts: threadTs,
       channel: channelId,
       channel_type: "channel",
@@ -1584,6 +1594,21 @@ describe("INT-01: Slack app deep webhook flows", () => {
     ).events;
     const canonicalInputAssetId =
       requireCanonicalSlackInputAssetId(visibleMessages);
+    const canonicalInputMessage = slackInputMessageByText(
+      visibleMessages,
+      "admit this event once with @Slack User",
+    );
+    if (!canonicalInputMessage) {
+      throw new Error("Expected the canonical Slack input message");
+    }
+    await expect(
+      readChatEventContextFixture(canonicalInputMessage.id),
+    ).resolves.toMatchObject({
+      slackMessageText: `admit this event once with <@${mentionedSlackUserId}>`,
+      slackMentionDisplayNames: {
+        [mentionedSlackUserId]: "Slack User",
+      },
+    });
     expect(visibleMessages).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1598,7 +1623,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
                 filenameSnapshot: "source-notes.txt",
                 contentType: "text/plain",
               },
-              { type: "text", text: "admit this event once" },
+              { type: "text", text: "admit this event once with @Slack User" },
               {
                 type: "source",
                 kind: "slack",
@@ -1642,10 +1667,12 @@ describe("INT-01: Slack app deep webhook flows", () => {
       "https://vm0.slack.com/archives/C_BDD_CANONICAL_INGRESS/p2900000100",
     );
     const canonicalInputRun = await runs.readRun(actor, run1Id);
-    expect(canonicalInputRun.prompt).toContain(
-      `[Web file] source-notes.txt (text/plain)`,
+    expect(canonicalInputRun.prompt).toBe(
+      `admit this event once with @Slack User (${mentionedSlackUserId})\n\n[Web file] source-notes.txt (text/plain)\n   [ID] ${canonicalInputAssetId}`,
     );
-    expect(canonicalInputRun.prompt).toContain(`[ID] ${canonicalInputAssetId}`);
+    expect(canonicalInputRun.appendSystemPrompt).toContain(
+      `# Current Integration\nYou are currently running inside: Slack\nYour bot user ID: ${botUserId}\nChannel ID: ${channelId}\nChannel type: Channel\nThread ID: ${threadTs}`,
+    );
     expect(canonicalInputRun.appendSystemPrompt).toContain(
       "zero web download-file -h",
     );
@@ -1729,17 +1756,19 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       ]),
     );
-    const queuedSlackParams =
-      await findPendingChatEventInputParamsByPromptFixture(
-        "stay canonical on the same route",
-      );
+    const queuedSlackParams = await requirePendingChatEventInputParams(
+      "stay canonical on the same route",
+    );
     expect(queuedSlackParams).toMatchObject({
       eventId: expect.any(String),
       encryptedParams: expect.any(String),
     });
-    if (!queuedSlackParams) {
-      throw new Error("Expected queued canonical Slack transport params");
-    }
+    await expect(
+      decryptChatEventInputParamsFixture(queuedSlackParams.eventId, {
+        orgId,
+        userId: actor.userId,
+      }),
+    ).resolves.toStrictEqual({ version: 1 });
     await expect(
       readChatEventContextFixture(queuedSlackParams.eventId),
     ).resolves.toMatchObject({
@@ -1748,6 +1777,15 @@ describe("INT-01: Slack app deep webhook flows", () => {
       slackPermalink: null,
       slackChannelId: channelId,
       slackMessageTs: "2900.000200",
+      slackConversationContext: "",
+      slackMessageText: "stay canonical on the same route",
+      slackMessageFiles: event.files,
+      slackMentionDisplayNames: {},
+      slackSenderDisplayName: "Slack User",
+      slackSenderUserId: slackUserId,
+      slackChannelType: "channel",
+      slackThreadTs: threadTs,
+      slackRouteThreadTs: null,
     });
     const stickyVisibleMessage = slackInputMessageByText(
       (await chat.listThreadEvents(actor, canonicalChatThreadId)).events,
@@ -1993,6 +2031,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       thread_ts: threadTs,
       status: "",
     });
+
     expect(
       (await chat.listThreadEvents(actor, canonicalChatThreadId)).events,
     ).toStrictEqual(

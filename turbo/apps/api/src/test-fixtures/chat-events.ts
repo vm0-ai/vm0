@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 
+import type {
+  ChatSlackMentionDisplayNames,
+  ChatSlackMessageFiles,
+} from "@vm0/db/jsonb-contracts/chat-slack-context";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -27,6 +31,7 @@ import {
 } from "../signals/services/zero-chat-event.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
+import { decryptQueuedUserMessageRunParams } from "../signals/services/zero-chat-queued-event.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -60,6 +65,15 @@ interface ChatEventContextFixture {
   readonly slackPermalink: string | null;
   readonly slackChannelId: string | null;
   readonly slackMessageTs: string | null;
+  readonly slackConversationContext: string | null;
+  readonly slackMessageText: string | null;
+  readonly slackMessageFiles: ChatSlackMessageFiles | null;
+  readonly slackMentionDisplayNames: ChatSlackMentionDisplayNames | null;
+  readonly slackSenderDisplayName: string | null;
+  readonly slackSenderUserId: string | null;
+  readonly slackChannelType: "channel" | "dm" | "group_dm" | null;
+  readonly slackThreadTs: string | null;
+  readonly slackRouteThreadTs: string | null;
   readonly feishuOpenUrl: string | null;
   readonly teamsTenantId: string | null;
   readonly teamsChannelId: string | null;
@@ -89,6 +103,15 @@ export async function readChatEventContextFixture(
       slackPermalink: chatSlackContext.messagePermalink,
       slackChannelId: chatSlackContext.channelId,
       slackMessageTs: chatSlackContext.messageTs,
+      slackConversationContext: chatSlackContext.conversationContext,
+      slackMessageText: chatSlackContext.messageText,
+      slackMessageFiles: chatSlackContext.messageFiles,
+      slackMentionDisplayNames: chatSlackContext.mentionDisplayNames,
+      slackSenderDisplayName: chatSlackContext.senderDisplayName,
+      slackSenderUserId: chatSlackContext.senderUserId,
+      slackChannelType: chatSlackContext.channelType,
+      slackThreadTs: chatSlackContext.threadTs,
+      slackRouteThreadTs: chatSlackContext.routeThreadTs,
       feishuOpenUrl: chatFeishuContext.chatOpenUrl,
       teamsTenantId: chatTeamsContext.tenantId,
       teamsChannelId: chatTeamsContext.channelId,
@@ -125,6 +148,15 @@ const annotationProjectionInputs = [
           "https://vm0.slack.com/archives/C123/p1753257600000100",
         channelId: "C123",
         messageTs: "1753257600.000100",
+        conversationContext: "",
+        messageText: "slack linked",
+        messageFiles: [],
+        mentionDisplayNames: {},
+        senderDisplayName: "Slack User",
+        senderUserId: "U123",
+        channelType: "channel",
+        threadTs: "1753257600.000100",
+        routeThreadTs: null,
       },
     },
   },
@@ -387,6 +419,17 @@ export async function readChatEventInputParamsFixture(
     .where(eq(chatEventInputParams.eventId, eventId))
     .limit(1);
   return row ?? null;
+}
+
+export async function decryptChatEventInputParamsFixture(
+  eventId: string,
+  ctx: { readonly orgId: string; readonly userId: string },
+) {
+  const row = await readChatEventInputParamsFixture(eventId);
+  if (!row) {
+    return null;
+  }
+  return await decryptQueuedUserMessageRunParams(row.encryptedParams, ctx);
 }
 
 export async function findPendingChatEventInputParamsByPromptFixture(
