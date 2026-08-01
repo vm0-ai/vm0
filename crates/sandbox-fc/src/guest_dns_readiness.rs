@@ -538,12 +538,38 @@ mod tests {
     }
 
     #[test]
-    fn guest_dns_readiness_retries_only_proven_guest_terminal_failures() {
-        assert!(GuestDnsReadinessFailure::TimedOut.retryable());
-        assert!(GuestDnsReadinessFailure::ExitNonZero(2).retryable());
-        assert!(GuestDnsReadinessFailure::UnexpectedAnswer.retryable());
-        assert!(!GuestDnsReadinessFailure::Deadline.retryable());
-        assert!(!GuestDnsReadinessFailure::Transport(io::ErrorKind::TimedOut).retryable());
+    fn guest_dns_readiness_maps_every_failure_policy() {
+        use GuestDnsReadinessFailure as Failure;
+        use SandboxGuestDnsReadinessReason as Reason;
+
+        for (failure, expected_retryable, expected_reason) in [
+            (Failure::Deadline, false, Reason::Deadline),
+            (
+                Failure::Transport(io::ErrorKind::TimedOut),
+                false,
+                Reason::Other,
+            ),
+            (Failure::TimedOut, true, Reason::ProcessTimeout),
+            (Failure::Cancelled, false, Reason::Other),
+            (Failure::StartFailed, false, Reason::Other),
+            (Failure::WaitFailed, false, Reason::Other),
+            (Failure::ExitNonZero(2), true, Reason::DnsPath),
+            (Failure::ExitNonZero(1), false, Reason::Other),
+            (Failure::OutputTruncated, false, Reason::Other),
+            (Failure::InvalidOutput, false, Reason::Other),
+            (Failure::UnexpectedAnswer, true, Reason::DnsPath),
+        ] {
+            assert_eq!(
+                failure.retryable(),
+                expected_retryable,
+                "unexpected retry policy for {failure:?}",
+            );
+            assert_eq!(
+                failure.sandbox_reason(),
+                expected_reason,
+                "unexpected sandbox reason for {failure:?}",
+            );
+        }
     }
 
     #[tokio::test]
