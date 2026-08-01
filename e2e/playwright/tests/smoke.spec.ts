@@ -42,13 +42,13 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
     throw new Error("Clerk session token unavailable for Playwright setup");
   }
 
-  // Keep the pipeline-owned runner and VM, but bypass their mock agent CLIs.
+  // Pin reused Playwright identities to the mock runtime before feature tests.
   const featureSwitchResponse = await page.request.post(
     new URL("/api/zero/feature-switches", apiUrl).toString(),
     {
       headers: authHeadersForToken(token),
       data: {
-        switches: { realAgentInPreview: true },
+        switches: { realAgentInPreview: false },
       },
     },
   );

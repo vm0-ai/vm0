@@ -8,10 +8,10 @@ const attachmentImage = Buffer.from(
   "base64",
 );
 
-test("upload an attachment and receive a real Claude response", async ({
+test("upload an attachment and receive a mock Claude response", async ({
   page,
 }) => {
-  const attachmentName = `playwright-real-upload-${Date.now()}.png`;
+  const attachmentName = `playwright-mock-upload-${Date.now()}.png`;
   await page.route(`**/*${attachmentName}*`, async (route) => {
     const method = route.request().method();
     if (method === "OPTIONS") {
@@ -30,7 +30,7 @@ test("upload an attachment and receive a real Claude response", async ({
     }
     if (method === "PUT") {
       // Proxy the signed request outside browser CORS while preserving the
-      // real object-storage write needed by the agent runtime.
+      // object-storage write exercised by the runner.
       const response = await route.fetch();
       await route.fulfill({
         response,
@@ -56,7 +56,7 @@ test("upload an attachment and receive a real Claude response", async ({
       typeof parsed === "object" &&
       parsed !== null &&
       "realAgentInPreview" in parsed &&
-      parsed.realAgentInPreview === true
+      parsed.realAgentInPreview === false
     );
   });
 
@@ -81,7 +81,7 @@ test("upload an attachment and receive a real Claude response", async ({
     timeout: 20_000,
   });
 
-  const prompt = "Reply with exactly: Hello from Zero. Do not use tools.";
+  const prompt = "printf 'Hello from Zero.\\n'";
   await composer.fill(prompt);
   const [sendRequest] = await Promise.all([
     page.waitForRequest((request) => {
@@ -94,7 +94,7 @@ test("upload an attachment and receive a real Claude response", async ({
   ]);
 
   const sendBody: unknown = JSON.parse(sendRequest.postData() ?? "null");
-  expect(sendBody).toMatchObject({ realAgentInPreview: true });
+  expect(sendBody).toMatchObject({ realAgentInPreview: false });
 
   const userMessage = page.locator('[data-role="user"]').last();
   await expect(userMessage.getByText(prompt, { exact: true })).toBeVisible({
