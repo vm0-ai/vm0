@@ -63,7 +63,6 @@ import {
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
 import { noGoalChangeAfterQueueEvent } from "./chat-goal-queue.service";
-import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
 import { agentphoneDeliveryTargetSchema } from "./agentphone-chat-callback-payload";
 import { githubDeliveryTargetSchema } from "./github-chat-callback-payload";
 import { teamsDeliveryTargetSchema } from "./teams-chat-callback-payload";
@@ -90,18 +89,6 @@ const queuedUserMessageRunParamsSchema = z.object({
   version: z.literal(1),
   prompt: z.string().optional(),
   appendSystemPrompt: z.string().optional(),
-  feishuDelivery: z
-    .object({
-      installationId: z.string(),
-      connectionId: z.string(),
-      chatId: z.string(),
-      messageId: z.string(),
-      threadId: z.string(),
-      replyInThread: z.boolean(),
-      reactionId: z.string().optional(),
-      files: z.array(feishuOrgCallbackFileSchema).optional(),
-    })
-    .optional(),
   teamsDelivery: teamsDeliveryTargetSchema.optional(),
   telegramDelivery: telegramDeliveryTargetSchema.optional(),
   agentphoneDelivery: agentphoneDeliveryTargetSchema.optional(),
@@ -118,8 +105,6 @@ const queuedUserMessageRunParamsSchema = z.object({
     .object({
       slackDisplayName: z.string().optional(),
       slackUserId: z.string().optional(),
-      feishuDisplayName: z.string().optional(),
-      feishuOpenId: z.string().optional(),
       teamsUserDisplayName: z.string().optional(),
       teamsUserPrincipalName: z.string().optional(),
       teamsUserId: z.string().optional(),
