@@ -149,7 +149,7 @@ export interface ChatThreadSignals {
     [HTMLElement | null]
   >;
   // -- Agent info (derived from threadMeta$.agentId) ------------------------
-  agent$: Computed<Promise<ZeroAgentResponse | null>>;
+  agent$: Computed<Promise<ZeroAgentResponse>>;
   agentId$: Computed<string | null>;
   agentDisplayName$: Computed<Promise<string | null>>;
   agentPinned$: Computed<Promise<boolean | null>>;

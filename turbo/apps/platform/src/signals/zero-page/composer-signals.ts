@@ -55,7 +55,7 @@ export interface ComposerSignals
     FlatWorkflowComposerSignals,
     ComposerConnectorSignals,
     ComposerUiSignals {
-  readonly agent$: Computed<Promise<ZeroAgentResponse | null>>;
+  readonly agent$: Computed<Promise<ZeroAgentResponse>>;
   readonly mobileSingleLine: boolean;
   readonly sending$: Computed<Promise<boolean>>;
 

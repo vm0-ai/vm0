@@ -60,6 +60,7 @@ import {
   type ChatUserMessageEvent,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import {
   chatEventCompatibilityRole,
   foldActiveChatGoalObjective,
@@ -980,16 +981,16 @@ function createAgentInfoSignals(threadMeta$: Computed<ThreadMeta | null>) {
     return get(threadMeta$)?.agentId ?? null;
   });
 
-  const agent$ = computed(async (get) => {
+  const agent$ = computed(async (get): Promise<ZeroAgentResponse> => {
     const agentId = get(agentId$);
     if (!agentId) {
-      return null;
+      throw new Error("Chat thread requires an active agent");
     }
     return await get(agentById(agentId));
   });
 
   const agentDisplayName$ = computed(async (get): Promise<string | null> => {
-    return (await get(agent$))?.displayName ?? null;
+    return (await get(agent$)).displayName ?? null;
   });
 
   const agentPinned$ = computed(async (get): Promise<boolean | null> => {

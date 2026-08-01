@@ -42,6 +42,14 @@ import {
 
 const WORKFLOW_PROMPT_DRAFT_TARGET = "composer:new-thread";
 
+const agent$ = computed(async (get) => {
+  const agent = await get(currentChatAgent$);
+  if (!agent) {
+    throw new Error("Chat composer requires an active agent");
+  }
+  return agent;
+});
+
 const actionsLoading$ = computed((): Promise<boolean> => {
   return Promise.resolve(false);
 });
@@ -215,7 +223,7 @@ export const agentChatComposerSignals$ = computed((get) => {
   const workflowPrompt = createAgentWorkflowPromptSignals(draft);
 
   return createComposerSignals({
-    agent$: currentChatAgent$,
+    agent$,
     workflowComposer,
     draft,
     generationTemplate$: newThreadGenerationTemplate$,
