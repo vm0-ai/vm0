@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.61.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.5...guest-agent-v0.61.6) (2026-08-01)
+
+
+### Bug Fixes
+
+* **guest-agent:** ignore secondary codex thread events ([#24466](https://github.com/vm0-ai/vm0/issues/24466)) ([20ed365](https://github.com/vm0-ai/vm0/commit/20ed365bf6639fdce6c6b42cb64f5a45ed3d2562))
+
 ## [0.61.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.4...guest-agent-v0.61.5) (2026-08-01)
 
 ## [0.61.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.3...guest-agent-v0.61.4) (2026-07-31)

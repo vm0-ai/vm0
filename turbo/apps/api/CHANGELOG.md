@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.364.2](https://github.com/vm0-ai/vm0/compare/api-v1.364.1...api-v1.364.2) (2026-08-01)
+
+
+### Refactoring
+
+* dual-write teams launch context ([#24471](https://github.com/vm0-ai/vm0/issues/24471)) ([78bb591](https://github.com/vm0-ai/vm0/commit/78bb591f1014cfc52411ddb841ff474689a97bbd))
+
+
+### Performance Improvements
+
+* **api:** attribute existing thread resolution latency ([#24467](https://github.com/vm0-ai/vm0/issues/24467)) ([696094d](https://github.com/vm0-ai/vm0/commit/696094de291ab4ed2155283c7351443244edec7e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.2
+    * @vm0/connectors bumped to 1.202.4
+    * @vm0/core bumped to 8.502.2
+    * @vm0/db bumped to 1.160.6
+
 ## [1.364.1](https://github.com/vm0-ai/vm0/compare/api-v1.364.0...api-v1.364.1) (2026-08-01)
 
 

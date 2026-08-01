@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.502.2](https://github.com/vm0-ai/vm0/compare/core-v8.502.1...core-v8.502.2) (2026-08-01)
+
+
+### Refactoring
+
+* **connectors:** finish local slug terminology cleanup ([#24472](https://github.com/vm0-ai/vm0/issues/24472)) ([c3000d8](https://github.com/vm0-ai/vm0/commit/c3000d888cf153dc57208c91e69097bdea400a56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.2
+
 ## [8.502.1](https://github.com/vm0-ai/vm0/compare/core-v8.502.0...core-v8.502.1) (2026-08-01)
 
 
