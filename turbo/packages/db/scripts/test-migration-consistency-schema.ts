@@ -14022,6 +14022,384 @@ async function validateChatEventTerminalIndexExpansion(): Promise<void> {
   }
 }
 
+const CHAT_EVENT_RUN_LIFECYCLE_CONTRACTION_PREVIOUS_MIGRATION = 792;
+const CHAT_EVENT_RUN_LIFECYCLE_CONTRACTION_MIGRATION = 793;
+
+async function validateChatEventRunLifecycleContraction(): Promise<void> {
+  console.log("=== Validate chat event run lifecycle contraction ===\n");
+  const testDb = "migration_chat_event_run_lifecycle_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "00000000-0000-4000-8000-000000079301";
+  const threadId = "00000000-0000-4000-8000-000000079302";
+  const historicalRunId = "00000000-0000-4000-8000-000000079303";
+  const canonicalRunId = "00000000-0000-4000-8000-000000079304";
+  const postContractRunId = "00000000-0000-4000-8000-000000079305";
+  const historicalEventId = "00000000-0000-4000-8000-000000079311";
+  const canonicalEventId = "00000000-0000-4000-8000-000000079312";
+  const outputEventId = "00000000-0000-4000-8000-000000079313";
+  const postContractEventId = "00000000-0000-4000-8000-000000079314";
+
+  const migrationSql = await fs.readFile(
+    path.join(
+      MIGRATIONS_DIR,
+      "0793_contract_chat_event_run_lifecycle_event.sql",
+    ),
+    "utf8",
+  );
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.equal(
+    (migrationSql.match(/\bDROP INDEX CONCURRENTLY IF EXISTS\b/gu) ?? [])
+      .length,
+    2,
+  );
+  assert.match(
+    migrationSql,
+    /ALTER TABLE "chat_events" DROP COLUMN IF EXISTS "run_lifecycle_event"/u,
+  );
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CHAT_EVENT_RUN_LIFECYCLE_CONTRACTION_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'run-lifecycle-contract-user',
+            'run-lifecycle-contract',
+            'run-lifecycle-contract-org'
+          )
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES (
+            $1,
+            'run-lifecycle-contract-user',
+            $2,
+            'run lifecycle contract'
+          )
+        `,
+        [threadId, composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_lifecycle_event",
+            "content",
+            "seq_id",
+            "created_at"
+          )
+          VALUES
+            (
+              $2,
+              $1,
+              $5,
+              'run.completed',
+              'completed',
+              'historical terminal payload',
+              1,
+              '2026-08-01 00:00:00'
+            ),
+            (
+              $3,
+              $1,
+              $6,
+              'run.failed',
+              NULL,
+              'canonical terminal payload',
+              2,
+              '2026-08-01 00:00:01'
+            ),
+            (
+              $4,
+              $1,
+              NULL,
+              'output.message',
+              NULL,
+              'non-terminal payload',
+              3,
+              '2026-08-01 00:00:02'
+            )
+        `,
+        [
+          threadId,
+          historicalEventId,
+          canonicalEventId,
+          outputEventId,
+          historicalRunId,
+          canonicalRunId,
+        ],
+      );
+
+      const legacyObjectsBefore = await client.query<{
+        columnCount: string;
+        indexCount: string;
+      }>(`
+        SELECT
+          (
+            SELECT count(*)::text
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'chat_events'
+              AND "column_name" = 'run_lifecycle_event'
+          ) AS "columnCount",
+          (
+            SELECT count(*)::text
+            FROM "pg_class"
+            WHERE "relname" IN (
+              'chat_events_run_lifecycle_unique',
+              'idx_chat_events_thread_run_finish_created'
+            )
+          ) AS "indexCount"
+      `);
+      assert.deepEqual(legacyObjectsBefore.rows, [
+        { columnCount: "1", indexCount: "2" },
+      ]);
+
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "chat_events_run_terminal_unique",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_lifecycle_event",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'run.failed', NULL, 4)
+        `,
+        values: [threadId, canonicalRunId],
+      });
+
+      await applyMigrationsUpTo(
+        client,
+        CHAT_EVENT_RUN_LIFECYCLE_CONTRACTION_MIGRATION,
+      );
+
+      const migrationStatements = migrationSql
+        .split("--> statement-breakpoint")
+        .map((statement) => {
+          return statement.trim();
+        })
+        .filter((statement) => {
+          return statement.length > 0;
+        });
+      for (const statement of migrationStatements) {
+        await client.query(statement);
+      }
+
+      const legacyObjectsAfter = await client.query<{
+        columnCount: string;
+        indexCount: string;
+      }>(`
+        SELECT
+          (
+            SELECT count(*)::text
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'chat_events'
+              AND "column_name" = 'run_lifecycle_event'
+          ) AS "columnCount",
+          (
+            SELECT count(*)::text
+            FROM "pg_class"
+            WHERE "relname" IN (
+              'chat_events_run_lifecycle_unique',
+              'idx_chat_events_thread_run_finish_created'
+            )
+          ) AS "indexCount"
+      `);
+      assert.deepEqual(legacyObjectsAfter.rows, [
+        { columnCount: "0", indexCount: "0" },
+      ]);
+
+      const canonicalIndexes = await client.query<{
+        indexName: string;
+        isUnique: boolean;
+        isValid: boolean;
+        predicate: string | null;
+      }>(`
+        SELECT
+          "index_class"."relname" AS "indexName",
+          "index"."indisunique" AS "isUnique",
+          "index"."indisvalid" AS "isValid",
+          pg_get_expr(
+            "index"."indpred",
+            "index"."indrelid"
+          ) AS "predicate"
+        FROM "pg_index" AS "index"
+        INNER JOIN "pg_class" AS "index_class"
+          ON "index_class"."oid" = "index"."indexrelid"
+        WHERE "index_class"."relname" IN (
+          'chat_events_run_terminal_unique',
+          'idx_chat_events_thread_run_terminal_created'
+        )
+        ORDER BY "index_class"."relname"
+      `);
+      assert.deepEqual(
+        canonicalIndexes.rows.map((index) => {
+          return {
+            indexName: index.indexName,
+            isUnique: index.isUnique,
+            isValid: index.isValid,
+          };
+        }),
+        [
+          {
+            indexName: "chat_events_run_terminal_unique",
+            isUnique: true,
+            isValid: true,
+          },
+          {
+            indexName: "idx_chat_events_thread_run_terminal_created",
+            isUnique: false,
+            isValid: true,
+          },
+        ],
+      );
+      for (const index of canonicalIndexes.rows) {
+        assert.match(index.predicate ?? "", /\bevent_type\b/u);
+        assert.doesNotMatch(index.predicate ?? "", /\brun_lifecycle_event\b/u);
+      }
+
+      const survivingRows = await client.query<{
+        content: string | null;
+        eventType: string;
+        id: string;
+        seqId: string;
+      }>(
+        `
+          SELECT
+            "id",
+            "event_type" AS "eventType",
+            "content",
+            "seq_id"::text AS "seqId"
+          FROM "chat_events"
+          WHERE "id" IN ($1, $2, $3)
+          ORDER BY "seq_id"
+        `,
+        [historicalEventId, canonicalEventId, outputEventId],
+      );
+      assert.deepEqual(survivingRows.rows, [
+        {
+          id: historicalEventId,
+          eventType: "run.completed",
+          content: "historical terminal payload",
+          seqId: "1",
+        },
+        {
+          id: canonicalEventId,
+          eventType: "run.failed",
+          content: "canonical terminal payload",
+          seqId: "2",
+        },
+        {
+          id: outputEventId,
+          eventType: "output.message",
+          content: "non-terminal payload",
+          seqId: "3",
+        },
+      ]);
+
+      const postContractInsert = await client.query<{
+        eventType: string;
+        id: string;
+      }>(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "content",
+            "seq_id"
+          )
+          VALUES ($1, $2, $3, 'run.cancelled', 'post-contract terminal', 4)
+          RETURNING "id", "event_type" AS "eventType"
+        `,
+        [postContractEventId, threadId, postContractRunId],
+      );
+      assert.deepEqual(postContractInsert.rows, [
+        { id: postContractEventId, eventType: "run.cancelled" },
+      ]);
+
+      const terminalRows = await client.query<{
+        eventType: string;
+        id: string;
+      }>(
+        `
+          SELECT "id", "event_type" AS "eventType"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+            AND "event_type" IN (
+              'run.completed',
+              'run.failed',
+              'run.cancelled'
+            )
+          ORDER BY "created_at", "id"
+        `,
+        [threadId],
+      );
+      assert.deepEqual(terminalRows.rows, [
+        { id: historicalEventId, eventType: "run.completed" },
+        { id: canonicalEventId, eventType: "run.failed" },
+        { id: postContractEventId, eventType: "run.cancelled" },
+      ]);
+
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "chat_events_run_terminal_unique",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'run.completed', 5)
+        `,
+        values: [threadId, postContractRunId],
+      });
+      await assertChatEventsAppendOnlyProtection(client, historicalEventId);
+
+      console.log("   ✅ Historical and canonical terminal rows survive");
+      console.log(
+        "   ✅ Canonical terminal reads and writes remain available after contraction",
+      );
+      console.log(
+        "   ✅ The event_type unique index independently rejects duplicate terminal events",
+      );
+      console.log(
+        "   ✅ Full migration retry removes only the legacy column and indexes",
+      );
+      console.log("   ✅ Chat event append-only protection remains active\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateGithubIssueSessionContraction(): Promise<void> {
   console.log("=== Validate legacy GitHub issue session contraction ===\n");
   const testDb = "migration_github_issue_session_contraction_test";
@@ -15705,6 +16083,7 @@ async function main(): Promise<void> {
     await validateChatGoalContextBackfill();
     await validateChatEventUserMessagePartBackfill();
     await validateChatEventTerminalIndexExpansion();
+    await validateChatEventRunLifecycleContraction();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();
