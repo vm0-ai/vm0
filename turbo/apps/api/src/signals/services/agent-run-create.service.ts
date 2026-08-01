@@ -452,14 +452,8 @@ interface ExplicitConnectorScope {
 // Existing API/runner wire fields named `sessionId` are preserved for
 // compatibility and normalized to these semantic names at the boundary.
 
-function runnerReuseKey(
-  chatThreadId: string | undefined,
-  cliAgentSessionId: string | null,
-): string | null {
-  if (chatThreadId) {
-    return `thread:${chatThreadId}`;
-  }
-  return cliAgentSessionId ? `session:${cliAgentSessionId}` : null;
+function runnerReuseKey(chatThreadId: string | undefined): string | null {
+  return chatThreadId ? `thread:${chatThreadId}` : null;
 }
 
 interface RunRecord {
@@ -5754,7 +5748,7 @@ function buildRunnerJobPayload(
         runnerGroup: group,
         profile,
         cliAgentSessionId,
-        reuseKey: runnerReuseKey(args.chatThreadId, cliAgentSessionId),
+        reuseKey: runnerReuseKey(args.chatThreadId),
         executionContext: storedContext,
       }),
       runContextSnapshot,
@@ -6473,10 +6467,7 @@ async function commitPreparedLaunch(
   const committed = await args.db.transaction(async (tx) => {
     const payload = queuedRunnerJobPayload({
       ...args.launch.runnerJobPayload,
-      reuseKey: runnerReuseKey(
-        args.createArgs.chatThreadId,
-        args.launch.runnerJobPayload.cliAgentSessionId,
-      ),
+      reuseKey: runnerReuseKey(args.createArgs.chatThreadId),
     });
     await args.timing.measure(
       "api_dispatch_admission_lock_wait",

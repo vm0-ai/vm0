@@ -35,23 +35,68 @@ async fn discover_claim_complete() {
 }
 
 #[tokio::test]
-async fn discover_exposes_session_affinity_before_claim() {
+async fn discover_carries_thread_affinity_and_session_before_claim() {
     let dir = tempfile::tempdir().unwrap();
     let provider = default_provider(dir.path(), CancellationToken::new(), empty_cancel_tokens());
     let job_id = RunId::new_v4();
+    let reuse_key = "thread:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
-    write_job_with_session(dir.path(), job_id, "continue", "session-123");
+    write_job_with_affinity(
+        dir.path(),
+        job_id,
+        "continue",
+        Some(reuse_key),
+        Some("session-123"),
+    );
 
     let candidate = provider.discover().await.unwrap();
     assert_eq!(candidate.cli_agent_session_id(), Some("session-123"));
-    assert_eq!(candidate.reuse_key(), Some("session:session-123"));
+    assert_eq!(candidate.reuse_key(), Some(reuse_key));
 
     let claimed = provider.claim(candidate).await.unwrap();
     assert_eq!(
         claimed.context().cli_agent_session_id(),
         Some("session-123")
     );
-    assert_eq!(claimed.context().reuse_key(), Some("session:session-123"));
+    assert_eq!(claimed.context().reuse_key(), Some(reuse_key));
+}
+
+#[tokio::test]
+async fn session_only_job_resumes_without_affinity() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = default_provider(dir.path(), CancellationToken::new(), empty_cancel_tokens());
+    let job_id = RunId::new_v4();
+
+    write_job_with_session(dir.path(), job_id, "continue cold", "session-123");
+
+    let candidate = provider.discover().await.unwrap();
+    assert_eq!(candidate.cli_agent_session_id(), Some("session-123"));
+    assert_eq!(candidate.reuse_key(), None);
+
+    let claimed = provider.claim(candidate).await.unwrap();
+    assert_eq!(
+        claimed.context().cli_agent_session_id(),
+        Some("session-123")
+    );
+    assert_eq!(claimed.context().reuse_key(), None);
+}
+
+#[tokio::test]
+async fn thread_affinity_is_available_before_a_session_exists() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = default_provider(dir.path(), CancellationToken::new(), empty_cancel_tokens());
+    let job_id = RunId::new_v4();
+    let reuse_key = "thread:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+    write_job_with_affinity(dir.path(), job_id, "start warm", Some(reuse_key), None);
+
+    let candidate = provider.discover().await.unwrap();
+    assert_eq!(candidate.cli_agent_session_id(), None);
+    assert_eq!(candidate.reuse_key(), Some(reuse_key));
+
+    let claimed = provider.claim(candidate).await.unwrap();
+    assert_eq!(claimed.context().cli_agent_session_id(), None);
+    assert_eq!(claimed.context().reuse_key(), Some(reuse_key));
 }
 
 #[tokio::test]

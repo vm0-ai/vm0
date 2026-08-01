@@ -84,6 +84,7 @@ trap cleanup EXIT
 
 for ((ATTEMPT = 1; ATTEMPT <= MAX_ATTEMPTS; ATTEMPT++)); do
   SESSION_ID="e2e-workspace-cache-promotion-session-${WORKFLOW_RUN_KEY}-${ATTEMPT}"
+  CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
   SUBMIT_PID=""
   WRITER_EXEC_PID=""
   SANDBOX_ID=""
@@ -113,6 +114,7 @@ for ((ATTEMPT = 1; ATTEMPT <= MAX_ATTEMPTS; ATTEMPT++)); do
   # freeze boundary.
   echo "--- Turn 1: create live workspace state ---"
   sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+    --chat-thread-id "$CHAT_THREAD_ID" \
     --session-id "$SESSION_ID" \
     --feature-flag sandboxReuse=true \
     --prompt 'set -eu
@@ -238,6 +240,7 @@ cat /tmp/vm0-workspace-cache-release >/dev/null' &
 
   echo "--- Turn 2: restore promoted workspace ---"
   if sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+    --chat-thread-id "$CHAT_THREAD_ID" \
     --session-id "$SESSION_ID" \
     --feature-flag sandboxReuse=true \
     --prompt 'test "$(cat /home/user/workspace/cache-marker)" = workspace-cache-marker && test -s /home/user/workspace/live-writer && test ! -e /home/user/workspace/nested/ephemeral'; then
