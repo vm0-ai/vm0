@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.151.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.4...runner-rs-v0.151.5) (2026-08-01)
+
+
+### Bug Fixes
+
+* trigger api platform and runner releases ([#24389](https://github.com/vm0-ai/vm0/issues/24389)) ([5e32b07](https://github.com/vm0-ai/vm0/commit/5e32b07956572689916ff1348deab37be627ab0f))
+
 ## [0.151.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.3...runner-rs-v0.151.4) (2026-07-31)
 
 

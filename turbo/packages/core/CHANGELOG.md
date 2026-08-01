@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.502.0](https://github.com/vm0-ai/vm0/compare/core-v8.501.1...core-v8.502.0) (2026-08-01)
+
+
+### Features
+
+* add conditional image recognition fallback ([#24390](https://github.com/vm0-ai/vm0/issues/24390)) ([376a6fa](https://github.com/vm0-ai/vm0/commit/376a6fa3068e6d3033592b7702dbe8872dc51da4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.0
+
 ## [8.501.1](https://github.com/vm0-ai/vm0/compare/core-v8.501.0...core-v8.501.1) (2026-08-01)
 
 
