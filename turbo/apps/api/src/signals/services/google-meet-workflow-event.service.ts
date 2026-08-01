@@ -34,15 +34,10 @@ import {
   type WorkflowEventRunTiming,
 } from "./workflow-event-source-timing.service";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
 const log = logger("api:google-meet-workflow-event");
@@ -1426,13 +1421,7 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
             });
             return {
               context,
-              prompt: workflowAutomationPrompt(context),
-              appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
               triggerBrief: buildGoogleMeetWorkflowAutomationBrief(event),
-              callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-                automation.chatThreadId,
-                automation.agentId,
-              ),
             };
           },
         );
@@ -1442,19 +1431,12 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
             due: {
               automation: automation.automation,
               agentId: automation.agentId,
-              workflowName: automation.workflowName,
               chatThreadId: automation.chatThreadId,
             },
             automationContext: runInput.context,
             apiStartTime: args.apiStartTime,
             triggerSource: "workflow-event",
-            prompt: runInput.prompt,
-            appendSystemPrompt: runInput.appendSystemPrompt,
             triggerBrief: runInput.triggerBrief,
-            callbacks: runInput.callbacks,
-            activePreviousRunPolicy: "allow",
-            recordLastRunId: false,
-            recordLastRunAt: true,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
             timing: timing.collectorForRunStart(),
           },

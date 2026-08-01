@@ -1,7 +1,6 @@
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
-import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -12,10 +11,8 @@ import {
 } from "@vm0/db/schema/zero-workflow";
 import { and, asc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { z } from "zod";
 
 import type { Db, ReadonlyDb } from "../external/db";
-import { settle } from "../utils";
 import {
   hasPendingUserChatQueueEvent,
   listPendingChatQueueEvents,
@@ -23,14 +20,6 @@ import {
   lockChatQueueThread,
   staleChatEventQueueThreadIds,
 } from "./chat-event-queue.service";
-import {
-  decryptPersistentSecretsMap,
-  encryptPersistentSecretsMap,
-} from "./crypto.utils";
-import {
-  internalRunCallbackKinds,
-  type InternalRunCallbackKind,
-} from "./internal-run-callback";
 import {
   insertChatEvent,
   replaceChatEvent,
@@ -43,76 +32,11 @@ import type {
   WorkflowAutomationEventType,
 } from "./workflow-automation-context.service";
 
-const WORKFLOW_QUEUE_EVENT_PARAMS_KEY = "__workflow_queue_event_params__";
 const automationEventRevoker = alias(chatEvents, "automation_event_revoker");
 
 export type WorkflowQueueAdmissionTransaction = Parameters<
   Parameters<Db["transaction"]>[0]
 >[0];
-
-const workflowQueueEventParamsWireSchema = z.object({
-  version: z.literal(1),
-  prompt: z.string().optional(),
-  appendSystemPrompt: z.string().optional(),
-  callbacks: z
-    .array(
-      z.object({
-        internalKind: z.enum(internalRunCallbackKinds),
-        secret: z.string(),
-        payload: z.unknown(),
-      }),
-    )
-    .optional(),
-  recordLastRunId: z.boolean().optional(),
-  recordLastRunAt: z.boolean().optional(),
-  activePreviousRunPolicy: z.enum(["block", "allow"]).optional(),
-  allowClaimedOnceScheduleAutomation: z.boolean().optional(),
-});
-
-/**
- * The current writer encrypts only the version marker. Optional fields remain
- * readable until historical pending automation events have drained.
- */
-export interface WorkflowQueueEventParams {
-  readonly version: 1;
-  readonly prompt?: string;
-  readonly appendSystemPrompt?: string;
-  readonly callbacks?: readonly {
-    readonly internalKind: InternalRunCallbackKind;
-    readonly secret: string;
-    readonly payload: unknown;
-  }[];
-  readonly recordLastRunId?: boolean;
-  readonly recordLastRunAt?: boolean;
-  readonly activePreviousRunPolicy?: "block" | "allow";
-  readonly allowClaimedOnceScheduleAutomation?: boolean;
-}
-
-async function encryptWorkflowQueueEventParams(
-  params: WorkflowQueueEventParams,
-  ctx: { readonly userId: string; readonly orgId: string },
-): Promise<string> {
-  const encrypted = await encryptPersistentSecretsMap(
-    { [WORKFLOW_QUEUE_EVENT_PARAMS_KEY]: JSON.stringify(params) },
-    ctx,
-  );
-  if (!encrypted) {
-    throw new Error("Failed to encrypt workflow queue event params");
-  }
-  return encrypted;
-}
-
-export async function decryptWorkflowQueueEventParams(
-  encryptedParams: string,
-  ctx: { readonly userId: string; readonly orgId: string },
-): Promise<WorkflowQueueEventParams | null> {
-  const decrypted = await decryptPersistentSecretsMap(encryptedParams, ctx);
-  const raw = decrypted?.[WORKFLOW_QUEUE_EVENT_PARAMS_KEY];
-  if (!raw) {
-    return null;
-  }
-  return workflowQueueEventParamsWireSchema.parse(JSON.parse(raw));
-}
 
 async function chatEventQueueAdmissionLock(
   tx: WorkflowQueueAdmissionTransaction,
@@ -176,9 +100,6 @@ async function pendingTickExistsForAutomation(
 type WorkflowQueueAdmission =
   | { readonly kind: "inserted"; readonly eventId: string }
   | { readonly kind: "coalesced" };
-type WorkflowQueueAdmissionAttempt =
-  | WorkflowQueueAdmission
-  | { readonly kind: "payload-required" };
 
 export type PersistWorkflowQueueSourceTransition = (
   tx: WorkflowQueueAdmissionTransaction,
@@ -193,7 +114,6 @@ interface WorkflowQueueAdmissionArgs {
   readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | undefined;
   readonly coalescePendingScheduleRun: boolean;
-  readonly params: WorkflowQueueEventParams;
   /**
    * Atomically transitions a provider-owned source event only after its
    * workflow queue item has been inserted. Throwing rolls back both writes.
@@ -204,8 +124,7 @@ interface WorkflowQueueAdmissionArgs {
 async function attemptWorkflowQueueAdmission(
   db: Db,
   args: WorkflowQueueAdmissionArgs,
-  encryptedParams: string | undefined,
-): Promise<WorkflowQueueAdmissionAttempt> {
+): Promise<WorkflowQueueAdmission> {
   const { automation } = args;
   return await db.transaction(async (tx) => {
     await chatEventQueueAdmissionLock(tx, args.chatThreadId);
@@ -216,10 +135,6 @@ async function attemptWorkflowQueueAdmission(
       (await pendingTickExistsForAutomation(tx, automation.id))
     ) {
       return { kind: "coalesced" };
-    }
-
-    if (encryptedParams === undefined) {
-      return { kind: "payload-required" };
     }
 
     const inserted = await insertChatEvent(tx, {
@@ -244,7 +159,6 @@ async function attemptWorkflowQueueAdmission(
       workflowAutomationEventPayload: args.workflowAutomationEventPayload,
       triggerSource: args.triggerSource,
       triggerBrief: args.triggerBrief ?? null,
-      encryptedParams,
     });
     if (!inserted) {
       throw new Error("Workflow queue event insert returned no row");
@@ -263,39 +177,7 @@ export async function admitWorkflowAutomationEvent(
   db: Db,
   args: WorkflowQueueAdmissionArgs,
 ): Promise<WorkflowQueueAdmission> {
-  const { automation } = args;
-  const initial = await attemptWorkflowQueueAdmission(db, args, undefined);
-  if (initial.kind !== "payload-required") {
-    return initial;
-  }
-
-  const encryptedParamsResult = await settle(
-    encryptWorkflowQueueEventParams(args.params, {
-      userId: automation.ownerUserId,
-      orgId: automation.orgId,
-    }),
-  );
-  if (!encryptedParamsResult.ok) {
-    const retryWithoutPayload = await attemptWorkflowQueueAdmission(
-      db,
-      args,
-      undefined,
-    );
-    if (retryWithoutPayload.kind !== "payload-required") {
-      return retryWithoutPayload;
-    }
-    throw encryptedParamsResult.error;
-  }
-
-  const final = await attemptWorkflowQueueAdmission(
-    db,
-    args,
-    encryptedParamsResult.value,
-  );
-  if (final.kind === "payload-required") {
-    throw new Error("Workflow queue admission still required encrypted params");
-  }
-  return final;
+  return await attemptWorkflowQueueAdmission(db, args);
 }
 
 export interface PendingWorkflowQueueEvent {
@@ -308,8 +190,6 @@ export interface PendingWorkflowQueueEvent {
   readonly workflowName: string | null;
   readonly workflowAutomationEventType: string | null;
   readonly workflowAutomationEventPayload: WorkflowAutomationEventPayload | null;
-  readonly encryptedParams: string | null;
-  readonly createdAt: Date;
 }
 
 /**
@@ -353,15 +233,9 @@ export async function loadNextWorkflowQueueEvent(
         workflowName: chatAutomationContext.workflowName,
         workflowAutomationEventType: chatAutomationContext.eventType,
         workflowAutomationEventPayload: chatAutomationContext.eventPayload,
-        encryptedParams: chatEventInputParams.encryptedParams,
-        createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
       .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
-      .leftJoin(
-        chatEventInputParams,
-        eq(chatEventInputParams.eventId, chatEvents.id),
-      )
       .leftJoin(
         chatAutomationContext,
         and(

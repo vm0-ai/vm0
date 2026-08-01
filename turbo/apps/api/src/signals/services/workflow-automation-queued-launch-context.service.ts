@@ -11,18 +11,16 @@ import {
   buildChatOnlyWorkflowAutomationCallbacks,
   buildWorkflowAutomationCallbacks,
   type AutomationRow,
-  type RunWorkflowAutomationNowArgs,
 } from "./zero-workflow-automation-launch.service";
 
-export interface WorkflowAutomationQueuedLaunchMaterial {
-  readonly workflowName: string;
-  readonly prompt?: string;
-  readonly appendSystemPrompt?: string;
-  readonly callbacks?: RunWorkflowAutomationNowArgs["callbacks"];
-  readonly activePreviousRunPolicy?: RunWorkflowAutomationNowArgs["activePreviousRunPolicy"];
-  readonly recordLastRunId?: boolean;
-  readonly recordLastRunAt?: boolean;
-  readonly allowClaimedOnceScheduleAutomation?: boolean;
+interface WorkflowAutomationQueuedLaunchMaterial {
+  readonly prompt: string;
+  readonly appendSystemPrompt: string;
+  readonly callbacks: ReturnType<typeof buildWorkflowAutomationCallbacks>;
+  readonly activePreviousRunPolicy: "block" | "allow";
+  readonly recordLastRunId: boolean;
+  readonly recordLastRunAt: boolean;
+  readonly allowClaimedOnceScheduleAutomation: boolean;
 }
 
 export function buildWorkflowAutomationQueuedLaunchMaterial(args: {
@@ -53,7 +51,6 @@ export function buildWorkflowAutomationQueuedLaunchMaterial(args: {
     eventPayload,
   });
   return {
-    workflowName: args.workflowName,
     prompt: workflowAutomationPrompt(context),
     appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
     callbacks:

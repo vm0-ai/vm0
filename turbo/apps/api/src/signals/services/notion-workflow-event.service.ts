@@ -47,17 +47,12 @@ import {
   encryptStoredSecretValue,
 } from "./crypto.utils";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
   type RunWorkflowAutomationNowArgs,
   type RunWorkflowAutomationResult,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 
 const log = logger("api:notion-workflow-event");
 
@@ -2050,22 +2045,12 @@ async function startNotionWorkflowRun(args: {
       due: {
         automation: args.row.automation,
         agentId: args.row.agentId,
-        workflowName: args.row.workflowName,
         chatThreadId: args.chatThreadId,
       },
       automationContext: args.context,
       apiStartTime: now(),
       triggerSource: "workflow-event",
-      prompt: workflowAutomationPrompt(args.context),
-      appendSystemPrompt: workflowAutomationAppendSystemPrompt(args.context),
       triggerBrief: args.triggerBrief,
-      callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-        args.chatThreadId,
-        args.row.agentId,
-      ),
-      activePreviousRunPolicy: "allow",
-      recordLastRunId: false,
-      recordLastRunAt: true,
       dispatchFailedCallbacks: dispatchFailedRunCallbacks,
     },
     args.signal,
