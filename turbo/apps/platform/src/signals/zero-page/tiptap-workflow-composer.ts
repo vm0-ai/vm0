@@ -187,14 +187,6 @@ export interface WorkflowComposerSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  readonly setAutoFocusContainerRef$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
-  readonly setCompactContainerRef$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
   readonly focus$: Command<void, []>;
   readonly hasInput$: Computed<boolean>;
   readonly hasTemplateAttachment$: Computed<boolean>;
@@ -1878,8 +1870,27 @@ interface MountEditorOptions {
   syncWorkflowNames$: WorkflowNamesSyncCommand;
   syncAgentMentionAvatars$: AgentMentionAvatarsSyncCommand;
   inlineTemplatesEnabled: boolean;
-  autoFocus: boolean;
+  autoFocus: boolean | Computed<Promise<boolean>>;
   singleLineOnMobile: boolean;
+}
+
+interface WorkflowComposerMountOptions {
+  readonly autoFocus?: boolean | Computed<Promise<boolean>>;
+  readonly singleLineOnMobile?: boolean;
+}
+
+function createFocusEditorWhenReadyCommand(
+  editor: Editor,
+  autoFocus: MountEditorOptions["autoFocus"],
+): Command<Promise<void>, [AbortSignal]> {
+  return command(async ({ get }, signal: AbortSignal): Promise<void> => {
+    const shouldAutoFocus =
+      typeof autoFocus === "boolean" ? autoFocus : await get(autoFocus);
+    signal.throwIfAborted();
+    if (shouldAutoFocus && !isIOS()) {
+      editor.commands.focus("end");
+    }
+  });
 }
 
 function createMountEditorCommand({
@@ -1897,6 +1908,10 @@ function createMountEditorCommand({
   autoFocus,
   singleLineOnMobile,
 }: MountEditorOptions) {
+  const focusEditorWhenReady$ = createFocusEditorWhenReadyCommand(
+    editor,
+    autoFocus,
+  );
   return onRef(
     command(async ({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       runtime.update = (updatedEditor) => {
@@ -1992,9 +2007,6 @@ function createMountEditorCommand({
         mountSignal: signal,
       };
       set(registerMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
-      if (autoFocus && !isIOS()) {
-        editor.commands.focus("end");
-      }
       signal.addEventListener("abort", () => {
         set(unregisterMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
         compositionGate.cancel(signal.reason);
@@ -2004,6 +2016,7 @@ function createMountEditorCommand({
         editor.unmount();
       });
       await Promise.all([
+        set(focusEditorWhenReady$, signal),
         set(syncWorkflowNames$, signal, signal),
         set(syncAgentMentionAvatars$, signal),
       ]);
@@ -2423,6 +2436,7 @@ export function createWorkflowComposerSignals<
   threadId?: string,
   agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
   inlineTemplatesEnabled = false,
+  mountOptions: WorkflowComposerMountOptions = {},
 ): WorkflowComposerSignals {
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
@@ -2484,23 +2498,21 @@ export function createWorkflowComposerSignals<
   const focus$ = command(() => {
     editor.commands.focus("end");
   });
-  const mountEditor = (autoFocus: boolean, singleLineOnMobile: boolean) => {
-    return createMountEditorCommand({
-      editor,
-      draft,
-      runtime,
-      caretIndex$,
-      editorFocusedState$,
-      selectedSuggestionIndexState$,
-      feedback,
-      compositionGate,
-      syncWorkflowNames$,
-      syncAgentMentionAvatars$,
-      inlineTemplatesEnabled,
-      autoFocus,
-      singleLineOnMobile,
-    });
-  };
+  const setContainerRef$ = createMountEditorCommand({
+    editor,
+    draft,
+    runtime,
+    caretIndex$,
+    editorFocusedState$,
+    selectedSuggestionIndexState$,
+    feedback,
+    compositionGate,
+    syncWorkflowNames$,
+    syncAgentMentionAvatars$,
+    inlineTemplatesEnabled,
+    autoFocus: mountOptions.autoFocus ?? false,
+    singleLineOnMobile: mountOptions.singleLineOnMobile ?? false,
+  });
   const suggestionInsertionCommands = createSuggestionInsertionCommands(
     editor,
     activeSlashRange$,
@@ -2523,9 +2535,7 @@ export function createWorkflowComposerSignals<
   return {
     editor,
     templatePreview,
-    setContainerRef$: mountEditor(false, false),
-    setAutoFocusContainerRef$: mountEditor(true, false),
-    setCompactContainerRef$: mountEditor(false, true),
+    setContainerRef$,
     focus$,
     hasInput$,
     hasTemplateAttachment$: templateAttachment.active$,

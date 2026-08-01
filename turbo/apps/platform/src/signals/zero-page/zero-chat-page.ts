@@ -35,6 +35,7 @@ export const chatPageWorkflowComposer$ = computed((get) => {
     undefined,
     currentChatAgentRecordId$,
     inlineTemplatesEnabled,
+    { autoFocus: true },
   );
 });
 

@@ -1615,7 +1615,7 @@ describe("chat composer models", () => {
     });
 
     await expectComposerModel("Claude Opus 4.7");
-    expect(screen.queryByText("Model Configure")).not.toBeInTheDocument();
+    expect(screen.queryByText("Configure model")).not.toBeInTheDocument();
 
     holdProviderReload = true;
     const accountName = await screen.findByText("Alex Rivera");
@@ -1650,7 +1650,7 @@ describe("chat composer models", () => {
       screen.findByRole("combobox", { name: "GPT 5.5" }),
     ).resolves.toBeInTheDocument();
 
-    expect(screen.queryByText("Model Configure")).not.toBeInTheDocument();
+    expect(screen.queryByText("Configure model")).not.toBeInTheDocument();
     const input = screen.getByPlaceholderText(PLACEHOLDER);
     await fill(input, "Keep this draft");
     await user.keyboard("{Enter}");
@@ -1720,11 +1720,11 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     expect(screen.getByLabelText("Send")).toBeDisabled();
-    const warning = (await screen.findByText("Model Configure")).closest(
+    const warning = (await screen.findByText("Configure model")).closest(
       "button",
     )!;
     expect(warning).toHaveAccessibleName(
-      "Model Configure: The selected model is not available. Configure it before sending.",
+      "Configure model: The selected model is not available. Configure it before sending.",
     );
 
     await user.click(warning);
@@ -1801,11 +1801,11 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     expect(screen.getByLabelText("Send")).toBeDisabled();
-    const warning = (await screen.findByText("Model Configure")).closest(
+    const warning = (await screen.findByText("Configure model")).closest(
       "button",
     )!;
     expect(warning).toHaveAccessibleName(
-      "Model Configure: The selected model is not available. Configure it before sending.",
+      "Configure model: The selected model is not available. Configure it before sending.",
     );
 
     await user.click(warning);
@@ -1862,11 +1862,11 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     expect(screen.getByLabelText("Send")).toBeDisabled();
-    const warning = (await screen.findByText("Model Configure")).closest(
+    const warning = (await screen.findByText("Configure model")).closest(
       "button",
     )!;
     expect(warning).toHaveAccessibleName(
-      "Model Configure: The selected model is not available. Configure it before sending.",
+      "Configure model: The selected model is not available. Configure it before sending.",
     );
 
     await user.click(warning);

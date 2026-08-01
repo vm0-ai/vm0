@@ -1253,7 +1253,6 @@
       "configureModel": "Configura modello",
       "createWorkflow": "Crea flusso di lavoro",
       "message": "Messaggio",
-      "modelConfigureAction": "Configura modello",
       "placeholder": "Chiedimi di automatizzare i flussi di lavoro, gestire le attività...",
       "selectedModelUnavailable": "Il modello selezionato non è disponibile. Configuralo prima dell'invio.",
       "selectedModelUnavailableToast": "Il modello selezionato non è disponibile",

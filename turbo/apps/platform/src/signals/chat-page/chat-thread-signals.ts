@@ -7,6 +7,7 @@ import type {
   ChatThreadArtifactRun,
   ChatThreadDraft,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
@@ -148,6 +149,7 @@ export interface ChatThreadSignals {
     [HTMLElement | null]
   >;
   // -- Agent info (derived from threadMeta$.agentId) ------------------------
+  agent$: Computed<Promise<ZeroAgentResponse | null>>;
   agentId$: Computed<string | null>;
   agentDisplayName$: Computed<Promise<string | null>>;
   agentPinned$: Computed<Promise<boolean | null>>;

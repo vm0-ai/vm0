@@ -1227,7 +1227,6 @@
       "configureModel": "मॉडल कॉन्फ़िगर करें",
       "createWorkflow": "वर्कफ़्लो बनाएँ",
       "message": "संदेश",
-      "modelConfigureAction": "मॉडल कॉन्फ़िगर करें",
       "placeholder": "मुझसे वर्कफ़्लो ऑटोमेट करने और टास्क मैनेज करने के लिए कहें...",
       "selectedModelUnavailable": "चयनित मॉडल उपलब्ध नहीं है. भेजने से पहले इसे कॉन्फ़िगर करें.",
       "selectedModelUnavailableToast": "चयनित मॉडल उपलब्ध नहीं है",

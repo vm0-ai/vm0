@@ -164,6 +164,11 @@ import {
   type RunGroupFolding,
 } from "../../signals/chat-page/run-group-folding.ts";
 import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
+import {
+  activeGoalDialogGoal$,
+  activeGoalDialogThreadId$,
+  closeChatThreadGoalDialog$,
+} from "../../signals/chat-page/chat-goal.ts";
 import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
 import type { PlanUpgradeSignals } from "../../signals/chat-page/plan-upgrade-block.ts";
 import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
@@ -3760,6 +3765,87 @@ function splitQueuedEventsForThinkingIndicator(groups: ChatEventGroup[]): {
 // Composer wrapper — reads chat signals from thread prop
 // ---------------------------------------------------------------------------
 
+function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
+  const { t } = useTranslation();
+  const dialogThreadId = useGet(activeGoalDialogThreadId$);
+  const goalLoadable = useLoadable(activeGoalDialogGoal$);
+  const closeDialog = useSet(closeChatThreadGoalDialog$);
+  const open = dialogThreadId === threadId;
+  const goal = goalLoadable.state === "hasData" ? goalLoadable.data : undefined;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          closeDialog();
+        }
+      }}
+    >
+      <DialogContent
+        className="w-[calc(100vw-2rem)] max-w-2xl gap-5 p-5 sm:p-6"
+        aria-describedby={undefined}
+      >
+        <DialogHeader>
+          <DialogTitle className="text-base">
+            {t(($) => {
+              return $.chat.queue.goal;
+            })}
+          </DialogTitle>
+          <DialogDescription className="leading-6">
+            {t(($) => {
+              return $.chat.queue.goalDescription;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-lg bg-muted/40 px-3 py-3 text-sm text-foreground sm:px-4">
+          {goalLoadable.state === "loading" ? (
+            <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground">
+              <IconLoader2
+                size={16}
+                stroke={1.7}
+                className="animate-spin"
+                aria-hidden="true"
+              />
+              <span>
+                {t(($) => {
+                  return $.chat.queue.loadingGoal;
+                })}
+              </span>
+            </div>
+          ) : goalLoadable.state === "hasError" ? (
+            <div className="flex min-h-28 flex-col justify-center gap-1 text-muted-foreground">
+              <p className="font-medium text-foreground">
+                {t(($) => {
+                  return $.chat.queue.goalLoadFailed;
+                })}
+              </p>
+              <p className="text-xs">
+                {t(($) => {
+                  return $.chat.queue.goalRetry;
+                })}
+              </p>
+            </div>
+          ) : goal ? (
+            <Markdown
+              source={goal.objective}
+              escapeHtml
+              mathEnabled
+              style={{ fontSize: "inherit", lineHeight: "inherit" }}
+            />
+          ) : (
+            <div className="flex min-h-28 items-center text-muted-foreground">
+              {t(($) => {
+                return $.chat.queue.goalUnavailable;
+              })}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   const pwaChatKeyboardGesturesEnabled =
     useGet(pwaChatKeyboardGesturesEnabled$) && isStandalonePwa();
@@ -3778,6 +3864,7 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
       >
         <div className="mx-auto max-w-[900px]">
           <ZeroChatComposer signals={thread.composer} />
+          <ActiveGoalObjectiveDialog threadId={thread.threadId} />
           <PersonalClaudeCodeDeviceAuthDialog />
           <PersonalCodexDeviceAuthDialog />
         </div>

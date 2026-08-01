@@ -980,13 +980,16 @@ function createAgentInfoSignals(threadMeta$: Computed<ThreadMeta | null>) {
     return get(threadMeta$)?.agentId ?? null;
   });
 
-  const agentDisplayName$ = computed(async (get): Promise<string | null> => {
-    const agentId = await get(agentId$);
+  const agent$ = computed(async (get) => {
+    const agentId = get(agentId$);
     if (!agentId) {
       return null;
     }
-    const agent = await get(agentById(agentId));
-    return agent?.displayName ?? null;
+    return await get(agentById(agentId));
+  });
+
+  const agentDisplayName$ = computed(async (get): Promise<string | null> => {
+    return (await get(agent$))?.displayName ?? null;
   });
 
   const agentPinned$ = computed(async (get): Promise<boolean | null> => {
@@ -998,7 +1001,7 @@ function createAgentInfoSignals(threadMeta$: Computed<ThreadMeta | null>) {
     return ids.includes(agentId);
   });
 
-  return { agentId$, agentDisplayName$, agentPinned$ };
+  return { agent$, agentId$, agentDisplayName$, agentPinned$ };
 }
 
 function createThreadOwnedSignals(
@@ -4739,24 +4742,33 @@ function publicChatThreadEventSignals(
   };
 }
 
-function createThreadComposer(
-  draft: DraftSignals,
-  threadId: string,
-  agentId$: Computed<string | null>,
-  inlineTemplatesEnabled: boolean,
-  connectorAuthorization?: ComposerConnectorAuthorizationSignals,
-) {
+interface CreateThreadComposerOptions {
+  readonly draft: DraftSignals;
+  readonly threadId: string;
+  readonly agentId$: Computed<string | null>;
+  readonly hasEvents$: Computed<Promise<boolean>>;
+  readonly inlineTemplatesEnabled: boolean;
+  readonly connectorAuthorization:
+    | ComposerConnectorAuthorizationSignals
+    | undefined;
+}
+
+function createThreadComposer(options: CreateThreadComposerOptions) {
+  const autoFocus$ = computed(async (get): Promise<boolean> => {
+    return !(await get(options.hasEvents$));
+  });
   const workflowComposer = createWorkflowComposerSignals(
-    draft,
-    threadId,
-    agentId$,
-    inlineTemplatesEnabled,
+    options.draft,
+    options.threadId,
+    options.agentId$,
+    options.inlineTemplatesEnabled,
+    { autoFocus: autoFocus$, singleLineOnMobile: true },
   );
   return {
     workflowComposer,
     composerConnectors: createComposerConnectorSignals(
-      agentId$,
-      connectorAuthorization,
+      options.agentId$,
+      options.connectorAuthorization,
     ),
     focusInput$: workflowComposer.focus$,
   };
@@ -4914,12 +4926,6 @@ function createThreadWorkflowPromptSignals(options: ThreadRootComposerOptions) {
 }
 
 function createThreadRootComposer(options: ThreadRootComposerOptions) {
-  const displayName$ = computed(async (get): Promise<string> => {
-    return (await get(options.threadOwned.agentDisplayName$)) ?? "Zero";
-  });
-  const autoFocus$ = computed(async (get): Promise<boolean> => {
-    return !(await get(options.events.hasEvents$));
-  });
   const actionsLoading$ = computed(async (get): Promise<boolean> => {
     await get(options.events.hasEvents$);
     return false;
@@ -4951,13 +4957,10 @@ function createThreadRootComposer(options: ThreadRootComposerOptions) {
   );
 
   return createComposerSignals({
-    composerId: `thread:${options.threadId}`,
-    threadId: options.threadId,
+    agent$: options.threadOwned.agent$,
     workflowComposer: options.composer.workflowComposer,
     draft: options.draft,
     connectors: options.composer.composerConnectors,
-    displayName$,
-    autoFocus$,
     mobileSingleLine: true,
     actionsLoading$,
     sending$,
@@ -5010,13 +5013,6 @@ export function createChatThreadSignals(
   const container = createChatThreadContainerSignals();
   const composerFileInput = createComposerFileInputSignals();
   const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
-  const composer = createThreadComposer(
-    draft,
-    threadId,
-    threadOwned.agentId$,
-    options.inlineTemplatesEnabled ?? false,
-    options.connectorAuthorization,
-  );
   const artifact = createArtifacts(threadId);
   const previewImageUrlsByUrl$ = createArtifactPreviewImageUrls(
     artifact.artifacts$,
@@ -5026,6 +5022,14 @@ export function createChatThreadSignals(
     dataSource,
     initialOptimisticEntries: options.initialOptimisticEntries ?? [],
     previewImageUrlsByUrl$,
+  });
+  const composer = createThreadComposer({
+    draft,
+    threadId,
+    agentId$: threadOwned.agentId$,
+    hasEvents$: events.hasEvents$,
+    inlineTemplatesEnabled: options.inlineTemplatesEnabled ?? false,
+    connectorAuthorization: options.connectorAuthorization,
   });
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft, dataSource);

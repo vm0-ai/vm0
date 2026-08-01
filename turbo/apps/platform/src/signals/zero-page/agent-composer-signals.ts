@@ -1,10 +1,7 @@
 import { command, computed } from "ccstate";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
-import {
-  currentChatAgentDisplayName$,
-  currentChatAgentId$,
-} from "../agent-chat.ts";
+import { currentChatAgent$, currentChatAgentId$ } from "../agent-chat.ts";
 import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import {
   CREATE_WORKFLOW_WITH_CHAT_PROMPT,
@@ -45,12 +42,6 @@ import {
 
 const WORKFLOW_PROMPT_DRAFT_TARGET = "composer:new-thread";
 
-const displayName$ = computed(async (get): Promise<string> => {
-  return (await get(currentChatAgentDisplayName$)) ?? "";
-});
-const autoFocus$ = computed((): Promise<boolean> => {
-  return Promise.resolve(true);
-});
 const actionsLoading$ = computed((): Promise<boolean> => {
   return Promise.resolve(false);
 });
@@ -224,15 +215,12 @@ export const agentChatComposerSignals$ = computed((get) => {
   const workflowPrompt = createAgentWorkflowPromptSignals(draft);
 
   return createComposerSignals({
-    composerId: "agent:new-thread",
-    threadId: null,
+    agent$: currentChatAgent$,
     workflowComposer,
     draft,
     generationTemplate$: newThreadGenerationTemplate$,
     setGenerationTemplate$: setNewThreadGenerationTemplate$,
     connectors: chatPageComposerConnectors,
-    displayName$,
-    autoFocus$,
     mobileSingleLine: false,
     actionsLoading$,
     sending$: idle$,

@@ -2,6 +2,7 @@ import type {
   GenerationTemplateRequest,
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef, withCleanup } from "../utils.ts";
@@ -54,10 +55,7 @@ export interface ComposerSignals
     FlatWorkflowComposerSignals,
     ComposerConnectorSignals,
     ComposerUiSignals {
-  readonly composerId: string;
-  readonly threadId: string | null;
-  readonly displayName$: Computed<Promise<string>>;
-  readonly autoFocus$: Computed<Promise<boolean>>;
+  readonly agent$: Computed<Promise<ZeroAgentResponse | null>>;
   readonly mobileSingleLine: boolean;
   readonly sending$: Computed<Promise<boolean>>;
 
@@ -118,15 +116,12 @@ export interface ComposerSignals
 }
 
 interface CreateComposerSignalsOptions {
-  readonly composerId: string;
-  readonly threadId: string | null;
+  readonly agent$: ComposerSignals["agent$"];
   readonly workflowComposer: WorkflowComposerSignals;
   readonly draft: DraftSignals;
   readonly generationTemplate$?: ComposerSignals["generationTemplate$"];
   readonly setGenerationTemplate$?: ComposerSignals["setGenerationTemplate$"];
   readonly connectors: ComposerConnectorSignals;
-  readonly displayName$: ComposerSignals["displayName$"];
-  readonly autoFocus$: ComposerSignals["autoFocus$"];
   readonly mobileSingleLine: boolean;
   readonly actionsLoading$: Computed<Promise<boolean>>;
   readonly sending$: ComposerSignals["sending$"];
@@ -183,8 +178,6 @@ function flatWorkflowComposerSignals(
     editor: composer.editor,
     templatePreview: composer.templatePreview,
     setContainerRef$: composer.setContainerRef$,
-    setAutoFocusContainerRef$: composer.setAutoFocusContainerRef$,
-    setCompactContainerRef$: composer.setCompactContainerRef$,
     focus$: composer.focus$,
     hasInput$: composer.hasInput$,
     hasTemplateAttachment$: composer.hasTemplateAttachment$,
@@ -235,10 +228,7 @@ export function createComposerSignals(
     ...options.connectors,
     ...createComposerUiSignals(),
     ...submission,
-    composerId: options.composerId,
-    threadId: options.threadId,
-    displayName$: options.displayName$,
-    autoFocus$: options.autoFocus$,
+    agent$: options.agent$,
     mobileSingleLine: options.mobileSingleLine,
     sending$: options.sending$,
     setDraftInput$: draft.setInput$,

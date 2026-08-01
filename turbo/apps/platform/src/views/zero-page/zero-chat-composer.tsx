@@ -30,7 +30,6 @@ import {
   IconDeviceDesktop,
   IconDownload,
   IconPresentation,
-  IconLoader2,
   IconLink,
   IconMicrophone,
   IconPaperclip,
@@ -86,11 +85,6 @@ import {
   tapError,
 } from "../../signals/utils.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
-import {
-  activeGoalDialogGoal$,
-  activeGoalDialogThreadId$,
-  closeChatThreadGoalDialog$,
-} from "../../signals/chat-page/chat-goal.ts";
 import type { ComposerTemplateAttachment } from "../../signals/zero-page/tiptap-workflow-composer.ts";
 import type { TemplatePreviewRuntime } from "../../signals/zero-page/template-preview-runtime.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
@@ -193,7 +187,6 @@ import {
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
 import { shouldUseUserMessage } from "../../signals/zero-page/user-message-document-codec.ts";
-import { Markdown } from "../components/markdown.tsx";
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
 
@@ -542,87 +535,6 @@ function ComposerStripRow({
         <IconX size={16} stroke={1.5} />
       </button>
     </div>
-  );
-}
-
-function ActiveGoalObjectiveDialog({ signals }: { signals: ComposerSignals }) {
-  const { t } = useTranslation();
-  const dialogThreadId = useGet(activeGoalDialogThreadId$);
-  const goalLoadable = useLoadable(activeGoalDialogGoal$);
-  const closeDialog = useSet(closeChatThreadGoalDialog$);
-  const open = signals.threadId !== null && dialogThreadId === signals.threadId;
-  const goal = goalLoadable.state === "hasData" ? goalLoadable.data : undefined;
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) {
-          closeDialog();
-        }
-      }}
-    >
-      <DialogContent
-        className="w-[calc(100vw-2rem)] max-w-2xl gap-5 p-5 sm:p-6"
-        aria-describedby={undefined}
-      >
-        <DialogHeader>
-          <DialogTitle className="text-base">
-            {t(($) => {
-              return $.chat.queue.goal;
-            })}
-          </DialogTitle>
-          <DialogDescription className="leading-6">
-            {t(($) => {
-              return $.chat.queue.goalDescription;
-            })}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-lg bg-muted/40 px-3 py-3 text-sm text-foreground sm:px-4">
-          {goalLoadable.state === "loading" ? (
-            <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground">
-              <IconLoader2
-                size={16}
-                stroke={1.7}
-                className="animate-spin"
-                aria-hidden="true"
-              />
-              <span>
-                {t(($) => {
-                  return $.chat.queue.loadingGoal;
-                })}
-              </span>
-            </div>
-          ) : goalLoadable.state === "hasError" ? (
-            <div className="flex min-h-28 flex-col justify-center gap-1 text-muted-foreground">
-              <p className="font-medium text-foreground">
-                {t(($) => {
-                  return $.chat.queue.goalLoadFailed;
-                })}
-              </p>
-              <p className="text-xs">
-                {t(($) => {
-                  return $.chat.queue.goalRetry;
-                })}
-              </p>
-            </div>
-          ) : goal ? (
-            <Markdown
-              source={goal.objective}
-              escapeHtml
-              mathEnabled
-              style={{ fontSize: "inherit", lineHeight: "inherit" }}
-            />
-          ) : (
-            <div className="flex min-h-28 items-center text-muted-foreground">
-              {t(($) => {
-                return $.chat.queue.goalUnavailable;
-              })}
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -7147,8 +7059,6 @@ function useComposerFileUpload(
 
 function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
   const sending = useLastResolved(signals.sending$) ?? false;
-  const autoFocus =
-    useLastResolved(signals.autoFocus$) ?? signals.threadId === null;
   const notifyDraftChanged = useComposerDraftChange(signals);
   const visualAttachmentUnsupported =
     useComposerVisualAttachmentUnsupported(signals);
@@ -7252,7 +7162,6 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
       signals={signals}
       onDraftChange={notifyDraftChanged}
       sending={sending}
-      autoFocus={autoFocus}
       onKeyDown={handleKeyDown}
       onPaste={handlePaste}
       singleLineOnMobile={signals.mobileSingleLine}
@@ -7388,14 +7297,9 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
           message: t(($) => {
             return $.chat.composer.selectedModelUnavailable;
           }),
-          actionLabel:
-            signals.threadId === null
-              ? t(($) => {
-                  return $.chat.composer.modelConfigureAction;
-                })
-              : t(($) => {
-                  return $.chat.composer.configureModel;
-                }),
+          actionLabel: t(($) => {
+            return $.chat.composer.configureModel;
+          }),
           onAction: () => {
             detach(configureSelectedModel(pageSignal), Reason.DomCallback);
           },
@@ -7662,7 +7566,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
   const connectorReadState = useComposerConnectorReadState(signals);
   const composerConnectors = signals;
-  const displayName = useLastResolved(signals.displayName$) ?? "";
+  const displayName = useLastResolved(signals.agent$)?.displayName ?? "";
   const storedComputerUseHostId = useGet(signals.computerUseHostId$);
   const cloudBrowserEnabled = useGet(signals.cloudBrowserEnabled$);
   const setComputerUseHostId = useSet(signals.setComputerUseHostId$);
@@ -8050,7 +7954,6 @@ function ComposerSurface({ signals }: { signals: ComposerSignals }) {
       <div className="relative flex w-full min-w-0 flex-col">
         <PendingItemsStrip signals={signals} />
         <ComposerCard signals={signals} />
-        <ActiveGoalObjectiveDialog signals={signals} />
         <ReplaceComposerDraftDialog signals={signals} />
         <WebsiteTemplatePreviewDialogSlot signals={signals} />
       </div>

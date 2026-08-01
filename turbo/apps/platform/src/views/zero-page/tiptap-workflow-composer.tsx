@@ -166,7 +166,6 @@ interface TiptapWorkflowComposerProps {
   readonly signals: ComposerSignals;
   readonly onDraftChange: (() => void) | undefined;
   readonly sending: boolean | undefined;
-  readonly autoFocus: boolean | undefined;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
   readonly onPaste: (event: ComposerPasteEvent) => void;
   readonly singleLineOnMobile: boolean;
@@ -410,7 +409,6 @@ export function TiptapWorkflowComposer({
   signals,
   onDraftChange,
   sending,
-  autoFocus,
   onKeyDown,
   onPaste,
   singleLineOnMobile,
@@ -422,12 +420,7 @@ export function TiptapWorkflowComposer({
   });
   const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
   const hasTemplateAttachment = useGet(composer.hasTemplateAttachment$);
-  const containerRefSignal = singleLineOnMobile
-    ? composer.setCompactContainerRef$
-    : autoFocus
-      ? composer.setAutoFocusContainerRef$
-      : composer.setContainerRef$;
-  const setContainerRef = useSet(containerRefSignal);
+  const setContainerRef = useSet(composer.setContainerRef$);
 
   function handlePaste(
     event: ClipboardEvent,
