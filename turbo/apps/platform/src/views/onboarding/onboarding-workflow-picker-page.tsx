@@ -16,6 +16,7 @@ import {
   type Icon,
 } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { useTranslation } from "react-i18next";
 import {
   onboardingDraft$,
@@ -61,7 +62,7 @@ function WorkflowConnectorIcon({
   connectorSlug,
   size,
 }: {
-  readonly connectorSlug: string;
+  readonly connectorSlug: ConnectorSlug;
   readonly size: number;
 }) {
   const catalogBySlugLoadable = useLastLoadable(connectorCatalogStatusBySlug$);
@@ -73,13 +74,13 @@ function WorkflowConnectorIcon({
 }
 
 export function WorkflowConnectorPills({
-  connectorIds,
+  connectorSlugs,
 }: {
-  readonly connectorIds: readonly string[];
+  readonly connectorSlugs: readonly ConnectorSlug[];
 }) {
   const { t } = useTranslation();
 
-  if (connectorIds.length === 0) {
+  if (connectorSlugs.length === 0) {
     return (
       <span className="inline-flex min-h-7 items-center rounded-full border border-border bg-muted/30 px-2.5 text-xs font-medium text-muted-foreground">
         {t(($) => {
@@ -90,13 +91,13 @@ export function WorkflowConnectorPills({
   }
   return (
     <span className="flex items-center gap-1.5" aria-hidden="true">
-      {connectorIds.slice(0, 4).map((connectorId) => {
+      {connectorSlugs.slice(0, 4).map((connectorSlug) => {
         return (
           <span
-            key={connectorId}
+            key={connectorSlug}
             className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-muted/30"
           >
-            <WorkflowConnectorIcon connectorSlug={connectorId} size={14} />
+            <WorkflowConnectorIcon connectorSlug={connectorSlug} size={14} />
           </span>
         );
       })}
@@ -232,7 +233,7 @@ function WorkflowCard({
         </span>
       </span>
       <span className="relative z-10 flex items-center justify-between gap-3">
-        <WorkflowConnectorPills connectorIds={workflow.connectors} />
+        <WorkflowConnectorPills connectorSlugs={workflow.connectorSlugs} />
         <button
           type="button"
           className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/30 text-muted-foreground hover:border-primary/35 hover:text-primary"

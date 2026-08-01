@@ -12,6 +12,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
@@ -413,7 +414,7 @@ interface SuggestedPrompt {
   title: string;
   description: string;
   prompt: string;
-  connectors?: readonly string[];
+  connectorSlugs?: readonly ConnectorSlug[];
 }
 
 function SuggestedPromptButton({
@@ -428,7 +429,7 @@ function SuggestedPromptButton({
   onSelectPrompt: (prompt: string) => void;
 }) {
   const connectors =
-    item.connectors?.flatMap((connectorSlug) => {
+    item.connectorSlugs?.flatMap((connectorSlug) => {
       const connector = connectorStatusBySlug?.get(connectorSlug);
       return connector ? [{ connectorSlug, icon: connector.icon }] : [];
     }) ?? [];
