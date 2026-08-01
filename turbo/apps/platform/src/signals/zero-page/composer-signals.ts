@@ -99,8 +99,14 @@ export interface ComposerSignals
   >;
 
   readonly primaryAction$: Computed<Promise<ComposerPrimaryAction>>;
-  readonly submitCurrentInput$: Command<Promise<boolean>, [AbortSignal]>;
-  readonly activatePrimaryAction$: Command<Promise<boolean>, [AbortSignal]>;
+  readonly submitCurrentInput$: Command<
+    Promise<boolean>,
+    [ComposerPrimaryAction, AbortSignal]
+  >;
+  readonly activatePrimaryAction$: Command<
+    Promise<boolean>,
+    [ComposerPrimaryAction, AbortSignal]
+  >;
   readonly pendingEvents$: Computed<Promise<readonly ComposerPendingEvent[]>>;
   readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
   readonly removeQueuedMessage$: Command<Promise<void>, [string, AbortSignal]>;
@@ -284,19 +290,18 @@ function createComposerSubmissionSignals(
       }
 
       const uploadsReady = await get(draft.attachmentUploadsReady$);
-      const modelSelection = await get(options.modelSelection$);
-      const canSend =
-        uploadsReady &&
-        (get(workflowComposer.hasInput$) ||
-          hasVisibleAttachment(modelSelection, get(draft.attachments$)));
+      const attachments = get(draft.attachments$);
+      let hasContent = get(workflowComposer.hasInput$);
+      if (!hasContent && attachments.length > 0) {
+        const modelSelection = await get(options.modelSelection$);
+        hasContent = hasVisibleAttachment(modelSelection, attachments);
+      }
+      const canSend = uploadsReady && hasContent;
       const sending = await get(options.sending$);
       if (sending && !canSend) {
         return "stop";
       }
-      if (
-        get(submissionPending$) ||
-        !(await get(options.selectedModelOauthAvailable$))
-      ) {
+      if (get(submissionPending$)) {
         return "disabled";
       }
       if (!canSend) {
@@ -309,8 +314,11 @@ function createComposerSubmissionSignals(
     },
   );
   const submitCurrentInput$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
-      const action = await get(primaryAction$);
+    async (
+      { get, set },
+      action: ComposerPrimaryAction,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
       signal.throwIfAborted();
       if (action !== "send" && action !== "queue") {
         return false;
@@ -328,13 +336,16 @@ function createComposerSubmissionSignals(
           );
           signal.throwIfAborted();
           const prompt = submission.prompt.trim();
-          const modelSelection = await get(options.modelSelection$);
-          signal.throwIfAborted();
-          if (
-            prompt.length === 0 &&
-            !hasVisibleAttachment(modelSelection, get(draft.attachments$))
-          ) {
-            return false;
+          if (prompt.length === 0) {
+            const attachments = get(draft.attachments$);
+            if (attachments.length === 0) {
+              return false;
+            }
+            const modelSelection = await get(options.modelSelection$);
+            signal.throwIfAborted();
+            if (!hasVisibleAttachment(modelSelection, attachments)) {
+              return false;
+            }
           }
           return await set(
             options.submitMessage$,
@@ -356,14 +367,17 @@ function createComposerSubmissionSignals(
     },
   );
   const activatePrimaryAction$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
-      const action = await get(primaryAction$);
+    async (
+      { set },
+      action: ComposerPrimaryAction,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
       signal.throwIfAborted();
       if (action === "stop") {
         await set(options.cancelRun$, signal);
         return true;
       }
-      return await set(submitCurrentInput$, signal);
+      return await set(submitCurrentInput$, action, signal);
     },
   );
 

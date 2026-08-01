@@ -7008,6 +7008,15 @@ function useComposerTemplatePicker(
   );
 }
 
+function useComposerPrimaryAction(
+  signals: ComposerSignals,
+): ComposerPrimaryAction {
+  const action = useLastResolved(signals.primaryAction$) ?? "disabled";
+  const selectedModelOauthAvailable =
+    useLastResolved(signals.selectedModelOauthAvailable$) ?? true;
+  return selectedModelOauthAvailable ? action : "disabled";
+}
+
 function startComposerSubmission({
   action,
   activate,
@@ -7070,7 +7079,7 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
   const insertUserMessage = useSet(signals.insertUserMessage$);
   const uploadFile = useComposerFileUpload(signals);
   const templatePicker = useComposerTemplatePicker(signals);
-  const primaryAction = useLastResolved(signals.primaryAction$) ?? "disabled";
+  const primaryAction = useComposerPrimaryAction(signals);
   const submitCurrentInput = useSet(signals.submitCurrentInput$);
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
@@ -7127,7 +7136,9 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
   const submit = () => {
     startComposerSubmission({
       action: primaryAction,
-      activate: submitCurrentInput,
+      activate: (signal) => {
+        return submitCurrentInput(primaryAction, signal);
+      },
       ensurePushSubscription,
       signal: rootSignal,
     });
@@ -7209,18 +7220,20 @@ function ComposerSendButton({
 }
 
 function ComposerSendControl({ signals }: { signals: ComposerSignals }) {
-  const action = useLastResolved(signals.primaryAction$) ?? "disabled";
+  const action = useComposerPrimaryAction(signals);
   const activatePrimaryAction = useSet(signals.activatePrimaryAction$);
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
   const activate = () => {
     if (action === "stop") {
-      detach(activatePrimaryAction(rootSignal), Reason.DomCallback);
+      detach(activatePrimaryAction(action, rootSignal), Reason.DomCallback);
       return;
     }
     startComposerSubmission({
       action,
-      activate: activatePrimaryAction,
+      activate: (signal) => {
+        return activatePrimaryAction(action, signal);
+      },
       ensurePushSubscription,
       signal: rootSignal,
     });
