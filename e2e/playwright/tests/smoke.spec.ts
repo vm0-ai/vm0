@@ -42,18 +42,6 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
     throw new Error("Clerk session token unavailable for Playwright setup");
   }
 
-  // Pin reused Playwright identities to the mock runtime before feature tests.
-  const featureSwitchResponse = await page.request.post(
-    new URL("/api/zero/feature-switches", apiUrl).toString(),
-    {
-      headers: authHeadersForToken(token),
-      data: {
-        switches: { realAgentInPreview: false },
-      },
-    },
-  );
-  expect(featureSwitchResponse.status()).toBe(200);
-
   const runnerGroup = process.env.E2E_RUNNER_GROUP;
   if (runnerGroup) {
     const response = await page.request.post(
