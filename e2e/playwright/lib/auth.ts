@@ -1,5 +1,7 @@
 import { clerk } from "@clerk/testing/playwright";
-import type { Page } from "@playwright/test";
+import { errors, type Page } from "@playwright/test";
+
+const CLERK_BOOTSTRAP_TIMEOUTS_MS = [15_000, 30_000] as const;
 
 export interface ClerkTestingSignInOptions {
   readonly activeOrganizationId?: string;
@@ -34,10 +36,7 @@ export async function signInWithClerkTestingHelper(
   options: ClerkTestingSignInOptions,
 ): Promise<void> {
   const helperUrl = new URL("/_/skeleton", appUrl);
-  await page.goto(helperUrl.toString(), { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => Boolean(window.Clerk?.loaded), undefined, {
-    timeout: 30_000,
-  });
+  await navigateToLoadedClerk(page, helperUrl);
   const clerkStateBefore = await page.evaluate(() => {
     return {
       hasLoadedClerk: Boolean(window.Clerk?.loaded),
@@ -103,6 +102,35 @@ export async function signInWithClerkTestingHelper(
   });
 
   await gotoAboutBlankAfterClerkNavigation(page);
+}
+
+async function navigateToLoadedClerk(
+  page: Page,
+  helperUrl: URL,
+): Promise<void> {
+  for (const [attempt, timeout] of CLERK_BOOTSTRAP_TIMEOUTS_MS.entries()) {
+    await page.goto(helperUrl.toString(), { waitUntil: "domcontentloaded" });
+    try {
+      await page.waitForFunction(
+        () => Boolean(window.Clerk?.loaded),
+        undefined,
+        {
+          timeout,
+        },
+      );
+      return;
+    } catch (error) {
+      if (
+        !(error instanceof errors.TimeoutError) ||
+        attempt === CLERK_BOOTSTRAP_TIMEOUTS_MS.length - 1
+      ) {
+        throw error;
+      }
+      // Clerk's testing-token route allows a single FAPI fetch to consume 30s.
+      // Retry sooner, then retain the original 30s tolerance on the final attempt.
+      console.warn("[e2e] Clerk bootstrap stalled; retrying navigation");
+    }
+  }
 }
 
 async function gotoAboutBlankAfterClerkNavigation(page: Page): Promise<void> {
