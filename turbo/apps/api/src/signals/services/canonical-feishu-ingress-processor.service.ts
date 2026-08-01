@@ -38,7 +38,6 @@ import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import {
   addFeishuThinkingReaction,
-  buildFeishuSystemPrompt,
   dispatchConnectedFeishuCommand$,
   loadFeishuConversationHistory,
   markFeishuMessageReceived,
@@ -332,7 +331,6 @@ async function persistCanonicalFeishuIngress(args: {
   readonly selectedModel: string | null;
   readonly reactionId: string | undefined;
   readonly launchContext: CanonicalFeishuLaunchContext;
-  readonly appendSystemPrompt: string;
   readonly signal: AbortSignal;
 }): Promise<PersistedCanonicalFeishuIngress> {
   const routeThreadId = canonicalThreadId({
@@ -355,22 +353,6 @@ async function persistCanonicalFeishuIngress(args: {
   const encryptedParams = await encryptQueuedUserMessageRunParams(
     {
       version: 1,
-      prompt: args.message.text,
-      appendSystemPrompt: args.appendSystemPrompt,
-      feishuDelivery: {
-        installationId: args.message.installationId,
-        connectionId: args.connection.id,
-        chatId: args.message.chatId,
-        messageId: args.message.messageId,
-        threadId: routeThreadId,
-        replyInThread: args.launchContext.replyInThread,
-        reactionId: args.reactionId,
-        files: args.launchContext.messageFiles,
-      },
-      userInfoExtras: {
-        feishuDisplayName: args.connection.feishuUserName ?? undefined,
-        feishuOpenId: args.message.openId,
-      },
     },
     {
       orgId: args.installation.orgId,
@@ -597,10 +579,6 @@ async function processClaimedIngress(args: {
       reactionId,
       conversationHistory: history.text,
       files: history.files,
-    }),
-    appendSystemPrompt: buildFeishuSystemPrompt({
-      message,
-      history: history.text,
     }),
     signal: args.signal,
   });

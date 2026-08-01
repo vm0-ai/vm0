@@ -170,6 +170,10 @@ import {
   loadSlackQueuedLaunchMaterial,
   type SlackQueuedLaunchMaterial,
 } from "./slack-queued-launch-context.service";
+import {
+  loadFeishuQueuedLaunchMaterial,
+  type FeishuQueuedLaunchMaterial,
+} from "./feishu-queued-launch-context.service";
 
 const log = logger("callback:chat");
 const PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -2798,6 +2802,7 @@ function queuedMessageAdmissionFailure(
 function queuedIntegrationDeliveries(
   sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
   slackLaunchMaterial: SlackQueuedLaunchMaterial | null,
+  feishuLaunchMaterial: FeishuQueuedLaunchMaterial | null,
 ): Pick<
   CreateQueuedChatRunInput,
   | "slackDelivery"
@@ -2810,7 +2815,8 @@ function queuedIntegrationDeliveries(
 > {
   return {
     slackDelivery: slackLaunchMaterial?.slackDelivery,
-    feishuDelivery: sourceParams?.feishuDelivery,
+    feishuDelivery:
+      feishuLaunchMaterial?.feishuDelivery ?? sourceParams?.feishuDelivery,
     teamsDelivery: sourceParams?.teamsDelivery,
     telegramDelivery: sourceParams?.telegramDelivery,
     agentphoneDelivery: sourceParams?.agentphoneDelivery,
@@ -2837,9 +2843,36 @@ async function resolveSlackQueuedLaunchMaterial(
   throw new Error("Slack queue item is missing launch material");
 }
 
+async function resolveFeishuQueuedLaunchMaterial(
+  args: CreateQueuedChatRunInputArgs,
+  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
+): Promise<FeishuQueuedLaunchMaterial | null> {
+  if (args.queuedMessage.triggerSource !== "feishu") {
+    return null;
+  }
+  const material = await loadFeishuQueuedLaunchMaterial(args.db, {
+    eventId: args.queuedMessage.id,
+    chatThreadId: args.threadId,
+    orgId: args.agent.orgId,
+    userId: args.userId,
+  });
+  if (material) {
+    return material;
+  }
+  if (
+    sourceParams?.prompt === undefined ||
+    sourceParams.appendSystemPrompt === undefined ||
+    !sourceParams.feishuDelivery
+  ) {
+    throw new Error("Feishu queue item is missing launch material");
+  }
+  return null;
+}
+
 function queuedMessagePrompt(args: {
   readonly triggerSource: QueuedUserMessage["triggerSource"];
   readonly slackLaunchMaterial: SlackQueuedLaunchMaterial | null;
+  readonly feishuLaunchMaterial: FeishuQueuedLaunchMaterial | null;
   readonly sourceParams: Awaited<
     ReturnType<typeof decryptQueuedUserMessageRunParams>
   >;
@@ -2851,6 +2884,9 @@ function queuedMessagePrompt(args: {
     }
     return args.slackLaunchMaterial.prompt;
   }
+  if (args.triggerSource === "feishu") {
+    return args.feishuLaunchMaterial?.prompt ?? args.sourceParams?.prompt ?? "";
+  }
   if (args.triggerSource === "workflow-schedule") {
     return args.sourceParams?.prompt ?? args.projectedPrompt;
   }
@@ -2860,6 +2896,7 @@ function queuedMessagePrompt(args: {
 function queuedIntegrationPrompt(args: {
   readonly triggerSource: QueuedUserMessage["triggerSource"];
   readonly slackLaunchMaterial: SlackQueuedLaunchMaterial | null;
+  readonly feishuLaunchMaterial: FeishuQueuedLaunchMaterial | null;
   readonly sourceParams: Awaited<
     ReturnType<typeof decryptQueuedUserMessageRunParams>
   >;
@@ -2869,6 +2906,13 @@ function queuedIntegrationPrompt(args: {
       throw new Error("Slack queue item is missing launch material");
     }
     return args.slackLaunchMaterial.appendSystemPrompt;
+  }
+  if (args.triggerSource === "feishu") {
+    return (
+      args.feishuLaunchMaterial?.appendSystemPrompt ??
+      args.sourceParams?.appendSystemPrompt ??
+      buildWebChatPrompt()
+    );
   }
   return args.sourceParams?.appendSystemPrompt ?? buildWebChatPrompt();
 }
@@ -2897,9 +2941,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
   );
 }
 
-async function buildCreateQueuedChatRunInput(
-  args: CreateQueuedChatRunInputArgs,
-): Promise<CreateQueuedChatRunInput | QueuedMessageAdmissionFailure | null> {
+async function loadQueuedLaunchMaterials(args: CreateQueuedChatRunInputArgs) {
   const sourceParams = await decryptQueuedUserMessageRunParams(
     args.queuedMessage.encryptedParams,
     { orgId: args.agent.orgId, userId: args.userId },
@@ -2908,6 +2950,18 @@ async function buildCreateQueuedChatRunInput(
     throw new Error("Canonical integration queue item is missing run params");
   }
   const slackLaunchMaterial = await resolveSlackQueuedLaunchMaterial(args);
+  const feishuLaunchMaterial = await resolveFeishuQueuedLaunchMaterial(
+    args,
+    sourceParams,
+  );
+  return { sourceParams, slackLaunchMaterial, feishuLaunchMaterial };
+}
+
+async function buildCreateQueuedChatRunInput(
+  args: CreateQueuedChatRunInputArgs,
+): Promise<CreateQueuedChatRunInput | QueuedMessageAdmissionFailure | null> {
+  const { sourceParams, slackLaunchMaterial, feishuLaunchMaterial } =
+    await loadQueuedLaunchMaterials(args);
   const modelRouteResolution = await resolveQueuedMessageModelRoute({
     db: args.db,
     threadId: args.threadId,
@@ -2986,6 +3040,7 @@ async function buildCreateQueuedChatRunInput(
   const prompt = queuedMessagePrompt({
     triggerSource: args.queuedMessage.triggerSource,
     slackLaunchMaterial,
+    feishuLaunchMaterial,
     sourceParams,
     projectedPrompt: userMessageProjection.agentPrompt,
   });
@@ -2999,6 +3054,7 @@ async function buildCreateQueuedChatRunInput(
       queuedIntegrationPrompt({
         triggerSource: args.queuedMessage.triggerSource,
         slackLaunchMaterial,
+        feishuLaunchMaterial,
         sourceParams,
       }),
       incompleteContext,
@@ -3019,11 +3075,16 @@ async function buildCreateQueuedChatRunInput(
       FeatureSwitchKey.RealAgentInPreview,
       featureSwitchContext,
     ),
-    ...queuedIntegrationDeliveries(sourceParams, slackLaunchMaterial),
+    ...queuedIntegrationDeliveries(
+      sourceParams,
+      slackLaunchMaterial,
+      feishuLaunchMaterial,
+    ),
     apiStartTime: args.queuedMessage.createdAt.getTime(),
-    userInfoExtras: slackLaunchMaterial
-      ? slackLaunchMaterial.userInfoExtras
-      : sourceParams?.userInfoExtras,
+    userInfoExtras:
+      slackLaunchMaterial?.userInfoExtras ??
+      feishuLaunchMaterial?.userInfoExtras ??
+      sourceParams?.userInfoExtras,
   };
 }
 
