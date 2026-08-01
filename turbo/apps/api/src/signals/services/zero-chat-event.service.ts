@@ -69,7 +69,6 @@ type ChatEventDisplayContext =
         readonly messageText: string;
         readonly messageFiles: ChatFeishuMessageFiles;
         readonly chatType: "group" | "p2p" | "topic_group";
-        readonly tenantKey: string;
         readonly chatId: string;
         readonly messageId: string;
         readonly threadId: string;
@@ -381,7 +380,6 @@ type NewDisplayContext =
       readonly messageText: string;
       readonly messageFiles: ChatFeishuMessageFiles;
       readonly chatType: "group" | "p2p" | "topic_group";
-      readonly tenantKey: string;
       readonly chatId: string;
       readonly messageId: string;
       readonly threadId: string;
@@ -651,7 +649,6 @@ async function insertDisplayContext(
       messageText: context.messageText,
       messageFiles: context.messageFiles,
       chatType: context.chatType,
-      tenantKey: context.tenantKey,
       chatId: context.chatId,
       messageId: context.messageId,
       threadId: context.threadId,

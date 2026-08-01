@@ -20,6 +20,7 @@ import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEvents } from "@vm0/db/schema/chat-event";
+import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { and, count, eq, isNull, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -200,6 +201,37 @@ export async function readChatEventContextFixture(
   return event ?? null;
 }
 
+export async function useLegacyFeishuTenantKeyFixture(
+  eventId: string,
+  tenantKey: string,
+): Promise<void> {
+  const [context] = await db()
+    .select({
+      id: chatFeishuContext.id,
+      installationId: chatFeishuContext.installationId,
+    })
+    .from(chatEvents)
+    .innerJoin(
+      chatFeishuContext,
+      eq(chatFeishuContext.id, chatEvents.contextId),
+    )
+    .where(eq(chatEvents.id, eventId))
+    .limit(1);
+  if (!context?.installationId) {
+    throw new Error("Expected a Feishu launch context fixture");
+  }
+  await db().transaction(async (tx) => {
+    await tx
+      .update(chatFeishuContext)
+      .set({ tenantKey })
+      .where(eq(chatFeishuContext.id, context.id));
+    await tx
+      .update(feishuOrgInstallations)
+      .set({ feishuTenantKey: null })
+      .where(eq(feishuOrgInstallations.id, context.installationId));
+  });
+}
+
 const annotationProjectionInputs = [
   {
     text: "slack linked",
@@ -233,7 +265,6 @@ const annotationProjectionInputs = [
         messageText: "feishu linked",
         messageFiles: [],
         chatType: "p2p",
-        tenantKey: "tenant-1",
         chatId: "oc_123",
         messageId: "om_123",
         threadId: "om_123",

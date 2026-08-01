@@ -33,6 +33,7 @@ import {
   findPendingChatEventInputParamsByPromptFixture,
   readChatEventContextFixture,
   readChatEventInputParamsFixture,
+  useLegacyFeishuTenantKeyFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
@@ -2390,6 +2391,17 @@ describe("Feishu integration", () => {
       null,
     );
     const run = await findRun(actor, "do the Feishu task");
+    const pendingParams = requireValue(
+      await findPendingChatEventInputParamsByPromptFixture(
+        "do the Feishu task",
+      ),
+      "Expected pending Feishu launch params",
+    );
+    expect(
+      (await readChatEventContextFixture(pendingParams.eventId))
+        ?.feishuTenantKey,
+    ).toBeNull();
+    await useLegacyFeishuTenantKeyFixture(pendingParams.eventId, TENANT_KEY);
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
       setupApp({ context })(chatThreadsContract).events({
@@ -2443,6 +2455,7 @@ describe("Feishu integration", () => {
       "Feishu open ID: ou_feishu_user",
     );
     expect(claim.appendSystemPrompt).toContain("Scope: Direct message");
+    expect(claim.appendSystemPrompt).toContain(`Tenant key: ${TENANT_KEY}`);
     expect(claim.appendSystemPrompt).toContain("Chat ID: oc_feishu_dm");
     expect(claim.appendSystemPrompt).not.toContain("Group ID:");
     expect(claim.appendSystemPrompt).toContain(
@@ -3139,6 +3152,9 @@ describe("Feishu integration", () => {
     const groupClaim = await runsApi.claimRunnerJob(groupRun.id);
     expect(groupClaim.prompt).toBe("handle this group task");
     expect(groupClaim.appendSystemPrompt).toContain("Scope: Group mention");
+    expect(groupClaim.appendSystemPrompt).toContain(
+      `Tenant key: ${TENANT_KEY}`,
+    );
     expect(groupClaim.appendSystemPrompt).toContain("Chat ID: oc_feishu_group");
     expect(groupClaim.appendSystemPrompt).toContain(
       "Group ID: oc_feishu_group (same as Chat ID; use it directly as the `--chat` value for `zero feishu message send`)",
