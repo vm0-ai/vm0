@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.151.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.6...runner-rs-v0.151.7) (2026-08-01)
+
+
+### Refactoring
+
+* **connectors:** finish local slug terminology cleanup ([#24472](https://github.com/vm0-ai/vm0/issues/24472)) ([c3000d8](https://github.com/vm0-ai/vm0/commit/c3000d888cf153dc57208c91e69097bdea400a56))
+
 ## [0.151.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.5...runner-rs-v0.151.6) (2026-08-01)
 
 
