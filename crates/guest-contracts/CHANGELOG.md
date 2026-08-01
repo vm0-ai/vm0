@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.0...guest-contracts-v0.5.1) (2026-08-01)
+
+
+### Documentation
+
+* **rust:** document storage manifest wire invariants ([#24434](https://github.com/vm0-ai/vm0/issues/24434)) ([6f8b85c](https://github.com/vm0-ai/vm0/commit/6f8b85c4390cc3238b0b59133cc2fd33126322f6))
+
 ## [0.5.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.7...guest-contracts-v0.5.0) (2026-07-30)
 
 
