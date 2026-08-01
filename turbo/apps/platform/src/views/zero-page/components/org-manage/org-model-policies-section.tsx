@@ -1713,8 +1713,6 @@ export function OrgModelPoliciesSection() {
   const featureSwitches = useGet(featureSwitch$);
   const customGatewaysEnabled =
     featureSwitches[FeatureSwitchKey.CustomModelGateways] ?? false;
-  const deepSeekV4FlashEnabled =
-    featureSwitches[FeatureSwitchKey.DeepSeekV4Flash] ?? false;
   const openAddModelDialog = useSet(openAddModelPolicyDialog$);
   const openEditModelDialog = useSet(openEditModelPolicyDialog$);
   const openSettingsBillingPlans = useSet(openSettingsBillingPlans$);
@@ -1756,8 +1754,7 @@ export function OrgModelPoliciesSection() {
   );
   const addableModels = SUPPORTED_RUN_MODELS.filter((model) => {
     return (
-      (isOpenAIOrAnthropicModel(model) ||
-        (deepSeekV4FlashEnabled && model === "deepseek-v4-flash")) &&
+      (isOpenAIOrAnthropicModel(model) || model === "deepseek-v4-flash") &&
       !configuredModels.has(model)
     );
   });
