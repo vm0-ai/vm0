@@ -32,7 +32,11 @@ import {
 } from "../signals/services/zero-chat-event.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
-import { decryptQueuedUserMessageRunParams } from "../signals/services/zero-chat-queued-event.service";
+import type { FeishuDeliveryTarget } from "../signals/services/feishu-chat-callback-payload";
+import {
+  decryptQueuedUserMessageRunParams,
+  encryptQueuedUserMessageRunParams,
+} from "../signals/services/zero-chat-queued-event.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -490,6 +494,65 @@ export async function findPendingChatEventInputParamsByPromptFixture(
     });
   });
   return row ?? null;
+}
+
+export async function replaceFeishuLaunchMaterialWithLegacyParamsFixture(
+  eventId: string,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly prompt: string;
+    readonly appendSystemPrompt: string;
+    readonly feishuDelivery: FeishuDeliveryTarget;
+    readonly feishuDisplayName?: string;
+    readonly feishuOpenId: string;
+  },
+): Promise<void> {
+  const [event] = await db()
+    .select({ contextId: chatEvents.contextId })
+    .from(chatEvents)
+    .where(eq(chatEvents.id, eventId))
+    .limit(1);
+  if (!event?.contextId) {
+    throw new Error("Expected pending Feishu event context");
+  }
+  await db()
+    .update(chatFeishuContext)
+    .set({
+      conversationHistory: null,
+      messageText: null,
+      messageFiles: null,
+      chatType: null,
+      tenantKey: null,
+      chatId: null,
+      messageId: null,
+      threadId: null,
+      replyInThread: null,
+      reactionId: null,
+      senderOpenId: null,
+      connectionId: null,
+      installationId: null,
+    })
+    .where(eq(chatFeishuContext.id, event.contextId));
+  const encryptedParams = await encryptQueuedUserMessageRunParams(
+    {
+      version: 1,
+      prompt: args.prompt,
+      appendSystemPrompt: args.appendSystemPrompt,
+      feishuDelivery: args.feishuDelivery,
+      userInfoExtras: {
+        ...(args.feishuDisplayName
+          ? { feishuDisplayName: args.feishuDisplayName }
+          : {}),
+        feishuOpenId: args.feishuOpenId,
+      },
+    },
+    { orgId: args.orgId, userId: args.userId },
+  );
+  await db()
+    .update(chatEventInputParams)
+    .set({ encryptedParams })
+    .where(eq(chatEventInputParams.eventId, eventId));
 }
 
 /**

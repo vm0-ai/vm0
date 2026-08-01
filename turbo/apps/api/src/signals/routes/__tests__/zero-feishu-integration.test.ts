@@ -29,9 +29,11 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { extractFileFromTarGz } from "../../../lib/tar";
 import { server } from "../../../mocks/server";
 import {
+  decryptChatEventInputParamsFixture,
   findPendingChatEventInputParamsByPromptFixture,
   readChatEventContextFixture,
   readChatEventInputParamsFixture,
+  replaceFeishuLaunchMaterialWithLegacyParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
@@ -2119,17 +2121,17 @@ describe("Feishu integration", () => {
     );
     await flushWaitUntilForTest();
 
-    const canonicalFilePrompt =
-      "[Web file] quarterly-report.pdf (application/pdf)";
+    const feishuFilePrompt = "[Feishu file] quarterly-report.pdf";
     const listed = await runsApi.listAgentRuns(actor, { limit: 20 });
     const run = requireValue(
       listed.runs.find((candidate) => {
-        return candidate.prompt.includes(canonicalFilePrompt);
+        return candidate.prompt.includes(feishuFilePrompt);
       }),
       "Expected Feishu file run",
     );
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.id);
+    expect(claim.prompt).toBe(run.prompt);
     expect(oauthTokenGrantTypes).toStrictEqual([
       "authorization_code",
       "refresh_token",
@@ -2171,12 +2173,14 @@ describe("Feishu integration", () => {
         },
       ),
     ).toBeTruthy();
-    expect(claim.prompt).toContain(canonicalFilePrompt);
-    const fileId = claim.prompt.match(/ {3}\[ID\] ([^\n]+)/u)?.[1];
+    expect(claim.prompt).toContain(feishuFilePrompt);
+    expect(claim.prompt).toContain("   [MESSAGE_ID] om_file_message");
+    expect(claim.prompt).toContain("   [TYPE] file");
+    const fileId = claim.prompt.match(/ {3}\[FILE_KEY\] ([^\n]+)/u)?.[1];
     expect(fileId).toMatch(/^feishu_file_[A-Za-z0-9_-]{22}$/u);
     expect(fileId?.length).toBeLessThan(64);
     expect(claim.prompt).not.toContain(fileKey);
-    expect(claim.prompt).toContain(`   [ID] ${fileId}`);
+    expect(claim.prompt).toContain(`   [FILE_KEY] ${fileId}`);
     expect(claim.appendSystemPrompt).toContain("zero feishu download-file -h");
     expect(claim.appendSystemPrompt).toContain("zero feishu upload-file -h");
 
@@ -2291,6 +2295,38 @@ describe("Feishu integration", () => {
     expect(wrongRunResponse.status).toBe(400);
   });
 
+  it("claims a Feishu message when conversation history loading fails", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    await connectFixtureUser(fixture);
+    server.use(
+      http.get("https://open.feishu.cn/open-apis/im/v1/messages", () => {
+        return HttpResponse.json(
+          { code: 99_999, msg: "history unavailable" },
+          { status: 500 },
+        );
+      }),
+    );
+
+    const prompt = "continue without Feishu history";
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, prompt, "ou_feishu_user"),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+
+    const run = await findRun(actor, prompt);
+    await runsApi.heartbeatRunner(runnerGroup);
+    const claim = await runsApi.claimRunnerJob(run.id);
+    expect(claim.prompt).toBe(prompt);
+    expect(claim.appendSystemPrompt).toContain("Scope: Direct message");
+    expect(claim.appendSystemPrompt).not.toContain("# Recent Channel Messages");
+    expect(claim.appendSystemPrompt).not.toContain("# Feishu Thread Context");
+    await runsApi.requestCancelRun(actor, run.id, [200]);
+    await flushWaitUntilForTest();
+  });
+
   it("builds Feishu DM context and canonical response metadata", async () => {
     const fixture = await setupFeishuRunFixture({
       useAlternateInstallationDefault: true,
@@ -2395,6 +2431,7 @@ describe("Feishu integration", () => {
     );
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.id);
+    expect(claim.prompt).toBe("do the Feishu task");
     expect(claim.environment?.ZERO_AGENT_ID).toBe(alternateAgentId);
     expect(claim.appendSystemPrompt).toContain(
       "You are currently running inside: Feishu",
@@ -2976,6 +3013,54 @@ describe("Feishu integration", () => {
     if (!queuedFeishuParams) {
       throw new Error("Expected queued canonical Feishu transport params");
     }
+    const secondOrgId = requireValue(
+      secondActor.orgId,
+      "Expected the second Feishu actor organization",
+    );
+    await expect(
+      decryptChatEventInputParamsFixture(queuedFeishuParams.eventId, {
+        orgId: secondOrgId,
+        userId: secondActor.userId,
+      }),
+    ).resolves.toStrictEqual({ version: 1 });
+    const queuedFeishuContext = await readChatEventContextFixture(
+      queuedFeishuParams.eventId,
+    );
+    if (
+      !queuedFeishuContext?.feishuInstallationId ||
+      !queuedFeishuContext.feishuConnectionId ||
+      !queuedFeishuContext.feishuChatId ||
+      !queuedFeishuContext.feishuMessageId ||
+      queuedFeishuContext.feishuReplyInThread === null ||
+      !queuedFeishuContext.feishuSenderOpenId
+    ) {
+      throw new Error("Expected queued Feishu launch context");
+    }
+    const legacyPrompt = "legacy queued Feishu prompt";
+    const legacySystemPrompt = "legacy queued Feishu system prompt";
+    await replaceFeishuLaunchMaterialWithLegacyParamsFixture(
+      queuedFeishuParams.eventId,
+      {
+        orgId: secondOrgId,
+        userId: secondActor.userId,
+        prompt: legacyPrompt,
+        appendSystemPrompt: legacySystemPrompt,
+        feishuDelivery: {
+          installationId: queuedFeishuContext.feishuInstallationId,
+          connectionId: queuedFeishuContext.feishuConnectionId,
+          chatId: queuedFeishuContext.feishuChatId,
+          messageId: queuedFeishuContext.feishuMessageId,
+          threadId: firstMessageId,
+          replyInThread: queuedFeishuContext.feishuReplyInThread,
+          ...(queuedFeishuContext.feishuReactionId
+            ? { reactionId: queuedFeishuContext.feishuReactionId }
+            : {}),
+          files: [...(queuedFeishuContext.feishuMessageFiles ?? [])],
+        },
+        feishuDisplayName: "Canonical Group User",
+        feishuOpenId: queuedFeishuContext.feishuSenderOpenId,
+      },
+    );
     await runsApi.heartbeatRunner(runnerGroup);
     const firstClaim = await runsApi.claimRunnerJob(firstRun.id);
     const firstCliSessionId = `bdd-feishu-canonical-group-${firstRun.id}`;
@@ -2987,12 +3072,14 @@ describe("Feishu integration", () => {
       assistantText: "First canonical group answer",
     });
 
-    const secondRun = await findRun(secondActor, secondPrompt);
+    const secondRun = await findRun(secondActor, legacyPrompt);
     await expect(
       readChatEventInputParamsFixture(queuedFeishuParams.eventId),
     ).resolves.toBeNull();
     await runsApi.heartbeatRunner(runnerGroup);
     const secondClaim = await runsApi.claimRunnerJob(secondRun.id);
+    expect(secondClaim.prompt).toBe(legacyPrompt);
+    expect(secondClaim.appendSystemPrompt).toContain(legacySystemPrompt);
     expect(secondClaim.resumeSession?.sessionId).toBe(firstCliSessionId);
     await runsApi.requestCancelRun(secondActor, secondRun.id, [200]);
     await flushWaitUntilForTest();
@@ -3089,6 +3176,7 @@ describe("Feishu integration", () => {
     );
     await runsApi.heartbeatRunner(runnerGroup);
     const groupClaim = await runsApi.claimRunnerJob(groupRun.id);
+    expect(groupClaim.prompt).toBe("handle this group task");
     expect(groupClaim.appendSystemPrompt).toContain("Scope: Group mention");
     expect(groupClaim.appendSystemPrompt).toContain("Chat ID: oc_feishu_group");
     expect(groupClaim.appendSystemPrompt).toContain(
