@@ -222,8 +222,8 @@ impl Firewall {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FirewallApi {
     /// Stable API identifier used as one component of mitm-addon auth cache keys.
-    /// Filled by the Python registry loader after built-in refs and inline firewalls
-    /// are resolved.
+    /// Filled by the Python registry loader after built-in catalog entries and
+    /// inline firewalls are resolved.
     #[serde(default)]
     pub id: String,
     pub base: String,
@@ -1108,7 +1108,7 @@ impl FirewallAwsSigv4Auth {
 
 /// Per-firewall grant configuration: which permissions are authorized and
 /// what policy applies to unknown endpoints (not matching any rule).
-/// Refs absent from the map are fully permissive (all granted + allow unknown).
+/// Firewall names absent from the map are fully permissive (all granted + allow unknown).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkPolicy {

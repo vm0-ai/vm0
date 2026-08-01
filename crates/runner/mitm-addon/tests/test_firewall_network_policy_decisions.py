@@ -120,7 +120,7 @@ class TestFirewallNetworkPolicyDecisions:
         assert result.reason == "permission_denied"
 
     def test_unknown_policy_key_missing_defaults_to_allow(self):
-        """Ref present but unknownPolicy key absent → defaults to allow."""
+        """Firewall name present but unknownPolicy key absent defaults to allow."""
         policies = {"github": {"allow": ["repo-read"], "deny": ["repo-write"]}}
         result = match_request_with_raw_firewalls(
             "https://api.github.com/users/octocat",

@@ -1,4 +1,5 @@
 import { WORKFLOW_TEMPLATE_ITEMS, type WorkflowTemplateItem } from "@vm0/core";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { TFunction } from "i18next";
 import type { OnboardingChoice } from "../../signals/onboarding/onboarding-state.ts";
 
@@ -66,8 +67,8 @@ export interface OnboardingWorkflow {
   readonly title: string;
   readonly description: string;
   readonly prompt: string;
-  readonly connectors: readonly string[];
-  readonly required: readonly string[];
+  readonly connectorSlugs: readonly ConnectorSlug[];
+  readonly requiredConnectorSlugs: readonly ConnectorSlug[];
   readonly scenario: string;
   readonly detailSteps: readonly { title: string; description: string }[];
 }
@@ -82,7 +83,7 @@ export interface OnboardingWorkflowCategory {
 interface WorkflowPromptTemplate {
   readonly id: WorkflowTemplateItem["id"];
   readonly promptGuidance: string;
-  readonly connectors: readonly string[];
+  readonly connectorSlugs: readonly ConnectorSlug[];
 }
 
 interface SupplementalWorkflowTemplate extends WorkflowPromptTemplate {
@@ -92,19 +93,21 @@ interface SupplementalWorkflowTemplate extends WorkflowPromptTemplate {
 function supplementalWorkflowTemplate(input: {
   readonly id: string;
   readonly prompt: string;
-  readonly connectors: readonly string[];
-  readonly required: readonly string[];
+  readonly connectorSlugs: readonly ConnectorSlug[];
+  readonly requiredConnectorSlugs: readonly ConnectorSlug[];
 }): SupplementalWorkflowTemplate {
-  const optional = input.connectors.filter((connector) => {
-    return !input.required.includes(connector);
-  });
+  const optionalConnectorSlugs = input.connectorSlugs.filter(
+    (connectorSlug) => {
+      return !input.requiredConnectorSlugs.includes(connectorSlug);
+    },
+  );
   const connectorLine =
-    optional.length > 0
-      ? `Connectors: ${input.required.join(", ")} required; ${optional.join(", ")} optional.`
-      : `Connectors: ${input.required.join(", ")} required.`;
+    optionalConnectorSlugs.length > 0
+      ? `Connectors: ${input.requiredConnectorSlugs.join(", ")} required; ${optionalConnectorSlugs.join(", ")} optional.`
+      : `Connectors: ${input.requiredConnectorSlugs.join(", ")} required.`;
   return {
     id: `workflow-template:${input.id}`,
-    connectors: input.connectors,
+    connectorSlugs: input.connectorSlugs,
     promptGuidance: `${input.prompt}\n\n${connectorLine} Connect any missing required connectors before running.`,
   };
 }
@@ -115,57 +118,63 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
       id: "watch-sentry-after-release",
       prompt:
         "@Zero compare the latest release's crash-free rate in Sentry against the previous baseline and tell #dev whether it regressed, with a rollback suggestion if it did.",
-      connectors: ["sentry", "github", "vercel", "slack"],
-      required: ["sentry", "slack"],
+      connectorSlugs: ["sentry", "github", "vercel", "slack"],
+      requiredConnectorSlugs: ["sentry", "slack"],
     }),
     supplementalWorkflowTemplate({
       id: "post-github-updates-slack",
       prompt:
         "@Zero compile my merged and in-progress work from GitHub and Linear into a short progress update and post it to Slack.",
-      connectors: ["github", "linear", "sentry", "slack"],
-      required: ["github", "slack"],
+      connectorSlugs: ["github", "linear", "sentry", "slack"],
+      requiredConnectorSlugs: ["github", "slack"],
     }),
     supplementalWorkflowTemplate({
       id: "report-ai-model-costs-slack",
       prompt:
         "@Zero report today's LLM token spend and p95 latency per model and route from Langfuse and post it to Slack.",
-      connectors: ["langfuse", "slack"],
-      required: ["langfuse", "slack"],
+      connectorSlugs: ["langfuse", "slack"],
+      requiredConnectorSlugs: ["langfuse", "slack"],
     }),
     supplementalWorkflowTemplate({
       id: "summarize-user-feedback-notion",
       prompt:
         "@Zero gather recent user feedback from Productlane, Typeform, Intercom, and GitHub, cluster it into themes, and write a ranked summary in Notion.",
-      connectors: ["productlane", "typeform", "intercom", "github", "notion"],
-      required: ["notion"],
+      connectorSlugs: [
+        "productlane",
+        "typeform",
+        "intercom",
+        "github",
+        "notion",
+      ],
+      requiredConnectorSlugs: ["notion"],
     }),
     supplementalWorkflowTemplate({
       id: "watch-brand-mentions",
       prompt:
         "@Zero search the web, Hacker News, and X for recent mentions of our product and post them to Slack.",
-      connectors: ["exa", "x", "slack"],
-      required: ["exa", "slack"],
+      connectorSlugs: ["exa", "x", "slack"],
+      requiredConnectorSlugs: ["exa", "slack"],
     }),
     supplementalWorkflowTemplate({
       id: "sort-route-zendesk-tickets",
       prompt:
         "@Zero go through the new Zendesk tickets, set each one's severity, route it to the right team, and draft a first reply.",
-      connectors: ["zendesk", "linear"],
-      required: ["zendesk"],
+      connectorSlugs: ["zendesk", "linear"],
+      requiredConnectorSlugs: ["zendesk"],
     }),
     supplementalWorkflowTemplate({
       id: "fixes-to-notion-help-docs",
       prompt:
         "@Zero take a recently resolved ticket and turn the fix into a reusable help article in Notion.",
-      connectors: ["notion", "zendesk"],
-      required: ["notion", "zendesk"],
+      connectorSlugs: ["notion", "zendesk"],
+      requiredConnectorSlugs: ["notion", "zendesk"],
     }),
     supplementalWorkflowTemplate({
       id: "morning-brief-slack",
       prompt:
         "@Zero send me a brief with today's schedule and the emails that need me and post it to Slack.",
-      connectors: ["gmail", "google-calendar", "slack"],
-      required: ["gmail", "google-calendar", "slack"],
+      connectorSlugs: ["gmail", "google-calendar", "slack"],
+      requiredConnectorSlugs: ["gmail", "google-calendar", "slack"],
     }),
   ];
 
@@ -271,10 +280,10 @@ const ALL_WORKFLOW_TEMPLATES: readonly WorkflowPromptTemplate[] = [
 // Derives the required connectors from the "Connectors: X required; Y optional"
 // line embedded in promptGuidance, so this stays the single source of truth with
 // the guidance text. Templates without that line resolve to no required connectors.
-function requiredConnectors(
+function requiredConnectorSlugs(
   promptGuidance: string,
-  connectors: readonly string[],
-): readonly string[] {
+  connectorSlugs: readonly ConnectorSlug[],
+): readonly ConnectorSlug[] {
   const match = promptGuidance.match(/Connectors:\s*([^.;\n]*?)\s+required/u);
   const captured = match?.[1];
   if (captured === undefined) {
@@ -290,8 +299,8 @@ function requiredConnectors(
         return value.length > 0;
       }),
   );
-  return connectors.filter((connector) => {
-    return declared.has(connector);
+  return connectorSlugs.filter((connectorSlug) => {
+    return declared.has(connectorSlug);
   });
 }
 
@@ -316,8 +325,11 @@ function onboardingWorkflow(
       return $.onboarding.workflows[id].description;
     }),
     prompt: template.promptGuidance,
-    connectors: template.connectors,
-    required: requiredConnectors(template.promptGuidance, template.connectors),
+    connectorSlugs: template.connectorSlugs,
+    requiredConnectorSlugs: requiredConnectorSlugs(
+      template.promptGuidance,
+      template.connectorSlugs,
+    ),
     scenario: t(($) => {
       return $.onboarding.workflows[id].scenario;
     }),

@@ -240,7 +240,7 @@ export function ZeroIdeationPage() {
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {category.cases.map((useCase) => {
                           const connectors =
-                            useCase.connectors?.flatMap((connectorSlug) => {
+                            useCase.connectorSlugs?.flatMap((connectorSlug) => {
                               const connector =
                                 connectorStatusBySlug?.get(connectorSlug);
                               return connector

@@ -55,7 +55,7 @@ function PromptOnboarding() {
   const searchParams = useGet(searchParams$);
   const pageSignal = useGet(pageSignal$);
   const { runPrompt } = useOnboardingNavigation();
-  const connectors = (searchParams.get("connector") ?? "")
+  const connectorSlugs = (searchParams.get("connector") ?? "")
     .split(",")
     .map((value) => {
       return value.trim();
@@ -92,7 +92,10 @@ function PromptOnboarding() {
         />
       }
     >
-      <OnboardingConnectorSetup connectorIds={connectors} variant="prompt" />
+      <OnboardingConnectorSetup
+        connectorSlugs={connectorSlugs}
+        variant="prompt"
+      />
       <textarea
         id="onboarding-prompt"
         aria-label={t(($) => {
