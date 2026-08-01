@@ -189,9 +189,9 @@ async def test_active_shared_base_owner_preserves_ordinary_allow_401(tmp_path, r
     assert network_entry["response_size"] == len(upstream_body)
     assert "firewall_error" not in network_entry
     assert "connector_diagnostic_slug" not in network_entry
-    proxy_entries = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
-    assert any(entry["type"] == "http_error" for entry in proxy_entries)
-    assert all(entry["type"] != "connector_diagnostic" for entry in proxy_entries)
+    [proxy_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert proxy_entry["type"] == "http_error"
+    assert proxy_entry["status"] == 401
 
 
 async def test_streams_unauthenticated_connector_401_diagnostic_without_upstream_body(
