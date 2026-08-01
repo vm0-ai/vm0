@@ -62,6 +62,41 @@ def connector_diagnostic_test_firewalls() -> dict[str, dict]:
     }
 
 
+def _shared_base_catalog_firewall(
+    name: str,
+    token_name: str,
+    *,
+    auth: dict[str, object] | None = None,
+    permissions: list[dict[str, object]] | None = None,
+) -> dict:
+    resolved_auth = (
+        {
+            "headers": {
+                "Authorization": f"Bearer ${{{{ secrets.{token_name} }}}}",
+            },
+            "query": {
+                "api_key": f"${{{{ secrets.{token_name} }}}}",
+            },
+        }
+        if auth is None
+        else auth
+    )
+    return {
+        "name": name,
+        "apis": [
+            {
+                "base": "https://shared.example.com",
+                "hostPolicy": {
+                    "kind": "providerOwned",
+                    "exactHosts": ["shared.example.com"],
+                },
+                "auth": resolved_auth,
+                "permissions": permissions or [],
+            }
+        ],
+    }
+
+
 def write_connector_diagnostic_catalog_cache(
     tmp_path: Path,
     *,
@@ -88,6 +123,29 @@ def write_connector_diagnostic_catalog_cache(
     replacement_path.chmod(0o600)
     replacement_path.replace(cache_path)
     return cache_path
+
+
+def write_shared_base_diagnostic_catalog(
+    tmp_path: Path,
+    *,
+    active_permissions: list[dict[str, object]] | None = None,
+    inactive_auth: dict[str, object] | None = None,
+    inactive_permissions: list[dict[str, object]] | None = None,
+) -> None:
+    firewalls = {
+        "active-shared": _shared_base_catalog_firewall(
+            "active-shared",
+            "ACTIVE_TOKEN",
+            permissions=active_permissions,
+        ),
+        "inactive-shared": _shared_base_catalog_firewall(
+            "inactive-shared",
+            "INACTIVE_TOKEN",
+            auth=inactive_auth,
+            permissions=inactive_permissions,
+        ),
+    }
+    write_connector_diagnostic_catalog_cache(tmp_path, firewalls=firewalls)
 
 
 def write_connector_diagnostic_capture_registry(tmp_path: Path) -> Path:

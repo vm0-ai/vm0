@@ -11,6 +11,7 @@ import request_streaming
 import upstream_destination_binding
 from tests.connector_diagnostic_helpers import (
     write_connector_diagnostic_catalog_cache,
+    write_shared_base_diagnostic_catalog,
 )
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
@@ -75,64 +76,6 @@ def _write_shared_base_active_firewall_registry(
     )
 
 
-def _shared_base_catalog_firewall(
-    name: str,
-    token_name: str,
-    *,
-    auth: dict[str, object] | None = None,
-    permissions: list[dict[str, object]] | None = None,
-) -> dict:
-    resolved_auth = (
-        {
-            "headers": {
-                "Authorization": f"Bearer ${{{{ secrets.{token_name} }}}}",
-            },
-            "query": {
-                "api_key": f"${{{{ secrets.{token_name} }}}}",
-            },
-        }
-        if auth is None
-        else auth
-    )
-    return {
-        "name": name,
-        "apis": [
-            {
-                "base": "https://shared.example.com",
-                "hostPolicy": {
-                    "kind": "providerOwned",
-                    "exactHosts": ["shared.example.com"],
-                },
-                "auth": resolved_auth,
-                "permissions": permissions or [],
-            }
-        ],
-    }
-
-
-def _write_shared_base_diagnostic_catalog(
-    tmp_path,
-    *,
-    active_permissions: list[dict[str, object]] | None = None,
-    inactive_auth: dict[str, object] | None = None,
-    inactive_permissions: list[dict[str, object]] | None = None,
-) -> None:
-    firewalls = {
-        "active-shared": _shared_base_catalog_firewall(
-            "active-shared",
-            "ACTIVE_TOKEN",
-            permissions=active_permissions,
-        ),
-        "inactive-shared": _shared_base_catalog_firewall(
-            "inactive-shared",
-            "INACTIVE_TOKEN",
-            auth=inactive_auth,
-            permissions=inactive_permissions,
-        ),
-    }
-    write_connector_diagnostic_catalog_cache(tmp_path, firewalls=firewalls)
-
-
 def _assert_shared_base_inactive_diagnostic(flow):
     assert flow.response is not None
     assert flow.response.status_code == 424
@@ -160,7 +103,7 @@ def _assert_shared_base_inactive_diagnostic(flow):
 async def test_shared_base_unknown_endpoint_diagnoses_inactive_sibling_before_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _write_shared_base_diagnostic_catalog(
+    write_shared_base_diagnostic_catalog(
         tmp_path,
         active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
         inactive_permissions=[{"name": "inactive-read", "rules": ["GET /inactive"]}],
@@ -198,7 +141,7 @@ async def test_shared_base_unknown_endpoint_diagnoses_inactive_sibling_before_au
 async def test_shared_base_connector_intent_diagnoses_inside_candidate_set_before_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _write_shared_base_diagnostic_catalog(tmp_path)
+    write_shared_base_diagnostic_catalog(tmp_path)
     reg_path = _write_shared_base_active_firewall_registry(tmp_path)
     flow = real_flow(
         with_response=False,
@@ -232,7 +175,7 @@ async def test_shared_base_connector_intent_diagnoses_inside_candidate_set_befor
 async def test_shared_base_active_connector_intent_keeps_active_auth_path(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _write_shared_base_diagnostic_catalog(tmp_path)
+    write_shared_base_diagnostic_catalog(tmp_path)
     reg_path = _write_shared_base_active_firewall_registry(tmp_path)
     flow = real_flow(
         with_response=False,
@@ -278,7 +221,7 @@ async def test_shared_base_unknown_endpoint_with_configured_auth_keeps_active_au
     path,
     request_header_pairs,
 ):
-    _write_shared_base_diagnostic_catalog(
+    write_shared_base_diagnostic_catalog(
         tmp_path,
         active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
         inactive_auth={
@@ -320,7 +263,7 @@ async def test_shared_base_unknown_endpoint_with_configured_auth_keeps_active_au
 async def test_shared_base_malformed_connector_intent_is_ignored_and_stripped(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _write_shared_base_diagnostic_catalog(tmp_path)
+    write_shared_base_diagnostic_catalog(tmp_path)
     reg_path = _write_shared_base_active_firewall_registry(tmp_path)
     flow = real_flow(
         with_response=False,
@@ -350,7 +293,7 @@ async def test_shared_base_malformed_connector_intent_is_ignored_and_stripped(
 async def test_shared_base_known_permission_skips_pre_auth_diagnostic(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers
 ):
-    _write_shared_base_diagnostic_catalog(
+    write_shared_base_diagnostic_catalog(
         tmp_path,
         active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
         inactive_permissions=[{"name": "inactive-read", "rules": ["GET /inactive"]}],
@@ -380,7 +323,7 @@ async def test_shared_base_known_permission_skips_pre_auth_diagnostic(
 async def test_shared_base_requestheaders_diagnoses_before_stream_safe_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _write_shared_base_diagnostic_catalog(
+    write_shared_base_diagnostic_catalog(
         tmp_path,
         active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
         inactive_permissions=[{"name": "inactive-write", "rules": ["POST /inactive"]}],

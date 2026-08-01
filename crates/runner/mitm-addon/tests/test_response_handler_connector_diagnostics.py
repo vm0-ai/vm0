@@ -10,6 +10,7 @@ from tests.connector_diagnostic_helpers import (
     record_connector_diagnostic_requestheaders_context,
     write_connector_diagnostic_capture_registry,
     write_connector_diagnostic_catalog_cache,
+    write_shared_base_diagnostic_catalog,
 )
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import (
@@ -87,55 +88,27 @@ async def test_replaces_unauthenticated_connector_401_body(tmp_path, real_flow, 
 
 
 async def test_active_shared_base_owner_preserves_ordinary_allow_401(tmp_path, real_flow, mitm_ctx):
-    write_connector_diagnostic_catalog_cache(
+    write_shared_base_diagnostic_catalog(
         tmp_path,
-        firewalls={
-            "active": {
-                "name": "active",
-                "apis": [
-                    {
-                        "base": "https://shared.example.com",
-                        "auth": {
-                            "headers": {
-                                "Authorization": "Bearer ${{ secrets.ACTIVE_TOKEN }}",
-                            }
-                        },
-                        "permissions": [
-                            {
-                                "name": "messages-read",
-                                "rules": ["GET /messages/{id}"],
-                            }
-                        ],
-                    }
-                ],
-            },
-            "inactive": {
-                "name": "inactive",
-                "apis": [
-                    {
-                        "base": "https://shared.example.com",
-                        "auth": {
-                            "headers": {
-                                "Authorization": "Bearer ${{ secrets.INACTIVE_TOKEN }}",
-                            }
-                        },
-                        "permissions": [
-                            {
-                                "name": "other-read",
-                                "rules": ["GET /other/{id}"],
-                            }
-                        ],
-                    }
-                ],
-            },
-        },
+        active_permissions=[
+            {
+                "name": "messages-read",
+                "rules": ["GET /messages/{id}"],
+            }
+        ],
+        inactive_permissions=[
+            {
+                "name": "other-read",
+                "rules": ["GET /other/{id}"],
+            }
+        ],
     )
     # Keep the catalog owner active while a nonmatching runtime base forces ordinary Allow.
     reg_path = _write_registry(
         tmp_path,
         vm_info=_single_firewall_vm(
             tmp_path,
-            firewall_name="active",
+            firewall_name="active-shared",
             api_entry={
                 "base": "https://shared.example.com/runtime",
                 "auth": {
