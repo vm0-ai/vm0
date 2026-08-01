@@ -177,7 +177,6 @@ interface TiptapWorkflowComposerProps {
   readonly sending: boolean | undefined;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
   readonly onPaste: (event: ComposerPasteEvent) => void;
-  readonly singleLineOnMobile: boolean;
 }
 
 interface ComposerKeyDownContext {
@@ -312,9 +311,7 @@ function useComposerSuggestionMenu({
   const insertWorkflow = useSet(composer.workflow.insertWorkflow$);
   const insertAgent = useSet(composer.suggestion.insertAgent$);
   const insertChatThread = useSet(composer.suggestion.insertChatThread$);
-  const currentAgentId = resolvedAgentId(
-    useLastResolved(composer.context.agent$),
-  );
+  const currentAgentId = resolvedAgentId(useLastResolved(composer.agent$));
   const workflowsLoadable = useLastLoadable(composer.workflow.workflows$);
   const workflows = buildComposerSlashWorkflows({
     agentId: currentAgentId,
@@ -428,9 +425,9 @@ export function TiptapWorkflowComposer({
   sending,
   onKeyDown,
   onPaste,
-  singleLineOnMobile,
 }: TiptapWorkflowComposerProps) {
   const composer = signals;
+  const singleLineOnMobile = composer.editor.singleLineOnMobile;
   const suggestionMenu = useComposerSuggestionMenu({
     composer,
     onKeyDown,

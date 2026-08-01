@@ -7196,7 +7196,6 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
       sending={sending}
       onKeyDown={handleKeyDown}
       onPaste={handlePaste}
-      singleLineOnMobile={signals.context.mobileSingleLine}
     />
   );
 }
@@ -7404,7 +7403,7 @@ function useComposerConnectorReadState(
   return {
     catalogItems: useLastLoadable(allConnectorCatalogItems$),
     customConnectors: useLastLoadable(customConnectors$),
-    agent: useLoadable(signals.context.agent$),
+    agent: useLoadable(signals.agent$),
     authorization: useLastLoadable(signals.connector.connectorAuthorization$, {
       equalityFn: equalComposerConnectorAuthorizationState,
     }),

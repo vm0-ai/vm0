@@ -227,7 +227,7 @@ export const agentChatComposerSignals$ = computed((get) => {
     draft,
     generationTemplate$: newThreadGenerationTemplate$,
     setGenerationTemplate$: setNewThreadGenerationTemplate$,
-    mobileSingleLine: false,
+    singleLineOnMobile: false,
     actionsLoading$,
     sending$: idle$,
     queueWhileSending$: idle$,

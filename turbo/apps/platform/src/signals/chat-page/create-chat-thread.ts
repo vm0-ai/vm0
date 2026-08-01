@@ -4947,7 +4947,7 @@ function createThreadRootComposer(options: ThreadRootComposerOptions) {
     agent$: options.threadOwned.agent$,
     workflowComposer: options.composer.workflowComposer,
     draft: options.draft,
-    mobileSingleLine: true,
+    singleLineOnMobile: true,
     actionsLoading$,
     sending$,
     queueWhileSending$,

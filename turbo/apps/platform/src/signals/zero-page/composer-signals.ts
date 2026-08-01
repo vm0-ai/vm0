@@ -33,7 +33,9 @@ type ComposerEditorSignals = Pick<
   | "insertText$"
   | "appendText$"
   | "selectOrAppendText$"
->;
+> & {
+  readonly singleLineOnMobile: boolean;
+};
 
 type ComposerWorkflowEditorSignals = Pick<
   WorkflowComposerSignals,
@@ -91,11 +93,6 @@ export type ComposerPendingEvent =
       readonly workflowName: string;
       readonly automationBrief: string | undefined;
     };
-
-interface ComposerContextSignals {
-  readonly agent$: Computed<Promise<ZeroAgentResponse>>;
-  readonly mobileSingleLine: boolean;
-}
 
 interface ComposerWorkflowSignals extends ComposerWorkflowEditorSignals {
   readonly createWorkflowPrompt$: Command<Promise<void>, [AbortSignal]>;
@@ -182,7 +179,7 @@ interface ComposerTemplateSignals
 }
 
 export interface ComposerSignals {
-  readonly context: ComposerContextSignals;
+  readonly agent$: Computed<Promise<ZeroAgentResponse>>;
   readonly editor: ComposerEditorSignals;
   readonly feedback: WorkflowComposerSignals["feedback"];
   readonly workflow: ComposerWorkflowSignals;
@@ -198,12 +195,12 @@ export interface ComposerSignals {
 }
 
 interface CreateComposerSignalsOptions {
-  readonly agent$: ComposerContextSignals["agent$"];
+  readonly agent$: ComposerSignals["agent$"];
   readonly workflowComposer: WorkflowComposerSignals;
   readonly draft: DraftSignals;
   readonly generationTemplate$?: ComposerTemplateSignals["generationTemplate$"];
   readonly setGenerationTemplate$?: ComposerTemplateSignals["setGenerationTemplate$"];
-  readonly mobileSingleLine: boolean;
+  readonly singleLineOnMobile: boolean;
   readonly actionsLoading$: Computed<Promise<boolean>>;
   readonly sending$: ComposerSubmissionSignals["sending$"];
   readonly queueWhileSending$: Computed<Promise<boolean>>;
@@ -254,8 +251,10 @@ export function createComposerFileInputSignals() {
 
 function composerEditorSignals(
   composer: WorkflowComposerSignals,
+  singleLineOnMobile: boolean,
 ): ComposerEditorSignals {
   return {
+    singleLineOnMobile,
     editor: composer.editor,
     setContainerRef$: composer.setContainerRef$,
     focus$: composer.focus$,
@@ -346,11 +345,11 @@ export function createComposerSignals(
   const ui = createComposerUiSignals();
 
   return {
-    context: {
-      agent$: options.agent$,
-      mobileSingleLine: options.mobileSingleLine,
-    },
-    editor: composerEditorSignals(options.workflowComposer),
+    agent$: options.agent$,
+    editor: composerEditorSignals(
+      options.workflowComposer,
+      options.singleLineOnMobile,
+    ),
     feedback: options.workflowComposer.feedback,
     workflow: {
       ...composerWorkflowSignals(options.workflowComposer),
