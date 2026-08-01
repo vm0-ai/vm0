@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
   ChatSlackMessageFiles,
@@ -75,6 +76,19 @@ interface ChatEventContextFixture {
   readonly slackThreadTs: string | null;
   readonly slackRouteThreadTs: string | null;
   readonly feishuOpenUrl: string | null;
+  readonly feishuConversationHistory: string | null;
+  readonly feishuMessageText: string | null;
+  readonly feishuMessageFiles: ChatFeishuMessageFiles | null;
+  readonly feishuChatType: "group" | "p2p" | "topic_group" | null;
+  readonly feishuTenantKey: string | null;
+  readonly feishuChatId: string | null;
+  readonly feishuMessageId: string | null;
+  readonly feishuThreadId: string | null;
+  readonly feishuReplyInThread: boolean | null;
+  readonly feishuReactionId: string | null;
+  readonly feishuSenderOpenId: string | null;
+  readonly feishuConnectionId: string | null;
+  readonly feishuInstallationId: string | null;
   readonly teamsTenantId: string | null;
   readonly teamsChannelId: string | null;
   readonly teamsActivityId: string | null;
@@ -113,6 +127,19 @@ export async function readChatEventContextFixture(
       slackThreadTs: chatSlackContext.threadTs,
       slackRouteThreadTs: chatSlackContext.routeThreadTs,
       feishuOpenUrl: chatFeishuContext.chatOpenUrl,
+      feishuConversationHistory: chatFeishuContext.conversationHistory,
+      feishuMessageText: chatFeishuContext.messageText,
+      feishuMessageFiles: chatFeishuContext.messageFiles,
+      feishuChatType: chatFeishuContext.chatType,
+      feishuTenantKey: chatFeishuContext.tenantKey,
+      feishuChatId: chatFeishuContext.chatId,
+      feishuMessageId: chatFeishuContext.messageId,
+      feishuThreadId: chatFeishuContext.threadId,
+      feishuReplyInThread: chatFeishuContext.replyInThread,
+      feishuReactionId: chatFeishuContext.reactionId,
+      feishuSenderOpenId: chatFeishuContext.senderOpenId,
+      feishuConnectionId: chatFeishuContext.connectionId,
+      feishuInstallationId: chatFeishuContext.installationId,
       teamsTenantId: chatTeamsContext.tenantId,
       teamsChannelId: chatTeamsContext.channelId,
       teamsActivityId: chatTeamsContext.activityId,
@@ -167,6 +194,19 @@ const annotationProjectionInputs = [
       feishuContext: {
         chatOpenUrl:
           "https://applink.feishu.cn/client/chat/open?openChatId=oc_123",
+        conversationHistory: "",
+        messageText: "feishu linked",
+        messageFiles: [],
+        chatType: "p2p",
+        tenantKey: "tenant-1",
+        chatId: "oc_123",
+        messageId: "om_123",
+        threadId: "om_123",
+        replyInThread: false,
+        reactionId: null,
+        senderOpenId: "ou_123",
+        connectionId: "00000000-0000-4000-8000-000000000001",
+        installationId: "00000000-0000-4000-8000-000000000002",
       },
     },
   },
