@@ -292,9 +292,13 @@ const cases: readonly WorkflowAutomationContextCase[] = [
 
 describe("workflow automation context lookup contracts", () => {
   it("covers every trigger renderer exactly once", () => {
-    expect(cases.map(({ eventType }) => eventType).sort()).toStrictEqual(
-      Object.keys(TRIGGER_RENDERERS).sort(),
-    );
+    expect(
+      cases
+        .map(({ eventType }) => {
+          return eventType;
+        })
+        .sort(),
+    ).toStrictEqual(Object.keys(TRIGGER_RENDERERS).sort());
   });
 
   it.each(cases)(
