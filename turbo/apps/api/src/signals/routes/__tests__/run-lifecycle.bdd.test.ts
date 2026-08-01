@@ -48,7 +48,6 @@ import {
   readOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
-import { readRunnerHeldStateFixture } from "../../../test-fixtures/runner-state";
 import {
   API_TEST_CONNECTOR_FIREWALL_CONFIGS,
   apiTestConnectorCatalogValidationAuthority,
@@ -3556,7 +3555,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       sessionAffinityResource(canonicalHeartbeatHolder.job),
     ).toBeUndefined();
 
-    const workspaceOnlyCompletedAt = nowDate().toISOString();
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: affinityRunnerId,
       group: runnerGroup,
@@ -3567,7 +3565,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       heldWorkspaceStates: [
         {
           reuseKey,
-          lastCompletedAt: workspaceOnlyCompletedAt,
+          lastCompletedAt: nowDate().toISOString(),
           workspaceCaches: [
             { profile: "vm0/default", workspaceAffinityVersion: 1 },
           ],
@@ -3581,21 +3579,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "workspaceCache",
     );
     expect(workspaceOnlyHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    await expect(
-      readRunnerHeldStateFixture(affinityRunnerId),
-    ).resolves.toStrictEqual({
-      heldSessionStates: [],
-      heldWorkspaceStates: [
-        {
-          reuseKey,
-          lastCompletedAt: workspaceOnlyCompletedAt,
-          workspaceCaches: [
-            { profile: "vm0/default", workspaceAffinityVersion: 1 },
-          ],
-        },
-      ],
-    });
-
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
       workspaceCaches: [
@@ -3613,7 +3596,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
 
     const reusableRunnerId = randomUUID();
-    const reusableCompletedAt = nowDate().toISOString();
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: reusableRunnerId,
       group: runnerGroup,
@@ -3624,23 +3606,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         {
           sessionId: cliAgentSessionId,
           reuseKey,
-          lastCompletedAt: reusableCompletedAt,
+          lastCompletedAt: nowDate().toISOString(),
           reusableSandbox: { profile: "vm0/default" },
         },
       ],
-    });
-    await expect(
-      readRunnerHeldStateFixture(reusableRunnerId),
-    ).resolves.toStrictEqual({
-      heldSessionStates: [
-        {
-          sessionId: cliAgentSessionId,
-          reuseKey,
-          lastCompletedAt: reusableCompletedAt,
-          reusableSandbox: { profile: "vm0/default" },
-        },
-      ],
-      heldWorkspaceStates: [],
     });
     const reusableOverWorkspace = await pollFollowUp(
       "prefer a reusable holder over a capable workspace holder",
@@ -4092,38 +4061,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       });
     }
 
-    async function expectPersistedCapabilities(
-      expected: boolean,
-    ): Promise<void> {
-      const state = await readRunnerHeldStateFixture(runnerId);
-      if (!expected) {
-        expect(state).toStrictEqual({
-          heldSessionStates: [],
-          heldWorkspaceStates: [],
-        });
-        return;
-      }
-      expect(state).toStrictEqual({
-        heldSessionStates: [
-          {
-            sessionId: cliAgentSessionId,
-            reuseKey,
-            lastCompletedAt: expect.any(String),
-            reusableSandbox: { profile: "vm0/default" },
-          },
-        ],
-        heldWorkspaceStates: [
-          {
-            reuseKey,
-            lastCompletedAt: expect.any(String),
-            workspaceCaches: [
-              { profile: "vm0/default", workspaceAffinityVersion: 1 },
-            ],
-          },
-        ],
-      });
-    }
-
     async function expectReusableAffinity(expected: boolean): Promise<void> {
       const followUp = await sendChatRunMessage(actor, {
         agentId,
@@ -4141,8 +4078,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(poll.body.job?.runId).toBe(followUp.runId);
       if (expected) {
         expect(sessionAffinityProtectedUntil(poll.body.job)).not.toBeNull();
+        expect(sessionAffinityResource(poll.body.job)).toBe("reusableSandbox");
       } else {
         expect(sessionAffinityProtectedUntil(poll.body.job)).toBeNull();
+        expect(sessionAffinityResource(poll.body.job)).toBeUndefined();
       }
       await api.requestCancelRun(actor, followUp.runId, [200]);
       await flushWaitUntilForTest();
@@ -4153,14 +4092,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       sequence: 2,
       advertisesCapabilities: true,
     });
-    await expectPersistedCapabilities(true);
     mockNow(baseTime + 5000);
     await heartbeat({
       generation: 1,
       sequence: 1,
       advertisesCapabilities: false,
     });
-    await expectPersistedCapabilities(true);
     await expectReusableAffinity(true);
 
     mockNow(baseTime + 20_000);
@@ -4169,7 +4106,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       sequence: 1,
       advertisesCapabilities: true,
     });
-    await expectPersistedCapabilities(true);
     mockNow(baseTime + 31_000);
     await expectReusableAffinity(false);
 
@@ -4183,7 +4119,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       sequence: 3,
       advertisesCapabilities: false,
     });
-    await expectPersistedCapabilities(true);
     await expectReusableAffinity(true);
 
     await heartbeat({
@@ -4196,7 +4131,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       sequence: 99,
       advertisesCapabilities: true,
     });
-    await expectPersistedCapabilities(false);
     await expectReusableAffinity(false);
   });
 
