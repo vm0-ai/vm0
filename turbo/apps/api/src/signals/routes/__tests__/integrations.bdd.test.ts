@@ -16,7 +16,6 @@ import {
   findPendingChatEventInputParamsByPromptFixture,
   readChatEventContextFixture,
   readChatEventInputParamsFixture,
-  replaceSlackLaunchMaterialWithLegacyParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -2033,75 +2032,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       status: "",
     });
 
-    const fallbackAnchorBody = JSON.stringify({
-      type: "event_callback",
-      team_id: teamId,
-      event_id: `EvBDD${randomUUID().replace(/-/g, "")}`,
-      event: {
-        ...event,
-        text: "block the legacy Slack fallback",
-        ts: "2900.000400",
-        thread_ts: threadTs,
-      },
-    });
-    await integrations.requestSlackEvent(
-      fallbackAnchorBody,
-      integrations.signedSlackIngressHeaders(fallbackAnchorBody),
-      [200],
-    );
-    await flushWaitUntilForTest();
-    const fallbackAnchorRunId = await pollSlackRun(runnerGroup);
-    const legacyFallbackBody = JSON.stringify({
-      type: "event_callback",
-      team_id: teamId,
-      event_id: `EvBDD${randomUUID().replace(/-/g, "")}`,
-      event: {
-        ...event,
-        text: "claim legacy Slack params",
-        ts: "2900.000500",
-        thread_ts: threadTs,
-      },
-    });
-    await integrations.requestSlackEvent(
-      legacyFallbackBody,
-      integrations.signedSlackIngressHeaders(legacyFallbackBody),
-      [200],
-    );
-    await flushWaitUntilForTest();
-    const legacyFallbackParams = await requirePendingChatEventInputParams(
-      "claim legacy Slack params",
-    );
-    await replaceSlackLaunchMaterialWithLegacyParamsFixture({
-      eventId: legacyFallbackParams.eventId,
-      orgId,
-      userId: actor.userId,
-      prompt: "legacy Slack prompt",
-      appendSystemPrompt: "legacy Slack system prompt",
-      channelId,
-      threadTs,
-    });
-    await runs.requestCancelRun(actor, fallbackAnchorRunId, [200]);
-    await expect
-      .poll(async () => {
-        return (await runs.readRun(actor, fallbackAnchorRunId)).status;
-      })
-      .toBe("cancelled");
-    await flushWaitUntilForTest();
-    const legacyFallbackRunId = await pollSlackRun(runnerGroup);
-    const legacyFallbackClaim = await runs.claimRunnerJob(legacyFallbackRunId);
-    const legacyFallbackRun = await runs.readRun(actor, legacyFallbackRunId);
-    expect(legacyFallbackRun.prompt).toBe("legacy Slack prompt");
-    expect(legacyFallbackRun.appendSystemPrompt).toContain(
-      "legacy Slack system prompt",
-    );
-    await runs.requestCancelRun(actor, legacyFallbackRunId, [200]);
-    await expect
-      .poll(async () => {
-        return (await runs.readRun(actor, legacyFallbackRunId)).status;
-      })
-      .toBe("cancelled");
-    expect(legacyFallbackClaim.sandboxToken).toStrictEqual(expect.any(String));
-    await flushWaitUntilForTest();
     expect(
       (await chat.listThreadEvents(actor, canonicalChatThreadId)).events,
     ).toStrictEqual(
