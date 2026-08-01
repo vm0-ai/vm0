@@ -8054,6 +8054,7 @@ interface PrepareAgentRunArgs {
   readonly timing: ApiDispatchTimingCollector;
   readonly checkOrgPlanStatusBeforeContext: boolean;
   readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
+  // Undefined means not preloaded; null is an authoritative missing value.
   readonly preloadedUserTimezone?: string | null;
   readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
 }
