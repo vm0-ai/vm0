@@ -1176,6 +1176,10 @@ function gmailTriggerContext(args: {
       : "a new inbound Gmail message arrived";
   return {
     workflowName: args.workflowName,
+    eventType:
+      args.automationConfig.event === "label_applied"
+        ? "gmail-label-applied"
+        : "gmail-new-message",
     trigger: `${matched} on ${args.emailAddress} (Gmail message ${args.message.messageId}).`,
     notes: [
       "Not included below: the email body. Connected Gmail tools return the message and thread content.",
@@ -1685,6 +1689,7 @@ const startGmailWorkflowRun$ = command(
           message: args.message,
         });
         return {
+          context,
           prompt: workflowAutomationPrompt(context),
           appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
           triggerBrief: buildGmailWorkflowAutomationBrief({
@@ -1708,6 +1713,7 @@ const startGmailWorkflowRun$ = command(
           workflowName: args.automation.workflowName,
           chatThreadId: args.automation.chatThreadId,
         },
+        automationContext: runInput.context,
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
         prompt: runInput.prompt,

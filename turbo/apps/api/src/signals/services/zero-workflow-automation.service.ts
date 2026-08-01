@@ -2606,6 +2606,7 @@ function manualTriggerContext(args: {
   const requestedAt = args.requestedAt.toISOString();
   return {
     workflowName: args.workflowName,
+    eventType: "manual",
     trigger: `manual run requested at ${requestedAt}.`,
     event: {
       automationId: args.automation.id,
@@ -2698,6 +2699,7 @@ export const runOwnedWorkflowAutomationNow$ = command(
           workflowName: target.workflowName,
           chatThreadId,
         },
+        automationContext: manualContext,
         apiStartTime: currentTime.getTime(),
         triggerSource: manualTriggerSource(automation),
         triggerBrief:

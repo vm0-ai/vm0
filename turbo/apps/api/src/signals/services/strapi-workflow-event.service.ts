@@ -599,6 +599,7 @@ async function processPendingEvent(args: {
 
   const context: WorkflowAutomationContext = {
     workflowName: row.workflowName,
+    eventType: "strapi-entry-published",
     trigger: `Strapi published entry ${args.pending.uid} ${args.pending.documentId} on ${row.integrationName} (latest change ${args.pending.latestEventAt.toISOString()}).`,
     notes: [
       "Not included below: the Strapi entry content fields. The configured Strapi connector returns them for the document metadata below.",
@@ -627,6 +628,7 @@ async function processPendingEvent(args: {
         workflowName: row.workflowName,
         chatThreadId: row.chatThreadId,
       },
+      automationContext: context,
       apiStartTime: now(),
       triggerSource: "workflow-event",
       prompt: workflowAutomationPrompt(context),

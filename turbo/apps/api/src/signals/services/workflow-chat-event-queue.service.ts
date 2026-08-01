@@ -38,6 +38,10 @@ import {
 } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import type {
+  WorkflowAutomationEventPayload,
+  WorkflowAutomationEventType,
+} from "./workflow-automation-context.service";
 
 const WORKFLOW_QUEUE_EVENT_PARAMS_KEY = "__workflow_queue_event_params__";
 const automationEventRevoker = alias(chatEvents, "automation_event_revoker");
@@ -180,6 +184,8 @@ export type PersistWorkflowQueueSourceTransition = (
 interface WorkflowQueueAdmissionArgs {
   readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   readonly workflowName: string;
+  readonly workflowAutomationEventType?: WorkflowAutomationEventType;
+  readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
   readonly chatThreadId: string;
   readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | undefined;
@@ -230,6 +236,9 @@ async function attemptWorkflowQueueAdmission(
       }),
       runId: null,
       automationId: automation.id,
+      workflowName: args.workflowName,
+      workflowAutomationEventType: args.workflowAutomationEventType,
+      workflowAutomationEventPayload: args.workflowAutomationEventPayload,
       triggerSource: args.triggerSource,
       triggerBrief: args.triggerBrief ?? null,
       encryptedParams,

@@ -27,6 +27,10 @@ import { eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
+import type {
+  WorkflowAutomationEventPayload,
+  WorkflowAutomationEventType,
+} from "./workflow-automation-context.service";
 
 type ChatEventInsert = typeof chatEvents.$inferInsert;
 type ChatEventWriteTransaction = Parameters<
@@ -169,6 +173,9 @@ type InputAutomationEvent = ChatEventIdentity &
     readonly eventType: "input.automation";
     readonly content?: null;
     readonly automationId: string;
+    readonly workflowName?: string;
+    readonly workflowAutomationEventType?: WorkflowAutomationEventType;
+    readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
     readonly triggerSource: TriggerSource;
     readonly triggerBrief: string | null;
     readonly encryptedParams: string;
@@ -439,6 +446,9 @@ type NewDisplayContext =
       readonly id: string;
       readonly chatThreadId: string;
       readonly automationId: string;
+      readonly workflowName: string | null;
+      readonly workflowAutomationEventType: WorkflowAutomationEventType | null;
+      readonly workflowAutomationEventPayload: WorkflowAutomationEventPayload | null;
       readonly triggerBrief: string | null;
     }
   | {
@@ -483,6 +493,35 @@ async function insertEventInputParams(
     eventId,
     encryptedParams: params.encryptedParams,
   });
+}
+
+function newAutomationDisplayContext(
+  eventId: string,
+  values: NewChatEvent,
+): Extract<NewDisplayContext, { readonly type: "automation" }> | undefined {
+  const automationId =
+    "automationId" in values ? values.automationId : undefined;
+  if (automationId === undefined) {
+    return undefined;
+  }
+  return {
+    type: "automation",
+    id: eventId,
+    chatThreadId: values.chatThreadId,
+    automationId,
+    workflowName:
+      "workflowName" in values ? (values.workflowName ?? null) : null,
+    workflowAutomationEventType:
+      "workflowAutomationEventType" in values
+        ? (values.workflowAutomationEventType ?? null)
+        : null,
+    workflowAutomationEventPayload:
+      "workflowAutomationEventPayload" in values
+        ? (values.workflowAutomationEventPayload ?? null)
+        : null,
+    triggerBrief:
+      "triggerBrief" in values ? (values.triggerBrief ?? null) : null,
+  };
 }
 
 function newDisplayContext(
@@ -555,17 +594,9 @@ function newDisplayContext(
     };
   }
 
-  const automationId =
-    "automationId" in values ? values.automationId : undefined;
-  if (automationId !== undefined) {
-    return {
-      type: "automation",
-      id: eventId,
-      chatThreadId: values.chatThreadId,
-      automationId,
-      triggerBrief:
-        "triggerBrief" in values ? (values.triggerBrief ?? null) : null,
-    };
+  const automationContext = newAutomationDisplayContext(eventId, values);
+  if (automationContext !== undefined) {
+    return automationContext;
   }
 
   const goalBrief = "goalBrief" in values ? values.goalBrief : undefined;
@@ -721,6 +752,9 @@ async function insertDisplayContext(
       id: context.id,
       chatThreadId: context.chatThreadId,
       automationId: context.automationId,
+      workflowName: context.workflowName,
+      eventType: context.workflowAutomationEventType,
+      eventPayload: context.workflowAutomationEventPayload,
       triggerBrief: context.triggerBrief,
       createdAt,
     });

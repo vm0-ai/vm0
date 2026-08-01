@@ -1253,6 +1253,7 @@ function googleMeetTriggerContext(args: {
 }): WorkflowAutomationContext {
   return {
     workflowName: args.workflowName,
+    eventType: "google-meet-transcript-generated",
     trigger: `Google Meet generated transcript ${args.event.transcriptName} for a meeting organized by the connected account (cloud event ${args.event.cloudEventId}).`,
     notes: [
       "Not included below: the transcript text. Connected Google Meet tools return transcript metadata and entries.",
@@ -1424,6 +1425,7 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
               event,
             });
             return {
+              context,
               prompt: workflowAutomationPrompt(context),
               appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
               triggerBrief: buildGoogleMeetWorkflowAutomationBrief(event),
@@ -1443,6 +1445,7 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
               workflowName: automation.workflowName,
               chatThreadId: automation.chatThreadId,
             },
+            automationContext: runInput.context,
             apiStartTime: args.apiStartTime,
             triggerSource: "workflow-event",
             prompt: runInput.prompt,

@@ -1252,6 +1252,12 @@ function googleCalendarTriggerContext(args: {
         : "was cancelled";
   return {
     workflowName: args.workflowName,
+    eventType:
+      args.event.changeType === "created"
+        ? "google-calendar-event-created"
+        : args.event.changeType === "updated"
+          ? "google-calendar-event-updated"
+          : "google-calendar-event-cancelled",
     trigger: `Google Calendar event ${args.event.eventId} on calendar ${args.event.calendarId} ${changed} (change ${args.eventChangeKey}).`,
     notes: [
       "Connected Google Calendar tools return further calendar event detail.",
@@ -1666,6 +1672,7 @@ export const dispatchGoogleCalendarWebhook$ = command(
                 eventChangeKey,
               });
               return {
+                context,
                 prompt: workflowAutomationPrompt(context),
                 appendSystemPrompt:
                   workflowAutomationAppendSystemPrompt(context),
@@ -1685,6 +1692,7 @@ export const dispatchGoogleCalendarWebhook$ = command(
                 workflowName: automation.workflowName,
                 chatThreadId: automation.chatThreadId,
               },
+              automationContext: runInput.context,
               apiStartTime: args.apiStartTime,
               triggerSource: "workflow-event",
               prompt: runInput.prompt,

@@ -96,6 +96,7 @@ function chatRunFinishedTriggerContext(args: {
   const excerpt = args.event.lastResultText?.slice(0, OUTPUT_EXCERPT_CHAR_CAP);
   return {
     workflowName: args.workflowName,
+    eventType: "chat-run-finished",
     trigger: `run ${args.event.runId} in watched chat thread ${args.event.chatThreadId} finished with status "${args.event.runStatus}".`,
     notes: [
       "Not included below: the finished run's full transcript, and its final output beyond the excerpt. `zero logs <runId>` returns the transcript.",
@@ -201,6 +202,7 @@ export const dispatchChatRunFinishedWorkflowEvents$ = command(
             workflowName: row.workflowName,
             chatThreadId,
           },
+          automationContext: context,
           apiStartTime: now(),
           triggerSource: "workflow-event",
           prompt: workflowAutomationPrompt(context),

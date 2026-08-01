@@ -83,6 +83,7 @@ type ModelContext =
 
 export interface RunWorkflowAutomationNowArgs {
   readonly due: DueWorkflowAutomation;
+  readonly automationContext: WorkflowAutomationContext;
   readonly apiStartTime: number;
   // Overrides the default `/<workflowName>` slash-command prompt.
   readonly prompt?: string;
@@ -106,7 +107,12 @@ export interface RunWorkflowAutomationNowArgs {
   readonly timing?: ApiDispatchTimingCollector;
 }
 
-interface LaunchQueuedWorkflowAutomationArgs extends RunWorkflowAutomationNowArgs {
+type WorkflowAutomationLaunchArgs = Omit<
+  RunWorkflowAutomationNowArgs,
+  "automationContext"
+>;
+
+interface LaunchQueuedWorkflowAutomationArgs extends WorkflowAutomationLaunchArgs {
   readonly queueEventId: string;
   /**
    * Admission time of the queue row, which is when the automation actually
@@ -209,6 +215,7 @@ export function scheduleTriggerContext(args: {
         : `once in ${args.automation.timezone}`;
   return {
     workflowName: args.workflowName,
+    eventType: "schedule",
     trigger: `schedule fired at ${firedAt} (${recurrence}).`,
     event: {
       automationId: args.automation.id,
@@ -413,7 +420,7 @@ async function resolveTimedWorkflowModelContext(args: {
 }
 
 async function buildTimedWorkflowAutomationRunInput(args: {
-  readonly command: RunWorkflowAutomationNowArgs;
+  readonly command: WorkflowAutomationLaunchArgs;
   readonly automation: AutomationRow;
   readonly agentId: string;
   readonly workflowName: string;
@@ -481,7 +488,7 @@ async function buildTimedWorkflowAutomationRunInput(args: {
 
 async function recordWorkflowAutomationRunStart(input: {
   readonly db: Db;
-  readonly args: RunWorkflowAutomationNowArgs;
+  readonly args: WorkflowAutomationLaunchArgs;
   readonly runId: string;
   readonly runStatus: string;
   readonly claimedEventCreatedAt: Date;
