@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.364.3](https://github.com/vm0-ai/vm0/compare/api-v1.364.2...api-v1.364.3) (2026-08-01)
+
+
+### Refactoring
+
+* claim teams launch context ([#24475](https://github.com/vm0-ai/vm0/issues/24475)) ([75ed773](https://github.com/vm0-ai/vm0/commit/75ed773b61f040a276107741348fadd92870b775))
+
 ## [1.364.2](https://github.com/vm0-ai/vm0/compare/api-v1.364.1...api-v1.364.2) (2026-08-01)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.151.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.7...runner-rs-v0.151.8) (2026-08-01)
+
+
+### Refactoring
+
+* **runner:** finish workspace image cache cutover ([#24474](https://github.com/vm0-ai/vm0/issues/24474)) ([ae59d2d](https://github.com/vm0-ai/vm0/commit/ae59d2d1af1620d68ea28dfa1825d3619c8081e2))
+
 ## [0.151.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.6...runner-rs-v0.151.7) (2026-08-01)
 
 
