@@ -124,6 +124,22 @@ require_e2e_api_credentials() {
     e2e_api_token >/dev/null && e2e_api_url >/dev/null
 }
 
+use_e2e_api_credentials() {
+    local variant="$1"
+    local credentials="/tmp/e2e-api-credentials-${variant}.json"
+    E2E_API_TOKEN=$(jq -er '.token | select(type == "string" and length > 0)' "$credentials") || return 1
+    E2E_API_URL=$(jq -er '.apiUrl | select(type == "string" and length > 0)' "$credentials") || return 1
+    export E2E_API_TOKEN E2E_API_URL
+}
+
+set_real_agent_in_preview() {
+    local enabled="$1"
+    e2e_api_curl "/api/zero/feature-switches" \
+        -X POST \
+        -d "{\"switches\":{\"realAgentInPreview\":${enabled}}}" \
+        >/dev/null
+}
+
 e2e_api_curl() {
     local path="$1"; shift
     local token base

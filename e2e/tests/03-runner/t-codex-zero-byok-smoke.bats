@@ -24,6 +24,9 @@ load '../../helpers/codex-zero'
 export BATS_TEST_TIMEOUT=300
 
 setup_file() {
+    use_e2e_api_credentials "runner-real-codex"
+    set_real_agent_in_preview true
+
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export TEST_DIR="$(mktemp -d)"
     export AGENT_NAME="e2e-codex-byok-${UNIQUE_ID}"
@@ -83,7 +86,6 @@ teardown_file() {
     if [[ -n "${AGENT_ID:-}" ]]; then
         delete_e2e_agent "$AGENT_ID" >/dev/null 2>&1 || true
     fi
-    disable_codex_beta
     if [[ -n "$TEST_DIR" && -d "$TEST_DIR" ]]; then
         rm -rf "$TEST_DIR"
     fi

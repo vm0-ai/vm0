@@ -58,18 +58,6 @@ enable_codex_beta() {
         >/dev/null
 }
 
-# Do not clear feature-switch overrides in teardown. Runner E2E files execute
-# in parallel and share the same authenticated runner user; DELETE
-# /api/zero/feature-switches removes every override for that shared user, which
-# can race another file between enable_codex_beta and its gated API call.
-#
-# Leaving codexBeta enabled is intentional for the shared E2E runner user.
-# Tests that need feature-off behavior must use a dedicated token/user and
-# explicitly force the switch off for that isolated identity.
-disable_codex_beta() {
-    return 0
-}
-
 configure_codex_zero_model_policy() {
     local model="$1"
     local provider_type="$2"
@@ -210,10 +198,10 @@ send_chat_run_message() {
     local selected_model="$3"
     local payload body client_event_id
     client_event_id=$(cat /proc/sys/kernel/random/uuid)
-    # CI provisions this E2E identity with the claim-time RealAgentInPreview
-    # switch enabled so the real codex CLI executes against $OPENAI_API_KEY.
-    # Keep the request field to mirror the current web API contract; it is no
-    # longer the source of the claimed run setting.
+    # The caller uses a dedicated identity whose claim-time
+    # RealAgentInPreview switch is enabled, so the real codex CLI executes
+    # against $OPENAI_API_KEY. Keep the request field to mirror the current web
+    # API contract; it is no longer the source of the claimed run setting.
     payload=$(jq -nc \
         --arg agentId "$agent_id" \
         --arg prompt "$prompt" \

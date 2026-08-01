@@ -17,13 +17,11 @@ setup_file() {
         skip "ANTHROPIC_API_KEY not set — required for real Claude calls"
     fi
 
-    local serial_credentials="/tmp/e2e-api-credentials-serial.json"
-    E2E_API_TOKEN=$(jq -er '.token | select(type == "string" and length > 0)' "$serial_credentials")
-    E2E_API_URL=$(jq -er '.apiUrl | select(type == "string" and length > 0)' "$serial_credentials")
-    export E2E_API_TOKEN E2E_API_URL
+    use_e2e_api_credentials "runner-real-claude"
+    set_real_agent_in_preview true
 
-    # This file uses the isolated serial identity so its claim-time preview
-    # switch cannot race other runner chunks. Mirror the runner bootstrap's
+    # This file uses a dedicated real Claude identity so its claim-time preview
+    # mode cannot race other runner chunks. Mirror the runner bootstrap's
     # model-first defaults for that otherwise uninitialized workspace.
     e2e_api_curl "/api/zero/model-policies" \
         -X PUT \
