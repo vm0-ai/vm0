@@ -3567,6 +3567,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           reuseKey,
           lastCompletedAt: nowDate().toISOString(),
           workspaceCaches: [
+            { profile: "vm0/large", workspaceAffinityVersion: 1 },
             { profile: "vm0/default", workspaceAffinityVersion: 1 },
           ],
         },
