@@ -144,9 +144,8 @@ function sessionAffinityResource(
 }
 
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
-const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
-  "api_dispatch_persist_custom_connector_auth_refs",
-  "api_dispatch_insert_runner_job_queue",
+const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
+  "api_dispatch_persist_atomic_launch",
 ] as const;
 const EXPECTED_ZERO_RUN_DISALLOWED_TOOLS = [
   "CronCreate",
@@ -225,12 +224,10 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_context_prepare_output_metadata",
   "api_dispatch_insert_run_with_concurrency",
   "api_dispatch_build_runner_job_payload",
-  "api_dispatch_persist_runner_job_queue",
-  ...API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES,
+  ...API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES,
   "api_dispatch_admission_lock_wait",
   "api_dispatch_admission_lock_held",
   "api_dispatch_check_concurrency_limit",
-  "api_dispatch_insert_run_record",
   "api_dispatch_prepare_storage_manifest",
   "api_dispatch_prepare_storage_manifest_resolve_inputs",
   "api_dispatch_prepare_storage_manifest_ensure_artifacts",
@@ -1240,7 +1237,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(observedActionTypes).not.toContain("api_dispatch_check_vm0_credits");
     expect(observedActionTypes).not.toContain("api_dispatch_notify_runner_job");
 
-    for (const actionType of API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES) {
+    for (const actionType of API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES) {
       const events = timingEvents.filter((event) => {
         return event.op_type === actionType;
       });
@@ -1251,6 +1248,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         }),
       );
     }
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_insert_run_record",
+      "api_dispatch_persist_custom_connector_auth_refs",
+      "api_dispatch_persist_runner_job_queue",
+      "api_dispatch_insert_runner_job_queue",
+    ]);
 
     for (const event of timingEvents) {
       expect(event).toStrictEqual(
