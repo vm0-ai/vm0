@@ -4276,20 +4276,16 @@ function createThreadRootComposer(options: ThreadRootComposerOptions) {
         : { selectedModel };
     },
   );
-  const draftChanged$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      await set(options.queueDraftSync$, signal);
-    },
-  );
-
   return createComposerSignals({
     agent$: options.threadOwned.agent$,
-    draft: options.draft,
+    draft: {
+      signals: options.draft,
+      save$: options.queueDraftSync$,
+    },
     chatEvents$: options.chatEvents$,
     threadId: options.threadId,
     inlineTemplatesEnabled: options.inlineTemplatesEnabled,
     singleLineOnMobile: true,
-    draftChanged$,
     modelSelection$: composerModelSelection$,
     selectedModelOauthAvailable$:
       options.modelSelection.selectedModelOauthAvailable$,

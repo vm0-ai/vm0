@@ -49,12 +49,6 @@ const chatEvents$ = computed((): ChatEvent[] => {
   return [];
 });
 
-const draftChanged$ = command(
-  async ({ set }, signal: AbortSignal): Promise<void> => {
-    await set(queueCurrentAgentDraftSync$, signal);
-  },
-);
-
 const setModelSelection$ = command(
   async (
     { set },
@@ -163,14 +157,16 @@ export const agentChatComposerSignals$ = computed((get) => {
 
   return createComposerSignals({
     agent$,
-    draft,
+    draft: {
+      signals: draft,
+      save$: queueCurrentAgentDraftSync$,
+    },
     chatEvents$,
     inlineTemplatesEnabled:
       features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false,
     generationTemplate$: newThreadGenerationTemplate$,
     setGenerationTemplate$: setNewThreadGenerationTemplate$,
     singleLineOnMobile: false,
-    draftChanged$,
     modelSelection$: chatPageModelSelection$,
     selectedModelOauthAvailable$: chatPageSelectedModelOauthAvailable$,
     setModelSelection$,

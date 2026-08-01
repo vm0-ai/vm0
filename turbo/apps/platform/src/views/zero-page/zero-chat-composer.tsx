@@ -6636,7 +6636,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   const stopAndTranscribe = useSet(stopAndTranscribe$);
   const openQuotaRecovery = useSet(openAudioInputQuotaRecovery$);
   const appendText = useSet(signals.editor.appendText$);
-  const draftChanged = useSet(signals.draft.draftChanged$);
+  const saveDraft = useSet(signals.draft.save$);
   const signal = useGet(pageSignal$);
   const disabled = starting || transcribing || (!recording && !quotaResolved);
   const status = {
@@ -6652,7 +6652,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
 
   const onTranscribed = (text: string) => {
     appendText(text);
-    detach(draftChanged(signal), Reason.DomCallback);
+    detach(saveDraft(signal), Reason.DomCallback);
   };
 
   const handleClick = () => {
@@ -6767,7 +6767,7 @@ function ComposerUploadMenu({ signals }: { signals: ComposerSignals }) {
   const uploadOpen = useGet(signals.draft.uploadPopoverOpen$);
   const setUploadOpen = useSet(signals.draft.setUploadPopoverOpen$);
   const appendText = useSet(signals.editor.appendText$);
-  const draftChanged = useSet(signals.draft.draftChanged$);
+  const saveDraft = useSet(signals.draft.save$);
   const fileInput = useGet(signals.draft.composerFileInput$);
   const pageSignal = useGet(pageSignal$);
   const addLink = (event: FormEvent<HTMLFormElement>) => {
@@ -6785,7 +6785,7 @@ function ComposerUploadMenu({ signals }: { signals: ComposerSignals }) {
     }
     const normalized = new URL(trimmed).toString();
     appendText(normalized);
-    detach(draftChanged(pageSignal), Reason.DomCallback);
+    detach(saveDraft(pageSignal), Reason.DomCallback);
     form.reset();
     setUploadOpen(false);
   };
@@ -6993,10 +6993,10 @@ function restoreChatClipboardPayload({
 }
 
 function useComposerDraftChange(signals: ComposerSignals): () => void {
-  const draftChanged = useSet(signals.draft.draftChanged$);
+  const saveDraft = useSet(signals.draft.save$);
   const pageSignal = useGet(pageSignal$);
   return () => {
-    detach(draftChanged(pageSignal), Reason.DomCallback);
+    detach(saveDraft(pageSignal), Reason.DomCallback);
   };
 }
 

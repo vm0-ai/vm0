@@ -529,7 +529,7 @@ export function AgentChatPage() {
 
   const composerSignals = useGet(agentChatComposerSignals$);
   const setInput = useSet(composerSignals.draft.setDraftInput$);
-  const draftChanged = useSet(composerSignals.draft.draftChanged$);
+  const saveDraft = useSet(composerSignals.draft.save$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline = useTagline(
     currentChatAgentDisplayName,
@@ -541,7 +541,7 @@ export function AgentChatPage() {
 
   const handleInputChange = (value: string) => {
     setInput(value);
-    detach(draftChanged(pageSignal), Reason.DomCallback);
+    detach(saveDraft(pageSignal), Reason.DomCallback);
   };
 
   return (

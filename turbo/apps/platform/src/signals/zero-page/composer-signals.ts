@@ -132,7 +132,7 @@ interface ComposerDraftSignals extends ComposerDraftUiSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  readonly draftChanged$: Command<Promise<void>, [AbortSignal]>;
+  readonly save$: Command<Promise<void>, [AbortSignal]>;
 }
 
 interface ComposerModelSignals extends ComposerModelUiSignals {
@@ -213,14 +213,16 @@ export interface ComposerSignals {
 
 interface CreateComposerSignalsOptions {
   readonly agent$: ComposerSignals["agent$"];
-  readonly draft: DraftSignals;
+  readonly draft: {
+    readonly signals: DraftSignals;
+    readonly save$: ComposerDraftSignals["save$"];
+  };
   readonly chatEvents$: Computed<ChatEvent[]>;
   readonly threadId?: string;
   readonly inlineTemplatesEnabled: boolean;
   readonly generationTemplate$?: ComposerTemplateSignals["generationTemplate$"];
   readonly setGenerationTemplate$?: ComposerTemplateSignals["setGenerationTemplate$"];
   readonly singleLineOnMobile: boolean;
-  readonly draftChanged$: ComposerDraftSignals["draftChanged$"];
   readonly modelSelection$: ComposerModelSignals["modelSelection$"];
   readonly selectedModelOauthAvailable$: ComposerModelSignals["selectedModelOauthAvailable$"];
   readonly setModelSelection$: ComposerModelSignals["setModelSelection$"];
@@ -355,6 +357,7 @@ function createComposerWorkflowPromptSignals(
   | "confirmReplaceWorkflowPrompt$"
   | "setReplaceWorkflowPromptOpen$"
 > {
+  const draft = options.draft.signals;
   const draftTarget = `composer:${options.threadId ?? "new-thread"}`;
   const replaceWorkflowPromptOpen$ = computed((get): boolean => {
     return get(replaceWorkflowPromptDraftTarget$) === draftTarget;
@@ -362,10 +365,10 @@ function createComposerWorkflowPromptSignals(
   const applyWorkflowPrompt$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
       if (options.threadId !== undefined) {
-        set(options.draft.clear$);
+        set(draft.clear$);
       }
-      set(options.draft.setInput$, CREATE_WORKFLOW_WITH_CHAT_PROMPT);
-      await set(options.draftChanged$, signal);
+      set(draft.setInput$, CREATE_WORKFLOW_WITH_CHAT_PROMPT);
+      await set(options.draft.save$, signal);
       if (options.threadId !== undefined) {
         set(workflowComposer.focus$);
       }
@@ -374,9 +377,8 @@ function createComposerWorkflowPromptSignals(
   const createWorkflowPrompt$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const hasDraft =
-        set(options.draft.readInput$).trim().length > 0 ||
-        (options.threadId !== undefined &&
-          get(options.draft.attachments$).length > 0);
+        set(draft.readInput$).trim().length > 0 ||
+        (options.threadId !== undefined && get(draft.attachments$).length > 0);
       if (hasDraft) {
         set(setReplaceWorkflowPromptDraftTarget$, draftTarget);
         return;
@@ -419,7 +421,7 @@ export function createComposerSignals(
   options: CreateComposerSignalsOptions,
 ): ComposerSignals {
   const eventSignals = createComposerChatEventSignals(options.chatEvents$);
-  const draft = options.draft;
+  const draft = options.draft.signals;
   const agentId$ = computed(async (get): Promise<string | null> => {
     return (await get(options.agent$)).agentId;
   });
@@ -469,7 +471,7 @@ export function createComposerSignals(
       dragOver$: draft.dragOver$,
       setDragOver$: draft.setDragOver$,
       ...fileInput,
-      draftChanged$: options.draftChanged$,
+      save$: options.draft.save$,
     },
     model: {
       ...ui.model,
@@ -592,7 +594,7 @@ function createComposerSubmissionSignals(
   eventSignals: ReturnType<typeof createComposerChatEventSignals>,
   workflowComposer: WorkflowComposerSignals,
 ) {
-  const draft = options.draft;
+  const draft = options.draft.signals;
   const internalSubmissionPending$ = state(false);
   const submissionPending$ = computed((get): boolean => {
     return get(internalSubmissionPending$);
