@@ -14387,6 +14387,300 @@ async function validateChatEventRunLifecycleContraction(): Promise<void> {
   }
 }
 
+const CHAT_EVENT_LOW_TRAFFIC_INDEXES_PREVIOUS_MIGRATION = 794;
+const CHAT_EVENT_LOW_TRAFFIC_INDEXES_MIGRATION = 795;
+
+async function validateChatEventLowTrafficIndexes(): Promise<void> {
+  console.log("=== Validate chat event low-traffic index optimization ===\n");
+  const testDb = "migration_chat_event_low_traffic_indexes_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "00000000-0000-4000-8000-000000079501";
+  const threadId = "00000000-0000-4000-8000-000000079502";
+  const interruptsRunId = "00000000-0000-4000-8000-000000079503";
+  const runGroupId = "00000000-0000-4000-8000-000000079504";
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0795_optimize_chat_event_interrupt_indexes.sql"),
+    "utf8",
+  );
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.equal(
+    (migrationSql.match(/\bCREATE UNIQUE INDEX CONCURRENTLY\b/gu) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (migrationSql.match(/\bDROP INDEX CONCURRENTLY IF EXISTS\b/gu) ?? [])
+      .length,
+    3,
+  );
+  const dropPartialIndexPosition = migrationSql.indexOf(
+    'DROP INDEX CONCURRENTLY IF EXISTS "chat_events_interrupts_run_id_not_null_unique"',
+  );
+  const createPartialIndexPosition = migrationSql.indexOf(
+    'CREATE UNIQUE INDEX CONCURRENTLY "chat_events_interrupts_run_id_not_null_unique"',
+  );
+  const dropOldIndexPosition = migrationSql.indexOf(
+    'DROP INDEX CONCURRENTLY IF EXISTS "chat_events_interrupts_run_id_unique"',
+  );
+  const dropRunGroupIndexPosition = migrationSql.indexOf(
+    'DROP INDEX CONCURRENTLY IF EXISTS "idx_chat_events_run_group_id"',
+  );
+  assert.ok(dropPartialIndexPosition >= 0);
+  assert.ok(createPartialIndexPosition > dropPartialIndexPosition);
+  assert.ok(dropOldIndexPosition > createPartialIndexPosition);
+  assert.ok(dropRunGroupIndexPosition > dropOldIndexPosition);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CHAT_EVENT_LOW_TRAFFIC_INDEXES_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'low-traffic-index-test-user',
+            'low-traffic-index-test',
+            'low-traffic-index-test-org'
+          )
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES (
+            $1,
+            'low-traffic-index-test-user',
+            $2,
+            'low traffic index test'
+          )
+        `,
+        [threadId, composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "interrupts_run_id",
+            "run_group_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES
+            ($1, $2, $3, 'run.queued', 1),
+            ($1, NULL, NULL, 'run.queued', 2)
+        `,
+        [threadId, interruptsRunId, runGroupId],
+      );
+
+      const indexesBefore = await client.query<{ indexName: string }>(`
+        SELECT "index_class"."relname" AS "indexName"
+        FROM "pg_index" AS "index"
+        INNER JOIN "pg_class" AS "index_class"
+          ON "index_class"."oid" = "index"."indexrelid"
+        WHERE "index_class"."relname" IN (
+          'chat_events_interrupts_run_id_unique',
+          'chat_events_interrupts_run_id_not_null_unique',
+          'idx_chat_events_run_group_id'
+        )
+        ORDER BY "index_class"."relname"
+      `);
+      assert.deepEqual(indexesBefore.rows, [
+        { indexName: "chat_events_interrupts_run_id_unique" },
+        { indexName: "idx_chat_events_run_group_id" },
+      ]);
+
+      await applyMigrationsUpTo(
+        client,
+        CHAT_EVENT_LOW_TRAFFIC_INDEXES_MIGRATION,
+      );
+
+      const migrationStatements = migrationSql
+        .split("--> statement-breakpoint")
+        .map((statement) => {
+          return statement.trim();
+        })
+        .filter((statement) => {
+          return statement.length > 0;
+        });
+      for (const statement of migrationStatements) {
+        await client.query(statement);
+      }
+
+      const indexesAfter = await client.query<{
+        indexName: string;
+        isUnique: boolean;
+        isValid: boolean;
+        predicate: string | null;
+      }>(`
+        SELECT
+          "index_class"."relname" AS "indexName",
+          "index"."indisunique" AS "isUnique",
+          "index"."indisvalid" AS "isValid",
+          pg_get_expr(
+            "index"."indpred",
+            "index"."indrelid"
+          ) AS "predicate"
+        FROM "pg_index" AS "index"
+        INNER JOIN "pg_class" AS "index_class"
+          ON "index_class"."oid" = "index"."indexrelid"
+        WHERE "index_class"."relname" IN (
+          'chat_events_interrupts_run_id_unique',
+          'chat_events_interrupts_run_id_not_null_unique',
+          'idx_chat_events_run_group_id',
+          'idx_chat_events_run_id',
+          'chat_events_revokes_event_id_unique'
+        )
+        ORDER BY "index_class"."relname"
+      `);
+      assert.deepEqual(
+        indexesAfter.rows.map((index) => {
+          return {
+            indexName: index.indexName,
+            isUnique: index.isUnique,
+            isValid: index.isValid,
+          };
+        }),
+        [
+          {
+            indexName: "chat_events_interrupts_run_id_not_null_unique",
+            isUnique: true,
+            isValid: true,
+          },
+          {
+            indexName: "chat_events_revokes_event_id_unique",
+            isUnique: true,
+            isValid: true,
+          },
+          {
+            indexName: "idx_chat_events_run_id",
+            isUnique: false,
+            isValid: true,
+          },
+        ],
+      );
+      const partialIndex = indexesAfter.rows.find((index) => {
+        return (
+          index.indexName === "chat_events_interrupts_run_id_not_null_unique"
+        );
+      });
+      assert.match(
+        partialIndex?.predicate ?? "",
+        /interrupts_run_id IS NOT NULL/u,
+      );
+      assert.equal(
+        indexesAfter.rows.find((index) => {
+          return index.indexName === "chat_events_revokes_event_id_unique";
+        })?.predicate,
+        null,
+      );
+
+      const survivingRow = await client.query<{
+        interruptsRunId: string;
+        runGroupId: string;
+      }>(
+        `
+          SELECT
+            "interrupts_run_id" AS "interruptsRunId",
+            "run_group_id" AS "runGroupId"
+          FROM "chat_events"
+          WHERE "interrupts_run_id" = $1
+        `,
+        [interruptsRunId],
+      );
+      assert.deepEqual(survivingRow.rows, [{ interruptsRunId, runGroupId }]);
+
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "interrupts_run_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES
+            ($1, NULL, 'run.queued', 3),
+            ($1, NULL, 'run.queued', 4)
+        `,
+        [threadId],
+      );
+      const nullInterruptRows = await client.query<{ count: string }>(
+        `
+          SELECT count(*)::text AS "count"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+            AND "interrupts_run_id" IS NULL
+        `,
+        [threadId],
+      );
+      assert.deepEqual(nullInterruptRows.rows, [{ count: "3" }]);
+
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "chat_events_interrupts_run_id_not_null_unique",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "interrupts_run_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'run.queued', 5)
+        `,
+        values: [threadId, interruptsRunId],
+      });
+
+      await client.query(`ANALYZE "chat_events"`);
+      await client.query(`SET enable_seqscan = off`);
+      const equalityPlan = await client.query<{ "QUERY PLAN": string }>(
+        `
+          EXPLAIN (COSTS OFF)
+          SELECT "id"
+          FROM "chat_events"
+          WHERE "interrupts_run_id" = $1
+        `,
+        [interruptsRunId],
+      );
+      const equalityPlanText = equalityPlan.rows
+        .map((row) => {
+          return row["QUERY PLAN"];
+        })
+        .join("\n");
+      assert.match(
+        equalityPlanText,
+        /\bchat_events_interrupts_run_id_not_null_unique\b/u,
+      );
+
+      console.log(
+        "   ✅ Full migration retry preserves the target index state",
+      );
+      console.log("   ✅ Duplicate non-null interrupt run IDs fail with 23505");
+      console.log("   ✅ Multiple NULL interrupt run IDs remain valid");
+      console.log(
+        "   ✅ Equality EXPLAIN uses chat_events_interrupts_run_id_not_null_unique",
+      );
+      console.log(
+        "   ✅ The zero-read run_group_id index is absent while out-of-scope indexes remain\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateGithubIssueSessionContraction(): Promise<void> {
   console.log("=== Validate legacy GitHub issue session contraction ===\n");
   const testDb = "migration_github_issue_session_contraction_test";
@@ -15755,6 +16049,7 @@ async function main(): Promise<void> {
     await validateChatEventUserMessagePartBackfill();
     await validateChatEventTerminalIndexExpansion();
     await validateChatEventRunLifecycleContraction();
+    await validateChatEventLowTrafficIndexes();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();
