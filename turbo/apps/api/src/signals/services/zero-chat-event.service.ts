@@ -8,6 +8,7 @@ import type {
   ChatSlackMentionDisplayNames,
   ChatSlackMessageFiles,
 } from "@vm0/db/jsonb-contracts/chat-slack-context";
+import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
@@ -92,6 +93,20 @@ type ChatEventDisplayContext =
         readonly conversationId: string;
         readonly conversationType: string | null;
         readonly activityId: string | null;
+        readonly threadContext: string;
+        readonly messageText: string;
+        readonly messageFiles: ChatTeamsMessageFiles;
+        readonly tenantName: string | null;
+        readonly teamName: string | null;
+        readonly threadId: string;
+        readonly serviceUrl: string;
+        readonly teamsAppId: string | null;
+        readonly botId: string | null;
+        readonly botName: string | null;
+        readonly senderUserId: string;
+        readonly senderDisplayName: string | null;
+        readonly senderPrincipalName: string | null;
+        readonly connectionId: string;
       };
       readonly telegramContext?: never;
       readonly githubContext?: never;
@@ -386,6 +401,20 @@ type NewDisplayContext =
       readonly conversationId: string;
       readonly conversationType: string | null;
       readonly activityId: string | null;
+      readonly threadContext: string;
+      readonly messageText: string;
+      readonly messageFiles: ChatTeamsMessageFiles;
+      readonly tenantName: string | null;
+      readonly teamName: string | null;
+      readonly threadId: string;
+      readonly serviceUrl: string;
+      readonly teamsAppId: string | null;
+      readonly botId: string | null;
+      readonly botName: string | null;
+      readonly senderUserId: string;
+      readonly senderDisplayName: string | null;
+      readonly senderPrincipalName: string | null;
+      readonly connectionId: string;
     }
   | {
       readonly type: "telegram";
@@ -645,6 +674,20 @@ async function insertDisplayContext(
       conversationId: context.conversationId,
       conversationType: context.conversationType,
       activityId: context.activityId,
+      threadContext: context.threadContext,
+      messageText: context.messageText,
+      messageFiles: context.messageFiles,
+      tenantName: context.tenantName,
+      teamName: context.teamName,
+      threadId: context.threadId,
+      serviceUrl: context.serviceUrl,
+      teamsAppId: context.teamsAppId,
+      botId: context.botId,
+      botName: context.botName,
+      senderUserId: context.senderUserId,
+      senderDisplayName: context.senderDisplayName,
+      senderPrincipalName: context.senderPrincipalName,
+      connectionId: context.connectionId,
       createdAt,
     });
     return;
