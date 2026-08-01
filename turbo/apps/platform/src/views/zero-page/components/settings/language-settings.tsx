@@ -140,32 +140,34 @@ export function LanguageSettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
-        <div className="shrink-0">
-          <div className="flex h-7 w-7 items-center justify-center">
-            <IconWorld
-              size={22}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
+      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex flex-1 items-center gap-4 min-w-0">
+          <div className="shrink-0">
+            <div className="flex h-7 w-7 items-center justify-center">
+              <IconWorld
+                size={22}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </div>
+          </div>
+          <div className="flex flex-1 flex-col gap-1 min-w-0">
+            <div className="text-sm font-medium text-foreground">
+              {t(($) => {
+                return $.settings.preferences.language.title;
+              })}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {t(
+                ($) => {
+                  return $.settings.preferences.language.description;
+                },
+                { brandName },
+              )}
+            </div>
           </div>
         </div>
-        <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm font-medium text-foreground">
-            {t(($) => {
-              return $.settings.preferences.language.title;
-            })}
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {t(
-              ($) => {
-                return $.settings.preferences.language.description;
-              },
-              { brandName },
-            )}
-          </div>
-        </div>
-        <div className="w-40 shrink-0">
+        <div className="w-full shrink-0 sm:w-40">
           <Select value={locale} disabled={saving} onValueChange={handleChange}>
             <SelectTrigger
               aria-label={t(($) => {
