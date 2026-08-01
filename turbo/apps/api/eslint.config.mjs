@@ -297,7 +297,6 @@ export default [
     files: [
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
       "src/signals/services/__tests__/connector-authorization-provider-state.test.ts",
-      "src/signals/services/__tests__/workflow-automation-context.test.ts",
     ],
     rules: {
       "no-restricted-syntax": ["error", ...restrictedSyntax],
@@ -341,10 +340,6 @@ export default [
       // This focused rollout test only redirects the real route to PostgreSQL's
       // empty template database; setup is internal, but assertions remain HTTP.
       "src/signals/routes/__tests__/zero-model-provider-gateways-rollout.test.ts",
-      // A finite event-type matrix locks persisted payload rendering and
-      // policy lookup byte-for-byte; individual provider routes cannot cover
-      // every lookup-table row without duplicating the contract under test.
-      "src/signals/services/__tests__/workflow-automation-context.test.ts",
     ],
     rules: {
       "no-restricted-imports": [

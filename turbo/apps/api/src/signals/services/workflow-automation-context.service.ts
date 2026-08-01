@@ -11,7 +11,7 @@ export type WorkflowAutomationEventType = z.infer<
 
 export type WorkflowAutomationEventPayload = Readonly<Record<string, unknown>>;
 
-export interface WorkflowAutomationEventPolicy {
+interface WorkflowAutomationEventPolicy {
   readonly activePreviousRunPolicy: "allow" | "block";
   readonly recordLastRunId: boolean;
   readonly recordLastRunAt: boolean;
@@ -254,7 +254,7 @@ function renderNotionEvent(
   return `${subject} ${stringField(page, "id")} ${action} (latest change ${stringField(payload, "latestEventAt")}).`;
 }
 
-export const TRIGGER_RENDERERS: Readonly<
+const TRIGGER_RENDERERS: Readonly<
   Record<WorkflowAutomationEventType, TriggerRenderer>
 > = {
   "chat-run-finished": (payload) => {
@@ -371,7 +371,7 @@ const WEBHOOK_NOTES = [
 ] as const;
 const NO_NOTES = [] as const;
 
-export const EVENT_NOTES: Readonly<
+const EVENT_NOTES: Readonly<
   Record<WorkflowAutomationEventType, readonly string[]>
 > = {
   "chat-run-finished": CHAT_RUN_FINISHED_NOTES,
@@ -470,7 +470,7 @@ export interface WorkflowAutomationContext {
   readonly event: WorkflowAutomationEventPayload;
 }
 
-export function workflowAutomationTrigger(args: {
+function workflowAutomationTrigger(args: {
   readonly eventType: WorkflowAutomationEventType;
   readonly eventPayload: WorkflowAutomationEventPayload;
 }): string {

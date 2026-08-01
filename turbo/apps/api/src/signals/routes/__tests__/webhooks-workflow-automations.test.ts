@@ -139,9 +139,21 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       `/api/webhooks/workflow-automations/${token}`,
     );
 
+    // Longer keys before one-character keys force JSONB to reorder objects at
+    // every depth unless the persisted launch context restores request order.
     const rawBody = JSON.stringify({
-      event: "vm0-timing-sensitive-ping",
-      value: "vm0-timing-secret-value",
+      "vm0-long-first-key": "vm0-timing-sensitive-ping",
+      x: "vm0-timing-secret-value",
+      nested: {
+        "vm0-long-nested-first-key": "nested-first",
+        y: "nested-second",
+      },
+      rows: [
+        {
+          "vm0-long-array-first-key": "array-first",
+          z: "array-second",
+        },
+      ],
     });
     const timestamp = Math.floor(now() / 1000);
     const first = await postWorkflowWebhook({
@@ -169,6 +181,27 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const workflowClaim = await runsApi.claimRunnerJob(first.body.runId);
     const workflowPrompt = workflowClaim.appendSystemPrompt ?? "";
+    expect(workflowClaim.prompt).toMatch(
+      /^\/webhook-automation-workflow\nTrigger: signed workflow webhook received an HTTP POST at .+ \(delivery .+\)\.$/,
+    );
+    expect(workflowPrompt).toContain(
+      [
+        '  "parsedJson": {',
+        '    "vm0-long-first-key": "vm0-timing-sensitive-ping",',
+        '    "x": "vm0-timing-secret-value",',
+        '    "nested": {',
+        '      "vm0-long-nested-first-key": "nested-first",',
+        '      "y": "nested-second"',
+        "    },",
+        '    "rows": [',
+        "      {",
+        '        "vm0-long-array-first-key": "array-first",',
+        '        "z": "array-second"',
+        "      }",
+        "    ]",
+        "  }",
+      ].join("\n"),
+    );
     expect(workflowPrompt).toContain("zero slack message send --help");
     expect(workflowPrompt).not.toContain(
       "normal replies are automatically sent to the originating thread",
