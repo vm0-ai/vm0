@@ -35,9 +35,22 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
+import {
+  bigint,
+  integer,
+  jsonb,
+  pgTable,
+  timestamp,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { Client } from "pg";
+import type {
+  RunnerAdmittableProfiles,
+  RunnerHeldSessionStates,
+} from "../src/jsonb-contracts/runner-state";
 import { connectorExternalCodeSessions } from "../src/schema/connector-external-code-session";
 import { connectorOauthDeviceAuthorizationSessions } from "../src/schema/connector-oauth-device-authorization-session";
 import { connectorOauthStates } from "../src/schema/connector-oauth-state";
@@ -15247,6 +15260,322 @@ async function validateTimestampOrdering(): Promise<void> {
   console.log();
 }
 
+const HELD_WORKSPACE_STATE_PREVIOUS_MIGRATION = 788;
+const HELD_WORKSPACE_STATE_MIGRATION = 789;
+
+const runnerStateBeforeHeldWorkspaceExpansion = pgTable("runner_state", {
+  runnerId: uuid("runner_id").primaryKey(),
+  runnerName: varchar("runner_name", { length: 255 }).notNull(),
+  runnerGroup: varchar("runner_group", { length: 255 }).notNull(),
+  heartbeatGeneration: bigint("heartbeat_generation", { mode: "number" })
+    .notNull()
+    .default(0),
+  heartbeatSequence: bigint("heartbeat_sequence", { mode: "number" })
+    .notNull()
+    .default(0),
+  totalVcpu: integer("total_vcpu").notNull().default(0),
+  totalMemoryMb: integer("total_memory_mb").notNull().default(0),
+  maxConcurrent: integer("max_concurrent").notNull().default(0),
+  allocatedVcpu: integer("allocated_vcpu").notNull().default(0),
+  allocatedMemoryMb: integer("allocated_memory_mb").notNull().default(0),
+  runningCount: integer("running_count").notNull().default(0),
+  admittableProfiles: jsonb("admittable_profiles")
+    .$type<RunnerAdmittableProfiles>()
+    .default([])
+    .notNull(),
+  heldSessionStates: jsonb("held_session_states")
+    .$type<RunnerHeldSessionStates>()
+    .default([])
+    .notNull(),
+  mode: varchar("mode", { length: 20 }).notNull().default("running"),
+  lastSeenAt: timestamp("last_seen_at").notNull(),
+});
+
+type RunnerHeartbeatMigrationWrite = {
+  readonly generation: number;
+  readonly runnerId: string;
+  readonly runnerName: string;
+  readonly sequence: number;
+};
+
+function runnerHeartbeatMigrationValues(write: RunnerHeartbeatMigrationWrite) {
+  return {
+    runnerId: write.runnerId,
+    runnerName: write.runnerName,
+    runnerGroup: "vm0/runner-state-rollout",
+    heartbeatGeneration: write.generation,
+    heartbeatSequence: write.sequence,
+    totalVcpu: 8,
+    totalMemoryMb: 16_384,
+    maxConcurrent: 4,
+    allocatedVcpu: 2,
+    allocatedMemoryMb: 4_096,
+    runningCount: 1,
+    admittableProfiles: ["vm0/default"],
+    heldSessionStates: [
+      {
+        sessionId: "runner-state-rollout-session",
+        reuseKey: "thread:runner-state-rollout",
+        lastCompletedAt: "2026-08-01T00:00:00.000Z",
+        reusableSandbox: { profile: "vm0/default" },
+      },
+    ],
+    mode: "running",
+    lastSeenAt: new Date("2026-08-01T00:01:00.000Z"),
+  };
+}
+
+async function upsertRunnerStateWithCurrentTransitionalShape(
+  client: Client,
+  write: RunnerHeartbeatMigrationWrite,
+): Promise<void> {
+  const values = runnerHeartbeatMigrationValues(write);
+  await client.query(
+    `INSERT INTO "runner_state" (
+       "runner_id", "runner_name", "runner_group", "heartbeat_generation",
+       "heartbeat_sequence", "total_vcpu", "total_memory_mb",
+       "max_concurrent", "allocated_vcpu", "allocated_memory_mb",
+       "running_count", "admittable_profiles", "held_session_states", "mode",
+       "last_seen_at"
+     )
+     VALUES (
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+     )
+     ON CONFLICT ("runner_id") DO UPDATE SET
+       "runner_name" = EXCLUDED."runner_name",
+       "runner_group" = EXCLUDED."runner_group",
+       "heartbeat_generation" = EXCLUDED."heartbeat_generation",
+       "heartbeat_sequence" = EXCLUDED."heartbeat_sequence",
+       "total_vcpu" = EXCLUDED."total_vcpu",
+       "total_memory_mb" = EXCLUDED."total_memory_mb",
+       "max_concurrent" = EXCLUDED."max_concurrent",
+       "allocated_vcpu" = EXCLUDED."allocated_vcpu",
+       "allocated_memory_mb" = EXCLUDED."allocated_memory_mb",
+       "running_count" = EXCLUDED."running_count",
+       "admittable_profiles" = EXCLUDED."admittable_profiles",
+       "held_session_states" = EXCLUDED."held_session_states",
+       "mode" = EXCLUDED."mode",
+       "last_seen_at" = EXCLUDED."last_seen_at"
+     WHERE
+       "runner_state"."heartbeat_generation" <
+         EXCLUDED."heartbeat_generation"
+       OR (
+         "runner_state"."heartbeat_generation" =
+           EXCLUDED."heartbeat_generation"
+         AND "runner_state"."heartbeat_sequence" <
+           EXCLUDED."heartbeat_sequence"
+       )`,
+    [
+      values.runnerId,
+      values.runnerName,
+      values.runnerGroup,
+      values.heartbeatGeneration,
+      values.heartbeatSequence,
+      values.totalVcpu,
+      values.totalMemoryMb,
+      values.maxConcurrent,
+      values.allocatedVcpu,
+      values.allocatedMemoryMb,
+      values.runningCount,
+      JSON.stringify(values.admittableProfiles),
+      JSON.stringify(values.heldSessionStates),
+      values.mode,
+      values.lastSeenAt,
+    ],
+  );
+}
+
+async function upsertRunnerStateWithPreviousApiShape(
+  client: Client,
+  write: RunnerHeartbeatMigrationWrite,
+): Promise<void> {
+  const values = runnerHeartbeatMigrationValues(write);
+  const db = drizzle(client);
+  await db
+    .insert(runnerStateBeforeHeldWorkspaceExpansion)
+    .values(values)
+    .onConflictDoUpdate({
+      target: runnerStateBeforeHeldWorkspaceExpansion.runnerId,
+      set: {
+        runnerName: values.runnerName,
+        runnerGroup: values.runnerGroup,
+        heartbeatGeneration: values.heartbeatGeneration,
+        heartbeatSequence: values.heartbeatSequence,
+        totalVcpu: values.totalVcpu,
+        totalMemoryMb: values.totalMemoryMb,
+        maxConcurrent: values.maxConcurrent,
+        allocatedVcpu: values.allocatedVcpu,
+        allocatedMemoryMb: values.allocatedMemoryMb,
+        runningCount: values.runningCount,
+        admittableProfiles: values.admittableProfiles,
+        heldSessionStates: values.heldSessionStates,
+        mode: values.mode,
+        lastSeenAt: values.lastSeenAt,
+      },
+      setWhere: or(
+        lt(
+          runnerStateBeforeHeldWorkspaceExpansion.heartbeatGeneration,
+          values.heartbeatGeneration,
+        ),
+        and(
+          eq(
+            runnerStateBeforeHeldWorkspaceExpansion.heartbeatGeneration,
+            values.heartbeatGeneration,
+          ),
+          lt(
+            runnerStateBeforeHeldWorkspaceExpansion.heartbeatSequence,
+            values.heartbeatSequence,
+          ),
+        ),
+      ),
+    });
+}
+
+async function validateHeldWorkspaceStateRolloutCompatibility(): Promise<void> {
+  console.log("=== Validate held-workspace state rollout compatibility ===\n");
+  const testDb = "migration_held_workspace_state_rollout_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const existingRunnerId = "99000000-0000-4000-8000-000000000001";
+  const postMigrationRunnerId = "99000000-0000-4000-8000-000000000002";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, HELD_WORKSPACE_STATE_PREVIOUS_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const beforeMigrationColumn = await client.query(
+        `SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'runner_state'
+           AND column_name = 'held_workspace_states'`,
+      );
+      assert.equal(beforeMigrationColumn.rows.length, 0);
+
+      await upsertRunnerStateWithCurrentTransitionalShape(client, {
+        generation: 7,
+        runnerId: existingRunnerId,
+        runnerName: "current-api-before-migration",
+        sequence: 10,
+      });
+      const beforeMigrationRow = await client.query<{
+        admittableProfiles: unknown;
+        generation: number;
+        heldSessionStates: unknown;
+        runnerName: string;
+        sequence: number;
+      }>(
+        `SELECT
+           "runner_name" AS "runnerName",
+           "heartbeat_generation"::integer AS "generation",
+           "heartbeat_sequence"::integer AS "sequence",
+           "admittable_profiles" AS "admittableProfiles",
+           "held_session_states" AS "heldSessionStates"
+         FROM "runner_state"
+         WHERE "runner_id" = $1`,
+        [existingRunnerId],
+      );
+      assert.deepEqual(beforeMigrationRow.rows, [
+        {
+          admittableProfiles: ["vm0/default"],
+          generation: 7,
+          heldSessionStates: [
+            {
+              sessionId: "runner-state-rollout-session",
+              reuseKey: "thread:runner-state-rollout",
+              lastCompletedAt: "2026-08-01T00:00:00.000Z",
+              reusableSandbox: { profile: "vm0/default" },
+            },
+          ],
+          runnerName: "current-api-before-migration",
+          sequence: 10,
+        },
+      ]);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        HELD_WORKSPACE_STATE_MIGRATION,
+      );
+      const afterMigrationColumn = await client.query<{
+        columnDefault: string | null;
+        isNullable: string;
+      }>(
+        `SELECT
+           column_default AS "columnDefault",
+           is_nullable AS "isNullable"
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'runner_state'
+           AND column_name = 'held_workspace_states'`,
+      );
+      assert.deepEqual(afterMigrationColumn.rows, [
+        { columnDefault: "'[]'::jsonb", isNullable: "NO" },
+      ]);
+
+      await upsertRunnerStateWithPreviousApiShape(client, {
+        generation: 7,
+        runnerId: existingRunnerId,
+        runnerName: "previous-api-after-migration",
+        sequence: 11,
+      });
+      await upsertRunnerStateWithPreviousApiShape(client, {
+        generation: 1,
+        runnerId: postMigrationRunnerId,
+        runnerName: "previous-api-new-row",
+        sequence: 1,
+      });
+      await upsertRunnerStateWithPreviousApiShape(client, {
+        generation: 7,
+        runnerId: existingRunnerId,
+        runnerName: "stale-heartbeat",
+        sequence: 10,
+      });
+
+      const afterMigrationRows = await client.query<{
+        generation: number;
+        heldWorkspaceStates: unknown;
+        runnerId: string;
+        runnerName: string;
+        sequence: number;
+      }>(
+        `SELECT
+           "runner_id" AS "runnerId",
+           "runner_name" AS "runnerName",
+           "heartbeat_generation"::integer AS "generation",
+           "heartbeat_sequence"::integer AS "sequence",
+           "held_workspace_states" AS "heldWorkspaceStates"
+         FROM "runner_state"
+         ORDER BY "runner_id"`,
+      );
+      assert.deepEqual(afterMigrationRows.rows, [
+        {
+          generation: 7,
+          heldWorkspaceStates: [],
+          runnerId: existingRunnerId,
+          runnerName: "previous-api-after-migration",
+          sequence: 11,
+        },
+        {
+          generation: 1,
+          heldWorkspaceStates: [],
+          runnerId: postMigrationRunnerId,
+          runnerName: "previous-api-new-row",
+          sequence: 1,
+        },
+      ]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Current heartbeat writes work before migration, previous writes work after it, and stale snapshots stay rejected\n",
+  );
+}
+
 async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log("=== Phase 1.5: Validate Latest Snapshot Accuracy ===\n");
 
@@ -15393,6 +15722,7 @@ async function main(): Promise<void> {
     await validateBrowserResizeStateRolloutCompatibility();
     await validateCustomModelGatewayRolloutCompatibility();
     await validateHostedSiteChatScopeRollout();
+    await validateHeldWorkspaceStateRolloutCompatibility();
     await validateCurrentBrowserApiBeforeBillingMigration();
     await validateBrowserUsageCompatibilityContraction();
 

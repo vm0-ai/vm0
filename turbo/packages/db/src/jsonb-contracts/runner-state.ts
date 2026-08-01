@@ -18,3 +18,19 @@ export interface RunnerHeldSessionState {
 }
 
 export type RunnerHeldSessionStates = RunnerHeldSessionState[];
+
+interface RunnerHeldWorkspaceCache {
+  readonly profile: string;
+  readonly workspaceAffinityVersion: 1;
+}
+
+export interface RunnerHeldWorkspaceState {
+  readonly reuseKey: string;
+  readonly lastCompletedAt: string;
+  readonly workspaceCaches: readonly [
+    RunnerHeldWorkspaceCache,
+    ...RunnerHeldWorkspaceCache[],
+  ];
+}
+
+export type RunnerHeldWorkspaceStates = RunnerHeldWorkspaceState[];
