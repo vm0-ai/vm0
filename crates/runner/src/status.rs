@@ -934,7 +934,7 @@ mod tests {
         let delayed_cleanup_revision = 2;
         let delayed_cleanup_snapshot = Vec::new();
 
-        // Meanwhile the same session is parked again with a newer sandbox.
+        // Meanwhile the same reuse key is parked again with a newer sandbox.
         assert!(
             tracker
                 .set_idle_info_at_revision(

@@ -104,7 +104,7 @@ async fn invalid_resume_session_does_not_reuse_idle_vm() {
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
     let invalid_session_id = "../invalid-session";
-    seed_idle_pool(
+    let seeded_sandbox_id = seed_idle_pool(
         &idle_pool,
         &budget,
         invalid_session_id,
@@ -117,12 +117,21 @@ async fn invalid_resume_session_does_not_reuse_idle_vm() {
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
-    push_job(
-        &env,
+    env.provider.set_claim_result(
         run_id,
-        "vm0/default",
         Some(context_with_session(run_id, invalid_session_id)),
     );
+    env.handle
+        .discover_tx
+        .send(
+            crate::provider::JobCandidate::new(run_id, "vm0/default".into())
+                .with_affinity_metadata(
+                    Some(invalid_session_id.to_string()),
+                    Some(invalid_session_id.to_string()),
+                    None,
+                ),
+        )
+        .unwrap();
 
     let completion = env
         .handle
@@ -134,10 +143,16 @@ async fn invalid_resume_session_does_not_reuse_idle_vm() {
         completion.reuse_result,
         Some(SandboxReuseResult::NoSessionId),
     );
+    assert_eq!(completion.sandbox_id, None);
     let error = completion.error.as_deref().expect("error should be set");
     assert!(error.contains("invalid session_id"));
     assert!(!error.contains(invalid_session_id));
     wait_idle_pool_reuse_keys(&idle_pool, &[invalid_session_id], Duration::from_secs(5)).await;
+    assert_eq!(
+        idle_pool.lock().await.status_snapshot().idle_vms[0].sandbox_id,
+        seeded_sandbox_id,
+        "invalid continuation metadata must restore the reserved sandbox",
+    );
 
     shutdown(&env, run_handle).await;
 }

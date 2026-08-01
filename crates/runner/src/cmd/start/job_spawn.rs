@@ -477,9 +477,10 @@ impl DeferredUploadPhase {
 /// Otherwise it creates a new one via the factory.
 ///
 /// A sandbox is considered for idle parking only after a successful, uncancelled
-/// execution while parking is open and a validated supplied or discovered CLI
-/// agent session id is available. Park failure, cancellation before idle-pool
-/// transfer, or pool rejection falls back to destruction.
+/// execution while parking is open and a reuse key is available. A provider CLI
+/// session ID is retained as optional compatibility metadata. Park failure,
+/// cancellation before idle-pool transfer, or pool rejection falls back to
+/// destruction.
 ///
 /// The completion state returned by finalization carries
 /// [`BudgetOwnership`](super::job_lifecycle::BudgetOwnership). Non-accepted paths

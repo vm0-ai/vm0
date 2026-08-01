@@ -1195,18 +1195,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finalizer_parking_log_uses_session_id() {
+    async fn finalizer_parking_observer_uses_reuse_key() {
         let (_budget, lease) = test_budget_lease();
         let fixture = FinalizeTestFixture::new().await;
         let network_log_session = fixture.network_log_session().await;
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        let raw_session_id = "sess-sensitive-finalizer-17975";
+        let reuse_key = "thread:finalizer-17975";
         let observer = StartLoopTestObserver::default();
         let mut context = fixture.finalize_context(
             run_id,
             sandbox_id,
-            raw_session_id,
+            reuse_key,
             network_log_session,
             RunCancellationHandle::new(),
         );
@@ -1228,11 +1228,11 @@ mod tests {
             context,
         )
         .await;
-        let session_id = observer
+        let observed_reuse_key = observer
             .wait_vm_parked_for_reuse(run_id, Duration::from_secs(1))
             .await;
 
-        assert_eq!(session_id, raw_session_id);
+        assert_eq!(observed_reuse_key, reuse_key);
     }
 
     #[tokio::test]

@@ -159,8 +159,24 @@ pub(super) async fn handle_discovered_job(
     } = admission;
     let mut pre_spawn_timing = RunnerPreSpawnTiming::start_after_claim();
     let started_at = Instant::now();
-    let resume_session_valid = validate_resume_session_id(claimed.context()).is_ok();
+    let resume_session_error = validate_resume_session_id(claimed.context()).err();
+    let resume_session_valid = resume_session_error.is_none();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ResumeSessionValidation, started_at);
+    let resource = match (resource, resume_session_error) {
+        (LocalAdmissionResource::Reusable(reservation), Some(error)) => {
+            fail_claimed_without_sandbox(
+                claimed,
+                cancellation,
+                LocalAdmissionResource::Reusable(reservation),
+                SandboxReuseResult::NoSessionId,
+                error,
+                &mut ctx,
+            )
+            .await;
+            return true;
+        }
+        (resource, _) => resource,
+    };
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
     let started_at = Instant::now();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::DeviceRateLimits, started_at);
@@ -226,10 +242,10 @@ pub(super) async fn handle_discovered_job(
                         fail_claimed_without_sandbox(
                             claimed,
                             cancellation,
-                            budget_lease,
+                            LocalAdmissionResource::Fresh(budget_lease),
                             reuse_result,
                             error,
-                            &ctx,
+                            &mut ctx,
                         )
                         .await;
                         return true;
@@ -798,10 +814,10 @@ async fn cleanup_reserved_for_fresh_fallback(
 async fn fail_claimed_without_sandbox(
     claimed: ClaimedJob,
     cancellation: RunCancellationRegistration,
-    budget_lease: BudgetLease,
+    resource: LocalAdmissionResource,
     reuse_result: SandboxReuseResult,
     error: String,
-    ctx: &DiscoveredJobContext<'_>,
+    ctx: &mut DiscoveredJobContext<'_>,
 ) {
     let (context, completion_auth, active_input_source) = claimed.into_parts();
     let run_id = context.run_id;
@@ -819,7 +835,7 @@ async fn fail_claimed_without_sandbox(
         )
         .await;
     cancellation.unregister().await;
-    drop(budget_lease);
+    rollback_untracked_resource(resource, ctx).await;
 }
 
 async fn try_reuse_from_pool(

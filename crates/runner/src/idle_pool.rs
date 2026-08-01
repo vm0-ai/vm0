@@ -174,7 +174,7 @@ struct IdleSandboxMetadata {
     /// was parked. Missing means reuse must fall back to materialize+restore.
     restored_session_identity: Option<RestoredSessionIdentity>,
     history_generation_run_id: Option<RunId>,
-    /// Local terminal timestamp for this parked session.
+    /// Local terminal timestamp for this parked sandbox.
     ///
     /// `None` is reserved for synthetic test entries and means the VM is not
     /// advertised for reuse affinity.
@@ -1358,7 +1358,7 @@ fn idle_vm_for_entry(entry: &IdleEntry) -> IdleVm {
 /// Result of a `park` operation.
 #[must_use]
 pub enum ParkResult {
-    /// Successfully parked; no previous entry for this session.
+    /// Successfully parked; no previous entry for this reuse key.
     Parked,
     /// Successfully parked; the returned job destroys the replaced idle VM.
     Replaced(IdleDestroyJob),
@@ -1878,14 +1878,14 @@ mod tests {
     }
 
     #[test]
-    fn park_uses_candidate_session_as_pool_key() {
+    fn park_uses_candidate_reuse_key_as_pool_key() {
         let mut pool = IdlePool::new(pool_config(0));
         let result = pool.park(make_candidate_for("candidate-session", 2, 2048));
         assert!(matches!(result, ParkResult::Parked));
 
         assert!(
             pool.take("caller-provided-session").is_none(),
-            "park no longer accepts a separate session key"
+            "park no longer accepts a separate reuse key"
         );
         assert!(pool.take("candidate-session").is_some());
     }
@@ -1897,7 +1897,7 @@ mod tests {
     }
 
     #[test]
-    fn park_same_session_evicts_previous() {
+    fn park_same_reuse_key_evicts_previous() {
         let mut pool = IdlePool::new(pool_config(0));
 
         let _ = pool.park(make_candidate_for("session-1", 2, 2048));
