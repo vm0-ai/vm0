@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.363.1](https://github.com/vm0-ai/vm0/compare/api-v1.363.0...api-v1.363.1) (2026-07-31)
+
+
+### Refactoring
+
+* **api:** use slug in diagnostic connector summaries ([#24393](https://github.com/vm0-ai/vm0/issues/24393)) ([67bdf3b](https://github.com/vm0-ai/vm0/commit/67bdf3b66cc9a6a374e7d348e24fef41e2237fb7))
+* **connectors:** use slug in workflow readiness model protocol ([#24383](https://github.com/vm0-ai/vm0/issues/24383)) ([779105e](https://github.com/vm0-ai/vm0/commit/779105ec155256031bc419d21357f13ee2b7f2cd))
+* drop queued attachment metadata column ([#24380](https://github.com/vm0-ai/vm0/issues/24380)) ([0f590fb](https://github.com/vm0-ai/vm0/commit/0f590fb7d83663174f8d1242cd4aa56a0ab41ab3))
+
+
+### Performance Improvements
+
+* **api:** avoid locking unchanged chat threads ([#24379](https://github.com/vm0-ai/vm0/issues/24379)) ([2a69819](https://github.com/vm0-ai/vm0/commit/2a69819d45120af7dca7728e7f1fab0577c0b899))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.260.2
+    * @vm0/connectors bumped to 1.202.3
+    * @vm0/core bumped to 8.501.0
+    * @vm0/db bumped to 1.160.2
+
 ## [1.363.0](https://github.com/vm0-ai/vm0/compare/api-v1.362.0...api-v1.363.0) (2026-07-31)
 
 
