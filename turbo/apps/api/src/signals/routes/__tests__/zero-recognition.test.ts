@@ -422,20 +422,13 @@ describe("POST /api/zero/recognize", () => {
     await expectNoUsage(actor);
   });
 
-  it("rejects usable text when provider usage metadata is missing", async () => {
+  it("rejects usable text when provider usage metadata is incomplete", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
-    server.use(
-      http.post(OPENROUTER_URL, () => {
-        return HttpResponse.json({
-          choices: [
-            {
-              finish_reason: "stop",
-              message: { content: "Unbilled result" },
-            },
-          ],
-        });
-      }),
-    );
+    const usages = [
+      undefined,
+      { prompt_tokens: 10 },
+      { completion_tokens: 10 },
+    ] as const;
     const actor = await seedActor();
     await seedBilling(actor);
     const fileId = randomUUID();
@@ -443,14 +436,29 @@ describe("POST /api/zero/recognize", () => {
       { userId: actor.userId, id: fileId, filename: "screen.webp", size: 12 },
     ]);
 
-    const response = await requestRecognition({
-      token: zeroToken(actor),
-      fileId,
-    });
-    expect(response.status).toBe(502);
-    expect(response.body).toMatchObject({
-      error: { code: "MISSING_PROVIDER_USAGE" },
-    });
+    for (const usage of usages) {
+      server.use(
+        http.post(OPENROUTER_URL, () => {
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: "Unbilled result" },
+              },
+            ],
+            ...(usage === undefined ? {} : { usage }),
+          });
+        }),
+      );
+      const response = await requestRecognition({
+        token: zeroToken(actor),
+        fileId,
+      });
+      expect(response.status).toBe(502);
+      expect(response.body).toMatchObject({
+        error: { code: "MISSING_PROVIDER_USAGE" },
+      });
+    }
     await expectNoUsage(actor);
   });
 
@@ -521,7 +529,7 @@ describe("POST /api/zero/recognize", () => {
               message: { content: "This text must not be returned" },
             },
           ],
-          usage: { completion_tokens: 100 },
+          usage: { prompt_tokens: 100, completion_tokens: 100 },
         });
       }),
     );
@@ -546,6 +554,6 @@ describe("POST /api/zero/recognize", () => {
         { scope: "organization", id: actor.orgId },
         context.signal,
       ),
-    ).resolves.toStrictEqual({ raw: 1, hourly: 0 });
+    ).resolves.toStrictEqual({ raw: 2, hourly: 0 });
   });
 });

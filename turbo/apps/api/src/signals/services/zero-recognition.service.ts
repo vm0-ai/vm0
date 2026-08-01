@@ -17,6 +17,7 @@ import {
   isLlmConfigured,
   OpenRouterRequestError,
   type OpenRouterContentPart,
+  type OpenRouterUsage,
 } from "../external/openrouter";
 import { settle } from "../utils";
 import {
@@ -97,6 +98,34 @@ function providerError(error: unknown) {
     502,
     "IMAGE_RECOGNITION_FAILED",
     "Image recognition failed to produce a usable response",
+  );
+}
+
+function isPositiveSafeInteger(value: number | undefined): value is number {
+  return value !== undefined && Number.isSafeInteger(value) && value > 0;
+}
+
+function hasCompleteRecognitionUsage(
+  usage: OpenRouterUsage | undefined,
+): boolean {
+  if (usage === undefined) {
+    return false;
+  }
+  const promptTokens = usage.prompt_tokens;
+  const completionTokens = usage.completion_tokens;
+  if (
+    !isPositiveSafeInteger(promptTokens) ||
+    !isPositiveSafeInteger(completionTokens)
+  ) {
+    return false;
+  }
+
+  const cachedTokens = usage.prompt_tokens_details?.cached_tokens;
+  return (
+    cachedTokens === undefined ||
+    (Number.isSafeInteger(cachedTokens) &&
+      cachedTokens >= 0 &&
+      cachedTokens <= promptTokens)
   );
 }
 
@@ -194,11 +223,11 @@ export const zeroRecognition$ = command(
         "Image recognition returned too much text",
       );
     }
-    if (generated.value.usage === undefined) {
+    if (!hasCompleteRecognitionUsage(generated.value.usage)) {
       return recognitionError(
         502,
         "MISSING_PROVIDER_USAGE",
-        "Image recognition did not report billable usage",
+        "Image recognition did not report complete billable usage",
       );
     }
 
