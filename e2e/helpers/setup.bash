@@ -124,26 +124,20 @@ require_e2e_api_credentials() {
     e2e_api_token >/dev/null && e2e_api_url >/dev/null
 }
 
+use_e2e_api_credentials() {
+    local variant="$1"
+    local credentials="/tmp/e2e-api-credentials-${variant}.json"
+    E2E_API_TOKEN=$(jq -er '.token | select(type == "string" and length > 0)' "$credentials") || return 1
+    E2E_API_URL=$(jq -er '.apiUrl | select(type == "string" and length > 0)' "$credentials") || return 1
+    export E2E_API_TOKEN E2E_API_URL
+}
+
 set_real_agent_in_preview() {
     local enabled="$1"
     e2e_api_curl "/api/zero/feature-switches" \
         -X POST \
         -d "{\"switches\":{\"realAgentInPreview\":${enabled}}}" \
         >/dev/null
-}
-
-# The chat create call claims an idle thread synchronously, so the switch only
-# needs to be enabled around that request. Restore it immediately to avoid
-# changing unrelated preview runs that share the E2E identity.
-with_real_agent_preview_claim() {
-    local previous
-    previous=$(e2e_api_curl "/api/zero/feature-switches" | jq -er '.effectiveSwitches.realAgentInPreview | select(type == "boolean") | tostring') || return 1
-    set_real_agent_in_preview true || return 1
-    local command_status=0
-    local reset_status=0
-    "$@" || command_status=$?
-    set_real_agent_in_preview "$previous" || reset_status=$?
-    [[ "$command_status" -eq 0 && "$reset_status" -eq 0 ]]
 }
 
 e2e_api_curl() {

@@ -24,6 +24,9 @@ load '../../helpers/codex-zero'
 export BATS_TEST_TIMEOUT=300
 
 setup_file() {
+    use_e2e_api_credentials "runner-real-codex"
+    set_real_agent_in_preview true
+
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export TEST_DIR="$(mktemp -d)"
     export AGENT_NAME="e2e-codex-byok-${UNIQUE_ID}"
@@ -98,7 +101,7 @@ teardown_file() {
     # `export` from the helper would not propagate back to this scope, and
     # LAST_THREAD_ID / LAST_RUN_ID would arrive empty. The helper returns
     # non-zero on failure, which fails the test naturally.
-    with_real_agent_preview_claim send_chat_run_message "$AGENT_ID" \
+    send_chat_run_message "$AGENT_ID" \
         "Compute 123+456 and reply with exactly: RESULT=<answer>" \
         "gpt-5.5"
 
@@ -121,7 +124,7 @@ teardown_file() {
 }
 
 @test "t-codex-zero-byok-smoke-2: gpt-5.6-luna via zero web layer" {
-    with_real_agent_preview_claim send_chat_run_message "$AGENT_ID" \
+    send_chat_run_message "$AGENT_ID" \
         "Compute 234+567 and reply with exactly: LUNA_RESULT=<answer>" \
         "gpt-5.6-luna"
 

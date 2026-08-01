@@ -210,10 +210,10 @@ send_chat_run_message() {
     local selected_model="$3"
     local payload body client_event_id
     client_event_id=$(cat /proc/sys/kernel/random/uuid)
-    # The caller enables the claim-time RealAgentInPreview switch around this
-    # request so the real codex CLI executes against $OPENAI_API_KEY. Keep the
-    # request field to mirror the current web API contract; it is no longer the
-    # source of the claimed run setting.
+    # The caller uses a dedicated identity whose claim-time
+    # RealAgentInPreview switch is enabled, so the real codex CLI executes
+    # against $OPENAI_API_KEY. Keep the request field to mirror the current web
+    # API contract; it is no longer the source of the claimed run setting.
     payload=$(jq -nc \
         --arg agentId "$agent_id" \
         --arg prompt "$prompt" \
