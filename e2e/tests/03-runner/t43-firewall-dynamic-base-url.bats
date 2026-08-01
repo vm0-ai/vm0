@@ -64,7 +64,8 @@ EOF
     assert_success
 
     run run_compose_fixture "${AGENT_NAME}-placeholder" \
-        "echo \"TOKEN=\$ZENDESK_API_TOKEN\" && echo \"SUBDOMAIN=\$ZENDESK_SUBDOMAIN\"" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo \"TOKEN=\$ZENDESK_API_TOKEN\" && echo \"SUBDOMAIN=\$ZENDESK_SUBDOMAIN\"" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
@@ -94,7 +95,8 @@ EOF
     # If proxy matched: zendesk returns 401 (bad token) or 404 (subdomain not found)
     # If proxy blocked: returns 403 with "no matching permission" error
     run run_compose_fixture "${AGENT_NAME}-proxy" \
-        "STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://${TEST_SUBDOMAIN}.zendesk.com/api/v2/users/me.json) && echo \"ZENDESK_STATUS=\$STATUS\"" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://${TEST_SUBDOMAIN}.zendesk.com/api/v2/users/me.json) && echo \"ZENDESK_STATUS=\$STATUS\"" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 

@@ -44,7 +44,9 @@ EOF
     # The mock-claude emits events, spawns a child holding stdout open, then
     # exits.  The drain deadline (5s) should allow guest-agent to break out
     # of the stdout loop and complete the run successfully.
-    run run_compose_fixture "$AGENT_NAME" "@orphan-pipe"
+    run run_compose_fixture "$AGENT_NAME" \
+        "@orphan-pipe" \
+        '{"realAgentInPreview":false}'
 
     echo "# Step 3: Verify run succeeded..."
     assert_success

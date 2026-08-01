@@ -2,10 +2,9 @@
 
 # Full round-trip Slack e2e: connect → DM message → agent run completes →
 # callback posts reply to Slack. Runs on cli-e2e-03-runner so a real
-# runner picks up the dispatched job and drives it to completion with
-# mock-claude (USE_MOCK_CLAUDE=true). Without this, a regression that
-# leaves runs stuck in "pending" (e.g. a dropped dispatch Promise) would
-# go unnoticed.
+# runner and real agent runtime pick up the dispatched job and drive it
+# to completion. Without this, a regression that leaves runs stuck in
+# "pending" (e.g. a dropped dispatch Promise) would go unnoticed.
 #
 # Required env:
 #   VM0_API_BACKEND_URL                      — preview deployment URL
@@ -17,10 +16,9 @@
 load '../../helpers/setup'
 load '../../helpers/slack'
 
-# The mention/DM prompt is piped to mock-claude which executes it as a
-# bash command and echoes the stdout back as the agent's reply. We pick
-# a side-effect-free command whose output is easy to match.
-SLACK_ROUNDTRIP_PROMPT="echo HELLO_FROM_E2E_$((RANDOM))"
+# Ask the real agent for a deterministic marker that is easy to match in
+# the callback without depending on a particular tool-call strategy.
+SLACK_ROUNDTRIP_PROMPT="Reply with exactly: HELLO_FROM_E2E_$((RANDOM))"
 EXPECTED_OUTPUT_PREFIX="HELLO_FROM_E2E_"
 
 # File-scope identifiers unique per CI run (GITHUB_RUN_ID).
@@ -63,13 +61,12 @@ teardown_file() {
     slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" \
         --with-connection --with-default-agent >/dev/null
 
-    # Build a DM event. The message text becomes the agent's prompt,
-    # and mock-claude will execute it as bash → output echoed back as
-    # the agent's result → Slack callback posts it to our mock.
+    # Build a DM event. The message text becomes the real agent's prompt,
+    # and the completed response is posted to the Slack API mock.
     local ts payload
     ts="$(date +%s).000100"
-    # Render the DM fixture then substitute our bash-executable prompt
-    # for the template's placeholder text.
+    # Render the DM fixture then substitute our deterministic prompt for
+    # the template's placeholder text.
     payload=$(slack_render_fixture \
         "$TEST_ROOT/fixtures/slack/dm-message-payload.json" \
         "$TEAM_ID" "$DM_CHANNEL_ID" "$SLACK_USER_ID" "$ts" \
@@ -85,7 +82,7 @@ teardown_file() {
     wait_for_slack_run_completion "$TEAM_ID" 150
 
     # The terminal status must be successful — a failed run indicates
-    # the runner picked up the job but mock-claude's bash exited non-zero.
+    # the runner or real agent path failed after dispatch.
     # Filter to slack-triggered runs because parallel tests in the same
     # shard (t05/t17) create non-slack runs that would otherwise be
     # recent_runs[0].
@@ -105,9 +102,9 @@ teardown_file() {
     local call
     call=$(wait_for_slack_mock_post_message "$TEAM_ID" "$DM_CHANNEL_ID" 60)
 
-    # The posted text must contain mock-claude's bash-echoed output so
-    # we know the reply actually carries the agent's result, not a canned
-    # error string or a thinking-status update.
+    # The posted text must contain the marker requested from the real agent,
+    # proving the reply carries the agent's result rather than a canned error
+    # string or a thinking-status update.
     local posted_text
     posted_text=$(echo "$call" | jq -r '.bodyJson.text // ""')
     echo "# posted text: $posted_text" >&2

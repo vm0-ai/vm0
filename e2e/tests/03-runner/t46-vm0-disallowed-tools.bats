@@ -53,7 +53,7 @@ teardown_file() {
 
 @test "t46-1: run with disallowed tools succeeds" {
     run run_compose_fixture "$AGENT_NAME" \
-        "echo hello" \
+        "Run the exact Bash command \`echo hello\` and include its output." \
         '{"disallowedTools":["CronCreate","CronList","CronDelete"]}'
 
     assert_success
@@ -64,7 +64,7 @@ teardown_file() {
 
 @test "t46-2: run with allowed tools succeeds" {
     run run_compose_fixture "$AGENT_NAME" \
-        "echo hello" \
+        "Run the exact Bash command \`echo hello\` and include its output." \
         '{"tools":["Bash"]}'
 
     assert_success

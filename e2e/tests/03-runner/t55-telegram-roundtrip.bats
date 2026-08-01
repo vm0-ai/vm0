@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
-# Full round-trip Telegram e2e: seeded bot/user link -> DM webhook -> agent
-# run completes -> callback posts the reply to the Telegram Bot API mock.
+# Full round-trip Telegram e2e: seeded bot/user link -> DM webhook -> real
+# agent run completes -> callback posts the reply to the Telegram Bot API mock.
 #
 # Required env:
 #   VM0_API_BACKEND_URL                      — preview deployment URL
@@ -14,7 +14,7 @@
 load '../../helpers/setup'
 load '../../helpers/telegram'
 
-TELEGRAM_ROUNDTRIP_PROMPT="echo HELLO_FROM_TG_E2E_$((RANDOM))"
+TELEGRAM_ROUNDTRIP_PROMPT="Reply with exactly: HELLO_FROM_TG_E2E_$((RANDOM))"
 EXPECTED_OUTPUT_PREFIX="HELLO_FROM_TG_E2E_"
 
 BOT_ID="${TELEGRAM_FIXTURE_BOT_ID}_${GITHUB_RUN_ID:-local}"

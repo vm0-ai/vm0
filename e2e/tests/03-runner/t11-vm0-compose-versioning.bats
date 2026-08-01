@@ -61,7 +61,8 @@ EOF
 
     echo "# Running with specific version (version 1)..."
     run run_compose_version_fixture "$VERSION1" \
-        "echo hello" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo hello" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success

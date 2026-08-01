@@ -61,7 +61,8 @@ EOF
     assert_success
 
     run run_compose_fixture "${AGENT_NAME}-placeholder" \
-        "echo \"TOKEN=\$SERPAPI_TOKEN\"" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo \"TOKEN=\$SERPAPI_TOKEN\"" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
@@ -95,7 +96,8 @@ EOF
     # definitive proof that the proxy injected our fake api_key query param.
     # 403 = firewall blocked (proxy didn't match).
     run run_compose_fixture "${AGENT_NAME}-proxy" \
-        "STATUS=\$(curl -s -o /dev/null -w '%{http_code}' 'https://serpapi.com/search?q=test&engine=google') && echo \"SERPAPI_STATUS=\$STATUS\"" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+STATUS=\$(curl -s -o /dev/null -w '%{http_code}' 'https://serpapi.com/search?q=test&engine=google') && echo \"SERPAPI_STATUS=\$STATUS\"" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 

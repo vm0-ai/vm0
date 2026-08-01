@@ -67,7 +67,8 @@ teardown_file() {
 
     echo "# Running with --vars and --secrets flags"
     run run_compose_fixture "$AGENT_NAME" \
-        "echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET" \
         "$(jq -nc \
             --arg varValue "$var_value" \
             --arg secretValue "$secret_value" \

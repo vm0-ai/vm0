@@ -92,7 +92,8 @@ teardown_file() {
     # -- Step 2: Run agent to create session (was t06-2b) --
     echo "# Running agent to create session..."
     run run_compose_fixture "$AGENT_NAME" \
-        "echo 'agent-created' > agent.txt && echo 200 > counter.txt" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo 'agent-created' > agent.txt && echo 200 > counter.txt" \
         "$(jq -nc --arg name "$artifact_name" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
@@ -123,7 +124,9 @@ teardown_file() {
 
     # -- Step 4: Continue session and verify latest version (was t06-2d) --
     echo "# Continuing from session (should use latest artifact)..."
-    run continue_run_fixture "$session_id" "ls && cat counter.txt"
+    run continue_run_fixture "$session_id" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+ls && cat counter.txt"
 
     assert_success
     assert_output --partial '"name":"Bash"'
@@ -161,7 +164,8 @@ teardown_file() {
     # -- Step 2: Run agent with templateVars (was t06-3b) --
     echo "# Running agent with --vars testKey=testValue..."
     run run_compose_fixture "$AGENT_NAME" \
-        "echo 'initial run' && cat testfile.txt" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo 'initial run' && cat testfile.txt" \
         "$(jq -nc --arg name "$artifact_name" \
             '{
                 vars: {testKey: "testValue"},
@@ -192,7 +196,9 @@ teardown_file() {
 
     # -- Step 4: Continue from session with templateVars (was t06-3d) --
     echo "# Continuing from session..."
-    run continue_run_fixture "$session_id" "cat testfile.txt"
+    run continue_run_fixture "$session_id" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+cat testfile.txt"
 
     assert_success
     assert_output --partial '"name":"Bash"'
@@ -248,7 +254,8 @@ EOF
     # -- Step 2: Run agent with secrets to create session (was t06-4b) --
     echo "# Running agent with secrets to create session..."
     run run_compose_fixture "$env_agent_name" \
-        "echo 'test' && echo \$TEST_SECRET" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo 'test' && echo \$TEST_SECRET" \
         "$(jq -nc --arg name "$artifact_name" \
             '{
                 vars: {testVar: "myTestVar"},
@@ -271,7 +278,8 @@ EOF
     echo "# Continuing with refreshed secret value..."
     export TEST_SECRET="env-secret-value"
     run continue_run_fixture "$session_id" \
-        "echo 'continue test'" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo 'continue test'" \
         "$(jq -nc --arg secret "$TEST_SECRET" '{secrets: {TEST_SECRET: $secret}}')"
 
     # Should succeed with the explicitly supplied refreshed value.

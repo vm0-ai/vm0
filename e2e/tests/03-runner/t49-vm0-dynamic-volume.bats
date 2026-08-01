@@ -77,7 +77,8 @@ teardown_file() {
 
     # Run with an additional volume not present in the compose config.
     run run_compose_fixture "$AGENT_NAME" \
-        "cat /home/user/data/data.txt" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+cat /home/user/data/data.txt" \
         "$(jq -nc --arg artifact "$ARTIFACT_NAME" --arg volume "$DYNAMIC_VOL_A" \
             '{
                 artifacts: [{name: $artifact, mountPath: "/home/user/workspace"}],
@@ -111,7 +112,8 @@ teardown_file() {
 
     # Run with specific version — should see v1 content, not HEAD
     run run_compose_fixture "$AGENT_NAME" \
-        "cat /home/user/data/data.txt" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+cat /home/user/data/data.txt" \
         "$(jq -nc \
             --arg artifact "$ARTIFACT_NAME" \
             --arg volume "$DYNAMIC_VOL_A" \
@@ -142,7 +144,8 @@ teardown_file() {
 
     # Run with two dynamic volumes at different mount paths
     run run_compose_fixture "$AGENT_NAME" \
-        "cat /home/user/data-a/data.txt && cat /home/user/data-b/data.txt" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+cat /home/user/data-a/data.txt && cat /home/user/data-b/data.txt" \
         "$(jq -nc \
             --arg artifact "$ARTIFACT_NAME" \
             --arg volumeA "$DYNAMIC_VOL_A" \

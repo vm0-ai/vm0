@@ -51,7 +51,9 @@ teardown_file() {
     # The agent should run, execute tasks, and complete successfully
 
     echo "# Running agent without artifact..."
-    run run_compose_fixture "$AGENT_NAME" "echo 'hello world' && pwd"
+    run run_compose_fixture "$AGENT_NAME" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo 'hello world' && pwd"
 
     assert_success
     assert_output --partial '"name":"Bash"'
@@ -69,7 +71,9 @@ teardown_file() {
 
     # Step 1: First run without artifact - creates new session
     echo "# Step 1: First run without artifact..."
-    run run_compose_fixture "$AGENT_NAME" "echo 'first run'"
+    run run_compose_fixture "$AGENT_NAME" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo 'first run'"
 
     assert_success
     SESSION_ID_1=$(run_fixture_field "$output" '.sessionId')
@@ -83,7 +87,9 @@ teardown_file() {
     # Step 2: Second run without artifact with same config
     # Each run creates its own session (multi-session support)
     echo "# Step 2: Second run without artifact..."
-    run run_compose_fixture "$AGENT_NAME" "echo 'second run'"
+    run run_compose_fixture "$AGENT_NAME" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo 'second run'"
 
     assert_success
     SESSION_ID_2=$(run_fixture_field "$output" '.sessionId')
@@ -111,7 +117,9 @@ teardown_file() {
 
     # Step 1: Initial run without artifact
     echo "# Step 1: Initial run without artifact..."
-    run run_compose_fixture "$AGENT_NAME" "echo 'initial context'"
+    run run_compose_fixture "$AGENT_NAME" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo 'initial context'"
 
     assert_success
     SESSION_ID=$(run_fixture_field "$output" '.sessionId')
@@ -124,7 +132,9 @@ teardown_file() {
 
     # Step 2: Continue from session
     echo "# Step 2: Continuing from session..."
-    run continue_run_fixture "$SESSION_ID" "echo 'continued from session'"
+    run continue_run_fixture "$SESSION_ID" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo 'continued from session'"
 
     assert_success
     assert_output --partial '"name":"Bash"'

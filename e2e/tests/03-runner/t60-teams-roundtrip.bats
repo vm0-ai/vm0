@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 # Full round-trip Teams e2e: seeded tenant/user connection -> DM dispatch ->
-# agent run completes -> callback posts the reply to the Teams mock.
+# real agent run completes -> callback posts the reply to the Teams mock.
 #
 # Required env:
 #   VM0_API_BACKEND_URL
@@ -14,7 +14,7 @@
 load '../../helpers/setup'
 load '../../helpers/teams'
 
-TEAMS_ROUNDTRIP_PROMPT="echo HELLO_FROM_TEAMS_E2E_$((RANDOM))"
+TEAMS_ROUNDTRIP_PROMPT="Reply with exactly: HELLO_FROM_TEAMS_E2E_$((RANDOM))"
 EXPECTED_OUTPUT_PREFIX="HELLO_FROM_TEAMS_E2E_"
 
 TENANT_ID="${TEAMS_FIXTURE_TENANT_ID}_${GITHUB_RUN_ID:-local}"

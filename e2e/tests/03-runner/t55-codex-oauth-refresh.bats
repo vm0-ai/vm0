@@ -76,7 +76,7 @@ teardown_file() {
     # before disabling this test.
     run run_compose_fixture "$AGENT_NAME" \
         "Reply with exactly RESULT=ok" \
-        '{"modelProviderType":"codex-oauth-token"}'
+        '{"modelProviderType":"codex-oauth-token","realAgentInPreview":false}'
 
     # Two acceptable outcomes:
     #   - Run succeeds (mock codex echoes prompt → "RESULT=ok" appears)
@@ -124,7 +124,7 @@ teardown_file() {
 
     run run_compose_fixture "$AGENT_NAME" \
         "Reply with exactly RESULT=ok" \
-        '{"modelProviderType":"codex-oauth-token"}'
+        '{"modelProviderType":"codex-oauth-token","realAgentInPreview":false}'
 
     if [ "$status" -eq 0 ]; then
         assert_output --partial "RESULT=ok"

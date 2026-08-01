@@ -77,7 +77,8 @@ setup() {
     # Run agent - should succeed even though optional volume doesn't exist
     # The optional volume mount point should simply not exist
     run run_compose_fixture "$AGENT_NAME" \
-        "ls -la /home/user/optional-data 2>&1 || echo 'OPTIONAL_DIR_NOT_MOUNTED'" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+ls -la /home/user/optional-data 2>&1 || echo 'OPTIONAL_DIR_NOT_MOUNTED'" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
@@ -134,7 +135,8 @@ EOF
 
     # Run agent - should succeed with required volume mounted, optional skipped
     run run_compose_fixture "${AGENT_NAME}-mixed" \
-        "cat /home/user/required-data/required.txt && (ls /home/user/optional-data 2>&1 || echo 'OPTIONAL_NOT_MOUNTED')" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+cat /home/user/required-data/required.txt && (ls /home/user/optional-data 2>&1 || echo 'OPTIONAL_NOT_MOUNTED')" \
         "$(jq -nc --arg name "$ARTIFACT_NAME_MIXED" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 

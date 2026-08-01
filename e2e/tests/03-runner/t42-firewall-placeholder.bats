@@ -226,7 +226,8 @@ EOF
 
     # Verify env vars from both firewall configs are set to placeholder values.
     run run_compose_fixture "${AGENT_NAME}-multi" \
-        "echo \"GITHUB_TOKEN=\$GITHUB_TOKEN\" && echo \"SLACK_TOKEN=\$SLACK_TOKEN\"" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo \"GITHUB_TOKEN=\$GITHUB_TOKEN\" && echo \"SLACK_TOKEN=\$SLACK_TOKEN\"" \
         "$(jq -nc --arg name "$ARTIFACT_NAME-multi" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
@@ -248,10 +249,11 @@ EOF
 
     zero_chat_run_with_model_selection \
         "$AGENT_ID" \
-        "BODY_FILE=\$(mktemp) && SLACK_STATUS=\$(curl -sS -o \"\$BODY_FILE\" -w '%{http_code}' -X POST https://slack.com/api/chat.postMessage -H \"Authorization: Bearer \$SLACK_TOKEN\" -H 'Content-Type: application/json' --data '{\"channel\":\"C0000000000\",\"text\":\"e2e\"}') && echo \"SLACK_WRITE_STATUS=\$SLACK_STATUS\" && echo \"SLACK_WRITE_BODY=\$(cat \"\$BODY_FILE\")\"" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+BODY_FILE=\$(mktemp) && SLACK_STATUS=\$(curl -sS -o \"\$BODY_FILE\" -w '%{http_code}' -X POST https://slack.com/api/chat.postMessage -H \"Authorization: Bearer \$SLACK_TOKEN\" -H 'Content-Type: application/json' --data '{\"channel\":\"C0000000000\",\"text\":\"e2e\"}') && echo \"SLACK_WRITE_STATUS=\$SLACK_STATUS\" && echo \"SLACK_WRITE_BODY=\$(cat \"\$BODY_FILE\")\"" \
         "$(zero_model_first_selection_provider_id)" \
         "claude-sonnet-4-6" \
-        false
+        true
     THREAD_ID="$LAST_THREAD_ID"
 
     wait_for_zero_run_completed "$LAST_RUN_ID"
@@ -368,13 +370,15 @@ EOF
     prompt=${prompt//__MARKER_TEAM_ID__/$(shell_quote "$marker_team_id")}
     prompt=${prompt//__MARKER_TEXT__/$(shell_quote "$marker_text")}
     prompt=${prompt//__BYPASS_SECRET__/$(shell_quote "${VERCEL_AUTOMATION_BYPASS_SECRET:-}")}
+    prompt="Run the exact Bash script below, wait for it to finish, and include its output:
+$prompt"
 
     zero_chat_run_with_model_selection \
         "$AGENT_ID" \
         "$prompt" \
         "$(zero_model_first_selection_provider_id)" \
         "claude-sonnet-4-6" \
-        false
+        true
     THREAD_ID="$LAST_THREAD_ID"
 
     wait_for_slack_mock_marker "$marker_team_id" "$marker_text" "$LAST_RUN_ID" 60 || {
@@ -422,7 +426,8 @@ EOF
     # Verify GITHUB_TOKEN is replaced with placeholder (firewall auto-added)
     # and a GitHub API call succeeds through the proxy (token replacement works).
     run run_compose_fixture "${AGENT_NAME}-auto" \
-        "TOKEN_VAL=\$GITHUB_TOKEN && STARTS_WITH=\$(echo \$TOKEN_VAL | cut -c1-7) && STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && echo \"PLACEHOLDER=\$STARTS_WITH\" && echo \"API_STATUS=\$STATUS\"" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+TOKEN_VAL=\$GITHUB_TOKEN && STARTS_WITH=\$(echo \$TOKEN_VAL | cut -c1-7) && STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && echo \"PLACEHOLDER=\$STARTS_WITH\" && echo \"API_STATUS=\$STATUS\"" \
         "$(jq -nc --arg name "$ARTIFACT_NAME-auto" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 
@@ -469,7 +474,8 @@ EOF
     # 2. curl to the placeholder URL triggers mitmproxy URL rewrite
     # 3. Discord returns 404 (fake webhook ID) proving the request reached Discord
     run run_compose_fixture "${AGENT_NAME}-webhook" \
-        "echo \"DISCORD_WEBHOOK_URL=\$DISCORD_WEBHOOK_URL\" && curl -s -o /dev/null -w 'API_STATUS=%{http_code}\n' -X POST \"\$DISCORD_WEBHOOK_URL\" -H 'Content-Type: application/json' -d '{\"content\":\"e2e\"}'" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo \"DISCORD_WEBHOOK_URL=\$DISCORD_WEBHOOK_URL\" && curl -s -o /dev/null -w 'API_STATUS=%{http_code}\n' -X POST \"\$DISCORD_WEBHOOK_URL\" -H 'Content-Type: application/json' -d '{\"content\":\"e2e\"}'" \
         "$(jq -nc --arg name "$ARTIFACT_NAME-webhook" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
 

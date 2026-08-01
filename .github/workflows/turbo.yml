@@ -1194,6 +1194,22 @@ jobs:
           e2e/scripts/generate-test-token.sh \
             "${JOB_REF}+clerk_test+runner@vm0-e2e.ai" \
             "/tmp/e2e-api-credentials-runner.json"
+
+          for credentials in \
+            /tmp/e2e-api-credentials-serial.json \
+            /tmp/e2e-api-credentials-runner.json; do
+            token=$(jq -er '.token | select(type == "string" and length > 0)' "$credentials")
+            api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' "$credentials")
+            echo "::add-mask::$token"
+            headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
+            if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
+              headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+            fi
+            curl -fsS "${headers[@]}" \
+              -X POST \
+              -d '{"switches":{"realAgentInPreview":true}}' \
+              "${api_url}/api/zero/feature-switches" >/dev/null
+          done
         env:
           VM0_API_BACKEND_URL: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -2570,7 +2586,7 @@ jobs:
           echo "::add-mask::$token"
           echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
           echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
-      - name: Reset model-first defaults
+      - name: Reset real-agent model defaults
         run: |
           set -euo pipefail
           token="${E2E_API_TOKEN:-}"
@@ -2595,21 +2611,34 @@ jobs:
 
           curl -fsS "${headers[@]}" -X PUT -d "$payload" "${VM0_API_BACKEND_URL}/api/zero/model-policies" >/dev/null
           curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null}' "${VM0_API_BACKEND_URL}/api/zero/user-model-preference" >/dev/null
-        env:
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-      - name: Bootstrap test account
-        run: |
-          curl -fsS \
-            -H "Authorization: Bearer ${E2E_API_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+
+          switches=$(curl -fsS "${headers[@]}" "${VM0_API_BACKEND_URL}/api/zero/feature-switches")
+          jq -e '.effectiveSwitches.realAgentInPreview == true' <<< "$switches" >/dev/null
+
+          provider_status=$(curl -sS -o /dev/null -w '%{http_code}' \
+            "${headers[@]}" \
+            -X DELETE \
+            "${VM0_API_BACKEND_URL}/api/zero/model-providers/claude-code-oauth-token")
+          if [[ "$provider_status" != "204" && "$provider_status" != "404" ]]; then
+            echo "::error::Failed to remove preview mock Claude provider (HTTP ${provider_status})"
+            exit 1
+          fi
+
+          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "::error::Missing Anthropic key for real-agent runner E2E"
+            exit 1
+          fi
+          provider_payload=$(jq -nc \
+            --arg secret "$ANTHROPIC_API_KEY" \
+            '{type:"anthropic-api-key",secret:$secret}')
+          curl -fsS "${headers[@]}" \
             -X POST \
-            -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
-            "${E2E_API_URL}/api/zero/model-providers" >/dev/null
+            -d "$provider_payload" \
+            "${VM0_API_BACKEND_URL}/api/zero/model-providers" >/dev/null
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
 
   # Skip on push to main - runner tests are only needed for PRs
   cli-e2e-03-runner:
@@ -2684,6 +2713,7 @@ jobs:
           RUNNER_CHUNK_COUNT: ${{ needs.deploy-runner-prepare.outputs.chunk-count }}
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
           USE_MOCK_CLAUDE: "true"
           USE_MOCK_CODEX: "true"
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}

@@ -3,7 +3,7 @@
 # Test model-provider credential injection into container environment
 #
 # Verifies that an explicit runner provider type is honored by direct runs and
-# injected into the container as CLAUDE_CODE_OAUTH_TOKEN.
+# its real credential is injected into the container.
 
 load '../../helpers/setup'
 
@@ -30,13 +30,17 @@ teardown() {
 }
 
 @test "model-provider credential is injected into container" {
-    zero_model_provider_id_by_type "claude-code-oauth-token" >/dev/null
+    if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+        skip "ANTHROPIC_API_KEY not set"
+    fi
+    configure_e2e_model_provider "anthropic-api-key" "$ANTHROPIC_API_KEY"
+    zero_model_provider_id_by_type "anthropic-api-key" >/dev/null
 
     # GitHub Actions masks sk-ant-like values in logs, so emit a non-secret marker
     # only after verifying the injected token is present inside the container.
     run run_compose_fixture "$AGENT_NAME" \
-        "case \"\$CLAUDE_CODE_OAUTH_TOKEN\" in \"\"|\"***\") marker=MISMATCH ;; *) marker=OK ;; esac; printf 'INJECTED_%s\n' \"\$marker\"" \
-        '{"modelProviderType":"claude-code-oauth-token"}'
+        "Run this exact Bash command and include its output: case \"\$ANTHROPIC_API_KEY\" in \"\"|\"***\") marker=MISMATCH ;; *) marker=OK ;; esac; printf 'INJECTED_%s\\n' \"\$marker\"" \
+        '{"modelProviderType":"anthropic-api-key"}'
 
     echo "$output"
     assert_success

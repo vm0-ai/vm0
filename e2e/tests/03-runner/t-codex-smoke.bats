@@ -54,7 +54,9 @@ teardown_file() {
 }
 
 @test "t-codex-smoke-1: basic codex run returns structured events" {
-    run run_compose_fixture "$AGENT_NAME" "echo from codex"
+    run run_compose_fixture "$AGENT_NAME" \
+        "echo from codex" \
+        '{"realAgentInPreview":false}'
 
     assert_success
     # init event from thread.started

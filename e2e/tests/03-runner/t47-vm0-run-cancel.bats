@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
 # Test cancellation of a running job through the run API.
-# Uses "sleep 300" as prompt — mock-claude executes it as bash, keeping
-# the run alive long enough to cancel.
+# The real agent is asked to start a long-running Bash process, keeping the
+# run alive long enough to exercise cancellation.
 
 load '../../helpers/setup'
 
@@ -41,7 +41,8 @@ EOF
     assert_success
 
     echo "# Step 2: Create a long-running fixture..."
-    run create_compose_run_fixture "$AGENT_NAME" "sleep 300"
+    run create_compose_run_fixture "$AGENT_NAME" \
+        "Run the exact Bash command \`sleep 300\` and wait for it to finish."
     assert_success
     RUN_ID=$(jq -er '.runId' <<< "$output")
     [ -n "$RUN_ID" ] || {

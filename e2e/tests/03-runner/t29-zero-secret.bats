@@ -74,7 +74,8 @@ teardown_file() {
     local secret_value="secret-${UNIQUE_ID}"
 
     run run_compose_fixture "$AGENT_MASK" \
-        "echo SECRET=\$MY_SECRET" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo SECRET=\$MY_SECRET" \
         "$(jq -nc --arg secret "$secret_value" --arg artifact "$ARTIFACT_NAME" \
             '{
                 secrets: {MY_SECRET: $secret},
@@ -91,7 +92,8 @@ teardown_file() {
     local secret2_value="secret2-${UNIQUE_ID}"
 
     run run_compose_fixture "$AGENT_MULTI" \
-        "echo API_KEY=\$API_KEY && echo CLI_SECRET=\$CLI_SECRET" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo API_KEY=\$API_KEY && echo CLI_SECRET=\$CLI_SECRET" \
         "$(jq -nc \
             --arg secret1 "$secret1_value" \
             --arg secret2 "$secret2_value" \

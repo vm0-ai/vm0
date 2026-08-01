@@ -55,7 +55,9 @@ teardown_file() {
 EOF
 )
 
-    run run_compose_fixture "$AGENT_NAME" "$prompt"
+    run run_compose_fixture "$AGENT_NAME" \
+        "$prompt" \
+        '{"realAgentInPreview":false}'
 
     assert_success
     assert_output --partial '"subtype":"init"'

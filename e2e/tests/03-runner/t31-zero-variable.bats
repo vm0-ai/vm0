@@ -80,7 +80,8 @@ teardown_file() {
     set_e2e_variable "$VAR_NAME_EXPAND" "$var_value"
 
     run run_compose_fixture "$AGENT_EXPAND" \
-        "echo MY_VAR=\$MY_VAR" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo MY_VAR=\$MY_VAR" \
         "$(jq -nc --arg artifact "$ARTIFACT_NAME" \
             '{artifacts: [{name: $artifact, mountPath: "/home/user/workspace"}]}')"
 
@@ -94,7 +95,8 @@ teardown_file() {
     set_e2e_variable "$VAR_NAME_OVERRIDE" "$server_value"
 
     run run_compose_fixture "$AGENT_OVERRIDE" \
-        "echo MY_VAR=\$MY_VAR" \
+        "Run the exact Bash command below, wait for it to finish, and include its output:
+echo MY_VAR=\$MY_VAR" \
         "$(jq -nc \
             --arg variableName "$VAR_NAME_OVERRIDE" \
             --arg variableValue "$direct_value" \

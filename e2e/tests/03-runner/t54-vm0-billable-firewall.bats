@@ -98,7 +98,7 @@ teardown_file() {
 }
 
 @test "t54-1: vm0 meta-provider — firewall billable" {
-    with_real_agent_preview_claim zero_chat_run_with_model \
+    zero_chat_run_with_model \
         "$AGENT_ID" \
         "Reply with exactly: DONE" \
         "claude-sonnet-4-6" \
