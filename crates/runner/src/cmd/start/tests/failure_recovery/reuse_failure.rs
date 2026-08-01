@@ -58,7 +58,7 @@ async fn unpark_failure_destroys_idle_entry_and_falls_through() {
 
     let run_handle = tokio::spawn(run(config));
 
-    // Push a job for the same session — runner will try to reuse,
+    // Push a job for the same reuse key — runner will try to reuse,
     // unpark() will fail, idle entry gets destroyed, fresh create runs.
     let run_id = RunId::new_v4();
     env.provider.set_claim_result(

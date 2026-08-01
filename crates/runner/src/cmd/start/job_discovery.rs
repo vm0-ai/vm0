@@ -12,7 +12,7 @@ use sandbox::SandboxId;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
-use super::active_sessions::ActiveReuseKeyGuard;
+use super::active_reuse_keys::ActiveReuseKeyGuard;
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::{
     SharedIdlePool, add_preparing_run_with_idle_status_snapshot,
@@ -533,7 +533,7 @@ async fn prepare_affinity_protected_candidate(
         reuse_key_fingerprint = %reuse_key_fingerprint,
         reuse_key_kind = reuse_key_kind(&reuse_key),
         delay_ms = delay.as_millis(),
-        "same-session affinity protected by another runner, deferring claim"
+        "same-reuse-key affinity protected by another runner, deferring claim"
     );
     ctx.spawn_ctx.provider.defer_poll_after(delay).await;
     None

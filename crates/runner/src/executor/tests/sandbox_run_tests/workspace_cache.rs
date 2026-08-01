@@ -1,11 +1,11 @@
 use super::*;
 
-fn set_session_affinity(
+fn set_reuse_and_session_identity(
     context: &mut crate::types::ExecutionContext,
     session_id: &str,
     session_history: &str,
 ) {
-    context.reuse_key = Some(format!("session:{session_id}"));
+    context.reuse_key = Some(format!("thread:workspace-cache-{session_id}"));
     context.resume_session = Some(ResumeSession::inline(
         session_id.into(),
         session_history.into(),
@@ -16,7 +16,7 @@ fn set_session_affinity(
 async fn workspace_mount_retry_starts_a_new_codex_catalog_prefetch_owner() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -29,7 +29,7 @@ async fn workspace_mount_retry_starts_a_new_codex_catalog_prefetch_owner() {
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = codex_oauth_context();
     let session_id = "00000000-0000-4000-8000-000000023425";
-    set_session_affinity(&mut ctx, session_id, r#"{"type":"init"}"#);
+    set_reuse_and_session_identity(&mut ctx, session_id, r#"{"type":"init"}"#);
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -76,7 +76,7 @@ async fn workspace_mount_retry_starts_a_new_codex_catalog_prefetch_owner() {
 async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -104,7 +104,7 @@ async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() 
         storages: vec![storage],
         artifacts: Vec::new(),
     });
-    set_session_affinity(&mut ctx, "sess-cache-hit", r#"{"type":"init"}"#);
+    set_reuse_and_session_identity(&mut ctx, "sess-cache-hit", r#"{"type":"init"}"#);
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -196,7 +196,7 @@ async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() 
 async fn execute_inner_dns_readiness_retry_replaces_consumed_workspace_cache_hit() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -206,7 +206,7 @@ async fn execute_inner_dns_readiness_retry_replaces_consumed_workspace_cache_hit
     }));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
-    set_session_affinity(&mut ctx, "sess-cache-dns-retry", r#"{"type":"init"}"#);
+    set_reuse_and_session_identity(&mut ctx, "sess-cache-dns-retry", r#"{"type":"init"}"#);
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -273,7 +273,7 @@ async fn execute_inner_dns_readiness_retry_replaces_consumed_workspace_cache_hit
 async fn process_timeout_invalidates_consumed_workspace_cache_without_fallback() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -284,7 +284,7 @@ async fn process_timeout_invalidates_consumed_workspace_cache_without_fallback()
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let session_id = "sess-cache-dns-process-timeout";
     let mut ctx = minimal_context();
-    set_session_affinity(&mut ctx, session_id, r#"{"type":"init"}"#);
+    set_reuse_and_session_identity(&mut ctx, session_id, r#"{"type":"init"}"#);
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -341,8 +341,7 @@ async fn process_timeout_invalidates_consumed_workspace_cache_without_fallback()
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: &params.profile_name,
-                reuse_key: Some(&format!("session:{session_id}")),
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(&format!("thread:workspace-cache-{session_id}")),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
             },
@@ -356,7 +355,7 @@ async fn process_timeout_invalidates_consumed_workspace_cache_without_fallback()
 async fn dns_replacement_records_completion_when_fresh_storage_prepare_fails() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -379,7 +378,7 @@ async fn dns_replacement_records_completion_when_fresh_storage_prepare_fails() {
     let storage_fingerprints =
         crate::storage_fingerprints::StorageFingerprints::from_manifest(&manifest);
     ctx.storage_manifest = Some(manifest);
-    set_session_affinity(
+    set_reuse_and_session_identity(
         &mut ctx,
         "sess-cache-dns-prepare-failure",
         r#"{"type":"init"}"#,
@@ -439,7 +438,7 @@ async fn dns_replacement_records_completion_when_fresh_storage_prepare_fails() {
 async fn execute_inner_cache_hit_retry_requires_completed_cleanup() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -449,7 +448,7 @@ async fn execute_inner_cache_hit_retry_requires_completed_cleanup() {
     overrides.push_destroy_panic("simulated destroy panic");
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
-    set_session_affinity(
+    set_reuse_and_session_identity(
         &mut ctx,
         "sess-cache-cleanup-uncertain",
         r#"{"type":"init"}"#,
@@ -494,13 +493,13 @@ async fn execute_inner_cache_hit_retry_requires_completed_cleanup() {
 async fn execute_inner_uses_workspace_cache_when_configured() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
-    set_session_affinity(&mut ctx, "sess-cache-default", r#"{"type":"init"}"#);
+    set_reuse_and_session_identity(&mut ctx, "sess-cache-default", r#"{"type":"init"}"#);
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -562,22 +561,22 @@ async fn execute_inner_uses_workspace_cache_when_configured() {
 async fn execute_inner_records_workspace_cache_lock_busy_prepare_telemetry() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache);
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
     let session_id = "sess-cache-lock-busy-prepare";
-    set_session_affinity(&mut ctx, session_id, r#"{"type":"init"}"#);
+    set_reuse_and_session_identity(&mut ctx, session_id, r#"{"type":"init"}"#);
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
     };
-    let cache_key = scoped_session_workspace_cache_key(
+    let cache_key = scoped_workspace_image_cache_key(
         "",
         &params.profile_name,
-        &format!("session:{session_id}"),
+        &format!("thread:workspace-cache-{session_id}"),
         CANONICAL_WORKING_DIR,
         u64::from(params.workspace_disk_mb) * 1024 * 1024,
     );
@@ -627,7 +626,7 @@ async fn execute_inner_records_workspace_cache_lock_busy_prepare_telemetry() {
 async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_failure() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
     tokio::fs::remove_file(dir.path().join("proxy-registry.json"))
@@ -636,7 +635,7 @@ async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_f
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
-    set_session_affinity(&mut ctx, "sess-register-fail", r#"{"type":"init"}"#);
+    set_reuse_and_session_identity(&mut ctx, "sess-register-fail", r#"{"type":"init"}"#);
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -704,7 +703,7 @@ async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_f
 async fn execute_job_reuse_uses_workspace_cache_when_configured() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths);
+    let cache = WorkspaceImageCache::new(runner_paths);
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
     let params = JobParams {
@@ -729,7 +728,7 @@ async fn execute_job_reuse_uses_workspace_cache_when_configured() {
     let (idle_sandbox, _lease) = make_reusable_idle_sandbox(sandbox, source_ip, session_id).await;
 
     let mut ctx = minimal_context();
-    set_session_affinity(&mut ctx, session_id, r#"{"type":"init"}"#);
+    set_reuse_and_session_identity(&mut ctx, session_id, r#"{"type":"init"}"#);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -744,8 +743,7 @@ async fn execute_job_reuse_uses_workspace_cache_when_configured() {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: &params.profile_name,
-                reuse_key: Some(&format!("session:{session_id}")),
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(&format!("thread:workspace-cache-{session_id}")),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
             },
@@ -759,7 +757,7 @@ async fn execute_job_reuse_uses_workspace_cache_when_configured() {
 async fn cached_reuse_workspace_promotion_identity_mismatch_stops_before_agent() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
     let promotion_params = JobParams {
@@ -780,7 +778,7 @@ async fn cached_reuse_workspace_promotion_identity_mismatch_stops_before_agent()
     .await;
 
     let mut ctx = minimal_context();
-    set_session_affinity(&mut ctx, session_id, r#"{"type":"init"}"#);
+    set_reuse_and_session_identity(&mut ctx, session_id, r#"{"type":"init"}"#);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -806,8 +804,7 @@ async fn cached_reuse_workspace_promotion_identity_mismatch_stops_before_agent()
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: &promotion_params.profile_name,
-                reuse_key: Some(&format!("session:{session_id}")),
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(&format!("thread:workspace-cache-{session_id}")),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(promotion_params.workspace_disk_mb) * 1024 * 1024,
             },
@@ -821,7 +818,7 @@ async fn cached_reuse_workspace_promotion_identity_mismatch_stops_before_agent()
 async fn execute_job_reuse_without_workspace_cache_config_invalidates_held_cache_entry() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
     let config = test_executor_config(dir.path()).await;
     let params = JobParams {
         workspace_disk_mb: 16,
@@ -833,7 +830,7 @@ async fn execute_job_reuse_without_workspace_cache_config_invalidates_held_cache
             .await;
 
     let mut ctx = minimal_context();
-    set_session_affinity(&mut ctx, session_id, r#"{"type":"init"}"#);
+    set_reuse_and_session_identity(&mut ctx, session_id, r#"{"type":"init"}"#);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -846,8 +843,7 @@ async fn execute_job_reuse_without_workspace_cache_config_invalidates_held_cache
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: &params.profile_name,
-                reuse_key: Some(&format!("session:{session_id}")),
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(&format!("thread:workspace-cache-{session_id}")),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
             },
@@ -861,7 +857,7 @@ async fn execute_job_reuse_without_workspace_cache_config_invalidates_held_cache
 async fn unconfigured_cache_reuse_stops_when_cache_invalidation_fails() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
     let config = test_executor_config(dir.path()).await;
     let params = JobParams {
         workspace_disk_mb: 16,
@@ -875,21 +871,21 @@ async fn unconfigured_cache_reuse_stops_when_cache_invalidation_fails() {
         session_id,
     )
     .await;
-    let cache_key = scoped_session_workspace_cache_key(
+    let cache_key = scoped_workspace_image_cache_key(
         "",
         &params.profile_name,
-        &format!("session:{session_id}"),
+        &format!("thread:workspace-cache-{session_id}"),
         CANONICAL_WORKING_DIR,
         u64::from(params.workspace_disk_mb) * 1024 * 1024,
     );
-    let current_image = runner_paths.session_workspace_cache_current_image(&cache_key);
+    let current_image = runner_paths.workspace_image_cache_current_image(&cache_key);
     tokio::fs::create_dir_all(current_image.parent().unwrap())
         .await
         .unwrap();
     tokio::fs::create_dir(&current_image).await.unwrap();
 
     let mut ctx = minimal_context();
-    set_session_affinity(&mut ctx, session_id, r#"{"type":"init"}"#);
+    set_reuse_and_session_identity(&mut ctx, session_id, r#"{"type":"init"}"#);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -916,7 +912,7 @@ async fn unconfigured_cache_reuse_stops_when_cache_invalidation_fails() {
 async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
     let params = JobParams {
@@ -929,7 +925,7 @@ async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
             .await;
 
     let mut ctx = minimal_context();
-    set_session_affinity(&mut ctx, session_id, r#"{"type":"init"}"#);
+    set_reuse_and_session_identity(&mut ctx, session_id, r#"{"type":"init"}"#);
     ctx.environment = Some(HashMap::from([(
         "OPENAI_API_KEY".into(),
         "sk-proj-real-openai-secret".into(),
@@ -953,8 +949,7 @@ async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: &params.profile_name,
-                reuse_key: Some(&format!("session:{session_id}")),
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(&format!("thread:workspace-cache-{session_id}")),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
             },
@@ -972,7 +967,7 @@ async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
 async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidden() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
     let params = JobParams {
@@ -986,7 +981,7 @@ async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidd
 
     let raw_session_id = "../invalid-resume";
     let mut ctx = minimal_context();
-    set_session_affinity(&mut ctx, raw_session_id, r#"{"type":"init"}"#);
+    set_reuse_and_session_identity(&mut ctx, raw_session_id, r#"{"type":"init"}"#);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -1009,8 +1004,7 @@ async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidd
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: &params.profile_name,
-                reuse_key: Some(&format!("session:{session_id}")),
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(&format!("thread:workspace-cache-{session_id}")),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
             },
@@ -1028,7 +1022,7 @@ async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidd
 async fn cached_reuse_invalid_resume_session_without_promotion_skips_workspace_lease() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths);
+    let cache = WorkspaceImageCache::new(runner_paths);
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache);
     let params = JobParams {
@@ -1055,7 +1049,7 @@ async fn cached_reuse_invalid_resume_session_without_promotion_skips_workspace_l
 
     let raw_session_id = "../invalid-resume";
     let mut ctx = minimal_context();
-    set_session_affinity(&mut ctx, raw_session_id, r#"{"type":"init"}"#);
+    set_reuse_and_session_identity(&mut ctx, raw_session_id, r#"{"type":"init"}"#);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -1074,7 +1068,7 @@ async fn cached_reuse_invalid_resume_session_without_promotion_skips_workspace_l
 }
 
 async fn reusable_idle_sandbox_with_workspace_promotion(
-    cache: &SessionWorkspaceCache,
+    cache: &WorkspaceImageCache,
     runner_paths: &RunnerPaths,
     params: &JobParams,
     session_id: &str,
@@ -1089,7 +1083,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
     };
     use crate::storage_fingerprints::StorageFingerprints;
 
-    let reuse_key = format!("session:{session_id}");
+    let reuse_key = format!("thread:workspace-cache-{session_id}");
     let current_image =
         seed_workspace_image_cache(cache, runner_paths, session_id, params.workspace_disk_mb).await;
 
@@ -1102,7 +1096,6 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
                 sandbox_id,
                 profile_name: &params.profile_name,
                 reuse_key: Some(&reuse_key),
-                cli_agent_session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
             },
@@ -1115,7 +1108,6 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
             crate::workspace_image_cache::WorkspaceImagePromotionRequest {
                 run_id,
                 sandbox_id,
-                cli_agent_session_id_override: Some(session_id),
                 restored_session_identity: None,
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: "2026-06-01T00:00:01.000Z".into(),
@@ -1185,7 +1177,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
 }
 
 async fn reusable_idle_sandbox_with_fresh_workspace_promotion(
-    cache: &SessionWorkspaceCache,
+    cache: &WorkspaceImageCache,
     runner_paths: &RunnerPaths,
     params: &JobParams,
     session_id: &str,
@@ -1199,7 +1191,7 @@ async fn reusable_idle_sandbox_with_fresh_workspace_promotion(
     };
     use crate::storage_fingerprints::StorageFingerprints;
 
-    let reuse_key = format!("session:{session_id}");
+    let reuse_key = format!("thread:workspace-cache-{session_id}");
     let run_id = RunId::new_v4();
     let sandbox_id = SandboxId::new_v4();
     let lease = cache
@@ -1209,7 +1201,6 @@ async fn reusable_idle_sandbox_with_fresh_workspace_promotion(
                 sandbox_id,
                 profile_name: &params.profile_name,
                 reuse_key: Some(&reuse_key),
-                cli_agent_session_id: None,
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
             },
@@ -1229,7 +1220,6 @@ async fn reusable_idle_sandbox_with_fresh_workspace_promotion(
             crate::workspace_image_cache::WorkspaceImagePromotionRequest {
                 run_id,
                 sandbox_id,
-                cli_agent_session_id_override: Some(session_id),
                 restored_session_identity: None,
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: "2026-06-01T00:00:01.000Z".into(),

@@ -174,7 +174,6 @@ pub(super) async fn finalize_sandbox_for_completion(
         workspace_image.into_promotion_context(WorkspaceImagePromotionRequest {
             run_id,
             sandbox_id,
-            cli_agent_session_id_override: resolved_cli_agent_session_id,
             restored_session_identity: restored_session_identity.as_ref(),
             terminal_status,
             completed_at: completed_at.clone(),
@@ -787,7 +786,7 @@ mod tests {
     use crate::storage_plan::build_storage_plan;
     use crate::types::{ResumeSessionHistoryRefKind, SandboxReuseResult};
     use crate::workspace_image_cache::{
-        SessionWorkspaceCache, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
+        WorkspaceImageCache, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
         WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityRequest,
         WorkspaceImagePromotionOutcome, WorkspaceImagePromotionRequest,
         WorkspaceSessionHistorySidecarRepresentation,
@@ -898,10 +897,10 @@ mod tests {
 
     async fn prepare_test_workspace_image_lease(
         paths: &RunnerPaths,
-        cache: &SessionWorkspaceCache,
+        cache: &WorkspaceImageCache,
         run_id: RunId,
         sandbox_id: SandboxId,
-        session_id: &str,
+        reuse_key: &str,
     ) -> WorkspaceImageLease {
         let lease = cache
             .prepare(WorkspaceImagePrepareRequest {
@@ -909,8 +908,7 @@ mod tests {
                     run_id,
                     sandbox_id,
                     profile_name: "vm0/default",
-                    reuse_key: Some(session_id),
-                    cli_agent_session_id: Some(session_id),
+                    reuse_key: Some(reuse_key),
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
                 },
@@ -974,7 +972,7 @@ mod tests {
 
     async fn seed_workspace_cache_with_sidecar(
         paths: &RunnerPaths,
-        cache: &SessionWorkspaceCache,
+        cache: &WorkspaceImageCache,
         reuse_key: &str,
         session_id: &str,
         history: &[u8],
@@ -993,7 +991,6 @@ mod tests {
                     sandbox_id,
                     profile_name: "vm0/default",
                     reuse_key: Some(reuse_key),
-                    cli_agent_session_id: Some(session_id),
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
                 },
@@ -1010,7 +1007,6 @@ mod tests {
             .into_promotion_context(WorkspaceImagePromotionRequest {
                 run_id,
                 sandbox_id,
-                cli_agent_session_id_override: None,
                 restored_session_identity: Some(&restored_session_identity),
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: "2026-07-31T00:00:00.000Z".into(),
@@ -1045,7 +1041,6 @@ mod tests {
         lease: WorkspaceImageLease,
         run_id: RunId,
         sandbox_id: SandboxId,
-        session_id: &str,
         terminal_status: WorkspaceCacheTerminalStatus,
         storage_fingerprints: crate::storage_fingerprints::StorageFingerprints,
     ) -> WorkspaceImagePromotionContext {
@@ -1053,7 +1048,6 @@ mod tests {
             .into_promotion_context(WorkspaceImagePromotionRequest {
                 run_id,
                 sandbox_id,
-                cli_agent_session_id_override: Some(session_id),
                 restored_session_identity: None,
                 terminal_status,
                 completed_at: local_completed_at(),
@@ -1147,7 +1141,7 @@ mod tests {
         let workspace_dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(workspace_dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         let workspace_image = prepare_test_workspace_image_lease(
             &paths,
             &cache,
@@ -1316,7 +1310,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let lease =
@@ -1327,7 +1321,6 @@ mod tests {
             lease,
             run_id,
             sandbox_id,
-            "sess-promote",
             WorkspaceCacheTerminalStatus::Success,
             crate::storage_fingerprints::StorageFingerprints::default(),
         );
@@ -1349,7 +1342,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
 
         for (terminal_name, terminal_status) in [
             ("nonzero", WorkspaceCacheTerminalStatus::NonzeroExit),
@@ -1386,7 +1379,6 @@ mod tests {
                     seed_lease,
                     seed_run_id,
                     seed_sandbox_id,
-                    &session_id,
                     WorkspaceCacheTerminalStatus::Success,
                     previous_storage.clone(),
                 );
@@ -1454,7 +1446,6 @@ mod tests {
                     lease,
                     run_id,
                     sandbox_id,
-                    &session_id,
                     terminal_status,
                     StorageFingerprints::from_manifest(&current_manifest),
                 );
@@ -1473,7 +1464,6 @@ mod tests {
                             sandbox_id: SandboxId::new_v4(),
                             profile_name: "vm0/default",
                             reuse_key: Some(&session_id),
-                            cli_agent_session_id: Some(&session_id),
                             working_dir: CANONICAL_WORKING_DIR,
                             image_size_bytes: b"image".len() as u64,
                         },
@@ -1531,7 +1521,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let lease =
@@ -1543,7 +1533,6 @@ mod tests {
             lease,
             run_id,
             sandbox_id,
-            "sess-failed",
             WorkspaceCacheTerminalStatus::Success,
             crate::storage_fingerprints::StorageFingerprints::default(),
         );
@@ -1567,7 +1556,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let workspace_image = cache
@@ -1577,7 +1566,6 @@ mod tests {
                     sandbox_id,
                     profile_name: "vm0/default",
                     reuse_key: Some("unused-context-session"),
-                    cli_agent_session_id: None,
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
                 },
@@ -1637,7 +1625,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let workspace_image = cache
@@ -1647,7 +1635,6 @@ mod tests {
                     sandbox_id,
                     profile_name: "vm0/default",
                     reuse_key: Some("sess-mismatch"),
-                    cli_agent_session_id: Some("sess-mismatch"),
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
                 },
@@ -1720,7 +1707,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         let reuse_key = "thread:rotating-provider";
         let previous_session_id = "claude-session-a";
         let previous_history = br#"{"type":"message","content":"claude-a"}"#;
@@ -1733,7 +1720,7 @@ mod tests {
         )
         .await;
         let seeded_entry = cache.inspect().await.unwrap().entries.remove(0);
-        let entry_dir = paths.session_workspace_cache_entry_dir(&seeded_entry.cache_key);
+        let entry_dir = paths.workspace_image_cache_entry_dir(&seeded_entry.cache_key);
         let sidecar_metadata_path = entry_dir.join("session-history.metadata.json");
 
         let run_id = RunId::new_v4();
@@ -1745,7 +1732,6 @@ mod tests {
                     sandbox_id,
                     profile_name: "vm0/default",
                     reuse_key: Some(reuse_key),
-                    cli_agent_session_id: None,
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
                 },
@@ -1779,7 +1765,7 @@ mod tests {
             .await
             .unwrap();
         tokio::fs::rename(
-            paths.session_workspace_cache_current_image(&seeded_entry.cache_key),
+            paths.workspace_image_cache_current_image(&seeded_entry.cache_key),
             paths.active_workspace_image(&sandbox_id),
         )
         .await
@@ -1827,7 +1813,7 @@ mod tests {
         assert_eq!(states.len(), 1);
         assert_eq!(states[0].reuse_key, reuse_key);
         let workspace_metadata: serde_json::Value = serde_json::from_slice(
-            &tokio::fs::read(paths.session_workspace_cache_metadata(&seeded_entry.cache_key))
+            &tokio::fs::read(paths.workspace_image_cache_metadata(&seeded_entry.cache_key))
                 .await
                 .unwrap(),
         )
@@ -1849,7 +1835,6 @@ mod tests {
                     sandbox_id: SandboxId::new_v4(),
                     profile_name: "vm0/default",
                     reuse_key: Some(reuse_key),
-                    cli_agent_session_id: Some(previous_session_id),
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
                 },
@@ -1874,7 +1859,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         let reuse_key = "thread:verified-provider-rotation";
         let previous_history = br#"{"type":"message","content":"claude-a"}"#;
         let previous_identity = seed_workspace_cache_with_sidecar(
@@ -1895,7 +1880,6 @@ mod tests {
                     sandbox_id,
                     profile_name: "vm0/default",
                     reuse_key: Some(reuse_key),
-                    cli_agent_session_id: None,
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
                 },
@@ -1915,7 +1899,7 @@ mod tests {
             .await
             .unwrap();
         tokio::fs::rename(
-            paths.session_workspace_cache_current_image(&seeded_entry.cache_key),
+            paths.workspace_image_cache_current_image(&seeded_entry.cache_key),
             paths.active_workspace_image(&sandbox_id),
         )
         .await
@@ -1977,7 +1961,6 @@ mod tests {
                     sandbox_id: SandboxId::new_v4(),
                     profile_name: "vm0/default",
                     reuse_key: Some(reuse_key),
-                    cli_agent_session_id: Some(next_session_id),
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
                 },
@@ -2003,25 +1986,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finalizer_promotes_workspace_cache_from_lease_session_without_resolved_session() {
+    async fn finalizer_promotes_workspace_cache_from_reuse_key_without_resolved_session() {
         let (_budget, lease) = test_budget_lease();
         let fixture = FinalizeTestFixture::new().await;
         let network_log_session = fixture.network_log_session().await;
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        let session_id = "sess-lease-only";
+        let reuse_key = "thread:lease-only";
         let workspace_image = cache
             .prepare(WorkspaceImagePrepareRequest {
                 identity: WorkspaceImageLeaseIdentity {
                     run_id,
                     sandbox_id,
                     profile_name: "vm0/default",
-                    reuse_key: Some(session_id),
-                    cli_agent_session_id: Some(session_id),
+                    reuse_key: Some(reuse_key),
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
                 },
@@ -2049,7 +2031,7 @@ mod tests {
         let workspace_cache_snapshot = context.workspace_cache_snapshot.clone();
 
         let _completion_ready = finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("lease-session-promotion"))),
+            Some(Box::new(MockSandbox::new("reuse-key-promotion"))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 run_id,
@@ -2066,12 +2048,12 @@ mod tests {
         assert_eq!(fixture.idle_pool.lock().await.len(), 0);
         let cache_states = cache.held_workspace_states().await;
         assert_eq!(cache_states.len(), 1);
-        assert_eq!(cache_states[0].reuse_key, session_id);
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
+        assert_eq!(cache_states[0].reuse_key, reuse_key);
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
         let snapshot_states =
             workspace_cache_snapshot.current_held_workspace_states(&active_reuse_keys, None);
         assert_eq!(snapshot_states.len(), 1);
-        assert_eq!(snapshot_states[0].reuse_key, session_id);
+        assert_eq!(snapshot_states[0].reuse_key, reuse_key);
         assert_eq!(snapshot_states[0].workspace_caches.len(), 1);
         assert_eq!(
             snapshot_states[0].workspace_caches[0].profile,
@@ -2087,7 +2069,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let reuse_key = "thread:first-run-failure";
@@ -2098,7 +2080,6 @@ mod tests {
                     sandbox_id,
                     profile_name: "vm0/default",
                     reuse_key: Some(reuse_key),
-                    cli_agent_session_id: None,
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
                 },
@@ -2162,14 +2143,14 @@ mod tests {
         );
         let metadata: serde_json::Value = serde_json::from_slice(
             &tokio::fs::read(
-                paths.session_workspace_cache_metadata(&inspection.entries[0].cache_key),
+                paths.workspace_image_cache_metadata(&inspection.entries[0].cache_key),
             )
             .await
             .unwrap(),
         )
         .unwrap();
         assert!(metadata.get("cliAgentSessionId").is_none());
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
         let snapshot_states =
             workspace_cache_snapshot.current_held_workspace_states(&active_reuse_keys, None);
         assert_eq!(snapshot_states.len(), 1);
@@ -2185,7 +2166,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let session_id = "sess-active-stop-error";
@@ -2231,7 +2212,7 @@ mod tests {
         assert_eq!(overrides.destroy_call_count(), 1);
         assert!(cache.held_workspace_states().await.is_empty());
         assert_eq!(fixture.idle_pool.lock().await.len(), 0);
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
         assert!(
             workspace_cache_snapshot
                 .current_held_workspace_states(&active_reuse_keys, None)
@@ -2258,7 +2239,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let workspace_image = cache
@@ -2268,7 +2249,6 @@ mod tests {
                     sandbox_id,
                     profile_name: "vm0/default",
                     reuse_key: Some("sess-new"),
-                    cli_agent_session_id: Some("sess-new"),
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: b"image".len() as u64,
                 },
@@ -2323,7 +2303,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
 
         let old_run_id = RunId::new_v4();
         let old_sandbox_id = SandboxId::new_v4();
@@ -2339,7 +2319,6 @@ mod tests {
             old_workspace_image,
             old_run_id,
             old_sandbox_id,
-            session_id,
             WorkspaceCacheTerminalStatus::Success,
             crate::storage_fingerprints::StorageFingerprints::default(),
         );

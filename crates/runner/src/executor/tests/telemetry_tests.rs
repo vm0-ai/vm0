@@ -449,7 +449,7 @@ const RUNNER_PRE_SPAWN_PHASE_ACTIONS: &[&str] = &[
     "runner_claim_session_history_materializer_start",
     "runner_claim_device_rate_limits",
     "runner_claim_idle_reuse_lookup",
-    "runner_claim_held_session_state_refresh",
+    "runner_claim_workspace_cache_state_lookup",
     "runner_claim_workspace_promotion_validation",
     "runner_claim_idle_unpark",
     "runner_claim_active_status_publish",

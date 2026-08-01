@@ -39,16 +39,13 @@ use super::types::{
     WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarMiss,
     WorkspaceSessionHistorySidecarPromotionSource, WorkspaceSessionHistorySidecarPublication,
 };
-use super::{
-    CACHE_FORMAT_VERSION, CACHE_KEY_VERSION, SessionWorkspaceCache, WORKSPACE_DRIVE_LAYOUT,
-};
+use super::{CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceImageCache};
 
 pub(crate) struct WorkspaceImageLease {
-    cache: SessionWorkspaceCache,
+    cache: WorkspaceImageCache,
     pub(super) cache_key: Option<String>,
     profile_name: String,
     reuse_key: Option<String>,
-    cli_agent_session_id: Option<String>,
     working_dir: String,
     active_image: PathBuf,
     pub(super) source_image: Option<PathBuf>,
@@ -61,14 +58,13 @@ pub(crate) struct WorkspaceImageLease {
 }
 
 pub(crate) struct WorkspaceImagePromotionContext {
-    cache: SessionWorkspaceCache,
+    cache: WorkspaceImageCache,
     cache_key: String,
     entry_lock: Option<Flock<std::fs::File>>,
     run_id: RunId,
     sandbox_id: sandbox::SandboxId,
     profile_name: String,
     reuse_key: String,
-    cli_agent_session_id: Option<String>,
     working_dir: String,
     active_image: PathBuf,
     image_size_bytes: u64,
@@ -80,7 +76,7 @@ pub(crate) struct WorkspaceImagePromotionContext {
 }
 
 pub(crate) struct WorkspaceSessionHistorySidecarEntryGuard {
-    cache: SessionWorkspaceCache,
+    cache: WorkspaceImageCache,
     cache_key: String,
     run_id: RunId,
     restored_session_identity: crate::restored_session_identity::RestoredSessionIdentity,
@@ -104,7 +100,6 @@ struct WorkspaceImagePromotionInput<'a> {
     cache_key: &'a str,
     profile_name: &'a str,
     reuse_key: &'a str,
-    cli_agent_session_id: Option<&'a str>,
     working_dir: &'a str,
     active_image: &'a Path,
     image_size_bytes: u64,
@@ -117,14 +112,12 @@ struct WorkspaceImagePromotionInput<'a> {
 struct WorkspaceImagePromotionTarget {
     cache_key: String,
     reuse_key: String,
-    cli_agent_session_id: Option<String>,
 }
 
 struct WorkspaceImageLeaseCommon<'a> {
     run_id: RunId,
     profile_name: &'a str,
     reuse_key: Option<&'a str>,
-    cli_agent_session_id: Option<&'a str>,
     raw_working_dir: &'a str,
     normalized_working_dir: Option<String>,
     active_image: PathBuf,
@@ -132,10 +125,9 @@ struct WorkspaceImageLeaseCommon<'a> {
 }
 
 struct WorkspaceImageLeaseBase {
-    cache: SessionWorkspaceCache,
+    cache: WorkspaceImageCache,
     profile_name: String,
     reuse_key: Option<String>,
-    cli_agent_session_id: Option<String>,
     working_dir: String,
     active_image: PathBuf,
     image_size_bytes: u64,
@@ -157,12 +149,11 @@ fn workspace_image_size_mb(image_size_bytes: u64) -> u32 {
 }
 
 impl<'a> WorkspaceImageLeaseCommon<'a> {
-    fn new(cache: &SessionWorkspaceCache, identity: WorkspaceImageLeaseIdentity<'a>) -> Self {
+    fn new(cache: &WorkspaceImageCache, identity: WorkspaceImageLeaseIdentity<'a>) -> Self {
         Self {
             run_id: identity.run_id,
             profile_name: identity.profile_name,
             reuse_key: identity.reuse_key,
-            cli_agent_session_id: identity.cli_agent_session_id,
             raw_working_dir: identity.working_dir,
             normalized_working_dir: normalize_safe_guest_working_dir(identity.working_dir),
             active_image: cache.paths().active_workspace_image(&identity.sandbox_id),
@@ -178,12 +169,7 @@ impl<'a> WorkspaceImageLeaseCommon<'a> {
         self.safe_working_dir().unwrap_or(self.raw_working_dir)
     }
 
-    fn cache_key(
-        &self,
-        cache: &SessionWorkspaceCache,
-        reuse_key: &str,
-        working_dir: &str,
-    ) -> String {
+    fn cache_key(&self, cache: &WorkspaceImageCache, reuse_key: &str, working_dir: &str) -> String {
         cache.scoped_cache_key(
             self.profile_name,
             reuse_key,
@@ -192,12 +178,11 @@ impl<'a> WorkspaceImageLeaseCommon<'a> {
         )
     }
 
-    fn lease_base(&self, cache: &SessionWorkspaceCache) -> WorkspaceImageLeaseBase {
+    fn lease_base(&self, cache: &WorkspaceImageCache) -> WorkspaceImageLeaseBase {
         WorkspaceImageLeaseBase {
             cache: cache.clone(),
             profile_name: self.profile_name.to_owned(),
             reuse_key: self.reuse_key.map(str::to_owned),
-            cli_agent_session_id: self.cli_agent_session_id.map(str::to_owned),
             working_dir: self.lease_working_dir().to_owned(),
             active_image: self.active_image.clone(),
             image_size_bytes: self.image_size_bytes,
@@ -212,7 +197,6 @@ impl WorkspaceImageLease {
             cache_key: state.cache_key,
             profile_name: base.profile_name,
             reuse_key: base.reuse_key,
-            cli_agent_session_id: base.cli_agent_session_id,
             working_dir: base.working_dir,
             active_image: base.active_image,
             source_image: state.source_image,
@@ -226,7 +210,7 @@ impl WorkspaceImageLease {
     }
 }
 
-impl SessionWorkspaceCache {
+impl WorkspaceImageCache {
     pub(crate) fn expected_promotion_identity(
         &self,
         request: WorkspaceImagePromotionIdentityRequest<'_>,
@@ -430,7 +414,7 @@ impl SessionWorkspaceCache {
             }
         };
 
-        let entry_dir = self.session_workspace_cache_entry_dir(&cache_key);
+        let entry_dir = self.workspace_image_cache_entry_dir(&cache_key);
         match remove_non_directory_workspace_cache_entry(&entry_dir).await {
             Ok(true) => {
                 info!(
@@ -468,8 +452,8 @@ impl SessionWorkspaceCache {
             }
         }
 
-        let metadata_path = self.session_workspace_cache_metadata(&cache_key);
-        let current_path = self.session_workspace_cache_current_image(&cache_key);
+        let metadata_path = self.workspace_image_cache_metadata(&cache_key);
+        let current_path = self.workspace_image_cache_current_image(&cache_key);
         let hit = match self
             .read_valid_metadata(
                 &metadata_path,
@@ -517,7 +501,7 @@ impl SessionWorkspaceCache {
                     error = %e,
                     "workspace image cache metadata invalid; using fresh workspace image"
                 );
-                let entry_dir = self.session_workspace_cache_entry_dir(&cache_key);
+                let entry_dir = self.workspace_image_cache_entry_dir(&cache_key);
                 match fs::remove_dir_all(&entry_dir).await {
                     Ok(()) => {
                         info!(
@@ -629,7 +613,7 @@ impl SessionWorkspaceCache {
             let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(cache_key)).await else {
                 continue;
             };
-            let metadata_path = self.session_workspace_cache_metadata(cache_key);
+            let metadata_path = self.workspace_image_cache_metadata(cache_key);
             let metadata = match self.read_metadata_file(&metadata_path).await {
                 Ok(metadata) => metadata,
                 Err(_) => {
@@ -683,7 +667,6 @@ impl SessionWorkspaceCache {
         profile_image_sizes_bytes: Option<&BTreeMap<&str, u64>>,
     ) -> bool {
         metadata.format_version == CACHE_FORMAT_VERSION
-            && metadata.key_version == CACHE_KEY_VERSION
             && metadata.cache_scope == self.inner.cache_scope
             && metadata.drive_layout == WORKSPACE_DRIVE_LAYOUT
             && metadata.state == WorkspaceCacheEntryState::Current
@@ -707,7 +690,7 @@ impl SessionWorkspaceCache {
         cache_key: &str,
         reason: &str,
     ) -> RunnerResult<bool> {
-        let entry_dir = self.session_workspace_cache_entry_dir(cache_key);
+        let entry_dir = self.workspace_image_cache_entry_dir(cache_key);
         match remove_workspace_cache_path_if_exists(&entry_dir).await {
             Ok(removed) => {
                 if removed {
@@ -729,7 +712,7 @@ impl SessionWorkspaceCache {
         input: WorkspaceImagePromotionInput<'_>,
     ) -> RunnerResult<WorkspaceImagePromotionOutcome> {
         let promotion_started = Instant::now();
-        let cache_dir = self.session_workspace_cache_entry_dir(input.cache_key);
+        let cache_dir = self.workspace_image_cache_entry_dir(input.cache_key);
         if remove_non_directory_workspace_cache_entry(&cache_dir).await? {
             info!(
                 run_id = %input.run_id,
@@ -738,7 +721,7 @@ impl SessionWorkspaceCache {
                 "removed non-directory workspace image cache entry before promotion"
             );
         }
-        let metadata_path = self.session_workspace_cache_metadata(input.cache_key);
+        let metadata_path = self.workspace_image_cache_metadata(input.cache_key);
         match self
             .read_valid_metadata(
                 &metadata_path,
@@ -839,7 +822,7 @@ impl SessionWorkspaceCache {
             return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
         }
         ensure_workspace_cache_entry_dir(&cache_dir).await?;
-        let tmp = self.session_workspace_cache_tmp_image(input.cache_key, input.run_id);
+        let tmp = self.workspace_image_cache_tmp_image(input.cache_key, input.run_id);
         let _ = remove_workspace_cache_path_if_exists(&tmp).await;
         let rename_started = Instant::now();
         let (transfer_mode, transfer_duration) = match fs::rename(input.active_image, &tmp).await {
@@ -922,7 +905,7 @@ impl SessionWorkspaceCache {
             );
             return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
         }
-        let current = self.session_workspace_cache_current_image(input.cache_key);
+        let current = self.workspace_image_cache_current_image(input.cache_key);
         match fs::symlink_metadata(&current).await {
             Ok(metadata) if metadata.is_dir() => {
                 remove_workspace_cache_path_if_exists(&current).await?;
@@ -967,11 +950,9 @@ impl SessionWorkspaceCache {
         let allocated = allocated_bytes(&current_metadata);
         let metadata = WorkspaceCacheMetadata {
             format_version: CACHE_FORMAT_VERSION,
-            key_version: CACHE_KEY_VERSION,
             cache_scope: self.inner.cache_scope.clone(),
             profile_name: input.profile_name.to_owned(),
             reuse_key: input.reuse_key.to_owned(),
-            cli_agent_session_id: input.cli_agent_session_id.map(str::to_owned),
             working_dir: input.working_dir.to_owned(),
             last_completed_at: input.completed_at.to_owned(),
             last_used_at: local_timestamp(),
@@ -1076,7 +1057,7 @@ impl WorkspaceImageLease {
                 .invalidate_cache_entry(run_id, cache_key, reason)
                 .await;
         }
-        let current = self.cache.session_workspace_cache_current_image(cache_key);
+        let current = self.cache.workspace_image_cache_current_image(cache_key);
         self.cache
             .invalidate_current_image(run_id, cache_key, &current, reason)
             .await
@@ -1086,7 +1067,6 @@ impl WorkspaceImageLease {
     pub(crate) async fn promote(
         self,
         run_id: RunId,
-        cli_agent_session_id_override: Option<&str>,
         terminal_status: WorkspaceCacheTerminalStatus,
         completed_at: String,
         storage_fingerprints: &StorageFingerprints,
@@ -1094,7 +1074,6 @@ impl WorkspaceImageLease {
         let Some(promotion) = self.into_promotion_context(WorkspaceImagePromotionRequest {
             run_id,
             sandbox_id: sandbox::SandboxId::new_v4(),
-            cli_agent_session_id_override,
             restored_session_identity: None,
             terminal_status,
             completed_at,
@@ -1110,10 +1089,7 @@ impl WorkspaceImageLease {
         Ok(matches!(outcome, WorkspaceImagePromotionOutcome::Promoted))
     }
 
-    fn promotion_target(
-        &self,
-        cli_agent_session_id_override: Option<&str>,
-    ) -> Option<WorkspaceImagePromotionTarget> {
+    fn promotion_target(&self) -> Option<WorkspaceImagePromotionTarget> {
         if !self.workspace_drive_enabled || !is_safe_guest_working_dir(&self.working_dir) {
             return None;
         }
@@ -1123,10 +1099,6 @@ impl WorkspaceImageLease {
                 Some(WorkspaceImagePromotionTarget {
                     cache_key: self.cache_key.clone()?,
                     reuse_key: self.reuse_key.clone()?,
-                    cli_agent_session_id: self
-                        .cli_agent_session_id
-                        .clone()
-                        .or_else(|| cli_agent_session_id_override.map(str::to_owned)),
                 })
             }
             WorkspaceCacheCheckoutResult::NoReuseKey => None,
@@ -1144,13 +1116,12 @@ impl WorkspaceImageLease {
         let WorkspaceImagePromotionRequest {
             run_id,
             sandbox_id,
-            cli_agent_session_id_override,
             restored_session_identity,
             terminal_status,
             completed_at,
             storage_fingerprints,
         } = request;
-        let target = self.promotion_target(cli_agent_session_id_override)?;
+        let target = self.promotion_target()?;
         let storage_fingerprints = match terminal_status {
             WorkspaceCacheTerminalStatus::Success => storage_fingerprints,
             WorkspaceCacheTerminalStatus::NonzeroExit | WorkspaceCacheTerminalStatus::Cancelled => {
@@ -1166,7 +1137,6 @@ impl WorkspaceImageLease {
             sandbox_id,
             profile_name: self.profile_name.clone(),
             reuse_key: target.reuse_key,
-            cli_agent_session_id: target.cli_agent_session_id,
             working_dir: self.working_dir.clone(),
             active_image: self.active_image.clone(),
             image_size_bytes: self.image_size_bytes,
@@ -1232,7 +1202,7 @@ impl WorkspaceImagePromotionContext {
 
     pub(crate) fn validate_expected_identity(
         &self,
-        cache: &SessionWorkspaceCache,
+        cache: &WorkspaceImageCache,
         request: WorkspaceImagePromotionIdentityRequest<'_>,
     ) -> Result<(), WorkspaceImagePromotionIdentityMismatch> {
         let expected = cache.expected_promotion_identity(request)?;
@@ -1320,7 +1290,6 @@ impl WorkspaceImagePromotionContext {
                 cache_key: &self.cache_key,
                 profile_name: &self.profile_name,
                 reuse_key: &self.reuse_key,
-                cli_agent_session_id: self.cli_agent_session_id.as_deref(),
                 working_dir: &self.working_dir,
                 active_image: &self.active_image,
                 image_size_bytes: self.image_size_bytes,
@@ -1341,7 +1310,6 @@ impl WorkspaceImagePromotionContext {
             sandbox_id,
             profile_name,
             reuse_key,
-            cli_agent_session_id: _,
             consumed_cache_hit,
             ..
         } = self;
@@ -1363,7 +1331,7 @@ impl WorkspaceImagePromotionContext {
                 .invalidate_cache_entry(run_id, &cache_key, reason)
                 .await;
         }
-        let current = cache.session_workspace_cache_current_image(&cache_key);
+        let current = cache.workspace_image_cache_current_image(&cache_key);
         cache
             .invalidate_current_image(run_id, &cache_key, &current, reason)
             .await
@@ -1401,7 +1369,7 @@ impl WorkspaceImagePromotionContext {
                 .invalidate_cache_entry(run_id, &cache_key, reason)
                 .await;
         }
-        let current = cache.session_workspace_cache_current_image(&cache_key);
+        let current = cache.workspace_image_cache_current_image(&cache_key);
         cache
             .invalidate_current_image(run_id, &cache_key, &current, reason)
             .await
@@ -1440,7 +1408,6 @@ impl WorkspaceImagePromotionContext {
             sandbox_id: _,
             profile_name,
             reuse_key,
-            cli_agent_session_id,
             working_dir,
             active_image,
             image_size_bytes,
@@ -1454,7 +1421,6 @@ impl WorkspaceImagePromotionContext {
             cache,
             profile_name,
             reuse_key: Some(reuse_key),
-            cli_agent_session_id,
             working_dir,
             active_image,
             image_size_bytes,
@@ -1477,7 +1443,7 @@ impl WorkspaceImagePromotionContext {
 impl WorkspaceSessionHistorySidecarEntryGuard {
     pub(crate) fn session_history_sidecar_tmp_path(&self) -> PathBuf {
         self.cache
-            .session_workspace_cache_tmp_sidecar(&self.cache_key, self.run_id)
+            .workspace_image_cache_tmp_sidecar(&self.cache_key, self.run_id)
     }
 
     pub(crate) fn session_history_sidecar_source(

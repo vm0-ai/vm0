@@ -32,7 +32,6 @@ pub(crate) struct WorkspaceImageLeaseIdentity<'a> {
     pub(crate) sandbox_id: sandbox::SandboxId,
     pub(crate) profile_name: &'a str,
     pub(crate) reuse_key: Option<&'a str>,
-    pub(crate) cli_agent_session_id: Option<&'a str>,
     pub(crate) working_dir: &'a str,
     pub(crate) image_size_bytes: u64,
 }
@@ -105,7 +104,6 @@ impl std::fmt::Display for WorkspaceImagePromotionIdentityMismatch {
 pub(crate) struct WorkspaceImagePromotionRequest<'a> {
     pub(crate) run_id: RunId,
     pub(crate) sandbox_id: sandbox::SandboxId,
-    pub(crate) cli_agent_session_id_override: Option<&'a str>,
     pub(crate) restored_session_identity:
         Option<&'a crate::restored_session_identity::RestoredSessionIdentity>,
     pub(crate) terminal_status: WorkspaceCacheTerminalStatus,

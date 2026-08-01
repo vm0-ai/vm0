@@ -13,15 +13,15 @@ use super::super::path_safety::{
     normalize_safe_guest_working_dir,
 };
 use super::super::{
-    CACHE_FORMAT_VERSION, CACHE_KEY_VERSION, SessionWorkspaceCache, WORKSPACE_DRIVE_LAYOUT,
-    WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity,
+    CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceCacheCheckoutResult,
+    WorkspaceCacheTerminalStatus, WorkspaceImageCache, WorkspaceImageLeaseIdentity,
     WorkspaceImagePrepareRequest,
 };
 use super::support::{
     TEST_PROFILE_NAME, local_cache, timestamp_for_index, write_current_cache_entry_for_profile,
 };
 use crate::ids::RunId;
-use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key, session_workspace_cache_key};
+use crate::paths::{RunnerPaths, scoped_workspace_image_cache_key, workspace_image_cache_key};
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{
     HeldWorkspaceState, MAX_HELD_WORKSPACE_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
@@ -29,17 +29,31 @@ use crate::types::{
 };
 
 #[test]
+fn cache_key_has_stable_current_format() {
+    assert_eq!(
+        scoped_workspace_image_cache_key(
+            "vm0/test",
+            "vm0/default",
+            "thread:thread-1",
+            "/workspace",
+            5,
+        ),
+        "fb89abd2f9a7b7784f27cdd974db105a35cc86a135a6a499e42904ba61e30bc7"
+    );
+}
+
+#[test]
 fn cache_key_separates_profile_and_image_size() {
     let base =
-        scoped_session_workspace_cache_key("vm0/test", "vm0/default", "sess-1", "/workspace", 5);
+        scoped_workspace_image_cache_key("vm0/test", "vm0/default", "sess-1", "/workspace", 5);
 
     assert_ne!(
         base,
-        scoped_session_workspace_cache_key("vm0/test", "vm0/browser", "sess-1", "/workspace", 5,)
+        scoped_workspace_image_cache_key("vm0/test", "vm0/browser", "sess-1", "/workspace", 5,)
     );
     assert_ne!(
         base,
-        scoped_session_workspace_cache_key("vm0/test", "vm0/default", "sess-1", "/workspace", 6,)
+        scoped_workspace_image_cache_key("vm0/test", "vm0/default", "sess-1", "/workspace", 6,)
     );
 }
 
@@ -192,7 +206,7 @@ async fn held_workspace_states_for_profiles_filters_and_aggregates_current_ident
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     fs::create_dir_all(paths.base_dir()).await.unwrap();
-    let cache = SessionWorkspaceCache::new(paths);
+    let cache = WorkspaceImageCache::new(paths);
     let run_id = RunId::new_v4();
     let reuse_key = "thread:multi-profile";
     let image_size = format!("image-{reuse_key}").len() as u64;
@@ -291,7 +305,7 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-    let cache = SessionWorkspaceCache::new(paths);
+    let cache = WorkspaceImageCache::new(paths);
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
@@ -300,7 +314,6 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-1"),
-                cli_agent_session_id: Some("sess-1"),
                 working_dir: "/",
                 image_size_bytes: 1024,
             },
@@ -321,7 +334,6 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: None,
-                cli_agent_session_id: None,
                 working_dir: "/",
                 image_size_bytes: 1024,
             },
@@ -342,7 +354,6 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-1"),
-                cli_agent_session_id: Some("sess-1"),
                 working_dir: "/",
                 image_size_bytes: 1024,
             },
@@ -359,7 +370,6 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
         !snapshot_restore_lease
             .promote(
                 RunId::new_v4(),
-                Some("sess-1"),
                 WorkspaceCacheTerminalStatus::Success,
                 local_timestamp(),
                 &StorageFingerprints::default(),
@@ -383,7 +393,6 @@ async fn prepare_normalizes_working_dir_for_cache_identity() {
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-1"),
-                cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace//repo/",
                 image_size_bytes: 1024,
             },
@@ -400,7 +409,7 @@ async fn prepare_normalizes_working_dir_for_cache_identity() {
 async fn held_workspace_states_reject_metadata_under_wrong_cache_key() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().to_path_buf());
-    let cache = SessionWorkspaceCache::new(paths.clone());
+    let cache = WorkspaceImageCache::new(paths.clone());
     let run_id = RunId::new_v4();
     let key = cache.scoped_cache_key(
         TEST_PROFILE_NAME,
@@ -408,10 +417,10 @@ async fn held_workspace_states_reject_metadata_under_wrong_cache_key() {
         "/workspace",
         b"old image".len() as u64,
     );
-    fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
         .await
         .unwrap();
-    let current = paths.session_workspace_cache_current_image(&key);
+    let current = paths.workspace_image_cache_current_image(&key);
     fs::write(&current, b"image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -420,11 +429,9 @@ async fn held_workspace_states_reject_metadata_under_wrong_cache_key() {
             run_id,
             WorkspaceCacheMetadata {
                 format_version: CACHE_FORMAT_VERSION,
-                key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "sess-other".into(),
-                cli_agent_session_id: Some("sess-other".into()),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),
@@ -451,13 +458,13 @@ async fn held_workspace_states_reject_metadata_under_wrong_cache_key() {
 async fn held_workspace_states_reject_unsafe_working_dir_metadata() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().to_path_buf());
-    let cache = SessionWorkspaceCache::new(paths.clone());
+    let cache = WorkspaceImageCache::new(paths.clone());
     let run_id = RunId::new_v4();
-    let key = session_workspace_cache_key("sess-1", "/");
-    fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+    let key = workspace_image_cache_key("sess-1", "/");
+    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
         .await
         .unwrap();
-    let current = paths.session_workspace_cache_current_image(&key);
+    let current = paths.workspace_image_cache_current_image(&key);
     fs::write(&current, b"image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -466,11 +473,9 @@ async fn held_workspace_states_reject_unsafe_working_dir_metadata() {
             run_id,
             WorkspaceCacheMetadata {
                 format_version: CACHE_FORMAT_VERSION,
-                key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "sess-1".into(),
-                cli_agent_session_id: Some("sess-1".into()),
                 working_dir: "/".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),

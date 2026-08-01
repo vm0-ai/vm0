@@ -52,7 +52,7 @@ pub(crate) fn reuse_key_kind(reuse_key: &str) -> &'static str {
     if reuse_key.starts_with("thread:") {
         "thread"
     } else {
-        "session"
+        "other"
     }
 }
 

@@ -176,7 +176,7 @@ async fn idle_destroy_job_publishes_frozen_workspace_only_after_successful_stop(
     assert_eq!(budget.allocated(), (0, 0, 0));
     let states = fixture.cache.held_workspace_states().await;
     assert_eq!(states.len(), 1);
-    assert_eq!(states[0].reuse_key, fixture.session_id);
+    assert_eq!(states[0].reuse_key, fixture.reuse_key);
     let paths = RunnerPaths::new(fixture._dir.path().join("runner"));
     assert!(
         !tokio::fs::try_exists(paths.active_workspace_image(&fixture.sandbox_id))
@@ -188,7 +188,7 @@ async fn idle_destroy_job_publishes_frozen_workspace_only_after_successful_stop(
         .await
         .unwrap();
     assert_eq!(
-        WorkspacePromotionFixture::checkout_result(&fixture.cache, &fixture.session_id).await,
+        WorkspacePromotionFixture::checkout_result(&fixture.cache, &fixture.reuse_key).await,
         WorkspaceCacheCheckoutResult::Hit,
         "removing the destroyed sandbox workspace must not remove the promoted cache entry"
     );

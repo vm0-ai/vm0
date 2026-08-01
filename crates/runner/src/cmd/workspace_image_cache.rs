@@ -4,7 +4,7 @@ use serde::Serialize;
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, RunnerPaths};
 use crate::workspace_image_cache::{
-    CacheBudget, FsStats, SessionWorkspaceCache, WorkspaceImageCacheInspection,
+    CacheBudget, FsStats, WorkspaceImageCache, WorkspaceImageCacheInspection,
     WorkspaceImageCacheInspectionEntry, WorkspaceImageCacheInspectionStatus,
     WorkspaceImageCacheInspectionSummary,
 };
@@ -31,7 +31,7 @@ enum WorkspaceImageCacheCommand {
     /// Status-category, temporary-path, and size summary values are lower bounds
     /// when `lockedEntries` is greater than zero.
     List(WorkspaceImageCacheListArgs),
-    /// Clean up session workspace image cache entries
+    /// Clean up workspace image cache entries
     Gc(WorkspaceImageCacheGcArgs),
 }
 
@@ -120,8 +120,8 @@ async fn run_workspace_image_cache_with_home(
     }
 }
 
-fn shared_cache(home: &HomePaths) -> SessionWorkspaceCache {
-    SessionWorkspaceCache::shared(
+fn shared_cache(home: &HomePaths) -> WorkspaceImageCache {
+    WorkspaceImageCache::shared(
         RunnerPaths::new(home.runners_dir().join("_cache-gc")),
         home,
         "",
@@ -317,7 +317,7 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::ids::RunId;
-    use crate::paths::session_workspace_cache_key;
+    use crate::paths::workspace_image_cache_key;
 
     fn tmp_image_path(home: &HomePaths, cache_key: &str, run_id: RunId) -> PathBuf {
         home.workspace_image_cache_dir()
@@ -530,7 +530,7 @@ mod tests {
     async fn workspace_image_cache_gc_cleans_shared_cache_root() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
-        let cache_key = session_workspace_cache_key("sess-1", "/workspace");
+        let cache_key = workspace_image_cache_key("sess-1", "/workspace");
         let tmp = tmp_image_path(&home, &cache_key, RunId::new_v4());
         tokio::fs::create_dir_all(tmp.parent().unwrap())
             .await
@@ -555,7 +555,7 @@ mod tests {
     async fn workspace_image_cache_gc_dry_run_preserves_files() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
-        let cache_key = session_workspace_cache_key("sess-1", "/workspace");
+        let cache_key = workspace_image_cache_key("sess-1", "/workspace");
         let tmp = tmp_image_path(&home, &cache_key, RunId::new_v4());
         tokio::fs::create_dir_all(tmp.parent().unwrap())
             .await

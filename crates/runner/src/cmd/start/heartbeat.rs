@@ -5,7 +5,7 @@ use std::time::Duration;
 use futures_util::future::BoxFuture;
 use tracing::{debug, info};
 
-use super::active_sessions::{ActiveReuseKeys, active_reuse_keys};
+use super::active_reuse_keys::{ActiveReuseKeys, active_reuse_keys};
 use crate::config::ProfileConfig;
 use crate::error::{RunnerError, RunnerResult};
 use crate::idle_pool::IdlePool;
@@ -16,7 +16,7 @@ use crate::types::{
     HeartbeatState, HeldSessionState, HeldWorkspaceState, MAX_HELD_SESSION_STATES,
     MAX_WORKSPACE_CACHES_PER_REUSE_KEY,
 };
-use crate::workspace_image_cache::{SessionWorkspaceCache, cap_held_workspace_states};
+use crate::workspace_image_cache::{WorkspaceImageCache, cap_held_workspace_states};
 
 /// Period between routine heartbeat ticks sent to the server. First tick is
 /// deferred by one period via `interval_at`.
@@ -35,7 +35,7 @@ pub(super) struct HeartbeatContext<'a> {
     profiles: &'a BTreeMap<String, ProfileConfig>,
     budget: &'a ResourceBudget,
     provider: &'a dyn JobProvider,
-    workspace_cache: Option<SessionWorkspaceCache>,
+    workspace_cache: Option<WorkspaceImageCache>,
     active_reuse_keys: &'a ActiveReuseKeys,
     workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
 }
@@ -49,7 +49,7 @@ pub(super) struct HeartbeatContextInit<'a> {
     pub(super) profiles: &'a BTreeMap<String, ProfileConfig>,
     pub(super) budget: &'a ResourceBudget,
     pub(super) provider: &'a dyn JobProvider,
-    pub(super) workspace_cache: Option<SessionWorkspaceCache>,
+    pub(super) workspace_cache: Option<WorkspaceImageCache>,
     pub(super) active_reuse_keys: &'a ActiveReuseKeys,
     pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
 }
@@ -377,7 +377,7 @@ pub(super) async fn send_heartbeat(
 /// snapshot, which may also contain updates merged from concurrent promotions.
 pub(super) async fn refresh_workspace_cache_snapshot(
     snapshot: &WorkspaceCacheStateSnapshot,
-    workspace_cache: Option<&SessionWorkspaceCache>,
+    workspace_cache: Option<&WorkspaceImageCache>,
     profiles: &BTreeMap<String, ProfileConfig>,
 ) -> Vec<HeldWorkspaceState> {
     let refresh = snapshot.begin_workspace_cache_refresh();
@@ -386,7 +386,7 @@ pub(super) async fn refresh_workspace_cache_snapshot(
 }
 
 async fn workspace_cache_states(
-    workspace_cache: Option<&SessionWorkspaceCache>,
+    workspace_cache: Option<&WorkspaceImageCache>,
     profiles: &BTreeMap<String, ProfileConfig>,
 ) -> Vec<HeldWorkspaceState> {
     let Some(cache) = workspace_cache else {
@@ -697,7 +697,7 @@ mod tests {
     }
 
     async fn seed_workspace_cache_state(
-        cache: &SessionWorkspaceCache,
+        cache: &WorkspaceImageCache,
         paths: &RunnerPaths,
         reuse_key: &str,
         completed_at: &str,
@@ -711,7 +711,6 @@ mod tests {
                     sandbox_id,
                     profile_name: "vm0/default",
                     reuse_key: Some(reuse_key),
-                    cli_agent_session_id: None,
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: 1024 * 1024,
                 },
@@ -732,7 +731,6 @@ mod tests {
             lease
                 .promote(
                     run_id,
-                    None,
                     WorkspaceCacheTerminalStatus::Success,
                     completed_at.into(),
                     &crate::storage_fingerprints::StorageFingerprints::default(),
@@ -900,11 +898,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         seed_workspace_cache_state(&cache, &paths, reuse_key, "2026-06-01T00:00:00.000Z").await;
         let profiles = test_profiles();
         let budget = ResourceBudget::new(8, 32768, 1.0, 4);
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
         let (provider, _) = MockJobProvider::new(tokio_util::sync::CancellationToken::new());
         let workspace_cache_snapshot = WorkspaceCacheStateSnapshot::new();
         let hb = HeartbeatContext::new(HeartbeatContextInit {
@@ -959,11 +957,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         seed_workspace_cache_state(&cache, &paths, "sess-cache", "2026-06-01T00:00:00.000Z").await;
         seed_workspace_cache_state(&cache, &paths, "sess-claimed", "2026-06-01T00:00:01.000Z")
             .await;
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
         let profiles = test_profiles();
         let cache_states = workspace_cache_states(Some(&cache), &profiles).await;
         let states = filter_current_held_workspace_states(
@@ -993,8 +991,8 @@ mod tests {
                 held_workspace_state("sess-active", "2026-06-01T00:00:04.000Z", &["vm0/default"]),
             ],
         );
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
-        super::super::active_sessions::insert_active_reuse_key(&active_reuse_keys, "sess-active");
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
+        super::super::active_reuse_keys::insert_active_reuse_key(&active_reuse_keys, "sess-active");
         let states =
             snapshot.current_held_workspace_states(&active_reuse_keys, Some("sess-claimed"));
 
@@ -1056,7 +1054,7 @@ mod tests {
             });
         }
 
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
         let states = snapshot.current_held_workspace_states(&active_reuse_keys, None);
 
         assert_eq!(states.len(), MAX_HELD_WORKSPACE_STATES);
@@ -1091,7 +1089,7 @@ mod tests {
         );
         assert_eq!(refreshed, vec![merged.clone()]);
 
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
         let states = snapshot.current_held_workspace_states(&active_reuse_keys, None);
         assert_eq!(states, vec![merged]);
 
@@ -1108,8 +1106,11 @@ mod tests {
 
     #[test]
     fn held_session_states_filter_active_reuse_keys() {
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
-        super::super::active_sessions::insert_active_reuse_key(&active_reuse_keys, "thread-active");
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
+        super::super::active_reuse_keys::insert_active_reuse_key(
+            &active_reuse_keys,
+            "thread-active",
+        );
         let states = vec![
             HeldSessionState {
                 session_id: "provider-session-active".into(),
