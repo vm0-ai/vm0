@@ -89,8 +89,8 @@ def test_x_stream_all_failed_rows_logs_risk_without_billing(x_usage, tmp_path, r
 
 
 def test_x_stream_empty_emits_no_billing(x_usage, tmp_path, real_flow):
-    """Stream that delivered 0 tweets emits no usage_event row, and
-    in particular does NOT trigger _X_UNPARSEABLE_READ_FALLBACK."""
+    """A parsed NDJSON stream with zero resources and no row failures
+    emits no usage event or lost-visibility log."""
     flow = x_usage.make_flow(
         real_flow,
         tmp_path,
