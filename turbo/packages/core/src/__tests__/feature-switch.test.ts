@@ -30,7 +30,6 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.Dummy, { userId: "any-user" }),
     ).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.DeepSeekV4Flash, {})).toBe(true);
   });
 
   it("should return false for disabled switch without context", () => {
@@ -153,7 +152,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.DeepSeekV4Flash]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -189,7 +187,6 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.DeepSeekV4Flash]).toBe(true);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -245,9 +242,6 @@ describe("user-overridable switches", () => {
       FeatureSwitchKey.StrapiIntegration,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.DeepSeekV4Flash,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.StructuredPromptInlineTemplates,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
@@ -262,13 +256,11 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
         [FeatureSwitchKey.ZeroBrowser]: true,
-        [FeatureSwitchKey.DeepSeekV4Flash]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({
       [FeatureSwitchKey.ZeroBrowser]: true,
-      [FeatureSwitchKey.DeepSeekV4Flash]: true,
       [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,
       [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
