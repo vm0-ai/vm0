@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.62.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.6...guest-agent-v0.62.0) (2026-08-01)
+
+
+### Features
+
+* **guest-agent:** set fable effort to max ([#24483](https://github.com/vm0-ai/vm0/issues/24483)) ([f6e92b9](https://github.com/vm0-ai/vm0/commit/f6e92b97b32aec30c26e9e10eb613874d8cc6fff))
+
 ## [0.61.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.5...guest-agent-v0.61.6) (2026-08-01)
 
 
