@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.364.1](https://github.com/vm0-ai/vm0/compare/api-v1.364.0...api-v1.364.1) (2026-08-01)
+
+
+### Refactoring
+
+* assemble slack launch prompts at claim ([#24435](https://github.com/vm0-ai/vm0/issues/24435)) ([a9b89b7](https://github.com/vm0-ai/vm0/commit/a9b89b71385641a76b5238fd88fab0ebc1bed31b))
+* claim feishu launch context ([#24461](https://github.com/vm0-ai/vm0/issues/24461)) ([624554d](https://github.com/vm0-ai/vm0/commit/624554dd2525ea9217559f5b156f667f7904ede6))
+* **connectors:** finish slug terminology cleanup ([#24437](https://github.com/vm0-ai/vm0/issues/24437)) ([52f9935](https://github.com/vm0-ai/vm0/commit/52f99350a1d1e171054d8751e8da8b20b6f0ee15))
+* **connectors:** retire compatibility sweeper ([#24433](https://github.com/vm0-ai/vm0/issues/24433)) ([863e6c4](https://github.com/vm0-ai/vm0/commit/863e6c4757198299a34adedcd9f75f836d75a93c))
+* dual-write feishu launch context ([#24455](https://github.com/vm0-ai/vm0/issues/24455)) ([57a0d59](https://github.com/vm0-ai/vm0/commit/57a0d599e71f939f08d7b96dfa95687c4446acef))
+* dual-write slack launch context ([#24424](https://github.com/vm0-ai/vm0/issues/24424)) ([4c3c6e4](https://github.com/vm0-ai/vm0/commit/4c3c6e43806bb3f1dbd0043b9d6bceff96f4ef08))
+* make chat threads the sole runner reuse key ([#24440](https://github.com/vm0-ai/vm0/issues/24440)) ([61dc78f](https://github.com/vm0-ai/vm0/commit/61dc78fd9b32e0a154285e12fc7f6434cc86122c))
+* remove slack launch params fallback ([#24447](https://github.com/vm0-ai/vm0/issues/24447)) ([8bd98fc](https://github.com/vm0-ai/vm0/commit/8bd98fc5b4b78211c92bc1cc4a2b28033bf85758))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.1
+    * @vm0/core bumped to 8.502.1
+    * @vm0/db bumped to 1.160.5
+
 ## [1.364.0](https://github.com/vm0-ai/vm0/compare/api-v1.363.2...api-v1.364.0) (2026-08-01)
 
 

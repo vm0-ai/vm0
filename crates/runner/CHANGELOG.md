@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.151.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.5...runner-rs-v0.151.6) (2026-08-01)
+
+
+### Bug Fixes
+
+* **runner:** reap timed-out host oom diagnostics ([#24438](https://github.com/vm0-ai/vm0/issues/24438)) ([497fc38](https://github.com/vm0-ai/vm0/commit/497fc38c5db12e041891b70cddd7bad612821b20))
+
+
+### Documentation
+
+* **python:** clarify parsed empty x stream contract ([#24449](https://github.com/vm0-ai/vm0/issues/24449)) ([1f3a15c](https://github.com/vm0-ai/vm0/commit/1f3a15cb2f0b7109f316885f5b4f8b9192b7c2b3))
+
+
+### Refactoring
+
+* make chat threads the sole runner reuse key ([#24440](https://github.com/vm0-ai/vm0/issues/24440)) ([61dc78f](https://github.com/vm0-ai/vm0/commit/61dc78fd9b32e0a154285e12fc7f6434cc86122c))
+* **python:** split auth base forwarder tests by contract ([#24451](https://github.com/vm0-ai/vm0/issues/24451)) ([ec67485](https://github.com/vm0-ai/vm0/commit/ec67485ab3f5680caeaa0ad584f48de47ab86c7f))
+* **runner:** emit exact heartbeat capabilities ([#24456](https://github.com/vm0-ai/vm0/issues/24456)) ([bedd684](https://github.com/vm0-ai/vm0/commit/bedd684ac763f7405851e0b40dec2bcd72ff4071))
+* **runner:** split agent run tests by contract ([#24439](https://github.com/vm0-ai/vm0/issues/24439)) ([2164dff](https://github.com/vm0-ai/vm0/commit/2164dff4323ab34852db70f22cc5b35c2300216d))
+
+
+### Performance Improvements
+
+* **python:** skip unconnected client binding scans ([#24452](https://github.com/vm0-ai/vm0/issues/24452)) ([3412278](https://github.com/vm0-ai/vm0/commit/3412278416e0e55eb6e44d1780a1b9cdff5d086d))
+
 ## [0.151.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.4...runner-rs-v0.151.5) (2026-08-01)
 
 
