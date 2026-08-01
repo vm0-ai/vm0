@@ -484,30 +484,29 @@ describe("runner resume session contract", () => {
         profile: "vm0/default",
         historyGenerationRunId,
       },
-      workspaceCaches: [
-        {
-          profile: "vm0/default",
-          workspaceAffinityVersion: 1,
-        },
-        { profile: "vm0/large" },
-      ],
     });
-    expect(heldSessionState.reusableSandbox?.historyGenerationRunId).toBe(
+    expect(heldSessionState.reusableSandbox.historyGenerationRunId).toBe(
       historyGenerationRunId,
     );
     expect(heldSessionState.reuseKey).toBe(
       "thread:22222222-2222-4222-8222-222222222223",
     );
-    expect(heldSessionState.workspaceCaches).toEqual([
-      {
-        profile: "vm0/default",
-        workspaceAffinityVersion: 1,
-      },
-      { profile: "vm0/large" },
+
+    const heldWorkspaceState = heldWorkspaceStateSchema.parse({
+      reuseKey: "thread:22222222-2222-4222-8222-222222222223",
+      lastCompletedAt: "2026-07-15T00:00:00.000Z",
+      workspaceCaches: [
+        { profile: "vm0/default", workspaceAffinityVersion: 1 },
+        { profile: "vm0/large", workspaceAffinityVersion: 1 },
+      ],
+    });
+    expect(heldWorkspaceState.workspaceCaches).toEqual([
+      { profile: "vm0/default", workspaceAffinityVersion: 1 },
+      { profile: "vm0/large", workspaceAffinityVersion: 1 },
     ]);
   });
 
-  it("keeps generation-affinity additions optional for legacy runners", () => {
+  it("keeps job generation-affinity additions optional", () => {
     const job = jobSchema.parse({
       runId: "22222222-2222-4222-8222-222222222222",
       prompt: "continue",
@@ -519,17 +518,6 @@ describe("runner resume session contract", () => {
     });
     expect(job.historyGenerationAffinityProtectedUntil).toBeNull();
     expect(job.sessionAffinityResource).toBeUndefined();
-
-    const heldSessionState = heldSessionStateSchema.parse({
-      sessionId: "sess-legacy",
-      lastCompletedAt: "2026-07-15T00:00:00.000Z",
-      reusableSandbox: { profile: "vm0/default" },
-    });
-    expect(heldSessionState.reusableSandbox).toEqual({
-      profile: "vm0/default",
-    });
-    expect(heldSessionState.workspaceCaches).toBeUndefined();
-    expect(heldSessionState.reuseKey).toBeUndefined();
   });
 
   it("accepts ordered heartbeat snapshots", () => {
@@ -547,6 +535,7 @@ describe("runner resume session contract", () => {
       runningCount: 0,
       admittableProfiles: ["vm0/default"],
       heldSessionStates: [],
+      heldWorkspaceStates: [],
       mode: "running",
     } as const;
 
@@ -602,16 +591,14 @@ describe("runner resume session contract", () => {
       allocatedMemoryMb: 0,
       runningCount: 0,
       admittableProfiles: ["vm0/default"],
+      heldSessionStates: [],
+      heldWorkspaceStates: [],
       mode: "running",
     } as const;
     const workspaceCaches = Array.from({ length: 8 }, (_, index) => {
-      return { profile: `vm0/profile-${index}` };
-    });
-    const heldSessionStates = Array.from({ length: 128 }, (_, index) => {
       return {
-        sessionId: `sess-${index}`,
-        lastCompletedAt: "2026-07-15T00:00:00.000Z",
-        workspaceCaches,
+        profile: `vm0/profile-${index}`,
+        workspaceAffinityVersion: 1 as const,
       };
     });
     const heldWorkspaceStates = Array.from({ length: 128 }, (_, index) => {
@@ -623,59 +610,36 @@ describe("runner resume session contract", () => {
     });
 
     expect(
-      heartbeatBodySchema.safeParse({ ...heartbeat, heldSessionStates })
-        .success,
-    ).toBe(true);
-    expect(
       heartbeatBodySchema.safeParse({
         ...heartbeat,
-        heldSessionStates: [],
         heldWorkspaceStates,
       }).success,
     ).toBe(true);
     expect(
       heartbeatBodySchema.safeParse({
         ...heartbeat,
-        heldSessionStates: [
-          ...heldSessionStates,
-          {
-            sessionId: "sess-over-global-cap",
-            lastCompletedAt: "2026-07-15T00:00:00.000Z",
-            workspaceCaches: [{ profile: "vm0/default" }],
-          },
-        ],
-      }).success,
-    ).toBe(false);
-    expect(
-      heartbeatBodySchema.safeParse({
-        ...heartbeat,
-        heldSessionStates: heldSessionStates.slice(0, 64),
         heldWorkspaceStates: [
-          ...heldWorkspaceStates.slice(0, 64),
+          ...heldWorkspaceStates,
           {
             reuseKey: "thread:over-global-cap",
             lastCompletedAt: "2026-07-15T00:00:00.000Z",
-            workspaceCaches: [{ profile: "vm0/default" }],
+            workspaceCaches: [
+              { profile: "vm0/default", workspaceAffinityVersion: 1 },
+            ],
           },
         ],
       }).success,
     ).toBe(false);
     expect(
-      heldSessionStateSchema.safeParse({
-        sessionId: "sess-over-parent-cap",
+      heldWorkspaceStateSchema.safeParse({
+        reuseKey: "thread:over-parent-cap",
         lastCompletedAt: "2026-07-15T00:00:00.000Z",
         workspaceCaches: [
           ...workspaceCaches,
-          { profile: "vm0/profile-over-cap" },
-        ],
-      }).success,
-    ).toBe(false);
-    expect(
-      heldSessionStateSchema.safeParse({
-        sessionId: "sess-invalid-capability",
-        lastCompletedAt: "2026-07-15T00:00:00.000Z",
-        workspaceCaches: [
-          { profile: "vm0/default", workspaceAffinityVersion: 2 },
+          {
+            profile: "vm0/profile-over-cap",
+            workspaceAffinityVersion: 1,
+          },
         ],
       }).success,
     ).toBe(false);

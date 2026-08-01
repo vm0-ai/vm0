@@ -262,9 +262,7 @@ function runnerHeartbeatBody(
     runningCount: args.runningCount ?? 0,
     admittableProfiles: args.admittableProfiles ?? ["vm0/default"],
     heldSessionStates: args.heldSessionStates ?? [],
-    ...(args.heldWorkspaceStates
-      ? { heldWorkspaceStates: args.heldWorkspaceStates }
-      : {}),
+    heldWorkspaceStates: args.heldWorkspaceStates ?? [],
     mode: args.mode ?? "running",
   };
 }
