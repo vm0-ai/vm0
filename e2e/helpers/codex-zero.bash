@@ -105,24 +105,30 @@ configure_codex_zero_model_policy() {
 # lifecycle event. Other output events, such as recommended followups, may be
 # inserted after the terminal event and must not hide it. LAST_MSG_CONTENT
 # comes from the latest non-blank output.message event for the same run.
-# On success, exports:
-#   LAST_RUN_ID      — runId of the terminal event
-#   LAST_MSG_CONTENT — content text
+# On a terminal event, exports:
+#   LAST_RUN_ID              — runId of the terminal event
+#   LAST_MSG_CONTENT         — content text
+#   LAST_RUN_TERMINAL_STATUS — terminal event type
+#   LAST_RUN_ERROR           — terminal event error, if present
 # Usage: wait_for_chat_assistant_done <thread_id> [timeout_seconds]
 wait_for_chat_assistant_done() {
     local thread_id="$1"
     local timeout="${2:-180}"
     local start=$SECONDS
-    local body status_value run_id content terminal
+    local body status_value run_id content terminal error_value
     if [[ -z "${LAST_RUN_ID:-}" ]]; then
         echo "# wait_for_chat_assistant_done: LAST_RUN_ID is required" >&2
         return 1
     fi
     local expected_run_id="$LAST_RUN_ID"
+    LAST_MSG_CONTENT=""
+    LAST_RUN_TERMINAL_STATUS=""
+    LAST_RUN_ERROR=""
+    export LAST_MSG_CONTENT LAST_RUN_TERMINAL_STATUS LAST_RUN_ERROR
     while (( SECONDS - start < timeout )); do
         body=$(_codex_zero_curl "/api/zero/chat-threads/$thread_id/events?limit=50" 2>/dev/null || true)
         if [[ -n "$body" ]]; then
-            terminal=$(printf '%s' "$body" \
+            if ! terminal=$(printf '%s' "$body" \
                 | jq -r --arg expectedRunId "$expected_run_id" '
                     [
                         .events[]
@@ -134,17 +140,19 @@ wait_for_chat_assistant_done() {
                         )
                     ]
                     | last // {}
-                    | [(.eventType // ""), (.runId // "")]
-                    | @tsv
-                ' 2>/dev/null)
-            status_value="${terminal%%$'\t'*}"
+                ' 2>/dev/null); then
+                echo "# wait_for_chat_assistant_done: invalid event response: $body" >&2
+                return 1
+            fi
+            status_value=$(printf '%s' "$terminal" | jq -r '.eventType // ""')
             # Per-poll diagnostic: bats's BATS_TEST_TIMEOUT kills the test before
             # the trailing "timed out" lines below run, so emit progress here.
             echo "# poll t=$((SECONDS - start))s status=${status_value:-EMPTY}" >&2
             case "$status_value" in
                 run.completed|run.failed|run.cancelled)
-                    run_id="${terminal#*$'\t'}"
-                    content=$(printf '%s' "$body" \
+                    run_id=$(printf '%s' "$terminal" | jq -r '.runId // ""')
+                    error_value=$(printf '%s' "$terminal" | jq -r '.error // ""')
+                    if ! content=$(printf '%s' "$body" \
                         | jq -r --arg runId "$run_id" '
                             [
                                 .events[]
@@ -154,10 +162,15 @@ wait_for_chat_assistant_done() {
                             ]
                             | last
                             | .content // ""
-                        ')
+                        '); then
+                        echo "# wait_for_chat_assistant_done: invalid output event response: $body" >&2
+                        return 1
+                    fi
                     export LAST_RUN_ID="$run_id"
                     export LAST_MSG_CONTENT="$content"
-                    echo "# wait_for_chat_assistant_done: terminal=$status_value run=$run_id ($((SECONDS - start))s)" >&2
+                    export LAST_RUN_TERMINAL_STATUS="$status_value"
+                    export LAST_RUN_ERROR="$error_value"
+                    echo "# wait_for_chat_assistant_done: terminal=$status_value run=$run_id error=${error_value:-none} ($((SECONDS - start))s)" >&2
                     return 0
                     ;;
             esac
@@ -218,4 +231,56 @@ send_chat_run_message() {
         echo "# send_chat_run_message: bad response: $body" >&2
         return 1
     }
+}
+
+# Run a real Codex chat request, retrying only the known transient model
+# capacity response. Every retry uses a fresh thread, and passing still
+# requires a real run.completed event for the caller's sentinel assertion.
+# Exports the same LAST_* values as send_chat_run_message and
+# wait_for_chat_assistant_done for the final attempt.
+# Usage: run_codex_chat_with_capacity_retry <agent_id> <prompt> <model>
+run_codex_chat_with_capacity_retry() {
+    local agent_id="$1"
+    local prompt="$2"
+    local selected_model="$3"
+    local capacity_error="selected model is at capacity. please try a different model."
+    local max_attempts=3
+    local attempt retry_delay failed_thread_id
+
+    for (( attempt = 1; attempt <= max_attempts; attempt++ )); do
+        echo "# run_codex_chat_with_capacity_retry: model=$selected_model attempt=$attempt/$max_attempts" >&2
+        if ! send_chat_run_message "$agent_id" "$prompt" "$selected_model"; then
+            return 1
+        fi
+        if ! wait_for_chat_assistant_done "$LAST_THREAD_ID"; then
+            return 1
+        fi
+
+        if [[ "$LAST_RUN_TERMINAL_STATUS" == "run.completed" ]]; then
+            return 0
+        fi
+        if [[ "$LAST_RUN_TERMINAL_STATUS" != "run.failed" \
+            || "${LAST_RUN_ERROR,,}" != *"$capacity_error"* ]]; then
+            echo "# run_codex_chat_with_capacity_retry: non-retryable terminal=$LAST_RUN_TERMINAL_STATUS error=${LAST_RUN_ERROR:-none}" >&2
+            return 1
+        fi
+        if (( attempt == max_attempts )); then
+            echo "# run_codex_chat_with_capacity_retry: capacity retries exhausted: $LAST_RUN_ERROR" >&2
+            return 1
+        fi
+
+        failed_thread_id="$LAST_THREAD_ID"
+        if ! _codex_zero_curl "/api/zero/chat-threads/$failed_thread_id" -X DELETE >/dev/null; then
+            echo "# run_codex_chat_with_capacity_retry: failed to delete thread $failed_thread_id" >&2
+            return 1
+        fi
+        LAST_THREAD_ID=""
+        export LAST_THREAD_ID
+
+        retry_delay=$((attempt * 5))
+        echo "# run_codex_chat_with_capacity_retry: model capacity unavailable; retrying in ${retry_delay}s" >&2
+        sleep "$retry_delay"
+    done
+
+    return 1
 }
