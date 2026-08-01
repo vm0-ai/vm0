@@ -11,7 +11,6 @@ import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
-import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import type { ChatEventGroup } from "./chat-event.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
@@ -139,13 +138,7 @@ export interface ChatThreadSignals {
   // feature-gated scroll-to-bottom button. Read-only outside scroll signals.
   awayFromBottom$: Computed<boolean>;
   draft: DraftSignals;
-  workflowComposer: WorkflowComposerSignals;
   composer: ComposerSignals;
-  composerFileInput$: Computed<HTMLElement | null>;
-  setComposerFileInput$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
   // -- Agent info (derived from threadMeta$.agentId) ------------------------
   agent$: Computed<Promise<ZeroAgentResponse>>;
   agentId$: Computed<string | null>;
@@ -163,8 +156,6 @@ export interface ChatThreadSignals {
     Promise<void>,
     [string, ChatClipboardPayload, AbortSignal]
   >;
-  // -- Focus ----------------------------------------------------------------
-  focusInput$: Command<void, []>;
   // -- Draft sync -----------------------------------------------------------
   queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   // -- Paged events (sole rendering path) ----------------------------------

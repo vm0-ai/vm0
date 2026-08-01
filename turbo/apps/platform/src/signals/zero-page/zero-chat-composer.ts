@@ -270,10 +270,14 @@ function createBasicComposerUiSignals() {
   });
 
   return {
-    modelPickerOpen$,
-    setModelPickerOpen$,
-    uploadPopoverOpen$,
-    setUploadPopoverOpen$,
+    model: {
+      modelPickerOpen$,
+      setModelPickerOpen$,
+    },
+    draft: {
+      uploadPopoverOpen$,
+      setUploadPopoverOpen$,
+    },
   };
 }
 
@@ -802,6 +806,7 @@ function createPresentationTemplateDetailNavigationSignals(
 }
 
 export function createComposerUiSignals() {
+  const basic = createBasicComposerUiSignals();
   const list = createTemplatePickerListSignals();
   const cards = createTemplateCardSignals();
   const detail = createTemplateDetailStateSignals();
@@ -817,23 +822,26 @@ export function createComposerUiSignals() {
     );
 
   return {
-    ...createBasicComposerUiSignals(),
-    ...createTemplatePickerDialogSignals(),
-    ...list.signals,
-    ...cards.signals,
-    ...detail.signals,
-    ...resources,
-    loadPresentationTemplateHtmlPreview,
-    openPresentationTemplateDetailPreview$,
-    ...createPresentationTemplateDetailNavigationSignals(
-      list,
-      detail,
-      applySelection$,
-    ),
+    model: basic.model,
+    draft: basic.draft,
+    template: {
+      ...createTemplatePickerDialogSignals(),
+      ...list.signals,
+      ...cards.signals,
+      ...detail.signals,
+      ...resources,
+      loadPresentationTemplateHtmlPreview,
+      openPresentationTemplateDetailPreview$,
+      ...createPresentationTemplateDetailNavigationSignals(
+        list,
+        detail,
+        applySelection$,
+      ),
+    },
   };
 }
 
-export type ComposerUiSignals = ReturnType<typeof createComposerUiSignals>;
+export type ComposerUiSignalGroups = ReturnType<typeof createComposerUiSignals>;
 
 // -- Per-message generation template selections --------------------------------
 

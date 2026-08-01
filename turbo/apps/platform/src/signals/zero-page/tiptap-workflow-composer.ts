@@ -119,7 +119,7 @@ const unregisterMountedWorkflowNamesSync$ = command(
   },
 );
 
-const reloadMountedWorkflowNames$ = command(
+export const reloadMountedComposerWorkflows$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     set(reloadWorkflowData$);
     const pendingSyncs: Promise<void>[] = [];
@@ -2544,7 +2544,7 @@ export function createWorkflowComposerSignals<
     chatThreadSuggestions$,
     agentId$,
     workflows$,
-    reloadWorkflows$: reloadMountedWorkflowNames$,
+    reloadWorkflows$: reloadMountedComposerWorkflows$,
     selectedSuggestionIndex$,
     setSelectedSuggestionIndex$,
     closeSuggestionMenu$,

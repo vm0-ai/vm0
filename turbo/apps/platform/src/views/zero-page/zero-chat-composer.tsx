@@ -566,15 +566,17 @@ function PendingItemsStripHeader({
 function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
   const pendingEvents =
-    useLastResolved(signals.pendingEvents$) ??
+    useLastResolved(signals.queue.pendingEvents$) ??
     ([] satisfies readonly ComposerPendingEvent[]);
   const cancellationRecoveryPending =
-    useLastResolved(signals.cancellationRecoveryPending$) ?? false;
-  const activeGoalObjective = useLastResolved(signals.activeGoalObjective$);
-  const removeQueuedMessage = useSet(signals.removeQueuedMessage$);
-  const removeWorkflowEvent = useSet(signals.removeWorkflowEvent$);
-  const cancelActiveGoal = useSet(signals.cancelActiveGoal$);
-  const openActiveGoal = useSet(signals.openActiveGoal$);
+    useLastResolved(signals.queue.cancellationRecoveryPending$) ?? false;
+  const activeGoalObjective = useLastResolved(
+    signals.goal.activeGoalObjective$,
+  );
+  const removeQueuedMessage = useSet(signals.queue.removeQueuedMessage$);
+  const removeWorkflowEvent = useSet(signals.queue.removeWorkflowEvent$);
+  const cancelActiveGoal = useSet(signals.goal.cancelActiveGoal$);
+  const openActiveGoal = useSet(signals.goal.openActiveGoal$);
   const pageSignal = useGet(pageSignal$);
   const queued = pendingEvents.flatMap((event) => {
     return event.kind === "message" ? [{ id: event.id, text: event.text }] : [];
@@ -2909,13 +2911,15 @@ function TemplatePreview({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const hover = useGet(signals.templateCardHover$);
-  const setHover = useSet(signals.setTemplateCardHover$);
-  const htmlPreview = useGet(signals.templateCardHtmlPreview$);
-  const setHtmlPreview = useSet(signals.setTemplateCardHtmlPreview$);
-  const loadedHtmlFrameUrls = useGet(signals.templateCardLoadedHtmlFrameUrls$);
+  const hover = useGet(signals.template.templateCardHover$);
+  const setHover = useSet(signals.template.setTemplateCardHover$);
+  const htmlPreview = useGet(signals.template.templateCardHtmlPreview$);
+  const setHtmlPreview = useSet(signals.template.setTemplateCardHtmlPreview$);
+  const loadedHtmlFrameUrls = useGet(
+    signals.template.templateCardLoadedHtmlFrameUrls$,
+  );
   const setLoadedHtmlFrameUrl = useSet(
-    signals.setTemplateCardLoadedHtmlFrameUrl$,
+    signals.template.setTemplateCardLoadedHtmlFrameUrl$,
   );
   const slideCount = presentationTemplateSlideCount(item);
   const hoverSlideIndex = Math.max(
@@ -3008,7 +3012,7 @@ function TemplatePreview({
 
     let pendingLoad = cache.pendingLoads.get(item.embedUrl);
     if (pendingLoad === undefined) {
-      pendingLoad = signals.loadPresentationTemplateHtmlPreview({
+      pendingLoad = signals.template.loadPresentationTemplateHtmlPreview({
         item,
         signal: pageSignal,
       });
@@ -3331,13 +3335,13 @@ function TemplatePreviewPage({
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
-  const detailPreview = useGet(signals.templateDetailHtmlPreview$);
-  const setCardThemeId = useSet(signals.setTemplateCardThemeId$);
+  const detailPreview = useGet(signals.template.templateDetailHtmlPreview$);
+  const setCardThemeId = useSet(signals.template.setTemplateCardThemeId$);
   const selectDetailPreview = useSet(
-    signals.selectPresentationTemplateDetailPreview$,
+    signals.template.selectPresentationTemplateDetailPreview$,
   );
   const settleDetailPreviewFrame = useSet(
-    signals.settlePresentationTemplateDetailPreviewFrame$,
+    signals.template.settlePresentationTemplateDetailPreviewFrame$,
   );
   const visibleDetailPreview = templateDetailPreviewMatchesItem(
     detailPreview,
@@ -3732,7 +3736,7 @@ function PptCard({
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
-  const themeIdBySlug = useGet(signals.templateCardThemeIdBySlug$);
+  const themeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const selectedTheme = findPresentationTemplateTheme(
     themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
   );
@@ -4733,40 +4737,42 @@ function TemplatePickerDialog({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const category = useGet(signals.templatePickerCategory$);
-  const setCategory = useSet(signals.setTemplatePickerCategory$);
-  const search = useGet(signals.templatePickerSearch$);
-  const setSearch = useSet(signals.setTemplatePickerSearch$);
-  const previewSlug = useGet(signals.templatePickerPreviewSlug$);
+  const category = useGet(signals.template.templatePickerCategory$);
+  const setCategory = useSet(signals.template.setTemplatePickerCategory$);
+  const search = useGet(signals.template.templatePickerSearch$);
+  const setSearch = useSet(signals.template.setTemplatePickerSearch$);
+  const previewSlug = useGet(signals.template.templatePickerPreviewSlug$);
   const restorePresentationGridScroll = useSet(
-    signals.restoreTemplatePickerPresentationScroll$,
+    signals.template.restoreTemplatePickerPresentationScroll$,
   );
   const setPresentationGridScrollTop = useSet(
-    signals.setTemplatePickerPresentationScrollTop$,
+    signals.template.setTemplatePickerPresentationScrollTop$,
   );
-  const detailPreview = useGet(signals.templateDetailHtmlPreview$);
+  const detailPreview = useGet(signals.template.templateDetailHtmlPreview$);
   const ownPreviewResources = useSet(
-    signals.ownTemplatePickerPreviewResources$,
+    signals.template.ownTemplatePickerPreviewResources$,
   );
   const releasePreviewResources = useSet(
-    signals.releaseTemplatePickerPreviewResources$,
+    signals.template.releaseTemplatePickerPreviewResources$,
   );
   const openDetailPreview = useSet(
-    signals.openPresentationTemplateDetailPreview$,
+    signals.template.openPresentationTemplateDetailPreview$,
   );
   const selectDetailPreview = useSet(
-    signals.selectPresentationTemplateDetailPreview$,
+    signals.template.selectPresentationTemplateDetailPreview$,
   );
   const closeDetailPreview = useSet(
-    signals.closePresentationTemplateDetailPreview$,
+    signals.template.closePresentationTemplateDetailPreview$,
   );
   const openWebsiteTemplatePreview = useSet(
-    signals.openWebsiteTemplatePreview$,
+    signals.template.openWebsiteTemplatePreview$,
   );
-  const cardThemeIdBySlug = useGet(signals.templateCardThemeIdBySlug$);
-  const illustrationVariantIndex = useGet(signals.illustrationVariantIndex$);
+  const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
+  const illustrationVariantIndex = useGet(
+    signals.template.illustrationVariantIndex$,
+  );
   const setIllustrationVariantIndex = useSet(
-    signals.setIllustrationVariantIndex$,
+    signals.template.setIllustrationVariantIndex$,
   );
   const previewItem =
     presentationItems.find((item) => {
@@ -4788,10 +4794,10 @@ function TemplatePickerDialog({
   // resolveWorkflowCatalog() keeps that logic out of this component to stay
   // under the complexity budget.
   const workflowCategoryFilter = useGet(
-    signals.templatePickerWorkflowCategory$,
+    signals.template.templatePickerWorkflowCategory$,
   );
   const setWorkflowCategoryFilter = useSet(
-    signals.setTemplatePickerWorkflowCategory$,
+    signals.template.setTemplatePickerWorkflowCategory$,
   );
   const workflowCatalog = resolveWorkflowCatalog({
     categoryFilter: workflowCategoryFilter,
@@ -5389,15 +5395,19 @@ function ComposerTemplateAttachmentSync({
 }) {
   const picker = useComposerTemplatePicker(signals);
   const onDraftChange = useComposerDraftChange(signals);
-  const runtime = signals.templatePreview;
-  const setLifecycleRef = useSet(signals.setTemplateAttachmentLifecycleRef$);
-  const setOpen = useSet(signals.setTemplatePickerOpen$);
-  const setCategory = useSet(signals.setTemplatePickerCategory$);
-  const setSearch = useSet(signals.setTemplatePickerSearch$);
-  const setPreviewSlug = useSet(signals.setTemplatePickerPreviewSlug$);
-  const setReferenceValue = useSet(signals.setTemplatePickerReferenceValue$);
-  const readSelectedTemplate = useSet(signals.readSelectedTemplate$);
-  const cardThemeIdBySlug = useGet(signals.templateCardThemeIdBySlug$);
+  const runtime = signals.template.templatePreview;
+  const setLifecycleRef = useSet(
+    signals.template.setTemplateAttachmentLifecycleRef$,
+  );
+  const setOpen = useSet(signals.template.setTemplatePickerOpen$);
+  const setCategory = useSet(signals.template.setTemplatePickerCategory$);
+  const setSearch = useSet(signals.template.setTemplatePickerSearch$);
+  const setPreviewSlug = useSet(signals.template.setTemplatePickerPreviewSlug$);
+  const setReferenceValue = useSet(
+    signals.template.setTemplatePickerReferenceValue$,
+  );
+  const readSelectedTemplate = useSet(signals.template.readSelectedTemplate$);
+  const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const attachment = selectedComposerTemplateAttachment(picker?.value);
   const openPicker = (category: string) => {
     prewarmTemplatePreviewImages(
@@ -5463,15 +5473,19 @@ function TemplatePickerButton({
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
-  const open = useGet(signals.templatePickerOpen$);
-  const skipEnterAnimation = useGet(signals.templatePickerSkipEnterAnimation$);
-  const category = useGet(signals.templatePickerCategory$);
-  const referenceValue = useGet(signals.templatePickerReferenceValue$);
-  const setOpen = useSet(signals.setTemplatePickerOpen$);
-  const setSearch = useSet(signals.setTemplatePickerSearch$);
-  const setPreviewSlug = useSet(signals.setTemplatePickerPreviewSlug$);
-  const setReferenceValue = useSet(signals.setTemplatePickerReferenceValue$);
-  const cardThemeIdBySlug = useGet(signals.templateCardThemeIdBySlug$);
+  const open = useGet(signals.template.templatePickerOpen$);
+  const skipEnterAnimation = useGet(
+    signals.template.templatePickerSkipEnterAnimation$,
+  );
+  const category = useGet(signals.template.templatePickerCategory$);
+  const referenceValue = useGet(signals.template.templatePickerReferenceValue$);
+  const setOpen = useSet(signals.template.setTemplatePickerOpen$);
+  const setSearch = useSet(signals.template.setTemplatePickerSearch$);
+  const setPreviewSlug = useSet(signals.template.setTemplatePickerPreviewSlug$);
+  const setReferenceValue = useSet(
+    signals.template.setTemplatePickerReferenceValue$,
+  );
+  const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const selectedTitle = selectedTemplateTitle(picker.value);
   const selectedCategory = resolveTemplatePickerCategory({
     category,
@@ -5570,7 +5584,9 @@ function ComposerTemplatePickerSlot({ signals }: { signals: ComposerSignals }) {
   const hasVideoTab = true;
   const hasWorkflowTab = true;
   const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
-  const prepareTemplateInsertion = useSet(signals.prepareTemplateInsertion$);
+  const prepareTemplateInsertion = useSet(
+    signals.template.prepareTemplateInsertion$,
+  );
   return (
     <TemplatePickerButton
       picker={picker}
@@ -5580,7 +5596,7 @@ function ComposerTemplatePickerSlot({ signals }: { signals: ComposerSignals }) {
       hasIllustrationTab={hasIllustrationTab}
       hasVideoTab={hasVideoTab}
       hasWorkflowTab={hasWorkflowTab}
-      runtime={signals.templatePreview}
+      runtime={signals.template.templatePreview}
       signals={signals}
     />
   );
@@ -5621,7 +5637,7 @@ function CreateWorkflowPromptButton({
 }
 
 function ComposerWorkflowPromptSlot({ signals }: { signals: ComposerSignals }) {
-  const createWorkflowPrompt = useSet(signals.createWorkflowPrompt$);
+  const createWorkflowPrompt = useSet(signals.workflow.createWorkflowPrompt$);
   const pageSignal = useGet(pageSignal$);
   return (
     <CreateWorkflowPromptButton
@@ -5787,8 +5803,8 @@ function AddConnectorsDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const connectorUi = useGet(signals.connectorUiState$);
-  const updateConnectorUi = useSet(signals.updateConnectorUiState$);
+  const connectorUi = useGet(signals.connector.connectorUiState$);
+  const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
   const search = connectorUi.addDialogSearch;
   const filtered = unconnected.filter((item) => {
     return matchesConnectorSearch(search, item);
@@ -6052,7 +6068,9 @@ function ComposerConnectorPermissionDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const grantsLoadable = useLastLoadable(signals.connectorPermissionGrants$);
+  const grantsLoadable = useLastLoadable(
+    signals.connector.connectorPermissionGrants$,
+  );
   const pageSignal = useGet(pageSignal$);
   const [, applyGrantPolicies] = useLoadableSet(applyUserPermissionGrants$);
 
@@ -6071,7 +6089,7 @@ function ComposerConnectorPermissionDialog({
       agentId={agentId}
       connectorSlug={connector.slug}
       connectorLabel={connector.label}
-      metadata$={signals.connectorPermissionMetadata$}
+      metadata$={signals.connector.connectorPermissionMetadata$}
       displayName={agentDisplayName}
       initialPolicies={initialPolicies}
       initialGrants={activeSnapshot.grants}
@@ -6158,13 +6176,15 @@ function ConnectorsPopoverButton({
   ) => void | Promise<void>;
 }) {
   const { t } = useTranslation();
-  const connectorUi = useGet(signals.connectorUiState$);
-  const updateConnectorUi = useSet(signals.updateConnectorUiState$);
+  const connectorUi = useGet(signals.connector.connectorUiState$);
+  const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
   const search = connectorUi.popoverSearch;
   const sortOrder = connectorUi.popoverSortOrder;
-  const downloadDialogOpen = useGet(signals.computerUseDownloadDialogOpen$);
+  const downloadDialogOpen = useGet(
+    signals.computer.computerUseDownloadDialogOpen$,
+  );
   const setDownloadDialogOpen = useSet(
-    signals.setComputerUseDownloadDialogOpen$,
+    signals.computer.setComputerUseDownloadDialogOpen$,
   );
   const permissionEntryEnabled = useGet(composerConnectorPermissionsEnabled$);
   const permissionConnectorSlug = connectorUi.permissionConnectorSlug;
@@ -6615,8 +6635,8 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
   const openQuotaRecovery = useSet(openAudioInputQuotaRecovery$);
-  const appendText = useSet(signals.appendText$);
-  const draftChanged = useSet(signals.draftChanged$);
+  const appendText = useSet(signals.editor.appendText$);
+  const draftChanged = useSet(signals.draft.draftChanged$);
   const signal = useGet(pageSignal$);
   const disabled = starting || transcribing || (!recording && !quotaResolved);
   const status = {
@@ -6711,7 +6731,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
 
 function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
-  const fileInput = useGet(signals.composerFileInput$);
+  const fileInput = useGet(signals.draft.composerFileInput$);
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
@@ -6744,11 +6764,11 @@ function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
 
 function ComposerUploadMenu({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
-  const uploadOpen = useGet(signals.uploadPopoverOpen$);
-  const setUploadOpen = useSet(signals.setUploadPopoverOpen$);
-  const appendText = useSet(signals.appendText$);
-  const draftChanged = useSet(signals.draftChanged$);
-  const fileInput = useGet(signals.composerFileInput$);
+  const uploadOpen = useGet(signals.draft.uploadPopoverOpen$);
+  const setUploadOpen = useSet(signals.draft.setUploadPopoverOpen$);
+  const appendText = useSet(signals.editor.appendText$);
+  const draftChanged = useSet(signals.draft.draftChanged$);
+  const fileInput = useGet(signals.draft.composerFileInput$);
   const pageSignal = useGet(pageSignal$);
   const addLink = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -6973,7 +6993,7 @@ function restoreChatClipboardPayload({
 }
 
 function useComposerDraftChange(signals: ComposerSignals): () => void {
-  const draftChanged = useSet(signals.draftChanged$);
+  const draftChanged = useSet(signals.draft.draftChanged$);
   const pageSignal = useGet(pageSignal$);
   return () => {
     detach(draftChanged(pageSignal), Reason.DomCallback);
@@ -6983,7 +7003,7 @@ function useComposerDraftChange(signals: ComposerSignals): () => void {
 function useComposerVisualAttachmentUnsupported(
   signals: ComposerSignals,
 ): VisualAttachmentUnsupportedState | null {
-  const modelSelection = useLastResolved(signals.modelSelection$) ?? null;
+  const modelSelection = useLastResolved(signals.model.modelSelection$) ?? null;
   return getVisualAttachmentUnsupportedState({
     value: modelSelection,
     onChange: () => {},
@@ -6994,9 +7014,9 @@ function useComposerTemplatePicker(
   signals: ComposerSignals,
 ): ComposerTemplatePicker {
   const featureSwitches = useGet(featureSwitch$);
-  const value = useGet(signals.generationTemplate$);
-  const setValue = useSet(signals.setGenerationTemplate$);
-  const insertTemplate = useSet(signals.insertTemplate$);
+  const value = useGet(signals.template.generationTemplate$);
+  const setValue = useSet(signals.template.setGenerationTemplate$);
+  const insertTemplate = useSet(signals.template.insertTemplate$);
   const notifyDraftChanged = useComposerDraftChange(signals);
   return (
     inlineComposerTemplatePicker({
@@ -7011,9 +7031,10 @@ function useComposerTemplatePicker(
 function useComposerPrimaryAction(
   signals: ComposerSignals,
 ): ComposerPrimaryAction {
-  const action = useLastResolved(signals.primaryAction$) ?? "disabled";
+  const action =
+    useLastResolved(signals.submission.primaryAction$) ?? "disabled";
   const selectedModelOauthAvailable =
-    useLastResolved(signals.selectedModelOauthAvailable$) ?? true;
+    useLastResolved(signals.model.selectedModelOauthAvailable$) ?? true;
   return selectedModelOauthAvailable ? action : "disabled";
 }
 
@@ -7042,7 +7063,7 @@ function useComposerFileUpload(
 ): (file: File) => boolean {
   const visualAttachmentUnsupported =
     useComposerVisualAttachmentUnsupported(signals);
-  const uploadAttachment = useSet(signals.uploadAttachment$);
+  const uploadAttachment = useSet(signals.draft.uploadAttachment$);
   const rootSignal = useGet(rootSignal$);
   const { t } = useTranslation();
   return (file) => {
@@ -7067,20 +7088,20 @@ function useComposerFileUpload(
 }
 
 function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
-  const sending = useLastResolved(signals.sending$) ?? false;
+  const sending = useLastResolved(signals.submission.sending$) ?? false;
   const notifyDraftChanged = useComposerDraftChange(signals);
   const visualAttachmentUnsupported =
     useComposerVisualAttachmentUnsupported(signals);
   const inlineTemplatesEnabled = userMessageInlineTemplatesEnabled(
     useGet(featureSwitch$),
   );
-  const restoreAttachments = useSet(signals.restoreAttachments$);
-  const insertPromptMarkdown = useSet(signals.insertPromptMarkdown$);
-  const insertUserMessage = useSet(signals.insertUserMessage$);
+  const restoreAttachments = useSet(signals.draft.restoreAttachments$);
+  const insertPromptMarkdown = useSet(signals.editor.insertPromptMarkdown$);
+  const insertUserMessage = useSet(signals.editor.insertUserMessage$);
   const uploadFile = useComposerFileUpload(signals);
   const templatePicker = useComposerTemplatePicker(signals);
   const primaryAction = useComposerPrimaryAction(signals);
-  const submitCurrentInput = useSet(signals.submitCurrentInput$);
+  const submitCurrentInput = useSet(signals.submission.submitCurrentInput$);
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
   const sendModeLoadable = useLastLoadable(sendMode$);
@@ -7175,7 +7196,7 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
       sending={sending}
       onKeyDown={handleKeyDown}
       onPaste={handlePaste}
-      singleLineOnMobile={signals.mobileSingleLine}
+      singleLineOnMobile={signals.context.mobileSingleLine}
     />
   );
 }
@@ -7221,7 +7242,9 @@ function ComposerSendButton({
 
 function ComposerSendControl({ signals }: { signals: ComposerSignals }) {
   const action = useComposerPrimaryAction(signals);
-  const activatePrimaryAction = useSet(signals.activatePrimaryAction$);
+  const activatePrimaryAction = useSet(
+    signals.submission.activatePrimaryAction$,
+  );
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
   const activate = () => {
@@ -7271,14 +7294,14 @@ function ModelConfigurationWarning({
 function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
-  const modelPickerOpen = useGet(signals.modelPickerOpen$);
-  const setModelPickerOpen = useSet(signals.setModelPickerOpen$);
-  const modelSelection = useLastLoadable(signals.modelSelection$);
+  const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
+  const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
+  const modelSelection = useLastLoadable(signals.model.modelSelection$);
   const selectedModelOauthAvailable =
-    useLastResolved(signals.selectedModelOauthAvailable$) ?? true;
-  const setModelSelection = useSet(signals.setModelSelection$);
-  const configureSelectedModel = useSet(signals.configureSelectedModel$);
-  const attachments = useGet(signals.attachments$);
+    useLastResolved(signals.model.selectedModelOauthAvailable$) ?? true;
+  const setModelSelection = useSet(signals.model.setModelSelection$);
+  const configureSelectedModel = useSet(signals.model.configureSelectedModel$);
+  const attachments = useGet(signals.draft.attachments$);
   const pageSignal = useGet(pageSignal$);
   const value = modelSelection.state === "hasData" ? modelSelection.data : null;
   const modelPickerLoading = modelSelection.state === "loading";
@@ -7381,8 +7404,8 @@ function useComposerConnectorReadState(
   return {
     catalogItems: useLastLoadable(allConnectorCatalogItems$),
     customConnectors: useLastLoadable(customConnectors$),
-    agent: useLoadable(signals.agent$),
-    authorization: useLastLoadable(signals.connectorAuthorization$, {
+    agent: useLoadable(signals.context.agent$),
+    authorization: useLastLoadable(signals.connector.connectorAuthorization$, {
       equalityFn: equalComposerConnectorAuthorizationState,
     }),
   };
@@ -7498,7 +7521,7 @@ function resolveComposerConnectorCollections({
 }
 
 function ComposerFileInput({ signals }: { signals: ComposerSignals }) {
-  const setFileInput = useSet(signals.setComposerFileInput$);
+  const setFileInput = useSet(signals.draft.setComposerFileInput$);
   const uploadFile = useComposerFileUpload(signals);
   const notifyDraftChanged = useComposerDraftChange(signals);
 
@@ -7527,14 +7550,14 @@ function ComposerFileInput({ signals }: { signals: ComposerSignals }) {
 }
 
 function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
-  const attachments = useGet(signals.attachments$);
+  const attachments = useGet(signals.draft.attachments$);
   const visualAttachmentUnsupported =
     useComposerVisualAttachmentUnsupported(signals);
   const visibleAttachments = resolveVisibleAttachments(
     attachments,
     visualAttachmentUnsupported,
   );
-  const removeAttachment = useSet(signals.removeAttachment$);
+  const removeAttachment = useSet(signals.draft.removeAttachment$);
   const notifyDraftChanged = useComposerDraftChange(signals);
 
   if (visibleAttachments.length === 0) {
@@ -7554,12 +7577,14 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
 function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
   const connectorReadState = useComposerConnectorReadState(signals);
-  const connectorUi = useGet(signals.connectorUiState$);
-  const updateConnectorUi = useSet(signals.updateConnectorUiState$);
-  const storedComputerUseHostId = useGet(signals.computerUseHostId$);
-  const cloudBrowserEnabled = useGet(signals.cloudBrowserEnabled$);
-  const setComputerUseHostId = useSet(signals.setComputerUseHostId$);
-  const setCloudBrowserEnabled = useSet(signals.setCloudBrowserEnabled$);
+  const connectorUi = useGet(signals.connector.connectorUiState$);
+  const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+  const storedComputerUseHostId = useGet(signals.computer.computerUseHostId$);
+  const cloudBrowserEnabled = useGet(signals.computer.cloudBrowserEnabled$);
+  const setComputerUseHostId = useSet(signals.computer.setComputerUseHostId$);
+  const setCloudBrowserEnabled = useSet(
+    signals.computer.setCloudBrowserEnabled$,
+  );
   const computerUseHostsState = useLastLoadable(computerUseHosts$);
   const lastComputerUseHosts = useLastResolved(computerUseHosts$) ?? [];
   const computerUseHosts =
@@ -7613,7 +7638,9 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     connectFlowSlug ?? pollingAuthCodeSlug ?? pollingDeviceAuthSlug;
   const connectBrowserAuth = useSet(connectConnectorOAuthAuthCode$);
   const connectNoAuth = useSet(connectConnectorNoAuth$);
-  const setConnectorAuthorization = useSet(signals.setConnectorAuthorization$);
+  const setConnectorAuthorization = useSet(
+    signals.connector.setConnectorAuthorization$,
+  );
   const optimisticConnected = useGet(justConnectedSlugs$);
   const savingConnectorSlug = connectorUi.savingConnectorSlug;
   const savingCustomConnectorId = connectorUi.savingCustomConnectorId;
@@ -7865,8 +7892,8 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
 }
 
 function ComposerCard({ signals }: { signals: ComposerSignals }) {
-  const dragOver = useGet(signals.dragOver$);
-  const setDragOver = useSet(signals.setDragOver$);
+  const dragOver = useGet(signals.draft.dragOver$);
+  const setDragOver = useSet(signals.draft.setDragOver$);
   const uploadFile = useComposerFileUpload(signals);
   const notifyDraftChanged = useComposerDraftChange(signals);
 

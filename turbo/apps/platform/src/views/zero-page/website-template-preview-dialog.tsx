@@ -25,8 +25,10 @@ function WebsiteTemplatePreviewDialog({
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
-  const previewLoaded = useGet(signals.websiteTemplatePreviewLoaded$);
-  const markPreviewLoaded = useSet(signals.markWebsiteTemplatePreviewLoaded$);
+  const previewLoaded = useGet(signals.template.websiteTemplatePreviewLoaded$);
+  const markPreviewLoaded = useSet(
+    signals.template.markWebsiteTemplatePreviewLoaded$,
+  );
   const placeholderUrl = r2ImageTransformUrl(item.previewImageUrl, {
     width: 480,
     height: 270,
@@ -105,8 +107,8 @@ export function WebsiteTemplatePreviewDialogSlot({
 }: {
   signals: ComposerSignals;
 }) {
-  const previewId = useGet(signals.websiteTemplatePreviewId$);
-  const closePreview = useSet(signals.closeWebsiteTemplatePreview$);
+  const previewId = useGet(signals.template.websiteTemplatePreviewId$);
+  const closePreview = useSet(signals.template.closeWebsiteTemplatePreview$);
   const item =
     previewId === null ? null : (findWebsiteTemplateItem(previewId) ?? null);
 

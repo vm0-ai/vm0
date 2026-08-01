@@ -527,8 +527,8 @@ export function AgentChatPage() {
   const userFirstName = useLastResolved(user$)?.firstName ?? null;
 
   const composerSignals = useGet(agentChatComposerSignals$);
-  const setInput = useSet(composerSignals.setDraftInput$);
-  const draftChanged = useSet(composerSignals.draftChanged$);
+  const setInput = useSet(composerSignals.draft.setDraftInput$);
+  const draftChanged = useSet(composerSignals.draft.draftChanged$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline = useTagline(
     currentChatAgentDisplayName,

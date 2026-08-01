@@ -51,7 +51,7 @@ export interface ComposerConnectorUiState {
   readonly permissionConnectorSlug: ConnectorSlug | null;
 }
 
-interface ComposerConnectorSignals {
+export interface ComposerConnectorSignals {
   readonly connectorAuthorization$: Computed<
     Promise<ComposerConnectorAuthorizationState>
   >;

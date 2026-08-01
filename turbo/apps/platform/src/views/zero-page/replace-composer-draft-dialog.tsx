@@ -19,9 +19,9 @@ export function ReplaceComposerDraftDialog({
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
-  const open = useGet(signals.replaceWorkflowPromptOpen$);
-  const setOpen = useSet(signals.setReplaceWorkflowPromptOpen$);
-  const confirm = useSet(signals.confirmReplaceWorkflowPrompt$);
+  const open = useGet(signals.workflow.replaceWorkflowPromptOpen$);
+  const setOpen = useSet(signals.workflow.setReplaceWorkflowPromptOpen$);
+  const confirm = useSet(signals.workflow.confirmReplaceWorkflowPrompt$);
   const pageSignal = useGet(pageSignal$);
   return (
     <Dialog open={open} onOpenChange={setOpen}>

@@ -3565,7 +3565,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
         </div>
       </div>
 
-      <ChatFeedbackSelection feedback={thread.workflowComposer.feedback} />
+      <ChatFeedbackSelection feedback={thread.composer.feedback} />
     </>
   );
 }
@@ -3665,7 +3665,7 @@ function RecommendedFollowupList({
   source: RecommendedFollowupSource;
 }) {
   const selectOrAppendComposerText = useSet(
-    thread.workflowComposer.selectOrAppendText$,
+    thread.composer.editor.selectOrAppendText$,
   );
   const handleRecommendedFollowupsRef = (element: HTMLDivElement | null) => {
     reportRecommendedFollowupsShown(element, source);
@@ -6593,15 +6593,19 @@ function UserMessageTemplateReference({
 }) {
   const { t } = useTranslation();
   const typeLabel = generationTemplateTypeLabel(part.template);
-  const setTemplatePickerCategory = useSet(signals.setTemplatePickerCategory$);
-  const setTemplatePickerOpen = useSet(signals.setTemplatePickerOpen$);
+  const setTemplatePickerCategory = useSet(
+    signals.template.setTemplatePickerCategory$,
+  );
+  const setTemplatePickerOpen = useSet(signals.template.setTemplatePickerOpen$);
   const setTemplatePickerPreviewSlug = useSet(
-    signals.setTemplatePickerPreviewSlug$,
+    signals.template.setTemplatePickerPreviewSlug$,
   );
   const setTemplatePickerReferenceValue = useSet(
-    signals.setTemplatePickerReferenceValue$,
+    signals.template.setTemplatePickerReferenceValue$,
   );
-  const setTemplatePickerSearch = useSet(signals.setTemplatePickerSearch$);
+  const setTemplatePickerSearch = useSet(
+    signals.template.setTemplatePickerSearch$,
+  );
   return (
     <button
       type="button"

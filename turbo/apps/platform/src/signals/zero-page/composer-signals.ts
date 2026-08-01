@@ -7,10 +7,6 @@ import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-pr
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef, withCleanup } from "../utils.ts";
 import { isVisualAttachment } from "../chat-page/resolve-draft-attachments.ts";
-import type {
-  PlatformConnectorPermissionMetadata,
-  PlatformUserPermissionGrant,
-} from "../connector-domain.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ZeroChatAttachment } from "./chat-draft.ts";
 import type {
@@ -19,19 +15,56 @@ import type {
 } from "./tiptap-workflow-composer.ts";
 import {
   createComposerConnectorSignals,
-  type ComposerConnectorAuthorizationState,
-  type ComposerConnectorAuthorizationTarget,
-  type ComposerConnectorUiState,
+  type ComposerConnectorSignals,
 } from "./zero-connectors.ts";
 import {
   createComposerUiSignals,
-  type ComposerUiSignals,
+  type ComposerUiSignalGroups,
 } from "./zero-chat-composer.ts";
 
-type FlatWorkflowComposerSignals = Omit<
+type ComposerEditorSignals = Pick<
   WorkflowComposerSignals,
-  "agentId$" | "feedback" | "readInputForSubmission$"
+  | "editor"
+  | "setContainerRef$"
+  | "focus$"
+  | "hasInput$"
+  | "insertPromptMarkdown$"
+  | "insertUserMessage$"
+  | "insertText$"
+  | "appendText$"
+  | "selectOrAppendText$"
 >;
+
+type ComposerWorkflowEditorSignals = Pick<
+  WorkflowComposerSignals,
+  "workflows$" | "reloadWorkflows$" | "insertWorkflow$"
+>;
+
+type ComposerSuggestionSignals = Pick<
+  WorkflowComposerSignals,
+  | "activeSlashRange$"
+  | "activeChatThreadSuggestionRange$"
+  | "chatThreadSuggestions$"
+  | "selectedSuggestionIndex$"
+  | "setSelectedSuggestionIndex$"
+  | "closeSuggestionMenu$"
+  | "insertAgent$"
+  | "insertChatThread$"
+>;
+
+type ComposerTemplateEditorSignals = Pick<
+  WorkflowComposerSignals,
+  | "templatePreview"
+  | "hasTemplateAttachment$"
+  | "insertTemplate$"
+  | "readSelectedTemplate$"
+  | "prepareTemplateInsertion$"
+  | "setTemplateAttachmentLifecycleRef$"
+>;
+
+type ComposerDraftUiSignals = ComposerUiSignalGroups["draft"];
+type ComposerModelUiSignals = ComposerUiSignalGroups["model"];
+type ComposerTemplateUiSignals = ComposerUiSignalGroups["template"];
 
 export interface ComposerSubmission {
   readonly prompt: string;
@@ -59,37 +92,20 @@ export type ComposerPendingEvent =
       readonly automationBrief: string | undefined;
     };
 
-export interface ComposerSignals
-  extends FlatWorkflowComposerSignals, ComposerUiSignals {
+interface ComposerContextSignals {
   readonly agent$: Computed<Promise<ZeroAgentResponse>>;
   readonly mobileSingleLine: boolean;
-  readonly sending$: Computed<Promise<boolean>>;
+}
 
-  readonly connectorAuthorization$: Computed<
-    Promise<ComposerConnectorAuthorizationState>
-  >;
-  readonly setConnectorAuthorization$: Command<
-    Promise<void>,
-    [ComposerConnectorAuthorizationTarget, boolean, AbortSignal]
-  >;
-  readonly connectorUiState$: Computed<ComposerConnectorUiState>;
-  readonly updateConnectorUiState$: Command<
-    void,
-    [Partial<ComposerConnectorUiState>]
-  >;
-  readonly connectorPermissionMetadata$: Computed<
-    Promise<PlatformConnectorPermissionMetadata | null>
-  >;
-  readonly connectorPermissionGrants$: Computed<
-    Promise<readonly PlatformUserPermissionGrant[]>
-  >;
+interface ComposerWorkflowSignals extends ComposerWorkflowEditorSignals {
+  readonly createWorkflowPrompt$: Command<Promise<void>, [AbortSignal]>;
+  readonly replaceWorkflowPromptOpen$: Computed<boolean>;
+  readonly confirmReplaceWorkflowPrompt$: Command<Promise<void>, [AbortSignal]>;
+  readonly setReplaceWorkflowPromptOpen$: Command<void, [boolean]>;
+}
 
+interface ComposerDraftSignals extends ComposerDraftUiSignals {
   readonly setDraftInput$: Command<void, [string]>;
-  readonly generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
-  readonly setGenerationTemplate$: Command<
-    void,
-    [GenerationTemplateRequest | undefined]
-  >;
   readonly attachments$: Computed<ZeroChatAttachment[]>;
   readonly attachmentUploadsReady$: Computed<boolean | Promise<boolean>>;
   readonly uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
@@ -103,7 +119,9 @@ export interface ComposerSignals
     [HTMLElement | null]
   >;
   readonly draftChanged$: Command<Promise<void>, [AbortSignal]>;
+}
 
+interface ComposerModelSignals extends ComposerModelUiSignals {
   readonly modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
   readonly selectedModelOauthAvailable$: Computed<Promise<boolean>>;
   readonly setModelSelection$: Command<
@@ -111,7 +129,9 @@ export interface ComposerSignals
     [ModelProviderSelection | null, AbortSignal]
   >;
   readonly configureSelectedModel$: Command<Promise<void>, [AbortSignal]>;
+}
 
+interface ComposerComputerSignals {
   readonly computerUseHostId$: Computed<string | null>;
   readonly cloudBrowserEnabled$: Computed<boolean>;
   readonly setComputerUseHostId$: Command<
@@ -124,7 +144,10 @@ export interface ComposerSignals
   >;
   readonly computerUseDownloadDialogOpen$: Computed<boolean>;
   readonly setComputerUseDownloadDialogOpen$: Command<void, [boolean]>;
+}
 
+interface ComposerSubmissionSignals {
+  readonly sending$: Computed<Promise<boolean>>;
   readonly primaryAction$: Computed<Promise<ComposerPrimaryAction>>;
   readonly submitCurrentInput$: Command<
     Promise<boolean>,
@@ -134,57 +157,83 @@ export interface ComposerSignals
     Promise<boolean>,
     [ComposerPrimaryAction, AbortSignal]
   >;
+}
+
+interface ComposerQueueSignals {
   readonly pendingEvents$: Computed<Promise<readonly ComposerPendingEvent[]>>;
   readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
   readonly removeQueuedMessage$: Command<Promise<void>, [string, AbortSignal]>;
   readonly removeWorkflowEvent$: Command<Promise<void>, [string, AbortSignal]>;
+}
+
+interface ComposerGoalSignals {
   readonly activeGoalObjective$: Computed<Promise<string | null>>;
   readonly cancelActiveGoal$: Command<Promise<void>, [AbortSignal]>;
   readonly openActiveGoal$: Command<void, []>;
+}
 
-  readonly createWorkflowPrompt$: Command<Promise<void>, [AbortSignal]>;
-  readonly replaceWorkflowPromptOpen$: Computed<boolean>;
-  readonly confirmReplaceWorkflowPrompt$: Command<Promise<void>, [AbortSignal]>;
-  readonly setReplaceWorkflowPromptOpen$: Command<void, [boolean]>;
+interface ComposerTemplateSignals
+  extends ComposerTemplateEditorSignals, ComposerTemplateUiSignals {
+  readonly generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
+  readonly setGenerationTemplate$: Command<
+    void,
+    [GenerationTemplateRequest | undefined]
+  >;
+}
+
+export interface ComposerSignals {
+  readonly context: ComposerContextSignals;
+  readonly editor: ComposerEditorSignals;
+  readonly feedback: WorkflowComposerSignals["feedback"];
+  readonly workflow: ComposerWorkflowSignals;
+  readonly suggestion: ComposerSuggestionSignals;
+  readonly connector: ComposerConnectorSignals;
+  readonly draft: ComposerDraftSignals;
+  readonly model: ComposerModelSignals;
+  readonly computer: ComposerComputerSignals;
+  readonly submission: ComposerSubmissionSignals;
+  readonly queue: ComposerQueueSignals;
+  readonly goal: ComposerGoalSignals;
+  readonly template: ComposerTemplateSignals;
 }
 
 interface CreateComposerSignalsOptions {
-  readonly agent$: ComposerSignals["agent$"];
+  readonly agent$: ComposerContextSignals["agent$"];
   readonly workflowComposer: WorkflowComposerSignals;
   readonly draft: DraftSignals;
-  readonly generationTemplate$?: ComposerSignals["generationTemplate$"];
-  readonly setGenerationTemplate$?: ComposerSignals["setGenerationTemplate$"];
+  readonly generationTemplate$?: ComposerTemplateSignals["generationTemplate$"];
+  readonly setGenerationTemplate$?: ComposerTemplateSignals["setGenerationTemplate$"];
   readonly mobileSingleLine: boolean;
   readonly actionsLoading$: Computed<Promise<boolean>>;
-  readonly sending$: ComposerSignals["sending$"];
+  readonly sending$: ComposerSubmissionSignals["sending$"];
   readonly queueWhileSending$: Computed<Promise<boolean>>;
-  readonly draftChanged$: ComposerSignals["draftChanged$"];
-  readonly composerFileInput$: ComposerSignals["composerFileInput$"];
-  readonly setComposerFileInput$: ComposerSignals["setComposerFileInput$"];
-  readonly modelSelection$: ComposerSignals["modelSelection$"];
-  readonly selectedModelOauthAvailable$: ComposerSignals["selectedModelOauthAvailable$"];
-  readonly setModelSelection$: ComposerSignals["setModelSelection$"];
-  readonly configureSelectedModel$: ComposerSignals["configureSelectedModel$"];
-  readonly computerUseHostId$: ComposerSignals["computerUseHostId$"];
-  readonly cloudBrowserEnabled$: ComposerSignals["cloudBrowserEnabled$"];
-  readonly setComputerUseHostId$: ComposerSignals["setComputerUseHostId$"];
-  readonly setCloudBrowserEnabled$: ComposerSignals["setCloudBrowserEnabled$"];
+  readonly draftChanged$: ComposerDraftSignals["draftChanged$"];
+  readonly composerFileInput$: ComposerDraftSignals["composerFileInput$"];
+  readonly setComposerFileInput$: ComposerDraftSignals["setComposerFileInput$"];
+  readonly modelSelection$: ComposerModelSignals["modelSelection$"];
+  readonly selectedModelOauthAvailable$: ComposerModelSignals["selectedModelOauthAvailable$"];
+  readonly setModelSelection$: ComposerModelSignals["setModelSelection$"];
+  readonly configureSelectedModel$: ComposerModelSignals["configureSelectedModel$"];
+  readonly computerUseHostId$: ComposerComputerSignals["computerUseHostId$"];
+  readonly cloudBrowserEnabled$: ComposerComputerSignals["cloudBrowserEnabled$"];
+  readonly setComputerUseHostId$: ComposerComputerSignals["setComputerUseHostId$"];
+  readonly setCloudBrowserEnabled$: ComposerComputerSignals["setCloudBrowserEnabled$"];
   readonly submitMessage$: Command<
     Promise<boolean>,
     [ComposerSubmissionAction, ComposerSubmission, AbortSignal]
   >;
   readonly cancelRun$: Command<Promise<void>, [AbortSignal]>;
-  readonly pendingEvents$: ComposerSignals["pendingEvents$"];
-  readonly cancellationRecoveryPending$: ComposerSignals["cancellationRecoveryPending$"];
-  readonly removeQueuedMessage$: ComposerSignals["removeQueuedMessage$"];
-  readonly removeWorkflowEvent$: ComposerSignals["removeWorkflowEvent$"];
-  readonly activeGoalObjective$: ComposerSignals["activeGoalObjective$"];
-  readonly cancelActiveGoal$: ComposerSignals["cancelActiveGoal$"];
-  readonly openActiveGoal$: ComposerSignals["openActiveGoal$"];
-  readonly createWorkflowPrompt$: ComposerSignals["createWorkflowPrompt$"];
-  readonly replaceWorkflowPromptOpen$: ComposerSignals["replaceWorkflowPromptOpen$"];
-  readonly confirmReplaceWorkflowPrompt$: ComposerSignals["confirmReplaceWorkflowPrompt$"];
-  readonly setReplaceWorkflowPromptOpen$: ComposerSignals["setReplaceWorkflowPromptOpen$"];
+  readonly pendingEvents$: ComposerQueueSignals["pendingEvents$"];
+  readonly cancellationRecoveryPending$: ComposerQueueSignals["cancellationRecoveryPending$"];
+  readonly removeQueuedMessage$: ComposerQueueSignals["removeQueuedMessage$"];
+  readonly removeWorkflowEvent$: ComposerQueueSignals["removeWorkflowEvent$"];
+  readonly activeGoalObjective$: ComposerGoalSignals["activeGoalObjective$"];
+  readonly cancelActiveGoal$: ComposerGoalSignals["cancelActiveGoal$"];
+  readonly openActiveGoal$: ComposerGoalSignals["openActiveGoal$"];
+  readonly createWorkflowPrompt$: ComposerWorkflowSignals["createWorkflowPrompt$"];
+  readonly replaceWorkflowPromptOpen$: ComposerWorkflowSignals["replaceWorkflowPromptOpen$"];
+  readonly confirmReplaceWorkflowPrompt$: ComposerWorkflowSignals["confirmReplaceWorkflowPrompt$"];
+  readonly setReplaceWorkflowPromptOpen$: ComposerWorkflowSignals["setReplaceWorkflowPromptOpen$"];
 }
 
 export function createComposerFileInputSignals() {
@@ -203,35 +252,56 @@ export function createComposerFileInputSignals() {
   return { composerFileInput$, setComposerFileInput$ };
 }
 
-function flatWorkflowComposerSignals(
+function composerEditorSignals(
   composer: WorkflowComposerSignals,
-): FlatWorkflowComposerSignals {
+): ComposerEditorSignals {
   return {
     editor: composer.editor,
-    templatePreview: composer.templatePreview,
     setContainerRef$: composer.setContainerRef$,
     focus$: composer.focus$,
     hasInput$: composer.hasInput$,
-    hasTemplateAttachment$: composer.hasTemplateAttachment$,
-    activeSlashRange$: composer.activeSlashRange$,
-    activeChatThreadSuggestionRange$: composer.activeChatThreadSuggestionRange$,
-    chatThreadSuggestions$: composer.chatThreadSuggestions$,
-    workflows$: composer.workflows$,
-    reloadWorkflows$: composer.reloadWorkflows$,
-    selectedSuggestionIndex$: composer.selectedSuggestionIndex$,
-    setSelectedSuggestionIndex$: composer.setSelectedSuggestionIndex$,
-    closeSuggestionMenu$: composer.closeSuggestionMenu$,
-    insertWorkflow$: composer.insertWorkflow$,
-    insertAgent$: composer.insertAgent$,
-    insertChatThread$: composer.insertChatThread$,
     insertPromptMarkdown$: composer.insertPromptMarkdown$,
     insertUserMessage$: composer.insertUserMessage$,
-    insertTemplate$: composer.insertTemplate$,
-    readSelectedTemplate$: composer.readSelectedTemplate$,
-    prepareTemplateInsertion$: composer.prepareTemplateInsertion$,
     insertText$: composer.insertText$,
     appendText$: composer.appendText$,
     selectOrAppendText$: composer.selectOrAppendText$,
+  };
+}
+
+function composerWorkflowSignals(
+  composer: WorkflowComposerSignals,
+): ComposerWorkflowEditorSignals {
+  return {
+    workflows$: composer.workflows$,
+    reloadWorkflows$: composer.reloadWorkflows$,
+    insertWorkflow$: composer.insertWorkflow$,
+  };
+}
+
+function composerSuggestionSignals(
+  composer: WorkflowComposerSignals,
+): ComposerSuggestionSignals {
+  return {
+    activeSlashRange$: composer.activeSlashRange$,
+    activeChatThreadSuggestionRange$: composer.activeChatThreadSuggestionRange$,
+    chatThreadSuggestions$: composer.chatThreadSuggestions$,
+    selectedSuggestionIndex$: composer.selectedSuggestionIndex$,
+    setSelectedSuggestionIndex$: composer.setSelectedSuggestionIndex$,
+    closeSuggestionMenu$: composer.closeSuggestionMenu$,
+    insertAgent$: composer.insertAgent$,
+    insertChatThread$: composer.insertChatThread$,
+  };
+}
+
+function composerTemplateSignals(
+  composer: WorkflowComposerSignals,
+): ComposerTemplateEditorSignals {
+  return {
+    templatePreview: composer.templatePreview,
+    hasTemplateAttachment$: composer.hasTemplateAttachment$,
+    insertTemplate$: composer.insertTemplate$,
+    readSelectedTemplate$: composer.readSelectedTemplate$,
+    prepareTemplateInsertion$: composer.prepareTemplateInsertion$,
     setTemplateAttachmentLifecycleRef$:
       composer.setTemplateAttachmentLifecycleRef$,
   };
@@ -250,7 +320,7 @@ function hasVisibleAttachment(
 }
 
 function createComputerUseUiSignals(): Pick<
-  ComposerSignals,
+  ComposerComputerSignals,
   "computerUseDownloadDialogOpen$" | "setComputerUseDownloadDialogOpen$"
 > {
   const internalDownloadDialogOpen$ = state(false);
@@ -273,50 +343,75 @@ export function createComposerSignals(
 ): ComposerSignals {
   const submission = createComposerSubmissionSignals(options);
   const draft = options.draft;
+  const ui = createComposerUiSignals();
 
   return {
-    ...flatWorkflowComposerSignals(options.workflowComposer),
-    ...createComposerConnectorSignals(options.agent$),
-    ...createComputerUseUiSignals(),
-    ...createComposerUiSignals(),
-    ...submission,
-    agent$: options.agent$,
-    mobileSingleLine: options.mobileSingleLine,
-    sending$: options.sending$,
-    setDraftInput$: draft.setInput$,
-    generationTemplate$:
-      options.generationTemplate$ ?? draft.generationTemplate$,
-    setGenerationTemplate$:
-      options.setGenerationTemplate$ ?? draft.setGenerationTemplate$,
-    attachments$: draft.attachments$,
-    attachmentUploadsReady$: draft.attachmentUploadsReady$,
-    uploadAttachment$: draft.uploadAttachment$,
-    restoreAttachments$: draft.restoreAttachments$,
-    removeAttachment$: draft.removeAttachment$,
-    dragOver$: draft.dragOver$,
-    setDragOver$: draft.setDragOver$,
-    composerFileInput$: options.composerFileInput$,
-    setComposerFileInput$: options.setComposerFileInput$,
-    draftChanged$: options.draftChanged$,
-    modelSelection$: options.modelSelection$,
-    selectedModelOauthAvailable$: options.selectedModelOauthAvailable$,
-    setModelSelection$: options.setModelSelection$,
-    configureSelectedModel$: options.configureSelectedModel$,
-    computerUseHostId$: options.computerUseHostId$,
-    cloudBrowserEnabled$: options.cloudBrowserEnabled$,
-    setComputerUseHostId$: options.setComputerUseHostId$,
-    setCloudBrowserEnabled$: options.setCloudBrowserEnabled$,
-    pendingEvents$: options.pendingEvents$,
-    cancellationRecoveryPending$: options.cancellationRecoveryPending$,
-    removeQueuedMessage$: options.removeQueuedMessage$,
-    removeWorkflowEvent$: options.removeWorkflowEvent$,
-    activeGoalObjective$: options.activeGoalObjective$,
-    cancelActiveGoal$: options.cancelActiveGoal$,
-    openActiveGoal$: options.openActiveGoal$,
-    createWorkflowPrompt$: options.createWorkflowPrompt$,
-    replaceWorkflowPromptOpen$: options.replaceWorkflowPromptOpen$,
-    confirmReplaceWorkflowPrompt$: options.confirmReplaceWorkflowPrompt$,
-    setReplaceWorkflowPromptOpen$: options.setReplaceWorkflowPromptOpen$,
+    context: {
+      agent$: options.agent$,
+      mobileSingleLine: options.mobileSingleLine,
+    },
+    editor: composerEditorSignals(options.workflowComposer),
+    feedback: options.workflowComposer.feedback,
+    workflow: {
+      ...composerWorkflowSignals(options.workflowComposer),
+      createWorkflowPrompt$: options.createWorkflowPrompt$,
+      replaceWorkflowPromptOpen$: options.replaceWorkflowPromptOpen$,
+      confirmReplaceWorkflowPrompt$: options.confirmReplaceWorkflowPrompt$,
+      setReplaceWorkflowPromptOpen$: options.setReplaceWorkflowPromptOpen$,
+    },
+    suggestion: composerSuggestionSignals(options.workflowComposer),
+    connector: createComposerConnectorSignals(options.agent$),
+    draft: {
+      ...ui.draft,
+      setDraftInput$: draft.setInput$,
+      attachments$: draft.attachments$,
+      attachmentUploadsReady$: draft.attachmentUploadsReady$,
+      uploadAttachment$: draft.uploadAttachment$,
+      restoreAttachments$: draft.restoreAttachments$,
+      removeAttachment$: draft.removeAttachment$,
+      dragOver$: draft.dragOver$,
+      setDragOver$: draft.setDragOver$,
+      composerFileInput$: options.composerFileInput$,
+      setComposerFileInput$: options.setComposerFileInput$,
+      draftChanged$: options.draftChanged$,
+    },
+    model: {
+      ...ui.model,
+      modelSelection$: options.modelSelection$,
+      selectedModelOauthAvailable$: options.selectedModelOauthAvailable$,
+      setModelSelection$: options.setModelSelection$,
+      configureSelectedModel$: options.configureSelectedModel$,
+    },
+    computer: {
+      ...createComputerUseUiSignals(),
+      computerUseHostId$: options.computerUseHostId$,
+      cloudBrowserEnabled$: options.cloudBrowserEnabled$,
+      setComputerUseHostId$: options.setComputerUseHostId$,
+      setCloudBrowserEnabled$: options.setCloudBrowserEnabled$,
+    },
+    submission: {
+      ...submission,
+      sending$: options.sending$,
+    },
+    queue: {
+      pendingEvents$: options.pendingEvents$,
+      cancellationRecoveryPending$: options.cancellationRecoveryPending$,
+      removeQueuedMessage$: options.removeQueuedMessage$,
+      removeWorkflowEvent$: options.removeWorkflowEvent$,
+    },
+    goal: {
+      activeGoalObjective$: options.activeGoalObjective$,
+      cancelActiveGoal$: options.cancelActiveGoal$,
+      openActiveGoal$: options.openActiveGoal$,
+    },
+    template: {
+      ...composerTemplateSignals(options.workflowComposer),
+      ...ui.template,
+      generationTemplate$:
+        options.generationTemplate$ ?? draft.generationTemplate$,
+      setGenerationTemplate$:
+        options.setGenerationTemplate$ ?? draft.setGenerationTemplate$,
+    },
   };
 }
 

@@ -166,7 +166,10 @@ import type {
   SendMessageOptions,
   ThinkingIndicatorMode,
 } from "./chat-thread-signals.ts";
-import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
+import {
+  createWorkflowComposerSignals,
+  reloadMountedComposerWorkflows$,
+} from "../zero-page/tiptap-workflow-composer.ts";
 import {
   createMailDraftCardSignalsRegistry,
   type MailDraftCardSignalsRegistry,
@@ -3030,7 +3033,6 @@ interface RunTrackingDeps {
   reloadArtifacts$: Command<void, []>;
   reloadMailDrafts$: Command<void, []>;
   subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
-  reloadComposerWorkflows$: Command<Promise<void>, [AbortSignal]>;
   automationSignals: Pick<ChatThreadSignals, "headerAutomations">;
   dataSource: ChatThreadRemote;
 }
@@ -3269,7 +3271,6 @@ function createOnSubscribedCommand({
   syncRemoteEvents$,
   reloadArtifacts$,
   reloadMailDrafts$,
-  reloadComposerWorkflows$,
   markThreadReadIfNeeded$,
   dataSource,
 }: Pick<
@@ -3279,7 +3280,6 @@ function createOnSubscribedCommand({
   | "syncRemoteEvents$"
   | "reloadArtifacts$"
   | "reloadMailDrafts$"
-  | "reloadComposerWorkflows$"
   | "dataSource"
 > & {
   markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
@@ -3298,7 +3298,7 @@ function createOnSubscribedCommand({
     }
     const catchUpPromises = [
       get(dataSource.cancellationRecoveryPending$),
-      set(reloadComposerWorkflows$, signal),
+      set(reloadMountedComposerWorkflows$, signal),
     ];
     if (get(optimisticCreateUnsettled$)) {
       set(initialRemoteEventsResolved$, true);
@@ -3349,7 +3349,6 @@ function createRunTracking({
   reloadArtifacts$,
   reloadMailDrafts$,
   subscribeBrowserSessions$,
-  reloadComposerWorkflows$,
   automationSignals,
   dataSource,
 }: RunTrackingDeps) {
@@ -3374,7 +3373,6 @@ function createRunTracking({
     syncRemoteEvents$,
     reloadArtifacts$,
     reloadMailDrafts$,
-    reloadComposerWorkflows$,
     markThreadReadIfNeeded$,
     dataSource,
   });
@@ -3405,7 +3403,7 @@ function createRunTracking({
     const onWorkflowsChanged$ = command(
       async ({ set }, signal: AbortSignal): Promise<boolean> => {
         L.debug("onWorkflowsChanged$ fired", { threadId });
-        await set(reloadComposerWorkflows$, signal);
+        await set(reloadMountedComposerWorkflows$, signal);
         return false;
       },
     );
@@ -5031,7 +5029,6 @@ export function createChatThreadSignals(
     reloadArtifacts$: artifact.reloadArtifacts$,
     reloadMailDrafts$: events.reloadMailDrafts$,
     subscribeBrowserSessions$: events.subscribeBrowserSessions$,
-    reloadComposerWorkflows$: composer.workflowComposer.reloadWorkflows$,
     automationSignals: threadOwned,
     dataSource,
   });
@@ -5088,9 +5085,7 @@ export function createChatThreadSignals(
     scrollToBottom$: events.scroll.scrollToBottom$,
     ...container,
     draft,
-    ...composer,
     composer: rootComposer,
-    ...composerFileInput,
     ...threadOwned,
     sidebar: events.sidebar,
     queueDraftSync$,
