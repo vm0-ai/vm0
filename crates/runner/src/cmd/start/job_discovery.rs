@@ -509,7 +509,7 @@ async fn prepare_affinity_protected_candidate(
                 .flat_map(|state| &state.workspace_caches)
                 .any(|workspace| {
                     workspace.profile == profile_name
-                        && workspace.workspace_affinity_version == Some(WORKSPACE_AFFINITY_VERSION)
+                        && workspace.workspace_affinity_version == WORKSPACE_AFFINITY_VERSION
                 });
             if has_capable_workspace
                 && let Some(lease) =

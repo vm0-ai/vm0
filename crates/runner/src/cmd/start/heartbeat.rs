@@ -624,7 +624,7 @@ mod tests {
     };
     use crate::paths::RunnerPaths;
     use crate::provider::mock::MockJobProvider;
-    use crate::types::{MAX_HELD_WORKSPACE_STATES, WorkspaceCacheState};
+    use crate::types::{MAX_HELD_WORKSPACE_STATES, ReusableSandboxState, WorkspaceCacheCapability};
     use crate::workspace_image_cache::{
         WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
     };
@@ -674,10 +674,10 @@ mod tests {
         snapshot.finish_workspace_cache_refresh(refresh, states);
     }
 
-    fn workspace_cache(profile: &str) -> WorkspaceCacheState {
-        WorkspaceCacheState {
+    fn workspace_cache(profile: &str) -> WorkspaceCacheCapability {
+        WorkspaceCacheCapability {
             profile: profile.to_owned(),
-            workspace_affinity_version: Some(crate::types::WORKSPACE_AFFINITY_VERSION),
+            workspace_affinity_version: crate::types::WORKSPACE_AFFINITY_VERSION,
         }
     }
 
@@ -1115,13 +1115,19 @@ mod tests {
                 session_id: "provider-session-active".into(),
                 reuse_key: "thread-active".into(),
                 last_completed_at: "2026-06-01T00:00:01.000Z".into(),
-                reusable_sandbox: None,
+                reusable_sandbox: ReusableSandboxState {
+                    profile: "vm0/default".into(),
+                    history_generation_run_id: None,
+                },
             },
             HeldSessionState {
                 session_id: "provider-session-held".into(),
                 reuse_key: "thread-held".into(),
                 last_completed_at: "2026-06-01T00:00:02.000Z".into(),
-                reusable_sandbox: None,
+                reusable_sandbox: ReusableSandboxState {
+                    profile: "vm0/default".into(),
+                    history_generation_run_id: None,
+                },
             },
         ];
 
@@ -1133,10 +1139,9 @@ mod tests {
     }
 
     #[test]
-    fn merge_held_workspace_state_keeps_newest_timestamp_and_capability() {
+    fn merge_held_workspace_state_keeps_newest_timestamp_and_merges_profiles() {
         let mut existing =
             held_workspace_state("thread-1", "2026-06-01T00:00:02.000Z", &["vm0/default"]);
-        existing.workspace_caches[0].workspace_affinity_version = None;
         let incoming = held_workspace_state(
             "thread-1",
             "2026-06-01T00:00:01.000Z",
