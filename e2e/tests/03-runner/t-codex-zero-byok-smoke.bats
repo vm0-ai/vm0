@@ -86,7 +86,6 @@ teardown_file() {
     if [[ -n "${AGENT_ID:-}" ]]; then
         delete_e2e_agent "$AGENT_ID" >/dev/null 2>&1 || true
     fi
-    disable_codex_beta
     if [[ -n "$TEST_DIR" && -d "$TEST_DIR" ]]; then
         rm -rf "$TEST_DIR"
     fi

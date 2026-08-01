@@ -58,18 +58,6 @@ enable_codex_beta() {
         >/dev/null
 }
 
-# Do not clear feature-switch overrides in teardown. Runner E2E files execute
-# in parallel and share the same authenticated runner user; DELETE
-# /api/zero/feature-switches removes every override for that shared user, which
-# can race another file between enable_codex_beta and its gated API call.
-#
-# Leaving codexBeta enabled is intentional for the shared E2E runner user.
-# Tests that need feature-off behavior must use a dedicated token/user and
-# explicitly force the switch off for that isolated identity.
-disable_codex_beta() {
-    return 0
-}
-
 configure_codex_zero_model_policy() {
     local model="$1"
     local provider_type="$2"
