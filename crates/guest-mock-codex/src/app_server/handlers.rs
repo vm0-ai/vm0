@@ -1,4 +1,5 @@
 use super::messages::{
+    agent_message_item_started_notification, assistant_item_completed_notification,
     initialize_response, large_server_notification, large_warning_notification,
     reasoning_item_started_notification, server_notification, server_notification_with_index,
     server_request, thread_response, thread_started_notification, turn,
@@ -19,6 +20,8 @@ const OVERSIZED_STDOUT_BYTES: usize = 65 * 1024 * 1024;
 const EVENT_DELIVERY_FLOOD_COUNT: usize = 640;
 const EVENT_DELIVERY_LARGE_EVENT_COUNT: usize = 10;
 const EVENT_DELIVERY_LARGE_EVENT_BYTES: usize = 2 * 1024 * 1024;
+const SECONDARY_THREAD_ID: &str = "00000000-0000-4000-8000-000000000def";
+const SECONDARY_ITEM_STARTED_AT_MS: u64 = 1_700_000_000_000;
 
 impl AppServerState {
     pub(super) fn handle_initialize<W: Write>(
@@ -145,7 +148,7 @@ impl AppServerState {
                 )?;
                 write_success(output, id, result)?;
             }
-            Scenario::RuntimeTurnComplete => {
+            Scenario::RuntimeTurnComplete | Scenario::SecondaryThreadNotifications => {
                 write_json_line(output, &thread_started_notification(&thread_id))?;
                 write_success(output, id, result)?;
             }
@@ -302,6 +305,10 @@ impl AppServerState {
                 &turn_completed_notification("unexpected-thread-id", &turn_id),
             )?;
             return Ok(ServerAction::Stop);
+        }
+        if self.scenario == Scenario::SecondaryThreadNotifications {
+            write_secondary_thread_notifications(output, &thread_id, &turn_id)?;
+            return Ok(ServerAction::Continue);
         }
         if self.scenario.writes_turn_started_before_steer() {
             if let Some(current_thread) = &mut self.current_thread
@@ -477,6 +484,42 @@ impl AppServerState {
         write_success(output, id, json!({ "completed": true }))?;
         Ok(ServerAction::Continue)
     }
+}
+
+fn write_secondary_thread_notifications<W: Write>(
+    output: &mut W,
+    thread_id: &str,
+    turn_id: &str,
+) -> io::Result<()> {
+    write_json_line(output, &thread_started_notification(SECONDARY_THREAD_ID))?;
+    write_json_line(output, &warning_notification(thread_id, 0))?;
+    write_json_line(
+        output,
+        &turn_started_notification(SECONDARY_THREAD_ID, turn_id),
+    )?;
+    write_json_line(
+        output,
+        &agent_message_item_started_notification(
+            SECONDARY_THREAD_ID,
+            turn_id,
+            "secondary-agent-message-item",
+            SECONDARY_ITEM_STARTED_AT_MS,
+        ),
+    )?;
+    write_json_line(
+        output,
+        &assistant_item_completed_notification(thread_id, turn_id),
+    )?;
+    write_json_line(output, &warning_notification(SECONDARY_THREAD_ID, 1))?;
+    write_json_line(
+        output,
+        &assistant_item_completed_notification(SECONDARY_THREAD_ID, turn_id),
+    )?;
+    write_json_line(
+        output,
+        &turn_completed_notification(SECONDARY_THREAD_ID, turn_id),
+    )?;
+    write_json_line(output, &turn_completed_notification(thread_id, turn_id))
 }
 
 fn validate_initialize_params(params: &Value) -> Result<(), &'static str> {

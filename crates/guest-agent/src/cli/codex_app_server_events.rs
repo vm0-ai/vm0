@@ -106,6 +106,17 @@ pub(super) enum CodexAppServerEventError {
     InvalidField { method: String, field: &'static str },
 }
 
+pub(super) fn notification_thread_id(notification: &ServerNotification) -> Option<&str> {
+    let params = notification.params.as_ref()?;
+    let thread_id = match notification.method.as_str() {
+        "thread/started" => params.pointer("/thread/id"),
+        "turn/started" | "turn/completed" | "turn/plan/updated" | "item/started"
+        | "item/completed" | "error" | "warning" => params.get("threadId"),
+        _ => None,
+    }?;
+    thread_id.as_str().filter(|thread_id| !thread_id.is_empty())
+}
+
 pub(super) fn codex_output_item_start(
     notification: &ServerNotification,
 ) -> Result<Option<CodexOutputItemStart>, CodexAppServerEventError> {
