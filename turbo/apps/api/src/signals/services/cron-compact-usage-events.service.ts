@@ -43,9 +43,6 @@ interface UsageEventCompactionStats {
   readonly probedRawRows: number;
   readonly billingErrorHeldRows: number;
   readonly rawRowsDeleted: number;
-  readonly legacyCompactedBatchLimit: number;
-  readonly selectedLegacyCompactedRows: number;
-  readonly legacyCompactedRowsDeleted: number;
   readonly hourlyRowsDeleted: number;
   readonly hourlyRowsInserted: number;
   readonly quantity: string;
@@ -54,8 +51,6 @@ interface UsageEventCompactionStats {
   readonly affectedShortWindows: number;
   readonly affectedWeeklyWindows: number;
   readonly reconciled: boolean;
-  readonly hasMoreRaw: boolean;
-  readonly hasMoreLegacyCompacted: boolean;
   readonly hasMore: boolean;
   readonly lockWaitMs: number;
   readonly durationMs: number;
@@ -90,11 +85,6 @@ const legacyCompactedDeletionRowSchema = z.object({
   selectedLegacyCompactedRows: z.int(),
   legacyCompactedRowsDeleted: z.int(),
 });
-
-interface RemainingUsageCompactionWork {
-  readonly hasMoreRaw: boolean;
-  readonly hasMoreLegacyCompacted: boolean;
-}
 
 // The explicit null order matches a reverse scan of the deployed
 // idx_usage_event_processed_org_user index. Eligible rows are always non-null.
@@ -606,24 +596,16 @@ async function deleteLegacyCompactedUsageEvents(
   return deletion;
 }
 
-async function loadRemainingWork(
+async function hasRemainingRawUsage(
   db: Pick<Db, "select">,
   cutoff: string,
-): Promise<RemainingUsageCompactionWork> {
-  const [remainingRaw] = await db
+): Promise<boolean> {
+  const [remaining] = await db
     .select({ id: event.id })
     .from(event)
     .where(eligibleRawPredicate(cutoff))
     .limit(1);
-  const [remainingLegacyCompacted] = await db
-    .select({ id: event.id })
-    .from(event)
-    .where(eq(event.status, "compacted"))
-    .limit(1);
-  return {
-    hasMoreRaw: remainingRaw !== undefined,
-    hasMoreLegacyCompacted: remainingLegacyCompacted !== undefined,
-  };
+  return remaining !== undefined;
 }
 
 async function compactUsageEventBatch(
@@ -679,7 +661,7 @@ async function compactUsageEventBatch(
       throw new Error("Legacy compacted usage deletion reconciliation failed");
     }
     signal.throwIfAborted();
-    const remaining = await loadRemainingWork(tx, cutoff);
+    const hasMoreRaw = await hasRemainingRawUsage(tx, cutoff);
     signal.throwIfAborted();
 
     return {
@@ -690,9 +672,6 @@ async function compactUsageEventBatch(
       probedRawRows: holdProbe.probedRawRows,
       billingErrorHeldRows: holdProbe.billingErrorHeldRows,
       rawRowsDeleted: compaction.rawRowsDeleted,
-      legacyCompactedBatchLimit,
-      selectedLegacyCompactedRows: legacyDeletion.selectedLegacyCompactedRows,
-      legacyCompactedRowsDeleted: legacyDeletion.legacyCompactedRowsDeleted,
       hourlyRowsDeleted: compaction.hourlyRowsDeleted,
       hourlyRowsInserted: compaction.hourlyRowsInserted,
       quantity: compaction.quantity,
@@ -701,9 +680,7 @@ async function compactUsageEventBatch(
       affectedShortWindows: compaction.affectedShortWindows,
       affectedWeeklyWindows: compaction.affectedWeeklyWindows,
       reconciled: compaction.reconciled,
-      hasMoreRaw: remaining.hasMoreRaw,
-      hasMoreLegacyCompacted: remaining.hasMoreLegacyCompacted,
-      hasMore: remaining.hasMoreRaw || remaining.hasMoreLegacyCompacted,
+      hasMore: hasMoreRaw,
       lockWaitMs,
     };
   });

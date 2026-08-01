@@ -217,20 +217,13 @@ describe("usage event compaction cron", () => {
       seededRawRows: RAW_SEED_LIMIT,
       selectedGrains: 1,
       rawRowsDeleted: RAW_SEED_LIMIT,
-      legacyCompactedBatchLimit: LEGACY_COMPACTED_BATCH_LIMIT,
-      selectedLegacyCompactedRows: 0,
-      legacyCompactedRowsDeleted: 0,
       hourlyRowsDeleted: 0,
       hourlyRowsInserted: 1,
       quantity: "3",
       creditsCharged: "7",
       allowanceUnits: "0",
       reconciled: true,
-      hasMoreLegacyCompacted: false,
     });
-    expect(response.body.hasMore).toBe(
-      response.body.hasMoreRaw || response.body.hasMoreLegacyCompacted,
-    );
     expect(Object.keys(response.body).sort()).toStrictEqual([
       "affectedShortWindows",
       "affectedWeeklyWindows",
@@ -240,12 +233,8 @@ describe("usage event compaction cron", () => {
       "cutoff",
       "durationMs",
       "hasMore",
-      "hasMoreLegacyCompacted",
-      "hasMoreRaw",
       "hourlyRowsDeleted",
       "hourlyRowsInserted",
-      "legacyCompactedBatchLimit",
-      "legacyCompactedRowsDeleted",
       "lockWaitMs",
       "probedRawRows",
       "quantity",
@@ -254,7 +243,6 @@ describe("usage event compaction cron", () => {
       "reconciled",
       "seededRawRows",
       "selectedGrains",
-      "selectedLegacyCompactedRows",
       "success",
     ]);
     await expect(readStorage(fixture)).resolves.toStrictEqual({
@@ -398,8 +386,6 @@ describe("usage event compaction cron", () => {
       rawRowsDeleted: RAW_SEED_LIMIT + 1,
       hourlyRowsInserted: 1,
       quantity: String(RAW_SEED_LIMIT + 1),
-      hasMoreRaw: true,
-      hasMoreLegacyCompacted: false,
       hasMore: true,
     });
     await expect(readStorage(fixture)).resolves.toStrictEqual({
@@ -450,14 +436,7 @@ describe("usage event compaction cron", () => {
       hourly: 1,
     });
 
-    const response = await compactUsage();
-
-    expect(response.body).toMatchObject({
-      legacyCompactedBatchLimit: LEGACY_COMPACTED_BATCH_LIMIT,
-      selectedLegacyCompactedRows: 1,
-      legacyCompactedRowsDeleted: 1,
-      hasMoreLegacyCompacted: false,
-    });
+    await compactUsage();
     await expect(readStorage(fixture)).resolves.toStrictEqual({
       raw: 0,
       processedRaw: 0,
@@ -497,15 +476,7 @@ describe("usage event compaction cron", () => {
       context.signal,
     );
 
-    const first = await compactUsage();
-
-    expect(first.body).toMatchObject({
-      legacyCompactedBatchLimit: LEGACY_COMPACTED_BATCH_LIMIT,
-      selectedLegacyCompactedRows: LEGACY_COMPACTED_BATCH_LIMIT,
-      legacyCompactedRowsDeleted: LEGACY_COMPACTED_BATCH_LIMIT,
-      hasMoreLegacyCompacted: true,
-      hasMore: true,
-    });
+    await compactUsage();
     await expect(readStorage(fixture)).resolves.toStrictEqual({
       raw: 1,
       processedRaw: 0,
@@ -513,14 +484,7 @@ describe("usage event compaction cron", () => {
       hourly: 0,
     });
 
-    const second = await compactUsage();
-
-    expect(second.body).toMatchObject({
-      selectedLegacyCompactedRows: 1,
-      legacyCompactedRowsDeleted: 1,
-      hasMoreLegacyCompacted: false,
-    });
-    expect(second.body.hasMore).toBe(second.body.hasMoreRaw);
+    await compactUsage();
     await expect(readStorage(fixture)).resolves.toStrictEqual({
       raw: 0,
       processedRaw: 0,
@@ -539,14 +503,7 @@ describe("usage event compaction cron", () => {
       },
       context.signal,
     );
-    const overlap = await compactUsage();
-
-    expect(overlap.body).toMatchObject({
-      selectedLegacyCompactedRows: 1,
-      legacyCompactedRowsDeleted: 1,
-      hasMoreLegacyCompacted: false,
-    });
-    expect(overlap.body.hasMore).toBe(overlap.body.hasMoreRaw);
+    await compactUsage();
     await expect(readStorage(fixture)).resolves.toStrictEqual({
       raw: 0,
       processedRaw: 0,
