@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.675.2](https://github.com/vm0-ai/vm0/compare/app-v0.675.1...app-v0.675.2) (2026-08-01)
+
+
+### Refactoring
+
+* remove DeepSeek V4 Flash feature switch ([#24411](https://github.com/vm0-ai/vm0/issues/24411)) ([e589e06](https://github.com/vm0-ai/vm0/commit/e589e0624d057086451eccac56d20302f6754a5d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.501.1
+
 ## [0.675.1](https://github.com/vm0-ai/vm0/compare/app-v0.675.0...app-v0.675.1) (2026-07-31)
 
 
