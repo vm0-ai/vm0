@@ -1680,6 +1680,80 @@ describe("INT-01: Slack app deep webhook flows", () => {
       channel: channelId,
       message_ts: threadTs,
     });
+    await completeSlackTriggeredRun({
+      runId: run1Id,
+      sandboxToken: claim1.sandboxToken,
+      cliAgentType: claim1.cliAgentType,
+      assistantText: "Canonical Slack retry answer",
+    });
+    await flushWaitUntilForTest();
+  });
+
+  it("keeps queued Web and Slack sends on one canonical session", async () => {
+    const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    integrations.configureSlackAppMocks();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    if (!actor.orgId) {
+      throw new Error("Expected canonical Slack actor to belong to an org");
+    }
+    const orgId = actor.orgId;
+    const slackUserId = uniqueSlackUserId();
+    const { teamId, botUserId } = await integrations.installSlackWorkspace(
+      actor,
+      {
+        installerSlackUserId: slackUserId,
+      },
+    );
+    const channelId = "C_BDD_CANONICAL_SESSION";
+    const threadTs = "2901.000100";
+    const eventId = "EvBDD" + randomUUID().replace(/-/g, "");
+    const fileBody = "canonical Slack session attachment";
+    context.mocks.slack.fetchFile.mockResolvedValue(
+      new Response(fileBody, {
+        headers: { "Content-Type": "text/plain" },
+      }),
+    );
+    const event = {
+      type: "app_mention",
+      user: slackUserId,
+      text: "<@" + botUserId + "> establish the canonical session",
+      ts: threadTs,
+      channel: channelId,
+      channel_type: "channel",
+      files: [
+        {
+          id: "F_CANONICAL_SESSION",
+          name: "session-notes.txt",
+          mimetype: "text/plain",
+          size: fileBody.length,
+          url_private_download: "https://files.slack.com/F_CANONICAL_SESSION",
+        },
+      ],
+    };
+    const eventBody = JSON.stringify({
+      type: "event_callback",
+      team_id: teamId,
+      event_id: eventId,
+      event,
+    });
+    await integrations.requestSlackEvent(
+      eventBody,
+      integrations.signedSlackIngressHeaders(eventBody),
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    let state = await integrations.readSlackTestState(teamId);
+    const canonicalChatThreadId = state.chat_thread_routes[0]?.chatThreadId;
+    if (!canonicalChatThreadId) {
+      throw new Error("Expected canonical Slack route to own a chat thread");
+    }
+    const run1Id = await pollSlackRun(runnerGroup);
+    const claim1 = await runs.claimRunnerJob(run1Id);
     const defaultAgentId = state.default_agent?.id;
     if (!defaultAgentId) {
       throw new Error("Expected canonical Slack thread to use a default agent");
