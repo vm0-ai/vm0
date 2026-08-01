@@ -10,14 +10,7 @@ import { delay } from "signal-timers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { IN_VITEST } from "../../env.ts";
 import { i18n } from "../../i18n/index.ts";
-import {
-  onRef,
-  onRejection,
-  resetSignal,
-  settle,
-  setLoop,
-  withCleanup,
-} from "../utils.ts";
+import { onRef, onRejection, resetSignal, settle, setLoop } from "../utils.ts";
 import { createHeaderAutomationSignals } from "./header-automation-menu.ts";
 import { createThreadSidebarSignals } from "./thread-sidebar.ts";
 import {
@@ -63,12 +56,9 @@ import {
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import {
   chatEventCompatibilityRole,
-  foldActiveChatGoalObjective,
   foldLatestChatUsageByRunId,
-  isBrowserLifecycleEventType,
   isChatRunTerminalEventType,
   revokedChatEventIds,
-  terminatedChatRunIds,
 } from "@vm0/api-contracts/contracts/chat-events";
 
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
@@ -92,6 +82,23 @@ import {
 } from "../zero-page/clipboard.ts";
 import type { EnrichedChatEvent, ChatEventGroup } from "./chat-event.ts";
 import { isCancelledRunEvent } from "./chat-run-lifecycle.ts";
+import {
+  deriveRunIndicatorStateFromChatEvents,
+  groupSemanticChatEvents,
+  isGoalMarkerEvent,
+  isGoalQueueEvent,
+  isInterruptControlEvent,
+  isInterruptedAssistantCancellation,
+  isQueueMarkerEvent,
+  isRecallControlEvent,
+  isUsageEvent,
+  liveRunIdsFromChatEvents,
+  queuedEventsFromChatEvents,
+  semanticChatEventsFromChatEvents,
+  type RunIndicatorState,
+  type SemanticChatEventState,
+  type SemanticChatGroups as GenericSemanticChatGroups,
+} from "./chat-event-state.ts";
 import { logger } from "../log.ts";
 import {
   CHAT_EVENTS_PAGE_LIMIT,
@@ -158,18 +165,13 @@ import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../zero-page/settings/c
 import { openCodexDeviceAuthDialogPersonal$ } from "../zero-page/settings/codex-device-auth.ts";
 import type {
   ChatThreadSignals,
-  ComposerSendButtonStatus,
   EventImageGroupProjection,
   QueueMessageOptions,
-  QueuedChatEventItem,
   RecommendedFollowupSource,
   SendMessageOptions,
   ThinkingIndicatorMode,
 } from "./chat-thread-signals.ts";
-import {
-  createWorkflowComposerSignals,
-  reloadMountedComposerWorkflows$,
-} from "../zero-page/tiptap-workflow-composer.ts";
+import { reloadMountedComposerWorkflows$ } from "../zero-page/tiptap-workflow-composer.ts";
 import {
   createMailDraftCardSignalsRegistry,
   type MailDraftCardSignalsRegistry,
@@ -183,13 +185,11 @@ import {
 import { createChatThreadContainerSignals } from "./chat-thread-container.ts";
 import { createAssistantErrorRecoverySignals } from "./assistant-error-recovery.ts";
 import {
-  messageDocumentToDisplayText,
   messageDocumentToPrompt,
   textToMessageDocument,
 } from "../zero-page/user-message-document-codec.ts";
 import { locale$ } from "../locale.ts";
 import {
-  createComposerFileInputSignals,
   createComposerSignals,
   type ComposerSubmission,
 } from "../zero-page/composer-signals.ts";
@@ -197,56 +197,9 @@ import {
   openChatThreadGoalDialog$,
   pauseChatThreadGoal$,
 } from "./chat-goal.ts";
-import {
-  CREATE_WORKFLOW_WITH_CHAT_PROMPT,
-  replaceWorkflowPromptDraftTarget$,
-  setReplaceWorkflowPromptDraftTarget$,
-} from "./workflow-prompt-action.ts";
-
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
 const L = logger("ChatThread");
-
-type RecallControlEvent = Extract<
-  ChatEvent,
-  { eventType: "control.revoke" | "run.dequeued" }
->;
-
-function isRecallControlEvent(event: ChatEvent): event is RecallControlEvent {
-  return (
-    event.eventType === "control.revoke" || event.eventType === "run.dequeued"
-  );
-}
-
-function isQueueMarkerEvent(
-  event: ChatEvent,
-): event is Extract<ChatEvent, { eventType: "run.queued" }> {
-  return event.eventType === "run.queued";
-}
-
-function isGoalMarkerEvent(
-  event: ChatEvent,
-): event is Extract<ChatEvent, { eventType: "goal.changed" }> {
-  return event.eventType === "goal.changed";
-}
-
-function isGoalQueueEvent(
-  event: ChatEvent,
-): event is Extract<ChatEvent, { eventType: "input.goal" }> {
-  return event.eventType === "input.goal";
-}
-
-function isUsageEvent(
-  event: ChatEvent,
-): event is Extract<ChatEvent, { eventType: "usage.recorded" }> {
-  return event.eventType === "usage.recorded";
-}
-
-function isInterruptControlEvent(
-  event: ChatEvent,
-): event is Extract<ChatEvent, { eventType: "control.interrupt" }> {
-  return event.eventType === "control.interrupt";
-}
 
 function isInputChatEvent(
   event: ChatEvent,
@@ -265,22 +218,6 @@ function chatEventAttachFiles(
   return isInputChatEvent(event) ? event.attachFiles : undefined;
 }
 
-function createInterruptedAssistantProjection(
-  event: Extract<ChatEvent, { eventType: "control.interrupt" }>,
-  runId: string,
-): ChatEvent {
-  const { interruptsRunId, ...rest } = event;
-  void interruptsRunId;
-  return {
-    ...rest,
-    eventType: "run.cancelled" as const,
-    content: "Run cancelled",
-    runId,
-    error: "Run cancelled",
-    runLifecycleEvent: "cancelled",
-  };
-}
-
 function completedRunIdsFromEvents(events: readonly ChatEvent[]): string[] {
   const ids = new Set<string>();
   for (const event of events) {
@@ -289,18 +226,6 @@ function completedRunIdsFromEvents(events: readonly ChatEvent[]): string[] {
     }
   }
   return Array.from(ids);
-}
-
-function isInterruptedAssistantCancellation(
-  event: ChatEvent,
-  interruptedRunIds: Set<string>,
-): boolean {
-  const runId = event.runId;
-  return (
-    runId !== undefined &&
-    isCancelledRunEvent(event) &&
-    interruptedRunIds.has(runId)
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -465,217 +390,6 @@ function formatDonePhrase(lastEvent: ChatEvent | undefined): string {
       );
     }
   }
-}
-
-function revokedEventIdsFromRawEvents(
-  raw: readonly ChatEventProjectionEntry[],
-): Set<string> {
-  return revokedChatEventIds(
-    raw.map((entry) => {
-      return entry.event;
-    }),
-  );
-}
-
-function isRawOptimisticRunEvent(entry: ChatEventProjectionEntry): boolean {
-  const { event } = entry;
-  return (
-    event.eventType === "input.prompt" &&
-    event.runId === undefined &&
-    entry.optimisticUserMessageAssociation === "run"
-  );
-}
-
-function terminatedRunIdsFromRawEvents(
-  raw: readonly ChatEventProjectionEntry[],
-): Set<string> {
-  return terminatedChatRunIds(
-    raw.map((entry) => {
-      return entry.event;
-    }),
-  );
-}
-
-type RunIndicatorState = "running" | "queued" | null;
-
-function runActivityIndicatorState(
-  terminatedRunIds: ReadonlySet<string>,
-  runId: string,
-): RunIndicatorState | undefined {
-  if (terminatedRunIds.has(runId)) {
-    return undefined;
-  }
-  return "running";
-}
-
-function assistantRunIndicatorState(
-  terminatedRunIds: ReadonlySet<string>,
-  event: ChatEvent,
-): RunIndicatorState | undefined {
-  const runId = event.runId;
-  if (isQueueMarkerEvent(event)) {
-    if (runId !== undefined && terminatedRunIds.has(runId)) {
-      return undefined;
-    }
-    return "queued";
-  }
-  if (runId !== undefined && isChatRunTerminalEventType(event.eventType)) {
-    return null;
-  }
-  if (runId === undefined) {
-    return undefined;
-  }
-  return runActivityIndicatorState(terminatedRunIds, runId);
-}
-
-function nonAssistantRunIndicatorState(
-  terminatedRunIds: ReadonlySet<string>,
-  entry: ChatEventProjectionEntry,
-): RunIndicatorState | undefined {
-  if (isRawOptimisticRunEvent(entry)) {
-    return "running";
-  }
-  const { runId } = entry.event;
-  return runId === undefined
-    ? undefined
-    : runActivityIndicatorState(terminatedRunIds, runId);
-}
-
-function visibleRunStartIndexByRunId(
-  raw: readonly ChatEventProjectionEntry[],
-  revokedEventIds: ReadonlySet<string>,
-): ReadonlyMap<string, number> {
-  // Only a user event proves that a run started inside the loaded window;
-  // the first visible assistant event may be mid-run after pagination.
-  const runStartIndexByRunId = new Map<string, number>();
-  for (let index = 0; index < raw.length; index++) {
-    const event = raw[index]!.event;
-    const runId = event.runId;
-    if (
-      (event.eventType !== "input.prompt" &&
-        event.eventType !== "input.rejected") ||
-      runId === undefined ||
-      runStartIndexByRunId.has(runId) ||
-      revokedEventIds.has(event.id)
-    ) {
-      continue;
-    }
-    runStartIndexByRunId.set(runId, index);
-  }
-  return runStartIndexByRunId;
-}
-
-function laterStartedRunIndicatorState(
-  raw: readonly ChatEventProjectionEntry[],
-  terminatedRunId: string,
-  terminatedRunIds: ReadonlySet<string>,
-  revokedEventIds: ReadonlySet<string>,
-  runStartIndexByRunId: ReadonlyMap<string, number>,
-): RunIndicatorState | undefined {
-  const terminatedRunStartIndex = runStartIndexByRunId.get(terminatedRunId);
-  if (terminatedRunStartIndex === undefined) {
-    return undefined;
-  }
-
-  for (let index = raw.length - 1; index >= 0; index--) {
-    const entry = raw[index]!;
-    const { event } = entry;
-    const runId = event.runId;
-    if (
-      runId === undefined ||
-      (runStartIndexByRunId.get(runId) ?? -1) <= terminatedRunStartIndex ||
-      revokedEventIds.has(event.id) ||
-      isUsageEvent(event) ||
-      isGoalMarkerEvent(event)
-    ) {
-      continue;
-    }
-    const state =
-      chatEventCompatibilityRole(event.eventType) === "assistant"
-        ? assistantRunIndicatorState(terminatedRunIds, event)
-        : nonAssistantRunIndicatorState(terminatedRunIds, entry);
-    if (state === "running" || state === "queued") {
-      return state;
-    }
-  }
-  return undefined;
-}
-
-function deriveRunIndicatorStateFromRawEvents(
-  raw: readonly ChatEventProjectionEntry[],
-): RunIndicatorState {
-  const revokedEventIds = revokedEventIdsFromRawEvents(raw);
-  const terminatedRunIds = terminatedRunIdsFromRawEvents(raw);
-  const runStartIndexByRunId = visibleRunStartIndexByRunId(
-    raw,
-    revokedEventIds,
-  );
-
-  for (let index = raw.length - 1; index >= 0; index--) {
-    const entry = raw[index]!;
-    const { event } = entry;
-    if (revokedEventIds.has(event.id)) {
-      continue;
-    }
-    if (isUsageEvent(event) || isGoalMarkerEvent(event)) {
-      continue;
-    }
-    if (chatEventCompatibilityRole(event.eventType) === "assistant") {
-      const state = assistantRunIndicatorState(terminatedRunIds, event);
-      if (state === null && event.runId !== undefined) {
-        const laterRunState = laterStartedRunIndicatorState(
-          raw,
-          event.runId,
-          terminatedRunIds,
-          revokedEventIds,
-          runStartIndexByRunId,
-        );
-        if (laterRunState !== undefined) {
-          return laterRunState;
-        }
-      }
-      if (state !== undefined) {
-        return state;
-      }
-      continue;
-    }
-    const state = nonAssistantRunIndicatorState(terminatedRunIds, entry);
-    if (state !== undefined) {
-      return state;
-    }
-  }
-  return null;
-}
-
-function liveRunIdsFromRawEvents(
-  raw: readonly ChatEventProjectionEntry[],
-): string[] {
-  const terminatedRunIds = terminatedRunIdsFromRawEvents(raw);
-  const revokedEventIds = revokedEventIdsFromRawEvents(raw);
-  const liveRunIds: string[] = [];
-  const seenRunIds = new Set<string>();
-  for (const { event } of raw) {
-    const runId = event.runId;
-    if (
-      runId !== undefined &&
-      !revokedEventIds.has(event.id) &&
-      !terminatedRunIds.has(runId) &&
-      !isQueueMarkerEvent(event) &&
-      !isUsageEvent(event) &&
-      !isGoalMarkerEvent(event) &&
-      !seenRunIds.has(runId)
-    ) {
-      liveRunIds.push(runId);
-      seenRunIds.add(runId);
-    }
-  }
-  return liveRunIds;
-}
-
-function cancellableRunIdsFromRawEvents(
-  raw: readonly ChatEventProjectionEntry[],
-): string[] {
-  return liveRunIdsFromRawEvents(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -1576,6 +1290,22 @@ function createRawEventsComputed({
   });
 }
 
+function createChatEventsComputed(
+  rawEvents$: Computed<ChatEventProjectionEntry[]>,
+): Computed<ChatEvent[]> {
+  return computed((get): ChatEvent[] => {
+    return get(rawEvents$).map((entry) => {
+      const association = entry.optimisticUserMessageAssociation;
+      return association === undefined
+        ? entry.event
+        : {
+            ...entry.event,
+            optimisticUserMessageAssociation: association,
+          };
+    });
+  });
+}
+
 function createTranscriptEventsComputed(
   semanticEvents$: Computed<SemanticChatEvent[]>,
 ): Computed<Promise<EnrichedChatEvent[]>> {
@@ -1603,230 +1333,28 @@ function createTranscriptEventsComputed(
   });
 }
 
-interface SemanticChatEvent {
-  readonly event: ChatEvent;
+interface SemanticChatEvent extends SemanticChatEventState {
   readonly blocks: BodyRenderBlock[];
-  readonly isQueued: boolean;
-  readonly isOptimisticRun: boolean;
 }
 
-type QueuedChatEvent = Extract<
-  ChatEvent,
-  { eventType: "input.prompt" | "input.automation" }
->;
-
-function isQueuedChatEvent(event: ChatEvent): event is QueuedChatEvent {
-  return (
-    event.eventType === "input.prompt" || event.eventType === "input.automation"
-  );
-}
-
-interface SemanticChatEventGroup {
-  readonly role: "user" | "assistant";
-  readonly events: SemanticChatEvent[];
-}
-
-interface SemanticChatGroups {
-  readonly activeGroups: SemanticChatEventGroup[];
-  readonly allGroups: SemanticChatEventGroup[];
-}
+type SemanticChatGroups = GenericSemanticChatGroups<SemanticChatEvent>;
+type SemanticChatEventGroup = SemanticChatGroups["activeGroups"][number];
 
 function semanticTranscriptEventsFromRaw(
   raw: readonly ChatEventProjectionEntry[],
+  chatEvents: readonly ChatEvent[],
 ): SemanticChatEvent[] {
-  const interruptedRunIds = new Set(
-    raw.flatMap((entry) => {
-      const { event } = entry;
-      return isInterruptControlEvent(event) && event.interruptsRunId
-        ? [event.interruptsRunId]
-        : [];
+  const blocksByEventId = new Map(
+    raw.map((entry) => {
+      return [entry.event.id, entry.blocks] as const;
     }),
   );
-  const recalledIds = new Set(
-    raw.flatMap((entry) => {
-      const { event } = entry;
-      return isRecallControlEvent(event) && event.revokesEventId
-        ? [event.revokesEventId]
-        : [];
-    }),
-  );
-  const replacedIds = new Set(
-    raw.flatMap((entry) => {
-      const { event } = entry;
-      return !isRecallControlEvent(event) && event.revokesEventId
-        ? [event.revokesEventId]
-        : [];
-    }),
-  );
-
-  return raw.flatMap((entry): SemanticChatEvent[] => {
-    const { event } = entry;
-    if (
-      isRecallControlEvent(event) ||
-      isQueueMarkerEvent(event) ||
-      isGoalQueueEvent(event) ||
-      isGoalMarkerEvent(event) ||
-      isBrowserLifecycleEventType(event.eventType) ||
-      isInterruptedAssistantCancellation(event, interruptedRunIds) ||
-      recalledIds.has(event.id) ||
-      replacedIds.has(event.id)
-    ) {
-      return [];
-    }
-    if (isInterruptControlEvent(event) && event.interruptsRunId) {
-      return [
-        {
-          event: createInterruptedAssistantProjection(
-            event,
-            event.interruptsRunId,
-          ),
-          blocks: [],
-          isQueued: false,
-          isOptimisticRun: false,
-        },
-      ];
-    }
-
-    const isUnassociatedUser =
-      chatEventCompatibilityRole(event.eventType) === "user" &&
-      event.runId === undefined;
-    const optimisticAssociation = entry.optimisticUserMessageAssociation;
-    const isOptimisticRun =
-      isUnassociatedUser && optimisticAssociation === "run";
-    const isQueued =
-      isUnassociatedUser &&
-      optimisticAssociation !== "run" &&
-      (event.eventType === "input.prompt" ||
-        event.eventType === "input.automation");
-    return [{ event, blocks: entry.blocks, isQueued, isOptimisticRun }];
+  return semanticChatEventsFromChatEvents(chatEvents).map((entry) => {
+    return {
+      ...entry,
+      blocks: blocksByEventId.get(entry.event.id) ?? [],
+    };
   });
-}
-
-function orderSemanticEventsByRunTurn(
-  events: readonly SemanticChatEvent[],
-): SemanticChatEvent[] {
-  const items: {
-    order: number;
-    events: SemanticChatEvent[];
-  }[] = [];
-  const itemByRunId = new Map<string, (typeof items)[number]>();
-
-  for (const semanticEvent of events) {
-    const runId = semanticEvent.event.runId;
-    if (runId === undefined) {
-      items.push({ order: items.length, events: [semanticEvent] });
-      continue;
-    }
-    const existing = itemByRunId.get(runId);
-    if (existing) {
-      existing.events.push(semanticEvent);
-      continue;
-    }
-    const item = { order: items.length, events: [semanticEvent] };
-    itemByRunId.set(runId, item);
-    items.push(item);
-  }
-
-  return items
-    .sort((left, right) => {
-      return left.order - right.order;
-    })
-    .flatMap((item) => {
-      return item.events;
-    });
-}
-
-function shouldMergeSemanticEvent(
-  group: SemanticChatEventGroup,
-  semanticEvent: SemanticChatEvent,
-): boolean {
-  if (
-    group.role !== chatEventCompatibilityRole(semanticEvent.event.eventType)
-  ) {
-    return false;
-  }
-  if (group.role !== "assistant") {
-    return true;
-  }
-  const groupRunId = group.events.find((entry) => {
-    return entry.event.runId !== undefined;
-  })?.event.runId;
-  const eventRunId = semanticEvent.event.runId;
-  return (
-    groupRunId === undefined ||
-    eventRunId === undefined ||
-    groupRunId === eventRunId
-  );
-}
-
-function groupSemanticEvents(
-  events: readonly SemanticChatEvent[],
-): SemanticChatEventGroup[] {
-  const groups: SemanticChatEventGroup[] = [];
-  for (const semanticEvent of events) {
-    const lastGroup = groups.at(-1);
-    if (lastGroup && shouldMergeSemanticEvent(lastGroup, semanticEvent)) {
-      lastGroup.events.push(semanticEvent);
-      continue;
-    }
-    groups.push({
-      role: chatEventCompatibilityRole(semanticEvent.event.eventType),
-      events: [semanticEvent],
-    });
-  }
-  return groups;
-}
-
-function groupSemanticChatEvents(
-  semanticEvents: readonly SemanticChatEvent[],
-): SemanticChatGroups {
-  const activeEvents: SemanticChatEvent[] = [];
-  const queuedEvents: SemanticChatEvent[] = [];
-  for (const semanticEvent of semanticEvents) {
-    if (isUsageEvent(semanticEvent.event)) {
-      continue;
-    }
-    if (
-      chatEventCompatibilityRole(semanticEvent.event.eventType) === "user" &&
-      semanticEvent.isQueued
-    ) {
-      queuedEvents.push(semanticEvent);
-      continue;
-    }
-    activeEvents.push(semanticEvent);
-  }
-  const activeGroups = groupSemanticEvents(
-    orderSemanticEventsByRunTurn(activeEvents),
-  );
-  return {
-    activeGroups,
-    allGroups: [...activeGroups, ...groupSemanticEvents(queuedEvents)],
-  };
-}
-
-function queuedEventsFromSemanticEvents(
-  semanticEvents: readonly SemanticChatEvent[],
-): QueuedChatEvent[] {
-  return semanticEvents.flatMap((entry) => {
-    const { event } = entry;
-    return chatEventCompatibilityRole(event.eventType) === "user" &&
-      entry.isQueued &&
-      isQueuedChatEvent(event)
-      ? [event]
-      : [];
-  });
-}
-
-function queuedEventsFromRaw(
-  raw: readonly ChatEventProjectionEntry[],
-): QueuedChatEvent[] {
-  return queuedEventsFromSemanticEvents(semanticTranscriptEventsFromRaw(raw));
-}
-
-function lastAssistantCancelledFromGroups(groups: SemanticChatGroups): boolean {
-  const lastGroup = groups.allGroups.at(-1);
-  const lastEvent = lastGroup?.events.at(-1)?.event;
-  return lastEvent ? isCancelledRunEvent(lastEvent) : false;
 }
 
 function isRenderableAssistantSemanticEvent(entry: SemanticChatEvent): boolean {
@@ -2027,9 +1555,6 @@ function createEventSemanticSignals(
   const semanticGroups$ = computed((get): SemanticChatGroups => {
     return groupSemanticChatEvents(get(semanticEvents$));
   });
-  const queuedEvents$ = computed((get): QueuedChatEvent[] => {
-    return queuedEventsFromSemanticEvents(get(semanticEvents$));
-  });
   const thinkingIndicatorProjection$ = computed(
     async (get): Promise<ThinkingIndicatorProjection> => {
       const runState = await get(eventRunIndicatorState$);
@@ -2045,56 +1570,6 @@ function createEventSemanticSignals(
         return !isUsageEvent(entry.event);
       }),
     );
-  });
-  const hasQueuedEvents$ = computed((get): Promise<boolean> => {
-    return Promise.resolve(get(queuedEvents$).length > 0);
-  });
-  const queuedEventItems$ = computed(
-    (get): Promise<readonly QueuedChatEventItem[]> => {
-      return Promise.resolve(
-        get(queuedEvents$).map((event) => {
-          if (event.eventType === "input.automation") {
-            const automationPart = event.userMessage?.parts.find((part) => {
-              return part.type === "automation";
-            });
-            if (!automationPart || automationPart.type !== "automation") {
-              return {
-                kind: "message" as const,
-                id: event.id,
-                text: "",
-              };
-            }
-            return {
-              kind: "automation" as const,
-              id: event.id,
-              workflowName: automationPart.workflowName,
-              automationBrief: automationPart.automationBrief,
-            };
-          }
-          return {
-            kind: "message" as const,
-            id: event.id,
-            text: (
-              messageDocumentToDisplayText(event.userMessage) ?? ""
-            ).trim(),
-          };
-        }),
-      );
-    },
-  );
-  const emptyQueuedEventItems = Promise.resolve(
-    [] as readonly QueuedChatEventItem[],
-  );
-  const emptyQueuedEventItems$ = computed(() => {
-    return emptyQueuedEventItems;
-  });
-  const lastAssistantCancelled$ = computed((get): Promise<boolean> => {
-    return Promise.resolve(
-      lastAssistantCancelledFromGroups(get(semanticGroups$)),
-    );
-  });
-  const allFinished$ = computed(async (get): Promise<boolean> => {
-    return (await get(eventRunIndicatorState$)) === null;
   });
   const thinkingIndicatorMode$ = computed(
     async (get): Promise<ThinkingIndicatorMode> => {
@@ -2124,11 +1599,6 @@ function createEventSemanticSignals(
 
   return {
     hasEvents$,
-    hasQueuedEvents$,
-    queuedEventItems$,
-    emptyQueuedEventItems$,
-    lastAssistantCancelled$,
-    allFinished$,
     thinkingIndicatorMode$,
     thinkingEventId$,
     thinkingText$,
@@ -2160,7 +1630,11 @@ function latestRunFinishCreatedAtFromRaw(
 function latestAssistantTextCreatedAtFromRaw(
   raw: readonly ChatEventProjectionEntry[],
 ): string | undefined {
-  const revokedEventIds = revokedEventIdsFromRawEvents(raw);
+  const revokedEventIds = revokedChatEventIds(
+    raw.map((entry) => {
+      return entry.event;
+    }),
+  );
   const interruptedRunIds = new Set(
     raw.flatMap((entry) => {
       const { event } = entry;
@@ -2351,21 +1825,6 @@ function createSyncRemoteEventsCommand({
     }
     signal.throwIfAborted();
     await mergeEvents(accumulatedEvents.slice(mergedEventCount));
-  });
-}
-
-function createActiveGoalObjectiveComputed(
-  rawEvents$: Computed<ChatEventProjectionEntry[]>,
-): Computed<Promise<string | null>> {
-  return computed((get): Promise<string | null> => {
-    const raw = get(rawEvents$);
-    return Promise.resolve(
-      foldActiveChatGoalObjective(
-        raw.map((entry) => {
-          return entry.event;
-        }),
-      ),
-    );
   });
 }
 
@@ -2655,21 +2114,22 @@ function createPagedEventProjections({
     optimisticEvents$,
     resolveBodyBlocks,
   });
+  const chatEvents$ = createChatEventsComputed(rawEvents$);
   const hasReachedOldestEvent$ = computed((get): boolean => {
     return get(persistentEvents$)[0]?.event.seqId === FIRST_CHAT_EVENT_SEQ_ID;
   });
   const historyBackfillPending$ =
     createEventHistoryBackfillPending(persistentEvents$);
   const semanticEvents$ = computed((get): SemanticChatEvent[] => {
-    return semanticTranscriptEventsFromRaw(get(rawEvents$));
+    return semanticTranscriptEventsFromRaw(get(rawEvents$), get(chatEvents$));
   });
-  const eventRunIndicatorState$ = createEventRunIndicatorState(rawEvents$);
+  const eventRunIndicatorState$ = createEventRunIndicatorState(chatEvents$);
   return {
     hasReachedOldestEvent$,
     rawEvents$,
+    chatEvents$,
     historyBackfillPending$,
     eventRunIndicatorState$,
-    activeGoalObjective$: createActiveGoalObjectiveComputed(rawEvents$),
     mailDraftCardSignalsById$: createMailDraftCardSignalsById(
       rawEvents$,
       mailDraftCardSignals,
@@ -3007,12 +2467,11 @@ export const ensureDraft$ = command(
   },
 );
 
-function createEventRunIndicatorState(
-  rawEvents$: Computed<ChatEventProjectionEntry[]>,
-) {
+function createEventRunIndicatorState(chatEvents$: Computed<ChatEvent[]>) {
   return computed((get): Promise<RunIndicatorState> => {
-    const raw = get(rawEvents$);
-    return Promise.resolve(deriveRunIndicatorStateFromRawEvents(raw));
+    return Promise.resolve(
+      deriveRunIndicatorStateFromChatEvents(get(chatEvents$)),
+    );
   });
 }
 
@@ -3632,29 +3091,8 @@ function createAppendOptimisticSendEvent(
   );
 }
 
-function createComposerSendButtonSignals(events: {
-  allFinished$: Computed<Promise<boolean>>;
-  lastAssistantCancelled$: Computed<Promise<boolean>>;
-}) {
-  const pendingSendCount$ = state(0);
-  const composerSendButtonStatus$ = computed(
-    async (get): Promise<ComposerSendButtonStatus> => {
-      const sendPending = get(pendingSendCount$) > 0;
-      const [allFinished, lastAssistantCancelled] = await Promise.all([
-        get(events.allFinished$),
-        get(events.lastAssistantCancelled$),
-      ]);
-      return (sendPending || !allFinished) && !lastAssistantCancelled
-        ? "sending"
-        : "idle";
-    },
-  );
-  return { pendingSendCount$, composerSendButtonStatus$ };
-}
-
 interface SendMessageDeps {
   threadId: string;
-  pendingSendCount$: State<number>;
   agentId$: Computed<string | null>;
   modelSelectionForSend$: Command<
     Promise<ModelProviderSelection | null>,
@@ -3820,8 +3258,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
 }
 
 function createSendMessage(deps: SendMessageDeps) {
-  const { threadId, pendingSendCount$, agentId$, modelSelectionForSend$ } =
-    deps;
+  const { threadId, agentId$, modelSelectionForSend$ } = deps;
   const performSendMessage$ = createPerformSendMessage(deps);
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
@@ -3843,25 +3280,15 @@ function createSendMessage(deps: SendMessageDeps) {
       }
       const modelSelection = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
-      set(pendingSendCount$, (count) => {
-        return count + 1;
-      });
-      return await withCleanup(
-        set(
-          performSendMessage$,
-          {
-            prompt,
-            options,
-            agentId,
-            modelSelection,
-          },
-          signal,
-        ),
-        () => {
-          set(pendingSendCount$, (count) => {
-            return count - 1;
-          });
+      return await set(
+        performSendMessage$,
+        {
+          prompt,
+          options,
+          agentId,
+          modelSelection,
         },
+        signal,
       );
     },
   );
@@ -4008,7 +3435,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
 interface RecallMessageDeps {
   threadId: string;
   agentId$: Computed<string | null>;
-  rawEvents$: Computed<ChatEventProjectionEntry[]>;
+  chatEvents$: Computed<ChatEvent[]>;
   draft: DraftSignals;
   queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   appendOptimisticEvent$: AppendOptimisticEventCommand;
@@ -4019,7 +3446,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
   const {
     threadId,
     agentId$,
-    rawEvents$,
+    chatEvents$,
     draft,
     queueDraftSync$,
     appendOptimisticEvent$,
@@ -4027,9 +3454,11 @@ function createRecallMessage(deps: RecallMessageDeps) {
   } = deps;
 
   return command(async ({ get, set }, eventId: string, signal: AbortSignal) => {
-    const event = queuedEventsFromRaw(get(rawEvents$)).find((candidate) => {
-      return candidate.id === eventId;
-    });
+    const event = queuedEventsFromChatEvents(get(chatEvents$)).find(
+      (candidate) => {
+        return candidate.id === eventId;
+      },
+    );
     if (!event || event.eventType !== "input.prompt") {
       return;
     }
@@ -4096,7 +3525,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
 function createSkipAutomationEvent({
   threadId,
   agentId$,
-  rawEvents$,
+  chatEvents$,
   appendOptimisticEvent$,
   dataSource,
 }: RecallMessageDeps) {
@@ -4106,11 +3535,14 @@ function createSkipAutomationEvent({
       eventId: string,
       signal: AbortSignal,
     ): Promise<void> => {
-      const event = queuedEventsFromRaw(get(rawEvents$)).find((candidate) => {
-        return (
-          candidate.id === eventId && candidate.eventType === "input.automation"
-        );
-      });
+      const event = queuedEventsFromChatEvents(get(chatEvents$)).find(
+        (candidate) => {
+          return (
+            candidate.id === eventId &&
+            candidate.eventType === "input.automation"
+          );
+        },
+      );
       const agentId = get(agentId$);
       if (!event || !agentId) {
         return;
@@ -4160,11 +3592,7 @@ function createMessageCommands(deps: MessageCommandsDeps) {
   };
 }
 
-interface ThreadMessageActionsDeps extends MessageCommandsDeps {
-  rawEvents$: Computed<ChatEventProjectionEntry[]>;
-}
-
-function createThreadMessageActions(deps: ThreadMessageActionsDeps) {
+function createThreadMessageActions(deps: MessageCommandsDeps) {
   return {
     ...createMessageCommands(deps),
     skipAutomationEvent$: createSkipAutomationEvent(deps),
@@ -4175,13 +3603,13 @@ function createThreadMessageActions(deps: ThreadMessageActionsDeps) {
 function createCancelRunWithQueuedRecall({
   threadId,
   agentId$,
-  rawEvents$,
+  chatEvents$,
   appendOptimisticEvent$,
   dataSource,
 }: {
   threadId: string;
   agentId$: Computed<string | null>;
-  rawEvents$: Computed<ChatEventProjectionEntry[]>;
+  chatEvents$: Computed<ChatEvent[]>;
   appendOptimisticEvent$: AppendOptimisticEventCommand;
   dataSource: ChatThreadRemote;
 }) {
@@ -4199,13 +3627,15 @@ function createCancelRunWithQueuedRecall({
       return;
     }
 
-    const raw = get(rawEvents$);
-    const queuedEvents = queuedEventsFromRaw(raw).filter((event) => {
-      return event.eventType === "input.prompt";
-    });
+    const chatEvents = get(chatEvents$);
+    const queuedEvents = queuedEventsFromChatEvents(chatEvents).filter(
+      (event) => {
+        return event.eventType === "input.prompt";
+      },
+    );
     const optimisticAppendPromises: Promise<void>[] = [];
 
-    const interruptRequests = cancellableRunIdsFromRawEvents(raw).map(
+    const interruptRequests = liveRunIdsFromChatEvents(chatEvents).map(
       (runId) => {
         const clientEventId = crypto.randomUUID();
         optimisticAppendPromises.push(
@@ -4721,15 +4151,11 @@ function publicChatThreadEventSignals(
     mailDraftCardSignalsById$: events.mailDraftCardSignalsById$,
     browserSessionSignals: events.browserSessionSignals,
     hasEvents$: events.hasEvents$,
-    hasQueuedEvents$: events.hasQueuedEvents$,
-    queuedEventItems$: events.queuedEventItems$,
-    emptyQueuedEventItems$: events.emptyQueuedEventItems$,
     thinkingIndicatorMode$: events.thinkingIndicatorMode$,
     thinkingEventId$: events.thinkingEventId$,
     thinkingText$: events.thinkingText$,
     recommendedFollowupSource$: events.recommendedFollowupSource$,
     historyBackfillPending$: events.historyBackfillPending$,
-    activeGoalObjective$: events.activeGoalObjective$,
     donePhrase$: events.donePhrase$,
     loadMoreRenderedChatGroups$: events.loadMoreRenderedChatGroups$,
     resetRenderedChatGroupsIfAtBottom$:
@@ -4737,46 +4163,17 @@ function publicChatThreadEventSignals(
   };
 }
 
-interface CreateThreadComposerOptions {
-  readonly draft: DraftSignals;
-  readonly threadId: string;
-  readonly agentId$: Computed<string | null>;
-  readonly hasEvents$: Computed<Promise<boolean>>;
-  readonly inlineTemplatesEnabled: boolean;
-}
-
-function createThreadComposer(options: CreateThreadComposerOptions) {
-  const autoFocus$ = computed(async (get): Promise<boolean> => {
-    return !(await get(options.hasEvents$));
-  });
-  const workflowComposer = createWorkflowComposerSignals(
-    options.draft,
-    options.threadId,
-    options.agentId$,
-    options.inlineTemplatesEnabled,
-    { autoFocus: autoFocus$, singleLineOnMobile: true },
-  );
-  return {
-    workflowComposer,
-    focusInput$: workflowComposer.focus$,
-  };
-}
-
 interface ThreadRootComposerOptions {
   readonly threadId: string;
   readonly draft: DraftSignals;
+  readonly chatEvents$: Computed<ChatEvent[]>;
+  readonly inlineTemplatesEnabled: boolean;
   readonly dataSource: ChatThreadRemote;
   readonly threadOwned: ReturnType<typeof createThreadOwnedSignals>;
-  readonly composer: ReturnType<typeof createThreadComposer>;
-  readonly composerFileInput: ReturnType<typeof createComposerFileInputSignals>;
-  readonly composerSendButton: ReturnType<
-    typeof createComposerSendButtonSignals
-  >;
   readonly modelSelection: ReturnType<typeof createModelSelection>;
   readonly computerUseHostSelection: ReturnType<
     typeof createComputerUseHostSelection
   >;
-  readonly events: ReturnType<typeof createChatThreadEventPipeline>;
   readonly messageActions: ReturnType<typeof createThreadMessageActions>;
   readonly queueDraftSync$: ReturnType<
     typeof createDraftSync
@@ -4844,7 +4241,6 @@ function createThreadPendingActionSignals(options: ThreadRootComposerOptions) {
   const removeQueuedMessage$ = command(
     async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
       await set(options.messageActions.recallMessage$, eventId, signal);
-      set(options.composer.focusInput$);
     },
   );
   const removeWorkflowEvent$ = command(
@@ -4868,64 +4264,7 @@ function createThreadPendingActionSignals(options: ThreadRootComposerOptions) {
   };
 }
 
-function createThreadWorkflowPromptSignals(options: ThreadRootComposerOptions) {
-  const draftTarget = `composer:${options.threadId}`;
-  const replaceWorkflowPromptOpen$ = computed((get): boolean => {
-    return get(replaceWorkflowPromptDraftTarget$) === draftTarget;
-  });
-  const applyWorkflowPrompt$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      set(options.draft.clear$);
-      set(options.draft.setInput$, CREATE_WORKFLOW_WITH_CHAT_PROMPT);
-      await set(options.queueDraftSync$, signal);
-      set(options.composer.focusInput$);
-    },
-  );
-  const createWorkflowPrompt$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      if (
-        set(options.draft.readInput$).trim().length > 0 ||
-        get(options.draft.attachments$).length > 0
-      ) {
-        set(setReplaceWorkflowPromptDraftTarget$, draftTarget);
-        return;
-      }
-      await set(applyWorkflowPrompt$, signal);
-    },
-  );
-  const confirmReplaceWorkflowPrompt$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      set(setReplaceWorkflowPromptDraftTarget$, null);
-      await set(applyWorkflowPrompt$, signal);
-    },
-  );
-  const setReplaceWorkflowPromptOpen$ = command(
-    ({ set }, open: boolean): void => {
-      set(setReplaceWorkflowPromptDraftTarget$, open ? draftTarget : null);
-    },
-  );
-  return {
-    createWorkflowPrompt$,
-    replaceWorkflowPromptOpen$,
-    confirmReplaceWorkflowPrompt$,
-    setReplaceWorkflowPromptOpen$,
-  };
-}
-
 function createThreadRootComposer(options: ThreadRootComposerOptions) {
-  const actionsLoading$ = computed(async (get): Promise<boolean> => {
-    await get(options.events.hasEvents$);
-    return false;
-  });
-  const sending$ = computed(async (get): Promise<boolean> => {
-    return (
-      (await get(options.composerSendButton.composerSendButtonStatus$)) ===
-      "sending"
-    );
-  });
-  const queueWhileSending$ = computed(async (get): Promise<boolean> => {
-    return await get(sending$);
-  });
   const composerModelSelection$ = computed(
     async (get): Promise<ModelProviderSelection | null> => {
       const selectedModel = get(options.modelSelection.selectedModel$);
@@ -4945,14 +4284,12 @@ function createThreadRootComposer(options: ThreadRootComposerOptions) {
 
   return createComposerSignals({
     agent$: options.threadOwned.agent$,
-    workflowComposer: options.composer.workflowComposer,
     draft: options.draft,
+    chatEvents$: options.chatEvents$,
+    threadId: options.threadId,
+    inlineTemplatesEnabled: options.inlineTemplatesEnabled,
     singleLineOnMobile: true,
-    actionsLoading$,
-    sending$,
-    queueWhileSending$,
     draftChanged$,
-    ...options.composerFileInput,
     modelSelection$: composerModelSelection$,
     selectedModelOauthAvailable$:
       options.modelSelection.selectedModelOauthAvailable$,
@@ -4966,12 +4303,9 @@ function createThreadRootComposer(options: ThreadRootComposerOptions) {
       options.computerUseHostSelection.setCloudBrowserEnabled$,
     submitMessage$: createThreadSubmitMessageSignal(options),
     cancelRun$: options.messageActions.cancelRun$,
-    pendingEvents$: options.events.queuedEventItems$,
     cancellationRecoveryPending$:
       options.dataSource.cancellationRecoveryPending$,
     ...createThreadPendingActionSignals(options),
-    activeGoalObjective$: options.events.activeGoalObjective$,
-    ...createThreadWorkflowPromptSignals(options),
   });
 }
 
@@ -4997,7 +4331,6 @@ export function createChatThreadSignals(
     dataSource,
   );
   const container = createChatThreadContainerSignals();
-  const composerFileInput = createComposerFileInputSignals();
   const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
   const artifact = createArtifacts(threadId);
   const previewImageUrlsByUrl$ = createArtifactPreviewImageUrls(
@@ -5009,16 +4342,8 @@ export function createChatThreadSignals(
     initialOptimisticEntries: options.initialOptimisticEntries ?? [],
     previewImageUrlsByUrl$,
   });
-  const composer = createThreadComposer({
-    draft,
-    threadId,
-    agentId$: threadOwned.agentId$,
-    hasEvents$: events.hasEvents$,
-    inlineTemplatesEnabled: options.inlineTemplatesEnabled ?? false,
-  });
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft, dataSource);
-  const composerSendButton = createComposerSendButtonSignals(events);
   const runTracking = createRunTracking({
     threadId,
     latestRunFinishCreatedAt$: events.latestRunFinishCreatedAt$,
@@ -5034,10 +4359,9 @@ export function createChatThreadSignals(
   });
   const messageActions = createThreadMessageActions({
     threadId,
-    pendingSendCount$: composerSendButton.pendingSendCount$,
     agentId$: threadOwned.agentId$,
     modelSelectionForSend$,
-    rawEvents$: events.rawEvents$,
+    chatEvents$: events.chatEvents$,
     draft,
     queueDraftSync$,
     cancelDraftSync$,
@@ -5054,14 +4378,12 @@ export function createChatThreadSignals(
   const rootComposer = createThreadRootComposer({
     threadId,
     draft,
+    chatEvents$: events.chatEvents$,
+    inlineTemplatesEnabled: options.inlineTemplatesEnabled ?? false,
     dataSource,
     threadOwned,
-    composer,
-    composerFileInput,
-    composerSendButton,
     modelSelection,
     computerUseHostSelection,
-    events,
     messageActions,
     queueDraftSync$,
   });
@@ -5071,12 +4393,10 @@ export function createChatThreadSignals(
     threadMeta$,
     ...threadTitle,
     threadSettledInServer$,
-    cancellationRecoveryPending$: dataSource.cancellationRecoveryPending$,
     ...modelSelection,
     ...computerUseHostSelection,
     ...messageActions,
     ...assistantErrorRecovery,
-    composerSendButtonStatus$: composerSendButton.composerSendButtonStatus$,
     scrollContainerOnRef$: events.scroll.scrollContainerOnRef$,
     threadScrollPosition$: events.scroll.threadScrollPosition$,
     awayFromBottom$: events.scroll.awayFromBottom$,

@@ -1,6 +1,4 @@
 import { command, computed, state } from "ccstate";
-import { talkDraft$ } from "./chat-draft.ts";
-import { createWorkflowComposerSignals } from "./tiptap-workflow-composer.ts";
 import { getRandomPrompts } from "../../views/zero-page/zero-ideation-data.ts";
 import {
   codexFastModeEnabled$,
@@ -23,20 +21,6 @@ import {
 import { personalModelProvider$ } from "./model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "./settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialogPersonal$ } from "./settings/codex-device-auth.ts";
-import { currentChatAgentRecordId$ } from "../agent-chat.ts";
-
-export const chatPageWorkflowComposer$ = computed((get) => {
-  const features = get(featureSwitch$);
-  const inlineTemplatesEnabled =
-    features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
-  return createWorkflowComposerSignals(
-    get(talkDraft$),
-    undefined,
-    currentChatAgentRecordId$,
-    inlineTemplatesEnabled,
-    { autoFocus: true },
-  );
-});
 
 const internalTaglineIndex$ = state(Math.floor(Math.random() * 18));
 export const reloadTagline$ = command(({ set }) => {

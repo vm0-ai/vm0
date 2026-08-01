@@ -34,19 +34,6 @@ export interface RecommendedFollowupSource {
   readonly followups: readonly RecommendedFollowup[];
 }
 
-export type QueuedChatEventItem =
-  | {
-      readonly kind: "message";
-      readonly id: string;
-      readonly text: string;
-    }
-  | {
-      readonly kind: "automation";
-      readonly id: string;
-      readonly workflowName: string;
-      readonly automationBrief: string | undefined;
-    };
-
 export type ThinkingIndicatorMode =
   | "waiting"
   | "waiting-queued"
@@ -54,8 +41,6 @@ export type ThinkingIndicatorMode =
   | "running-queued"
   | "finished"
   | null;
-
-export type ComposerSendButtonStatus = "idle" | "sending";
 
 export interface EventImageGroupProjection {
   readonly role: ChatEventGroup["role"];
@@ -90,7 +75,6 @@ export interface ChatThreadSignals {
   threadTitleEmoji$: Computed<string | null>;
   threadTitleText$: Computed<string>;
   threadSettledInServer$: Computed<boolean>;
-  cancellationRecoveryPending$: Computed<Promise<boolean>>;
   // -- Composer model selection --------------------------------------------
   // Derived from the thread event projection; user edits register optimistic
   // model_selection_updated events and then persist through the thread API.
@@ -115,7 +99,6 @@ export interface ChatThreadSignals {
   assistantErrorRecovery$: Computed<Promise<AssistantErrorRecovery | null>>;
   retryAssistantError$: Command<Promise<boolean>, [AbortSignal]>;
   resetCodexSubscriptionAndRetry$: Command<Promise<boolean>, [AbortSignal]>;
-  composerSendButtonStatus$: Computed<Promise<ComposerSendButtonStatus>>;
   queueMessage$: Command<
     Promise<boolean>,
     [string, QueueMessageOptions, AbortSignal]
@@ -170,9 +153,6 @@ export interface ChatThreadSignals {
   mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
   browserSessionSignals: BrowserSessionSignals;
   hasEvents$: Computed<Promise<boolean>>;
-  hasQueuedEvents$: Computed<Promise<boolean>>;
-  queuedEventItems$: Computed<Promise<readonly QueuedChatEventItem[]>>;
-  emptyQueuedEventItems$: Computed<Promise<readonly QueuedChatEventItem[]>>;
   thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;
   thinkingEventId$: Computed<Promise<string | null>>;
   thinkingText$: Computed<Promise<string | null>>;
@@ -180,7 +160,6 @@ export interface ChatThreadSignals {
     Promise<RecommendedFollowupSource | null>
   >;
   historyBackfillPending$: Computed<boolean>;
-  activeGoalObjective$: Computed<Promise<string | null>>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;
   resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
   receiveSyncedEvents$: Command<Promise<void>, [ChatEvent[], AbortSignal]>;

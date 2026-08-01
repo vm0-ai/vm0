@@ -6,7 +6,11 @@ type WithoutSeqId<T> = T extends unknown
 
 export type OptimisticChatEvent = WithoutSeqId<PersistedChatEvent>;
 
-export type ChatEvent = PersistedChatEvent | OptimisticChatEvent;
+export type OptimisticUserMessageAssociation = "run" | "queue";
+
+export type ChatEvent = (PersistedChatEvent | OptimisticChatEvent) & {
+  readonly optimisticUserMessageAssociation?: OptimisticUserMessageAssociation;
+};
 
 export type ChatInputEvent = Extract<
   ChatEvent,

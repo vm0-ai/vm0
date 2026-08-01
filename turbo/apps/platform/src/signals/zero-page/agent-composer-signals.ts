@@ -1,30 +1,25 @@
 import { command, computed } from "ccstate";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { currentChatAgent$, currentChatAgentId$ } from "../agent-chat.ts";
 import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
-import {
-  CREATE_WORKFLOW_WITH_CHAT_PROMPT,
-  replaceWorkflowPromptDraftTarget$,
-  setReplaceWorkflowPromptDraftTarget$,
-} from "../chat-page/workflow-prompt-action.ts";
 import { updateUserModelPreference$ } from "../external/user-model-preference.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { queueCurrentAgentDraftSync$ } from "./agent-draft.ts";
-import { talkDraft$, type DraftSignals } from "./chat-draft.ts";
+import { talkDraft$ } from "./chat-draft.ts";
 import {
   computerUseHosts$,
   selectedComputerUseHostId,
 } from "./computer-use-hosts.ts";
 import {
-  createComposerFileInputSignals,
   createComposerSignals,
-  type ComposerPendingEvent,
   type ComposerSubmission,
 } from "./composer-signals.ts";
+import type { ChatEvent } from "../chat-page/chat-event-types.ts";
 import {
   chatPageModelSelection$,
   chatPageSelectedModelOauthAvailable$,
-  chatPageWorkflowComposer$,
   configureChatPageSelectedModel$,
   resetChatPageModelSelection$,
   setChatPageModelSelection$,
@@ -39,8 +34,6 @@ import {
   setNewThreadGenerationTemplate$,
 } from "./zero-chat-composer.ts";
 
-const WORKFLOW_PROMPT_DRAFT_TARGET = "composer:new-thread";
-
 const agent$ = computed(async (get) => {
   const agent = await get(currentChatAgent$);
   if (!agent) {
@@ -49,19 +42,11 @@ const agent$ = computed(async (get) => {
   return agent;
 });
 
-const actionsLoading$ = computed((): Promise<boolean> => {
-  return Promise.resolve(false);
-});
 const idle$ = computed((): Promise<boolean> => {
   return Promise.resolve(false);
 });
-const emptyPendingEvents$ = computed(
-  (): Promise<readonly ComposerPendingEvent[]> => {
-    return Promise.resolve([]);
-  },
-);
-const noActiveGoal$ = computed((): Promise<string | null> => {
-  return Promise.resolve(null);
+const chatEvents$ = computed((): ChatEvent[] => {
+  return [];
 });
 
 const draftChanged$ = command(
@@ -172,67 +157,20 @@ const openActiveGoal$ = command((): void => {
   throw new Error("Active goals are unavailable for a new thread");
 });
 
-function createAgentWorkflowPromptSignals(draft: DraftSignals) {
-  const replaceWorkflowPromptOpen$ = computed((read): boolean => {
-    return (
-      read(replaceWorkflowPromptDraftTarget$) === WORKFLOW_PROMPT_DRAFT_TARGET
-    );
-  });
-  const applyWorkflowPrompt$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      set(draft.setInput$, CREATE_WORKFLOW_WITH_CHAT_PROMPT);
-      await set(queueCurrentAgentDraftSync$, signal);
-    },
-  );
-  const createWorkflowPrompt$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      if (set(draft.readInput$).trim().length > 0) {
-        set(setReplaceWorkflowPromptDraftTarget$, WORKFLOW_PROMPT_DRAFT_TARGET);
-        return;
-      }
-      await set(applyWorkflowPrompt$, signal);
-    },
-  );
-  const confirmReplaceWorkflowPrompt$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      set(setReplaceWorkflowPromptDraftTarget$, null);
-      await set(applyWorkflowPrompt$, signal);
-    },
-  );
-  const setReplaceWorkflowPromptOpen$ = command(
-    ({ set }, open: boolean): void => {
-      set(
-        setReplaceWorkflowPromptDraftTarget$,
-        open ? WORKFLOW_PROMPT_DRAFT_TARGET : null,
-      );
-    },
-  );
-
-  return {
-    createWorkflowPrompt$,
-    replaceWorkflowPromptOpen$,
-    confirmReplaceWorkflowPrompt$,
-    setReplaceWorkflowPromptOpen$,
-  };
-}
-
 export const agentChatComposerSignals$ = computed((get) => {
   const draft = get(talkDraft$);
-  const workflowComposer = get(chatPageWorkflowComposer$);
-  const workflowPrompt = createAgentWorkflowPromptSignals(draft);
+  const features = get(featureSwitch$);
 
   return createComposerSignals({
     agent$,
-    workflowComposer,
     draft,
+    chatEvents$,
+    inlineTemplatesEnabled:
+      features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false,
     generationTemplate$: newThreadGenerationTemplate$,
     setGenerationTemplate$: setNewThreadGenerationTemplate$,
     singleLineOnMobile: false,
-    actionsLoading$,
-    sending$: idle$,
-    queueWhileSending$: idle$,
     draftChanged$,
-    ...createComposerFileInputSignals(),
     modelSelection$: chatPageModelSelection$,
     selectedModelOauthAvailable$: chatPageSelectedModelOauthAvailable$,
     setModelSelection$,
@@ -243,13 +181,10 @@ export const agentChatComposerSignals$ = computed((get) => {
     setCloudBrowserEnabled$,
     submitMessage$,
     cancelRun$: unsupportedAction$,
-    pendingEvents$: emptyPendingEvents$,
     cancellationRecoveryPending$: idle$,
     removeQueuedMessage$: unsupportedEventAction$,
     removeWorkflowEvent$: unsupportedEventAction$,
-    activeGoalObjective$: noActiveGoal$,
     cancelActiveGoal$: unsupportedAction$,
     openActiveGoal$,
-    ...workflowPrompt,
   });
 });

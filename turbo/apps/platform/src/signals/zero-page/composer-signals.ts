@@ -4,14 +4,26 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
+import { foldActiveChatGoalObjective } from "@vm0/api-contracts/contracts/chat-events";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef, withCleanup } from "../utils.ts";
 import { isVisualAttachment } from "../chat-page/resolve-draft-attachments.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ZeroChatAttachment } from "./chat-draft.ts";
-import type {
-  WorkflowComposerSignals,
-  WorkflowComposerSubmissionSnapshot,
+import type { ChatEvent } from "../chat-page/chat-event-types.ts";
+import {
+  deriveRunIndicatorStateFromChatEvents,
+  groupSemanticChatEvents,
+  isUsageEvent,
+  lastAssistantCancelledFromGroups,
+  queuedEventsFromSemanticEvents,
+  semanticChatEventsFromChatEvents,
+} from "../chat-page/chat-event-state.ts";
+import { messageDocumentToDisplayText } from "./user-message-document-codec.ts";
+import {
+  createWorkflowComposerSignals,
+  type WorkflowComposerSignals,
+  type WorkflowComposerSubmissionSnapshot,
 } from "./tiptap-workflow-composer.ts";
 import {
   createComposerConnectorSignals,
@@ -21,6 +33,11 @@ import {
   createComposerUiSignals,
   type ComposerUiSignalGroups,
 } from "./zero-chat-composer.ts";
+import {
+  CREATE_WORKFLOW_WITH_CHAT_PROMPT,
+  replaceWorkflowPromptDraftTarget$,
+  setReplaceWorkflowPromptDraftTarget$,
+} from "../chat-page/workflow-prompt-action.ts";
 
 type ComposerEditorSignals = Pick<
   WorkflowComposerSignals,
@@ -196,17 +213,14 @@ export interface ComposerSignals {
 
 interface CreateComposerSignalsOptions {
   readonly agent$: ComposerSignals["agent$"];
-  readonly workflowComposer: WorkflowComposerSignals;
   readonly draft: DraftSignals;
+  readonly chatEvents$: Computed<ChatEvent[]>;
+  readonly threadId?: string;
+  readonly inlineTemplatesEnabled: boolean;
   readonly generationTemplate$?: ComposerTemplateSignals["generationTemplate$"];
   readonly setGenerationTemplate$?: ComposerTemplateSignals["setGenerationTemplate$"];
   readonly singleLineOnMobile: boolean;
-  readonly actionsLoading$: Computed<Promise<boolean>>;
-  readonly sending$: ComposerSubmissionSignals["sending$"];
-  readonly queueWhileSending$: Computed<Promise<boolean>>;
   readonly draftChanged$: ComposerDraftSignals["draftChanged$"];
-  readonly composerFileInput$: ComposerDraftSignals["composerFileInput$"];
-  readonly setComposerFileInput$: ComposerDraftSignals["setComposerFileInput$"];
   readonly modelSelection$: ComposerModelSignals["modelSelection$"];
   readonly selectedModelOauthAvailable$: ComposerModelSignals["selectedModelOauthAvailable$"];
   readonly setModelSelection$: ComposerModelSignals["setModelSelection$"];
@@ -220,20 +234,14 @@ interface CreateComposerSignalsOptions {
     [ComposerSubmissionAction, ComposerSubmission, AbortSignal]
   >;
   readonly cancelRun$: Command<Promise<void>, [AbortSignal]>;
-  readonly pendingEvents$: ComposerQueueSignals["pendingEvents$"];
   readonly cancellationRecoveryPending$: ComposerQueueSignals["cancellationRecoveryPending$"];
   readonly removeQueuedMessage$: ComposerQueueSignals["removeQueuedMessage$"];
   readonly removeWorkflowEvent$: ComposerQueueSignals["removeWorkflowEvent$"];
-  readonly activeGoalObjective$: ComposerGoalSignals["activeGoalObjective$"];
   readonly cancelActiveGoal$: ComposerGoalSignals["cancelActiveGoal$"];
   readonly openActiveGoal$: ComposerGoalSignals["openActiveGoal$"];
-  readonly createWorkflowPrompt$: ComposerWorkflowSignals["createWorkflowPrompt$"];
-  readonly replaceWorkflowPromptOpen$: ComposerWorkflowSignals["replaceWorkflowPromptOpen$"];
-  readonly confirmReplaceWorkflowPrompt$: ComposerWorkflowSignals["confirmReplaceWorkflowPrompt$"];
-  readonly setReplaceWorkflowPromptOpen$: ComposerWorkflowSignals["setReplaceWorkflowPromptOpen$"];
 }
 
-export function createComposerFileInputSignals() {
+function createComposerFileInputSignals() {
   const internal$ = state<HTMLElement | null>(null);
   const composerFileInput$ = computed((get) => {
     return get(internal$);
@@ -337,28 +345,118 @@ function createComputerUseUiSignals(): Pick<
   };
 }
 
+function createComposerWorkflowPromptSignals(
+  options: CreateComposerSignalsOptions,
+  workflowComposer: WorkflowComposerSignals,
+): Pick<
+  ComposerWorkflowSignals,
+  | "createWorkflowPrompt$"
+  | "replaceWorkflowPromptOpen$"
+  | "confirmReplaceWorkflowPrompt$"
+  | "setReplaceWorkflowPromptOpen$"
+> {
+  const draftTarget = `composer:${options.threadId ?? "new-thread"}`;
+  const replaceWorkflowPromptOpen$ = computed((get): boolean => {
+    return get(replaceWorkflowPromptDraftTarget$) === draftTarget;
+  });
+  const applyWorkflowPrompt$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      if (options.threadId !== undefined) {
+        set(options.draft.clear$);
+      }
+      set(options.draft.setInput$, CREATE_WORKFLOW_WITH_CHAT_PROMPT);
+      await set(options.draftChanged$, signal);
+      if (options.threadId !== undefined) {
+        set(workflowComposer.focus$);
+      }
+    },
+  );
+  const createWorkflowPrompt$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const hasDraft =
+        set(options.draft.readInput$).trim().length > 0 ||
+        (options.threadId !== undefined &&
+          get(options.draft.attachments$).length > 0);
+      if (hasDraft) {
+        set(setReplaceWorkflowPromptDraftTarget$, draftTarget);
+        return;
+      }
+      await set(applyWorkflowPrompt$, signal);
+    },
+  );
+  const confirmReplaceWorkflowPrompt$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      set(setReplaceWorkflowPromptDraftTarget$, null);
+      await set(applyWorkflowPrompt$, signal);
+    },
+  );
+  const setReplaceWorkflowPromptOpen$ = command(
+    ({ set }, open: boolean): void => {
+      set(setReplaceWorkflowPromptDraftTarget$, open ? draftTarget : null);
+    },
+  );
+  return {
+    createWorkflowPrompt$,
+    replaceWorkflowPromptOpen$,
+    confirmReplaceWorkflowPrompt$,
+    setReplaceWorkflowPromptOpen$,
+  };
+}
+
+function createRemoveQueuedMessage(
+  removeQueuedMessage$: CreateComposerSignalsOptions["removeQueuedMessage$"],
+  workflowComposer: WorkflowComposerSignals,
+): ComposerQueueSignals["removeQueuedMessage$"] {
+  return command(
+    async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
+      await set(removeQueuedMessage$, eventId, signal);
+      set(workflowComposer.focus$);
+    },
+  );
+}
+
 export function createComposerSignals(
   options: CreateComposerSignalsOptions,
 ): ComposerSignals {
-  const submission = createComposerSubmissionSignals(options);
+  const eventSignals = createComposerChatEventSignals(options.chatEvents$);
   const draft = options.draft;
+  const agentId$ = computed(async (get): Promise<string | null> => {
+    return (await get(options.agent$)).agentId;
+  });
+  const autoFocus$ = computed(async (get): Promise<boolean> => {
+    return !(await get(eventSignals.hasEvents$));
+  });
+  const workflowComposer = createWorkflowComposerSignals(
+    draft,
+    options.threadId,
+    agentId$,
+    options.inlineTemplatesEnabled,
+    {
+      autoFocus: autoFocus$,
+      singleLineOnMobile: options.singleLineOnMobile,
+    },
+  );
+  const submission = createComposerSubmissionSignals(
+    options,
+    eventSignals,
+    workflowComposer,
+  );
+  const fileInput = createComposerFileInputSignals();
+  const workflowPrompt = createComposerWorkflowPromptSignals(
+    options,
+    workflowComposer,
+  );
   const ui = createComposerUiSignals();
 
   return {
     agent$: options.agent$,
-    editor: composerEditorSignals(
-      options.workflowComposer,
-      options.singleLineOnMobile,
-    ),
-    feedback: options.workflowComposer.feedback,
+    editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
+    feedback: workflowComposer.feedback,
     workflow: {
-      ...composerWorkflowSignals(options.workflowComposer),
-      createWorkflowPrompt$: options.createWorkflowPrompt$,
-      replaceWorkflowPromptOpen$: options.replaceWorkflowPromptOpen$,
-      confirmReplaceWorkflowPrompt$: options.confirmReplaceWorkflowPrompt$,
-      setReplaceWorkflowPromptOpen$: options.setReplaceWorkflowPromptOpen$,
+      ...composerWorkflowSignals(workflowComposer),
+      ...workflowPrompt,
     },
-    suggestion: composerSuggestionSignals(options.workflowComposer),
+    suggestion: composerSuggestionSignals(workflowComposer),
     connector: createComposerConnectorSignals(options.agent$),
     draft: {
       ...ui.draft,
@@ -370,8 +468,7 @@ export function createComposerSignals(
       removeAttachment$: draft.removeAttachment$,
       dragOver$: draft.dragOver$,
       setDragOver$: draft.setDragOver$,
-      composerFileInput$: options.composerFileInput$,
-      setComposerFileInput$: options.setComposerFileInput$,
+      ...fileInput,
       draftChanged$: options.draftChanged$,
     },
     model: {
@@ -390,21 +487,24 @@ export function createComposerSignals(
     },
     submission: {
       ...submission,
-      sending$: options.sending$,
+      sending$: eventSignals.sending$,
     },
     queue: {
-      pendingEvents$: options.pendingEvents$,
+      pendingEvents$: eventSignals.pendingEvents$,
       cancellationRecoveryPending$: options.cancellationRecoveryPending$,
-      removeQueuedMessage$: options.removeQueuedMessage$,
+      removeQueuedMessage$: createRemoveQueuedMessage(
+        options.removeQueuedMessage$,
+        workflowComposer,
+      ),
       removeWorkflowEvent$: options.removeWorkflowEvent$,
     },
     goal: {
-      activeGoalObjective$: options.activeGoalObjective$,
+      activeGoalObjective$: eventSignals.activeGoalObjective$,
       cancelActiveGoal$: options.cancelActiveGoal$,
       openActiveGoal$: options.openActiveGoal$,
     },
     template: {
-      ...composerTemplateSignals(options.workflowComposer),
+      ...composerTemplateSignals(workflowComposer),
       ...ui.template,
       generationTemplate$:
         options.generationTemplate$ ?? draft.generationTemplate$,
@@ -414,18 +514,92 @@ export function createComposerSignals(
   };
 }
 
+function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
+  const semanticEvents$ = computed((get) => {
+    return semanticChatEventsFromChatEvents(get(chatEvents$));
+  });
+  const semanticGroups$ = computed((get) => {
+    return groupSemanticChatEvents(get(semanticEvents$));
+  });
+  const hasEvents$ = computed((get): Promise<boolean> => {
+    return Promise.resolve(
+      get(semanticEvents$).some((entry) => {
+        return !isUsageEvent(entry.event);
+      }),
+    );
+  });
+  const runIndicatorState$ = computed((get) => {
+    return deriveRunIndicatorStateFromChatEvents(get(chatEvents$));
+  });
+  const sending$ = computed((get): Promise<boolean> => {
+    const running = get(runIndicatorState$) !== null;
+    const lastAssistantCancelled = lastAssistantCancelledFromGroups(
+      get(semanticGroups$),
+    );
+    return Promise.resolve(running && !lastAssistantCancelled);
+  });
+  const actionsLoading$ = computed(async (get): Promise<boolean> => {
+    await get(hasEvents$);
+    return false;
+  });
+  const pendingEvents$ = computed(
+    (get): Promise<readonly ComposerPendingEvent[]> => {
+      return Promise.resolve(
+        queuedEventsFromSemanticEvents(get(semanticEvents$)).map((event) => {
+          if (event.eventType === "input.automation") {
+            const automationPart = event.userMessage?.parts.find((part) => {
+              return part.type === "automation";
+            });
+            if (!automationPart || automationPart.type !== "automation") {
+              return {
+                kind: "message" as const,
+                id: event.id,
+                text: "",
+              };
+            }
+            return {
+              kind: "automation" as const,
+              id: event.id,
+              workflowName: automationPart.workflowName,
+              automationBrief: automationPart.automationBrief,
+            };
+          }
+          return {
+            kind: "message" as const,
+            id: event.id,
+            text: (
+              messageDocumentToDisplayText(event.userMessage) ?? ""
+            ).trim(),
+          };
+        }),
+      );
+    },
+  );
+  const activeGoalObjective$ = computed((get): Promise<string | null> => {
+    return Promise.resolve(foldActiveChatGoalObjective(get(chatEvents$)));
+  });
+  return {
+    actionsLoading$,
+    sending$,
+    pendingEvents$,
+    activeGoalObjective$,
+    hasEvents$,
+  };
+}
+
 function createComposerSubmissionSignals(
   options: CreateComposerSignalsOptions,
+  eventSignals: ReturnType<typeof createComposerChatEventSignals>,
+  workflowComposer: WorkflowComposerSignals,
 ) {
   const draft = options.draft;
-  const workflowComposer = options.workflowComposer;
   const internalSubmissionPending$ = state(false);
   const submissionPending$ = computed((get): boolean => {
     return get(internalSubmissionPending$);
   });
   const primaryAction$ = computed(
     async (get): Promise<ComposerPrimaryAction> => {
-      if (await get(options.actionsLoading$)) {
+      if (await get(eventSignals.actionsLoading$)) {
         return "disabled";
       }
 
@@ -437,7 +611,7 @@ function createComposerSubmissionSignals(
         hasContent = hasVisibleAttachment(modelSelection, attachments);
       }
       const canSend = uploadsReady && hasContent;
-      const sending = await get(options.sending$);
+      const sending = await get(eventSignals.sending$);
       if (sending && !canSend) {
         return "stop";
       }
@@ -450,7 +624,7 @@ function createComposerSubmissionSignals(
       if (!sending) {
         return "send";
       }
-      return (await get(options.queueWhileSending$)) ? "queue" : "disabled";
+      return "queue";
     },
   );
   const submitCurrentInput$ = command(

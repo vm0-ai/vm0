@@ -1,10 +1,11 @@
 import { command, computed, state } from "ccstate";
 import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 import { parseChatEventBodyBlocks } from "./chat-event-body-blocks.ts";
-import type { OptimisticChatEvent } from "./chat-event-types.ts";
+import type {
+  OptimisticChatEvent,
+  OptimisticUserMessageAssociation,
+} from "./chat-event-types.ts";
 import type { ParsedBodyBlock } from "./parse-body-blocks.ts";
-
-export type OptimisticUserMessageAssociation = "run" | "queue";
 
 export interface OptimisticChatEventInput {
   threadId: string;
