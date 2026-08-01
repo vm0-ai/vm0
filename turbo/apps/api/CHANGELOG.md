@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.364.0](https://github.com/vm0-ai/vm0/compare/api-v1.363.2...api-v1.364.0) (2026-08-01)
+
+
+### Features
+
+* add conditional image recognition fallback ([#24390](https://github.com/vm0-ai/vm0/issues/24390)) ([376a6fa](https://github.com/vm0-ai/vm0/commit/376a6fa3068e6d3033592b7702dbe8872dc51da4))
+
+
+### Bug Fixes
+
+* trigger api platform and runner releases ([#24389](https://github.com/vm0-ai/vm0/issues/24389)) ([5e32b07](https://github.com/vm0-ai/vm0/commit/5e32b07956572689916ff1348deab37be627ab0f))
+
+
+### Refactoring
+
+* add held workspace state persistence ([#24398](https://github.com/vm0-ai/vm0/issues/24398)) ([da44913](https://github.com/vm0-ai/vm0/commit/da44913e105f9c9aaf62c5aebca5f5e7952eafdf))
+* **api:** stop selecting legacy run lifecycle column ([#24414](https://github.com/vm0-ai/vm0/issues/24414)) ([d9e27a7](https://github.com/vm0-ai/vm0/commit/d9e27a7a866f3532f8376228eef24e37df1347ae))
+
+
+### Performance Improvements
+
+* **api:** delete usage sources after rollup ([#24403](https://github.com/vm0-ai/vm0/issues/24403)) ([930e331](https://github.com/vm0-ai/vm0/commit/930e3314a554328905053f65a8becf6c78281f8e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.0
+    * @vm0/core bumped to 8.502.0
+    * @vm0/db bumped to 1.160.4
+
 ## [1.363.2](https://github.com/vm0-ai/vm0/compare/api-v1.363.1...api-v1.363.2) (2026-08-01)
 
 
