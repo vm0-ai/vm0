@@ -401,6 +401,7 @@ function githubLabelTriggerContext(args: {
     args.subjectKind === "pull_request" ? "pull request" : "issue";
   return {
     workflowName: args.automation.workflowName,
+    eventType: "github-label-applied",
     trigger: `GitHub label "${args.matchedLabelName}" was applied to ${subjectLabel} #${args.payload.issue.number} (GitHub webhook delivery ${args.deliveryId}).`,
     notes: [
       "Not included below: the issue or pull request body, comments, files, and diffs. Connected GitHub tools and the GitHub API return them.",
@@ -478,6 +479,7 @@ const startGithubWorkflowRun$ = command(
       () => {
         const context = githubLabelTriggerContext(args);
         return {
+          context,
           prompt: workflowAutomationPrompt(context),
           appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
           callbacks: buildChatOnlyWorkflowAutomationCallbacks(
@@ -497,6 +499,7 @@ const startGithubWorkflowRun$ = command(
           workflowName: args.automation.workflowName,
           chatThreadId: args.automation.chatThreadId,
         },
+        automationContext: runInput.context,
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
         prompt: runInput.prompt,

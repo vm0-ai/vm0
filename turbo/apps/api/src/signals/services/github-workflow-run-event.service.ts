@@ -304,6 +304,7 @@ function githubWorkflowRunTriggerContext(args: {
   const workflowName = run.name ?? run.path;
   return {
     workflowName: args.automation.workflowName,
+    eventType: "github-workflow-run-completed",
     trigger: `GitHub Actions workflow "${workflowName}" completed with conclusion "${run.conclusion}" (run ${run.id} attempt ${run.run_attempt}, GitHub webhook delivery ${args.deliveryId}).`,
     notes: [
       "Not included below: jobs, logs, artifacts, and pull request details. Connected GitHub tools and the GitHub API return them.",
@@ -364,6 +365,7 @@ const startGithubWorkflowRunAutomation$ = command(
           workflowName: args.automation.workflowName,
           chatThreadId: args.automation.chatThreadId,
         },
+        automationContext: context,
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
         prompt: workflowAutomationPrompt(context),

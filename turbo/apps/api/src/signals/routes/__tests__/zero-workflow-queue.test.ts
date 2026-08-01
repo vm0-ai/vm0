@@ -739,6 +739,13 @@ describe("workflow queue", () => {
       contextId: expect.any(String),
       automationId: created.body.id,
       triggerBrief: admittedTriggerBrief,
+      workflowName: WORKFLOW_NAME,
+      workflowEventType: "schedule",
+      workflowEventPayload: expect.objectContaining({
+        automationId: created.body.id,
+        trigger: "schedule",
+        firedAt: new Date(firedAt).toISOString(),
+      }),
     });
 
     // A later, unrelated drain pass launches the tick. Its trigger line must

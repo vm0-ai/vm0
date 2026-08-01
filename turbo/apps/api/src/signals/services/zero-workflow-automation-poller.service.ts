@@ -366,6 +366,7 @@ export const executeDueWorkflowAutomations$ = command(
           runWorkflowAutomationNow$,
           {
             due,
+            automationContext: scheduleContext,
             apiStartTime: now(),
             prompt: workflowAutomationPrompt(scheduleContext),
             appendSystemPrompt:

@@ -6,6 +6,7 @@ import type {
   ChatSlackMessageFiles,
 } from "@vm0/db/jsonb-contracts/chat-slack-context";
 import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
+import type { JsonObject } from "@vm0/db/jsonb-contracts/shared";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -64,6 +65,9 @@ interface ChatEventContextFixture {
   readonly contextId: string | null;
   readonly automationId: string | null;
   readonly triggerBrief: string | null;
+  readonly workflowName: string | null;
+  readonly workflowEventType: string | null;
+  readonly workflowEventPayload: JsonObject | null;
   readonly slackPermalink: string | null;
   readonly slackChannelId: string | null;
   readonly slackMessageTs: string | null;
@@ -132,6 +136,9 @@ export async function readChatEventContextFixture(
       contextId: chatEvents.contextId,
       automationId: chatAutomationContext.automationId,
       triggerBrief: chatAutomationContext.triggerBrief,
+      workflowName: chatAutomationContext.workflowName,
+      workflowEventType: chatAutomationContext.eventType,
+      workflowEventPayload: chatAutomationContext.eventPayload,
       slackPermalink: chatSlackContext.messagePermalink,
       slackChannelId: chatSlackContext.channelId,
       slackMessageTs: chatSlackContext.messageTs,

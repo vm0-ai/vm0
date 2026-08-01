@@ -777,6 +777,7 @@ function githubWebhookTriggerContext(args: {
 }): WorkflowAutomationContext {
   return {
     workflowName: args.automation.workflowName,
+    eventType: args.event.eventType,
     trigger: `${eventPromptSummary(args.event)} (GitHub webhook delivery ${args.deliveryId}).`,
     notes: [
       "Not included below: user-authored review and comment bodies, logs, and artifacts. Connected GitHub tools and the GitHub API return them.",
@@ -811,6 +812,7 @@ const startGithubWebhookAutomation$ = command(
           workflowName: args.automation.workflowName,
           chatThreadId: args.automation.chatThreadId,
         },
+        automationContext: context,
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
         prompt: workflowAutomationPrompt(context),

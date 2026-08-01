@@ -1810,6 +1810,7 @@ function notionChildPageTriggerContext(args: {
   const pageTitle = notionTitleFromProperties(args.page.properties);
   return {
     workflowName: args.workflowName,
+    eventType: "notion-child-page-created",
     trigger: `Notion child page ${args.page.id} was created under the configured parent page (latest change ${args.latestEventAt.toISOString()}).`,
     notes: [NOTION_PAGE_BODY_NOTE],
     event: {
@@ -1846,6 +1847,7 @@ function notionDatabaseItemTriggerContext(args: {
   const pageTitle = notionTitleFromProperties(args.page.properties);
   return {
     workflowName: args.workflowName,
+    eventType: "notion-database-item-created",
     trigger: `Notion database item ${args.page.id} was created in the configured database (latest change ${args.latestEventAt.toISOString()}).`,
     notes: [NOTION_PAGE_BODY_NOTE],
     event: {
@@ -1902,6 +1904,7 @@ function notionPageContentUpdatedTriggerContext(args: {
         };
   return {
     workflowName: args.workflowName,
+    eventType: "notion-page-content-updated",
     trigger: `Notion page ${args.page.id} content was updated (latest change ${args.latestEventAt.toISOString()}).`,
     notes: [NOTION_PAGE_BODY_NOTE],
     event: {
@@ -2050,6 +2053,7 @@ async function startNotionWorkflowRun(args: {
         workflowName: args.row.workflowName,
         chatThreadId: args.chatThreadId,
       },
+      automationContext: args.context,
       apiStartTime: now(),
       triggerSource: "workflow-event",
       prompt: workflowAutomationPrompt(args.context),

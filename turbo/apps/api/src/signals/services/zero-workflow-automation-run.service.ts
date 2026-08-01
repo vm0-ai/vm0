@@ -64,7 +64,7 @@ export const runWorkflowAutomationNow$ = command(
     signal: AbortSignal,
   ): Promise<RunWorkflowAutomationResult> => {
     const db = set(writeDb$);
-    const { automation, chatThreadId, workflowName } = args.due;
+    const { automation, chatThreadId } = args.due;
     const timing = args.timing ?? new ApiDispatchTimingCollector();
     if (!args.timing) {
       timing.recordElapsed(
@@ -81,7 +81,9 @@ export const runWorkflowAutomationNow$ = command(
       async () => {
         return await admitWorkflowAutomationEvent(db, {
           automation,
-          workflowName,
+          workflowName: args.automationContext.workflowName,
+          workflowAutomationEventType: args.automationContext.eventType,
+          workflowAutomationEventPayload: args.automationContext.event,
           chatThreadId,
           triggerSource: args.triggerSource ?? "workflow-schedule",
           triggerBrief: args.triggerBrief,

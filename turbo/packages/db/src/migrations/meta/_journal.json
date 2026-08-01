@@ -5573,6 +5573,13 @@
       "when": 1785593771648,
       "tag": "0795_optimize_chat_event_interrupt_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 796,
+      "version": "7",
+      "when": 1785596729593,
+      "tag": "0796_absurd_lockjaw",
+      "breakpoints": true
     }
   ]
 }
