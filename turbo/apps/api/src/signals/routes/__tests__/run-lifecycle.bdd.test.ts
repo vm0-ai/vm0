@@ -4029,7 +4029,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     async function heartbeat(args: {
       readonly generation: number;
       readonly sequence: number;
-      readonly advertisesCapabilities: boolean;
+      readonly resource: RunnerJob["sessionAffinityResource"];
     }): Promise<void> {
       const lastCompletedAt = nowDate().toISOString();
       await api.requestHeartbeatRunner(true, [200], {
@@ -4038,35 +4038,39 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         snapshotGeneration: args.generation,
         snapshotSequence: args.sequence,
         admittableProfiles: ["vm0/default"],
-        heldSessionStates: args.advertisesCapabilities
-          ? [
-              {
-                sessionId: cliAgentSessionId,
-                reuseKey,
-                lastCompletedAt,
-                reusableSandbox: { profile: "vm0/default" },
-              },
-            ]
-          : [],
-        heldWorkspaceStates: args.advertisesCapabilities
-          ? [
-              {
-                reuseKey,
-                lastCompletedAt,
-                workspaceCaches: [
-                  { profile: "vm0/default", workspaceAffinityVersion: 1 },
-                ],
-              },
-            ]
-          : [],
+        heldSessionStates:
+          args.resource === "reusableSandbox"
+            ? [
+                {
+                  sessionId: cliAgentSessionId,
+                  reuseKey,
+                  lastCompletedAt,
+                  reusableSandbox: { profile: "vm0/default" },
+                },
+              ]
+            : [],
+        heldWorkspaceStates:
+          args.resource === "workspaceCache"
+            ? [
+                {
+                  reuseKey,
+                  lastCompletedAt,
+                  workspaceCaches: [
+                    { profile: "vm0/default", workspaceAffinityVersion: 1 },
+                  ],
+                },
+              ]
+            : [],
       });
     }
 
-    async function expectReusableAffinity(expected: boolean): Promise<void> {
+    async function expectAffinity(
+      expectedResource: RunnerJob["sessionAffinityResource"],
+    ): Promise<void> {
       const followUp = await sendChatRunMessage(actor, {
         agentId,
         threadId: first.threadId,
-        prompt: `check ordered heartbeat affinity ${expected}`,
+        prompt: `check ordered heartbeat affinity ${expectedResource ?? "none"}`,
       });
       const poll = await api.requestPollRunner(
         true,
@@ -4077,13 +4081,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         throw new Error("Expected ordered-heartbeat poll to return 200");
       }
       expect(poll.body.job?.runId).toBe(followUp.runId);
-      if (expected) {
+      if (expectedResource) {
         expect(sessionAffinityProtectedUntil(poll.body.job)).not.toBeNull();
-        expect(sessionAffinityResource(poll.body.job)).toBe("reusableSandbox");
       } else {
         expect(sessionAffinityProtectedUntil(poll.body.job)).toBeNull();
-        expect(sessionAffinityResource(poll.body.job)).toBeUndefined();
       }
+      expect(sessionAffinityResource(poll.body.job)).toBe(expectedResource);
       await api.requestCancelRun(actor, followUp.runId, [200]);
       await flushWaitUntilForTest();
     }
@@ -4091,48 +4094,48 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await heartbeat({
       generation: 1,
       sequence: 2,
-      advertisesCapabilities: true,
+      resource: "reusableSandbox",
     });
     mockNow(baseTime + 5000);
     await heartbeat({
       generation: 1,
       sequence: 1,
-      advertisesCapabilities: false,
+      resource: undefined,
     });
-    await expectReusableAffinity(true);
+    await expectAffinity("reusableSandbox");
 
     mockNow(baseTime + 20_000);
     await heartbeat({
       generation: 1,
       sequence: 1,
-      advertisesCapabilities: true,
+      resource: "reusableSandbox",
     });
     mockNow(baseTime + 31_000);
-    await expectReusableAffinity(false);
+    await expectAffinity(undefined);
 
     await heartbeat({
       generation: 1,
       sequence: 3,
-      advertisesCapabilities: true,
+      resource: "workspaceCache",
     });
     await heartbeat({
       generation: 1,
       sequence: 3,
-      advertisesCapabilities: false,
+      resource: undefined,
     });
-    await expectReusableAffinity(true);
+    await expectAffinity("workspaceCache");
 
     await heartbeat({
       generation: 2,
       sequence: 1,
-      advertisesCapabilities: false,
+      resource: undefined,
     });
     await heartbeat({
       generation: 1,
       sequence: 99,
-      advertisesCapabilities: true,
+      resource: "workspaceCache",
     });
-    await expectReusableAffinity(false);
+    await expectAffinity(undefined);
   });
 
   it("prioritizes exact reusable work only for its runner and protection window", async () => {
