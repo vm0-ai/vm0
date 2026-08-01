@@ -16,7 +16,11 @@ export function appendTeamsFilesToPrompt(
     return prompt;
   }
 
-  const fileContext = files.map(formatTeamsFileForContext).join("\n");
+  const fileContext = files
+    .map((file) => {
+      return `[Web file] ${file.name} (${file.contentType})\n   [ID] ${file.fileId}`;
+    })
+    .join("\n");
   return [prompt, fileContext]
     .filter((part) => {
       return part.length > 0;
