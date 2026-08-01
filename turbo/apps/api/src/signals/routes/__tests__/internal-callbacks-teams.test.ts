@@ -18,6 +18,7 @@ import {
   findPendingChatEventInputParamsByPromptFixture,
   readChatEventContextFixture,
   readChatEventInputParamsFixture,
+  replaceTeamsLaunchMaterialWithLegacyParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
@@ -445,6 +446,7 @@ async function postTeamsPersonalMessage(args: {
   readonly activityId: string;
   readonly threadId?: string;
   readonly text: string;
+  readonly omitRecipient?: boolean;
 }): Promise<void> {
   const response = await postTeamsActivityForTest({
     signal: context.signal,
@@ -464,6 +466,7 @@ async function postTeamsPersonalMessage(args: {
       text: args.text,
       entities: [],
       replyToId: args.threadId ?? null,
+      ...(args.omitRecipient ? { recipient: undefined } : {}),
     }),
   });
   expect(response.status).toBe(200);
@@ -623,7 +626,7 @@ afterEach(async () => {
 });
 
 describe("Teams chat callbacks", () => {
-  it("keeps queued Teams transport params until the input is claimed", async () => {
+  it("claims Teams launch material from context with a legacy fallback", async () => {
     const teams = await setupConnectedTeamsActor();
     teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
     const firstRunId = await dispatchTeamsPersonalRun({
@@ -636,7 +639,7 @@ describe("Teams chat callbacks", () => {
       runId: firstRunId,
     });
 
-    const queuedPrompt = "claim Teams queue transport params";
+    const queuedPrompt = "claim Teams launch context";
     await postTeamsPersonalMessage({
       fixture: teams.fixture,
       activityId: "activity-queue-params-second",
@@ -681,27 +684,70 @@ describe("Teams chat callbacks", () => {
         orgId: teams.fixture.orgId,
         userId: teams.fixture.userId,
       }),
-    ).resolves.toMatchObject({
-      version: 1,
-      prompt: queuedPrompt,
-      appendSystemPrompt: expect.stringContaining(
-        "You are currently running inside: Microsoft Teams",
-      ),
-      teamsDelivery: {
-        tenantId: teams.fixture.teamsTenantId,
-        conversationId: `a:personal-${teams.fixture.teamsUserId}`,
-        threadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-4-6`,
-        serviceUrl: teams.fixture.serviceUrl,
-        teamsUserId: teams.fixture.teamsUserId,
-        botId: "28:bot-1",
-        botName: "Zero",
-      },
-      userInfoExtras: {
+    ).resolves.toStrictEqual({ version: 1 });
+
+    const legacyPrompt = "claim legacy Teams launch params";
+    await postTeamsPersonalMessage({
+      fixture: teams.fixture,
+      activityId: "activity-queue-params-legacy",
+      text: legacyPrompt,
+    });
+    const legacyParams =
+      await findPendingChatEventInputParamsByPromptFixture(legacyPrompt);
+    if (!legacyParams) {
+      throw new Error("Expected queued legacy Teams params");
+    }
+    const legacyContext = await readChatEventContextFixture(
+      legacyParams.eventId,
+    );
+    if (!legacyContext?.teamsConnectionId) {
+      throw new Error("Expected queued legacy Teams context");
+    }
+    const legacyIntegrationPrompt = [
+      "# Current Integration",
+      "You are currently running inside: Microsoft Teams",
+      `Tenant ID: ${teams.fixture.teamsTenantId}`,
+      `Tenant name: ${teams.fixture.teamsTenantName}`,
+      `Conversation ID: a:personal-${teams.fixture.teamsUserId}`,
+      "Conversation type: personal",
+      "Thread ID: activity-queue-params-legacy",
+      "Activity ID: activity-queue-params-legacy",
+      `Teams app ID: ${BOT_APP_ID}`,
+      "Bot ID: 28:bot-1",
+      "Bot name: Zero",
+    ].join("\n");
+    await replaceTeamsLaunchMaterialWithLegacyParamsFixture(
+      legacyParams.eventId,
+      {
+        orgId: teams.fixture.orgId,
+        userId: teams.fixture.userId,
+        prompt: legacyPrompt,
+        appendSystemPrompt: legacyIntegrationPrompt,
+        teamsDelivery: {
+          tenantId: teams.fixture.teamsTenantId,
+          tenantName: teams.fixture.teamsTenantName,
+          teamId: null,
+          teamName: null,
+          channelId: null,
+          conversationId: `a:personal-${teams.fixture.teamsUserId}`,
+          conversationType: "personal",
+          threadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-4-6`,
+          activityId: "activity-queue-params-legacy",
+          serviceUrl: teams.fixture.serviceUrl,
+          connectionId: legacyContext.teamsConnectionId,
+          teamsUserId: teams.fixture.teamsUserId,
+          teamsUserDisplayName: "Ada Lovelace",
+          teamsUserPrincipalName: "ada@example.com",
+          botId: "28:bot-1",
+          botName: "Zero",
+          files: [],
+        },
         teamsUserDisplayName: "Ada Lovelace",
         teamsUserPrincipalName: "ada@example.com",
         teamsUserId: teams.fixture.teamsUserId,
       },
-    });
+    );
+
     await completeSandboxRun({
       runId: firstRunId,
       sandboxToken: firstClaim.sandboxToken,
@@ -715,9 +761,89 @@ describe("Teams chat callbacks", () => {
       runnerGroup: teams.runnerGroup,
       runId: queuedRunId,
     });
+    const queuedRun = (
+      await runsApi.listAgentRuns(teams.actor, { limit: 20 })
+    ).runs.find((run) => {
+      return run.id === queuedRunId;
+    });
+    expect(queuedClaim.prompt).toBe(queuedRun?.prompt);
+    expect(queuedClaim.appendSystemPrompt).toBe(queuedRun?.appendSystemPrompt);
     expect(queuedClaim.appendSystemPrompt).toContain(
       "You are currently running inside: Microsoft Teams",
     );
+    expect(queuedClaim.appendSystemPrompt).toContain(
+      "Thread ID: activity-queue-params-second",
+    );
+
+    await completeSandboxRun({
+      runId: queuedRunId,
+      sandboxToken: queuedClaim.sandboxToken,
+      exitCode: 0,
+    });
+    const legacyRunId = await runIdForPrompt(teams.actor, legacyPrompt);
+    const legacyClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: legacyRunId,
+    });
+    expect(legacyClaim.prompt).toBe(legacyPrompt);
+    expect(legacyClaim.appendSystemPrompt).toContain(legacyIntegrationPrompt);
+    await expect(
+      readChatEventInputParamsFixture(legacyParams.eventId),
+    ).resolves.toBeNull();
+    await runsApi.requestCancelRun(teams.actor, legacyRunId, [200]);
+  });
+
+  it("falls back to installation bot identity when the activity omits it", async () => {
+    const teams = await setupConnectedTeamsActor();
+    teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    const firstRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: "activity-bot-fallback-first",
+      text: "hold the Teams bot fallback queue",
+    });
+    const firstClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: firstRunId,
+    });
+
+    const queuedPrompt = "claim without an activity recipient";
+    await postTeamsPersonalMessage({
+      fixture: teams.fixture,
+      activityId: "activity-bot-fallback-second",
+      text: queuedPrompt,
+      omitRecipient: true,
+    });
+    const queuedParams =
+      await findPendingChatEventInputParamsByPromptFixture(queuedPrompt);
+    if (!queuedParams) {
+      throw new Error("Expected queued Teams bot fallback params");
+    }
+    await expect(
+      readChatEventContextFixture(queuedParams.eventId),
+    ).resolves.toMatchObject({
+      teamsBotId: null,
+      teamsBotName: null,
+    });
+    await expect(
+      decryptChatEventInputParamsFixture(queuedParams.eventId, {
+        orgId: teams.fixture.orgId,
+        userId: teams.fixture.userId,
+      }),
+    ).resolves.toStrictEqual({ version: 1 });
+
+    await completeSandboxRun({
+      runId: firstRunId,
+      sandboxToken: firstClaim.sandboxToken,
+      exitCode: 0,
+    });
+    const queuedRunId = await runIdForPrompt(teams.actor, queuedPrompt);
+    const queuedClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: queuedRunId,
+    });
+    expect(queuedClaim.prompt).toBe(queuedPrompt);
+    expect(queuedClaim.appendSystemPrompt).toContain("Bot ID: 28:bot-1");
+    expect(queuedClaim.appendSystemPrompt).toContain("Bot name: Zero");
     await runsApi.requestCancelRun(teams.actor, queuedRunId, [200]);
   });
 

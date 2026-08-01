@@ -33,7 +33,11 @@ import {
 } from "../signals/services/zero-chat-event.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
-import { decryptQueuedUserMessageRunParams } from "../signals/services/zero-chat-queued-event.service";
+import type { TeamsDeliveryTarget } from "../signals/services/teams-chat-callback-payload";
+import {
+  decryptQueuedUserMessageRunParams,
+  encryptQueuedUserMessageRunParams,
+} from "../signals/services/zero-chat-queued-event.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -567,6 +571,70 @@ export async function findPendingChatEventInputParamsByPromptFixture(
     });
   });
   return row ?? null;
+}
+
+export async function replaceTeamsLaunchMaterialWithLegacyParamsFixture(
+  eventId: string,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly prompt: string;
+    readonly appendSystemPrompt: string;
+    readonly teamsDelivery: TeamsDeliveryTarget;
+    readonly teamsUserDisplayName?: string;
+    readonly teamsUserPrincipalName?: string;
+    readonly teamsUserId: string;
+  },
+): Promise<void> {
+  const [event] = await db()
+    .select({ contextId: chatEvents.contextId })
+    .from(chatEvents)
+    .where(eq(chatEvents.id, eventId))
+    .limit(1);
+  if (!event?.contextId) {
+    throw new Error("Expected pending Teams event context");
+  }
+  await db()
+    .update(chatTeamsContext)
+    .set({
+      threadContext: null,
+      messageText: null,
+      messageFiles: null,
+      tenantName: null,
+      teamName: null,
+      threadId: null,
+      serviceUrl: null,
+      teamsAppId: null,
+      botId: null,
+      botName: null,
+      senderUserId: null,
+      senderDisplayName: null,
+      senderPrincipalName: null,
+      connectionId: null,
+    })
+    .where(eq(chatTeamsContext.id, event.contextId));
+  const encryptedParams = await encryptQueuedUserMessageRunParams(
+    {
+      version: 1,
+      prompt: args.prompt,
+      appendSystemPrompt: args.appendSystemPrompt,
+      teamsDelivery: args.teamsDelivery,
+      userInfoExtras: {
+        ...(args.teamsUserDisplayName
+          ? { teamsUserDisplayName: args.teamsUserDisplayName }
+          : {}),
+        ...(args.teamsUserPrincipalName
+          ? { teamsUserPrincipalName: args.teamsUserPrincipalName }
+          : {}),
+        teamsUserId: args.teamsUserId,
+      },
+    },
+    { orgId: args.orgId, userId: args.userId },
+  );
+  await db()
+    .update(chatEventInputParams)
+    .set({ encryptedParams })
+    .where(eq(chatEventInputParams.eventId, eventId));
 }
 
 /**
