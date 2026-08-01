@@ -1,3 +1,4 @@
+import type { ChatSlackMessageFile } from "@vm0/db/jsonb-contracts/chat-slack-context";
 import type { WebClient } from "@slack/web-api";
 
 import {
@@ -7,22 +8,7 @@ import {
   type SlackUserInfoResolver,
 } from "../signals/external/slack-message-client";
 
-export interface SlackFile {
-  readonly id?: string;
-  readonly name?: string;
-  readonly title?: string;
-  readonly mimetype?: string;
-  readonly filetype?: string;
-  readonly pretty_type?: string;
-  readonly size?: number;
-  readonly original_w?: string;
-  readonly original_h?: string;
-  readonly thumb_360?: string;
-  readonly thumb_480?: string;
-  readonly permalink?: string;
-  readonly permalink_public?: string;
-  readonly url_private_download?: string;
-}
+export type SlackFile = ChatSlackMessageFile;
 
 interface SlackAttachment {
   readonly image_url?: string;
@@ -594,6 +580,7 @@ export async function enrichMessageContent(opts: {
     readonly slackDisplayName?: string;
     readonly slackUserId?: string;
   };
+  readonly mentionDisplayNames: Readonly<Record<string, string>>;
 }> {
   let prompt = opts.messageContent;
   let displayContent = opts.messageContent;
@@ -630,5 +617,11 @@ export async function enrichMessageContent(opts: {
           slackUserId: currentUser.id,
         }
       : {},
+    mentionDisplayNames: Object.fromEntries(
+      mentionedIds.flatMap((userId) => {
+        const displayName = userInfoMap.get(userId)?.name;
+        return displayName ? [[userId, displayName]] : [];
+      }),
+    ),
   };
 }

@@ -1748,6 +1748,15 @@ describe("INT-01: Slack app deep webhook flows", () => {
       slackPermalink: null,
       slackChannelId: channelId,
       slackMessageTs: "2900.000200",
+      slackConversationContext: "",
+      slackMessageText: "stay canonical on the same route",
+      slackMessageFiles: event.files,
+      slackMentionDisplayNames: {},
+      slackSenderDisplayName: "Slack User",
+      slackSenderUserId: slackUserId,
+      slackChannelType: "channel",
+      slackThreadTs: threadTs,
+      slackRouteThreadTs: null,
     });
     const stickyVisibleMessage = slackInputMessageByText(
       (await chat.listThreadEvents(actor, canonicalChatThreadId)).events,
