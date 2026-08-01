@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { isValidChatEventRevocation } from "@vm0/api-contracts/contracts/chat-events";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
   ChatSlackMessageFiles,
@@ -63,6 +64,19 @@ type ChatEventDisplayContext =
       readonly slackContext?: never;
       readonly feishuContext: {
         readonly chatOpenUrl: string;
+        readonly conversationHistory: string;
+        readonly messageText: string;
+        readonly messageFiles: ChatFeishuMessageFiles;
+        readonly chatType: "group" | "p2p" | "topic_group";
+        readonly tenantKey: string;
+        readonly chatId: string;
+        readonly messageId: string;
+        readonly threadId: string;
+        readonly replyInThread: boolean;
+        readonly reactionId: string | null;
+        readonly senderOpenId: string;
+        readonly connectionId: string;
+        readonly installationId: string;
       };
       readonly teamsContext?: never;
       readonly telegramContext?: never;
@@ -348,6 +362,19 @@ type NewDisplayContext =
       readonly id: string;
       readonly chatThreadId: string;
       readonly chatOpenUrl: string;
+      readonly conversationHistory: string;
+      readonly messageText: string;
+      readonly messageFiles: ChatFeishuMessageFiles;
+      readonly chatType: "group" | "p2p" | "topic_group";
+      readonly tenantKey: string;
+      readonly chatId: string;
+      readonly messageId: string;
+      readonly threadId: string;
+      readonly replyInThread: boolean;
+      readonly reactionId: string | null;
+      readonly senderOpenId: string;
+      readonly connectionId: string;
+      readonly installationId: string;
     }
   | {
       readonly type: "teams";
@@ -462,7 +489,7 @@ function newDisplayContext(
       type: "feishu",
       id: eventId,
       chatThreadId: values.chatThreadId,
-      chatOpenUrl: feishuContext.chatOpenUrl,
+      ...feishuContext,
     };
   }
 
@@ -591,6 +618,19 @@ async function insertDisplayContext(
       id: context.id,
       chatThreadId: context.chatThreadId,
       chatOpenUrl: context.chatOpenUrl,
+      conversationHistory: context.conversationHistory,
+      messageText: context.messageText,
+      messageFiles: context.messageFiles,
+      chatType: context.chatType,
+      tenantKey: context.tenantKey,
+      chatId: context.chatId,
+      messageId: context.messageId,
+      threadId: context.threadId,
+      replyInThread: context.replyInThread,
+      reactionId: context.reactionId,
+      senderOpenId: context.senderOpenId,
+      connectionId: context.connectionId,
+      installationId: context.installationId,
       createdAt,
     });
     return;

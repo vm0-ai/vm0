@@ -2483,7 +2483,29 @@ describe("Feishu integration", () => {
       contextId: expect.any(String),
       feishuOpenUrl:
         "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
+      feishuMessageText: "do the Feishu task",
+      feishuMessageFiles: [
+        {
+          fileId: expect.any(String),
+          messageId: "om_history_file",
+          fileKey: historyFileKey,
+          type: "file",
+        },
+      ],
+      feishuChatType: "p2p",
+      feishuTenantKey: TENANT_KEY,
+      feishuChatId: "oc_feishu_dm",
+      feishuMessageId: firstMessageId,
+      feishuThreadId: firstMessageId,
+      feishuReplyInThread: false,
+      feishuReactionId: expect.any(String),
+      feishuSenderOpenId: "ou_feishu_user",
+      feishuConnectionId: expect.any(String),
+      feishuInstallationId: fixture.installationId,
     });
+    expect(claimedFeishuContext?.feishuConversationHistory).toContain(
+      "Earlier Feishu conversation context",
+    );
     expect(pendingFeishuContext).toMatchObject({
       contextType: "feishu",
       contextId: claimedFeishuContext?.contextId,
