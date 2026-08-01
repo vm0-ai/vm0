@@ -159,6 +159,16 @@ function canonicalSlackFilesPrompt(
     .join("\n");
 }
 
+function canonicalSlackAgentPrompt(
+  messagePrompt: string,
+  files: readonly SlackFile[] | undefined,
+  assets: readonly CanonicalSlackInputAsset[],
+): string {
+  return [messagePrompt, canonicalSlackFilesPrompt(files, assets)]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 async function claimIngress(db: Db, ingressId: string, currentTime: Date) {
   const staleBefore = new Date(
     currentTime.getTime() - PROCESSING_STALE_AFTER_MS,
@@ -334,15 +344,57 @@ type ClaimedCanonicalSlackIngress = NonNullable<
   Awaited<ReturnType<typeof loadClaimedIngress>>
 >;
 
+interface CanonicalSlackLaunchContext {
+  readonly messagePermalink: string | null;
+  readonly channelId: string;
+  readonly messageTs: string;
+  readonly conversationContext: string;
+  readonly messageText: string;
+  readonly messageFiles: readonly SlackFile[];
+  readonly mentionDisplayNames: Readonly<Record<string, string>>;
+  readonly senderDisplayName: string | null;
+  readonly senderUserId: string | null;
+  readonly channelType: "channel" | "dm" | "group_dm";
+  readonly threadTs: string;
+  readonly routeThreadTs: string | null;
+}
+
+function canonicalSlackLaunchContext(args: {
+  readonly event: SlackAgentEvent;
+  readonly routeThreadTs: string;
+  readonly messageText: string;
+  readonly conversationContext: string;
+  readonly messagePermalink: string | null;
+  readonly mentionDisplayNames: Readonly<Record<string, string>>;
+  readonly userInfoExtras: {
+    readonly slackDisplayName?: string;
+    readonly slackUserId?: string;
+  };
+}): CanonicalSlackLaunchContext {
+  const threadTs = slackPhysicalThreadTs(args.event);
+  return {
+    messagePermalink: args.messagePermalink,
+    channelId: args.event.channel,
+    messageTs: args.event.ts,
+    conversationContext: args.conversationContext,
+    messageText: args.messageText,
+    messageFiles: args.event.files ?? [],
+    mentionDisplayNames: args.mentionDisplayNames,
+    senderDisplayName: args.userInfoExtras.slackDisplayName ?? null,
+    senderUserId: args.event.user,
+    channelType: slackChannelType(args.event),
+    threadTs,
+    routeThreadTs: threadTs === args.routeThreadTs ? null : args.routeThreadTs,
+  };
+}
+
 async function persistCanonicalSlackMessage(
   db: Db,
   args: {
     readonly ingress: ClaimedCanonicalSlackIngress;
     readonly chatThreadId: string;
     readonly displayContent: string;
-    readonly messagePermalink: string | null;
-    readonly channelId: string;
-    readonly messageTs: string;
+    readonly slackContext: CanonicalSlackLaunchContext;
     readonly canonicalAssets: readonly CanonicalSlackInputAsset[];
     readonly encryptedParams: Awaited<
       ReturnType<typeof encryptQueuedUserMessageRunParams>
@@ -368,17 +420,13 @@ async function persistCanonicalSlackMessage(
           }),
           nonContentPart: createChatEventSourcePart({
             kind: "slack",
-            messagePermalink: args.messagePermalink,
+            messagePermalink: args.slackContext.messagePermalink,
           }),
         }),
         runId: null,
         triggerSource: "slack",
         encryptedParams: args.encryptedParams,
-        slackContext: {
-          messagePermalink: args.messagePermalink,
-          channelId: args.channelId,
-          messageTs: args.messageTs,
-        },
+        slackContext: args.slackContext,
         createdAt: args.ingress.createdAt,
       },
       "id",
@@ -490,13 +538,11 @@ const persistClaimedCanonicalSlackIngress$ = command(
         error: permalinkResult.error,
       });
     }
-    const canonicalFilesPrompt = canonicalSlackFilesPrompt(
+    const agentPrompt = canonicalSlackAgentPrompt(
+      enriched.prompt,
       event.files,
       canonicalAssets,
     );
-    const agentPrompt = [enriched.prompt, canonicalFilesPrompt]
-      .filter(Boolean)
-      .join("\n\n");
 
     const encryptedParams = await encryptQueuedUserMessageRunParams(
       {
@@ -528,9 +574,15 @@ const persistClaimedCanonicalSlackIngress$ = command(
         ingress,
         chatThreadId,
         displayContent: enriched.displayContent,
-        messagePermalink,
-        channelId: event.channel,
-        messageTs: event.ts,
+        slackContext: canonicalSlackLaunchContext({
+          event,
+          routeThreadTs: ingress.threadTs,
+          messageText: messageContent,
+          conversationContext: context.executionContext,
+          messagePermalink,
+          mentionDisplayNames: enriched.mentionDisplayNames,
+          userInfoExtras: enriched.userInfoExtras,
+        }),
         canonicalAssets,
         encryptedParams,
       },

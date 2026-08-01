@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto";
 
 import { isValidChatEventRevocation } from "@vm0/api-contracts/contracts/chat-events";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type {
+  ChatSlackMentionDisplayNames,
+  ChatSlackMessageFiles,
+} from "@vm0/db/jsonb-contracts/chat-slack-context";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
@@ -40,6 +44,15 @@ type ChatEventDisplayContext =
         readonly messagePermalink: string | null;
         readonly channelId: string;
         readonly messageTs: string;
+        readonly conversationContext: string;
+        readonly messageText: string;
+        readonly messageFiles: ChatSlackMessageFiles;
+        readonly mentionDisplayNames: ChatSlackMentionDisplayNames;
+        readonly senderDisplayName: string | null;
+        readonly senderUserId: string | null;
+        readonly channelType: "channel" | "dm" | "group_dm";
+        readonly threadTs: string;
+        readonly routeThreadTs: string | null;
       };
       readonly feishuContext?: never;
       readonly teamsContext?: never;
@@ -320,6 +333,15 @@ type NewDisplayContext =
       readonly messagePermalink: string | null;
       readonly channelId: string;
       readonly messageTs: string;
+      readonly conversationContext: string;
+      readonly messageText: string;
+      readonly messageFiles: ChatSlackMessageFiles;
+      readonly mentionDisplayNames: ChatSlackMentionDisplayNames;
+      readonly senderDisplayName: string | null;
+      readonly senderUserId: string | null;
+      readonly channelType: "channel" | "dm" | "group_dm";
+      readonly threadTs: string;
+      readonly routeThreadTs: string | null;
     }
   | {
       readonly type: "feishu";
@@ -421,6 +443,15 @@ function newDisplayContext(
       messagePermalink: slackContext.messagePermalink,
       channelId: slackContext.channelId,
       messageTs: slackContext.messageTs,
+      conversationContext: slackContext.conversationContext,
+      messageText: slackContext.messageText,
+      messageFiles: slackContext.messageFiles,
+      mentionDisplayNames: slackContext.mentionDisplayNames,
+      senderDisplayName: slackContext.senderDisplayName,
+      senderUserId: slackContext.senderUserId,
+      channelType: slackContext.channelType,
+      threadTs: slackContext.threadTs,
+      routeThreadTs: slackContext.routeThreadTs,
     };
   }
 
@@ -542,6 +573,15 @@ async function insertDisplayContext(
       messagePermalink: context.messagePermalink,
       channelId: context.channelId,
       messageTs: context.messageTs,
+      conversationContext: context.conversationContext,
+      messageText: context.messageText,
+      messageFiles: context.messageFiles,
+      mentionDisplayNames: context.mentionDisplayNames,
+      senderDisplayName: context.senderDisplayName,
+      senderUserId: context.senderUserId,
+      channelType: context.channelType,
+      threadTs: context.threadTs,
+      routeThreadTs: context.routeThreadTs,
       createdAt,
     });
     return;
