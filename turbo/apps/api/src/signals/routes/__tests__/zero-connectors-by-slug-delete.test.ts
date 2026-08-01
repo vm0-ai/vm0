@@ -153,7 +153,7 @@ describe("DELETE /api/zero/connectors/:connectorSlug", () => {
     });
   });
 
-  it("returns 404 when no connector state exists for that type", async () => {
+  it("returns 404 when no connector state exists for that slug", async () => {
     const fixture = await track(seedFixture());
     mocks.clerk.session(fixture.userId, fixture.orgId);
 

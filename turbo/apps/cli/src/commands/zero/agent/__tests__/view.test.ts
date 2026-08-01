@@ -240,7 +240,7 @@ describe("zero agent view command", () => {
       expect(logCalls).not.toContain("slack (0/");
     });
 
-    it("should load a server-authored connector once per unique ref", async () => {
+    it("should load a server-authored connector once per unique slug", async () => {
       let permissionRequests = 0;
       const serverOnlyDetail = catalogPermissionDetail({
         connectorSlug: "server-only",

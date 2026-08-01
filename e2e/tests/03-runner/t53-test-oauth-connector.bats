@@ -12,7 +12,7 @@
 # 1. Compose an agent that references TEST_OAUTH_TOKEN.
 # 2. Connect test-oauth through the real authorization-code OAuth flow.
 # 3. Enable the connector for the compose via /api/cli/auth/test-enable-connector
-#    so the zero run flow passes it in allowedConnectorTypes.
+#    so the Zero run includes it in the enabled connector slugs.
 # 4. Create a Zero chat run for an agent that curls the echo endpoint.
 #    The firewall rule
 #    matches any `{pr}.vm6.ai` subdomain; mitm-addon intercepts, the webhook
@@ -96,7 +96,7 @@ enable_test_oauth_feature_switch() {
 }
 
 # Enable the test-oauth connector for a specific compose (user_connectors row).
-# Required for zero-run to pass it in allowedConnectorTypes.
+# Required for the Zero run to include it in the enabled connector slugs.
 enable_test_oauth_for_compose() {
     local compose_id="$1"
 
