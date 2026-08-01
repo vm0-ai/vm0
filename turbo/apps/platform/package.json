@@ -19,7 +19,7 @@
     "@clerk/clerk-js": "^6.25.8",
     "@clerk/localizations": "^4.13.8",
     "@clerk/react": "^6.12.8",
-    "@clerk/ui": "^1.26.0",
+    "@clerk/ui": "^1.27.0",
     "@sentry/react": "^10.38.0",
     "@sentry/vite-plugin": "^4.9.0",
     "@solana/web3.js": "^1.98.4",
