@@ -121,29 +121,31 @@ export function TimezoneSettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
-        <div className="shrink-0">
-          <div className="flex h-7 w-7 items-center justify-center">
-            <IconClock
-              size={22}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
+      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex flex-1 items-center gap-4 min-w-0">
+          <div className="shrink-0">
+            <div className="flex h-7 w-7 items-center justify-center">
+              <IconClock
+                size={22}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </div>
+          </div>
+          <div className="flex flex-1 flex-col gap-1 min-w-0">
+            <div className="text-sm font-medium text-foreground">
+              {t(($) => {
+                return $.settings.preferences.timezone.rowTitle;
+              })}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {t(($) => {
+                return $.settings.preferences.timezone.rowDescription;
+              })}
+            </div>
           </div>
         </div>
-        <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm font-medium text-foreground">
-            {t(($) => {
-              return $.settings.preferences.timezone.rowTitle;
-            })}
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {t(($) => {
-              return $.settings.preferences.timezone.rowDescription;
-            })}
-          </div>
-        </div>
-        <div className="relative shrink-0 w-64">
+        <div className="relative w-full shrink-0 sm:w-64">
           <Select
             value={currentTimezone}
             onValueChange={handleChange}
