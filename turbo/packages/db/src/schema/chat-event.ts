@@ -157,12 +157,9 @@ export const chatEvents = pgTable(
       uniqueIndex("chat_events_revokes_event_id_unique").on(
         table.revokesEventId,
       ),
-      uniqueIndex("chat_events_interrupts_run_id_unique").on(
-        table.interruptsRunId,
-      ),
-      index("idx_chat_events_run_group_id")
-        .on(table.runGroupId)
-        .where(sql`${table.runGroupId} IS NOT NULL`),
+      uniqueIndex("chat_events_interrupts_run_id_not_null_unique")
+        .on(table.interruptsRunId)
+        .where(sql`${table.interruptsRunId} IS NOT NULL`),
       index("chat_events_input_automation_context_idx")
         .on(table.contextId)
         .where(sql`${table.eventType} = 'input.automation'`),

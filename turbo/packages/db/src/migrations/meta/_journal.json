@@ -5566,6 +5566,13 @@
       "when": 1785575941106,
       "tag": "0794_superb_firebird",
       "breakpoints": true
+    },
+    {
+      "idx": 795,
+      "version": "7",
+      "when": 1785593771648,
+      "tag": "0795_optimize_chat_event_interrupt_indexes",
+      "breakpoints": true
     }
   ]
 }
