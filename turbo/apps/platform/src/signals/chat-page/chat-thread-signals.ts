@@ -24,6 +24,7 @@ import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type { ThreadScrollPosition } from "./chat-thread-scroll.ts";
 import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
+import type { ComposerSignals } from "../zero-page/composer-signals.ts";
 
 type RecommendedFollowup = NonNullable<
   ChatFollowupsEvent["recommendedFollowups"]
@@ -140,6 +141,7 @@ export interface ChatThreadSignals {
   draft: DraftSignals;
   workflowComposer: WorkflowComposerSignals;
   composerConnectors: ComposerConnectorSignals;
+  composer: ComposerSignals;
   composerFileInput$: Computed<HTMLElement | null>;
   setComposerFileInput$: Command<
     (() => void) | undefined,

@@ -74,163 +74,6 @@ export const resetNewThreadComputerAccess$ = command(({ set }) => {
 
 // -- Model picker open state ------------------------------------------------
 
-const internalModelPickerOpen$ = state(false);
-export const modelPickerOpen$ = computed((get) => {
-  return get(internalModelPickerOpen$);
-});
-export const setModelPickerOpen$ = command(({ set }, open: boolean) => {
-  set(internalModelPickerOpen$, open);
-});
-
-// -- Template picker open/category state ------------------------------------
-
-const internalWebsiteTemplatePreviewId$ = state<string | null>(null);
-const internalWebsiteTemplatePreviewLoaded$ = state(false);
-const internalTemplatePickerOpen$ = state(false);
-const internalTemplatePickerSkipEnterAnimation$ = state(false);
-export const templatePickerOpen$ = computed((get) => {
-  return (
-    get(internalTemplatePickerOpen$) &&
-    get(internalWebsiteTemplatePreviewId$) === null
-  );
-});
-export const templatePickerSkipEnterAnimation$ = computed((get) => {
-  return get(internalTemplatePickerSkipEnterAnimation$);
-});
-export const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
-  set(internalTemplatePickerSkipEnterAnimation$, false);
-  set(internalTemplatePickerOpen$, open);
-});
-
-const internalTemplatePickerReferenceValue$ =
-  state<GenerationTemplateRequest | null>(null);
-export const templatePickerReferenceValue$ = computed((get) => {
-  return get(internalTemplatePickerReferenceValue$);
-});
-export const setTemplatePickerReferenceValue$ = command(
-  ({ set }, value: GenerationTemplateRequest | null) => {
-    set(internalTemplatePickerReferenceValue$, value);
-  },
-);
-
-export const websiteTemplatePreviewId$ = computed((get) => {
-  return get(internalWebsiteTemplatePreviewId$);
-});
-export const websiteTemplatePreviewLoaded$ = computed((get) => {
-  return get(internalWebsiteTemplatePreviewLoaded$);
-});
-export const markWebsiteTemplatePreviewLoaded$ = command(({ set }) => {
-  set(internalWebsiteTemplatePreviewLoaded$, true);
-});
-export const openWebsiteTemplatePreview$ = command(
-  ({ set }, templateId: string) => {
-    set(internalTemplatePickerSkipEnterAnimation$, false);
-    set(internalWebsiteTemplatePreviewLoaded$, false);
-    set(internalWebsiteTemplatePreviewId$, templateId);
-  },
-);
-export const closeWebsiteTemplatePreview$ = command(({ set }) => {
-  set(internalTemplatePickerSkipEnterAnimation$, true);
-  set(internalWebsiteTemplatePreviewLoaded$, false);
-  set(internalWebsiteTemplatePreviewId$, null);
-});
-
-const internalUploadPopoverOpen$ = state(false);
-export const uploadPopoverOpen$ = computed((get) => {
-  return get(internalUploadPopoverOpen$);
-});
-export const setUploadPopoverOpen$ = command(({ set }, open: boolean) => {
-  set(internalUploadPopoverOpen$, open);
-});
-
-const internalTemplatePickerCategory$ = state("slides");
-export const templatePickerCategory$ = computed((get) => {
-  return get(internalTemplatePickerCategory$);
-});
-export const setTemplatePickerCategory$ = command(
-  ({ set }, category: string) => {
-    set(internalTemplatePickerCategory$, category);
-  },
-);
-
-const internalTemplatePickerSearch$ = state("");
-export const templatePickerSearch$ = computed((get) => {
-  return get(internalTemplatePickerSearch$);
-});
-export const setTemplatePickerSearch$ = command(({ set }, value: string) => {
-  set(internalTemplatePickerSearch$, value);
-});
-
-// Selected persona pill in the workflow template tab ("all" or a category from
-// WORKFLOW_TEMPLATE_CATEGORIES). Mirrors the ideation gallery's pill filter.
-const internalTemplatePickerWorkflowCategory$ = state("all");
-export const templatePickerWorkflowCategory$ = computed((get) => {
-  return get(internalTemplatePickerWorkflowCategory$);
-});
-export const setTemplatePickerWorkflowCategory$ = command(
-  ({ set }, category: string) => {
-    set(internalTemplatePickerWorkflowCategory$, category);
-  },
-);
-
-const internalTemplatePickerPreviewSlug$ = state<string | null>(null);
-export const templatePickerPreviewSlug$ = computed((get) => {
-  return get(internalTemplatePickerPreviewSlug$);
-});
-export const setTemplatePickerPreviewSlug$ = command(
-  ({ set }, slug: string | null) => {
-    set(internalTemplatePickerPreviewSlug$, slug);
-  },
-);
-
-const internalTemplatePickerPresentationScrollTop$ = state(0);
-export const setTemplatePickerPresentationScrollTop$ = command(
-  ({ set }, scrollTop: number) => {
-    set(internalTemplatePickerPresentationScrollTop$, scrollTop);
-  },
-);
-export const restoreTemplatePickerPresentationScroll$ = command(
-  ({ get }, node: HTMLElement) => {
-    node.scrollTop = get(internalTemplatePickerPresentationScrollTop$);
-  },
-);
-
-// Inline illustration cards show a hero image plus a variant thumbnail strip.
-// Several cards are visible at once, so the active variant index is tracked per
-// illustration style slug rather than as a single shared value.
-const internalIllustrationVariantIndex$ = state<
-  Readonly<Record<string, number>>
->({});
-export const illustrationVariantIndex$ = computed((get) => {
-  return get(internalIllustrationVariantIndex$);
-});
-export const setIllustrationVariantIndex$ = command(
-  ({ get, set }, slug: string, index: number) => {
-    set(internalIllustrationVariantIndex$, {
-      ...get(internalIllustrationVariantIndex$),
-      [slug]: index,
-    });
-  },
-);
-
-// Hover scrubbing on template cards. Only one card is hovered at a time, so a
-// single signal tracks the active card's slug plus the scrubbed slide index;
-// each card resolves its own index by matching the stored slug.
-interface TemplateCardHoverState {
-  readonly slug: string;
-  readonly index: number;
-}
-
-const internalTemplateCardHover$ = state<TemplateCardHoverState | null>(null);
-export const templateCardHover$ = computed((get) => {
-  return get(internalTemplateCardHover$);
-});
-export const setTemplateCardHover$ = command(
-  ({ set }, value: TemplateCardHoverState | null) => {
-    set(internalTemplateCardHover$, value);
-  },
-);
-
 export interface TemplateCardHtmlPreviewState {
   readonly slug: string;
   readonly embedUrl: string;
@@ -240,54 +83,45 @@ export interface TemplateCardHtmlPreviewState {
   readonly slideCount: number;
 }
 
-const internalTemplateCardHtmlPreview$ =
-  state<TemplateCardHtmlPreviewState | null>(null);
-export const templateCardHtmlPreview$ = computed((get) => {
-  return get(internalTemplateCardHtmlPreview$);
-});
-export const setTemplateCardHtmlPreview$ = command(
-  ({ set }, value: TemplateCardHtmlPreviewState | null) => {
-    set(internalTemplateCardHtmlPreview$, value);
-  },
-);
+interface TemplateCardHoverState {
+  readonly slug: string;
+  readonly index: number;
+}
 
-const internalTemplateCardLoadedHtmlFrameUrls$ = state<
-  Readonly<Record<string, string>>
->({});
-export const templateCardLoadedHtmlFrameUrls$ = computed((get) => {
-  return get(internalTemplateCardLoadedHtmlFrameUrls$);
-});
-export const setTemplateCardLoadedHtmlFrameUrl$ = command(
-  ({ get, set }, key: string, frameUrl: string) => {
-    set(internalTemplateCardLoadedHtmlFrameUrls$, {
-      ...get(internalTemplateCardLoadedHtmlFrameUrls$),
-      [key]: frameUrl,
-    });
-  },
-);
+interface TemplateDetailHtmlPreviewState {
+  readonly slug: string;
+  readonly embedUrl: string;
+  readonly themeId: string;
+  readonly themeCss: string;
+  readonly index: number;
+  readonly loading: boolean;
+  readonly frameLoaded: boolean;
+  readonly frameUrl: string | null;
+  readonly previousFrameSlideIndex: number | null;
+  readonly previousFrameUrl: string | null;
+  readonly slideCount: number;
+}
 
-const clearTemplateCardHtmlPreviewFrames$ = command(({ get, set }) => {
-  const activeFrameUrl = get(internalTemplateCardHtmlPreview$)?.frameUrl;
-  const frameUrls = new Set(
-    Object.values(get(internalTemplateCardLoadedHtmlFrameUrls$)),
-  );
-  if (activeFrameUrl !== null && activeFrameUrl !== undefined) {
-    frameUrls.add(activeFrameUrl);
-  }
-  for (const frameUrl of frameUrls) {
-    URL.revokeObjectURL(frameUrl);
-  }
-  set(internalTemplateCardHtmlPreview$, null);
-  set(internalTemplateCardLoadedHtmlFrameUrls$, {});
-});
+interface PresentationTemplateDetailSelection {
+  readonly embedUrl: string;
+  readonly index: number;
+  readonly slug: string;
+  readonly themeCss: string;
+  readonly themeId: string;
+}
 
-const internalTemplateCardThemeIdBySlug$ = state<
-  Readonly<Record<string, string>>
->({});
-const {
-  get$: templateCardThemeIdBySlugRaw$,
-  set$: setTemplateCardThemeIdBySlugRaw$,
-} = localStorageSignals("presentationTemplateThemeIdBySlug");
+interface PresentationTemplateDetailSelectionParams {
+  readonly index: number;
+  readonly item: PresentationTemplateItem;
+  readonly runtime: TemplatePreviewRuntime;
+  readonly themeCss: string;
+  readonly themeId: string;
+}
+
+interface LoadedTemplateDetailFrame {
+  readonly slideIndex: number;
+  readonly url: string;
+}
 
 function parseTemplateCardThemeIdBySlug(
   raw: string | null,
@@ -308,55 +142,10 @@ function parseTemplateCardThemeIdBySlug(
   return values;
 }
 
-export const templateCardThemeIdBySlug$ = computed((get) => {
-  return {
-    ...parseTemplateCardThemeIdBySlug(get(templateCardThemeIdBySlugRaw$)),
-    ...get(internalTemplateCardThemeIdBySlug$),
-  };
-});
-export const setTemplateCardThemeId$ = command(
-  ({ get, set }, slug: string, themeId: string) => {
-    const next = {
-      ...get(templateCardThemeIdBySlug$),
-      [slug]: themeId,
-    };
-    set(internalTemplateCardThemeIdBySlug$, next);
-    set(setTemplateCardThemeIdBySlugRaw$, JSON.stringify(next));
-  },
-);
-
-interface TemplateDetailHtmlPreviewState {
-  readonly slug: string;
-  readonly embedUrl: string;
-  readonly themeId: string;
-  readonly themeCss: string;
-  readonly index: number;
-  readonly loading: boolean;
-  readonly frameLoaded: boolean;
-  readonly frameUrl: string | null;
-  readonly previousFrameSlideIndex: number | null;
-  readonly previousFrameUrl: string | null;
-  readonly slideCount: number;
-}
-
-const internalTemplateDetailHtmlPreview$ =
-  state<TemplateDetailHtmlPreviewState | null>(null);
-export const templateDetailHtmlPreview$ = computed((get) => {
-  return get(internalTemplateDetailHtmlPreview$);
-});
-
 function presentationTemplateDetailSlideCount(
   item: PresentationTemplateItem,
 ): number {
   return Math.max(item.slideCount ?? item.previewImages.length, 1);
-}
-
-interface PresentationTemplateDetailSelection {
-  readonly embedUrl: string;
-  readonly index: number;
-  readonly slug: string;
-  readonly themeCss: string;
-  readonly themeId: string;
 }
 
 function presentationTemplateDetailPreviewState(params: {
@@ -398,19 +187,11 @@ function presentationTemplateDetailPreviewState(params: {
   };
 }
 
-interface LoadedTemplateDetailFrame {
-  readonly slideIndex: number;
-  readonly url: string;
-}
-
 function previousTemplateDetailFrame(
   current: TemplateDetailHtmlPreviewState | null,
 ): LoadedTemplateDetailFrame | null {
   if (current?.frameLoaded && current.frameUrl !== null) {
-    return {
-      slideIndex: current.index,
-      url: current.frameUrl,
-    };
+    return { slideIndex: current.index, url: current.frameUrl };
   }
   if (
     current?.previousFrameUrl !== null &&
@@ -452,133 +233,7 @@ function revokeUnusedTemplateDetailFrameUrls(
   }
 }
 
-const replaceTemplateDetailHtmlPreview$ = command(
-  ({ get, set }, value: TemplateDetailHtmlPreviewState | null) => {
-    const current = get(internalTemplateDetailHtmlPreview$);
-    if (value === null) {
-      revokeUnusedTemplateDetailFrameUrls(
-        templateDetailFrameUrls(current),
-        new Set(),
-      );
-      set(internalTemplateDetailHtmlPreview$, null);
-      return;
-    }
-
-    const previousFrame = previousTemplateDetailFrame(current);
-    const retainedFrameUrls = new Set<string>();
-    if (value.frameUrl !== null) {
-      retainedFrameUrls.add(value.frameUrl);
-    }
-    if (previousFrame !== null) {
-      retainedFrameUrls.add(previousFrame.url);
-    }
-    revokeUnusedTemplateDetailFrameUrls(
-      templateDetailFrameUrls(current),
-      retainedFrameUrls,
-    );
-    set(internalTemplateDetailHtmlPreview$, {
-      ...value,
-      previousFrameSlideIndex: previousFrame?.slideIndex ?? null,
-      previousFrameUrl: previousFrame?.url ?? null,
-    });
-  },
-);
-
-export const settlePresentationTemplateDetailPreviewFrame$ = command(
-  ({ get, set }, frameUrl: string): void => {
-    const current = get(internalTemplateDetailHtmlPreview$);
-    if (current?.frameUrl !== frameUrl) {
-      return;
-    }
-    if (current.previousFrameUrl !== null) {
-      URL.revokeObjectURL(current.previousFrameUrl);
-    }
-    set(internalTemplateDetailHtmlPreview$, {
-      ...current,
-      frameLoaded: true,
-      previousFrameSlideIndex: null,
-      previousFrameUrl: null,
-    });
-  },
-);
-
-export const releaseTemplatePickerPreviewResources$ = command(
-  ({ set }, runtime: TemplatePreviewRuntime) => {
-    const preview = runtime.presentation;
-    preview.detailRequestToken = null;
-    for (const animationFrame of preview.pendingSlideAnimationFrames.values()) {
-      window.cancelAnimationFrame(animationFrame);
-    }
-    preview.pendingSlideAnimationFrames.clear();
-    preview.pendingSlideIndexes.clear();
-    preview.activeIndexes.clear();
-    preview.activeTokens.clear();
-    set(clearTemplateCardHtmlPreviewFrames$);
-    set(internalTemplateCardHover$, null);
-    set(replaceTemplateDetailHtmlPreview$, null);
-    set(internalTemplatePickerPreviewSlug$, null);
-  },
-);
-
-export const ownTemplatePickerPreviewResources$ = command(
-  ({ set }, runtime: TemplatePreviewRuntime, signal: AbortSignal): void => {
-    const preview = runtime.presentation;
-    if (preview.previewOwnerSignal === signal) {
-      return;
-    }
-    preview.previewOwnerSignal = signal;
-    signal.addEventListener(
-      "abort",
-      () => {
-        if (preview.previewOwnerSignal !== signal) {
-          return;
-        }
-        preview.previewOwnerSignal = null;
-        set(releaseTemplatePickerPreviewResources$, runtime);
-      },
-      { once: true },
-    );
-  },
-);
-
-const applyPresentationTemplateDetailSelection$ = command(
-  (
-    { set },
-    runtime: TemplatePreviewRuntime,
-    item: PresentationTemplateItem,
-    selection: PresentationTemplateDetailSelection,
-  ) => {
-    const draft = runtime.presentation.drafts.get(item.embedUrl);
-    if (draft !== undefined) {
-      set(
-        replaceTemplateDetailHtmlPreview$,
-        presentationTemplateDetailPreviewState({
-          draft,
-          item,
-          selection,
-        }),
-      );
-      return;
-    }
-
-    const failed = runtime.presentation.failed.has(item.embedUrl);
-    set(replaceTemplateDetailHtmlPreview$, {
-      slug: item.slug,
-      embedUrl: item.embedUrl,
-      themeId: selection.themeId,
-      themeCss: selection.themeCss,
-      index: selection.index,
-      loading: !failed,
-      frameLoaded: false,
-      frameUrl: null,
-      previousFrameSlideIndex: null,
-      previousFrameUrl: null,
-      slideCount: presentationTemplateDetailSlideCount(item),
-    });
-  },
-);
-
-export async function loadPresentationTemplateHtmlPreview(params: {
+async function loadPresentationTemplateHtmlPreview(params: {
   readonly item: PresentationTemplateItem;
   readonly signal: AbortSignal;
 }): Promise<PresentationPreviewDraft | null> {
@@ -593,134 +248,592 @@ export async function loadPresentationTemplateHtmlPreview(params: {
   if (!response.ok) {
     throw new Error(`Failed to load template HTML (${response.status})`);
   }
-
   const draft = parsePresentationPreviewDraft(await response.text());
   return draft.slides.length > 0 ? draft : null;
 }
 
-interface PresentationTemplateDetailSelectionParams {
-  readonly index: number;
-  readonly item: PresentationTemplateItem;
-  readonly runtime: TemplatePreviewRuntime;
-  readonly themeCss: string;
-  readonly themeId: string;
+function createBasicComposerUiSignals() {
+  const internalModelPickerOpen$ = state(false);
+  const modelPickerOpen$ = computed((get) => {
+    return get(internalModelPickerOpen$);
+  });
+  const setModelPickerOpen$ = command(({ set }, open: boolean) => {
+    set(internalModelPickerOpen$, open);
+  });
+
+  const internalUploadPopoverOpen$ = state(false);
+  const uploadPopoverOpen$ = computed((get) => {
+    return get(internalUploadPopoverOpen$);
+  });
+  const setUploadPopoverOpen$ = command(({ set }, open: boolean) => {
+    set(internalUploadPopoverOpen$, open);
+  });
+
+  return {
+    modelPickerOpen$,
+    setModelPickerOpen$,
+    uploadPopoverOpen$,
+    setUploadPopoverOpen$,
+  };
 }
 
-export const openPresentationTemplateDetailPreview$ = command(
-  async (
-    { get, set },
-    params: PresentationTemplateDetailSelectionParams,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    signal.throwIfAborted();
-    const cache = params.runtime.presentation;
-    set(ownTemplatePickerPreviewResources$, params.runtime, signal);
-    const token = Symbol(params.item.embedUrl);
-    const selection: PresentationTemplateDetailSelection = {
-      embedUrl: params.item.embedUrl,
-      index: params.index,
-      slug: params.item.slug,
-      themeCss: params.themeCss,
-      themeId: params.themeId,
-    };
-    cache.detailRequestToken = token;
-    set(
-      applyPresentationTemplateDetailSelection$,
-      params.runtime,
-      params.item,
-      selection,
+function createTemplatePickerDialogSignals() {
+  const internalWebsiteTemplatePreviewId$ = state<string | null>(null);
+  const internalWebsiteTemplatePreviewLoaded$ = state(false);
+  const internalTemplatePickerOpen$ = state(false);
+  const internalTemplatePickerSkipEnterAnimation$ = state(false);
+  const templatePickerOpen$ = computed((get) => {
+    return (
+      get(internalTemplatePickerOpen$) &&
+      get(internalWebsiteTemplatePreviewId$) === null
     );
-    set(internalTemplatePickerPreviewSlug$, params.item.slug);
+  });
+  const templatePickerSkipEnterAnimation$ = computed((get) => {
+    return get(internalTemplatePickerSkipEnterAnimation$);
+  });
+  const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
+    set(internalTemplatePickerSkipEnterAnimation$, false);
+    set(internalTemplatePickerOpen$, open);
+  });
 
-    if (
-      cache.drafts.has(params.item.embedUrl) ||
-      cache.failed.has(params.item.embedUrl)
-    ) {
-      return;
-    }
+  const internalTemplatePickerReferenceValue$ =
+    state<GenerationTemplateRequest | null>(null);
+  const templatePickerReferenceValue$ = computed((get) => {
+    return get(internalTemplatePickerReferenceValue$);
+  });
+  const setTemplatePickerReferenceValue$ = command(
+    ({ set }, value: GenerationTemplateRequest | null) => {
+      set(internalTemplatePickerReferenceValue$, value);
+    },
+  );
 
-    let pendingLoad = cache.pendingLoads.get(params.item.embedUrl);
-    if (pendingLoad === undefined) {
-      pendingLoad = loadPresentationTemplateHtmlPreview({
-        item: params.item,
-        signal,
+  const websiteTemplatePreviewId$ = computed((get) => {
+    return get(internalWebsiteTemplatePreviewId$);
+  });
+  const websiteTemplatePreviewLoaded$ = computed((get) => {
+    return get(internalWebsiteTemplatePreviewLoaded$);
+  });
+  const markWebsiteTemplatePreviewLoaded$ = command(({ set }) => {
+    set(internalWebsiteTemplatePreviewLoaded$, true);
+  });
+  const openWebsiteTemplatePreview$ = command(({ set }, templateId: string) => {
+    set(internalTemplatePickerSkipEnterAnimation$, false);
+    set(internalWebsiteTemplatePreviewLoaded$, false);
+    set(internalWebsiteTemplatePreviewId$, templateId);
+  });
+  const closeWebsiteTemplatePreview$ = command(({ set }) => {
+    set(internalTemplatePickerSkipEnterAnimation$, true);
+    set(internalWebsiteTemplatePreviewLoaded$, false);
+    set(internalWebsiteTemplatePreviewId$, null);
+  });
+
+  return {
+    templatePickerOpen$,
+    templatePickerSkipEnterAnimation$,
+    setTemplatePickerOpen$,
+    templatePickerReferenceValue$,
+    setTemplatePickerReferenceValue$,
+    websiteTemplatePreviewId$,
+    websiteTemplatePreviewLoaded$,
+    markWebsiteTemplatePreviewLoaded$,
+    openWebsiteTemplatePreview$,
+    closeWebsiteTemplatePreview$,
+  };
+}
+
+function createTemplatePickerListSignals() {
+  const internalTemplatePickerCategory$ = state("slides");
+  const templatePickerCategory$ = computed((get) => {
+    return get(internalTemplatePickerCategory$);
+  });
+  const setTemplatePickerCategory$ = command(({ set }, category: string) => {
+    set(internalTemplatePickerCategory$, category);
+  });
+
+  const internalTemplatePickerSearch$ = state("");
+  const templatePickerSearch$ = computed((get) => {
+    return get(internalTemplatePickerSearch$);
+  });
+  const setTemplatePickerSearch$ = command(({ set }, value: string) => {
+    set(internalTemplatePickerSearch$, value);
+  });
+
+  // Selected persona pill in the workflow template tab ("all" or a category from
+  // WORKFLOW_TEMPLATE_CATEGORIES). Mirrors the ideation gallery's pill filter.
+  const internalTemplatePickerWorkflowCategory$ = state("all");
+  const templatePickerWorkflowCategory$ = computed((get) => {
+    return get(internalTemplatePickerWorkflowCategory$);
+  });
+  const setTemplatePickerWorkflowCategory$ = command(
+    ({ set }, category: string) => {
+      set(internalTemplatePickerWorkflowCategory$, category);
+    },
+  );
+
+  const internalTemplatePickerPreviewSlug$ = state<string | null>(null);
+  const templatePickerPreviewSlug$ = computed((get) => {
+    return get(internalTemplatePickerPreviewSlug$);
+  });
+  const setTemplatePickerPreviewSlug$ = command(
+    ({ set }, slug: string | null) => {
+      set(internalTemplatePickerPreviewSlug$, slug);
+    },
+  );
+
+  const internalTemplatePickerPresentationScrollTop$ = state(0);
+  const setTemplatePickerPresentationScrollTop$ = command(
+    ({ set }, scrollTop: number) => {
+      set(internalTemplatePickerPresentationScrollTop$, scrollTop);
+    },
+  );
+  const restoreTemplatePickerPresentationScroll$ = command(
+    ({ get }, node: HTMLElement) => {
+      node.scrollTop = get(internalTemplatePickerPresentationScrollTop$);
+    },
+  );
+
+  // Inline illustration cards show a hero image plus a variant thumbnail strip.
+  // Several cards are visible at once, so the active variant index is tracked per
+  // illustration style slug rather than as a single shared value.
+  const internalIllustrationVariantIndex$ = state<
+    Readonly<Record<string, number>>
+  >({});
+  const illustrationVariantIndex$ = computed((get) => {
+    return get(internalIllustrationVariantIndex$);
+  });
+  const setIllustrationVariantIndex$ = command(
+    ({ get, set }, slug: string, index: number) => {
+      set(internalIllustrationVariantIndex$, {
+        ...get(internalIllustrationVariantIndex$),
+        [slug]: index,
       });
-      cache.pendingLoads.set(params.item.embedUrl, pendingLoad);
-    }
+    },
+  );
 
-    const result = await tapError(
-      pendingLoad.finally(() => {
-        if (cache.pendingLoads.get(params.item.embedUrl) === pendingLoad) {
-          cache.pendingLoads.delete(params.item.embedUrl);
-        }
-      }),
+  return {
+    signals: {
+      templatePickerCategory$,
+      setTemplatePickerCategory$,
+      templatePickerSearch$,
+      setTemplatePickerSearch$,
+      templatePickerWorkflowCategory$,
+      setTemplatePickerWorkflowCategory$,
+      templatePickerPreviewSlug$,
+      setTemplatePickerPreviewSlug$,
+      setTemplatePickerPresentationScrollTop$,
+      restoreTemplatePickerPresentationScroll$,
+      illustrationVariantIndex$,
+      setIllustrationVariantIndex$,
+    },
+    internalTemplatePickerPreviewSlug$,
+  };
+}
+
+function createTemplateCardSignals() {
+  const internalTemplateCardHover$ = state<TemplateCardHoverState | null>(null);
+  const templateCardHover$ = computed((get) => {
+    return get(internalTemplateCardHover$);
+  });
+  const setTemplateCardHover$ = command(
+    ({ set }, value: TemplateCardHoverState | null) => {
+      set(internalTemplateCardHover$, value);
+    },
+  );
+
+  const internalTemplateCardHtmlPreview$ =
+    state<TemplateCardHtmlPreviewState | null>(null);
+  const templateCardHtmlPreview$ = computed((get) => {
+    return get(internalTemplateCardHtmlPreview$);
+  });
+  const setTemplateCardHtmlPreview$ = command(
+    ({ set }, value: TemplateCardHtmlPreviewState | null) => {
+      set(internalTemplateCardHtmlPreview$, value);
+    },
+  );
+
+  const internalTemplateCardLoadedHtmlFrameUrls$ = state<
+    Readonly<Record<string, string>>
+  >({});
+  const templateCardLoadedHtmlFrameUrls$ = computed((get) => {
+    return get(internalTemplateCardLoadedHtmlFrameUrls$);
+  });
+  const setTemplateCardLoadedHtmlFrameUrl$ = command(
+    ({ get, set }, key: string, frameUrl: string) => {
+      set(internalTemplateCardLoadedHtmlFrameUrls$, {
+        ...get(internalTemplateCardLoadedHtmlFrameUrls$),
+        [key]: frameUrl,
+      });
+    },
+  );
+
+  const clearTemplateCardHtmlPreviewFrames$ = command(({ get, set }) => {
+    const activeFrameUrl = get(internalTemplateCardHtmlPreview$)?.frameUrl;
+    const frameUrls = new Set(
+      Object.values(get(internalTemplateCardLoadedHtmlFrameUrls$)),
     );
-    signal.throwIfAborted();
+    if (activeFrameUrl !== null && activeFrameUrl !== undefined) {
+      frameUrls.add(activeFrameUrl);
+    }
+    for (const frameUrl of frameUrls) {
+      URL.revokeObjectURL(frameUrl);
+    }
+    set(internalTemplateCardHtmlPreview$, null);
+    set(internalTemplateCardLoadedHtmlFrameUrls$, {});
+  });
 
-    if (result === undefined || result === null) {
-      cache.failed.add(params.item.embedUrl);
-    } else {
-      cache.drafts.set(params.item.embedUrl, result);
-    }
+  const internalTemplateCardThemeIdBySlug$ = state<
+    Readonly<Record<string, string>>
+  >({});
+  const {
+    get$: templateCardThemeIdBySlugRaw$,
+    set$: setTemplateCardThemeIdBySlugRaw$,
+  } = localStorageSignals("presentationTemplateThemeIdBySlug");
+  const templateCardThemeIdBySlug$ = computed((get) => {
+    return {
+      ...parseTemplateCardThemeIdBySlug(get(templateCardThemeIdBySlugRaw$)),
+      ...get(internalTemplateCardThemeIdBySlug$),
+    };
+  });
+  const setTemplateCardThemeId$ = command(
+    ({ get, set }, slug: string, themeId: string) => {
+      const next = {
+        ...get(templateCardThemeIdBySlug$),
+        [slug]: themeId,
+      };
+      set(internalTemplateCardThemeIdBySlug$, next);
+      set(setTemplateCardThemeIdBySlugRaw$, JSON.stringify(next));
+    },
+  );
 
-    if (cache.detailRequestToken !== token) {
-      return;
-    }
-    const activeDetail = get(internalTemplateDetailHtmlPreview$);
-    if (
-      activeDetail === null ||
-      activeDetail.embedUrl !== params.item.embedUrl ||
-      activeDetail.slug !== params.item.slug
-    ) {
-      return;
-    }
-    set(
-      applyPresentationTemplateDetailSelection$,
-      params.runtime,
-      params.item,
-      {
-        embedUrl: activeDetail.embedUrl,
-        index: activeDetail.index,
-        slug: activeDetail.slug,
-        themeCss: activeDetail.themeCss,
-        themeId: activeDetail.themeId,
-      },
-    );
-  },
-);
+  return {
+    signals: {
+      templateCardHover$,
+      setTemplateCardHover$,
+      templateCardHtmlPreview$,
+      setTemplateCardHtmlPreview$,
+      templateCardLoadedHtmlFrameUrls$,
+      setTemplateCardLoadedHtmlFrameUrl$,
+      templateCardThemeIdBySlug$,
+      setTemplateCardThemeId$,
+    },
+    internalTemplateCardHover$,
+    clearTemplateCardHtmlPreviewFrames$,
+  };
+}
 
-export const selectPresentationTemplateDetailPreview$ = command(
-  ({ get, set }, params: PresentationTemplateDetailSelectionParams) => {
-    const activeDetail = get(internalTemplateDetailHtmlPreview$);
-    if (
-      activeDetail === null ||
-      activeDetail.embedUrl !== params.item.embedUrl ||
-      activeDetail.slug !== params.item.slug
-    ) {
-      return;
-    }
-    set(
-      applyPresentationTemplateDetailSelection$,
-      params.runtime,
-      params.item,
-      {
+function createTemplateDetailStateSignals() {
+  const internalTemplateDetailHtmlPreview$ =
+    state<TemplateDetailHtmlPreviewState | null>(null);
+  const templateDetailHtmlPreview$ = computed((get) => {
+    return get(internalTemplateDetailHtmlPreview$);
+  });
+  const replaceTemplateDetailHtmlPreview$ = command(
+    ({ get, set }, value: TemplateDetailHtmlPreviewState | null) => {
+      const current = get(internalTemplateDetailHtmlPreview$);
+      if (value === null) {
+        revokeUnusedTemplateDetailFrameUrls(
+          templateDetailFrameUrls(current),
+          new Set(),
+        );
+        set(internalTemplateDetailHtmlPreview$, null);
+        return;
+      }
+
+      const previousFrame = previousTemplateDetailFrame(current);
+      const retainedFrameUrls = new Set<string>();
+      if (value.frameUrl !== null) {
+        retainedFrameUrls.add(value.frameUrl);
+      }
+      if (previousFrame !== null) {
+        retainedFrameUrls.add(previousFrame.url);
+      }
+      revokeUnusedTemplateDetailFrameUrls(
+        templateDetailFrameUrls(current),
+        retainedFrameUrls,
+      );
+      set(internalTemplateDetailHtmlPreview$, {
+        ...value,
+        previousFrameSlideIndex: previousFrame?.slideIndex ?? null,
+        previousFrameUrl: previousFrame?.url ?? null,
+      });
+    },
+  );
+
+  const settlePresentationTemplateDetailPreviewFrame$ = command(
+    ({ get, set }, frameUrl: string): void => {
+      const current = get(internalTemplateDetailHtmlPreview$);
+      if (current?.frameUrl !== frameUrl) {
+        return;
+      }
+      if (current.previousFrameUrl !== null) {
+        URL.revokeObjectURL(current.previousFrameUrl);
+      }
+      set(internalTemplateDetailHtmlPreview$, {
+        ...current,
+        frameLoaded: true,
+        previousFrameSlideIndex: null,
+        previousFrameUrl: null,
+      });
+    },
+  );
+
+  return {
+    signals: {
+      templateDetailHtmlPreview$,
+      settlePresentationTemplateDetailPreviewFrame$,
+    },
+    internalTemplateDetailHtmlPreview$,
+    replaceTemplateDetailHtmlPreview$,
+  };
+}
+
+function createTemplatePreviewResourceSignals(
+  list: ReturnType<typeof createTemplatePickerListSignals>,
+  cards: ReturnType<typeof createTemplateCardSignals>,
+  detail: ReturnType<typeof createTemplateDetailStateSignals>,
+) {
+  const releaseTemplatePickerPreviewResources$ = command(
+    ({ set }, runtime: TemplatePreviewRuntime) => {
+      const preview = runtime.presentation;
+      preview.detailRequestToken = null;
+      for (const animationFrame of preview.pendingSlideAnimationFrames.values()) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+      preview.pendingSlideAnimationFrames.clear();
+      preview.pendingSlideIndexes.clear();
+      preview.activeIndexes.clear();
+      preview.activeTokens.clear();
+      set(cards.clearTemplateCardHtmlPreviewFrames$);
+      set(cards.internalTemplateCardHover$, null);
+      set(detail.replaceTemplateDetailHtmlPreview$, null);
+      set(list.internalTemplatePickerPreviewSlug$, null);
+    },
+  );
+
+  const ownTemplatePickerPreviewResources$ = command(
+    ({ set }, runtime: TemplatePreviewRuntime, signal: AbortSignal): void => {
+      const preview = runtime.presentation;
+      if (preview.previewOwnerSignal === signal) {
+        return;
+      }
+      preview.previewOwnerSignal = signal;
+      signal.addEventListener(
+        "abort",
+        () => {
+          if (preview.previewOwnerSignal !== signal) {
+            return;
+          }
+          preview.previewOwnerSignal = null;
+          set(releaseTemplatePickerPreviewResources$, runtime);
+        },
+        { once: true },
+      );
+    },
+  );
+
+  return {
+    releaseTemplatePickerPreviewResources$,
+    ownTemplatePickerPreviewResources$,
+  };
+}
+
+function createApplyPresentationTemplateDetailSelectionSignal(
+  detail: ReturnType<typeof createTemplateDetailStateSignals>,
+) {
+  return command(
+    (
+      { set },
+      runtime: TemplatePreviewRuntime,
+      item: PresentationTemplateItem,
+      selection: PresentationTemplateDetailSelection,
+    ) => {
+      const draft = runtime.presentation.drafts.get(item.embedUrl);
+      if (draft !== undefined) {
+        set(
+          detail.replaceTemplateDetailHtmlPreview$,
+          presentationTemplateDetailPreviewState({
+            draft,
+            item,
+            selection,
+          }),
+        );
+        return;
+      }
+
+      const failed = runtime.presentation.failed.has(item.embedUrl);
+      set(detail.replaceTemplateDetailHtmlPreview$, {
+        slug: item.slug,
+        embedUrl: item.embedUrl,
+        themeId: selection.themeId,
+        themeCss: selection.themeCss,
+        index: selection.index,
+        loading: !failed,
+        frameLoaded: false,
+        frameUrl: null,
+        previousFrameSlideIndex: null,
+        previousFrameUrl: null,
+        slideCount: presentationTemplateDetailSlideCount(item),
+      });
+    },
+  );
+}
+
+function createOpenPresentationTemplateDetailPreviewSignal(
+  list: ReturnType<typeof createTemplatePickerListSignals>,
+  detail: ReturnType<typeof createTemplateDetailStateSignals>,
+  resources: ReturnType<typeof createTemplatePreviewResourceSignals>,
+  applySelection$: ReturnType<
+    typeof createApplyPresentationTemplateDetailSelectionSignal
+  >,
+) {
+  return command(
+    async (
+      { get, set },
+      params: PresentationTemplateDetailSelectionParams,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      signal.throwIfAborted();
+      const cache = params.runtime.presentation;
+      set(resources.ownTemplatePickerPreviewResources$, params.runtime, signal);
+      const token = Symbol(params.item.embedUrl);
+      const selection: PresentationTemplateDetailSelection = {
         embedUrl: params.item.embedUrl,
         index: params.index,
         slug: params.item.slug,
         themeCss: params.themeCss,
         themeId: params.themeId,
-      },
-    );
-  },
-);
+      };
+      cache.detailRequestToken = token;
+      set(applySelection$, params.runtime, params.item, selection);
+      set(list.internalTemplatePickerPreviewSlug$, params.item.slug);
 
-export const closePresentationTemplateDetailPreview$ = command(
-  ({ set }, runtime: TemplatePreviewRuntime) => {
-    runtime.presentation.detailRequestToken = null;
-    set(replaceTemplateDetailHtmlPreview$, null);
-    set(internalTemplatePickerPreviewSlug$, null);
-  },
-);
+      if (
+        cache.drafts.has(params.item.embedUrl) ||
+        cache.failed.has(params.item.embedUrl)
+      ) {
+        return;
+      }
+
+      let pendingLoad = cache.pendingLoads.get(params.item.embedUrl);
+      if (pendingLoad === undefined) {
+        pendingLoad = loadPresentationTemplateHtmlPreview({
+          item: params.item,
+          signal,
+        });
+        cache.pendingLoads.set(params.item.embedUrl, pendingLoad);
+      }
+
+      const result = await tapError(
+        pendingLoad.finally(() => {
+          if (cache.pendingLoads.get(params.item.embedUrl) === pendingLoad) {
+            cache.pendingLoads.delete(params.item.embedUrl);
+          }
+        }),
+      );
+      signal.throwIfAborted();
+
+      if (result === undefined || result === null) {
+        cache.failed.add(params.item.embedUrl);
+      } else {
+        cache.drafts.set(params.item.embedUrl, result);
+      }
+
+      if (cache.detailRequestToken !== token) {
+        return;
+      }
+      const activeDetail = get(detail.internalTemplateDetailHtmlPreview$);
+      if (
+        activeDetail === null ||
+        activeDetail.embedUrl !== params.item.embedUrl ||
+        activeDetail.slug !== params.item.slug
+      ) {
+        return;
+      }
+      set(applySelection$, params.runtime, params.item, {
+        embedUrl: activeDetail.embedUrl,
+        index: activeDetail.index,
+        slug: activeDetail.slug,
+        themeCss: activeDetail.themeCss,
+        themeId: activeDetail.themeId,
+      });
+    },
+  );
+}
+
+function createPresentationTemplateDetailNavigationSignals(
+  list: ReturnType<typeof createTemplatePickerListSignals>,
+  detail: ReturnType<typeof createTemplateDetailStateSignals>,
+  applySelection$: ReturnType<
+    typeof createApplyPresentationTemplateDetailSelectionSignal
+  >,
+) {
+  const selectPresentationTemplateDetailPreview$ = command(
+    ({ get, set }, params: PresentationTemplateDetailSelectionParams) => {
+      const activeDetail = get(detail.internalTemplateDetailHtmlPreview$);
+      if (
+        activeDetail === null ||
+        activeDetail.embedUrl !== params.item.embedUrl ||
+        activeDetail.slug !== params.item.slug
+      ) {
+        return;
+      }
+      set(applySelection$, params.runtime, params.item, {
+        embedUrl: params.item.embedUrl,
+        index: params.index,
+        slug: params.item.slug,
+        themeCss: params.themeCss,
+        themeId: params.themeId,
+      });
+    },
+  );
+
+  const closePresentationTemplateDetailPreview$ = command(
+    ({ set }, runtime: TemplatePreviewRuntime) => {
+      runtime.presentation.detailRequestToken = null;
+      set(detail.replaceTemplateDetailHtmlPreview$, null);
+      set(list.internalTemplatePickerPreviewSlug$, null);
+    },
+  );
+
+  return {
+    selectPresentationTemplateDetailPreview$,
+    closePresentationTemplateDetailPreview$,
+  };
+}
+
+export function createComposerUiSignals() {
+  const list = createTemplatePickerListSignals();
+  const cards = createTemplateCardSignals();
+  const detail = createTemplateDetailStateSignals();
+  const resources = createTemplatePreviewResourceSignals(list, cards, detail);
+  const applySelection$ =
+    createApplyPresentationTemplateDetailSelectionSignal(detail);
+  const openPresentationTemplateDetailPreview$ =
+    createOpenPresentationTemplateDetailPreviewSignal(
+      list,
+      detail,
+      resources,
+      applySelection$,
+    );
+
+  return {
+    ...createBasicComposerUiSignals(),
+    ...createTemplatePickerDialogSignals(),
+    ...list.signals,
+    ...cards.signals,
+    ...detail.signals,
+    ...resources,
+    loadPresentationTemplateHtmlPreview,
+    openPresentationTemplateDetailPreview$,
+    ...createPresentationTemplateDetailNavigationSignals(
+      list,
+      detail,
+      applySelection$,
+    ),
+  };
+}
+
+export type ComposerUiSignals = ReturnType<typeof createComposerUiSignals>;
 
 // -- Per-message generation template selections --------------------------------
 

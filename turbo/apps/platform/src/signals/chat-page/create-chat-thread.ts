@@ -146,7 +146,11 @@ import {
   runGroupVisualWindowStartIndex,
 } from "./run-group-folding.ts";
 import { reloadBillingStatus$ } from "../zero-page/billing.ts";
-import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
+import {
+  computerUseHosts$,
+  selectedComputerUseHostId,
+  subscribeComputerUseHostsChanged$,
+} from "../zero-page/computer-use-hosts.ts";
 import { isCodexFastModeAvailableForSelection } from "../zero-page/model-default-selection.ts";
 import { personalModelProvider$ } from "../zero-page/model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
@@ -184,10 +188,22 @@ import {
   textToMessageDocument,
 } from "../zero-page/user-message-document-codec.ts";
 import { locale$ } from "../locale.ts";
+import {
+  createComposerFileInputSignals,
+  createComposerSignals,
+  type ComposerSubmission,
+} from "../zero-page/composer-signals.ts";
+import {
+  openChatThreadGoalDialog$,
+  pauseChatThreadGoal$,
+} from "./chat-goal.ts";
+import {
+  CREATE_WORKFLOW_WITH_CHAT_PROMPT,
+  replaceWorkflowPromptDraftTarget$,
+  setReplaceWorkflowPromptDraftTarget$,
+} from "./workflow-prompt-action.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
-
-export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
 const L = logger("ChatThread");
 
@@ -949,26 +965,6 @@ function createComputerUseHostSelection(
     setCloudBrowserEnabled$,
     clearComputerUseHostIdOverride$,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Sub-factory: composer file input
-// ---------------------------------------------------------------------------
-
-function createComposerFileInput() {
-  const internal$ = state<HTMLElement | null>(null);
-  const composerFileInput$ = computed((get) => {
-    return get(internal$);
-  });
-  const setComposerFileInput$ = onRef(
-    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
-      signal.addEventListener("abort", () => {
-        set(internal$, null);
-      });
-      set(internal$, el);
-    }),
-  );
-  return { composerFileInput$, setComposerFileInput$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -4766,18 +4762,236 @@ function createThreadComposer(
   };
 }
 
+interface ThreadRootComposerOptions {
+  readonly threadId: string;
+  readonly draft: DraftSignals;
+  readonly dataSource: ChatThreadRemote;
+  readonly threadOwned: ReturnType<typeof createThreadOwnedSignals>;
+  readonly composer: ReturnType<typeof createThreadComposer>;
+  readonly composerFileInput: ReturnType<typeof createComposerFileInputSignals>;
+  readonly composerSendButton: ReturnType<
+    typeof createComposerSendButtonSignals
+  >;
+  readonly modelSelection: ReturnType<typeof createModelSelection>;
+  readonly computerUseHostSelection: ReturnType<
+    typeof createComputerUseHostSelection
+  >;
+  readonly events: ReturnType<typeof createChatThreadEventPipeline>;
+  readonly messageActions: ReturnType<typeof createThreadMessageActions>;
+  readonly queueDraftSync$: ReturnType<
+    typeof createDraftSync
+  >["queueDraftSync$"];
+}
+
+interface CreateChatThreadSignalsOptions {
+  readonly initialOptimisticEntries?: readonly OptimisticChatEventEntry[];
+  readonly inlineTemplatesEnabled?: boolean;
+  readonly connectorAuthorization?: ComposerConnectorAuthorizationSignals;
+}
+
+function createThreadSubmitMessageSignal(options: ThreadRootComposerOptions) {
+  return command(
+    async (
+      { get, set },
+      action: "send" | "queue",
+      submission: ComposerSubmission,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      const explicit = get(
+        options.computerUseHostSelection.computerUseHostIdExplicit$,
+      );
+      const storedHostId = get(
+        options.computerUseHostSelection.computerUseHostId$,
+      );
+      const hosts = await get(computerUseHosts$);
+      signal.throwIfAborted();
+      const computerUseHostId = selectedComputerUseHostId(hosts, storedHostId);
+      const cloudBrowserEnabled = get(
+        options.computerUseHostSelection.cloudBrowserEnabled$,
+      );
+      const submitted =
+        action === "queue"
+          ? await set(
+              options.messageActions.queueMessage$,
+              submission.prompt,
+              {
+                computerUseHostId: explicit ? computerUseHostId : undefined,
+                cloudBrowserEnabled: explicit ? cloudBrowserEnabled : undefined,
+                generationTemplate: submission.generationTemplate,
+                editorDocument: submission.editorDocument,
+              },
+              signal,
+            )
+          : await set(
+              options.messageActions.sendMessage$,
+              submission.prompt,
+              {
+                ...(explicit ? { computerUseHostId } : {}),
+                ...(explicit ? { cloudBrowserEnabled } : {}),
+                generationTemplate: submission.generationTemplate,
+                editorDocument: submission.editorDocument,
+              },
+              signal,
+            );
+      if (submitted) {
+        set(options.computerUseHostSelection.clearComputerUseHostIdOverride$);
+      }
+      return submitted;
+    },
+  );
+}
+
+function createThreadPendingActionSignals(options: ThreadRootComposerOptions) {
+  const removeQueuedMessage$ = command(
+    async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
+      await set(options.messageActions.recallMessage$, eventId, signal);
+      set(options.composer.focusInput$);
+    },
+  );
+  const removeWorkflowEvent$ = command(
+    async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
+      await set(options.messageActions.skipAutomationEvent$, eventId, signal);
+    },
+  );
+  const cancelActiveGoal$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      await set(pauseChatThreadGoal$, options.threadId, signal);
+    },
+  );
+  const openActiveGoal$ = command(({ set }): void => {
+    set(openChatThreadGoalDialog$, options.threadId);
+  });
+  return {
+    removeQueuedMessage$,
+    removeWorkflowEvent$,
+    cancelActiveGoal$,
+    openActiveGoal$,
+  };
+}
+
+function createThreadWorkflowPromptSignals(options: ThreadRootComposerOptions) {
+  const draftTarget = `composer:${options.threadId}`;
+  const replaceWorkflowPromptOpen$ = computed((get): boolean => {
+    return get(replaceWorkflowPromptDraftTarget$) === draftTarget;
+  });
+  const applyWorkflowPrompt$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      set(options.draft.clear$);
+      set(options.draft.setInput$, CREATE_WORKFLOW_WITH_CHAT_PROMPT);
+      await set(options.queueDraftSync$, signal);
+      set(options.composer.focusInput$);
+    },
+  );
+  const createWorkflowPrompt$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      if (
+        set(options.draft.readInput$).trim().length > 0 ||
+        get(options.draft.attachments$).length > 0
+      ) {
+        set(setReplaceWorkflowPromptDraftTarget$, draftTarget);
+        return;
+      }
+      await set(applyWorkflowPrompt$, signal);
+    },
+  );
+  const confirmReplaceWorkflowPrompt$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      set(setReplaceWorkflowPromptDraftTarget$, null);
+      await set(applyWorkflowPrompt$, signal);
+    },
+  );
+  const setReplaceWorkflowPromptOpen$ = command(
+    ({ set }, open: boolean): void => {
+      set(setReplaceWorkflowPromptDraftTarget$, open ? draftTarget : null);
+    },
+  );
+  return {
+    createWorkflowPrompt$,
+    replaceWorkflowPromptOpen$,
+    confirmReplaceWorkflowPrompt$,
+    setReplaceWorkflowPromptOpen$,
+  };
+}
+
+function createThreadRootComposer(options: ThreadRootComposerOptions) {
+  const displayName$ = computed(async (get): Promise<string> => {
+    return (await get(options.threadOwned.agentDisplayName$)) ?? "Zero";
+  });
+  const autoFocus$ = computed(async (get): Promise<boolean> => {
+    return !(await get(options.events.hasEvents$));
+  });
+  const actionsLoading$ = computed(async (get): Promise<boolean> => {
+    await get(options.events.hasEvents$);
+    return false;
+  });
+  const sending$ = computed(async (get): Promise<boolean> => {
+    return (
+      (await get(options.composerSendButton.composerSendButtonStatus$)) ===
+      "sending"
+    );
+  });
+  const queueWhileSending$ = computed(async (get): Promise<boolean> => {
+    return await get(sending$);
+  });
+  const composerModelSelection$ = computed(
+    async (get): Promise<ModelProviderSelection | null> => {
+      const selectedModel = get(options.modelSelection.selectedModel$);
+      if (!selectedModel) {
+        return null;
+      }
+      return (await get(options.modelSelection.codexFastModeActive$))
+        ? { selectedModel, codexServiceTier: "fast" }
+        : { selectedModel };
+    },
+  );
+  const draftChanged$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      await set(options.queueDraftSync$, signal);
+    },
+  );
+
+  return createComposerSignals({
+    composerId: `thread:${options.threadId}`,
+    threadId: options.threadId,
+    workflowComposer: options.composer.workflowComposer,
+    draft: options.draft,
+    connectors: options.composer.composerConnectors,
+    displayName$,
+    autoFocus$,
+    mobileSingleLine: true,
+    actionsLoading$,
+    sending$,
+    queueWhileSending$,
+    draftChanged$,
+    ...options.composerFileInput,
+    modelSelection$: composerModelSelection$,
+    selectedModelOauthAvailable$:
+      options.modelSelection.selectedModelOauthAvailable$,
+    setModelSelection$: options.modelSelection.setModelSelection$,
+    configureSelectedModel$: options.modelSelection.configureSelectedModel$,
+    computerUseHostId$: options.computerUseHostSelection.computerUseHostId$,
+    cloudBrowserEnabled$: options.computerUseHostSelection.cloudBrowserEnabled$,
+    setComputerUseHostId$:
+      options.computerUseHostSelection.setComputerUseHostId$,
+    setCloudBrowserEnabled$:
+      options.computerUseHostSelection.setCloudBrowserEnabled$,
+    submitMessage$: createThreadSubmitMessageSignal(options),
+    cancelRun$: options.messageActions.cancelRun$,
+    pendingEvents$: options.events.queuedEventItems$,
+    cancellationRecoveryPending$:
+      options.dataSource.cancellationRecoveryPending$,
+    ...createThreadPendingActionSignals(options),
+    activeGoalObjective$: options.events.activeGoalObjective$,
+    ...createThreadWorkflowPromptSignals(options),
+  });
+}
+
 export function createChatThreadSignals(
   threadId: string,
   draft: DraftSignals,
   dataSource: ChatThreadRemote = createRemoteChatThreadDataSource(threadId),
-  options: {
-    readonly initialOptimisticEntries?: readonly OptimisticChatEventEntry[];
-    readonly inlineTemplatesEnabled?: boolean;
-    readonly connectorAuthorization?: ComposerConnectorAuthorizationSignals;
-  } = {},
+  options: CreateChatThreadSignalsOptions = {},
 ): ChatThreadSignals {
-  const initialOptimisticEntries = options.initialOptimisticEntries ?? [];
-  const inlineTemplatesEnabled = options.inlineTemplatesEnabled ?? false;
   const threadDraft$ = createRemoteThreadDraft(dataSource);
   const threadMeta$ = createThreadMeta(threadId);
   const threadTitle = createThreadTitleParts(threadMeta$);
@@ -4794,13 +5008,13 @@ export function createChatThreadSignals(
     dataSource,
   );
   const container = createChatThreadContainerSignals();
-  const composerFileInput = createComposerFileInput();
+  const composerFileInput = createComposerFileInputSignals();
   const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
   const composer = createThreadComposer(
     draft,
     threadId,
     threadOwned.agentId$,
-    inlineTemplatesEnabled,
+    options.inlineTemplatesEnabled ?? false,
     options.connectorAuthorization,
   );
   const artifact = createArtifacts(threadId);
@@ -4810,7 +5024,7 @@ export function createChatThreadSignals(
   const events = createChatThreadEventPipeline({
     threadId,
     dataSource,
-    initialOptimisticEntries,
+    initialOptimisticEntries: options.initialOptimisticEntries ?? [],
     previewImageUrlsByUrl$,
   });
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
@@ -4849,6 +5063,20 @@ export function createChatThreadSignals(
     selectedModel$: modelSelection.selectedModel$,
     sendMessage$: messageActions.sendMessage$,
   });
+  const rootComposer = createThreadRootComposer({
+    threadId,
+    draft,
+    dataSource,
+    threadOwned,
+    composer,
+    composerFileInput,
+    composerSendButton,
+    modelSelection,
+    computerUseHostSelection,
+    events,
+    messageActions,
+    queueDraftSync$,
+  });
   return {
     threadId,
     threadDraft$,
@@ -4870,6 +5098,7 @@ export function createChatThreadSignals(
     ...container,
     draft,
     ...composer,
+    composer: rootComposer,
     ...composerFileInput,
     ...threadOwned,
     sidebar: events.sidebar,

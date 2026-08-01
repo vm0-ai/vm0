@@ -1,9 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import type {
-  ChangeEvent,
   CSSProperties,
-  DragEvent,
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
@@ -92,21 +90,10 @@ import {
   activeGoalDialogGoal$,
   activeGoalDialogThreadId$,
   closeChatThreadGoalDialog$,
-  openChatThreadGoalDialog$,
 } from "../../signals/chat-page/chat-goal.ts";
-import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
-import type {
-  ComposerTemplateAttachment,
-  WorkflowComposerSubmissionSnapshot,
-  WorkflowComposerSignals,
-} from "../../signals/zero-page/tiptap-workflow-composer.ts";
+import type { ComposerTemplateAttachment } from "../../signals/zero-page/tiptap-workflow-composer.ts";
 import type { TemplatePreviewRuntime } from "../../signals/zero-page/template-preview-runtime.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
-import type { Command, Computed } from "ccstate";
-import {
-  composerFileInput$ as singletonComposerFileInput$,
-  setComposerFileInput$ as singletonSetComposerFileInput$,
-} from "../../signals/chat-page/chat-event.ts";
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
@@ -173,58 +160,26 @@ import {
   composerConnectorPermissionsEnabled$,
   featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
-import { zeroDesktopDownloadSupportStatus$ } from "../../signals/zero-page/computer-use-hosts.ts";
-import type {
-  AgentCustomConnectorAuthorizations,
-  ComposerConnectorSignals,
-} from "../../signals/zero-page/zero-connectors.ts";
+import {
+  computerUseHosts$,
+  selectedComputerUseHostId,
+  visibleComputerUseHosts,
+  ZERO_DESKTOP_DOWNLOAD_URL,
+  zeroDesktopDownloadSupportStatus$,
+} from "../../signals/zero-page/computer-use-hosts.ts";
+import type { AgentCustomConnectorAuthorizations } from "../../signals/zero-page/zero-connectors.ts";
 import type { AgentConnectorAuthorizations } from "../../signals/zero-page/agent-connector-authorizations.ts";
 import { applyUserPermissionGrants$ } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
 import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
 import { PermissionsDialog } from "./components/settings/permissions-dialog.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import {
-  modelPickerOpen$,
-  setModelPickerOpen$,
-  uploadPopoverOpen$,
-  setUploadPopoverOpen$,
-  templatePickerOpen$,
-  templatePickerSkipEnterAnimation$,
-  setTemplatePickerOpen$,
-  templatePickerReferenceValue$,
-  setTemplatePickerReferenceValue$,
-  openWebsiteTemplatePreview$,
-  templatePickerCategory$,
-  setTemplatePickerCategory$,
-  templatePickerSearch$,
-  setTemplatePickerSearch$,
-  templatePickerWorkflowCategory$,
-  setTemplatePickerWorkflowCategory$,
-  templatePickerPreviewSlug$,
-  setTemplatePickerPreviewSlug$,
-  restoreTemplatePickerPresentationScroll$,
-  setTemplatePickerPresentationScrollTop$,
-  illustrationVariantIndex$,
-  setIllustrationVariantIndex$,
-  templateCardHover$,
-  setTemplateCardHover$,
-  templateCardLoadedHtmlFrameUrls$,
-  setTemplateCardLoadedHtmlFrameUrl$,
-  templateCardThemeIdBySlug$,
-  setTemplateCardThemeId$,
-  templateCardHtmlPreview$,
-  setTemplateCardHtmlPreview$,
-  type TemplateCardHtmlPreviewState,
-  templateDetailHtmlPreview$,
-  closePresentationTemplateDetailPreview$,
-  loadPresentationTemplateHtmlPreview,
-  ownTemplatePickerPreviewResources$,
-  openPresentationTemplateDetailPreview$,
-  releaseTemplatePickerPreviewResources$,
-  selectPresentationTemplateDetailPreview$,
-  settlePresentationTemplateDetailPreviewFrame$,
-} from "../../signals/zero-page/zero-chat-composer.ts";
+import type { TemplateCardHtmlPreviewState } from "../../signals/zero-page/zero-chat-composer.ts";
+import type {
+  ComposerPendingEvent,
+  ComposerPrimaryAction,
+  ComposerSignals,
+} from "../../signals/zero-page/composer-signals.ts";
 import {
   audioInputAvailable$,
   audioInputQuota$,
@@ -240,6 +195,7 @@ import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.
 import { shouldUseUserMessage } from "../../signals/zero-page/user-message-document-codec.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
+import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
@@ -255,115 +211,11 @@ function isHappyDomTestEnvironment(): boolean {
 // Props
 // ---------------------------------------------------------------------------
 
-export interface ZeroChatComposerProps {
-  composer: WorkflowComposerSignals;
-  composerConnectors: ComposerConnectorSignals;
-  onSend: (
-    message: string,
-    generationTemplate: GenerationTemplateRequest | undefined,
-    editorDocument: WorkflowComposerSubmissionSnapshot["editorDocument"],
-  ) => void;
-  onQueue?: (
-    message: string,
-    generationTemplate: GenerationTemplateRequest | undefined,
-    editorDocument: WorkflowComposerSubmissionSnapshot["editorDocument"],
-  ) => void;
-  sending?: boolean;
-  queueWhileSending?: boolean;
-  /** Blocks send and queue submission while an async composer command settles. */
-  submissionLoading?: boolean;
-  /**
-   * Cancel the active run. When provided, the Send button switches to a Stop
-   * button while sending and the composer is empty; with content present the
-   * Send button stays visible and clicks queue the message instead.
-   * Clicking Stop while a queue exists recalls the queued messages.
-   */
-  onCancel?: () => void;
-  displayName: string;
-  className?: string;
-  /** Auto-focus the textarea when mounted. */
-  autoFocus?: boolean;
-  /** When set, reduces this instance to a single-line resting height on mobile. */
-  enableMobileSingleLine?: boolean;
-  /** Per-instance draft signals (from ChatThreadSignals factory). When omitted, falls back to singleton signals. */
-  draft: DraftSignals;
-  /** Composer file input element reference. When omitted, falls back to singleton. */
-  composerFileInput$?: Computed<HTMLElement | null>;
-  /** Set the composer file input element. When omitted, falls back to singleton. */
-  setComposerFileInput$?: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
-  /** Current chat thread id. Used by thread-scoped goal controls. */
-  chatThreadId?: string;
-  /** Called after attachment upload/remove mutations so the caller can trigger side-effects (e.g. draft sync). */
-  onDraftChange?: () => void;
-  /**
-   * When true, keep the send control in its disabled empty-composer state.
-   * Model and voice controls resolve independently and should not be hidden by
-   * message list loading.
-   */
-  actionsLoading?: boolean;
-  /**
-   * Per-run model picker wiring. When present, a compact picker is rendered
-   * immediately to the left of the Send button; the parent owns the selected
-   * value and decides when to include it in the send payload. Undefined
-   * hides the picker entirely (e.g. callers that haven't opted in).
-   */
-  modelPicker?: {
-    value: ModelProviderSelection | null;
-    onChange: (value: ModelProviderSelection | null) => void;
-    // When true, picker is read-only for the current composer state.
-    disabled?: boolean;
-  };
-  templatePicker?: {
-    value: GenerationTemplateRequest | undefined;
-    onChange: (value: GenerationTemplateRequest | undefined) => void;
-  };
-  onCreateWorkflowPrompt?: () => void;
-  computerUse?: {
-    hosts: readonly ComposerComputerUseHost[];
-    loading: boolean;
-    selectedHostId: string | null;
-    onChange: (hostId: string | null) => void;
-    cloudBrowserAvailable: boolean;
-    cloudBrowserEnabled: boolean;
-    onCloudBrowserChange: (enabled: boolean) => void;
-    downloadUrl: string;
-  };
-  /** When true, hide the model picker until the selected model resolves. */
-  modelPickerLoading?: boolean;
-  submitBlocker?: {
-    message: string;
-    actionLabel: string;
-    onAction: () => void;
-  };
-  /**
-   * Pending sends that landed while a run was active. Rendered as a compact
-   * strip above the textarea so the user can see what's queued without
-   * having those messages re-appear as bubbles in the conversation.
-   */
-  queuedItems?: QueuedComposerItem[];
-  /** Cancels a queued message (routed to the recall flow by the caller). */
-  onRemoveQueuedItem?: (id: string) => void;
-  /** Pending workflow events, rendered after queued messages. */
-  workflowEventItems?: WorkflowEventComposerItem[];
-  /** Skips one pending workflow event. */
-  onRemoveWorkflowEvent?: (id: string) => void;
-  /** The API is preserving a cancelled session before queued work can start. */
-  cancellationRecoveryPending?: boolean;
-  /**
-   * The thread's active goal. Rendered as a row beneath the queued messages in
-   * the strip above the composer — a goal runs only once the queue drains, so it
-   * sits closest to the composer to read as lower priority than the queue.
-   * Absent when the thread has no in-progress goal.
-   */
-  activeGoal?: ActiveGoalComposerItem;
-  /** Cancels the active goal through the goal API. */
-  onCancelActiveGoal?: () => void;
+interface ZeroChatComposerProps {
+  readonly signals: ComposerSignals;
 }
 
-export interface ComposerConnectorReadState {
+interface ComposerConnectorReadState {
   readonly catalogItems: Loadable<
     readonly PlatformConnectorCatalogStatusItem[]
   >;
@@ -373,21 +225,6 @@ export interface ComposerConnectorReadState {
   readonly customAuthorizations: Loadable<AgentCustomConnectorAuthorizations | null>;
 }
 
-export interface QueuedComposerItem {
-  id: string;
-  text: string;
-}
-
-export interface WorkflowEventComposerItem {
-  id: string;
-  text: string;
-}
-
-interface ActiveGoalComposerItem {
-  /** The goal's brief objective — the human-readable text shown in the row. */
-  objective: string;
-}
-
 interface ComposerComputerUseHost {
   id: string;
   hostName: string;
@@ -395,11 +232,33 @@ interface ComposerComputerUseHost {
   status: "online" | "offline";
 }
 
-type ComposerModelPicker = NonNullable<ZeroChatComposerProps["modelPicker"]>;
-type ComposerTemplatePicker = NonNullable<
-  ZeroChatComposerProps["templatePicker"]
->;
-type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
+interface ComposerModelPicker {
+  readonly value: ModelProviderSelection | null;
+  readonly onChange: (value: ModelProviderSelection | null) => void;
+  readonly disabled?: boolean;
+}
+
+interface ComposerTemplatePicker {
+  readonly value: GenerationTemplateRequest | undefined;
+  readonly onChange: (value: GenerationTemplateRequest | undefined) => void;
+}
+
+interface ComposerComputerUse {
+  readonly hosts: readonly ComposerComputerUseHost[];
+  readonly loading: boolean;
+  readonly selectedHostId: string | null;
+  readonly onChange: (hostId: string | null) => void;
+  readonly cloudBrowserAvailable: boolean;
+  readonly cloudBrowserEnabled: boolean;
+  readonly onCloudBrowserChange: (enabled: boolean) => void;
+  readonly downloadUrl: string;
+}
+
+interface ComposerSubmitBlocker {
+  readonly message: string;
+  readonly actionLabel: string;
+  readonly onAction: () => void;
+}
 
 const TEMPLATE_CARD_PREVIEW_SIZE = { width: 480, height: 270 } as const;
 const TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE = {
@@ -518,18 +377,6 @@ function resolveVisibleAttachments<T extends VisualAttachmentCandidate>(
   return attachments.filter((attachment) => {
     return !isVisualAttachment(attachment);
   });
-}
-
-function resolveComposerCanSend({
-  hasInput,
-  visibleAttachmentCount,
-  uploadsReady,
-}: {
-  hasInput: boolean;
-  visibleAttachmentCount: number;
-  uploadsReady: boolean;
-}): boolean {
-  return uploadsReady && (hasInput || visibleAttachmentCount > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -698,12 +545,12 @@ function ComposerStripRow({
   );
 }
 
-function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
+function ActiveGoalObjectiveDialog({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
   const dialogThreadId = useGet(activeGoalDialogThreadId$);
   const goalLoadable = useLoadable(activeGoalDialogGoal$);
   const closeDialog = useSet(closeChatThreadGoalDialog$);
-  const open = threadId !== undefined && dialogThreadId === threadId;
+  const open = signals.threadId !== null && dialogThreadId === signals.threadId;
   const goal = goalLoadable.state === "hasData" ? goalLoadable.data : undefined;
 
   return (
@@ -805,28 +652,35 @@ function PendingItemsStripHeader({
   );
 }
 
-function PendingItemsStrip({
-  items,
-  onRemove,
-  workflowEvents,
-  onRemoveWorkflowEvent,
-  activeGoal,
-  onCancelGoal,
-  onOpenGoal,
-  cancellationRecoveryPending = false,
-}: {
-  items: QueuedComposerItem[] | undefined;
-  onRemove?: (id: string) => void;
-  workflowEvents: WorkflowEventComposerItem[] | undefined;
-  onRemoveWorkflowEvent?: (id: string) => void;
-  activeGoal?: ActiveGoalComposerItem;
-  onCancelGoal?: () => void;
-  onOpenGoal?: () => void;
-  cancellationRecoveryPending?: boolean;
-}) {
+function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
-  const queued = items ?? [];
-  const events = workflowEvents ?? [];
+  const pendingEvents =
+    useLastResolved(signals.pendingEvents$) ??
+    ([] satisfies readonly ComposerPendingEvent[]);
+  const cancellationRecoveryPending =
+    useLastResolved(signals.cancellationRecoveryPending$) ?? false;
+  const activeGoalObjective = useLastResolved(signals.activeGoalObjective$);
+  const removeQueuedMessage = useSet(signals.removeQueuedMessage$);
+  const removeWorkflowEvent = useSet(signals.removeWorkflowEvent$);
+  const cancelActiveGoal = useSet(signals.cancelActiveGoal$);
+  const openActiveGoal = useSet(signals.openActiveGoal$);
+  const pageSignal = useGet(pageSignal$);
+  const queued = pendingEvents.flatMap((event) => {
+    return event.kind === "message" ? [{ id: event.id, text: event.text }] : [];
+  });
+  const events = pendingEvents.flatMap((event) => {
+    return event.kind === "automation"
+      ? [
+          {
+            id: event.id,
+            text: event.automationBrief ?? event.workflowName,
+          },
+        ]
+      : [];
+  });
+  const activeGoal = activeGoalObjective
+    ? { objective: activeGoalObjective }
+    : undefined;
   const count = queued.length + events.length;
   const messageLabel = t(
     ($) => {
@@ -882,7 +736,10 @@ function PendingItemsStrip({
               kind="queued"
               text={item.text}
               onRemove={() => {
-                onRemove?.(item.id);
+                detach(
+                  removeQueuedMessage(item.id, pageSignal),
+                  Reason.DomCallback,
+                );
               }}
               removeAriaLabel={t(($) => {
                 return $.chat.queue.removeQueuedMessage;
@@ -898,7 +755,10 @@ function PendingItemsStrip({
               kind="workflow-event"
               text={event.text}
               onRemove={() => {
-                onRemoveWorkflowEvent?.(event.id);
+                detach(
+                  removeWorkflowEvent(event.id, pageSignal),
+                  Reason.DomCallback,
+                );
               }}
               removeAriaLabel={t(($) => {
                 return $.chat.queue.skipAutomationEvent;
@@ -914,9 +774,9 @@ function PendingItemsStrip({
           <ComposerStripRow
             kind="goal"
             text={activeGoal.objective}
-            onOpenDetail={onOpenGoal}
+            onOpenDetail={openActiveGoal}
             onRemove={() => {
-              onCancelGoal?.();
+              detach(cancelActiveGoal(pageSignal), Reason.DomCallback);
             }}
             removeAriaLabel={t(($) => {
               return $.chat.queue.cancelGoal;
@@ -3126,22 +2986,26 @@ function TemplatePreview({
   item,
   onPreview,
   runtime,
+  signals,
   theme,
 }: {
   item: PresentationTemplateItem;
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
   priority?: boolean;
   runtime: TemplatePreviewRuntime;
+  signals: ComposerSignals;
   theme?: PresentationTemplateThemeOption;
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const hover = useGet(templateCardHover$);
-  const setHover = useSet(setTemplateCardHover$);
-  const htmlPreview = useGet(templateCardHtmlPreview$);
-  const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
-  const loadedHtmlFrameUrls = useGet(templateCardLoadedHtmlFrameUrls$);
-  const setLoadedHtmlFrameUrl = useSet(setTemplateCardLoadedHtmlFrameUrl$);
+  const hover = useGet(signals.templateCardHover$);
+  const setHover = useSet(signals.setTemplateCardHover$);
+  const htmlPreview = useGet(signals.templateCardHtmlPreview$);
+  const setHtmlPreview = useSet(signals.setTemplateCardHtmlPreview$);
+  const loadedHtmlFrameUrls = useGet(signals.templateCardLoadedHtmlFrameUrls$);
+  const setLoadedHtmlFrameUrl = useSet(
+    signals.setTemplateCardLoadedHtmlFrameUrl$,
+  );
   const slideCount = presentationTemplateSlideCount(item);
   const hoverSlideIndex = Math.max(
     0,
@@ -3233,7 +3097,7 @@ function TemplatePreview({
 
     let pendingLoad = cache.pendingLoads.get(item.embedUrl);
     if (pendingLoad === undefined) {
-      pendingLoad = loadPresentationTemplateHtmlPreview({
+      pendingLoad = signals.loadPresentationTemplateHtmlPreview({
         item,
         signal: pageSignal,
       });
@@ -3547,18 +3411,22 @@ function TemplatePreviewPage({
   onBack,
   onSelect,
   runtime,
+  signals,
 }: {
   item: PresentationTemplateItem;
   onBack: () => void;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   runtime: TemplatePreviewRuntime;
+  signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
-  const detailPreview = useGet(templateDetailHtmlPreview$);
-  const setCardThemeId = useSet(setTemplateCardThemeId$);
-  const selectDetailPreview = useSet(selectPresentationTemplateDetailPreview$);
+  const detailPreview = useGet(signals.templateDetailHtmlPreview$);
+  const setCardThemeId = useSet(signals.setTemplateCardThemeId$);
+  const selectDetailPreview = useSet(
+    signals.selectPresentationTemplateDetailPreview$,
+  );
   const settleDetailPreviewFrame = useSet(
-    settlePresentationTemplateDetailPreviewFrame$,
+    signals.settlePresentationTemplateDetailPreviewFrame$,
   );
   const visibleDetailPreview = templateDetailPreviewMatchesItem(
     detailPreview,
@@ -3942,6 +3810,7 @@ function PptCard({
   onSelect,
   onPreview,
   runtime,
+  signals,
 }: {
   item: PresentationTemplateItem;
   selected: boolean;
@@ -3949,9 +3818,10 @@ function PptCard({
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
   priority?: boolean;
   runtime: TemplatePreviewRuntime;
+  signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
-  const themeIdBySlug = useGet(templateCardThemeIdBySlug$);
+  const themeIdBySlug = useGet(signals.templateCardThemeIdBySlug$);
   const selectedTheme = findPresentationTemplateTheme(
     themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
   );
@@ -3968,6 +3838,7 @@ function PptCard({
         item={item}
         onPreview={onPreview}
         runtime={runtime}
+        signals={signals}
         theme={selectedTheme}
       />
       <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">
@@ -4896,12 +4767,14 @@ function PptTemplateGrid({
   value,
   onSelect,
   onPreview,
+  signals,
 }: {
   items: readonly PresentationTemplateItem[];
   runtime: TemplatePreviewRuntime;
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
+  signals: ComposerSignals;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -4914,6 +4787,7 @@ function PptTemplateGrid({
             onSelect={onSelect}
             onPreview={onPreview}
             runtime={runtime}
+            signals={signals}
           />
         );
       })}
@@ -4932,6 +4806,7 @@ function TemplatePickerDialog({
   hasVideoTab,
   hasWorkflowTab,
   runtime,
+  signals,
 }: {
   value: GenerationTemplateRequest | undefined;
   onChange: (value: GenerationTemplateRequest | undefined) => void;
@@ -4943,32 +4818,45 @@ function TemplatePickerDialog({
   hasVideoTab: boolean;
   hasWorkflowTab: boolean;
   runtime: TemplatePreviewRuntime;
+  signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const category = useGet(templatePickerCategory$);
-  const setCategory = useSet(setTemplatePickerCategory$);
-  const search = useGet(templatePickerSearch$);
-  const setSearch = useSet(setTemplatePickerSearch$);
-  const previewSlug = useGet(templatePickerPreviewSlug$);
+  const category = useGet(signals.templatePickerCategory$);
+  const setCategory = useSet(signals.setTemplatePickerCategory$);
+  const search = useGet(signals.templatePickerSearch$);
+  const setSearch = useSet(signals.setTemplatePickerSearch$);
+  const previewSlug = useGet(signals.templatePickerPreviewSlug$);
   const restorePresentationGridScroll = useSet(
-    restoreTemplatePickerPresentationScroll$,
+    signals.restoreTemplatePickerPresentationScroll$,
   );
   const setPresentationGridScrollTop = useSet(
-    setTemplatePickerPresentationScrollTop$,
+    signals.setTemplatePickerPresentationScrollTop$,
   );
-  const detailPreview = useGet(templateDetailHtmlPreview$);
-  const ownPreviewResources = useSet(ownTemplatePickerPreviewResources$);
+  const detailPreview = useGet(signals.templateDetailHtmlPreview$);
+  const ownPreviewResources = useSet(
+    signals.ownTemplatePickerPreviewResources$,
+  );
   const releasePreviewResources = useSet(
-    releaseTemplatePickerPreviewResources$,
+    signals.releaseTemplatePickerPreviewResources$,
   );
-  const openDetailPreview = useSet(openPresentationTemplateDetailPreview$);
-  const selectDetailPreview = useSet(selectPresentationTemplateDetailPreview$);
-  const closeDetailPreview = useSet(closePresentationTemplateDetailPreview$);
-  const openWebsiteTemplatePreview = useSet(openWebsiteTemplatePreview$);
-  const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
-  const illustrationVariantIndex = useGet(illustrationVariantIndex$);
-  const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
+  const openDetailPreview = useSet(
+    signals.openPresentationTemplateDetailPreview$,
+  );
+  const selectDetailPreview = useSet(
+    signals.selectPresentationTemplateDetailPreview$,
+  );
+  const closeDetailPreview = useSet(
+    signals.closePresentationTemplateDetailPreview$,
+  );
+  const openWebsiteTemplatePreview = useSet(
+    signals.openWebsiteTemplatePreview$,
+  );
+  const cardThemeIdBySlug = useGet(signals.templateCardThemeIdBySlug$);
+  const illustrationVariantIndex = useGet(signals.illustrationVariantIndex$);
+  const setIllustrationVariantIndex = useSet(
+    signals.setIllustrationVariantIndex$,
+  );
   const previewItem =
     presentationItems.find((item) => {
       return item.slug === previewSlug;
@@ -4988,8 +4876,12 @@ function TemplatePickerDialog({
   // A persona pill filters the grid, ideation-gallery style.
   // resolveWorkflowCatalog() keeps that logic out of this component to stay
   // under the complexity budget.
-  const workflowCategoryFilter = useGet(templatePickerWorkflowCategory$);
-  const setWorkflowCategoryFilter = useSet(setTemplatePickerWorkflowCategory$);
+  const workflowCategoryFilter = useGet(
+    signals.templatePickerWorkflowCategory$,
+  );
+  const setWorkflowCategoryFilter = useSet(
+    signals.setTemplatePickerWorkflowCategory$,
+  );
   const workflowCatalog = resolveWorkflowCatalog({
     categoryFilter: workflowCategoryFilter,
     search,
@@ -5220,6 +5112,7 @@ function TemplatePickerDialog({
             }}
             onSelect={handleSelectPresentation}
             runtime={runtime}
+            signals={signals}
           />
         ) : (
           <>
@@ -5249,6 +5142,7 @@ function TemplatePickerDialog({
                   onSearchChange={handleSearchChange}
                 />
                 <TemplatePickerCategoryContent
+                  signals={signals}
                   selectedCategory={selectedCategory}
                   hasPptTab={hasPptTab}
                   hasVideoTab={hasVideoTab}
@@ -5285,6 +5179,7 @@ function TemplatePickerDialog({
 }
 
 function TemplatePickerCategoryContent({
+  signals,
   selectedCategory,
   hasPptTab,
   hasVideoTab,
@@ -5309,6 +5204,7 @@ function TemplatePickerCategoryContent({
   onSelectWorkflow,
   runtime,
 }: {
+  signals: ComposerSignals;
   selectedCategory: string;
   hasPptTab: boolean;
   hasVideoTab: boolean;
@@ -5356,6 +5252,7 @@ function TemplatePickerCategoryContent({
             onSelect={onSelectPresentation}
             onPreview={onPreviewPresentation}
             runtime={runtime}
+            signals={signals}
           />
         ) : (
           <TemplateEmptyPanel />
@@ -5575,24 +5472,21 @@ function composerTemplateAttachmentLifecycleKey(
 }
 
 function ComposerTemplateAttachmentSync({
-  composer,
-  picker,
-  onDraftChange,
-  runtime,
+  signals,
 }: {
-  composer: WorkflowComposerSignals;
-  picker: ComposerTemplatePicker | undefined;
-  onDraftChange: (() => void) | undefined;
-  runtime: TemplatePreviewRuntime;
+  signals: ComposerSignals;
 }) {
-  const setLifecycleRef = useSet(composer.setTemplateAttachmentLifecycleRef$);
-  const setOpen = useSet(setTemplatePickerOpen$);
-  const setCategory = useSet(setTemplatePickerCategory$);
-  const setSearch = useSet(setTemplatePickerSearch$);
-  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
-  const setReferenceValue = useSet(setTemplatePickerReferenceValue$);
-  const readSelectedTemplate = useSet(composer.readSelectedTemplate$);
-  const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
+  const picker = useComposerTemplatePicker(signals);
+  const onDraftChange = useComposerDraftChange(signals);
+  const runtime = signals.templatePreview;
+  const setLifecycleRef = useSet(signals.setTemplateAttachmentLifecycleRef$);
+  const setOpen = useSet(signals.setTemplatePickerOpen$);
+  const setCategory = useSet(signals.setTemplatePickerCategory$);
+  const setSearch = useSet(signals.setTemplatePickerSearch$);
+  const setPreviewSlug = useSet(signals.setTemplatePickerPreviewSlug$);
+  const setReferenceValue = useSet(signals.setTemplatePickerReferenceValue$);
+  const readSelectedTemplate = useSet(signals.readSelectedTemplate$);
+  const cardThemeIdBySlug = useGet(signals.templateCardThemeIdBySlug$);
   const attachment = selectedComposerTemplateAttachment(picker?.value);
   const openPicker = (category: string) => {
     prewarmTemplatePreviewImages(
@@ -5645,6 +5539,7 @@ function TemplatePickerButton({
   hasVideoTab,
   hasWorkflowTab,
   runtime,
+  signals,
 }: {
   picker: ComposerTemplatePicker;
   onOpen: () => void;
@@ -5654,17 +5549,18 @@ function TemplatePickerButton({
   hasVideoTab: boolean;
   hasWorkflowTab: boolean;
   runtime: TemplatePreviewRuntime;
+  signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
-  const open = useGet(templatePickerOpen$);
-  const skipEnterAnimation = useGet(templatePickerSkipEnterAnimation$);
-  const category = useGet(templatePickerCategory$);
-  const referenceValue = useGet(templatePickerReferenceValue$);
-  const setOpen = useSet(setTemplatePickerOpen$);
-  const setSearch = useSet(setTemplatePickerSearch$);
-  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
-  const setReferenceValue = useSet(setTemplatePickerReferenceValue$);
-  const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
+  const open = useGet(signals.templatePickerOpen$);
+  const skipEnterAnimation = useGet(signals.templatePickerSkipEnterAnimation$);
+  const category = useGet(signals.templatePickerCategory$);
+  const referenceValue = useGet(signals.templatePickerReferenceValue$);
+  const setOpen = useSet(signals.setTemplatePickerOpen$);
+  const setSearch = useSet(signals.setTemplatePickerSearch$);
+  const setPreviewSlug = useSet(signals.setTemplatePickerPreviewSlug$);
+  const setReferenceValue = useSet(signals.setTemplatePickerReferenceValue$);
+  const cardThemeIdBySlug = useGet(signals.templateCardThemeIdBySlug$);
   const selectedTitle = selectedTemplateTitle(picker.value);
   const selectedCategory = resolveTemplatePickerCategory({
     category,
@@ -5749,28 +5645,21 @@ function TemplatePickerButton({
           hasVideoTab={hasVideoTab}
           hasWorkflowTab={hasWorkflowTab}
           runtime={runtime}
+          signals={signals}
         />
       )}
     </>
   );
 }
 
-function ComposerTemplatePickerSlot({
-  composer,
-  picker,
-}: {
-  composer: WorkflowComposerSignals;
-  picker: ComposerTemplatePicker | undefined;
-}) {
+function ComposerTemplatePickerSlot({ signals }: { signals: ComposerSignals }) {
+  const picker = useComposerTemplatePicker(signals);
   const hasPptTab = true;
   const hasIllustrationTab = true;
   const hasVideoTab = true;
   const hasWorkflowTab = true;
   const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
-  const prepareTemplateInsertion = useSet(composer.prepareTemplateInsertion$);
-  if (!picker) {
-    return null;
-  }
+  const prepareTemplateInsertion = useSet(signals.prepareTemplateInsertion$);
   return (
     <TemplatePickerButton
       picker={picker}
@@ -5780,7 +5669,8 @@ function ComposerTemplatePickerSlot({
       hasIllustrationTab={hasIllustrationTab}
       hasVideoTab={hasVideoTab}
       hasWorkflowTab={hasWorkflowTab}
-      runtime={composer.templatePreview}
+      runtime={signals.templatePreview}
+      signals={signals}
     />
   );
 }
@@ -5819,17 +5709,14 @@ function CreateWorkflowPromptButton({
   );
 }
 
-function ComposerWorkflowPromptSlot({
-  onCreateWorkflowPrompt,
-}: {
-  onCreateWorkflowPrompt: (() => void) | undefined;
-}) {
-  if (!onCreateWorkflowPrompt) {
-    return null;
-  }
+function ComposerWorkflowPromptSlot({ signals }: { signals: ComposerSignals }) {
+  const createWorkflowPrompt = useSet(signals.createWorkflowPrompt$);
+  const pageSignal = useGet(pageSignal$);
   return (
     <CreateWorkflowPromptButton
-      onCreateWorkflowPrompt={onCreateWorkflowPrompt}
+      onCreateWorkflowPrompt={() => {
+        detach(createWorkflowPrompt(pageSignal), Reason.DomCallback);
+      }}
     />
   );
 }
@@ -5978,7 +5865,7 @@ function AddConnectorsDialog({
   onConnectCustom,
   onClose,
 }: {
-  signals: ComposerConnectorSignals;
+  signals: ComposerSignals;
   unconnected: PlatformConnectorCatalogStatusItem[];
   unconnectedCustom: CustomConnectorResponse[];
   busyConnectorSlug: ConnectorSlug | null;
@@ -6246,7 +6133,7 @@ function ComposerConnectorPermissionDialog({
   connector,
   onClose,
 }: {
-  signals: ComposerConnectorSignals;
+  signals: ComposerSignals;
   agentId: string;
   agentDisplayName: string;
   connector: ComposerConnectorItem;
@@ -6339,7 +6226,7 @@ function ConnectorsPopoverButton({
   onToggle,
   onToggleCustom,
 }: {
-  signals: ComposerConnectorSignals;
+  signals: ComposerSignals;
   agentId: string | null;
   agentDisplayName: string;
   agentConnectors: ComposerConnectorItem[];
@@ -6803,11 +6690,7 @@ function micButtonTooltip(status: MicButtonStatus): string {
   });
 }
 
-function MicButton({
-  onTranscribed,
-}: {
-  onTranscribed: (text: string) => void;
-}) {
+function MicButton({ signals }: { signals: ComposerSignals }) {
   const available = useLastResolved(audioInputAvailable$) ?? false;
   const quotaState = useLoadableState(audioInputQuota$);
   const quota = useLastResolved(audioInputQuota$) ?? null;
@@ -6820,6 +6703,8 @@ function MicButton({
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
   const openQuotaRecovery = useSet(openAudioInputQuotaRecovery$);
+  const appendText = useSet(signals.appendText$);
+  const draftChanged = useSet(signals.draftChanged$);
   const signal = useGet(pageSignal$);
   const disabled = starting || transcribing || (!recording && !quotaResolved);
   const status = {
@@ -6832,6 +6717,11 @@ function MicButton({
   if (!available) {
     return null;
   }
+
+  const onTranscribed = (text: string) => {
+    appendText(text);
+    detach(draftChanged(signal), Reason.DomCallback);
+  };
 
   const handleClick = () => {
     if (starting || transcribing) {
@@ -6907,12 +6797,9 @@ function MicButton({
   );
 }
 
-function ComposerAttachButton({
-  onSelectFile,
-}: {
-  readonly onSelectFile: () => void;
-}) {
+function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
+  const fileInput = useGet(signals.composerFileInput$);
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
@@ -6926,7 +6813,9 @@ function ComposerAttachButton({
             aria-label={t(($) => {
               return $.chat.attachments.attach;
             })}
-            onClick={onSelectFile}
+            onClick={() => {
+              fileInput?.click();
+            }}
           >
             <IconPaperclip size={18} stroke={1.5} />
           </button>
@@ -6941,18 +6830,14 @@ function ComposerAttachButton({
   );
 }
 
-function ComposerUploadMenu({
-  onDraftChange,
-  onAppendText,
-  onSelectFile,
-}: {
-  readonly onDraftChange?: () => void;
-  readonly onAppendText: (value: string) => void;
-  readonly onSelectFile: () => void;
-}) {
+function ComposerUploadMenu({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
-  const uploadOpen = useGet(uploadPopoverOpen$);
-  const setUploadOpen = useSet(setUploadPopoverOpen$);
+  const uploadOpen = useGet(signals.uploadPopoverOpen$);
+  const setUploadOpen = useSet(signals.setUploadPopoverOpen$);
+  const appendText = useSet(signals.appendText$);
+  const draftChanged = useSet(signals.draftChanged$);
+  const fileInput = useGet(signals.composerFileInput$);
+  const pageSignal = useGet(pageSignal$);
   const addLink = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -6967,8 +6852,8 @@ function ComposerUploadMenu({
       return;
     }
     const normalized = new URL(trimmed).toString();
-    onAppendText(normalized);
-    onDraftChange?.();
+    appendText(normalized);
+    detach(draftChanged(pageSignal), Reason.DomCallback);
     form.reset();
     setUploadOpen(false);
   };
@@ -7011,7 +6896,7 @@ function ComposerUploadMenu({
             data-testid="composer-upload-local"
             onClick={() => {
               setUploadOpen(false);
-              onSelectFile();
+              fileInput?.click();
             }}
           >
             <IconPaperclip size={16} stroke={1.6} />
@@ -7064,67 +6949,13 @@ function ComposerUploadMenu({
   );
 }
 
-function ComposerUploadControl({
-  onDraftChange,
-  onAppendText,
-  onSelectFile,
-}: {
-  readonly onDraftChange?: () => void;
-  readonly onAppendText: (value: string) => void;
-  readonly onSelectFile: () => void;
-}) {
+function ComposerUploadControl({ signals }: { signals: ComposerSignals }) {
   const uploadPopoverEnabled = useGet(composerUploadPopoverEnabled$);
   return uploadPopoverEnabled ? (
-    <ComposerUploadMenu
-      onDraftChange={onDraftChange}
-      onAppendText={onAppendText}
-      onSelectFile={onSelectFile}
-    />
+    <ComposerUploadMenu signals={signals} />
   ) : (
-    <ComposerAttachButton onSelectFile={onSelectFile} />
+    <ComposerAttachButton signals={signals} />
   );
-}
-
-// ---------------------------------------------------------------------------
-// Signal resolution — resolves draft/file-input with singleton fallback
-// ---------------------------------------------------------------------------
-
-function useResolvedComposerSignals(
-  draft: DraftSignals,
-  composerFileInputProp$: Computed<HTMLElement | null> | undefined,
-  setComposerFileInputProp$:
-    | Command<(() => void) | undefined, [HTMLElement | null]>
-    | undefined,
-) {
-  const attachments = useGet(draft.attachments$);
-  const attachmentUploadsState = useLoadableState(
-    draft.attachmentUploadsReady$,
-  );
-  const readInput = useSet(draft.readInput$);
-  const uploadAttachment = useSet(draft.uploadAttachment$);
-  const restoreAttachments = useSet(draft.restoreAttachments$);
-  const removeAttachment = useSet(draft.removeAttachment$);
-  const fileInputEl = useGet(
-    composerFileInputProp$ ?? singletonComposerFileInput$,
-  );
-  const setFileInputEl = useSet(
-    setComposerFileInputProp$ ?? singletonSetComposerFileInput$,
-  );
-  const dragOver = useGet(draft.dragOver$);
-  const setDragOver = useSet(draft.setDragOver$);
-
-  return {
-    readInput,
-    attachments,
-    attachmentUploadsState,
-    uploadAttachment,
-    restoreAttachments,
-    removeAttachment,
-    fileInputEl,
-    setFileInputEl,
-    dragOver,
-    setDragOver,
-  };
 }
 
 function toPersistedAttachments(
@@ -7229,77 +7060,222 @@ function restoreChatClipboardPayload({
   return true;
 }
 
-type KeyboardSendAction = "none" | "send" | "queue";
+function useComposerDraftChange(signals: ComposerSignals): () => void {
+  const draftChanged = useSet(signals.draftChanged$);
+  const pageSignal = useGet(pageSignal$);
+  return () => {
+    detach(draftChanged(pageSignal), Reason.DomCallback);
+  };
+}
 
-function ComposerInputSlot({
-  composer,
-  onDraftChange,
-  sending,
-  autoFocus,
-  enableMobileSingleLine,
-  onKeyDown,
-  onPaste,
+function useComposerVisualAttachmentUnsupported(
+  signals: ComposerSignals,
+): VisualAttachmentUnsupportedState | null {
+  const modelSelection = useLastResolved(signals.modelSelection$) ?? null;
+  return getVisualAttachmentUnsupportedState({
+    value: modelSelection,
+    onChange: () => {},
+  });
+}
+
+function useComposerTemplatePicker(
+  signals: ComposerSignals,
+): ComposerTemplatePicker {
+  const featureSwitches = useGet(featureSwitch$);
+  const value = useGet(signals.generationTemplate$);
+  const setValue = useSet(signals.setGenerationTemplate$);
+  const insertTemplate = useSet(signals.insertTemplate$);
+  const notifyDraftChanged = useComposerDraftChange(signals);
+  return (
+    inlineComposerTemplatePicker({
+      picker: { value, onChange: setValue },
+      enabled: userMessageInlineTemplatesEnabled(featureSwitches),
+      insertTemplate,
+      onDraftChange: notifyDraftChanged,
+    }) ?? { value, onChange: setValue }
+  );
+}
+
+function startComposerSubmission({
+  action,
+  activate,
+  ensurePushSubscription,
+  signal,
 }: {
-  readonly composer: WorkflowComposerSignals;
-  readonly onDraftChange: (() => void) | undefined;
-  readonly sending: boolean | undefined;
-  readonly autoFocus: boolean | undefined;
-  readonly enableMobileSingleLine: boolean;
-  readonly onKeyDown: (e: KeyboardEventLike) => void;
-  readonly onPaste: (e: ComposerPasteEvent) => void;
-}) {
-  const singleLineOnMobile = enableMobileSingleLine;
+  action: ComposerPrimaryAction;
+  activate: (signal: AbortSignal) => Promise<boolean>;
+  ensurePushSubscription: (signal: AbortSignal) => Promise<void>;
+  signal: AbortSignal;
+}): void {
+  if (action === "disabled" || action === "stop") {
+    return;
+  }
+  if (action === "send") {
+    detach(ensurePushSubscription(signal), Reason.DomCallback);
+  }
+  detach(activate(signal), Reason.DomCallback);
+}
+
+function useComposerFileUpload(
+  signals: ComposerSignals,
+): (file: File) => boolean {
+  const visualAttachmentUnsupported =
+    useComposerVisualAttachmentUnsupported(signals);
+  const uploadAttachment = useSet(signals.uploadAttachment$);
+  const rootSignal = useGet(rootSignal$);
+  const { t } = useTranslation();
+  return (file) => {
+    if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
+      showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
+      return false;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error(
+        t(
+          ($) => {
+            return $.chat.attachments.fileTooLarge;
+          },
+          { filename: file.name },
+        ),
+      );
+      return false;
+    }
+    detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+    return true;
+  };
+}
+
+function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
+  const sending = useLastResolved(signals.sending$) ?? false;
+  const autoFocus =
+    useLastResolved(signals.autoFocus$) ?? signals.threadId === null;
+  const notifyDraftChanged = useComposerDraftChange(signals);
+  const visualAttachmentUnsupported =
+    useComposerVisualAttachmentUnsupported(signals);
+  const inlineTemplatesEnabled = userMessageInlineTemplatesEnabled(
+    useGet(featureSwitch$),
+  );
+  const restoreAttachments = useSet(signals.restoreAttachments$);
+  const insertPromptMarkdown = useSet(signals.insertPromptMarkdown$);
+  const insertUserMessage = useSet(signals.insertUserMessage$);
+  const uploadFile = useComposerFileUpload(signals);
+  const templatePicker = useComposerTemplatePicker(signals);
+  const primaryAction = useLastResolved(signals.primaryAction$) ?? "disabled";
+  const submitCurrentInput = useSet(signals.submitCurrentInput$);
+  const ensurePushSubscription = useSet(ensurePushSubscription$);
+  const rootSignal = useGet(rootSignal$);
+  const sendModeLoadable = useLastLoadable(sendMode$);
+  const sendMode =
+    sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
+
+  const handlePaste = (event: ComposerPasteEvent) => {
+    if (
+      restoreChatClipboardPayload({
+        event,
+        inlineTemplatesEnabled,
+        visualAttachmentUnsupported,
+        insertPromptMarkdown,
+        insertUserMessage,
+        restoreAttachments,
+        onTemplateChange: templatePicker.onChange,
+        onDraftChange: notifyDraftChanged,
+      })
+    ) {
+      return;
+    }
+    const items = event.clipboardData?.items;
+    if (!items) {
+      return;
+    }
+    const plainText = event.clipboardData?.getData("text/plain") ?? "";
+    let pastedPlainText = false;
+    let uploaded = false;
+    const applyPlainText = () => {
+      if (pastedPlainText || !plainText) {
+        return;
+      }
+      insertPromptMarkdown(plainText);
+      pastedPlainText = true;
+    };
+    for (const item of items) {
+      if (item.kind !== "file") {
+        continue;
+      }
+      const file = item.getAsFile();
+      if (!file) {
+        continue;
+      }
+      event.preventDefault();
+      applyPlainText();
+      uploaded = uploadFile(file) || uploaded;
+    }
+    if (uploaded || pastedPlainText) {
+      notifyDraftChanged();
+    }
+  };
+
+  const submit = () => {
+    startComposerSubmission({
+      action: primaryAction,
+      activate: submitCurrentInput,
+      ensurePushSubscription,
+      signal: rootSignal,
+    });
+  };
+
+  const handleKeyDown = (event: KeyboardEventLike) => {
+    const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
+    const isTouchOnlyDevice =
+      isTouchDevice &&
+      (!window.matchMedia("(any-pointer: fine)").matches ||
+        softwareKeyboardOccludesViewport());
+    if (isTouchOnlyDevice) {
+      processShortcut({ "mod+enter": submit }, event);
+      return;
+    }
+    processShortcut(
+      {
+        ...(sendMode === "enter" ? { enter: submit } : { "mod+enter": submit }),
+        ...(isTouchDevice && sendMode === "enter"
+          ? { "mod+enter": submit }
+          : {}),
+        escape: () => {
+          (event.target as HTMLElement).blur();
+        },
+      },
+      event,
+    );
+  };
 
   return (
     <TiptapWorkflowComposer
-      composer={composer}
-      onDraftChange={onDraftChange}
+      signals={signals}
+      onDraftChange={notifyDraftChanged}
       sending={sending}
       autoFocus={autoFocus}
-      onKeyDown={onKeyDown}
-      onPaste={onPaste}
-      singleLineOnMobile={singleLineOnMobile}
+      onKeyDown={handleKeyDown}
+      onPaste={handlePaste}
+      singleLineOnMobile={signals.mobileSingleLine}
     />
   );
 }
 
-function resolveKeyboardSendAction({
-  canSend,
-  sending,
-  queueWhileSending,
-  hasQueueHandler,
-}: {
-  canSend: boolean;
-  sending: boolean | undefined;
-  queueWhileSending: boolean;
-  hasQueueHandler: boolean;
-}): KeyboardSendAction {
-  if (!canSend || (sending && (!queueWhileSending || !hasQueueHandler))) {
-    return "none";
-  }
-  return sending ? "queue" : "send";
-}
-
 // Stop while an empty composer is mid-run; otherwise Send.
 function ComposerSendButton({
-  showStopButton,
-  onCancel,
-  sendAction,
-  onSend,
+  action,
+  onActivate,
 }: {
-  showStopButton: boolean;
-  onCancel: (() => void) | undefined;
-  sendAction: KeyboardSendAction;
-  onSend: () => void;
+  action: ComposerPrimaryAction;
+  onActivate: () => void;
 }) {
   const { t } = useTranslation();
-  if (showStopButton) {
+  if (action === "stop") {
     return (
       <Button
         size="sm"
         variant="destructive"
         className="rounded-lg h-9 w-9 p-0 shrink-0"
-        onClick={onCancel}
+        onClick={onActivate}
         aria-label={t(($) => {
           return $.chat.actions.stop;
         })}
@@ -7312,8 +7288,8 @@ function ComposerSendButton({
     <Button
       size="sm"
       className="rounded-lg h-9 w-9 p-0 shrink-0"
-      onClick={onSend}
-      disabled={sendAction === "none"}
+      onClick={onActivate}
+      disabled={action === "disabled"}
       aria-label={t(($) => {
         return $.chat.actions.send;
       })}
@@ -7323,85 +7299,30 @@ function ComposerSendButton({
   );
 }
 
-function ComposerSendControl({
-  draft,
-  visibleAttachmentCount,
-  uploadsReady,
-  submitBlocked,
-  sending,
-  queueWhileSending,
-  hasQueueHandler,
-  onCancel,
-  actionsLoading,
-  submissionLoading,
-  onSend,
-}: {
-  draft: DraftSignals;
-  visibleAttachmentCount: number;
-  uploadsReady: boolean;
-  submitBlocked: boolean;
-  sending: boolean | undefined;
-  queueWhileSending: boolean;
-  hasQueueHandler: boolean;
-  onCancel: (() => void) | undefined;
-  actionsLoading: boolean;
-  submissionLoading: boolean;
-  onSend: () => void;
-}) {
-  const hasInput = useGet(draft.hasInput$);
-  const canSend = resolveComposerCanSend({
-    hasInput,
-    visibleAttachmentCount,
-    uploadsReady,
-  });
-  const sendAction = resolveKeyboardSendAction({
-    canSend: canSend && !submitBlocked && !submissionLoading,
-    sending,
-    queueWhileSending,
-    hasQueueHandler,
-  });
-  const state = resolveSendButtonStateForActionsLoading({
-    actionsLoading,
-    showStopButton: Boolean(sending && onCancel) && !canSend,
-    onCancel,
-    sendAction,
-  });
-  return <ComposerSendButton {...state} onSend={onSend} />;
-}
-
-function resolveSendButtonStateForActionsLoading({
-  actionsLoading,
-  showStopButton,
-  onCancel,
-  sendAction,
-}: {
-  actionsLoading: boolean;
-  showStopButton: boolean;
-  onCancel: (() => void) | undefined;
-  sendAction: KeyboardSendAction;
-}): {
-  showStopButton: boolean;
-  onCancel: (() => void) | undefined;
-  sendAction: KeyboardSendAction;
-} {
-  if (actionsLoading) {
-    return {
-      showStopButton: false,
-      onCancel: undefined,
-      sendAction: "none",
-    };
-  }
-  return {
-    showStopButton,
-    onCancel,
-    sendAction,
+function ComposerSendControl({ signals }: { signals: ComposerSignals }) {
+  const action = useLastResolved(signals.primaryAction$) ?? "disabled";
+  const activatePrimaryAction = useSet(signals.activatePrimaryAction$);
+  const ensurePushSubscription = useSet(ensurePushSubscription$);
+  const rootSignal = useGet(rootSignal$);
+  const activate = () => {
+    if (action === "stop") {
+      detach(activatePrimaryAction(rootSignal), Reason.DomCallback);
+      return;
+    }
+    startComposerSubmission({
+      action,
+      activate: activatePrimaryAction,
+      ensurePushSubscription,
+      signal: rootSignal,
+    });
   };
+  return <ComposerSendButton action={action} onActivate={activate} />;
 }
 
 function ModelConfigurationWarning({
   blocker,
 }: {
-  blocker: NonNullable<ZeroChatComposerProps["submitBlocker"]>;
+  blocker: ComposerSubmitBlocker;
 }) {
   return (
     <TooltipProvider delayDuration={200}>
@@ -7425,26 +7346,65 @@ function ModelConfigurationWarning({
   );
 }
 
-function ComposerModelPickerSlot({
-  modelPicker,
-  modelPickerLoading,
-  submitBlocker,
-  onModelPickerChange,
-}: {
-  modelPicker: ComposerModelPicker | undefined;
-  modelPickerLoading: boolean;
-  submitBlocker: ZeroChatComposerProps["submitBlocker"];
-  onModelPickerChange: (value: ModelProviderSelection | null) => void;
-}) {
+function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
-  const modelPickerOpen = useGet(modelPickerOpen$);
-  const setModelPickerOpen = useSet(setModelPickerOpen$);
+  const modelPickerOpen = useGet(signals.modelPickerOpen$);
+  const setModelPickerOpen = useSet(signals.setModelPickerOpen$);
+  const modelSelection = useLastLoadable(signals.modelSelection$);
+  const selectedModelOauthAvailable =
+    useLastResolved(signals.selectedModelOauthAvailable$) ?? true;
+  const setModelSelection = useSet(signals.setModelSelection$);
+  const configureSelectedModel = useSet(signals.configureSelectedModel$);
+  const attachments = useGet(signals.attachments$);
+  const pageSignal = useGet(pageSignal$);
+  const value = modelSelection.state === "hasData" ? modelSelection.data : null;
+  const modelPickerLoading = modelSelection.state === "loading";
+  const onModelPickerChange = (selection: ModelProviderSelection | null) => {
+    const nextUnsupported = getVisualAttachmentUnsupportedState(
+      {
+        value,
+        onChange: onModelPickerChange,
+      },
+      selection,
+    );
+    if (
+      nextUnsupported &&
+      attachments.some((attachment) => {
+        return isVisualAttachment(attachment);
+      })
+    ) {
+      showVisualAttachmentUnsupportedToast(nextUnsupported);
+    }
+    detach(setModelSelection(selection, pageSignal), Reason.DomCallback);
+  };
+  const modelPicker: ComposerModelPicker = {
+    value,
+    onChange: onModelPickerChange,
+  };
+  const submitBlocker: ComposerSubmitBlocker | undefined =
+    value && !selectedModelOauthAvailable
+      ? {
+          message: t(($) => {
+            return $.chat.composer.selectedModelUnavailable;
+          }),
+          actionLabel:
+            signals.threadId === null
+              ? t(($) => {
+                  return $.chat.composer.modelConfigureAction;
+                })
+              : t(($) => {
+                  return $.chat.composer.configureModel;
+                }),
+          onAction: () => {
+            detach(configureSelectedModel(pageSignal), Reason.DomCallback);
+          },
+        }
+      : undefined;
   if (modelPickerLoading) {
     return null;
   }
-  const shouldRenderModelPicker =
-    modelPicker !== undefined && modelPicker.value !== null;
+  const shouldRenderModelPicker = modelPicker.value !== null;
 
   return (
     <>
@@ -7513,22 +7473,19 @@ function equalAgentCustomConnectorAuthorizations(
   );
 }
 
-export function useComposerConnectorReadState(
-  composerConnectors: ComposerConnectorSignals,
+function useComposerConnectorReadState(
+  signals: ComposerSignals,
 ): ComposerConnectorReadState {
   return {
     catalogItems: useLastLoadable(allConnectorCatalogItems$),
     customConnectors: useLastLoadable(customConnectors$),
-    agentId: useLoadable(composerConnectors.agentId$),
-    authorizations: useLastLoadable(composerConnectors.authorizations$, {
+    agentId: useLoadable(signals.agentId$),
+    authorizations: useLastLoadable(signals.authorizations$, {
       equalityFn: equalAgentConnectorAuthorizations,
     }),
-    customAuthorizations: useLastLoadable(
-      composerConnectors.customAuthorizations$,
-      {
-        equalityFn: equalAgentCustomConnectorAuthorizations,
-      },
-    ),
+    customAuthorizations: useLastLoadable(signals.customAuthorizations$, {
+      equalityFn: equalAgentCustomConnectorAuthorizations,
+    }),
   };
 }
 
@@ -7647,207 +7604,107 @@ function resolveComposerConnectorCollections({
   };
 }
 
-// The thread route invokes this hook from its ccstate-connected composer so
-// dynamic bindings do not cross another React component boundary. The agent
-// landing page uses the component wrapper below for its separate signal scope.
-export function useZeroChatComposer(
-  {
-    composer,
-    composerConnectors,
-    onSend,
-    onQueue,
-    sending,
-    queueWhileSending = false,
-    submissionLoading = false,
-    onCancel,
-    displayName,
-    className,
-    autoFocus,
-    enableMobileSingleLine = false,
-    draft,
-    composerFileInput$: composerFileInputProp$,
-    setComposerFileInput$: setComposerFileInputProp$,
-    chatThreadId,
-    onDraftChange,
-    actionsLoading = false,
-    modelPicker,
-    templatePicker,
-    onCreateWorkflowPrompt,
-    computerUse,
-    modelPickerLoading = false,
-    submitBlocker,
-    queuedItems,
-    onRemoveQueuedItem,
-    workflowEventItems,
-    onRemoveWorkflowEvent,
-    cancellationRecoveryPending,
-    activeGoal,
-    onCancelActiveGoal,
-  }: ZeroChatComposerProps,
-  connectorReadState: ComposerConnectorReadState,
-) {
-  const { t } = useTranslation();
-  const showAddDialog = useGet(composerConnectors.showAddDialog$);
-  const setShowAddDialog = useSet(composerConnectors.setShowAddDialog$);
-  const openGoalDialog = useSet(openChatThreadGoalDialog$);
-  const featureSwitches = useGet(featureSwitch$);
-  const inlineTemplatesEnabled =
-    userMessageInlineTemplatesEnabled(featureSwitches);
+function ComposerFileInput({ signals }: { signals: ComposerSignals }) {
+  const setFileInput = useSet(signals.setComposerFileInput$);
+  const uploadFile = useComposerFileUpload(signals);
+  const notifyDraftChanged = useComposerDraftChange(signals);
 
-  const resolved = useResolvedComposerSignals(
-    draft,
-    composerFileInputProp$,
-    setComposerFileInputProp$,
+  return (
+    <input
+      ref={setFileInput}
+      type="file"
+      className="hidden"
+      accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.tsv,.md,.json,.xml,.yaml,.yml,.html,.htm,.doc,.docx,.docm,.dotx,.dotm,.odt,.rtf,.xls,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ods,.ppt,.pptx,.pptm,.potx,.potm,.ppsx,.ppsm,.odp,.zip,.rar,.7z,.tar,.tar.gz,.tgz,.gz,.bz2,.xz,.pages,.numbers,.key,.heic,.heif,.tif,.tiff,.bmp,.parquet,.sqlite,.sqlite3,.db,.epub,.psd,.ai"
+      multiple
+      onChange={(event) => {
+        const files = event.target.files;
+        let uploaded = false;
+        if (files) {
+          for (const file of files) {
+            uploaded = uploadFile(file) || uploaded;
+          }
+        }
+        if (uploaded) {
+          notifyDraftChanged();
+        }
+        event.target.value = "";
+      }}
+    />
   );
-  const {
-    readInput,
-    attachments,
-    attachmentUploadsState,
-    uploadAttachment,
-    restoreAttachments,
-    removeAttachment,
-    fileInputEl,
-    setFileInputEl,
-    dragOver,
-    setDragOver,
-  } = resolved;
-  const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
-  const insertUserMessage = useSet(composer.insertUserMessage$);
-  const insertTemplate = useSet(composer.insertTemplate$);
-  const appendComposerText = useSet(composer.appendText$);
-  const [inputForSubmissionLoadable, readInputForSubmission] = useLoadableSet(
-    composer.readInputForSubmission$,
-  );
+}
 
-  const ensurePushSubscription = useSet(ensurePushSubscription$);
-  const rootSignal = useGet(rootSignal$);
+function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
+  const attachments = useGet(signals.attachments$);
   const visualAttachmentUnsupported =
-    getVisualAttachmentUnsupportedState(modelPicker);
+    useComposerVisualAttachmentUnsupported(signals);
   const visibleAttachments = resolveVisibleAttachments(
     attachments,
     visualAttachmentUnsupported,
   );
-  const uploadsReady = attachmentUploadsState === "hasData";
-  const composerTemplatePicker = inlineComposerTemplatePicker({
-    picker: templatePicker,
-    enabled: inlineTemplatesEnabled,
-    insertTemplate,
-    onDraftChange,
-  });
+  const removeAttachment = useSet(signals.removeAttachment$);
+  const notifyDraftChanged = useComposerDraftChange(signals);
 
-  // File upload handlers (paste / drag-drop)
-  const handlePaste = (e: ComposerPasteEvent) => {
-    if (!e.clipboardData) {
-      return;
-    }
-    if (
-      restoreChatClipboardPayload({
-        event: e,
-        inlineTemplatesEnabled,
-        visualAttachmentUnsupported,
-        insertPromptMarkdown,
-        insertUserMessage,
-        restoreAttachments,
-        onTemplateChange: composerTemplatePicker?.onChange,
-        onDraftChange,
-      })
-    ) {
-      return;
-    }
+  if (visibleAttachments.length === 0) {
+    return null;
+  }
+  return (
+    <AttachmentChips
+      attachments={visibleAttachments}
+      onRemove={(attachment) => {
+        removeAttachment(attachment);
+        notifyDraftChanged();
+      }}
+    />
+  );
+}
 
-    const items = e.clipboardData?.items;
-    if (!items) {
-      return;
-    }
-    const plainText = e.clipboardData.getData("text/plain");
-    let pastedPlainText = false;
-    const applyPlainText = () => {
-      if (pastedPlainText || !plainText) {
-        return;
-      }
-      insertPromptMarkdown(plainText);
-      pastedPlainText = true;
-    };
-    for (const item of items) {
-      if (item.kind !== "file") {
-        continue;
-      }
-      const file = item.getAsFile();
-      if (!file) {
-        continue;
-      }
-      if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
-        e.preventDefault();
-        applyPlainText();
-        showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
-        continue;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        e.preventDefault();
-        toast.error(
-          t(
-            ($) => {
-              return $.chat.attachments.fileTooLarge;
-            },
-            {
-              filename: file.name,
-            },
-          ),
-        );
-        continue;
-      }
-      e.preventDefault();
-      applyPlainText();
-      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
-      onDraftChange?.();
-    }
+function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
+  const { t } = useTranslation();
+  const connectorReadState = useComposerConnectorReadState(signals);
+  const composerConnectors = signals;
+  const displayName = useLastResolved(signals.displayName$) ?? "";
+  const storedComputerUseHostId = useGet(signals.computerUseHostId$);
+  const cloudBrowserEnabled = useGet(signals.cloudBrowserEnabled$);
+  const setComputerUseHostId = useSet(signals.setComputerUseHostId$);
+  const setCloudBrowserEnabled = useSet(signals.setCloudBrowserEnabled$);
+  const computerUseHostsState = useLastLoadable(computerUseHosts$);
+  const lastComputerUseHosts = useLastResolved(computerUseHosts$) ?? [];
+  const computerUseHosts =
+    computerUseHostsState.state === "hasData"
+      ? computerUseHostsState.data
+      : lastComputerUseHosts;
+  const resolvedComputerUseHostId = selectedComputerUseHostId(
+    computerUseHosts,
+    storedComputerUseHostId,
+  );
+  const featureSwitches = useGet(featureSwitch$);
+  const cloudBrowserAvailable =
+    featureSwitches[FeatureSwitchKey.ZeroBrowser] ?? false;
+  const composerPageSignal = useGet(pageSignal$);
+  const computerUse: ComposerComputerUse = {
+    hosts: visibleComputerUseHosts(computerUseHosts, resolvedComputerUseHostId),
+    loading:
+      computerUseHostsState.state === "loading" &&
+      computerUseHosts.length === 0,
+    selectedHostId: resolvedComputerUseHostId,
+    onChange: (hostId) => {
+      detach(
+        setComputerUseHostId(hostId, composerPageSignal),
+        Reason.DomCallback,
+      );
+    },
+    cloudBrowserAvailable,
+    cloudBrowserEnabled: cloudBrowserAvailable && cloudBrowserEnabled,
+    onCloudBrowserChange: (enabled) => {
+      detach(
+        setCloudBrowserEnabled(enabled, composerPageSignal),
+        Reason.DomCallback,
+      );
+    },
+    downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
   };
-
-  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragOver(false);
-    const files = e.dataTransfer?.files;
-    if (!files) {
-      return;
-    }
-    let uploaded = false;
-    for (const file of files) {
-      if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
-        showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
-        continue;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        e.preventDefault();
-        toast.error(
-          t(
-            ($) => {
-              return $.chat.attachments.fileTooLarge;
-            },
-            {
-              filename: file.name,
-            },
-          ),
-        );
-        continue;
-      }
-      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
-      uploaded = true;
-    }
-    if (uploaded) {
-      onDraftChange?.();
-    }
-  };
-
-  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragOver(true);
-  };
-
-  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-      setDragOver(false);
-    }
-  };
+  const showAddDialog = useGet(signals.showAddDialog$);
+  const setShowAddDialog = useSet(signals.setShowAddDialog$);
 
   // Connectors: connected (org-level) + authorized (agent-level) → available
   const connectorCatalogItemsLoadable = connectorReadState.catalogItems;
@@ -8065,276 +7922,24 @@ export function useZeroChatComposer(
     setSavingCustomConnectorId(null);
   };
 
-  const handleSend = () => {
-    const input = readInput();
-    const sendAction = resolveKeyboardSendAction({
-      canSend:
-        !actionsLoading &&
-        !submissionLoading &&
-        inputForSubmissionLoadable.state !== "loading" &&
-        uploadsReady &&
-        (input.trim().length > 0 || visibleAttachments.length > 0) &&
-        !submitBlocker,
-      sending,
-      queueWhileSending,
-      hasQueueHandler: onQueue !== undefined,
-    });
-    if (sendAction === "none") {
-      return;
-    }
-    if (sendAction === "send") {
-      // Fire-and-forget: request push permission on first send, never blocks
-      detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
-    }
-    const submitCurrentInput = async () => {
-      const submission = await readInputForSubmission(pageSignal);
-      const prompt = submission.prompt.trim();
-      if (prompt.length === 0 && visibleAttachments.length === 0) {
-        return;
-      }
-      if (sendAction === "send") {
-        onSend(
-          prompt,
-          composerTemplatePicker?.value,
-          submission.editorDocument,
-        );
-      } else {
-        onQueue?.(
-          prompt,
-          composerTemplatePicker?.value,
-          submission.editorDocument,
-        );
-      }
-    };
-    detach(submitCurrentInput(), Reason.DomCallback);
-  };
-
-  // Routes a button click to the queue path while the current thread is sending,
-  // otherwise to the normal send path.
-  const handleButtonSend = () => {
-    handleSend();
-  };
-
-  const sendModeLoadable = useLastLoadable(sendMode$);
-  const sendMode =
-    sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
-
-  const handleKeyDown = (e: KeyboardEventLike) => {
-    const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
-    // A fine pointer stands in for a hardware keyboard on tablets, but WebKit
-    // also reports one on iPhones, where every keystroke comes from the
-    // on-screen keyboard. An occluded visual viewport overrides that claim so
-    // plain Enter stays a newline there.
-    const isTouchOnlyDevice =
-      isTouchDevice &&
-      (!window.matchMedia("(any-pointer: fine)").matches ||
-        softwareKeyboardOccludesViewport());
-    const send = () => {
-      handleSend();
-    };
-    if (isTouchOnlyDevice) {
-      processShortcut({ "mod+enter": send }, e);
-      return;
-    }
-    processShortcut(
-      {
-        ...(sendMode === "enter" ? { enter: send } : { "mod+enter": send }),
-        ...(isTouchDevice && sendMode === "enter" ? { "mod+enter": send } : {}),
-        escape: () => {
-          (e.target as HTMLElement).blur();
-        },
-      },
-      e,
-    );
-  };
-
-  const handleFileSelect = () => {
-    fileInputEl?.click();
-  };
-
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) {
-      return;
-    }
-    let uploaded = false;
-    for (const file of files) {
-      if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
-        showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
-        continue;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        e.preventDefault();
-        toast.error(
-          t(
-            ($) => {
-              return $.chat.attachments.fileTooLarge;
-            },
-            {
-              filename: file.name,
-            },
-          ),
-        );
-        continue;
-      }
-      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
-      uploaded = true;
-    }
-    if (uploaded) {
-      onDraftChange?.();
-    }
-    e.target.value = "";
-  };
-
-  const handleModelPickerChange = (
-    selection: ModelProviderSelection | null,
-  ) => {
-    const nextUnsupported = getVisualAttachmentUnsupportedState(
-      modelPicker,
-      selection,
-    );
-    if (
-      nextUnsupported &&
-      attachments.some((attachment) => {
-        return isVisualAttachment(attachment);
-      })
-    ) {
-      showVisualAttachmentUnsupportedToast(nextUnsupported);
-    }
-    modelPicker?.onChange(selection);
-  };
-
   return (
     <>
-      <input
-        ref={setFileInputEl}
-        type="file"
-        className="hidden"
-        accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.tsv,.md,.json,.xml,.yaml,.yml,.html,.htm,.doc,.docx,.docm,.dotx,.dotm,.odt,.rtf,.xls,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ods,.ppt,.pptx,.pptm,.potx,.potm,.ppsx,.ppsm,.odp,.zip,.rar,.7z,.tar,.tar.gz,.tgz,.gz,.bz2,.xz,.pages,.numbers,.key,.heic,.heif,.tif,.tiff,.bmp,.parquet,.sqlite,.sqlite3,.db,.epub,.psd,.ai"
-        multiple
-        onChange={handleFileChange}
+      <ConnectorsPopoverButton
+        signals={signals}
+        agentId={agentRecordId}
+        agentDisplayName={displayName}
+        agentConnectors={agentConnectors}
+        agentCustomConnectors={agentCustomConnectors}
+        connectorsLoading={connectorsLoading}
+        savingConnectorSlug={savingConnectorSlug}
+        savingCustomConnectorId={savingCustomConnectorId}
+        computerUse={computerUse}
+        onOpenAddDialog={() => {
+          return setShowAddDialog(true);
+        }}
+        onToggle={handleToggle}
+        onToggleCustom={handleCustomToggle}
       />
-      <div className={cn("relative flex flex-col", className)}>
-        <PendingItemsStrip
-          items={queuedItems}
-          onRemove={onRemoveQueuedItem}
-          workflowEvents={workflowEventItems}
-          onRemoveWorkflowEvent={onRemoveWorkflowEvent}
-          cancellationRecoveryPending={cancellationRecoveryPending}
-          activeGoal={activeGoal}
-          onCancelGoal={onCancelActiveGoal}
-          onOpenGoal={
-            chatThreadId
-              ? () => {
-                  openGoalDialog(chatThreadId);
-                }
-              : undefined
-          }
-        />
-        <Card
-          className={cn(
-            "zero-composer relative z-10 overflow-visible",
-            dragOver && "outline outline-2 outline-blue-400/60",
-          )}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-        >
-          <CardContent className="p-0">
-            <div className="flex flex-col">
-              <ComposerTemplateAttachmentSync
-                composer={composer}
-                picker={composerTemplatePicker}
-                onDraftChange={onDraftChange}
-                runtime={composer.templatePreview}
-              />
-              {visibleAttachments.length > 0 && (
-                <AttachmentChips
-                  attachments={visibleAttachments}
-                  onRemove={(attachment) => {
-                    removeAttachment(attachment);
-                    onDraftChange?.();
-                  }}
-                />
-              )}
-              <ComposerInputSlot
-                composer={composer}
-                onDraftChange={onDraftChange}
-                sending={sending}
-                autoFocus={autoFocus}
-                enableMobileSingleLine={enableMobileSingleLine}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-              />
-              <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
-                <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
-                  <ComposerUploadControl
-                    onDraftChange={onDraftChange}
-                    onAppendText={appendComposerText}
-                    onSelectFile={handleFileSelect}
-                  />
-                  <ComposerTemplatePickerSlot
-                    composer={composer}
-                    picker={composerTemplatePicker}
-                  />
-                  <ComposerWorkflowPromptSlot
-                    onCreateWorkflowPrompt={onCreateWorkflowPrompt}
-                  />
-                  <ConnectorsPopoverButton
-                    signals={composerConnectors}
-                    agentId={agentRecordId}
-                    agentDisplayName={displayName}
-                    agentConnectors={agentConnectors}
-                    agentCustomConnectors={agentCustomConnectors}
-                    connectorsLoading={connectorsLoading}
-                    savingConnectorSlug={savingConnectorSlug}
-                    savingCustomConnectorId={savingCustomConnectorId}
-                    computerUse={computerUse}
-                    onOpenAddDialog={() => {
-                      return setShowAddDialog(true);
-                    }}
-                    onToggle={handleToggle}
-                    onToggleCustom={handleCustomToggle}
-                  />
-                </div>
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <ComposerModelPickerSlot
-                    modelPicker={modelPicker}
-                    modelPickerLoading={modelPickerLoading}
-                    submitBlocker={submitBlocker}
-                    onModelPickerChange={handleModelPickerChange}
-                  />
-                  <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
-                  <MicButton
-                    onTranscribed={(text) => {
-                      appendComposerText(text);
-                      onDraftChange?.();
-                    }}
-                  />
-                  <ComposerSendControl
-                    draft={draft}
-                    visibleAttachmentCount={visibleAttachments.length}
-                    uploadsReady={uploadsReady}
-                    submitBlocked={submitBlocker !== undefined}
-                    sending={sending}
-                    queueWhileSending={queueWhileSending}
-                    hasQueueHandler={onQueue !== undefined}
-                    onCancel={onCancel}
-                    actionsLoading={actionsLoading}
-                    submissionLoading={
-                      submissionLoading ||
-                      inputForSubmissionLoadable.state === "loading"
-                    }
-                    onSend={handleButtonSend}
-                  />
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <ActiveGoalObjectiveDialog threadId={chatThreadId} />
-        <WebsiteTemplatePreviewDialogSlot />
-      </div>
       {selectedConnectorSlug && (
         <ConnectModal
           selectedConnectorSlug={selectedConnectorSlug}
@@ -8361,7 +7966,7 @@ export function useZeroChatComposer(
       )}
       {showAddDialog && (
         <AddConnectorsDialog
-          signals={composerConnectors}
+          signals={signals}
           unconnected={unconnectedConnectors}
           unconnectedCustom={unconnectedCustomConnectors}
           busyConnectorSlug={busyConnectorSlug}
@@ -8380,9 +7985,79 @@ export function useZeroChatComposer(
   );
 }
 
-export function ZeroChatComposer(props: ZeroChatComposerProps) {
-  const connectorReadState = useComposerConnectorReadState(
-    props.composerConnectors,
+function ComposerCard({ signals }: { signals: ComposerSignals }) {
+  const dragOver = useGet(signals.dragOver$);
+  const setDragOver = useSet(signals.setDragOver$);
+  const uploadFile = useComposerFileUpload(signals);
+  const notifyDraftChanged = useComposerDraftChange(signals);
+
+  return (
+    <Card
+      className={cn(
+        "zero-composer relative z-10 overflow-visible",
+        dragOver && "outline outline-2 outline-blue-400/60",
+      )}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragOver(false);
+        let uploaded = false;
+        for (const file of event.dataTransfer.files) {
+          uploaded = uploadFile(file) || uploaded;
+        }
+        if (uploaded) {
+          notifyDraftChanged();
+        }
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+          setDragOver(false);
+        }
+      }}
+    >
+      <CardContent className="p-0">
+        <div className="flex flex-col">
+          <ComposerTemplateAttachmentSync signals={signals} />
+          <ComposerAttachments signals={signals} />
+          <ComposerInputSlot signals={signals} />
+          <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
+            <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
+              <ComposerUploadControl signals={signals} />
+              <ComposerTemplatePickerSlot signals={signals} />
+              <ComposerWorkflowPromptSlot signals={signals} />
+              <ComposerConnectorsSlot signals={signals} />
+            </div>
+            <div className="flex items-center gap-1 sm:gap-2">
+              <ComposerModelPickerSlot signals={signals} />
+              <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
+              <MicButton signals={signals} />
+              <ComposerSendControl signals={signals} />
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
-  return useZeroChatComposer(props, connectorReadState);
+}
+
+function ComposerSurface({ signals }: { signals: ComposerSignals }) {
+  return (
+    <>
+      <ComposerFileInput signals={signals} />
+      <div className="relative flex w-full min-w-0 flex-col">
+        <PendingItemsStrip signals={signals} />
+        <ComposerCard signals={signals} />
+        <ActiveGoalObjectiveDialog signals={signals} />
+        <ReplaceComposerDraftDialog signals={signals} />
+        <WebsiteTemplatePreviewDialogSlot signals={signals} />
+      </div>
+    </>
+  );
+}
+
+export function ZeroChatComposer({ signals }: ZeroChatComposerProps) {
+  return <ComposerSurface signals={signals} />;
 }

@@ -6,6 +6,7 @@ import {
   setChatThreadVirtualListElement$,
   setOverlayScrollViewport$,
 } from "../zero-page/zero-sidebar-state.ts";
+import { sidebarChatThreadItemSignalsRegistry$ } from "../chat-page/sidebar-chat-thread-item.ts";
 
 const context = testContext();
 
@@ -44,6 +45,16 @@ function setupVirtualThreadList({
 }
 
 describe("zero sidebar virtual thread scrolling", () => {
+  it("keeps one signals owner per listed thread", () => {
+    const registry = context.store.get(sidebarChatThreadItemSignalsRegistry$);
+    const first = registry.reconcile(["thread-a", "thread-b"]);
+    const second = registry.reconcile(["thread-b", "thread-c"]);
+
+    expect(second[0]).toBe(first[1]);
+    expect(registry.reconcile(["thread-b"])[0]).toBe(first[1]);
+    expect(registry.reconcile(["thread-a"])[0]).not.toBe(first[0]);
+  });
+
   it("aligns a hidden target row bottom with the viewport bottom when requested", () => {
     const viewportHeight = CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 2;
     const scrollViewport = setupVirtualThreadList({

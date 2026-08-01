@@ -11,25 +11,22 @@ import {
   r2ImageTransformUrl,
   type WebsiteTemplateItem,
 } from "@vm0/core";
-import {
-  closeWebsiteTemplatePreview$,
-  markWebsiteTemplatePreviewLoaded$,
-  websiteTemplatePreviewId$,
-  websiteTemplatePreviewLoaded$,
-} from "../../signals/zero-page/zero-chat-composer.ts";
+import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
 
 function WebsiteTemplatePreviewDialog({
   item,
   open,
   onOpenChange,
+  signals,
 }: {
   item: WebsiteTemplateItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
-  const previewLoaded = useGet(websiteTemplatePreviewLoaded$);
-  const markPreviewLoaded = useSet(markWebsiteTemplatePreviewLoaded$);
+  const previewLoaded = useGet(signals.websiteTemplatePreviewLoaded$);
+  const markPreviewLoaded = useSet(signals.markWebsiteTemplatePreviewLoaded$);
   const placeholderUrl = r2ImageTransformUrl(item.previewImageUrl, {
     width: 480,
     height: 270,
@@ -103,9 +100,13 @@ function WebsiteTemplatePreviewDialog({
   );
 }
 
-export function WebsiteTemplatePreviewDialogSlot() {
-  const previewId = useGet(websiteTemplatePreviewId$);
-  const closePreview = useSet(closeWebsiteTemplatePreview$);
+export function WebsiteTemplatePreviewDialogSlot({
+  signals,
+}: {
+  signals: ComposerSignals;
+}) {
+  const previewId = useGet(signals.websiteTemplatePreviewId$);
+  const closePreview = useSet(signals.closeWebsiteTemplatePreview$);
   const item =
     previewId === null ? null : (findWebsiteTemplateItem(previewId) ?? null);
 
@@ -117,6 +118,7 @@ export function WebsiteTemplatePreviewDialogSlot() {
     <WebsiteTemplatePreviewDialog
       item={item}
       open
+      signals={signals}
       onOpenChange={(open) => {
         if (!open) {
           closePreview();

@@ -25,9 +25,6 @@ import { openClaudeCodeDeviceAuthDialogPersonal$ } from "./settings/claude-code-
 import { openCodexDeviceAuthDialogPersonal$ } from "./settings/codex-device-auth.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { createComposerConnectorSignals } from "./zero-connectors.ts";
-export const setChatPageInput$ = command(({ get, set }, value: string) => {
-  set(get(talkDraft$).setInput$, value);
-});
 
 export const chatPageWorkflowComposer$ = computed((get) => {
   const features = get(featureSwitch$);

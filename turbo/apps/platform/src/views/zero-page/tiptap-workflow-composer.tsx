@@ -14,7 +14,7 @@ import { i18n } from "../../i18n/index.ts";
 import type { ComposerAgentSuggestion } from "../../signals/zero-page/composer-agent-suggestion-domain.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/zero-page/chat-thread-suggestion-domain.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import type { WorkflowComposerSignals } from "../../signals/zero-page/tiptap-workflow-composer.ts";
+import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
 import { ComposerMentionSuggestionMenu } from "./chat-thread-suggestion.tsx";
 import {
   buildComposerSlashWorkflows,
@@ -141,7 +141,7 @@ function WorkflowComposerPlaceholder({
   composer,
   sending,
 }: {
-  composer: WorkflowComposerSignals;
+  composer: ComposerSignals;
   sending: boolean | undefined;
 }) {
   useTranslation();
@@ -163,7 +163,7 @@ function WorkflowComposerPlaceholder({
 }
 
 interface TiptapWorkflowComposerProps {
-  readonly composer: WorkflowComposerSignals;
+  readonly signals: ComposerSignals;
   readonly onDraftChange: (() => void) | undefined;
   readonly sending: boolean | undefined;
   readonly autoFocus: boolean | undefined;
@@ -173,7 +173,7 @@ interface TiptapWorkflowComposerProps {
 }
 
 interface ComposerKeyDownContext {
-  readonly composer: WorkflowComposerSignals;
+  readonly composer: ComposerSignals;
   readonly suggestionCount: number;
   readonly selectedSuggestionIndex: number;
   readonly showSuggestionMenu: boolean;
@@ -283,7 +283,7 @@ function useComposerSuggestionMenu({
   composer,
   onKeyDown,
 }: {
-  readonly composer: WorkflowComposerSignals;
+  readonly composer: ComposerSignals;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
 }): ComposerSuggestionMenuState {
   const slashRange = useGet(composer.activeSlashRange$);
@@ -407,7 +407,7 @@ function useComposerSuggestionMenu({
 }
 
 export function TiptapWorkflowComposer({
-  composer,
+  signals,
   onDraftChange,
   sending,
   autoFocus,
@@ -415,6 +415,7 @@ export function TiptapWorkflowComposer({
   onPaste,
   singleLineOnMobile,
 }: TiptapWorkflowComposerProps) {
+  const composer = signals;
   const suggestionMenu = useComposerSuggestionMenu({
     composer,
     onKeyDown,
