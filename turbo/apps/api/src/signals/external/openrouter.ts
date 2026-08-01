@@ -70,7 +70,8 @@ export class OpenRouterRequestError extends Error {
     readonly status: number;
     readonly errorType?: string;
   }) {
-    super(args.message);
+    const errorType = args.errorType ? ` (${args.errorType})` : "";
+    super(`${args.message}: ${String(args.status)}${errorType}`);
     this.name = "OpenRouterRequestError";
     this.status = args.status;
     this.errorType = args.errorType;

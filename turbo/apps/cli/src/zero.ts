@@ -617,7 +617,8 @@ export function buildZeroHelpText(
  * Register commands with visibility based on ZERO_TOKEN capabilities.
  * Commands not granted by the token are registered as hidden via
  * Commander's public `addCommand(cmd, { hidden: true })` API.
- * When no ZERO_TOKEN is present, all commands remain visible.
+ * Without ZERO_TOKEN, globally available commands stay visible while
+ * run-only commands remain hidden.
  *
  * @param commands - override default commands (used in tests)
  */
