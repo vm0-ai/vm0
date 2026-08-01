@@ -180,8 +180,9 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
     const heldSessionStates = [
       {
         sessionId: "session-bdd-held",
+        reuseKey: "thread:cron-bdd-held",
         lastCompletedAt: new Date(now()).toISOString(),
-        workspaceCaches: [{ profile: "vm0/default" }],
+        reusableSandbox: { profile: "vm0/default" },
       },
     ];
 

@@ -31,6 +31,7 @@ import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import {
   runnerState,
   type RunnerHeldSessionState as PersistedRunnerHeldSessionState,
+  type RunnerHeldWorkspaceState as PersistedRunnerHeldWorkspaceState,
 } from "@vm0/db/schema/runner-state";
 import {
   and,
@@ -41,6 +42,7 @@ import {
   lt,
   lte,
   notInArray,
+  or,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -370,151 +372,56 @@ function isOfficialRunnerGroup(group: string): boolean {
 }
 
 function canonicalizeHeldSessionStates(
-  states: readonly HeldSessionState[] | undefined,
-): HeldSessionState[] | undefined {
-  return states?.map((state) => {
-    const cliAgentSessionId = state.sessionId;
+  states: readonly HeldSessionState[],
+): PersistedRunnerHeldSessionState[] {
+  return states.map((state) => {
     return {
-      sessionId: cliAgentSessionId,
-      ...(state.reuseKey ? { reuseKey: state.reuseKey } : {}),
+      sessionId: state.sessionId,
+      reuseKey: state.reuseKey,
       lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
-      ...(state.reusableSandbox
-        ? {
-            reusableSandbox: {
-              profile: state.reusableSandbox.profile,
-              ...(state.reusableSandbox.historyGenerationRunId
-                ? {
-                    historyGenerationRunId:
-                      state.reusableSandbox.historyGenerationRunId,
-                  }
-                : {}),
-            },
-          }
-        : {}),
-      ...(state.workspaceCaches
-        ? {
-            workspaceCaches: state.workspaceCaches.map((workspaceCache) => {
-              return {
-                profile: workspaceCache.profile,
-                ...(workspaceCache.workspaceAffinityVersion
-                  ? {
-                      workspaceAffinityVersion:
-                        workspaceCache.workspaceAffinityVersion,
-                    }
-                  : {}),
-              };
-            }),
-          }
-        : {}),
+      reusableSandbox: {
+        profile: state.reusableSandbox.profile,
+        ...(state.reusableSandbox.historyGenerationRunId
+          ? {
+              historyGenerationRunId:
+                state.reusableSandbox.historyGenerationRunId,
+            }
+          : {}),
+      },
     };
   });
 }
 
 function canonicalizeHeldWorkspaceStates(
-  states: readonly HeldWorkspaceState[] | undefined,
-): PersistedRunnerHeldSessionState[] | undefined {
-  return states?.map((state) => {
+  states: readonly HeldWorkspaceState[],
+): PersistedRunnerHeldWorkspaceState[] {
+  return states.map((state) => {
+    const [firstWorkspaceCache, ...remainingWorkspaceCaches] =
+      state.workspaceCaches;
+    if (!firstWorkspaceCache) {
+      throw new Error("Held workspace state requires a workspace cache");
+    }
     return {
       reuseKey: state.reuseKey,
       lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
-      workspaceCaches: state.workspaceCaches.map((workspaceCache) => {
-        return {
-          profile: workspaceCache.profile,
-          ...(workspaceCache.workspaceAffinityVersion
-            ? {
-                workspaceAffinityVersion:
-                  workspaceCache.workspaceAffinityVersion,
-              }
-            : {}),
-        };
-      }),
+      workspaceCaches: [
+        {
+          profile: firstWorkspaceCache.profile,
+          workspaceAffinityVersion:
+            firstWorkspaceCache.workspaceAffinityVersion,
+        },
+        ...remainingWorkspaceCaches.map((workspaceCache) => {
+          return {
+            profile: workspaceCache.profile,
+            workspaceAffinityVersion: workspaceCache.workspaceAffinityVersion,
+          };
+        }),
+      ],
     };
   });
 }
 
 const heartbeatBody$ = bodyResultOf(runnersHeartbeatContract.heartbeat);
-
-type RunnerHeartbeatBody = z.infer<
-  typeof runnersHeartbeatContract.heartbeat.body
->;
-
-async function upsertRunnerHeartbeatBeforeWorkspaceStateCutover(args: {
-  readonly db: Db;
-  readonly heartbeat: RunnerHeartbeatBody;
-  readonly heldSessionStates: readonly PersistedRunnerHeldSessionState[];
-  readonly lastSeenAt: Date;
-}): Promise<void> {
-  const { db, heartbeat, heldSessionStates, lastSeenAt } = args;
-
-  // The schema declares held_workspace_states before every database has
-  // migration 0789. Keep this expansion writer on the old target until #24388.
-  await db.execute(sql`
-    INSERT INTO "runner_state" (
-      "runner_id",
-      "runner_name",
-      "runner_group",
-      "heartbeat_generation",
-      "heartbeat_sequence",
-      "total_vcpu",
-      "total_memory_mb",
-      "max_concurrent",
-      "allocated_vcpu",
-      "allocated_memory_mb",
-      "running_count",
-      "admittable_profiles",
-      "held_session_states",
-      "mode",
-      "last_seen_at"
-    )
-    VALUES (
-      ${sql.param(heartbeat.runnerId, runnerState.runnerId)},
-      ${sql.param(heartbeat.runnerName, runnerState.runnerName)},
-      ${sql.param(heartbeat.group, runnerState.runnerGroup)},
-      ${sql.param(
-        heartbeat.snapshotGeneration,
-        runnerState.heartbeatGeneration,
-      )},
-      ${sql.param(heartbeat.snapshotSequence, runnerState.heartbeatSequence)},
-      ${sql.param(heartbeat.totalVcpu, runnerState.totalVcpu)},
-      ${sql.param(heartbeat.totalMemoryMb, runnerState.totalMemoryMb)},
-      ${sql.param(heartbeat.maxConcurrent, runnerState.maxConcurrent)},
-      ${sql.param(heartbeat.allocatedVcpu, runnerState.allocatedVcpu)},
-      ${sql.param(heartbeat.allocatedMemoryMb, runnerState.allocatedMemoryMb)},
-      ${sql.param(heartbeat.runningCount, runnerState.runningCount)},
-      ${sql.param(
-        heartbeat.admittableProfiles,
-        runnerState.admittableProfiles,
-      )},
-      ${sql.param(heldSessionStates, runnerState.heldSessionStates)},
-      ${sql.param(heartbeat.mode, runnerState.mode)},
-      ${sql.param(lastSeenAt, runnerState.lastSeenAt)}
-    )
-    ON CONFLICT ("runner_id") DO UPDATE SET
-      "runner_name" = EXCLUDED."runner_name",
-      "runner_group" = EXCLUDED."runner_group",
-      "heartbeat_generation" = EXCLUDED."heartbeat_generation",
-      "heartbeat_sequence" = EXCLUDED."heartbeat_sequence",
-      "total_vcpu" = EXCLUDED."total_vcpu",
-      "total_memory_mb" = EXCLUDED."total_memory_mb",
-      "max_concurrent" = EXCLUDED."max_concurrent",
-      "allocated_vcpu" = EXCLUDED."allocated_vcpu",
-      "allocated_memory_mb" = EXCLUDED."allocated_memory_mb",
-      "running_count" = EXCLUDED."running_count",
-      "admittable_profiles" = EXCLUDED."admittable_profiles",
-      "held_session_states" = EXCLUDED."held_session_states",
-      "mode" = EXCLUDED."mode",
-      "last_seen_at" = EXCLUDED."last_seen_at"
-    WHERE
-      "runner_state"."heartbeat_generation" <
-        EXCLUDED."heartbeat_generation"
-      OR (
-        "runner_state"."heartbeat_generation" =
-          EXCLUDED."heartbeat_generation"
-        AND "runner_state"."heartbeat_sequence" <
-          EXCLUDED."heartbeat_sequence"
-      )
-  `);
-}
 
 const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = await set(runnerAuth$, get(authorization$), signal);
@@ -533,18 +440,66 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage("Invalid runner group");
   }
 
-  const heldSessionStates: PersistedRunnerHeldSessionState[] = [
-    ...(canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? []),
-    ...(canonicalizeHeldWorkspaceStates(body.data.heldWorkspaceStates) ?? []),
-  ];
+  const heldSessionStates = canonicalizeHeldSessionStates(
+    body.data.heldSessionStates,
+  );
+  const heldWorkspaceStates = canonicalizeHeldWorkspaceStates(
+    body.data.heldWorkspaceStates,
+  );
+  const admittableProfiles = body.data.admittableProfiles;
   const currentDate = nowDate();
+  const snapshotOrder = {
+    generation: body.data.snapshotGeneration,
+    sequence: body.data.snapshotSequence,
+  };
   const db = set(writeDb$);
-  await upsertRunnerHeartbeatBeforeWorkspaceStateCutover({
-    db,
-    heartbeat: body.data,
-    heldSessionStates,
-    lastSeenAt: currentDate,
-  });
+  await db
+    .insert(runnerState)
+    .values({
+      runnerId: body.data.runnerId,
+      runnerName: body.data.runnerName,
+      runnerGroup: body.data.group,
+      heartbeatGeneration: snapshotOrder.generation,
+      heartbeatSequence: snapshotOrder.sequence,
+      totalVcpu: body.data.totalVcpu,
+      totalMemoryMb: body.data.totalMemoryMb,
+      maxConcurrent: body.data.maxConcurrent,
+      allocatedVcpu: body.data.allocatedVcpu,
+      allocatedMemoryMb: body.data.allocatedMemoryMb,
+      runningCount: body.data.runningCount,
+      admittableProfiles,
+      heldSessionStates,
+      heldWorkspaceStates,
+      mode: body.data.mode,
+      lastSeenAt: currentDate,
+    })
+    .onConflictDoUpdate({
+      target: runnerState.runnerId,
+      set: {
+        runnerName: body.data.runnerName,
+        runnerGroup: body.data.group,
+        heartbeatGeneration: snapshotOrder.generation,
+        heartbeatSequence: snapshotOrder.sequence,
+        totalVcpu: body.data.totalVcpu,
+        totalMemoryMb: body.data.totalMemoryMb,
+        maxConcurrent: body.data.maxConcurrent,
+        allocatedVcpu: body.data.allocatedVcpu,
+        allocatedMemoryMb: body.data.allocatedMemoryMb,
+        runningCount: body.data.runningCount,
+        admittableProfiles,
+        heldSessionStates,
+        heldWorkspaceStates,
+        mode: body.data.mode,
+        lastSeenAt: currentDate,
+      },
+      setWhere: or(
+        lt(runnerState.heartbeatGeneration, snapshotOrder.generation),
+        and(
+          eq(runnerState.heartbeatGeneration, snapshotOrder.generation),
+          lt(runnerState.heartbeatSequence, snapshotOrder.sequence),
+        ),
+      ),
+    });
   signal.throwIfAborted();
 
   await db
