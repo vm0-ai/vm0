@@ -230,15 +230,17 @@ export function createWorkflowsBddApi(context: TestContext) {
      */
     async connectConnector(
       actor: ApiTestUser,
-      type: "gmail" | "google-calendar" | "notion",
+      connectorSlug: "gmail" | "google-calendar" | "notion",
     ): Promise<void> {
-      const start = await connectors.startOauth(actor, type, "oauth");
+      const start = await connectors.startOauth(actor, connectorSlug, "oauth");
       const state = new URL(start.authorizationUrl).searchParams.get("state");
       if (!state) {
-        throw new Error(`Expected ${type} OAuth start URL to include state`);
+        throw new Error(
+          `Expected ${connectorSlug} OAuth start URL to include state`,
+        );
       }
-      await connectors.completeOauthCallback(type, {
-        code: `${type}-code`,
+      await connectors.completeOauthCallback(connectorSlug, {
+        code: `${connectorSlug}-code`,
         state,
       });
     },

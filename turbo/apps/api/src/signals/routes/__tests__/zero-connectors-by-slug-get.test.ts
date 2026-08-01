@@ -112,7 +112,7 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("returns 404 when no connector of that type exists", async () => {
+  it("returns 404 when no connector with that slug exists", async () => {
     const fixture = seedAuthenticatedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
