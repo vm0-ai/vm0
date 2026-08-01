@@ -252,7 +252,6 @@ interface CanonicalFeishuLaunchContext {
     readonly type: "file" | "image";
   }[];
   readonly chatType: "group" | "p2p" | "topic_group";
-  readonly tenantKey: string;
   readonly chatId: string;
   readonly messageId: string;
   readonly threadId: string;
@@ -285,7 +284,6 @@ function canonicalFeishuLaunchContext(args: {
       };
     }),
     chatType: args.message.chatType,
-    tenantKey: args.message.tenantKey,
     chatId: args.message.chatId,
     messageId: args.message.messageId,
     threadId:
