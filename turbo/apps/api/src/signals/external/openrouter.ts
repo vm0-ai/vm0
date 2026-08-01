@@ -89,7 +89,8 @@ function openRouterErrorType(value: unknown): string | undefined {
   const error = objectProperty(value, "error") ?? value;
   const metadata = objectProperty(error, "metadata");
   const errorType = objectProperty(metadata, "error_type");
-  return typeof errorType === "string" && errorType.length <= 128
+  return typeof errorType === "string" &&
+    /^[a-z][a-z0-9_]{0,127}$/u.test(errorType)
     ? errorType
     : undefined;
 }

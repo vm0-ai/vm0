@@ -391,13 +391,20 @@ describe("POST /api/zero/recognize", () => {
 
   it("maps provider image errors without exposing raw provider text", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    let providerCall = 0;
     server.use(
       http.post(OPENROUTER_URL, () => {
+        providerCall += 1;
         return HttpResponse.json(
           {
             error: {
               message: "raw-provider-secret-detail",
-              metadata: { error_type: "invalid_image" },
+              metadata: {
+                error_type:
+                  providerCall === 1
+                    ? "invalid_image"
+                    : "invalid_image\ninjected",
+              },
             },
           },
           { status: 400 },
@@ -419,6 +426,13 @@ describe("POST /api/zero/recognize", () => {
     const responseText = JSON.stringify(response.body);
     expect(responseText).toContain("INVALID_IMAGE");
     expect(responseText).not.toContain("raw-provider-secret-detail");
+
+    const malformedType = await requestRecognition({
+      token: zeroToken(actor),
+      fileId,
+    });
+    expect(malformedType.status).toBe(502);
+    expect(JSON.stringify(malformedType.body)).not.toContain("injected");
     await expectNoUsage(actor);
   });
 
