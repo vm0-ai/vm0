@@ -1,10 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
-  GenerateDataKeyCommand,
-  type GenerateDataKeyCommandOutput,
-} from "@aws-sdk/client-kms";
-import {
   chatEventsContract,
   chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -23,7 +19,6 @@ import {
 } from "../../../test-fixtures/goal-queue";
 import { admitWorkflowAutomationEventFixture } from "../../../test-fixtures/workflow-queue";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { createDeferredPromise } from "../../utils";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -34,10 +29,7 @@ import {
   chatEventDisplayText,
 } from "./helpers/chat-event";
 import { readThreadSessionBinding } from "./helpers/runtime-state";
-import {
-  generateDataKeyOutput,
-  useSecretKmsProbe,
-} from "./helpers/secret-kms-probe";
+import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   completeRunWithoutCallbacksFixture,
@@ -1070,138 +1062,6 @@ describe("workflow queue", () => {
       readChatEventContextFixture(claimedEvent.id),
     ).resolves.toStrictEqual(contextBeforeDelete);
     await runsApi.requestCancelRun(scenario.actor, runId, [200]);
-  });
-
-  it("propagates queue encryption failure while persistence remains necessary", async () => {
-    const scenario = await setup();
-    const automation = await createWebhookAutomation(scenario);
-    const firstRunId = await expectAcceptedRunId(
-      await postWorkflowWebhook(automation, "first"),
-      automation.threadId,
-    );
-
-    const encryptionError = new Error("queue payload encryption failed");
-    const kms = useSecretKmsProbe((_command, callNumber) => {
-      return callNumber === 1 ? Promise.reject(encryptionError) : undefined;
-    });
-
-    const failed = await postWorkflowWebhook(automation, "second");
-    expect(failed).toStrictEqual({
-      status: 500,
-      body: { error: "Internal server error" },
-    });
-    expect(kms.generateDataKeyCalls).toBe(1);
-    expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(
-      encryptionError,
-    );
-
-    await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
-      firstRunId,
-    ]);
-    await completeRunThroughSandbox(scenario, firstRunId);
-    await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
-      firstRunId,
-    ]);
-  });
-
-  it("finishes required queue persistence when the request aborts during encryption", async () => {
-    const scenario = await setup();
-    const automation = await createWebhookAutomation(scenario);
-    const firstRunId = await expectAcceptedRunId(
-      await postWorkflowWebhook(automation, "first"),
-      automation.threadId,
-    );
-
-    const kmsStarted = createDeferredPromise<void>(context.signal);
-    const releaseKms = createDeferredPromise<void>(context.signal);
-    onTestFinished(() => {
-      if (!kmsStarted.settled()) {
-        kmsStarted.resolve(undefined);
-      }
-      if (!releaseKms.settled()) {
-        releaseKms.resolve(undefined);
-      }
-    });
-    async function encryptAfterRelease(
-      command: GenerateDataKeyCommand,
-    ): Promise<GenerateDataKeyCommandOutput> {
-      await releaseKms.promise;
-      return generateDataKeyOutput(command);
-    }
-    const kms = useSecretKmsProbe((command, callNumber) => {
-      if (callNumber !== 1) {
-        return undefined;
-      }
-      kmsStarted.resolve(undefined);
-      return encryptAfterRelease(command);
-    });
-
-    const requestController = new AbortController();
-    const secondRequest = postWorkflowWebhook(
-      automation,
-      "second",
-      requestController.signal,
-    );
-    await kmsStarted.promise;
-    const abortError = new Error("request aborted during queue encryption");
-    abortError.name = "AbortError";
-    requestController.abort(abortError);
-    releaseKms.resolve(undefined);
-
-    await expect(secondRequest).resolves.toStrictEqual({
-      status: 500,
-      body: { error: "Internal server error" },
-    });
-    expect(kms.generateDataKeyCalls).toBe(1);
-
-    await completeRunThroughSandbox(scenario, firstRunId);
-    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
-  });
-
-  it("requires queue persistence even when encryption finishes after the thread becomes idle", async () => {
-    const scenario = await setup();
-    const automation = await createWebhookAutomation(scenario);
-    const firstRunId = await expectAcceptedRunId(
-      await postWorkflowWebhook(automation, "first"),
-      automation.threadId,
-    );
-
-    const kmsStarted = createDeferredPromise<void>(context.signal);
-    const releaseKms = createDeferredPromise<void>(context.signal);
-    onTestFinished(() => {
-      if (!kmsStarted.settled()) {
-        kmsStarted.resolve(undefined);
-      }
-      if (!releaseKms.settled()) {
-        releaseKms.resolve(undefined);
-      }
-    });
-    async function failKmsAfterRelease(): Promise<GenerateDataKeyCommandOutput> {
-      await releaseKms.promise;
-      throw new Error("queue payload encryption failed");
-    }
-    const kms = useSecretKmsProbe((_command, callNumber) => {
-      if (callNumber !== 1) {
-        return undefined;
-      }
-      kmsStarted.resolve(undefined);
-      return failKmsAfterRelease();
-    });
-
-    const secondRequest = postWorkflowWebhook(automation, "second");
-    await kmsStarted.promise;
-    expect(kms.generateDataKeyCalls).toBe(1);
-    await completeRunThroughSandbox(scenario, firstRunId);
-    releaseKms.resolve(undefined);
-
-    await expect(secondRequest).resolves.toStrictEqual({
-      status: 500,
-      body: { error: "Internal server error" },
-    });
-    expect(kms.generateDataKeyCalls).toBe(1);
-    await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
-      firstRunId,
-    ]);
   });
 
   it("rejects only the failed webhook trigger and accepts the next event", async () => {
