@@ -1520,7 +1520,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     }
     await flushWaitUntilForTest();
 
-    let state = await integrations.readSlackTestState(teamId);
+    const state = await integrations.readSlackTestState(teamId);
     expect(state.chat_thread_routes).toHaveLength(1);
     expect(state.chat_thread_routes[0]).toMatchObject({
       channelId,
