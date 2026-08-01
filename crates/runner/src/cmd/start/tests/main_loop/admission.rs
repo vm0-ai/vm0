@@ -448,8 +448,7 @@ async fn generation_protected_different_idle_sandbox_defers_before_claim() {
     assert_eq!(
         pool.held_session_states()[0]
             .reusable_sandbox
-            .as_ref()
-            .and_then(|sandbox| sandbox.history_generation_run_id),
+            .history_generation_run_id,
         Some(held_generation_run_id),
         "the different generation must remain available for fallback after expiry"
     );

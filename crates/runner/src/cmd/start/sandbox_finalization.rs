@@ -37,7 +37,7 @@ use crate::run_cancellation::RunCancellationHandle;
 use crate::status::StatusTracker;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::reuse_key_kind;
-use crate::types::{HeldWorkspaceState, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheState};
+use crate::types::{HeldWorkspaceState, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheCapability};
 use crate::workspace_image_cache::{
     WorkspaceCacheTerminalStatus, WorkspaceImageLease, WorkspaceImagePromotionContext,
     WorkspaceImagePromotionRequest,
@@ -70,9 +70,9 @@ fn mark_workspace_cache_snapshot_promoted(
         snapshot.upsert_workspace_cache_state(HeldWorkspaceState {
             reuse_key: reuse_key.to_owned(),
             last_completed_at: completed_at.to_owned(),
-            workspace_caches: vec![WorkspaceCacheState {
+            workspace_caches: vec![WorkspaceCacheCapability {
                 profile: profile_name.to_owned(),
-                workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
             }],
         });
     }

@@ -15,7 +15,7 @@ use crate::ids::RunId;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::{
     HeldWorkspaceState, MAX_HELD_WORKSPACE_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
-    MAX_WORKSPACE_CACHES_PER_REUSE_KEY, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheState,
+    MAX_WORKSPACE_CACHES_PER_REUSE_KEY, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheCapability,
 };
 
 use super::entry::is_cache_key_name;
@@ -648,9 +648,9 @@ impl SessionWorkspaceCache {
                 states.push(HeldWorkspaceState {
                     reuse_key: metadata.reuse_key,
                     last_completed_at: metadata.last_completed_at,
-                    workspace_caches: vec![WorkspaceCacheState {
+                    workspace_caches: vec![WorkspaceCacheCapability {
                         profile: metadata.profile_name,
-                        workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                        workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
                     }],
                 });
             }
@@ -1524,7 +1524,7 @@ pub(crate) fn cap_held_workspace_states(
 ) -> Vec<HeldWorkspaceState> {
     struct ObservedWorkspaceState {
         last_completed_at: String,
-        workspace_caches: BTreeMap<String, (String, WorkspaceCacheState)>,
+        workspace_caches: BTreeMap<String, (String, WorkspaceCacheCapability)>,
     }
 
     let mut by_reuse_key = BTreeMap::<String, ObservedWorkspaceState>::new();

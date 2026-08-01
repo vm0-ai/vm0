@@ -25,8 +25,7 @@ use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key, session_work
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{
     HeldWorkspaceState, MAX_HELD_WORKSPACE_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
-    MAX_WORKSPACE_CACHES_PER_REUSE_KEY, WORKSPACE_AFFINITY_VERSION,
-    WorkspaceCacheState as HeldWorkspaceCacheState,
+    MAX_WORKSPACE_CACHES_PER_REUSE_KEY, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheCapability,
 };
 
 #[test]
@@ -104,18 +103,18 @@ fn cap_held_workspace_states_dedupes_and_keeps_newest() {
         .map(|index| HeldWorkspaceState {
             reuse_key: format!("sess-{index:04}"),
             last_completed_at: timestamp_for_index(index),
-            workspace_caches: vec![HeldWorkspaceCacheState {
+            workspace_caches: vec![WorkspaceCacheCapability {
                 profile: TEST_PROFILE_NAME.to_owned(),
-                workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
             }],
         })
         .collect();
     states.push(HeldWorkspaceState {
         reuse_key: "sess-0001".into(),
         last_completed_at: timestamp_for_index(MAX_HELD_WORKSPACE_STATES + 1),
-        workspace_caches: vec![HeldWorkspaceCacheState {
+        workspace_caches: vec![WorkspaceCacheCapability {
             profile: TEST_PROFILE_NAME.to_owned(),
-            workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+            workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
         }],
     });
 
@@ -143,9 +142,9 @@ fn cap_held_workspace_states_bounds_nested_resources() {
         .map(|index| HeldWorkspaceState {
             reuse_key: "sess-multi".into(),
             last_completed_at: timestamp_for_index(index),
-            workspace_caches: vec![HeldWorkspaceCacheState {
+            workspace_caches: vec![WorkspaceCacheCapability {
                 profile: format!("vm0/profile-{index:02}"),
-                workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
             }],
         })
         .collect();
@@ -165,9 +164,9 @@ fn cap_held_workspace_states_bounds_nested_resources() {
             reuse_key: format!("sess-{index:04}"),
             last_completed_at: timestamp_for_index(index),
             workspace_caches: (0..8)
-                .map(|profile| HeldWorkspaceCacheState {
+                .map(|profile| WorkspaceCacheCapability {
                     profile: format!("vm0/profile-{profile}"),
-                    workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                    workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
                 })
                 .collect(),
         })
@@ -241,13 +240,13 @@ async fn held_workspace_states_for_profiles_filters_and_aggregates_current_ident
             reuse_key: reuse_key.into(),
             last_completed_at: "2026-05-01T00:00:02.000Z".into(),
             workspace_caches: vec![
-                HeldWorkspaceCacheState {
+                WorkspaceCacheCapability {
                     profile: "vm0/default".into(),
-                    workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                    workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
                 },
-                HeldWorkspaceCacheState {
+                WorkspaceCacheCapability {
                     profile: "vm0/large".into(),
-                    workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                    workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
                 },
             ],
         }]

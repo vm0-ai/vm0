@@ -1273,10 +1273,10 @@ impl IdlePool {
                         session_id: entry.cli_agent_session_id().to_owned(),
                         reuse_key: reuse_key.clone(),
                         last_completed_at: last_completed_at.clone(),
-                        reusable_sandbox: Some(ReusableSandboxState {
+                        reusable_sandbox: ReusableSandboxState {
                             profile: entry.metadata.profile_name.clone(),
                             history_generation_run_id: entry.metadata.history_generation_run_id,
-                        }),
+                        },
                     })
             })
             .collect();
@@ -2131,19 +2131,19 @@ mod tests {
                     session_id: "sess-a".to_string(),
                     reuse_key: "sess-a".to_string(),
                     last_completed_at: "2026-05-28T00:00:00.000Z".to_string(),
-                    reusable_sandbox: Some(ReusableSandboxState {
+                    reusable_sandbox: ReusableSandboxState {
                         profile: "vm0/default".to_string(),
                         history_generation_run_id: Some(history_generation_run_id),
-                    }),
+                    },
                 },
                 HeldSessionState {
                     session_id: "sess-b".to_string(),
                     reuse_key: "sess-b".to_string(),
                     last_completed_at: "2026-05-28T00:00:01.000Z".to_string(),
-                    reusable_sandbox: Some(ReusableSandboxState {
+                    reusable_sandbox: ReusableSandboxState {
                         profile: "vm0/default".to_string(),
                         history_generation_run_id: None,
-                    }),
+                    },
                 },
             ],
         );
