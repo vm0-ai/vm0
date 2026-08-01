@@ -125,6 +125,42 @@ async fn submit_serializes_feature_flags_and_identity_fields() {
 }
 
 #[tokio::test]
+async fn submit_keeps_session_only_job_without_reuse_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().to_path_buf());
+    let group = "test/group";
+    let group_dir = home.groups_dir().join(group);
+    let watcher = tokio::spawn(wait_for_job_and_write_success(
+        group_dir,
+        crate::profile::DEFAULT_PROFILE.to_owned(),
+    ));
+
+    let code = run_submit_with_home(
+        SubmitArgs {
+            group: group.into(),
+            prompt: "hello".into(),
+            cli_agent_type: "claude-code".into(),
+            profile: None,
+            chat_thread_id: None,
+            session_id: Some("sess-123".into()),
+            feature_flags: vec![],
+            env: vec![],
+            secret_env: vec![],
+            timeout: 5,
+            active_inputs: vec![],
+        },
+        home,
+    )
+    .await
+    .unwrap();
+    let request = watcher.await.unwrap();
+
+    assert_eq!(code, ExitCode::SUCCESS);
+    assert_eq!(request.session_id.as_deref(), Some("sess-123"));
+    assert!(request.reuse_key.is_none());
+}
+
+#[tokio::test]
 async fn submit_serializes_env_and_secret_env() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
