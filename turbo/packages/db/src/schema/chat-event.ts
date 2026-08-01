@@ -70,8 +70,7 @@ export function chatEventTerminalPredicate(eventType: SQLWrapper): SQL {
  * final sweep.
  *
  * Terminal-state assistant rows use the `run.completed | run.failed |
- * run.cancelled` event types. The legacy `run_lifecycle_event` column remains
- * during rollout step 3, but new writers leave it null.
+ * run.cancelled` event types.
  *
  * Summaries (tool-use activity) are NOT stored here — the client fetches
  * them in real-time from the telemetry/logs endpoint for active runs.
@@ -128,8 +127,6 @@ export const chatEvents = pgTable(
     userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),
     thinking: text("thinking"),
     error: text("error"),
-    /** Legacy terminal marker retained through rollout step 3. */
-    runLifecycleEvent: text("run_lifecycle_event"),
     sequenceNumber: integer("sequence_number"),
     runEventId: text("run_event_id"), // Anthropic message ID from event.message.id (e.g. "msg_01abc...")
     /** Strictly increasing position within the owning chat thread. */
@@ -150,9 +147,6 @@ export const chatEvents = pgTable(
         table.chatThreadId,
         table.createdAt,
       ),
-      index("idx_chat_events_thread_run_finish_created")
-        .on(table.chatThreadId, table.createdAt.desc())
-        .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
       index("idx_chat_events_thread_run_terminal_created")
         .on(table.chatThreadId, table.createdAt.desc())
         .where(chatEventTerminalPredicate(table.eventType)),
@@ -185,9 +179,6 @@ export const chatEvents = pgTable(
         table.chatThreadId,
         table.seqId,
       ),
-      uniqueIndex("chat_events_run_lifecycle_unique")
-        .on(table.runId)
-        .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
       uniqueIndex("chat_events_run_terminal_unique")
         .on(table.runId)
         .where(chatEventTerminalPredicate(table.eventType)),

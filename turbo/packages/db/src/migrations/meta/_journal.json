@@ -5552,6 +5552,13 @@
       "when": 1785567354104,
       "tag": "0792_romantic_cable",
       "breakpoints": true
+    },
+    {
+      "idx": 793,
+      "version": "7",
+      "when": 1785574307618,
+      "tag": "0793_contract_chat_event_run_lifecycle_event",
+      "breakpoints": true
     }
   ]
 }
