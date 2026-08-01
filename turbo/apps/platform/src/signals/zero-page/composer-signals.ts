@@ -7,13 +7,22 @@ import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-pr
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef, withCleanup } from "../utils.ts";
 import { isVisualAttachment } from "../chat-page/resolve-draft-attachments.ts";
+import type {
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../connector-domain.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ZeroChatAttachment } from "./chat-draft.ts";
 import type {
   WorkflowComposerSignals,
   WorkflowComposerSubmissionSnapshot,
 } from "./tiptap-workflow-composer.ts";
-import type { ComposerConnectorSignals } from "./zero-connectors.ts";
+import {
+  createComposerConnectorSignals,
+  type ComposerConnectorAuthorizationState,
+  type ComposerConnectorAuthorizationTarget,
+  type ComposerConnectorUiState,
+} from "./zero-connectors.ts";
 import {
   createComposerUiSignals,
   type ComposerUiSignals,
@@ -51,13 +60,29 @@ export type ComposerPendingEvent =
     };
 
 export interface ComposerSignals
-  extends
-    FlatWorkflowComposerSignals,
-    ComposerConnectorSignals,
-    ComposerUiSignals {
+  extends FlatWorkflowComposerSignals, ComposerUiSignals {
   readonly agent$: Computed<Promise<ZeroAgentResponse>>;
   readonly mobileSingleLine: boolean;
   readonly sending$: Computed<Promise<boolean>>;
+
+  readonly connectorAuthorization$: Computed<
+    Promise<ComposerConnectorAuthorizationState>
+  >;
+  readonly setConnectorAuthorization$: Command<
+    Promise<void>,
+    [ComposerConnectorAuthorizationTarget, boolean, AbortSignal]
+  >;
+  readonly connectorUiState$: Computed<ComposerConnectorUiState>;
+  readonly updateConnectorUiState$: Command<
+    void,
+    [Partial<ComposerConnectorUiState>]
+  >;
+  readonly connectorPermissionMetadata$: Computed<
+    Promise<PlatformConnectorPermissionMetadata | null>
+  >;
+  readonly connectorPermissionGrants$: Computed<
+    Promise<readonly PlatformUserPermissionGrant[]>
+  >;
 
   readonly setDraftInput$: Command<void, [string]>;
   readonly generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
@@ -97,6 +122,8 @@ export interface ComposerSignals
     Promise<void>,
     [boolean, AbortSignal]
   >;
+  readonly computerUseDownloadDialogOpen$: Computed<boolean>;
+  readonly setComputerUseDownloadDialogOpen$: Command<void, [boolean]>;
 
   readonly primaryAction$: Computed<Promise<ComposerPrimaryAction>>;
   readonly submitCurrentInput$: Command<
@@ -127,7 +154,6 @@ interface CreateComposerSignalsOptions {
   readonly draft: DraftSignals;
   readonly generationTemplate$?: ComposerSignals["generationTemplate$"];
   readonly setGenerationTemplate$?: ComposerSignals["setGenerationTemplate$"];
-  readonly connectors: ComposerConnectorSignals;
   readonly mobileSingleLine: boolean;
   readonly actionsLoading$: Computed<Promise<boolean>>;
   readonly sending$: ComposerSignals["sending$"];
@@ -223,6 +249,25 @@ function hasVisibleAttachment(
   });
 }
 
+function createComputerUseUiSignals(): Pick<
+  ComposerSignals,
+  "computerUseDownloadDialogOpen$" | "setComputerUseDownloadDialogOpen$"
+> {
+  const internalDownloadDialogOpen$ = state(false);
+  const computerUseDownloadDialogOpen$ = computed((get): boolean => {
+    return get(internalDownloadDialogOpen$);
+  });
+  const setComputerUseDownloadDialogOpen$ = command(
+    ({ set }, open: boolean): void => {
+      set(internalDownloadDialogOpen$, open);
+    },
+  );
+  return {
+    computerUseDownloadDialogOpen$,
+    setComputerUseDownloadDialogOpen$,
+  };
+}
+
 export function createComposerSignals(
   options: CreateComposerSignalsOptions,
 ): ComposerSignals {
@@ -231,7 +276,8 @@ export function createComposerSignals(
 
   return {
     ...flatWorkflowComposerSignals(options.workflowComposer),
-    ...options.connectors,
+    ...createComposerConnectorSignals(options.agent$),
+    ...createComputerUseUiSignals(),
     ...createComposerUiSignals(),
     ...submission,
     agent$: options.agent$,

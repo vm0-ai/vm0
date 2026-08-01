@@ -24,7 +24,6 @@ import { personalModelProvider$ } from "./model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "./settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialogPersonal$ } from "./settings/codex-device-auth.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
-import { createComposerConnectorSignals } from "./zero-connectors.ts";
 
 export const chatPageWorkflowComposer$ = computed((get) => {
   const features = get(featureSwitch$);
@@ -38,10 +37,6 @@ export const chatPageWorkflowComposer$ = computed((get) => {
     { autoFocus: true },
   );
 });
-
-export const chatPageComposerConnectors = createComposerConnectorSignals(
-  currentChatAgentRecordId$,
-);
 
 const internalTaglineIndex$ = state(Math.floor(Math.random() * 18));
 export const reloadTagline$ = command(({ set }) => {

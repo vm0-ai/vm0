@@ -22,7 +22,6 @@ import {
   type ComposerSubmission,
 } from "./composer-signals.ts";
 import {
-  chatPageComposerConnectors,
   chatPageModelSelection$,
   chatPageSelectedModelOauthAvailable$,
   chatPageWorkflowComposer$,
@@ -228,7 +227,6 @@ export const agentChatComposerSignals$ = computed((get) => {
     draft,
     generationTemplate$: newThreadGenerationTemplate$,
     setGenerationTemplate$: setNewThreadGenerationTemplate$,
-    connectors: chatPageComposerConnectors,
     mobileSingleLine: false,
     actionsLoading$,
     sending$: idle$,

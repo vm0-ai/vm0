@@ -12,6 +12,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
@@ -2147,7 +2148,9 @@ describe("chat composer models", () => {
 
   it("keeps connector access resolved across same-agent chat navigation", async () => {
     const unexpectedReload = context.mocks.deferred<void>();
+    const unexpectedCustomReload = context.mocks.deferred<void>();
     let authorizationRequestCount = 0;
+    let customAuthorizationRequestCount = 0;
 
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
@@ -2171,6 +2174,16 @@ describe("chat composer models", () => {
         return respond(200, { enabledConnectorSlugs: ["github"] });
       },
     );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      async ({ respond, withSignal }) => {
+        customAuthorizationRequestCount += 1;
+        if (customAuthorizationRequestCount > 1) {
+          await withSignal(unexpectedCustomReload.promise);
+        }
+        return respond(200, { enabledIds: [] });
+      },
+    );
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
@@ -2180,6 +2193,7 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(initialConnectorButton.querySelector("img")).not.toBeNull();
       expect(authorizationRequestCount).toBe(1);
+      expect(customAuthorizationRequestCount).toBe(1);
     });
 
     await navigateToChatThread(OTHER_AGENT_THREAD_ID);
@@ -2198,10 +2212,13 @@ describe("chat composer models", () => {
     const connectorStatusStayedResolved =
       screen.queryByLabelText("Remove GitHub") !== null;
     const requestCountAfterNavigation = authorizationRequestCount;
+    const customRequestCountAfterNavigation = customAuthorizationRequestCount;
     unexpectedReload.resolve();
+    unexpectedCustomReload.resolve();
 
     expect(connectorStatusStayedResolved).toBeTruthy();
     expect(requestCountAfterNavigation).toBe(1);
+    expect(customRequestCountAfterNavigation).toBe(1);
     expect(nextConnectorButton.querySelector("img")).not.toBeNull();
   });
 

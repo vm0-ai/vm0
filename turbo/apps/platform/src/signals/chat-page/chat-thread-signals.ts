@@ -19,7 +19,6 @@ import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { ThreadSidebarSignals } from "./thread-sidebar.ts";
 import type { MailDraftSignals } from "./mail-draft.ts";
 import type { BrowserSessionSignals } from "./browser-session-block.ts";
-import type { ComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
 import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
@@ -141,7 +140,6 @@ export interface ChatThreadSignals {
   awayFromBottom$: Computed<boolean>;
   draft: DraftSignals;
   workflowComposer: WorkflowComposerSignals;
-  composerConnectors: ComposerConnectorSignals;
   composer: ComposerSignals;
   composerFileInput$: Computed<HTMLElement | null>;
   setComposerFileInput$: Command<

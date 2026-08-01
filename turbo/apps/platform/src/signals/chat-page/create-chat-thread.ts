@@ -180,10 +180,6 @@ import {
 import { createChatThreadContainerSignals } from "./chat-thread-container.ts";
 import { createAssistantErrorRecoverySignals } from "./assistant-error-recovery.ts";
 import {
-  createComposerConnectorSignals,
-  type ComposerConnectorAuthorizationSignals,
-} from "../zero-page/zero-connectors.ts";
-import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
   textToMessageDocument,
@@ -4749,9 +4745,6 @@ interface CreateThreadComposerOptions {
   readonly agentId$: Computed<string | null>;
   readonly hasEvents$: Computed<Promise<boolean>>;
   readonly inlineTemplatesEnabled: boolean;
-  readonly connectorAuthorization:
-    | ComposerConnectorAuthorizationSignals
-    | undefined;
 }
 
 function createThreadComposer(options: CreateThreadComposerOptions) {
@@ -4767,10 +4760,6 @@ function createThreadComposer(options: CreateThreadComposerOptions) {
   );
   return {
     workflowComposer,
-    composerConnectors: createComposerConnectorSignals(
-      options.agentId$,
-      options.connectorAuthorization,
-    ),
     focusInput$: workflowComposer.focus$,
   };
 }
@@ -4799,7 +4788,6 @@ interface ThreadRootComposerOptions {
 interface CreateChatThreadSignalsOptions {
   readonly initialOptimisticEntries?: readonly OptimisticChatEventEntry[];
   readonly inlineTemplatesEnabled?: boolean;
-  readonly connectorAuthorization?: ComposerConnectorAuthorizationSignals;
 }
 
 function createThreadSubmitMessageSignal(options: ThreadRootComposerOptions) {
@@ -4961,7 +4949,6 @@ function createThreadRootComposer(options: ThreadRootComposerOptions) {
     agent$: options.threadOwned.agent$,
     workflowComposer: options.composer.workflowComposer,
     draft: options.draft,
-    connectors: options.composer.composerConnectors,
     mobileSingleLine: true,
     actionsLoading$,
     sending$,
@@ -5030,7 +5017,6 @@ export function createChatThreadSignals(
     agentId$: threadOwned.agentId$,
     hasEvents$: events.hasEvents$,
     inlineTemplatesEnabled: options.inlineTemplatesEnabled ?? false,
-    connectorAuthorization: options.connectorAuthorization,
   });
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft, dataSource);
