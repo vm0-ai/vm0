@@ -131,6 +131,17 @@ type ChatEventDisplayContext =
         readonly messageId: string;
         readonly isDm: boolean;
         readonly messageThreadId: number | null;
+        readonly messageText: string;
+        readonly threadContext: string;
+        readonly rootMessageId: string | null;
+        readonly thinkingMessageId: string | null;
+        readonly userLinkId: string;
+        readonly userLinkKind: "custom" | "official";
+        readonly chatType: string;
+        readonly senderUserId: string | null;
+        readonly senderDisplayName: string | null;
+        readonly senderUsername: string | null;
+        readonly senderLanguage: string | null;
       };
       readonly githubContext?: never;
       readonly morningBriefContext?: never;
@@ -482,6 +493,17 @@ type NewDisplayContext =
       readonly messageId: string;
       readonly isDm: boolean;
       readonly messageThreadId: number | null;
+      readonly messageText: string;
+      readonly threadContext: string;
+      readonly rootMessageId: string | null;
+      readonly thinkingMessageId: string | null;
+      readonly userLinkId: string;
+      readonly userLinkKind: "custom" | "official";
+      readonly chatType: string;
+      readonly senderUserId: string | null;
+      readonly senderDisplayName: string | null;
+      readonly senderUsername: string | null;
+      readonly senderLanguage: string | null;
     }
   | {
       readonly type: "github";
@@ -789,6 +811,33 @@ async function insertAgentphoneDisplayContext(
   });
 }
 
+async function insertTelegramDisplayContext(
+  tx: ChatEventWriteTransaction,
+  context: Extract<NewDisplayContext, { readonly type: "telegram" }>,
+  createdAt: Date,
+): Promise<void> {
+  await tx.insert(chatTelegramContext).values({
+    id: context.id,
+    chatThreadId: context.chatThreadId,
+    chatId: context.chatId,
+    messageId: context.messageId,
+    isDm: context.isDm,
+    messageThreadId: context.messageThreadId,
+    messageText: context.messageText,
+    threadContext: context.threadContext,
+    rootMessageId: context.rootMessageId,
+    thinkingMessageId: context.thinkingMessageId,
+    userLinkId: context.userLinkId,
+    userLinkKind: context.userLinkKind,
+    chatType: context.chatType,
+    senderUserId: context.senderUserId,
+    senderDisplayName: context.senderDisplayName,
+    senderUsername: context.senderUsername,
+    senderLanguage: context.senderLanguage,
+    createdAt,
+  });
+}
+
 async function insertDisplayContext(
   tx: ChatEventWriteTransaction,
   context: NewDisplayContext,
@@ -864,15 +913,7 @@ async function insertDisplayContext(
     return;
   }
   if (context.type === "telegram") {
-    await tx.insert(chatTelegramContext).values({
-      id: context.id,
-      chatThreadId: context.chatThreadId,
-      chatId: context.chatId,
-      messageId: context.messageId,
-      isDm: context.isDm,
-      messageThreadId: context.messageThreadId,
-      createdAt,
-    });
+    await insertTelegramDisplayContext(tx, context, createdAt);
     return;
   }
   if (context.type === "github") {
