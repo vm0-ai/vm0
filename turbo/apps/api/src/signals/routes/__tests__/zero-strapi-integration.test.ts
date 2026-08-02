@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
 import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { fnv1a } from "@vm0/core/identity-hash";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -21,10 +22,70 @@ const workflows = createWorkflowsBddApi(context);
 const runs = createRunsApi(context);
 
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
-// Synthetic tenant whose FNV-1a value matches the staff rollout allowlist, so
-// tenant isolation can be exercised entirely through external API behavior.
-const SECOND_ROLLOUT_ORG_ID = "org_j3tn5H";
+const FNV_PRIME = 16_777_619;
+const FNV_PRIME_INVERSE = 899_433_627;
+const ROLLOUT_COLLISION_ALPHABET =
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const WORKFLOW_NAME = "publish-strapi-blog";
+
+function advanceFnv1a(hash: number, character: string): number {
+  return Math.imul(hash ^ character.charCodeAt(0), FNV_PRIME) >>> 0;
+}
+
+function reverseFnv1a(hash: number, character: string): number {
+  return (Math.imul(hash, FNV_PRIME_INVERSE) ^ character.charCodeAt(0)) >>> 0;
+}
+
+function rolloutCollisionSuffix(
+  prefix: string,
+  targetHash: number,
+): string | null {
+  const prefixHash = Number.parseInt(fnv1a(prefix), 16);
+  const firstHalves = new Map<number, string>();
+  for (const first of ROLLOUT_COLLISION_ALPHABET) {
+    for (const second of ROLLOUT_COLLISION_ALPHABET) {
+      for (const third of ROLLOUT_COLLISION_ALPHABET) {
+        const hash = advanceFnv1a(
+          advanceFnv1a(advanceFnv1a(prefixHash, first), second),
+          third,
+        );
+        firstHalves.set(hash, `${first}${second}${third}`);
+      }
+    }
+  }
+
+  for (const fourth of ROLLOUT_COLLISION_ALPHABET) {
+    for (const fifth of ROLLOUT_COLLISION_ALPHABET) {
+      for (const sixth of ROLLOUT_COLLISION_ALPHABET) {
+        const precedingHash = reverseFnv1a(
+          reverseFnv1a(reverseFnv1a(targetHash, sixth), fifth),
+          fourth,
+        );
+        const firstHalf = firstHalves.get(precedingHash);
+        if (firstHalf) {
+          return `${firstHalf}${fourth}${fifth}${sixth}`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function uniqueRolloutOrgId(): string {
+  const targetHash = Number.parseInt(fnv1a(STAFF_ORG_ID), 16);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const prefix = `org_${randomUUID()}_`;
+    const suffix = rolloutCollisionSuffix(prefix, targetHash);
+    if (suffix) {
+      return `${prefix}${suffix}`;
+    }
+  }
+  throw new Error("Failed to generate a unique Strapi rollout organization");
+}
+
+// Each test process gets an unshared tenant that still exercises the real
+// organization-hash rollout path.
+const SECOND_ROLLOUT_ORG_ID = uniqueRolloutOrgId();
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" } as const;
