@@ -2406,6 +2406,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       threadId: run.threadId,
       prompt: "continue after the concurrent completion",
     });
+    await flushWaitUntilForTest();
     const checkpointGate = await holdCheckpointReadsFixture({
       signal: context.signal,
     });
@@ -2414,18 +2415,21 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       await checkpointGate.done;
     });
 
-    const completionPromise = webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
-      sandboxHeaders,
-      [200],
-    );
-    await expect
-      .poll(checkpointGate.blockedWaiterCount)
-      .toBeGreaterThanOrEqual(1);
-    await api.requestCancelRun(actor, run.runId, [200]);
-    checkpointGate.release();
-    await checkpointGate.done;
-    const completion = await completionPromise;
+    const [completion] = await Promise.all([
+      webhooks.requestAgentComplete(
+        { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+        sandboxHeaders,
+        [200],
+      ),
+      (async () => {
+        await expect
+          .poll(checkpointGate.blockedWaiterCount)
+          .toBeGreaterThanOrEqual(1);
+        await api.requestCancelRun(actor, run.runId, [200]);
+        checkpointGate.release();
+        await checkpointGate.done;
+      })(),
+    ]);
     expect(completion.body).toStrictEqual({
       success: true,
       status: "failed",
