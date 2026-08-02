@@ -1,5 +1,15 @@
 # Changelog
 
+## [9.274.5](https://github.com/vm0-ai/vm0/compare/cli-v9.274.4...cli-v9.274.5) (2026-08-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.261.5
+    * @vm0/core bumped to 8.502.5
+
 ## [9.274.4](https://github.com/vm0-ai/vm0/compare/cli-v9.274.3...cli-v9.274.4) (2026-08-02)
 
 

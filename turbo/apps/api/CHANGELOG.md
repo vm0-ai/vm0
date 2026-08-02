@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.364.8](https://github.com/vm0-ai/vm0/compare/api-v1.364.7...api-v1.364.8) (2026-08-02)
+
+
+### Refactoring
+
+* **api:** cut over runner affinity to canonical sandbox state ([#24540](https://github.com/vm0-ai/vm0/issues/24540)) ([b76a41a](https://github.com/vm0-ai/vm0/commit/b76a41ae10f91c3898dda803c9da588ce5031c2b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.5
+    * @vm0/core bumped to 8.502.5
+    * @vm0/db bumped to 1.160.10
+
 ## [1.364.7](https://github.com/vm0-ai/vm0/compare/api-v1.364.6...api-v1.364.7) (2026-08-02)
 
 
