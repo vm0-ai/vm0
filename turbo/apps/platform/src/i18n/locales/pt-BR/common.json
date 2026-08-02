@@ -1254,7 +1254,6 @@
       "configureModel": "Configurar modelo",
       "createWorkflow": "Criar fluxo de trabalho",
       "message": "Mensagem",
-      "modelConfigureAction": "Configurar modelo",
       "placeholder": "Peça para automatizar fluxos de trabalho, gerenciar tarefas...",
       "selectedModelUnavailable": "O modelo selecionado não está disponível. Configure-o antes de enviar.",
       "selectedModelUnavailableToast": "O modelo selecionado não está disponível",

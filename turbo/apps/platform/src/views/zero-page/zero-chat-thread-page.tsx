@@ -19,15 +19,10 @@ import { useTranslation } from "react-i18next";
 import { resolvedAppLocale } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   runUsagePopoverOpenRunId$,
   setRunUsagePopoverOpenRunId$,
 } from "../../signals/chat-page/run-usage-popover.ts";
-import {
-  replaceWorkflowPromptDraftTarget$,
-  setReplaceWorkflowPromptDraftTarget$,
-} from "../../signals/chat-page/workflow-prompt-action.ts";
 import {
   IconAlertCircle,
   IconHandStop,
@@ -101,7 +96,6 @@ import {
 import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
-  type EditorDocumentSnapshot,
 } from "../../signals/zero-page/user-message-document-codec.ts";
 import type {
   ChatThreadWorkflowAutomation,
@@ -170,6 +164,11 @@ import {
   type RunGroupFolding,
 } from "../../signals/chat-page/run-group-folding.ts";
 import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
+import {
+  activeGoalDialogGoal$,
+  activeGoalDialogThreadId$,
+  closeChatThreadGoalDialog$,
+} from "../../signals/chat-page/chat-goal.ts";
 import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
 import type { PlanUpgradeSignals } from "../../signals/chat-page/plan-upgrade-block.ts";
 import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
@@ -197,7 +196,6 @@ import type {
   HeaderAutomationSignals,
   HeaderWorkflowAutomationEntry,
 } from "../../signals/chat-page/header-automation-menu.ts";
-import { pauseChatThreadGoal$ } from "../../signals/chat-page/chat-goal.ts";
 import {
   activeThreadSidebar$,
   openThreadAutomations$,
@@ -235,8 +233,6 @@ import {
   WorkflowAutomationCard,
   type WorkflowAutomationCardRow,
 } from "../workflows-page/workflow-automation-card.tsx";
-import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
-import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
 
 import {
   renameChatThread$,
@@ -251,10 +247,10 @@ import type { AgentReferenceSignals } from "../../signals/chat-page/agent-refere
 import type { AssistantErrorRecovery } from "../../signals/chat-page/assistant-error-recovery.ts";
 import type {
   ChatThreadSignals,
-  QueuedChatEventItem,
   RecommendedFollowupSource,
   ThinkingIndicatorMode,
 } from "../../signals/chat-page/chat-thread-signals.ts";
+import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
 import {
   applyChatThreadEmoji,
   removeChatThreadEmoji,
@@ -268,32 +264,12 @@ import {
   type ChatThreadEmojiItem,
 } from "../../signals/chat-page/chat-thread-emoji.ts";
 import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/chat-thread-rename.ts";
-import {
-  setTemplatePickerCategory$,
-  setTemplatePickerOpen$,
-  setTemplatePickerPreviewSlug$,
-  setTemplatePickerReferenceValue$,
-  setTemplatePickerSearch$,
-} from "../../signals/zero-page/zero-chat-composer.ts";
-import {
-  useComposerConnectorReadState,
-  useZeroChatComposer,
-  type ComposerConnectorReadState,
-  type ZeroChatComposerProps,
-  type QueuedComposerItem,
-  type WorkflowEventComposerItem,
-} from "./zero-chat-composer.tsx";
-import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
-import {
-  computerUseHosts$,
-  selectedComputerUseHostId as resolveSelectedComputerUseHostId,
-  visibleComputerUseHosts,
-  ZERO_DESKTOP_DOWNLOAD_URL,
-} from "../../signals/zero-page/computer-use-hosts.ts";
+import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
+import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
 import { formatSubscriptionUsageReset } from "./subscription-usage-format.ts";
 import { AgentAvatarImg, AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { setBillingSubPage$ } from "../../signals/zero-page/settings/workspace-settings-state.ts";
@@ -3576,9 +3552,6 @@ function ChatHistoryBackfillSkeleton({
 }
 
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
-  const connectorReadState = useComposerConnectorReadState(
-    thread.composerConnectors,
-  );
   return (
     <>
       <ChatThreadHeader thread={thread} />
@@ -3588,15 +3561,11 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
           <ChatThreadEventsPane thread={thread} />
           {/* Command loadables are hook-owned, so keep their identity boundary
               narrower than the persistent thread and event owners. */}
-          <ChatThreadComposer
-            key={thread.threadId}
-            thread={thread}
-            connectorReadState={connectorReadState}
-          />
+          <ChatThreadComposer key={thread.threadId} thread={thread} />
         </div>
       </div>
 
-      <ChatFeedbackSelection feedback={thread.workflowComposer.feedback} />
+      <ChatFeedbackSelection feedback={thread.feedback} />
     </>
   );
 }
@@ -3696,7 +3665,7 @@ function RecommendedFollowupList({
   source: RecommendedFollowupSource;
 }) {
   const selectOrAppendComposerText = useSet(
-    thread.workflowComposer.selectOrAppendText$,
+    thread.composer.editor.selectOrAppendText$,
   );
   const handleRecommendedFollowupsRef = (element: HTMLDivElement | null) => {
     reportRecommendedFollowupsShown(element, source);
@@ -3796,547 +3765,90 @@ function splitQueuedEventsForThinkingIndicator(groups: ChatEventGroup[]): {
 // Composer wrapper — reads chat signals from thread prop
 // ---------------------------------------------------------------------------
 
-function canQueueMessage({ sending }: { sending: boolean }): boolean {
-  return sending;
-}
-
-function shouldAutoFocusComposer({
-  autoFocus,
-  hasEvents,
-}: {
-  autoFocus: boolean;
-  hasEvents: boolean;
-}): boolean {
-  return (
-    autoFocus && !hasEvents && !window.matchMedia("(pointer: coarse)").matches
-  );
-}
-
-interface ChatComposerModelPickerConfig {
-  value: ModelProviderSelection | null;
-  onChange: (value: ModelProviderSelection | null) => void;
-  disabled: boolean;
-}
-
-function resolveChatComposerModelPicker(params: {
-  modelSelection: ModelProviderSelection | null;
-  setModelSelection: (value: ModelProviderSelection | null) => void;
-  disabled: boolean;
-}): ChatComposerModelPickerConfig {
-  return {
-    value: params.modelSelection,
-    onChange: params.setModelSelection,
-    disabled: params.disabled,
-  };
-}
-
-function useChatComposerQueue(
-  thread: ChatThreadSignals,
-  queuedEvents: readonly QueuedChatEventItem[],
-) {
-  const recallMessage = useSet(thread.recallMessage$);
-  const focusInput = useSet(thread.focusInput$);
-  const pageSignal = useGet(pageSignal$);
-
-  const queuedEventsById = new Map(
-    queuedEvents.flatMap((event) => {
-      return event.kind === "message" ? [[event.id, event] as const] : [];
-    }),
-  );
-  const queuedItems: QueuedComposerItem[] = Array.from(
-    queuedEventsById.values(),
-  ).map((event) => {
-    return {
-      id: event.id,
-      text: event.text,
-    };
-  });
-
-  const onRemoveQueuedItem = (id: string) => {
-    if (!queuedEventsById.has(id)) {
-      return;
-    }
-    detach(
-      (async () => {
-        await recallMessage(id, pageSignal);
-        focusInput();
-      })(),
-      Reason.DomCallback,
-    );
-  };
-
-  return { queuedItems, onRemoveQueuedItem };
-}
-
-function useChatComposerWorkflowEvents(
-  thread: ChatThreadSignals,
-  queuedEvents: readonly QueuedChatEventItem[],
-) {
+function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
   const { t } = useTranslation();
-  const skipEvent = useSet(thread.skipAutomationEvent$);
-  const pageSignal = useGet(pageSignal$);
-  const pendingEventIds = new Set(
-    queuedEvents.flatMap((event) => {
-      return event.kind === "automation" ? [event.id] : [];
-    }),
-  );
-  const workflowEventItems: WorkflowEventComposerItem[] = queuedEvents.flatMap(
-    (event) => {
-      if (event.kind !== "automation") {
-        return [];
-      }
-      return {
-        id: event.id,
-        text:
-          event.automationBrief?.trim() ||
-          event.workflowName.trim() ||
-          t(($) => {
-            return $.chat.queue.automationEvent;
-          }),
-      };
-    },
-  );
+  const dialogThreadId = useGet(activeGoalDialogThreadId$);
+  const goalLoadable = useLoadable(activeGoalDialogGoal$);
+  const closeDialog = useSet(closeChatThreadGoalDialog$);
+  const open = dialogThreadId === threadId;
+  const goal = goalLoadable.state === "hasData" ? goalLoadable.data : undefined;
 
-  const onRemoveWorkflowEvent = (id: string) => {
-    if (!pendingEventIds.has(id)) {
-      return;
-    }
-    detach(skipEvent(id, pageSignal), Reason.DomCallback);
-  };
-
-  return {
-    workflowEventItems,
-    onRemoveWorkflowEvent,
-  };
-}
-
-// The thread's active goal (folded from goal-state markers, no separate
-// poll) plus its cancel handler. Cancelling pauses the goal through the goal API;
-// the backend then emits a goal_event marker, so the row folds away.
-function useChatComposerActiveGoal(
-  thread: ChatThreadSignals,
-  pageSignal: AbortSignal,
-) {
-  const activeGoalObjective =
-    useLastResolved(thread.activeGoalObjective$) ?? undefined;
-  const activeGoal = activeGoalObjective
-    ? { objective: activeGoalObjective }
-    : undefined;
-  const pauseChatThreadGoal = useSet(pauseChatThreadGoal$);
-  const onCancelActiveGoal = activeGoal
-    ? () => {
-        detach(
-          pauseChatThreadGoal(thread.threadId, pageSignal),
-          Reason.DomCallback,
-        );
-      }
-    : undefined;
-  return { activeGoal, onCancelActiveGoal };
-}
-
-function useChatComposerModel(
-  thread: ChatThreadSignals,
-  pageSignal: AbortSignal,
-) {
-  const { t } = useTranslation();
-  // Per-thread composer selection comes from the event projection. Read with
-  // useGet because event-backed thread metadata is a synchronous projection.
-  const selectedModelResolved = useGet(thread.selectedModel$);
-  const codexFastModeActive =
-    useLastResolved(thread.codexFastModeActive$) ?? false;
-  const baseModelSelection = selectedModelResolved
-    ? { selectedModel: selectedModelResolved }
-    : null;
-  const modelSelection =
-    baseModelSelection && codexFastModeActive
-      ? {
-          ...baseModelSelection,
-          codexServiceTier: "fast" as const,
-        }
-      : baseModelSelection;
-  const setModelSelection = useSet(thread.setModelSelection$);
-  const selectedModelOauthAvailable =
-    useLastResolved(thread.selectedModelOauthAvailable$) ?? true;
-  const configureSelectedModel = useSet(thread.configureSelectedModel$);
-
-  const handleModelSelectionChange = (
-    selection: ModelProviderSelection | null,
-  ): void => {
-    detach(setModelSelection(selection, pageSignal), Reason.DomCallback);
-  };
-
-  const modelPicker = modelSelection
-    ? resolveChatComposerModelPicker({
-        modelSelection,
-        setModelSelection: handleModelSelectionChange,
-        disabled: false,
-      })
-    : undefined;
-  const modelPickerLoading = selectedModelResolved === undefined;
-  const submitBlockerProps =
-    modelSelection && !selectedModelOauthAvailable
-      ? {
-          message: t(($) => {
-            return $.chat.composer.selectedModelUnavailable;
-          }),
-          actionLabel: t(($) => {
-            return $.chat.composer.configureModel;
-          }),
-          onAction: () => {
-            detach(configureSelectedModel(pageSignal), Reason.DomCallback);
-          },
-        }
-      : undefined;
-
-  return {
-    modelPicker,
-    modelPickerLoading,
-    submitBlockerProps,
-  };
-}
-
-function useChatThreadComposerSendState({
-  thread,
-  computerUseHostIdForSend,
-  cloudBrowserEnabledForSend,
-  clearComputerAccessOverride,
-}: {
-  thread: ChatThreadSignals;
-  computerUseHostIdForSend: string | null | undefined;
-  cloudBrowserEnabledForSend: boolean | undefined;
-  clearComputerAccessOverride: () => void;
-}) {
-  const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
-  const [queueLoadable, queueMessage] = useLoadableSet(thread.queueMessage$);
-  const rootSignal = useGet(rootSignal$);
-  const generationTemplate = useGet(thread.draft.generationTemplate$);
-  const setGenerationTemplate = useSet(thread.draft.setGenerationTemplate$);
-
-  const handleSend = (
-    text: string,
-    generationTemplate: GenerationTemplateRequest | undefined,
-    editorDocument: EditorDocumentSnapshot,
-  ) => {
-    detach(
-      (async () => {
-        const computerUsePatch =
-          computerUseHostIdForSend === undefined
-            ? {}
-            : { computerUseHostId: computerUseHostIdForSend };
-        const cloudBrowserPatch =
-          cloudBrowserEnabledForSend === undefined
-            ? {}
-            : { cloudBrowserEnabled: cloudBrowserEnabledForSend };
-        const sent = await send(
-          text,
-          {
-            ...computerUsePatch,
-            ...cloudBrowserPatch,
-            generationTemplate,
-            editorDocument,
-          },
-          rootSignal,
-        );
-        if (sent) {
-          clearComputerAccessOverride();
-        }
-      })(),
-      Reason.DomCallback,
-    );
-  };
-
-  const handleQueue = (
-    text: string,
-    generationTemplate: GenerationTemplateRequest | undefined,
-    editorDocument: EditorDocumentSnapshot,
-  ) => {
-    detach(
-      (async () => {
-        const computerUseHostId = computerUseHostIdForSend;
-        const cloudBrowserEnabled = cloudBrowserEnabledForSend;
-        const queued = await queueMessage(
-          text,
-          {
-            computerUseHostId,
-            cloudBrowserEnabled,
-            generationTemplate,
-            editorDocument,
-          },
-          rootSignal,
-        );
-        if (queued) {
-          clearComputerAccessOverride();
-        }
-      })(),
-      Reason.DomCallback,
-    );
-  };
-
-  return {
-    handleSend,
-    handleQueue,
-    submissionLoading:
-      sendLoadable.state === "loading" || queueLoadable.state === "loading",
-    templatePicker: {
-      value: generationTemplate,
-      onChange: (value: GenerationTemplateRequest | undefined) => {
-        setGenerationTemplate(value);
-      },
-    },
-  };
-}
-
-function useChatThreadComputerUse(
-  thread: ChatThreadSignals,
-  pageSignal: AbortSignal,
-) {
-  const computerUseHostsLoadable = useLastLoadable(computerUseHosts$);
-  const computerUseHosts =
-    computerUseHostsLoadable.state === "hasData"
-      ? computerUseHostsLoadable.data
-      : [];
-  const storedComputerUseHostId = useGet(thread.computerUseHostId$);
-  const cloudBrowserEnabled = useGet(thread.cloudBrowserEnabled$);
-  const computerUseHostIdExplicit = useGet(thread.computerUseHostIdExplicit$);
-  const featureSwitches = useGet(featureSwitch$);
-  const cloudBrowserAvailable =
-    featureSwitches[FeatureSwitchKey.ZeroBrowser] ?? false;
-  const selectedComputerUseHostId =
-    computerUseHostsLoadable.state === "hasData" || computerUseHosts.length > 0
-      ? resolveSelectedComputerUseHostId(
-          computerUseHosts,
-          storedComputerUseHostId,
-        )
-      : (storedComputerUseHostId ?? null);
-  const visibleHosts = visibleComputerUseHosts(
-    computerUseHosts,
-    selectedComputerUseHostId,
-  );
-  const setComputerUseHostId = useSet(thread.setComputerUseHostId$);
-  const setCloudBrowserEnabled = useSet(thread.setCloudBrowserEnabled$);
-  const clearComputerAccessOverride = useSet(
-    thread.clearComputerUseHostIdOverride$,
-  );
-  const computerUseHostIdForSend = computerUseHostIdExplicit
-    ? selectedComputerUseHostId
-    : undefined;
-  const cloudBrowserEnabledForSend = computerUseHostIdExplicit
-    ? cloudBrowserEnabled
-    : undefined;
-  const handleComputerUseHostChange = (hostId: string | null) => {
-    detach(setComputerUseHostId(hostId, pageSignal), Reason.DomCallback);
-  };
-  const handleCloudBrowserChange = (enabled: boolean) => {
-    detach(setCloudBrowserEnabled(enabled, pageSignal), Reason.DomCallback);
-  };
-
-  return {
-    selectedComputerUseHostId,
-    computerUseHostIdForSend,
-    cloudBrowserEnabledForSend,
-    clearComputerAccessOverride,
-    computerUse: {
-      hosts: visibleHosts,
-      loading:
-        computerUseHostsLoadable.state === "loading" &&
-        computerUseHosts.length === 0,
-      selectedHostId: selectedComputerUseHostId,
-      onChange: handleComputerUseHostChange,
-      cloudBrowserAvailable,
-      cloudBrowserEnabled: cloudBrowserAvailable && cloudBrowserEnabled,
-      onCloudBrowserChange: handleCloudBrowserChange,
-      downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
-    },
-  };
-}
-
-function useChatThreadComposerWorkflowPrompt({
-  thread,
-  pageSignal,
-}: {
-  thread: ChatThreadSignals;
-  pageSignal: AbortSignal;
-}): {
-  onCreateWorkflowPrompt: (() => void) | undefined;
-  replaceDraftDialogOpen: boolean;
-  onConfirmReplaceDraft: () => void;
-  onReplaceDialogOpenChange: (open: boolean) => void;
-} {
-  const attachments = useGet(thread.draft.attachments$);
-  const readInput = useSet(thread.draft.readInput$);
-  const setInput = useSet(thread.draft.setInput$);
-  const clearDraft = useSet(thread.draft.clear$);
-  const queueDraftSync = useSet(thread.queueDraftSync$);
-  const focusComposer = useSet(thread.focusInput$);
-  const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
-  const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
-  const workflowPromptDraftTarget = `composer:${thread.threadId}`;
-  const replaceDraftDialogOpen =
-    replaceDraftTarget === workflowPromptDraftTarget;
-
-  const applyWorkflowPrompt = () => {
-    clearDraft();
-    setInput(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
-    detach(queueDraftSync(pageSignal), Reason.DomCallback);
-    focusComposer();
-  };
-
-  const handleCreateWorkflowPrompt = () => {
-    if (readInput().trim().length > 0 || attachments.length > 0) {
-      setReplaceDraftTarget(workflowPromptDraftTarget);
-      return;
-    }
-    applyWorkflowPrompt();
-  };
-
-  const handleConfirmReplaceDraft = () => {
-    setReplaceDraftTarget(null);
-    applyWorkflowPrompt();
-  };
-
-  const handleReplaceDialogOpenChange = (open: boolean) => {
-    setReplaceDraftTarget(open ? workflowPromptDraftTarget : null);
-  };
-
-  return {
-    onCreateWorkflowPrompt: handleCreateWorkflowPrompt,
-    replaceDraftDialogOpen,
-    onConfirmReplaceDraft: handleConfirmReplaceDraft,
-    onReplaceDialogOpenChange: handleReplaceDialogOpenChange,
-  };
-}
-
-const EMPTY_QUEUED_EVENT_ITEMS: readonly QueuedChatEventItem[] = [];
-
-function equalQueuedEventItems(
-  previous: readonly QueuedChatEventItem[],
-  next: readonly QueuedChatEventItem[],
-): boolean {
-  return equalArrays(previous, next, (left, right) => {
-    if (left.kind !== right.kind || left.id !== right.id) {
-      return false;
-    }
-    return left.kind === "message" && right.kind === "message"
-      ? left.text === right.text
-      : left.kind === "automation" &&
-          right.kind === "automation" &&
-          left.workflowName === right.workflowName &&
-          left.automationBrief === right.automationBrief;
-  });
-}
-
-function useQueuedEventItems(thread: ChatThreadSignals) {
-  const hasQueuedEvents = useLastResolved(thread.hasQueuedEvents$) ?? false;
-  const queuedEventItems$ = hasQueuedEvents
-    ? thread.queuedEventItems$
-    : thread.emptyQueuedEventItems$;
   return (
-    useLastResolved(queuedEventItems$, {
-      equalityFn: equalQueuedEventItems,
-    }) ?? EMPTY_QUEUED_EVENT_ITEMS
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          closeDialog();
+        }
+      }}
+    >
+      <DialogContent
+        className="w-[calc(100vw-2rem)] max-w-2xl gap-5 p-5 sm:p-6"
+        aria-describedby={undefined}
+      >
+        <DialogHeader>
+          <DialogTitle className="text-base">
+            {t(($) => {
+              return $.chat.queue.goal;
+            })}
+          </DialogTitle>
+          <DialogDescription className="leading-6">
+            {t(($) => {
+              return $.chat.queue.goalDescription;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-lg bg-muted/40 px-3 py-3 text-sm text-foreground sm:px-4">
+          {goalLoadable.state === "loading" ? (
+            <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground">
+              <IconLoader2
+                size={16}
+                stroke={1.7}
+                className="animate-spin"
+                aria-hidden="true"
+              />
+              <span>
+                {t(($) => {
+                  return $.chat.queue.loadingGoal;
+                })}
+              </span>
+            </div>
+          ) : goalLoadable.state === "hasError" ? (
+            <div className="flex min-h-28 flex-col justify-center gap-1 text-muted-foreground">
+              <p className="font-medium text-foreground">
+                {t(($) => {
+                  return $.chat.queue.goalLoadFailed;
+                })}
+              </p>
+              <p className="text-xs">
+                {t(($) => {
+                  return $.chat.queue.goalRetry;
+                })}
+              </p>
+            </div>
+          ) : goal ? (
+            <Markdown
+              source={goal.objective}
+              escapeHtml
+              mathEnabled
+              style={{ fontSize: "inherit", lineHeight: "inherit" }}
+            />
+          ) : (
+            <div className="flex min-h-28 items-center text-muted-foreground">
+              {t(($) => {
+                return $.chat.queue.goalUnavailable;
+              })}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function ChatThreadComposer({
-  thread,
-  connectorReadState,
-}: {
-  thread: ChatThreadSignals;
-  connectorReadState: ComposerConnectorReadState;
-}) {
-  const queuedEventItems = useQueuedEventItems(thread);
-  const cancellationRecoveryPending =
-    useLastResolved(thread.cancellationRecoveryPending$) ?? false;
-  const hasEventsResolved = useLastResolved(thread.hasEvents$);
-  const hasEvents = hasEventsResolved ?? false;
-  const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
-  const sendButtonStatus =
-    useLastResolved(thread.composerSendButtonStatus$) ?? "sending";
-  const cancelRun = useSet(thread.cancelRun$);
-  const queueDraftSync = useSet(thread.queueDraftSync$);
-  const pageSignal = useGet(pageSignal$);
+function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   const pwaChatKeyboardGesturesEnabled =
     useGet(pwaChatKeyboardGesturesEnabled$) && isStandalonePwa();
-  const {
-    computerUseHostIdForSend,
-    cloudBrowserEnabledForSend,
-    clearComputerAccessOverride,
-    computerUse,
-  } = useChatThreadComputerUse(thread, pageSignal);
-
-  const { queuedItems, onRemoveQueuedItem } = useChatComposerQueue(
-    thread,
-    queuedEventItems,
-  );
-  const workflowEvents = useChatComposerWorkflowEvents(
-    thread,
-    queuedEventItems,
-  );
-  const { activeGoal, onCancelActiveGoal } = useChatComposerActiveGoal(
-    thread,
-    pageSignal,
-  );
-  const { modelPicker, modelPickerLoading, submitBlockerProps } =
-    useChatComposerModel(thread, pageSignal);
-  const { handleSend, handleQueue, submissionLoading, templatePicker } =
-    useChatThreadComposerSendState({
-      thread,
-      computerUseHostIdForSend,
-      cloudBrowserEnabledForSend,
-      clearComputerAccessOverride,
-    });
-  const skeletonVisible = hasEventsResolved === undefined;
-  const composerSending = sendButtonStatus === "sending";
-  const queueWhileSending = canQueueMessage({ sending: composerSending });
-
-  const handleDraftChange = () => {
-    detach(queueDraftSync(pageSignal), Reason.DomCallback);
-  };
-
-  const workflowPrompt = useChatThreadComposerWorkflowPrompt({
-    thread,
-    pageSignal,
-  });
-  const composerOptions: ZeroChatComposerProps = {
-    composer: thread.workflowComposer,
-    composerConnectors: thread.composerConnectors,
-    onSend: handleSend,
-    onQueue: handleQueue,
-    sending: composerSending,
-    queueWhileSending,
-    submissionLoading,
-    onCancel: composerSending
-      ? () => {
-          detach(cancelRun(pageSignal), Reason.DomCallback);
-        }
-      : undefined,
-    displayName,
-    className: "w-full min-w-0",
-    autoFocus: shouldAutoFocusComposer({
-      autoFocus: true,
-      hasEvents,
-    }),
-    enableMobileSingleLine: true,
-    onDraftChange: handleDraftChange,
-    draft: thread.draft,
-    composerFileInput$: thread.composerFileInput$,
-    setComposerFileInput$: thread.setComposerFileInput$,
-    chatThreadId: thread.threadId,
-    actionsLoading: skeletonVisible,
-    modelPicker,
-    templatePicker,
-    onCreateWorkflowPrompt: workflowPrompt.onCreateWorkflowPrompt,
-    computerUse,
-    modelPickerLoading,
-    submitBlocker: submitBlockerProps,
-    queuedItems,
-    onRemoveQueuedItem,
-    cancellationRecoveryPending,
-    ...workflowEvents,
-    activeGoal,
-    onCancelActiveGoal,
-  };
-  const composer = useZeroChatComposer(composerOptions, connectorReadState);
 
   return (
     <footer
@@ -4351,12 +3863,8 @@ function ChatThreadComposer({
         )}
       >
         <div className="mx-auto max-w-[900px]">
-          {composer}
-          <ReplaceComposerDraftDialog
-            open={workflowPrompt.replaceDraftDialogOpen}
-            onOpenChange={workflowPrompt.onReplaceDialogOpenChange}
-            onConfirm={workflowPrompt.onConfirmReplaceDraft}
-          />
+          <ZeroChatComposer signals={thread.composer} />
+          <ActiveGoalObjectiveDialog threadId={thread.threadId} />
           <PersonalClaudeCodeDeviceAuthDialog />
           <PersonalCodexDeviceAuthDialog />
         </div>
@@ -7096,18 +6604,26 @@ function presentationTemplatePreviewSlug(
 
 function UserMessageTemplateReference({
   part,
+  signals,
 }: {
   part: Extract<UserMessagePart, { type: "template" }>;
+  signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
   const typeLabel = generationTemplateTypeLabel(part.template);
-  const setTemplatePickerCategory = useSet(setTemplatePickerCategory$);
-  const setTemplatePickerOpen = useSet(setTemplatePickerOpen$);
-  const setTemplatePickerPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
-  const setTemplatePickerReferenceValue = useSet(
-    setTemplatePickerReferenceValue$,
+  const setTemplatePickerCategory = useSet(
+    signals.template.setTemplatePickerCategory$,
   );
-  const setTemplatePickerSearch = useSet(setTemplatePickerSearch$);
+  const setTemplatePickerOpen = useSet(signals.template.setTemplatePickerOpen$);
+  const setTemplatePickerPreviewSlug = useSet(
+    signals.template.setTemplatePickerPreviewSlug$,
+  );
+  const setTemplatePickerReferenceValue = useSet(
+    signals.template.setTemplatePickerReferenceValue$,
+  );
+  const setTemplatePickerSearch = useSet(
+    signals.template.setTemplatePickerSearch$,
+  );
   return (
     <button
       type="button"
@@ -7312,9 +6828,11 @@ function UserMessageAgentReference({
 function UserMessageFeedbackNote({
   note,
   agentReferenceSignalsForId,
+  composerSignals,
 }: {
   note: readonly FeedbackNotePart[];
   agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
+  composerSignals: ComposerSignals;
 }) {
   const partOccurrences = new Map<string, number>();
   return (
@@ -7344,7 +6862,13 @@ function UserMessageFeedbackNote({
           );
         }
         if (part.type === "template") {
-          return <UserMessageTemplateReference key={key} part={part} />;
+          return (
+            <UserMessageTemplateReference
+              key={key}
+              part={part}
+              signals={composerSignals}
+            />
+          );
         }
         return <span key={key}>{part.text}</span>;
       })}
@@ -7436,9 +6960,11 @@ function userMessageFeedbackHeading(
 function UserMessageFeedbackGroup({
   parts,
   agentReferenceSignalsForId,
+  composerSignals,
 }: {
   parts: readonly UserMessageFeedbackPart[];
   agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
+  composerSignals: ComposerSignals;
 }) {
   const partOccurrences = new Map<string, number>();
   let firstPart = true;
@@ -7468,6 +6994,7 @@ function UserMessageFeedbackGroup({
             <UserMessageFeedbackNote
               note={part.note}
               agentReferenceSignalsForId={agentReferenceSignalsForId}
+              composerSignals={composerSignals}
             />
           </div>
         );
@@ -7489,10 +7016,12 @@ function UserMessagePartView({
   part,
   attachments,
   agentReferenceSignalsForId,
+  composerSignals,
 }: {
   part: UserMessageStandalonePart;
   attachments: readonly ResolvedAttachFile[];
   agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
+  composerSignals: ComposerSignals;
 }): ReactNode {
   if (part.type === "text") {
     return <span>{part.text}</span>;
@@ -7515,7 +7044,9 @@ function UserMessagePartView({
     );
   }
   if (part.type === "template") {
-    return <UserMessageTemplateReference part={part} />;
+    return (
+      <UserMessageTemplateReference part={part} signals={composerSignals} />
+    );
   }
   if (part.type === "file") {
     const attachment = attachments.find((candidate) => {
@@ -7533,12 +7064,14 @@ function UserMessageView({
   elevatedFileIds,
   inlineTemplatesEnabled,
   agentReferenceSignalsForId,
+  composerSignals,
 }: {
   document: UserMessageDocument;
   attachments: readonly ResolvedAttachFile[];
   elevatedFileIds: ReadonlySet<string>;
   inlineTemplatesEnabled: boolean;
   agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
+  composerSignals: ComposerSignals;
 }) {
   const partOccurrences = new Map<string, number>();
   const bodyParts = document.parts.filter(
@@ -7582,6 +7115,7 @@ function UserMessageView({
           key={`feedback:${String(index)}`}
           parts={feedbackParts}
           agentReferenceSignalsForId={agentReferenceSignalsForId}
+          composerSignals={composerSignals}
         />,
       );
       index = nextIndex;
@@ -7596,6 +7130,7 @@ function UserMessageView({
         part={part}
         attachments={attachments}
         agentReferenceSignalsForId={agentReferenceSignalsForId}
+        composerSignals={composerSignals}
       />,
     );
     index += 1;
@@ -7625,6 +7160,7 @@ function UserMessageContent({
   onImageClick,
   inlineTemplatesEnabled,
   agentReferenceSignalsForId,
+  composerSignals,
 }: {
   document: UserMessageDocument;
   attachments: ReturnType<typeof resolveAttachments>;
@@ -7632,6 +7168,7 @@ function UserMessageContent({
   onImageClick: (url: string) => void;
   inlineTemplatesEnabled: boolean;
   agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
+  composerSignals: ComposerSignals;
 }) {
   const imageAttachments = attachments.filter((attachment) => {
     return attachment.id !== null && attachment.isImage;
@@ -7666,6 +7203,7 @@ function UserMessageContent({
               <UserMessageTemplateReference
                 key={`${part.template.type}:${part.titleSnapshot}`}
                 part={part}
+                signals={composerSignals}
               />
             );
           })}
@@ -7684,6 +7222,7 @@ function UserMessageContent({
               elevatedFileIds={imageAttachmentIds}
               inlineTemplatesEnabled={inlineTemplatesEnabled}
               agentReferenceSignalsForId={agentReferenceSignalsForId}
+              composerSignals={composerSignals}
             />
           </div>
         </div>
@@ -7927,6 +7466,7 @@ function PagedUserMessage({
               onImageClick={openLightbox}
               inlineTemplatesEnabled={inlineTemplates}
               agentReferenceSignalsForId={thread.agentReferenceSignalsForId}
+              composerSignals={thread.composer}
             />
           ) : (
             <>

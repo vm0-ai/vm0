@@ -1228,7 +1228,6 @@
       "configureModel": "모델 구성",
       "createWorkflow": "워크플로 생성",
       "message": "메시지",
-      "modelConfigureAction": "모델 구성",
       "placeholder": "워크플로 자동화, 작업 관리 등을 요청하세요...",
       "selectedModelUnavailable": "선택한 모델을 사용할 수 없습니다. 전송 전에 구성하세요.",
       "selectedModelUnavailableToast": "선택한 모델을 사용할 수 없습니다",

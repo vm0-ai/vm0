@@ -7,10 +7,10 @@ import type {
   ChatThreadArtifactRun,
   ChatThreadDraft,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
-import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import type { ChatEventGroup } from "./chat-event.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
@@ -18,12 +18,13 @@ import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { ThreadSidebarSignals } from "./thread-sidebar.ts";
 import type { MailDraftSignals } from "./mail-draft.ts";
 import type { BrowserSessionSignals } from "./browser-session-block.ts";
-import type { ComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
 import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type { ThreadScrollPosition } from "./chat-thread-scroll.ts";
 import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
+import type { ComposerSignals } from "../zero-page/composer-signals.ts";
+import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 
 type RecommendedFollowup = NonNullable<
   ChatFollowupsEvent["recommendedFollowups"]
@@ -34,19 +35,6 @@ export interface RecommendedFollowupSource {
   readonly followups: readonly RecommendedFollowup[];
 }
 
-export type QueuedChatEventItem =
-  | {
-      readonly kind: "message";
-      readonly id: string;
-      readonly text: string;
-    }
-  | {
-      readonly kind: "automation";
-      readonly id: string;
-      readonly workflowName: string;
-      readonly automationBrief: string | undefined;
-    };
-
 export type ThinkingIndicatorMode =
   | "waiting"
   | "waiting-queued"
@@ -54,8 +42,6 @@ export type ThinkingIndicatorMode =
   | "running-queued"
   | "finished"
   | null;
-
-export type ComposerSendButtonStatus = "idle" | "sending";
 
 export interface EventImageGroupProjection {
   readonly role: ChatEventGroup["role"];
@@ -90,7 +76,6 @@ export interface ChatThreadSignals {
   threadTitleEmoji$: Computed<string | null>;
   threadTitleText$: Computed<string>;
   threadSettledInServer$: Computed<boolean>;
-  cancellationRecoveryPending$: Computed<Promise<boolean>>;
   // -- Composer model selection --------------------------------------------
   // Derived from the thread event projection; user edits register optimistic
   // model_selection_updated events and then persist through the thread API.
@@ -115,7 +100,6 @@ export interface ChatThreadSignals {
   assistantErrorRecovery$: Computed<Promise<AssistantErrorRecovery | null>>;
   retryAssistantError$: Command<Promise<boolean>, [AbortSignal]>;
   resetCodexSubscriptionAndRetry$: Command<Promise<boolean>, [AbortSignal]>;
-  composerSendButtonStatus$: Computed<Promise<ComposerSendButtonStatus>>;
   queueMessage$: Command<
     Promise<boolean>,
     [string, QueueMessageOptions, AbortSignal]
@@ -138,14 +122,10 @@ export interface ChatThreadSignals {
   // feature-gated scroll-to-bottom button. Read-only outside scroll signals.
   awayFromBottom$: Computed<boolean>;
   draft: DraftSignals;
-  workflowComposer: WorkflowComposerSignals;
-  composerConnectors: ComposerConnectorSignals;
-  composerFileInput$: Computed<HTMLElement | null>;
-  setComposerFileInput$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
+  composer: ComposerSignals;
+  feedback: ChatThreadFeedbackSignals;
   // -- Agent info (derived from threadMeta$.agentId) ------------------------
+  agent$: Computed<Promise<ZeroAgentResponse>>;
   agentId$: Computed<string | null>;
   agentDisplayName$: Computed<Promise<string | null>>;
   agentPinned$: Computed<Promise<boolean | null>>;
@@ -161,8 +141,6 @@ export interface ChatThreadSignals {
     Promise<void>,
     [string, ChatClipboardPayload, AbortSignal]
   >;
-  // -- Focus ----------------------------------------------------------------
-  focusInput$: Command<void, []>;
   // -- Draft sync -----------------------------------------------------------
   queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   // -- Paged events (sole rendering path) ----------------------------------
@@ -177,9 +155,6 @@ export interface ChatThreadSignals {
   mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
   browserSessionSignals: BrowserSessionSignals;
   hasEvents$: Computed<Promise<boolean>>;
-  hasQueuedEvents$: Computed<Promise<boolean>>;
-  queuedEventItems$: Computed<Promise<readonly QueuedChatEventItem[]>>;
-  emptyQueuedEventItems$: Computed<Promise<readonly QueuedChatEventItem[]>>;
   thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;
   thinkingEventId$: Computed<Promise<string | null>>;
   thinkingText$: Computed<Promise<string | null>>;
@@ -187,7 +162,6 @@ export interface ChatThreadSignals {
     Promise<RecommendedFollowupSource | null>
   >;
   historyBackfillPending$: Computed<boolean>;
-  activeGoalObjective$: Computed<Promise<string | null>>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;
   resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
   receiveSyncedEvents$: Command<Promise<void>, [ChatEvent[], AbortSignal]>;

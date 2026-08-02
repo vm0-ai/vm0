@@ -1228,7 +1228,6 @@
       "configureModel": "Konfigurasikan model",
       "createWorkflow": "Buat alur kerja",
       "message": "Pesan",
-      "modelConfigureAction": "Konfigurasi Model",
       "placeholder": "Minta saya mengotomatiskan alur kerja, mengelola tugas...",
       "selectedModelUnavailable": "Model yang dipilih tidak tersedia. Konfigurasikan sebelum mengirim.",
       "selectedModelUnavailableToast": "Model yang dipilih tidak tersedia",

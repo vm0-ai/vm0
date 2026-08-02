@@ -115,7 +115,7 @@ function getInternalAllowedLiterals() {
       "JSON null literal in user-visible diagnostic serialization",
     ],
     [
-      "src/signals/chat-page/create-chat-thread.ts\u0000Run cancelled",
+      "src/signals/chat-page/chat-event-state.ts\u0000Run cancelled",
       "internal run event payload; the rendered cancellation message uses typed i18n",
     ],
     [

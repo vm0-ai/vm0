@@ -23,11 +23,13 @@ import {
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import {
   AGENT_ID,
+  THREAD_ID,
   context,
   mockAgent,
   mockAgentConnectorAuthorizations,
   mockConnectors,
   mockOrgModelRoutes,
+  mockThread,
   composerElementFrom,
 } from "./chat-composer-test-helpers.ts";
 
@@ -146,6 +148,43 @@ beforeEach(() => {
 });
 
 describe("chat composer connector connection", () => {
+  it("authorizes connector access for the thread agent", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockThread();
+    mockConnectors([{ connectorSlug: "github" }]);
+    const updatedAgentIds: string[] = [];
+    let enabledConnectorSlugs: string[] = [];
+    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+      expect(params.id).toBe(AGENT_ID);
+      return respond(200, { enabledConnectorSlugs });
+    });
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(body).toStrictEqual({
+          enabledConnectorSlugs: ["github"],
+          operation: "add",
+        });
+        updatedAgentIds.push(params.id);
+        enabledConnectorSlugs = ["github"];
+        return respond(200, { enabledConnectorSlugs });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    await user.click(await screen.findByLabelText("Add GitHub"));
+
+    await waitFor(() => {
+      expect(updatedAgentIds).toStrictEqual([AGENT_ID]);
+      expect(screen.getByLabelText("Remove GitHub")).toBeInTheDocument();
+    });
+  });
+
   it("shows connected custom connectors and toggles agent access", async () => {
     const user = userEvent.setup({ delay: null });
     const connector = customConnector({

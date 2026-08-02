@@ -1228,7 +1228,6 @@
       "configureModel": "モデルの構成",
       "createWorkflow": "ワークフローの作成",
       "message": "メッセージ",
-      "modelConfigureAction": "モデル構成",
       "placeholder": "ワークフローの自動化、タスクの管理を依頼してください...",
       "selectedModelUnavailable": "選択されたモデルは使用できません。送信する前に設定してください。",
       "selectedModelUnavailableToast": "選択したモデルは利用できません",

@@ -11,11 +11,11 @@ import {
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type {
-  FeedbackSelection,
-  FeedbackSignals,
-} from "../../signals/zero-page/chat-feedback.ts";
+  ChatThreadFeedbackSelection,
+  ChatThreadFeedbackSignals,
+} from "../../signals/chat-page/chat-thread-feedback.ts";
 
-function anchorStyle(selection: FeedbackSelection): CSSProperties {
+function anchorStyle(selection: ChatThreadFeedbackSelection): CSSProperties {
   return {
     position: "fixed",
     top: selection.rect.top,
@@ -102,19 +102,15 @@ function FeedbackToolbar({
 export function ChatFeedbackSelection({
   feedback,
 }: {
-  readonly feedback: FeedbackSignals;
+  readonly feedback: ChatThreadFeedbackSignals;
 }) {
   const selection = useGet(feedback.selection$);
   const rootSignal = useGet(rootSignal$);
-  const setFeedbackSelectionListenersRef = useSet(
-    feedback.setSelectionListenersRef$,
-  );
-  const setFeedbackSelectionToolbarRef = useSet(
-    feedback.setSelectionToolbarRef$,
-  );
-  const startFeedback = useSet(feedback.startFeedback$);
-  const closeSelectionToolbar = useSet(feedback.closeSelectionToolbar$);
-  const copy = useSet(feedback.copySelection$);
+  const setFeedbackSelectionListenersRef = useSet(feedback.setListenersRef$);
+  const setFeedbackSelectionToolbarRef = useSet(feedback.setToolbarRef$);
+  const startFeedback = useSet(feedback.start$);
+  const closeSelectionToolbar = useSet(feedback.close$);
+  const copy = useSet(feedback.copy$);
 
   return (
     <>

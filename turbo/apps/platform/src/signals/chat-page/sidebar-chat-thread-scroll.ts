@@ -16,18 +16,16 @@ import {
   currentChatThreadId$,
   currentChatThreadListIds$,
 } from "../agent-chat.ts";
+import {
+  sidebarChatThreadItemSignalsRegistry$,
+  type SidebarChatThreadItemSignals,
+} from "./sidebar-chat-thread-item.ts";
 
 const CHAT_THREAD_VIRTUAL_OVERSCAN = 8;
 
 export interface SidebarChatThreadWindow {
   readonly startIndex: number;
-  readonly chatThreads: readonly SidebarChatThread[];
-}
-
-export interface SidebarChatThread {
-  readonly id: string;
-  readonly title: string | null;
-  readonly pinnedAt: string | null;
+  readonly items: readonly SidebarChatThreadItemSignals[];
 }
 
 function getFixedVirtualRange({
@@ -98,10 +96,15 @@ export const sidebarChatThreadWindow$ = computed(
       scrollTop,
       viewportHeight,
     });
+    const itemSignals = get(sidebarChatThreadItemSignalsRegistry$).reconcile(
+      chatThreads.map((thread) => {
+        return thread.id;
+      }),
+    );
 
     return {
       startIndex,
-      chatThreads: chatThreads.slice(startIndex, endIndex),
+      items: itemSignals.slice(startIndex, endIndex),
     };
   },
 );
