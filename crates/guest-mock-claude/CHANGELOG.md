@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.32](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.31...guest-mock-claude-v0.21.32) (2026-08-02)
+
+
+### Refactoring
+
+* **guest-mock-claude:** split process responsibilities ([#24534](https://github.com/vm0-ai/vm0/issues/24534)) ([a656092](https://github.com/vm0-ai/vm0/commit/a656092964fcee4269f45c54d2d857e12a6430ac))
+
 ## [0.21.31](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.30...guest-mock-claude-v0.21.31) (2026-07-31)
 
 ## [0.21.30](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.29...guest-mock-claude-v0.21.30) (2026-07-30)

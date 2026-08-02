@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.364.7](https://github.com/vm0-ai/vm0/compare/api-v1.364.6...api-v1.364.7) (2026-08-02)
+
+
+### Refactoring
+
+* assemble morning brief launch material at claim ([#24527](https://github.com/vm0-ai/vm0/issues/24527)) ([9d51c5a](https://github.com/vm0-ai/vm0/commit/9d51c5a1a5f3a4016fbd8f7ddaffe09e2b178071))
+* claim agentphone launch context ([#24535](https://github.com/vm0-ai/vm0/issues/24535)) ([474fcda](https://github.com/vm0-ai/vm0/commit/474fcda3a03dd29bbe35647eedb01131a0747797))
+* dual-write agentphone launch context ([#24523](https://github.com/vm0-ai/vm0/issues/24523)) ([16e456c](https://github.com/vm0-ai/vm0/commit/16e456c19e73b6816297f64cb70ef3b1fa56d80b))
+* require agentphone launch context ([#24538](https://github.com/vm0-ai/vm0/issues/24538)) ([988d898](https://github.com/vm0-ai/vm0/commit/988d898a797f2a6b89f85088551b695911999308))
+* require github chat launch context ([#24528](https://github.com/vm0-ai/vm0/issues/24528)) ([6d6c12e](https://github.com/vm0-ai/vm0/commit/6d6c12ea7fb7c6e550589df43c5b26a78b3ad5e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.4
+    * @vm0/core bumped to 8.502.4
+    * @vm0/db bumped to 1.160.9
+
 ## [1.364.6](https://github.com/vm0-ai/vm0/compare/api-v1.364.5...api-v1.364.6) (2026-08-02)
 
 

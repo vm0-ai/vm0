@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.10](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.9...ably-subscriber-v1.0.10) (2026-08-02)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** bound messagepack decoder depth ([#24536](https://github.com/vm0-ai/vm0/issues/24536)) ([ca77d14](https://github.com/vm0-ai/vm0/commit/ca77d14a70968ab0704cf1b17f1d833f7b412fa9))
+
 ## [1.0.9](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.8...ably-subscriber-v1.0.9) (2026-07-17)
 
 
