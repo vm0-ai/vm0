@@ -117,6 +117,7 @@ export const chatEvents = pgTable(
       | "teams"
       | "telegram"
       | "github"
+      | "agentphone"
       | "automation"
       | "goal"
       | "morning_brief"
@@ -229,6 +230,7 @@ export const chatEvents = pgTable(
           'teams',
           'telegram',
           'github',
+          'agentphone',
           'automation',
           'goal',
           'morning_brief'

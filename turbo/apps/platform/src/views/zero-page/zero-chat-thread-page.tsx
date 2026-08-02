@@ -6917,6 +6917,7 @@ const annotationIconImgs = {
   teams: settingsIconAssetUrl("teams"),
   telegram: settingsIconAssetUrl("telegram"),
   github: settingsIconAssetUrl("github"),
+  agentphone: settingsIconAssetUrl("imessage"),
 } as const;
 
 function MessageAnnotation({ part }: { part: UserMessageNonContentPart }) {
@@ -6960,6 +6961,17 @@ function MessageAnnotation({ part }: { part: UserMessageNonContentPart }) {
       </div>
     );
   }
+  return <SourceMessageAnnotation part={part} className={className} />;
+}
+
+function SourceMessageAnnotation({
+  part,
+  className,
+}: {
+  part: Extract<UserMessageNonContentPart, { type: "source" }>;
+  className: string;
+}) {
+  const { t } = useTranslation();
   const sourceLabel =
     part.kind === "slack"
       ? t(($) => {
@@ -6977,9 +6989,13 @@ function MessageAnnotation({ part }: { part: UserMessageNonContentPart }) {
             ? t(($) => {
                 return $.chat.origins.telegram;
               })
-            : t(($) => {
-                return $.chat.origins.github;
-              });
+            : part.kind === "github"
+              ? t(($) => {
+                  return $.chat.origins.github;
+                })
+              : t(($) => {
+                  return $.chat.origins.agentphone;
+                });
   const openLabel =
     part.kind === "feishu"
       ? t(($) => {
@@ -7005,9 +7021,11 @@ function MessageAnnotation({ part }: { part: UserMessageNonContentPart }) {
             ? t(($) => {
                 return $.chat.origins.openTelegramMessage;
               })
-            : t(($) => {
-                return $.chat.origins.openGithubMessage;
-              });
+            : part.kind === "github"
+              ? t(($) => {
+                  return $.chat.origins.openGithubMessage;
+                })
+              : sourceLabel;
   const content = (
     <>
       {part.kind === "slack" ? (

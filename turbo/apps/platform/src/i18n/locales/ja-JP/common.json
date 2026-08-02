@@ -1364,6 +1364,7 @@
     },
     "newChat": "新しいチャット",
     "origins": {
+      "agentphone": "AgentPhone",
       "feishu": "Feishu",
       "github": "GitHub",
       "openChat": "オープンチャット",

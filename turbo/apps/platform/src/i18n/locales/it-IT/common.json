@@ -1393,6 +1393,7 @@
     },
     "newChat": "Nuova chat",
     "origins": {
+      "agentphone": "AgentPhone",
       "feishu": "Feishu",
       "github": "GitHub",
       "openChat": "Apri la chat",

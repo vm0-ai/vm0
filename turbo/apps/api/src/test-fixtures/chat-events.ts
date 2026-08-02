@@ -12,6 +12,7 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
+import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
@@ -114,6 +115,19 @@ interface ChatEventContextFixture {
   readonly teamsSenderDisplayName: string | null;
   readonly teamsSenderPrincipalName: string | null;
   readonly teamsConnectionId: string | null;
+  readonly agentphoneChatThreadId: string | null;
+  readonly agentphoneMessageText: string | null;
+  readonly agentphoneThreadContext: string | null;
+  readonly agentphoneMessageId: string | null;
+  readonly agentphoneRootMessageId: string | null;
+  readonly agentphoneConversationId: string | null;
+  readonly agentphoneChannel: "imessage" | "sms" | "mms" | null;
+  readonly agentphoneIsGroup: boolean | null;
+  readonly agentphonePhoneHandle: string | null;
+  readonly agentphoneFromNumber: string | null;
+  readonly agentphoneToNumber: string | null;
+  readonly agentphoneUserLinkId: string | null;
+  readonly agentphoneAgentId: string | null;
   readonly telegramChatId: string | null;
   readonly telegramMessageId: string | null;
   readonly telegramIsDm: boolean | null;
@@ -191,6 +205,19 @@ export async function readChatEventContextFixture(
       teamsSenderDisplayName: chatTeamsContext.senderDisplayName,
       teamsSenderPrincipalName: chatTeamsContext.senderPrincipalName,
       teamsConnectionId: chatTeamsContext.connectionId,
+      agentphoneChatThreadId: chatAgentphoneContext.chatThreadId,
+      agentphoneMessageText: chatAgentphoneContext.messageText,
+      agentphoneThreadContext: chatAgentphoneContext.threadContext,
+      agentphoneMessageId: chatAgentphoneContext.messageId,
+      agentphoneRootMessageId: chatAgentphoneContext.rootMessageId,
+      agentphoneConversationId: chatAgentphoneContext.conversationId,
+      agentphoneChannel: chatAgentphoneContext.channel,
+      agentphoneIsGroup: chatAgentphoneContext.isGroup,
+      agentphonePhoneHandle: chatAgentphoneContext.phoneHandle,
+      agentphoneFromNumber: chatAgentphoneContext.fromNumber,
+      agentphoneToNumber: chatAgentphoneContext.toNumber,
+      agentphoneUserLinkId: chatAgentphoneContext.userLinkId,
+      agentphoneAgentId: chatAgentphoneContext.agentphoneAgentId,
       telegramChatId: chatTelegramContext.chatId,
       telegramMessageId: chatTelegramContext.messageId,
       telegramIsDm: chatTelegramContext.isDm,
@@ -212,6 +239,7 @@ export async function readChatEventContextFixture(
     .leftJoin(chatSlackContext, eq(chatSlackContext.id, contextId))
     .leftJoin(chatFeishuContext, eq(chatFeishuContext.id, contextId))
     .leftJoin(chatTeamsContext, eq(chatTeamsContext.id, contextId))
+    .leftJoin(chatAgentphoneContext, eq(chatAgentphoneContext.id, contextId))
     .leftJoin(chatTelegramContext, eq(chatTelegramContext.id, contextId))
     .leftJoin(chatGithubContext, eq(chatGithubContext.id, contextId))
     .leftJoin(
@@ -599,6 +627,33 @@ export async function clearGitHubTriggerCommentBodyFixture(
     .update(chatGithubContext)
     .set({ triggerCommentBody: null })
     .where(eq(chatGithubContext.id, event.contextId));
+}
+
+interface AgentphoneChatEventByPromptFixture {
+  readonly eventId: string;
+}
+
+export async function findAgentphoneChatEventByPromptFixture(
+  prompt: string,
+): Promise<AgentphoneChatEventByPromptFixture | null> {
+  const rows = await db()
+    .select({
+      eventId: chatEvents.id,
+      userMessage: chatEvents.userMessage,
+    })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.eventType, "input.prompt"),
+        eq(chatEvents.triggerSource, "agentphone"),
+      ),
+    );
+  const row = rows.find((candidate) => {
+    return candidate.userMessage?.parts.some((part) => {
+      return part.type === "text" && part.text === prompt;
+    });
+  });
+  return row ?? null;
 }
 
 export async function findPendingChatEventInputParamsByPromptFixture(
