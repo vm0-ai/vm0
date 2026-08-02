@@ -167,9 +167,18 @@ import {
   type ModelFirstPin,
 } from "./zero-model-selection.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { loadSlackQueuedLaunchMaterial } from "./slack-queued-launch-context.service";
-import { loadFeishuQueuedLaunchMaterial } from "./feishu-queued-launch-context.service";
-import { loadTeamsQueuedLaunchMaterial } from "./teams-queued-launch-context.service";
+import {
+  loadSlackQueuedLaunchMaterial,
+  type SlackQueuedLaunchMaterial,
+} from "./slack-queued-launch-context.service";
+import {
+  loadFeishuQueuedLaunchMaterial,
+  type FeishuQueuedLaunchMaterial,
+} from "./feishu-queued-launch-context.service";
+import {
+  loadTeamsQueuedLaunchMaterial,
+  type TeamsQueuedLaunchMaterial,
+} from "./teams-queued-launch-context.service";
 
 const log = logger("callback:chat");
 const PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -2683,11 +2692,10 @@ type LaunchLoader = (
   args: QueuedLaunchLoaderArgs,
 ) => Promise<QueuedLaunchMaterial | null>;
 
-interface NativeQueuedLaunchMaterial {
-  readonly prompt: string;
-  readonly appendSystemPrompt: string;
-  readonly userInfoExtras?: CreateQueuedChatRunInput["userInfoExtras"];
-}
+type NativeQueuedLaunchMaterial =
+  | SlackQueuedLaunchMaterial
+  | FeishuQueuedLaunchMaterial
+  | TeamsQueuedLaunchMaterial;
 
 function launchLoader<Material extends NativeQueuedLaunchMaterial>(
   load: (db: Db, args: QueuedLaunchLoaderArgs) => Promise<Material | null>,
