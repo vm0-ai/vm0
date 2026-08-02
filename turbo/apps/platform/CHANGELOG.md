@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.675.8](https://github.com/vm0-ai/vm0/compare/app-v0.675.7...app-v0.675.8) (2026-08-02)
+
+
+### Refactoring
+
+* dual-write agentphone launch context ([#24523](https://github.com/vm0-ai/vm0/issues/24523)) ([16e456c](https://github.com/vm0-ai/vm0/commit/16e456c19e73b6816297f64cb70ef3b1fa56d80b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.4
+    * @vm0/core bumped to 8.502.4
+
 ## [0.675.7](https://github.com/vm0-ai/vm0/compare/app-v0.675.6...app-v0.675.7) (2026-08-01)
 
 

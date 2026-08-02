@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.151.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.9...runner-rs-v0.151.10) (2026-08-02)
+
+
+### Documentation
+
+* **runner:** document service unit identity forms ([#24533](https://github.com/vm0-ai/vm0/issues/24533)) ([66c754f](https://github.com/vm0-ai/vm0/commit/66c754f2cb8f383e2afa5b7f0bbf52cf9352a83a))
+
 ## [0.151.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.8...runner-rs-v0.151.9) (2026-08-01)
 
 
