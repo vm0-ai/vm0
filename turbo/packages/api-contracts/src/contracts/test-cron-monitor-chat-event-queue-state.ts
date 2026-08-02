@@ -29,8 +29,21 @@ export const testCronMonitorChatEventQueueStateActionBodySchema =
 export const testCronMonitorChatEventQueueStateActionResponseSchema = z
   .object({
     ok: z.literal(true),
+    compose_id: z.string().uuid().optional(),
+    event_id: z.string().uuid().optional(),
   })
   .passthrough();
+
+export const testCronMonitorChatEventQueueStateMonitorBodySchema = z.object({
+  event_ids: z.array(z.string().uuid()).min(1),
+});
+
+export const testCronMonitorChatEventQueueStateMonitorResponseSchema = z.object(
+  {
+    success: z.literal(true),
+    orphanedMessages: z.number().int().nonnegative(),
+  },
+);
 
 export const testCronMonitorChatEventQueueStateContract = c.router({
   action: {
@@ -43,6 +56,17 @@ export const testCronMonitorChatEventQueueStateContract = c.router({
     },
     summary: "Mutate orphaned queued chat message monitor test state",
   },
+  monitor: {
+    method: "POST",
+    path: "/api/test/cron-monitor-chat-event-queue-state/monitor",
+    body: testCronMonitorChatEventQueueStateMonitorBodySchema,
+    responses: {
+      200: testCronMonitorChatEventQueueStateMonitorResponseSchema,
+      404: z.string(),
+      500: z.object({ error: z.string() }),
+    },
+    summary: "Monitor selected queued chat events in API tests",
+  },
 });
 
 export type TestCronMonitorChatEventQueueStateActionBody = z.infer<
@@ -50,6 +74,9 @@ export type TestCronMonitorChatEventQueueStateActionBody = z.infer<
 >;
 export type TestCronMonitorChatEventQueueStateActionResponse = z.infer<
   typeof testCronMonitorChatEventQueueStateActionResponseSchema
+>;
+export type TestCronMonitorChatEventQueueStateMonitorBody = z.infer<
+  typeof testCronMonitorChatEventQueueStateMonitorBodySchema
 >;
 export type TestCronMonitorChatEventQueueStateContract =
   typeof testCronMonitorChatEventQueueStateContract;

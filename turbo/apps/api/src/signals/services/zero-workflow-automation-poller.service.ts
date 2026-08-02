@@ -20,6 +20,8 @@ import {
   type DueWorkflowAutomation,
   type RunFailure,
   type AutomationRow,
+  type RunWorkflowAutomationNowArgs,
+  type RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-run.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
@@ -221,6 +223,7 @@ async function dueWorkflowAutomationRows(
   db: Db,
   currentTime: Date,
   signal: AbortSignal,
+  automationId?: string,
 ): Promise<DueWorkflowAutomationRow[]> {
   const rows = await db
     .select({
@@ -259,6 +262,7 @@ async function dueWorkflowAutomationRows(
     )
     .where(
       and(
+        automationId ? eq(zeroWorkflowAutomations.id, automationId) : undefined,
         eq(zeroWorkflowAutomations.enabled, true),
         eq(zeroWorkflowAutomations.kind, "schedule"),
         lte(zeroWorkflowAutomations.nextRunAt, currentTime),
@@ -267,6 +271,143 @@ async function dueWorkflowAutomationRows(
     .limit(DUE_BATCH_LIMIT);
   signal.throwIfAborted();
   return rows;
+}
+
+async function executeDueWorkflowAutomations(args: {
+  readonly db: Db;
+  readonly signal: AbortSignal;
+  readonly automationId?: string;
+  readonly startRun: (
+    input: RunWorkflowAutomationNowArgs,
+    signal: AbortSignal,
+  ) => Promise<RunWorkflowAutomationResult>;
+}): Promise<ExecuteResult> {
+  const currentTime = nowDate();
+  const rows = await dueWorkflowAutomationRows(
+    args.db,
+    currentTime,
+    args.signal,
+    args.automationId,
+  );
+  let executed = 0;
+  let skipped = 0;
+
+  for (const row of rows) {
+    const ownerIsMember = await hasOrgMembership(args.db, {
+      orgId: row.automation.orgId,
+      userId: row.automation.ownerUserId,
+    });
+    args.signal.throwIfAborted();
+    if (!ownerIsMember) {
+      log.warn(
+        "Disabling workflow automation: owner is no longer an org member",
+        {
+          automationId: row.automation.id,
+          orgId: row.automation.orgId,
+          userId: row.automation.ownerUserId,
+        },
+      );
+      await args.db
+        .update(zeroWorkflowAutomations)
+        .set({ enabled: false, nextRunAt: null, updatedAt: currentTime })
+        .where(eq(zeroWorkflowAutomations.id, row.automation.id));
+      args.signal.throwIfAborted();
+      skipped++;
+      continue;
+    }
+
+    const canFire = await workflowAutomationCanFire(args.db, {
+      automation: row.automation,
+      agentId: row.agentId,
+      signal: args.signal,
+    });
+    args.signal.throwIfAborted();
+    if (!canFire) {
+      log.debug("Workflow automation skipped: automation is paused", {
+        automationId: row.automation.id,
+        workflowId: row.automation.workflowId,
+        agentId: row.agentId,
+        orgId: row.automation.orgId,
+        userId: row.automation.ownerUserId,
+      });
+      skipped++;
+      continue;
+    }
+
+    const claimed = await claimAutomation(args.db, row.automation, currentTime);
+    args.signal.throwIfAborted();
+    if (!claimed) {
+      skipped++;
+      continue;
+    }
+
+    const chatThreadId = await ensureDueWorkflowAutomationChatThread(
+      args.db,
+      row,
+      currentTime,
+    );
+    args.signal.throwIfAborted();
+
+    const due: DueWorkflowAutomation = {
+      automation: claimed,
+      agentId: row.agentId,
+      chatThreadId,
+    };
+
+    // The tick owns the fire time, so it builds the trigger line here rather
+    // than letting a later drain guess it from its own clock.
+    const scheduleContext = scheduleTriggerContext({
+      automation: claimed,
+      workflowName: row.workflowName,
+      firedAt: currentTime,
+    });
+    const result = await tapError(
+      args.startRun(
+        {
+          due,
+          automationContext: scheduleContext,
+          apiStartTime: now(),
+          triggerBrief:
+            buildWorkflowScheduleAutomationBrief({
+              createdAt: currentTime,
+              scheduleType: claimed.scheduleType,
+              cronExpression: claimed.cronExpression,
+              intervalSeconds: claimed.intervalSeconds,
+              atTime: claimed.atTime,
+              automationTimezone: claimed.timezone,
+              userTimezone: row.userTimezone,
+            }) ?? undefined,
+          dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+        },
+        args.signal,
+      ),
+      async (error) => {
+        await recordPreRunFailure(args.db, claimed, error, args.signal);
+        skipped++;
+      },
+    );
+    args.signal.throwIfAborted();
+    if (!result) {
+      continue;
+    }
+    if (result.kind === "enqueued") {
+      executed++;
+      continue;
+    }
+    if (result.kind !== "ok") {
+      await recordPreRunFailure(args.db, claimed, result, args.signal);
+      skipped++;
+      continue;
+    }
+    executed++;
+  }
+
+  log.debug("execute-workflow-automations tick complete", {
+    dueCount: rows.length,
+    executed,
+    skipped,
+  });
+  return { executed, skipped };
 }
 
 /**
@@ -279,129 +420,29 @@ async function dueWorkflowAutomationRows(
  */
 export const executeDueWorkflowAutomations$ = command(
   async ({ set }, signal: AbortSignal): Promise<ExecuteResult> => {
-    const db = set(writeDb$);
-    const currentTime = nowDate();
-
-    const rows = await dueWorkflowAutomationRows(db, currentTime, signal);
-    let executed = 0;
-    let skipped = 0;
-
-    for (const row of rows) {
-      const ownerIsMember = await hasOrgMembership(db, {
-        orgId: row.automation.orgId,
-        userId: row.automation.ownerUserId,
-      });
-      signal.throwIfAborted();
-      if (!ownerIsMember) {
-        log.warn(
-          "Disabling workflow automation: owner is no longer an org member",
-          {
-            automationId: row.automation.id,
-            orgId: row.automation.orgId,
-            userId: row.automation.ownerUserId,
-          },
-        );
-        await db
-          .update(zeroWorkflowAutomations)
-          .set({ enabled: false, nextRunAt: null, updatedAt: currentTime })
-          .where(eq(zeroWorkflowAutomations.id, row.automation.id));
-        signal.throwIfAborted();
-        skipped++;
-        continue;
-      }
-
-      const canFire = await workflowAutomationCanFire(db, {
-        automation: row.automation,
-        agentId: row.agentId,
-        signal,
-      });
-      signal.throwIfAborted();
-      if (!canFire) {
-        log.debug("Workflow automation skipped: automation is paused", {
-          automationId: row.automation.id,
-          workflowId: row.automation.workflowId,
-          agentId: row.agentId,
-          orgId: row.automation.orgId,
-          userId: row.automation.ownerUserId,
-        });
-        skipped++;
-        continue;
-      }
-
-      const claimed = await claimAutomation(db, row.automation, currentTime);
-      signal.throwIfAborted();
-      if (!claimed) {
-        skipped++;
-        continue;
-      }
-
-      const chatThreadId = await ensureDueWorkflowAutomationChatThread(
-        db,
-        row,
-        currentTime,
-      );
-      signal.throwIfAborted();
-
-      const due: DueWorkflowAutomation = {
-        automation: claimed,
-        agentId: row.agentId,
-        chatThreadId,
-      };
-
-      // The tick owns the fire time, so it builds the trigger line here rather
-      // than letting a later drain guess it from its own clock.
-      const scheduleContext = scheduleTriggerContext({
-        automation: claimed,
-        workflowName: row.workflowName,
-        firedAt: currentTime,
-      });
-      const result = await tapError(
-        set(
-          runWorkflowAutomationNow$,
-          {
-            due,
-            automationContext: scheduleContext,
-            apiStartTime: now(),
-            triggerBrief:
-              buildWorkflowScheduleAutomationBrief({
-                createdAt: currentTime,
-                scheduleType: claimed.scheduleType,
-                cronExpression: claimed.cronExpression,
-                intervalSeconds: claimed.intervalSeconds,
-                atTime: claimed.atTime,
-                automationTimezone: claimed.timezone,
-                userTimezone: row.userTimezone,
-              }) ?? undefined,
-            dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-          },
-          signal,
-        ),
-        async (error) => {
-          await recordPreRunFailure(db, claimed, error, signal);
-          skipped++;
-        },
-      );
-      signal.throwIfAborted();
-      if (!result) {
-        continue;
-      }
-      if (result.kind === "enqueued") {
-        executed++;
-        continue;
-      }
-      if (result.kind !== "ok") {
-        await recordPreRunFailure(db, claimed, result, signal);
-        skipped++;
-        continue;
-      }
-      executed++;
-    }
-
-    log.debug("execute-workflow-automations tick complete", {
-      dueCount: rows.length,
-      executed,
-      skipped,
+    return await executeDueWorkflowAutomations({
+      db: set(writeDb$),
+      signal,
+      startRun: (input, childSignal) => {
+        return set(runWorkflowAutomationNow$, input, childSignal);
+      },
     });
-    return { executed, skipped };
+  },
+);
+
+export const executeDueWorkflowAutomationsForAutomation$ = command(
+  async (
+    { set },
+    automationId: string,
+    signal: AbortSignal,
+  ): Promise<ExecuteResult> => {
+    return await executeDueWorkflowAutomations({
+      db: set(writeDb$),
+      automationId,
+      signal,
+      startRun: (input, childSignal) => {
+        return set(runWorkflowAutomationNow$, input, childSignal);
+      },
+    });
   },
 );

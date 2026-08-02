@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
 import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -12,6 +13,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventAutomationPart } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -22,9 +24,7 @@ const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 // Synthetic tenant whose FNV-1a value matches the staff rollout allowlist, so
 // tenant isolation can be exercised entirely through external API behavior.
 const SECOND_ROLLOUT_ORG_ID = "org_j3tn5H";
-const CRON_SECRET = "strapi-cron-secret";
 const WORKFLOW_NAME = "publish-strapi-blog";
-const STRAPI_AUTOMATION_USER_ID = "user_strapi_automation_admin";
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" } as const;
@@ -36,6 +36,13 @@ function integrationsClient() {
 
 function automationsClient() {
   return setupApp({ context })(zeroWorkflowAutomationsContract);
+}
+
+function workflowAutomationExecutionClient() {
+  return setupApp({
+    context,
+    routes: testWorkflowAutomationExecutionRoutes,
+  })(testWorkflowAutomationExecutionContract);
 }
 
 async function postStrapiEvent(args: {
@@ -97,7 +104,6 @@ async function workflowAutomationRuns(threadId: string, workflowId: string) {
 beforeEach(() => {
   clearMockNow();
   mockEnv("VM0_WEB_URL", "https://www.vm0.test");
-  mockEnv("CRON_SECRET", CRON_SECRET);
   context.mocks.s3.send.mockResolvedValue({});
 });
 
@@ -262,8 +268,7 @@ describe("Strapi integration", () => {
 
   it("tests the external webhook and coalesces localized publishes", async () => {
     const actor = workflows.user({
-      userId: STRAPI_AUTOMATION_USER_ID,
-      orgId: STAFF_ORG_ID,
+      orgId: SECOND_ROLLOUT_ORG_ID,
       orgRole: "org:admin",
     });
     await runs.grantProEntitlement(actor, { tier: "team" });
@@ -413,36 +418,22 @@ describe("Strapi integration", () => {
     mockNow(publishStartedAt + 46_000);
     const cronResponses = await Promise.all(
       [0, 1].map(() => {
-        return createApp({ signal: context.signal }).request(
-          "/api/cron/execute-workflow-automations",
-          { headers: { authorization: `Bearer ${CRON_SECRET}` } },
+        return accept(
+          workflowAutomationExecutionClient().execute({
+            body: { automation_id: automation.body.id },
+          }),
+          [200],
         );
       }),
     );
     expect(
-      cronResponses.map((response) => {
-        return response.status;
-      }),
-    ).toStrictEqual([200, 200]);
-    const cronBodies = (await Promise.all(
-      cronResponses.map(async (response) => {
-        return (await response.json()) as {
-          readonly success: boolean;
-          readonly executed: number;
-        };
-      }),
-    )) satisfies readonly {
-      readonly success: boolean;
-      readonly executed: number;
-    }[];
-    expect(
-      cronBodies.every((body) => {
-        return body.success;
+      cronResponses.every((response) => {
+        return response.body.success;
       }),
     ).toBeTruthy();
     expect(
-      cronBodies.reduce((total, body) => {
-        return total + body.executed;
+      cronResponses.reduce((total, response) => {
+        return total + response.body.executed;
       }, 0),
     ).toBe(1);
 
@@ -495,13 +486,13 @@ describe("Strapi integration", () => {
     });
 
     mockNow(nextPublishStartedAt + 46_000);
-    const successorCron = await createApp({
-      signal: context.signal,
-    }).request("/api/cron/execute-workflow-automations", {
-      headers: { authorization: `Bearer ${CRON_SECRET}` },
-    });
-    expect(successorCron.status).toBe(200);
-    await expect(successorCron.json()).resolves.toMatchObject({
+    const successorCron = await accept(
+      workflowAutomationExecutionClient().execute({
+        body: { automation_id: automation.body.id },
+      }),
+      [200],
+    );
+    expect(successorCron.body).toMatchObject({
       success: true,
       executed: 1,
     });
