@@ -2743,6 +2743,7 @@ function launchLoader<Material extends NativeQueuedLaunchMaterial>(
 
 async function resolveQueuedLaunchMaterial(
   args: CreateQueuedChatRunInputArgs,
+  sourceParams: QueuedSourceParams,
 ): Promise<QueuedLaunchMaterial | null> {
   const launchLoaders: Partial<Record<TriggerSource, LaunchLoader>> = {
     slack: launchLoader(loadSlackQueuedLaunchMaterial, (material) => {
@@ -3080,7 +3081,7 @@ async function loadQueuedRunMaterial(args: CreateQueuedChatRunInputArgs) {
   if (args.queuedMessage.triggerSource !== "web" && !sourceParams) {
     throw new Error("Canonical integration queue item is missing run params");
   }
-  const launchMaterial = await resolveQueuedLaunchMaterial(args);
+  const launchMaterial = await resolveQueuedLaunchMaterial(args, sourceParams);
   return {
     sourceParams,
     launchMaterial,
