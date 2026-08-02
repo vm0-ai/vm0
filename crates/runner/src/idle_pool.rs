@@ -1541,7 +1541,7 @@ mod tests {
     async fn idle_park_request_success_preserves_reuse_metadata() {
         let overrides = Arc::new(MockSandboxOverrides::new());
         let sandbox_id = SandboxId::new_v4();
-        let session_id = "session-metadata";
+        let reuse_key = "thread:metadata";
         let profile_name = "vm0/large";
         let source_ip = "10.99.0.42";
         let history_generation_run_id = RunId::new_v4();
@@ -1579,7 +1579,7 @@ mod tests {
             run_id: RunId::new_v4(),
             sandbox,
             factory,
-            reuse_key: session_id.into(),
+            reuse_key: reuse_key.into(),
             sandbox_id,
             profile_name: profile_name.into(),
             device_rate_limits: None,
@@ -1598,7 +1598,7 @@ mod tests {
         };
 
         assert_eq!(overrides.park_call_count(), 1);
-        assert_eq!(candidate.reuse_key(), session_id);
+        assert_eq!(candidate.reuse_key(), reuse_key);
         assert_eq!(candidate.sandbox_id(), sandbox_id);
         assert_eq!(candidate.metadata.profile_name, profile_name);
         assert_eq!(
@@ -1609,7 +1609,7 @@ mod tests {
         let mut pool = IdlePool::new(pool_config(0));
         assert!(matches!(pool.park(candidate), ParkResult::Parked));
         let reservation = pool
-            .reserve_reusable(session_id, profile_name, &None)
+            .reserve_reusable(reuse_key, profile_name, &None)
             .expect("idle entry should be reserved");
 
         let IdleUnparkResult::Reused {
