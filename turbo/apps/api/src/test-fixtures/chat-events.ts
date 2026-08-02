@@ -678,6 +678,28 @@ export async function clearGitHubTriggerCommentBodyFixture(
     .where(eq(chatGithubContext.id, event.contextId));
 }
 
+interface ChatEventByPromptFixture {
+  readonly eventId: string;
+}
+
+export async function findChatEventByPromptFixture(
+  prompt: string,
+): Promise<ChatEventByPromptFixture | null> {
+  const rows = await db()
+    .select({
+      eventId: chatEvents.id,
+      userMessage: chatEvents.userMessage,
+    })
+    .from(chatEvents)
+    .where(eq(chatEvents.eventType, "input.prompt"));
+  const row = rows.find((candidate) => {
+    return candidate.userMessage?.parts.some((part) => {
+      return part.type === "text" && part.text === prompt;
+    });
+  });
+  return row ?? null;
+}
+
 export async function findPendingChatEventInputParamsByPromptFixture(
   prompt: string,
 ): Promise<ChatEventInputParamsFixture | null> {

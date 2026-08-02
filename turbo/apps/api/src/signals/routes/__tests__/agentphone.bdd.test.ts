@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import {
-  findPendingChatEventInputParamsByPromptFixture,
+  findChatEventByPromptFixture,
   readChatEventContextFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -312,17 +312,13 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       isGroup: false,
     });
     await waitForTyping(sends, [conversationId]);
-    await flushWaitUntilForTest();
 
-    const pending =
-      await findPendingChatEventInputParamsByPromptFixture(
-        "summarize my inbox",
-      );
-    expect(pending).toMatchObject({ eventId: expect.any(String) });
-    if (!pending) {
-      throw new Error("Expected pending AgentPhone input params");
+    const admitted = await findChatEventByPromptFixture("summarize my inbox");
+    expect(admitted).toMatchObject({ eventId: expect.any(String) });
+    if (!admitted) {
+      throw new Error("Expected admitted AgentPhone input event");
     }
-    const launchContext = await readChatEventContextFixture(pending.eventId);
+    const launchContext = await readChatEventContextFixture(admitted.eventId);
     expect(launchContext).toMatchObject({
       contextType: "agentphone",
       contextId: expect.any(String),
@@ -346,7 +342,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     }
     const admittedEvents = await chat.listThreadEvents(actor, launchThreadId);
     const admittedInput = admittedEvents.events.find((event) => {
-      return event.id === pending.eventId && event.eventType === "input.prompt";
+      return (
+        event.id === admitted.eventId && event.eventType === "input.prompt"
+      );
     });
     expect(
       admittedInput?.eventType === "input.prompt"
@@ -496,14 +494,12 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       from: phone,
       body: "start on my phone",
     });
-    await flushWaitUntilForTest();
-    const pendingSms =
-      await findPendingChatEventInputParamsByPromptFixture("start on my phone");
-    if (!pendingSms) {
-      throw new Error("Expected pending AgentPhone SMS input params");
+    const admittedSms = await findChatEventByPromptFixture("start on my phone");
+    if (!admittedSms) {
+      throw new Error("Expected admitted AgentPhone SMS input event");
     }
     await expect(
-      readChatEventContextFixture(pendingSms.eventId),
+      readChatEventContextFixture(admittedSms.eventId),
     ).resolves.toMatchObject({
       contextType: "agentphone",
       agentphoneMessageText: "start on my phone",
@@ -862,16 +858,15 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         },
       ],
     });
-    await flushWaitUntilForTest();
-    const pendingGroup = await findPendingChatEventInputParamsByPromptFixture(
+    const admittedGroup = await findChatEventByPromptFixture(
       "summarize this thread",
     );
-    expect(pendingGroup).toMatchObject({ eventId: expect.any(String) });
-    if (!pendingGroup) {
-      throw new Error("Expected pending AgentPhone group input params");
+    expect(admittedGroup).toMatchObject({ eventId: expect.any(String) });
+    if (!admittedGroup) {
+      throw new Error("Expected admitted AgentPhone group input event");
     }
     await expect(
-      readChatEventContextFixture(pendingGroup.eventId),
+      readChatEventContextFixture(admittedGroup.eventId),
     ).resolves.toMatchObject({
       contextType: "agentphone",
       agentphoneMessageText: "summarize this thread",
