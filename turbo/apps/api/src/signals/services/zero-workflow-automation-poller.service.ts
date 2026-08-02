@@ -21,10 +21,6 @@ import {
   type RunFailure,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-} from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
@@ -349,9 +345,7 @@ export const executeDueWorkflowAutomations$ = command(
       const due: DueWorkflowAutomation = {
         automation: claimed,
         agentId: row.agentId,
-        workflowName: row.workflowName,
         chatThreadId,
-        allowClaimedOnceScheduleAutomation: claimed.scheduleType === "once",
       };
 
       // The tick owns the fire time, so it builds the trigger line here rather
@@ -368,9 +362,6 @@ export const executeDueWorkflowAutomations$ = command(
             due,
             automationContext: scheduleContext,
             apiStartTime: now(),
-            prompt: workflowAutomationPrompt(scheduleContext),
-            appendSystemPrompt:
-              workflowAutomationAppendSystemPrompt(scheduleContext),
             triggerBrief:
               buildWorkflowScheduleAutomationBrief({
                 createdAt: currentTime,

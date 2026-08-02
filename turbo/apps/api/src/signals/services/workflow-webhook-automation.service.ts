@@ -29,16 +29,11 @@ import {
   type WorkflowEventRunTiming,
 } from "./workflow-event-source-timing.service";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
   type RunWorkflowAutomationResult,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
@@ -683,15 +678,7 @@ const startWorkflowWebhookRun$ = command(
           bodySha256: args.delivery.bodySha256,
           headers: args.headers,
         });
-        return {
-          context,
-          prompt: workflowAutomationPrompt(context),
-          appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
-          callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-            args.row.chatThreadId,
-            args.row.agentId,
-          ),
-        };
+        return { context };
       },
     );
     signal.throwIfAborted();
@@ -701,18 +688,11 @@ const startWorkflowWebhookRun$ = command(
         due: {
           automation: args.row.automation,
           agentId: args.row.agentId,
-          workflowName: args.row.workflowName,
           chatThreadId: args.row.chatThreadId,
         },
         automationContext: runInput.context,
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
-        prompt: runInput.prompt,
-        appendSystemPrompt: runInput.appendSystemPrompt,
-        callbacks: runInput.callbacks,
-        activePreviousRunPolicy: "allow",
-        recordLastRunId: false,
-        recordLastRunAt: true,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),
       },

@@ -14,15 +14,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { writeDb$ } from "../external/db";
 import { now, nowDate } from "../../lib/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import {
-  buildChatOnlyWorkflowAutomationCallbacks,
-  runWorkflowAutomationNow$,
-} from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
 const CHAT_RUN_FINISHED_EVENT_TYPE = "chat-run-finished";
@@ -199,22 +192,12 @@ export const dispatchChatRunFinishedWorkflowEvents$ = command(
           due: {
             automation: row.automation,
             agentId: row.agentId,
-            workflowName: row.workflowName,
             chatThreadId,
           },
           automationContext: context,
           apiStartTime: now(),
           triggerSource: "workflow-event",
-          prompt: workflowAutomationPrompt(context),
-          appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
           triggerBrief: `Chat run ${event.runStatus} in watched thread`,
-          callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-            chatThreadId,
-            row.agentId,
-          ),
-          activePreviousRunPolicy: "allow",
-          recordLastRunId: false,
-          recordLastRunAt: true,
           dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         },
         signal,

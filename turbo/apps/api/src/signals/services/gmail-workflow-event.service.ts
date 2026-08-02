@@ -41,15 +41,10 @@ import {
   type WorkflowEventRunTiming,
 } from "./workflow-event-source-timing.service";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
@@ -1690,16 +1685,10 @@ const startGmailWorkflowRun$ = command(
         });
         return {
           context,
-          prompt: workflowAutomationPrompt(context),
-          appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
           triggerBrief: buildGmailWorkflowAutomationBrief({
             automationConfig: args.automation.config,
             message: args.message,
           }),
-          callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-            args.automation.chatThreadId,
-            args.automation.agentId,
-          ),
         };
       },
     );
@@ -1710,19 +1699,12 @@ const startGmailWorkflowRun$ = command(
         due: {
           automation: args.automation.automation,
           agentId: args.automation.agentId,
-          workflowName: args.automation.workflowName,
           chatThreadId: args.automation.chatThreadId,
         },
         automationContext: runInput.context,
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
-        prompt: runInput.prompt,
-        appendSystemPrompt: runInput.appendSystemPrompt,
         triggerBrief: runInput.triggerBrief,
-        callbacks: runInput.callbacks,
-        activePreviousRunPolicy: "allow",
-        recordLastRunId: false,
-        recordLastRunAt: true,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),
       },

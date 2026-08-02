@@ -11,16 +11,12 @@ import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { writeDb$, type Db } from "../external/db";
 import { now } from "../external/time";
 import {
-  decryptWorkflowQueueEventParams,
   loadNextWorkflowQueueEvent,
   rejectWorkflowQueueEvent,
   type PendingWorkflowQueueEvent,
 } from "./workflow-chat-event-queue.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
-import {
-  buildWorkflowAutomationQueuedLaunchMaterial,
-  type WorkflowAutomationQueuedLaunchMaterial,
-} from "./workflow-automation-queued-launch-context.service";
+import { buildWorkflowAutomationQueuedLaunchMaterial } from "./workflow-automation-queued-launch-context.service";
 import {
   launchQueuedWorkflowAutomation$,
   type RunWorkflowAutomationResult,
@@ -35,48 +31,6 @@ const MAX_DRAIN_ATTEMPTS = 5;
 interface DequeueTarget {
   readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   readonly agentId: string;
-  readonly workflowName: string;
-}
-
-async function loadWorkflowQueueLaunchMaterial(
-  event: PendingWorkflowQueueEvent,
-  target: DequeueTarget,
-): Promise<WorkflowAutomationQueuedLaunchMaterial | null> {
-  const storedMaterial = buildWorkflowAutomationQueuedLaunchMaterial({
-    workflowName: event.workflowName,
-    eventType: event.workflowAutomationEventType,
-    eventPayload: event.workflowAutomationEventPayload,
-    automation: target.automation,
-    agentId: target.agentId,
-    chatThreadId: event.chatThreadId,
-  });
-  if (storedMaterial) {
-    return storedMaterial;
-  }
-  if (!event.encryptedParams) {
-    return null;
-  }
-  const legacyParams = await decryptWorkflowQueueEventParams(
-    event.encryptedParams,
-    {
-      userId: target.automation.ownerUserId,
-      orgId: target.automation.orgId,
-    },
-  );
-  if (!legacyParams) {
-    return null;
-  }
-  return {
-    workflowName: target.workflowName,
-    prompt: legacyParams.prompt,
-    appendSystemPrompt: legacyParams.appendSystemPrompt,
-    callbacks: legacyParams.callbacks,
-    activePreviousRunPolicy: legacyParams.activePreviousRunPolicy,
-    recordLastRunId: legacyParams.recordLastRunId,
-    recordLastRunAt: legacyParams.recordLastRunAt,
-    allowClaimedOnceScheduleAutomation:
-      legacyParams.allowClaimedOnceScheduleAutomation,
-  };
 }
 
 async function loadDequeueTarget(
@@ -87,7 +41,6 @@ async function loadDequeueTarget(
     .select({
       automation: zeroWorkflowAutomations,
       agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
     })
     .from(zeroWorkflowAutomations)
     .innerJoin(
@@ -258,13 +211,17 @@ export const drainWorkflowQueueForThread$ = command(
         continue;
       }
 
-      const launchMaterial = await loadWorkflowQueueLaunchMaterial(
-        event,
-        target,
-      );
+      const launchMaterial = buildWorkflowAutomationQueuedLaunchMaterial({
+        workflowName: event.workflowName,
+        eventType: event.workflowAutomationEventType,
+        eventPayload: event.workflowAutomationEventPayload,
+        automation: target.automation,
+        agentId: target.agentId,
+        chatThreadId: event.chatThreadId,
+      });
       signal.throwIfAborted();
       if (!launchMaterial) {
-        log.error("Consuming undecryptable workflow queue event", {
+        log.error("Consuming workflow queue event with incomplete context", {
           eventId: event.id,
           automationId: event.automationId,
         });
@@ -291,13 +248,11 @@ export const drainWorkflowQueueForThread$ = command(
           due: {
             automation: target.automation,
             agentId: target.agentId,
-            workflowName: launchMaterial.workflowName,
             chatThreadId: event.chatThreadId,
             allowClaimedOnceScheduleAutomation:
               launchMaterial.allowClaimedOnceScheduleAutomation,
           },
           queueEventId: event.id,
-          queueEventCreatedAt: event.createdAt,
           apiStartTime: launchHint?.apiStartTime ?? args.apiStartTime ?? now(),
           prompt: launchMaterial.prompt,
           triggerBrief: event.triggerBrief ?? undefined,

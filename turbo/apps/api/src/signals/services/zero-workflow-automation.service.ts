@@ -98,7 +98,6 @@ import {
 } from "./workflow-webhook-automation.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
   type RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-run.service";
@@ -107,11 +106,7 @@ import {
   loadWorkflowUserAutomationThreadId,
 } from "./zero-workflow-user-automation-thread.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 
 type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
 type WorkflowRow = typeof zeroWorkflows.$inferSelect;
@@ -2696,7 +2691,6 @@ export const runOwnedWorkflowAutomationNow$ = command(
         due: {
           automation,
           agentId: target.agentId,
-          workflowName: target.workflowName,
           chatThreadId,
         },
         automationContext: manualContext,
@@ -2712,16 +2706,6 @@ export const runOwnedWorkflowAutomationNow$ = command(
             automationTimezone: automation.timezone,
             userTimezone: ownerTimezone,
           }) ?? undefined,
-        prompt: workflowAutomationPrompt({
-          workflowName: target.workflowName,
-          trigger: manualContext.trigger,
-        }),
-        appendSystemPrompt: workflowAutomationAppendSystemPrompt(manualContext),
-        callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-          chatThreadId,
-          target.agentId,
-        ),
-        recordLastRunAt: true,
         coalescePendingScheduleRun: false,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
       },

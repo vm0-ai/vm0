@@ -27,18 +27,13 @@ import { safeJsonParse, settle } from "../utils";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import type { WorkflowQueueAdmissionTransaction } from "./workflow-chat-event-queue.service";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
   type AutomationRow,
   type RunFailure,
   type RunWorkflowAutomationNowArgs,
   type RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 
 const log = logger("api:strapi-workflow-event");
 
@@ -625,23 +620,13 @@ async function processPendingEvent(args: {
       due: {
         automation: row.automation,
         agentId: row.agentId,
-        workflowName: row.workflowName,
         chatThreadId: row.chatThreadId,
       },
       automationContext: context,
       apiStartTime: now(),
       triggerSource: "workflow-event",
-      prompt: workflowAutomationPrompt(context),
-      appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
       triggerBrief: `Strapi published ${args.pending.uid} ${args.pending.documentId} (${args.pending.locales.length} locale${args.pending.locales.length === 1 ? "" : "s"})`,
-      callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-        row.chatThreadId,
-        row.agentId,
-      ),
-      activePreviousRunPolicy: "allow",
       coalescePendingScheduleRun: false,
-      recordLastRunId: false,
-      recordLastRunAt: true,
       persistSourceTransition: async (tx) => {
         await persistPendingEventProcessed({
           tx,

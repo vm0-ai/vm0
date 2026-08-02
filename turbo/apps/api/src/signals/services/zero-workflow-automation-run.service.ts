@@ -2,10 +2,7 @@ import { command } from "ccstate";
 
 import { writeDb$ } from "../external/db";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
-import {
-  admitWorkflowAutomationEvent,
-  type WorkflowQueueEventParams,
-} from "./workflow-chat-event-queue.service";
+import { admitWorkflowAutomationEvent } from "./workflow-chat-event-queue.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import {
   ApiDispatchTimingCollector,
@@ -18,7 +15,6 @@ import type {
 } from "./zero-workflow-automation-launch.service";
 
 export {
-  buildChatOnlyWorkflowAutomationCallbacks,
   scheduleTriggerContext,
   type AutomationRow,
   type DueWorkflowAutomation,
@@ -26,14 +22,6 @@ export {
   type RunWorkflowAutomationNowArgs,
   type RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-launch.service";
-
-function queueEventParams(): WorkflowQueueEventParams {
-  // Keep only the wire-version marker until the encrypted-params fallback is
-  // removed after historical pending automation events have drained.
-  return {
-    version: 1,
-  };
-}
 
 /**
  * Durable workflow-event ingress. Every event enters the chat thread queue
@@ -74,7 +62,6 @@ export const runWorkflowAutomationNow$ = command(
           triggerSource: args.triggerSource ?? "workflow-schedule",
           triggerBrief: args.triggerBrief,
           coalescePendingScheduleRun: args.coalescePendingScheduleRun !== false,
-          params: queueEventParams(),
           persistSourceTransition: args.persistSourceTransition,
         });
       },

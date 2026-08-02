@@ -177,7 +177,7 @@ type InputAutomationEvent = ChatEventIdentity &
     readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
     readonly triggerSource: TriggerSource;
     readonly triggerBrief: string | null;
-    readonly encryptedParams: string;
+    readonly encryptedParams?: string | null;
   };
 
 type InputGoalEvent = ChatEventIdentity &

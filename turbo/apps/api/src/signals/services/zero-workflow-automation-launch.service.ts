@@ -26,10 +26,7 @@ import {
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 
 export type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
 
@@ -38,7 +35,6 @@ export interface DueWorkflowAutomation {
   // The owning agent is derived from the workflow row (hard 1:N); automations no
   // longer carry an agentId column, so callers resolve it and pass it here.
   readonly agentId: string;
-  readonly workflowName: string;
   readonly chatThreadId: string;
   // One-time schedule automations are disabled as part of the optimistic claim.
   // That claimed row can still proceed through the run-start readability gate.
@@ -85,19 +81,12 @@ export interface RunWorkflowAutomationNowArgs {
   readonly due: DueWorkflowAutomation;
   readonly automationContext: WorkflowAutomationContext;
   readonly apiStartTime: number;
-  // Overrides the default `/<workflowName>` slash-command prompt.
-  readonly prompt?: string;
   // Display-only source context stored in the user-message automation part.
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;
-  readonly appendSystemPrompt?: string;
-  readonly callbacks?: readonly InternalRunCallbackInput[];
-  readonly activePreviousRunPolicy?: ActivePreviousRunPolicy;
   // Automated schedule ticks coalesce while pending. Explicit manual runs set
   // this false so every user action remains a distinct queue item.
   readonly coalescePendingScheduleRun?: boolean;
-  readonly recordLastRunId?: boolean;
-  readonly recordLastRunAt?: boolean;
   /**
    * Admission-only source transition. This callback is never serialized into
    * the durable workflow queue payload.
@@ -107,19 +96,23 @@ export interface RunWorkflowAutomationNowArgs {
   readonly timing?: ApiDispatchTimingCollector;
 }
 
-type WorkflowAutomationLaunchArgs = Omit<
-  RunWorkflowAutomationNowArgs,
-  "automationContext"
->;
+interface WorkflowAutomationLaunchArgs {
+  readonly due: DueWorkflowAutomation;
+  readonly apiStartTime: number;
+  readonly prompt: string;
+  readonly triggerBrief?: string;
+  readonly triggerSource?: TriggerSource;
+  readonly appendSystemPrompt: string;
+  readonly callbacks: readonly InternalRunCallbackInput[];
+  readonly activePreviousRunPolicy: ActivePreviousRunPolicy;
+  readonly recordLastRunId: boolean;
+  readonly recordLastRunAt: boolean;
+  readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+  readonly timing?: ApiDispatchTimingCollector;
+}
 
 interface LaunchQueuedWorkflowAutomationArgs extends WorkflowAutomationLaunchArgs {
   readonly queueEventId: string;
-  /**
-   * Admission time of the queue row, which is when the automation actually
-   * fired. `apiStartTime` belongs to whichever request drains the row, so it
-   * runs late whenever an event waits behind an active run.
-   */
-  readonly queueEventCreatedAt: Date;
 }
 
 interface WorkflowAutomationRunInput {
@@ -336,7 +329,7 @@ function workflowAutomationTiming(
 async function checkActivePreviousWorkflowRun(args: {
   readonly db: Db;
   readonly automation: AutomationRow;
-  readonly activePreviousRunPolicy?: ActivePreviousRunPolicy;
+  readonly activePreviousRunPolicy: ActivePreviousRunPolicy;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
 }): Promise<RunFailure | undefined> {
@@ -425,10 +418,6 @@ async function resolveTimedWorkflowModelContext(args: {
 async function buildTimedWorkflowAutomationRunInput(args: {
   readonly command: WorkflowAutomationLaunchArgs;
   readonly automation: AutomationRow;
-  readonly agentId: string;
-  readonly workflowName: string;
-  readonly chatThreadId: string;
-  readonly firedAt: Date;
   readonly computerUseHostGrant: ComputerUseHostGrant;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<WorkflowAutomationRunInput> {
@@ -437,49 +426,13 @@ async function buildTimedWorkflowAutomationRunInput(args: {
     "api_dispatch_pre_create_zero_workflow_automation_build_run_input",
     "nested",
     () => {
-      // Every dispatcher builds both strings at fire time, because only it knows
-      // which event fired and when. The branches below serve exactly one case: a
-      // queue row enqueued before automations carried a trigger line. Such a row
-      // has no prompt, and a schedule row of that vintage has no
-      // appendSystemPrompt either because the old code built it here.
-      //
-      // Delete both branches, `firedAt`, and `queueEventCreatedAt` once no
-      // workflow queue row written before this change can still be drained.
-      const legacySchedule =
-        args.command.appendSystemPrompt === undefined &&
-        args.automation.kind === "schedule"
-          ? scheduleTriggerContext({
-              automation: args.automation,
-              workflowName: args.workflowName,
-              firedAt: args.firedAt,
-            })
-          : null;
-      const appendSystemPrompt =
-        args.command.appendSystemPrompt ??
-        (legacySchedule
-          ? workflowAutomationAppendSystemPrompt(legacySchedule)
-          : undefined);
-      if (appendSystemPrompt === undefined) {
-        // An event row always carries its context, in this version and in every
-        // previous one. Fail loudly instead of starting a run that has no idea
-        // which event it is handling.
-        throw new Error(
-          `Event workflow automation ${args.automation.id} reached run start without automation context`,
-        );
-      }
       return {
-        prompt: args.command.prompt ?? `/${args.workflowName}`,
+        prompt: args.command.prompt,
         appendSystemPrompt: appendComputerUseSystemPrompt(
-          appendSystemPrompt,
+          args.command.appendSystemPrompt,
           args.computerUseHostGrant,
         ),
-        callbacks:
-          args.command.callbacks ??
-          buildWorkflowAutomationCallbacks(
-            args.automation,
-            args.agentId,
-            args.chatThreadId,
-          ),
+        callbacks: args.command.callbacks,
         zeroRunMetadata: workflowAutomationRunMetadata(
           args.automation,
           args.command.triggerBrief,
@@ -531,7 +484,7 @@ export const launchQueuedWorkflowAutomation$ = command(
     signal: AbortSignal,
   ): Promise<RunWorkflowAutomationResult> => {
     const db = set(writeDb$);
-    const { automation, agentId, workflowName, chatThreadId } = args.due;
+    const { automation, agentId, chatThreadId } = args.due;
     const timing = workflowAutomationTiming(args);
 
     const activePreviousRunFailure = await checkActivePreviousWorkflowRun({
@@ -581,10 +534,6 @@ export const launchQueuedWorkflowAutomation$ = command(
     const runInput = await buildTimedWorkflowAutomationRunInput({
       command: args,
       automation,
-      agentId,
-      workflowName,
-      chatThreadId,
-      firedAt: args.queueEventCreatedAt,
       computerUseHostGrant,
       timing,
     });
