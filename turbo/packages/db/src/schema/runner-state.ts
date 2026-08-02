@@ -42,8 +42,8 @@ export const runnerState = pgTable(
       .$type<RunnerAdmittableProfiles>()
       .default([])
       .notNull(),
-    // Physical and Drizzle names remain stable during the #24486 rollout;
-    // #24489 renames them after old API instances and rollback support drain.
+    // Migration 0800 physically bridges held_sandbox_states while this release
+    // remains legacy-only. #24510 declares/cuts over; #24512 removes this field.
     heldSessionStates: jsonb("held_session_states")
       .$type<RunnerHeldSandboxStates>()
       .default([])

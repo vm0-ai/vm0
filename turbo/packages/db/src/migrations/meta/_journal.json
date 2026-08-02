@@ -5601,6 +5601,13 @@
       "when": 1785643630260,
       "tag": "0799_keen_smiling_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 800,
+      "version": "7",
+      "when": 1785645273472,
+      "tag": "0800_expand_runner_sandbox_state_persistence",
+      "breakpoints": true
     }
   ]
 }
