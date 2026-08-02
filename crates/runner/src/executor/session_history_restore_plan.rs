@@ -238,7 +238,8 @@ pub(crate) fn build_session_history_restore_plan(
                 )))
             }
         }
-        SandboxReuseResult::NoSessionId
+        SandboxReuseResult::NoReuseKey
+        | SandboxReuseResult::InvalidResumeSessionId
         | SandboxReuseResult::PoolMiss
         | SandboxReuseResult::ProfileMismatch
         | SandboxReuseResult::DeviceLimitMismatch

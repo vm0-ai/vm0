@@ -1222,7 +1222,7 @@ async fn execute_job_wraps_execute_inner() {
         minimal_context(),
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -1247,7 +1247,7 @@ async fn execute_job_create_failure_returns_exit_1() {
         minimal_context(),
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -1275,7 +1275,7 @@ async fn execute_job_model_provider_env_validation_failure_returns_run_failure()
         ctx,
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -1309,7 +1309,7 @@ async fn execute_job_claude_tool_validation_failure_skips_sandbox_create() {
         ctx,
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -1345,7 +1345,7 @@ async fn execute_job_codex_ignores_claude_tool_validation() {
         ctx,
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -1370,7 +1370,7 @@ async fn execute_job_nonzero_exit_still_returns_sandbox() {
         minimal_context(),
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),

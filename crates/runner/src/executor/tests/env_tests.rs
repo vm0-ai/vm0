@@ -407,7 +407,11 @@ fn build_env_json_sandbox_reuse_result_wire_format() {
     let sid = SandboxId::new_v4().to_string();
     for (variant, expected) in [
         (SandboxReuseResult::Reused, "reused"),
-        (SandboxReuseResult::NoSessionId, "noSessionId"),
+        (SandboxReuseResult::NoReuseKey, "noReuseKey"),
+        (
+            SandboxReuseResult::InvalidResumeSessionId,
+            "invalidResumeSessionId",
+        ),
         (SandboxReuseResult::PoolMiss, "poolMiss"),
         (SandboxReuseResult::ProfileMismatch, "profileMismatch"),
         (

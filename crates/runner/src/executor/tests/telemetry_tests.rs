@@ -494,7 +494,8 @@ fn record_reuse_result_emits_hit_for_reuse() {
 #[test]
 fn record_reuse_result_emits_miss_for_every_miss_variant() {
     let variants = [
-        SandboxReuseResult::NoSessionId,
+        SandboxReuseResult::NoReuseKey,
+        SandboxReuseResult::InvalidResumeSessionId,
         SandboxReuseResult::PoolMiss,
         SandboxReuseResult::ProfileMismatch,
         SandboxReuseResult::DeviceLimitMismatch,
@@ -557,7 +558,7 @@ async fn execute_job_reuse_records_sandbox_reuse_hit_in_telemetry() {
         minimal_context(),
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -884,7 +885,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
         minimal_context(),
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
