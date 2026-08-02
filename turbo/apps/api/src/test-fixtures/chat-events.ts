@@ -131,6 +131,18 @@ interface ChatEventContextFixture {
   readonly telegramChatId: string | null;
   readonly telegramMessageId: string | null;
   readonly telegramIsDm: boolean | null;
+  readonly telegramMessageThreadId: number | null;
+  readonly telegramMessageText: string | null;
+  readonly telegramThreadContext: string | null;
+  readonly telegramRootMessageId: string | null;
+  readonly telegramThinkingMessageId: string | null;
+  readonly telegramUserLinkId: string | null;
+  readonly telegramUserLinkKind: "custom" | "official" | null;
+  readonly telegramChatType: string | null;
+  readonly telegramSenderUserId: string | null;
+  readonly telegramSenderDisplayName: string | null;
+  readonly telegramSenderUsername: string | null;
+  readonly telegramSenderLanguage: string | null;
   readonly githubRepo: string | null;
   readonly githubSubjectNumber: number | null;
   readonly githubSubjectKind: "issue" | "pull_request" | null;
@@ -221,6 +233,18 @@ export async function readChatEventContextFixture(
       telegramChatId: chatTelegramContext.chatId,
       telegramMessageId: chatTelegramContext.messageId,
       telegramIsDm: chatTelegramContext.isDm,
+      telegramMessageThreadId: chatTelegramContext.messageThreadId,
+      telegramMessageText: chatTelegramContext.messageText,
+      telegramThreadContext: chatTelegramContext.threadContext,
+      telegramRootMessageId: chatTelegramContext.rootMessageId,
+      telegramThinkingMessageId: chatTelegramContext.thinkingMessageId,
+      telegramUserLinkId: chatTelegramContext.userLinkId,
+      telegramUserLinkKind: chatTelegramContext.userLinkKind,
+      telegramChatType: chatTelegramContext.chatType,
+      telegramSenderUserId: chatTelegramContext.senderUserId,
+      telegramSenderDisplayName: chatTelegramContext.senderDisplayName,
+      telegramSenderUsername: chatTelegramContext.senderUsername,
+      telegramSenderLanguage: chatTelegramContext.senderLanguage,
       githubRepo: chatGithubContext.repo,
       githubSubjectNumber: chatGithubContext.subjectNumber,
       githubSubjectKind: chatGithubContext.subjectKind,
@@ -361,6 +385,17 @@ const annotationProjectionInputs = [
         messageId: "42",
         isDm: false,
         messageThreadId: 7,
+        messageText: "telegram supergroup linked",
+        threadContext: "",
+        rootMessageId: null,
+        thinkingMessageId: null,
+        userLinkId: "00000000-0000-4000-8000-000000000004",
+        userLinkKind: "custom",
+        chatType: "supergroup",
+        senderUserId: "123456789",
+        senderDisplayName: "Telegram User",
+        senderUsername: "@telegram_user",
+        senderLanguage: "en",
       },
     },
   },
@@ -373,6 +408,17 @@ const annotationProjectionInputs = [
         messageId: "43",
         isDm: true,
         messageThreadId: null,
+        messageText: "telegram dm unlinked",
+        threadContext: "",
+        rootMessageId: "dm",
+        thinkingMessageId: null,
+        userLinkId: "00000000-0000-4000-8000-000000000005",
+        userLinkKind: "official",
+        chatType: "private",
+        senderUserId: "123456789",
+        senderDisplayName: null,
+        senderUsername: null,
+        senderLanguage: null,
       },
     },
   },
@@ -385,6 +431,17 @@ const annotationProjectionInputs = [
         messageId: "44",
         isDm: false,
         messageThreadId: null,
+        messageText: "telegram group unlinked",
+        threadContext: "",
+        rootMessageId: null,
+        thinkingMessageId: null,
+        userLinkId: "00000000-0000-4000-8000-000000000006",
+        userLinkKind: "custom",
+        chatType: "group",
+        senderUserId: null,
+        senderDisplayName: null,
+        senderUsername: null,
+        senderLanguage: null,
       },
     },
   },
@@ -631,6 +688,33 @@ export async function clearGitHubTriggerCommentBodyFixture(
 
 interface AgentphoneChatEventByPromptFixture {
   readonly eventId: string;
+}
+
+interface TelegramChatEventByPromptFixture {
+  readonly eventId: string;
+}
+
+export async function findTelegramChatEventByPromptFixture(
+  prompt: string,
+): Promise<TelegramChatEventByPromptFixture | null> {
+  const rows = await db()
+    .select({
+      eventId: chatEvents.id,
+      userMessage: chatEvents.userMessage,
+    })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.eventType, "input.prompt"),
+        eq(chatEvents.triggerSource, "telegram"),
+      ),
+    );
+  const row = rows.find((candidate) => {
+    return candidate.userMessage?.parts.some((part) => {
+      return part.type === "text" && part.text === prompt;
+    });
+  });
+  return row ?? null;
 }
 
 export async function findAgentphoneChatEventByPromptFixture(

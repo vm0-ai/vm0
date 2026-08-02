@@ -1761,6 +1761,34 @@ function telegramDeliveryTarget(args: {
   };
 }
 
+function telegramLaunchContext(
+  args: {
+    readonly source: TelegramAgentMessageArgs;
+    readonly context: string;
+    readonly prompt: string;
+    readonly userInfoExtras: TelegramUserInfoExtras;
+  },
+  delivery: TelegramDeliveryTarget,
+) {
+  return {
+    chatId: delivery.chatId,
+    messageId: delivery.messageId,
+    isDm: delivery.isDM,
+    messageThreadId: delivery.messageThreadId ?? null,
+    messageText: args.prompt,
+    threadContext: args.context,
+    rootMessageId: delivery.rootMessageId,
+    thinkingMessageId: delivery.thinkingMessageId ?? null,
+    userLinkId: delivery.userLinkId,
+    userLinkKind: delivery.userLinkKind,
+    chatType: args.source.message.chat.type,
+    senderUserId: args.userInfoExtras.telegramUserId ?? null,
+    senderDisplayName: args.userInfoExtras.telegramDisplayName ?? null,
+    senderUsername: args.userInfoExtras.telegramUsername ?? null,
+    senderLanguage: args.userInfoExtras.telegramLanguage ?? null,
+  };
+}
+
 function telegramChatMessageId(args: {
   readonly source: TelegramAgentMessageArgs;
   readonly chatId: string;
@@ -1870,12 +1898,7 @@ async function persistTelegramChatMessage(args: {
         runId: null,
         triggerSource: "telegram",
         encryptedParams,
-        telegramContext: {
-          chatId: delivery.chatId,
-          messageId: delivery.messageId,
-          isDm: delivery.isDM,
-          messageThreadId: delivery.messageThreadId ?? null,
-        },
+        telegramContext: telegramLaunchContext(args, delivery),
         createdAt: currentTime,
       },
       "id",

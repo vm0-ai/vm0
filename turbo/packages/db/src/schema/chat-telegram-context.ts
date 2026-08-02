@@ -23,5 +23,22 @@ export const chatTelegramContext = pgTable("chat_telegram_context", {
   messageId: text("message_id").notNull(),
   isDm: boolean("is_dm").notNull(),
   messageThreadId: integer("message_thread_id"),
+  /**
+   * Server-private Telegram launch material retained with the trigger
+   * context. Thread context is frozen at admission because re-reading the
+   * Telegram message history at claim would include messages received later.
+   * Safety depends on read paths projecting only explicitly required columns.
+   */
+  messageText: text("message_text"),
+  threadContext: text("thread_context"),
+  rootMessageId: text("root_message_id"),
+  thinkingMessageId: text("thinking_message_id"),
+  userLinkId: uuid("user_link_id"),
+  userLinkKind: text("user_link_kind").$type<"custom" | "official">(),
+  chatType: text("chat_type"),
+  senderUserId: text("sender_user_id"),
+  senderDisplayName: text("sender_display_name"),
+  senderUsername: text("sender_username"),
+  senderLanguage: text("sender_language"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
