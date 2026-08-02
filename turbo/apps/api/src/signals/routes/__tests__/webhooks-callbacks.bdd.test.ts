@@ -5119,6 +5119,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const response = await api.requestClerkWebhook("{}", {}, [200]);
     expect(response.body).toBe("OK");
 
+    await flushWaitUntilForTest();
     await waitForExpectation(() => {
       expect(context.mocks.stripe.subscriptions.list).toHaveBeenCalledWith({
         customer: granted.customerId,
