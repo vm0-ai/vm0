@@ -64,7 +64,6 @@ import {
 } from "./crypto.utils";
 import { noGoalChangeAfterQueueEvent } from "./chat-goal-queue.service";
 import { agentphoneDeliveryTargetSchema } from "./agentphone-chat-callback-payload";
-import { githubDeliveryTargetSchema } from "./github-chat-callback-payload";
 import { telegramDeliveryTargetSchema } from "./telegram-chat-callback-payload";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
@@ -90,7 +89,6 @@ const queuedUserMessageRunParamsSchema = z.object({
   appendSystemPrompt: z.string().optional(),
   telegramDelivery: telegramDeliveryTargetSchema.optional(),
   agentphoneDelivery: agentphoneDeliveryTargetSchema.optional(),
-  githubDelivery: githubDeliveryTargetSchema.optional(),
   morningBriefDelivery: z
     .object({
       deliveryId: z.string(),

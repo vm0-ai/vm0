@@ -13,7 +13,6 @@ import {
   decryptChatEventInputParamsFixture,
   findPendingChatEventInputParamsByPromptFixture,
   readChatEventContextFixture,
-  replaceGitHubLaunchMaterialWithLegacyParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import {
   countGitHubRunsByPromptFixture,
@@ -542,48 +541,6 @@ describe("GitHub canonical chat threads", () => {
     });
     await clearGitHubTriggerCommentBodyFixture(queuedParams.eventId);
 
-    const legacyQueuedPrompt = "queued before the GitHub claim cutover";
-    await sendGitHubComment({
-      fixture,
-      githubUserId: fixture.githubUserA,
-      commentId: 30_003,
-      prompt: legacyQueuedPrompt,
-      subjectNumber,
-      subjectKind: "pull_request",
-    });
-    const legacyQueuedParams =
-      await findPendingChatEventInputParamsByPromptFixture(legacyQueuedPrompt);
-    if (!legacyQueuedParams) {
-      throw new Error("Expected legacy queued GitHub chat input params");
-    }
-    const legacyContext = await readChatEventContextFixture(
-      legacyQueuedParams.eventId,
-    );
-    if (!legacyContext?.githubTriggerReactionId) {
-      throw new Error("Expected queued GitHub reaction context");
-    }
-    const legacyPrompt = "legacy queued GitHub prompt";
-    const legacySystemPrompt = "legacy queued GitHub system prompt";
-    await replaceGitHubLaunchMaterialWithLegacyParamsFixture(
-      legacyQueuedParams.eventId,
-      {
-        orgId: fixture.actorA.orgId,
-        userId: fixture.actorA.userId,
-        prompt: legacyPrompt,
-        appendSystemPrompt: legacySystemPrompt,
-        githubDelivery: {
-          installationId: fixture.installationId,
-          repo: REPO,
-          subjectNumber,
-          subjectKind: "pull_request",
-          agentId: fixture.agentId,
-          triggerCommentId: "30003",
-          triggerReactionId: legacyContext.githubTriggerReactionId,
-          triggerCommentBody: `@Zero ${legacyQueuedPrompt}`,
-        },
-      },
-    );
-
     const firstCliSession = await claimAndFinish({ fixture, run });
     const followUp = await runState(
       fixture.actorA.userId,
@@ -591,17 +548,10 @@ describe("GitHub canonical chat threads", () => {
     );
     expect(followUp.chatThreadId).toBe(run.chatThreadId);
     expect(followUp.sessionId).toBe(run.sessionId);
-    const followUpCliSession = await claimAndFinish({
+    await claimAndFinish({
       fixture,
       run: followUp,
       expectedResumeSessionId: firstCliSession,
-    });
-    const legacyRun = await runState(fixture.actorA.userId, legacyPrompt);
-    expect(legacyRun.appendSystemPrompt).toContain(legacySystemPrompt);
-    await claimAndFinish({
-      fixture,
-      run: legacyRun,
-      expectedResumeSessionId: followUpCliSession,
     });
 
     const routes = await routeRows({
@@ -612,7 +562,7 @@ describe("GitHub canonical chat threads", () => {
       expect.objectContaining({
         userId: fixture.actorA.userId,
         chatThreadId: run.chatThreadId,
-        lastCommentId: "30003",
+        lastCommentId: "30002",
       }),
     ]);
     expect(fixture.postedComments).toStrictEqual([
@@ -622,10 +572,6 @@ describe("GitHub canonical chat threads", () => {
       }),
       expect.objectContaining({
         subjectNumber,
-      }),
-      expect.objectContaining({
-        subjectNumber,
-        body: expect.stringContaining(`> @Zero ${legacyQueuedPrompt}`),
       }),
     ]);
   });
