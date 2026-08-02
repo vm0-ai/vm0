@@ -376,7 +376,14 @@ const userMessagePartSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("source"),
-      kind: z.enum(["slack", "feishu", "teams", "telegram", "github"]),
+      kind: z.enum([
+        "slack",
+        "feishu",
+        "teams",
+        "telegram",
+        "github",
+        "agentphone",
+      ]),
       href: z.string().url().optional(),
     })
     .strict(),

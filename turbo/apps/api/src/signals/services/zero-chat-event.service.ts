@@ -9,6 +9,7 @@ import type {
   ChatSlackMessageFiles,
 } from "@vm0/db/jsonb-contracts/chat-slack-context";
 import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
+import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
@@ -66,6 +67,7 @@ type ChatEventDisplayContext =
       readonly telegramContext?: never;
       readonly githubContext?: never;
       readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
     }
   | {
       readonly slackContext?: never;
@@ -88,6 +90,7 @@ type ChatEventDisplayContext =
       readonly telegramContext?: never;
       readonly githubContext?: never;
       readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
     }
   | {
       readonly slackContext?: never;
@@ -117,6 +120,7 @@ type ChatEventDisplayContext =
       readonly telegramContext?: never;
       readonly githubContext?: never;
       readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
     }
   | {
       readonly slackContext?: never;
@@ -130,6 +134,7 @@ type ChatEventDisplayContext =
       };
       readonly githubContext?: never;
       readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
     }
   | {
       readonly slackContext?: never;
@@ -147,6 +152,7 @@ type ChatEventDisplayContext =
         readonly triggerCommentBody: string | null;
       };
       readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
     }
   | {
       readonly slackContext?: never;
@@ -159,6 +165,7 @@ type ChatEventDisplayContext =
         readonly timezone: string;
         readonly triggeredAt: Date;
       };
+      readonly agentphoneContext?: never;
     }
   | {
       readonly slackContext?: never;
@@ -167,6 +174,29 @@ type ChatEventDisplayContext =
       readonly telegramContext?: never;
       readonly githubContext?: never;
       readonly morningBriefContext?: never;
+      readonly agentphoneContext: {
+        readonly messageText: string;
+        readonly threadContext: string;
+        readonly messageId: string;
+        readonly rootMessageId: string;
+        readonly conversationId: string | null;
+        readonly channel: "imessage" | "sms" | "mms";
+        readonly isGroup: boolean;
+        readonly phoneHandle: string;
+        readonly fromNumber: string;
+        readonly toNumber: string;
+        readonly userLinkId: string;
+        readonly agentphoneAgentId: string;
+      };
+    }
+  | {
+      readonly slackContext?: never;
+      readonly feishuContext?: never;
+      readonly teamsContext?: never;
+      readonly telegramContext?: never;
+      readonly githubContext?: never;
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
     };
 
 type ChatEventInputPayload = Pick<
@@ -467,6 +497,23 @@ type NewDisplayContext =
       readonly triggerCommentBody: string | null;
     }
   | {
+      readonly type: "agentphone";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly messageText: string;
+      readonly threadContext: string;
+      readonly messageId: string;
+      readonly rootMessageId: string;
+      readonly conversationId: string | null;
+      readonly channel: "imessage" | "sms" | "mms";
+      readonly isGroup: boolean;
+      readonly phoneHandle: string;
+      readonly fromNumber: string;
+      readonly toNumber: string;
+      readonly userLinkId: string;
+      readonly agentphoneAgentId: string;
+    }
+  | {
       readonly type: "automation";
       readonly id: string;
       readonly chatThreadId: string;
@@ -638,6 +685,17 @@ function newDisplayContext(
     };
   }
 
+  const agentphoneContext =
+    "agentphoneContext" in values ? values.agentphoneContext : undefined;
+  if (agentphoneContext !== undefined) {
+    return {
+      type: "agentphone",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      ...agentphoneContext,
+    };
+  }
+
   const automationContext = newAutomationDisplayContext(eventId, values);
   if (automationContext !== undefined) {
     return automationContext;
@@ -703,6 +761,30 @@ async function insertMorningBriefContext(
     deliveryId: context.deliveryId,
     timezone: context.timezone,
     triggeredAt: context.triggeredAt,
+    createdAt,
+  });
+}
+
+async function insertAgentphoneDisplayContext(
+  tx: ChatEventWriteTransaction,
+  context: Extract<NewDisplayContext, { readonly type: "agentphone" }>,
+  createdAt: Date,
+): Promise<void> {
+  await tx.insert(chatAgentphoneContext).values({
+    id: context.id,
+    chatThreadId: context.chatThreadId,
+    messageText: context.messageText,
+    threadContext: context.threadContext,
+    messageId: context.messageId,
+    rootMessageId: context.rootMessageId,
+    conversationId: context.conversationId,
+    channel: context.channel,
+    isGroup: context.isGroup,
+    phoneHandle: context.phoneHandle,
+    fromNumber: context.fromNumber,
+    toNumber: context.toNumber,
+    userLinkId: context.userLinkId,
+    agentphoneAgentId: context.agentphoneAgentId,
     createdAt,
   });
 }
@@ -807,6 +889,10 @@ async function insertDisplayContext(
       triggerCommentBody: context.triggerCommentBody,
       createdAt,
     });
+    return;
+  }
+  if (context.type === "agentphone") {
+    await insertAgentphoneDisplayContext(tx, context, createdAt);
     return;
   }
   if (context.type === "automation") {

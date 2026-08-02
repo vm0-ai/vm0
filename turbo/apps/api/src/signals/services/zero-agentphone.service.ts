@@ -51,6 +51,7 @@ import {
   type AgentPhoneDeliveryTarget,
 } from "./agentphone-chat-callback-payload";
 import { ensureAgentPhoneChatThreadRoute } from "./agentphone-chat-ingress.service";
+import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
@@ -1589,9 +1590,26 @@ async function persistAgentPhoneChatMessage(args: {
         id: chatEventId,
         chatThreadId: route.chatThreadId,
         eventType: "input.prompt",
-        userMessage: createUserMessageDocument({ text: args.prompt }),
+        userMessage: createUserMessageDocument({
+          text: args.prompt,
+          nonContentPart: createChatEventSourcePart({ kind: "agentphone" }),
+        }),
         runId: null,
         triggerSource: "agentphone",
+        agentphoneContext: {
+          messageText: args.prompt,
+          threadContext: args.threadContext,
+          messageId: args.event.messageId,
+          rootMessageId: args.rootMessageId,
+          conversationId: args.event.conversationId,
+          channel: args.event.channel,
+          isGroup: isAgentPhoneGroupEvent(args.event),
+          phoneHandle: args.event.fromNumber,
+          fromNumber: args.event.fromNumber,
+          toNumber: args.event.toNumber,
+          userLinkId: args.userLink.id,
+          agentphoneAgentId: args.event.agentphoneAgentId,
+        },
         encryptedParams,
         createdAt: currentTime,
       },

@@ -1364,6 +1364,7 @@
     },
     "newChat": "Chat baru",
     "origins": {
+      "agentphone": "AgentPhone",
       "feishu": "Feishu",
       "github": "GitHub",
       "openChat": "Buka chat",

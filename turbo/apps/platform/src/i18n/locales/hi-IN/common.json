@@ -1364,6 +1364,7 @@
     },
     "newChat": "नई चैट",
     "origins": {
+      "agentphone": "AgentPhone",
       "feishu": "Feishu",
       "github": "GitHub",
       "openChat": "चैट खोलें",
