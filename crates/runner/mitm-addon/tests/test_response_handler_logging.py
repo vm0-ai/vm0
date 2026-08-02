@@ -1,6 +1,7 @@
 """Response hook integration tests for network and proxy logging."""
 
 import time
+import tracemalloc
 import urllib.parse
 from pathlib import Path
 
@@ -229,6 +230,10 @@ def test_response_log_serializes_common_metadata_independent_of_firewall_context
             "https://target.example.com:9443/path",
         ),
         (
+            "https://target.example.com:9443/path#fragment?access_token=secret",
+            "https://target.example.com:9443/path",
+        ),
+        (
             "https://[invalid.example.com/path?access_token=secret#fragment",
             "https://[invalid.example.com/path",
         ),
@@ -282,8 +287,9 @@ def test_network_log_target_url_strips_query_and_fragment(
     assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET]["url"] == raw_url
 
 
-def test_network_log_does_not_cache_runtime_url(tmp_path, real_flow, mitm_ctx):
-    raw_url = f"https://target.example.com/path?payload={'x' * 200_000}#fragment"
+def test_network_log_discards_large_query_before_url_processing(tmp_path, real_flow, mitm_ctx):
+    retained_url = "https://target.example.com/path"
+    raw_url = f"{retained_url}?payload={'x' * 200_000}"
     flow = real_flow(with_response=False, host="target.example.com")
     log_path = str(tmp_path / "network.jsonl")
     flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
@@ -303,15 +309,22 @@ def test_network_log_does_not_cache_runtime_url(tmp_path, real_flow, mitm_ctx):
         urllib.parse.urlsplit("https://stable-config.example.com")
         stable_cache = urllib.parse.urlsplit.cache_info()
 
-        with mitm_ctx():
-            mitm_addon.response(flow)
+        tracemalloc.start()
+        try:
+            with mitm_ctx():
+                mitm_addon.response(flow)
+            peak_allocated_bytes = tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
 
         assert urllib.parse.urlsplit.cache_info() == stable_cache
     finally:
         urllib.parse.urlsplit.cache_clear()
 
+    # Whole-query normalization or parsing materializes at least one query-sized intermediate.
+    assert peak_allocated_bytes < len(raw_url)
     [entry] = read_jsonl_entries_after_flush(Path(log_path))
-    assert entry["url"] == "https://target.example.com/path"
+    assert entry["url"] == retained_url
 
 
 @pytest.mark.parametrize(

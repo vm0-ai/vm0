@@ -25,14 +25,16 @@ def _sanitize_netloc_for_network_log(netloc: str) -> str:
 
 
 def _strip_query_fragment_for_network_log(value: str) -> str:
-    cut_points = [index for marker in ("?", "#") if (index := value.find(marker)) != -1]
-    if not cut_points:
-        return value
-    return value[: min(cut_points)]
+    query_start = value.find("?")
+    fragment_start = value.find("#", 0, query_start if query_start >= 0 else len(value))
+    if fragment_start >= 0:
+        return value[:fragment_start]
+    if query_start >= 0:
+        return value[:query_start]
+    return value
 
 
 def _sanitize_url_text_fallback_for_network_log(value: str) -> str:
-    value = _strip_query_fragment_for_network_log(value)
     scheme, scheme_sep, rest = value.partition("://")
     if scheme_sep:
         netloc, sep, path = rest.partition("/")
@@ -82,11 +84,13 @@ def sanitize_url_for_network_log(value: str) -> str:
 
     Runtime metadata can keep raw URLs because firewall/auth and connector
     billing may need query parameters. Persistent logs do not. This sanitizer
-    also removes userinfo from malformed HTTP(S) authority positions, but it
+    discards query and fragment contents before URL preprocessing and parsing.
+    It also removes userinfo from malformed HTTP(S) authority positions, but
     still preserves ordinary paths for request diagnostics. It is not a general
     sanitizer for arbitrary captured header values or path contents.
     """
-    normalized_value = _normalize_for_urlsplit(value)
+    retained_value = _strip_query_fragment_for_network_log(value)
+    normalized_value = _normalize_for_urlsplit(retained_value)
     try:
         parts = split_runtime_url(normalized_value)
     except ValueError:
