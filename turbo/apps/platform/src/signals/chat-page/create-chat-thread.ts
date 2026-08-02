@@ -2181,14 +2181,74 @@ function createRemoteEventSyncSignals({
   };
 }
 
+interface MarkThreadReadDeps {
+  threadId: string;
+  latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
+  locallyMarkedReadAt$: State<string | undefined>;
+  dataSource: ChatThreadRemote;
+}
+
+function createMarkThreadReadIfNeeded({
+  threadId,
+  latestRunFinishCreatedAt$,
+  locallyMarkedReadAt$,
+  dataSource,
+}: MarkThreadReadDeps) {
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
+  return command(async ({ get, set }, sig: AbortSignal) => {
+    const latestRunFinishCreatedAt = await get(latestRunFinishCreatedAt$);
+    sig.throwIfAborted();
+    if (!latestRunFinishCreatedAt) {
+      return;
+    }
+    if (get(optimisticCreateUnsettled$)) {
+      L.debug("markRead$ optimistic thread create unsettled, skip", {
+        threadId,
+        latestRunFinishCreatedAt,
+      });
+      return;
+    }
+
+    const lastReadAt = get(locallyMarkedReadAt$);
+    if (
+      lastReadAt !== undefined &&
+      compareCreatedAt(lastReadAt, latestRunFinishCreatedAt) >= 0
+    ) {
+      return;
+    }
+
+    const newLastReadAt = await set(dataSource.markRead$, { threadId }, sig);
+    sig.throwIfAborted();
+    if (newLastReadAt !== null) {
+      set(locallyMarkedReadAt$, newLastReadAt);
+    }
+    // No sidebar reload needed: markRead$ records an optimistic read mark
+    // and applies the response's unread snapshot, so the unread dot clears
+    // without refetching the thread list.
+  });
+}
+
 function createEventChangeEffects(
   threadId: string,
-  rawEvents$: Computed<ChatEventProjectionEntry[]>,
+  projections: Pick<
+    ReturnType<typeof createPagedEventProjections>,
+    "rawEvents$" | "latestRunFinishCreatedAt$"
+  >,
+  dataSource: ChatThreadRemote,
 ) {
   const scroll = createChatThreadScrollSignals(threadId);
   const sidebar = createThreadSidebarSignals(threadId);
-  const sidebarAutoOpenCandidate$ =
-    createThreadSidebarAutoOpenCandidate(rawEvents$);
+  const locallyMarkedReadAt$ = state<string | undefined>(undefined);
+  const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
+    threadId,
+    latestRunFinishCreatedAt$: projections.latestRunFinishCreatedAt$,
+    locallyMarkedReadAt$,
+    dataSource,
+  });
+  const sidebarAutoOpenCandidate$ = createThreadSidebarAutoOpenCandidate(
+    projections.rawEvents$,
+  );
   const autoOpenSidebar$ = command(
     ({ get, set }, signal: AbortSignal): void => {
       signal.throwIfAborted();
@@ -2224,6 +2284,7 @@ function createEventChangeEffects(
       await Promise.all([
         set(autoOpenSidebar$, signal),
         set(scroll.autoScroll$, scrollPosition, signal),
+        set(markThreadReadIfNeeded$, signal),
       ]);
       signal.throwIfAborted();
     },
@@ -2268,7 +2329,7 @@ function createPagedEvents(
     resolveBodyBlocks: resources.resolveBodyBlocks,
     mailDraftCardSignals: resources.mailDraftCardSignals,
   });
-  const effects = createEventChangeEffects(threadId, projections.rawEvents$);
+  const effects = createEventChangeEffects(threadId, projections, dataSource);
   const appendOptimisticEvent$: AppendOptimisticEventCommand = command(
     async (
       { get, set },
@@ -2481,7 +2542,6 @@ function createEventRunIndicatorState(chatEvents$: Computed<ChatEvent[]>) {
 
 interface RunTrackingDeps {
   threadId: string;
-  latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   initialRemoteEventsResolved$: State<boolean>;
   initializeIndexedDbEvents$: Command<Promise<void>, [AbortSignal]>;
   mergePersistentEvents$: Command<
@@ -2493,13 +2553,6 @@ interface RunTrackingDeps {
   reloadMailDrafts$: Command<void, []>;
   subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
   automationSignals: Pick<ChatThreadSignals, "headerAutomations">;
-  dataSource: ChatThreadRemote;
-}
-
-interface MarkThreadReadDeps {
-  threadId: string;
-  latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
-  locallyMarkedReadAt$: State<string | undefined>;
   dataSource: ChatThreadRemote;
 }
 
@@ -2683,54 +2736,12 @@ function createChatRenderWindow({
   };
 }
 
-function createMarkThreadReadIfNeeded({
-  threadId,
-  latestRunFinishCreatedAt$,
-  locallyMarkedReadAt$,
-  dataSource,
-}: MarkThreadReadDeps) {
-  const optimisticCreateUnsettled$ =
-    optimisticChatThreadCreateUnsettled(threadId);
-  return command(async ({ get, set }, sig: AbortSignal) => {
-    const latestRunFinishCreatedAt = await get(latestRunFinishCreatedAt$);
-    sig.throwIfAborted();
-    if (!latestRunFinishCreatedAt) {
-      return;
-    }
-    if (get(optimisticCreateUnsettled$)) {
-      L.debug("markRead$ optimistic thread create unsettled, skip", {
-        threadId,
-        latestRunFinishCreatedAt,
-      });
-      return;
-    }
-
-    const lastReadAt = get(locallyMarkedReadAt$);
-    if (
-      lastReadAt !== undefined &&
-      compareCreatedAt(lastReadAt, latestRunFinishCreatedAt) >= 0
-    ) {
-      return;
-    }
-
-    const newLastReadAt = await set(dataSource.markRead$, { threadId }, sig);
-    sig.throwIfAborted();
-    if (newLastReadAt !== null) {
-      set(locallyMarkedReadAt$, newLastReadAt);
-    }
-    // No sidebar reload needed: markRead$ records an optimistic read mark
-    // and applies the response's unread snapshot, so the unread dot clears
-    // without refetching the thread list.
-  });
-}
-
 function createOnSubscribedCommand({
   threadId,
   initialRemoteEventsResolved$,
   syncRemoteEvents$,
   reloadArtifacts$,
   reloadMailDrafts$,
-  markThreadReadIfNeeded$,
   dataSource,
 }: Pick<
   RunTrackingDeps,
@@ -2740,9 +2751,7 @@ function createOnSubscribedCommand({
   | "reloadArtifacts$"
   | "reloadMailDrafts$"
   | "dataSource"
-> & {
-  markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
-}): Command<Promise<void>, [AbortSignal]> {
+>): Command<Promise<void>, [AbortSignal]> {
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
   const hasSubscribed$ = state(false);
@@ -2766,8 +2775,6 @@ function createOnSubscribedCommand({
     }
     await Promise.all(catchUpPromises);
     signal.throwIfAborted();
-    await set(markThreadReadIfNeeded$, signal);
-    signal.throwIfAborted();
     L.debug("subscribeChatThread$ catchup done", { threadId });
   });
 }
@@ -2775,10 +2782,10 @@ function createOnSubscribedCommand({
 function createReceiveSyncedEventsCommand({
   threadId,
   mergePersistentEvents$,
-  markThreadReadIfNeeded$,
-}: Pick<RunTrackingDeps, "threadId" | "mergePersistentEvents$"> & {
-  markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
-}): Command<Promise<void>, [PersistedChatEvent[], AbortSignal]> {
+}: Pick<RunTrackingDeps, "threadId" | "mergePersistentEvents$">): Command<
+  Promise<void>,
+  [PersistedChatEvent[], AbortSignal]
+> {
   return command(
     async (
       { set },
@@ -2792,15 +2799,12 @@ function createReceiveSyncedEventsCommand({
       });
       await set(mergePersistentEvents$, events, signal);
       signal.throwIfAborted();
-      await set(markThreadReadIfNeeded$, signal);
-      signal.throwIfAborted();
     },
   );
 }
 
 function createRunTracking({
   threadId,
-  latestRunFinishCreatedAt$,
   initialRemoteEventsResolved$,
   initializeIndexedDbEvents$,
   mergePersistentEvents$,
@@ -2811,19 +2815,9 @@ function createRunTracking({
   automationSignals,
   dataSource,
 }: RunTrackingDeps) {
-  const locallyMarkedReadAt$ = state<string | undefined>(undefined);
-
-  const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
-    threadId,
-    latestRunFinishCreatedAt$,
-    locallyMarkedReadAt$,
-    dataSource,
-  });
-
   const receiveSyncedEvents$ = createReceiveSyncedEventsCommand({
     threadId,
     mergePersistentEvents$,
-    markThreadReadIfNeeded$,
   });
 
   const onSubscribed$ = createOnSubscribedCommand({
@@ -2832,7 +2826,6 @@ function createRunTracking({
     syncRemoteEvents$,
     reloadArtifacts$,
     reloadMailDrafts$,
-    markThreadReadIfNeeded$,
     dataSource,
   });
 
@@ -2868,7 +2861,6 @@ function createRunTracking({
     );
 
     await Promise.all([
-      set(markThreadReadIfNeeded$, signal),
       set(subscribeComputerUseHostsChanged$, signal),
       set(subscribeBrowserSessions$, signal),
       set(
@@ -4342,7 +4334,6 @@ export function createChatThreadSignals(
     createDraftSync(threadId, draft, dataSource);
   const runTracking = createRunTracking({
     threadId,
-    latestRunFinishCreatedAt$: events.latestRunFinishCreatedAt$,
     initialRemoteEventsResolved$: events.initialRemoteEventsResolved$,
     initializeIndexedDbEvents$: events.initializeIndexedDbEvents$,
     mergePersistentEvents$: events.mergePersistentEvents$,
