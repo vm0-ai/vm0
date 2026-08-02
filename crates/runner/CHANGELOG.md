@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.151.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.10...runner-rs-v0.151.11) (2026-08-02)
+
+
+### Bug Fixes
+
+* **runner:** preserve full network log urls ([#24554](https://github.com/vm0-ai/vm0/issues/24554)) ([283bd1f](https://github.com/vm0-ai/vm0/commit/283bd1f74902e804b8e88acafe53e50adfbf04e2))
+
+
+### Performance Improvements
+
+* **python:** strip discarded log query before parsing ([#24548](https://github.com/vm0-ai/vm0/issues/24548)) ([f05235b](https://github.com/vm0-ai/vm0/commit/f05235b1092e99a2e4e72146cbe2807d6e73e36a))
+
 ## [0.151.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.9...runner-rs-v0.151.10) (2026-08-02)
 
 

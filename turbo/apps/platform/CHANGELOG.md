@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.675.10](https://github.com/vm0-ai/vm0/compare/app-v0.675.9...app-v0.675.10) (2026-08-02)
+
+
+### Bug Fixes
+
+* accept distinct sandbox reuse result reasons ([#24556](https://github.com/vm0-ai/vm0/issues/24556)) ([a1bfbf8](https://github.com/vm0-ai/vm0/commit/a1bfbf883e98fca8a557cb1cf45d4bee85d0a552))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.6
+    * @vm0/core bumped to 8.502.6
+
 ## [0.675.9](https://github.com/vm0-ai/vm0/compare/app-v0.675.8...app-v0.675.9) (2026-08-02)
 
 
