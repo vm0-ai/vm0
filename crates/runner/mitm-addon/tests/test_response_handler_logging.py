@@ -227,39 +227,39 @@ def test_response_log_serializes_common_metadata_independent_of_firewall_context
     [
         (
             "https://target.example.com:9443/path?access_token=secret#fragment",
-            "https://target.example.com:9443/path",
+            "https://target.example.com:9443/path?access_token=secret#fragment",
         ),
         (
             "https://target.example.com:9443/path#fragment?access_token=secret",
-            "https://target.example.com:9443/path",
+            "https://target.example.com:9443/path#fragment?access_token=secret",
         ),
         (
             "https://[invalid.example.com/path?access_token=secret#fragment",
-            "https://[invalid.example.com/path",
+            "https://[invalid.example.com/path?access_token=secret#fragment",
         ),
         (
             "https://user:pass@[invalid.example.com/path?access_token=secret#fragment",
-            "https://[invalid.example.com/path",
+            "https://[invalid.example.com/path?access_token=secret#fragment",
         ),
         (
             "//user:pass@[invalid.example.com/path?access_token=secret#fragment",
-            "//[invalid.example.com/path",
+            "//[invalid.example.com/path?access_token=secret#fragment",
         ),
         (
             "https://user:pass@target.example.com:9443/path?access_token=secret#fragment",
-            "https://target.example.com:9443/path",
+            "https://target.example.com:9443/path?access_token=secret#fragment",
         ),
         (
             "https:////user:pass@target.example.com:9443/path?access_token=secret#fragment",
-            "https://target.example.com:9443/path",
+            "https://target.example.com:9443/path?access_token=secret#fragment",
         ),
         (
             "https://target.example.com:9443/users/alice@example.com?access_token=secret#fragment",
-            "https://target.example.com:9443/users/alice@example.com",
+            "https://target.example.com:9443/users/alice@example.com?access_token=secret#fragment",
         ),
     ],
 )
-def test_network_log_target_url_strips_query_and_fragment(
+def test_network_log_target_url_preserves_query_and_fragment_but_redacts_userinfo(
     tmp_path, real_flow, mitm_ctx, raw_url, expected_url
 ):
     flow = real_flow(with_response=False, host="request.example.com")
@@ -287,9 +287,8 @@ def test_network_log_target_url_strips_query_and_fragment(
     assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET]["url"] == raw_url
 
 
-def test_network_log_discards_large_query_before_url_processing(tmp_path, real_flow, mitm_ctx):
-    retained_url = "https://target.example.com/path"
-    raw_url = f"{retained_url}?payload={'x' * 200_000}"
+def test_network_log_preserves_large_url_without_caching_runtime_url(tmp_path, real_flow, mitm_ctx):
+    raw_url = f"https://target.example.com/path?payload={'x' * 200_000}#fragment"
     flow = real_flow(with_response=False, host="target.example.com")
     log_path = str(tmp_path / "network.jsonl")
     flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
@@ -303,6 +302,34 @@ def test_network_log_discards_large_query_before_url_processing(tmp_path, real_f
         port=443,
     )
     flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+    urllib.parse.urlsplit.cache_clear()
+    try:
+        urllib.parse.urlsplit("https://stable-config.example.com")
+        stable_cache = urllib.parse.urlsplit.cache_info()
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert urllib.parse.urlsplit.cache_info() == stable_cache
+    finally:
+        urllib.parse.urlsplit.cache_clear()
+
+    [entry] = read_jsonl_entries_after_flush(Path(log_path))
+    assert entry["url"] == raw_url
+
+
+def test_proxy_log_discards_large_query_before_url_processing(tmp_path, real_flow, mitm_ctx):
+    retained_url = "https://target.example.com/path"
+    raw_url = f"{retained_url}?payload={'x' * 200_000}"
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    flow = real_flow(with_response=False, host="target.example.com")
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+    flow.response = tutils.tresp(status_code=500, headers=http.Headers())
 
     urllib.parse.urlsplit.cache_clear()
     try:
@@ -323,8 +350,8 @@ def test_network_log_discards_large_query_before_url_processing(tmp_path, real_f
 
     # Whole-query normalization or parsing materializes at least one query-sized intermediate.
     assert peak_allocated_bytes < len(raw_url)
-    [entry] = read_jsonl_entries_after_flush(Path(log_path))
-    assert entry["url"] == retained_url
+    [entry] = read_jsonl_entries_after_flush(proxy_log_path)
+    assert entry["message"] == f"Response 500: {retained_url}"
 
 
 @pytest.mark.parametrize(
