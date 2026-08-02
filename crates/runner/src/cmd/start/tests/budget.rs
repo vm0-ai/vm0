@@ -2,7 +2,7 @@ use super::super::*;
 use super::support::{
     TestParkedIdleCandidateSpec, context_with_session, minimal_context, mock_run_config,
     mock_run_config_with_overrides, push_job, seed_idle_pool, seed_idle_pool_expired,
-    seed_idle_pool_with_timing, shutdown, status_idle_sessions, test_profiles, two_profiles,
+    seed_idle_pool_with_timing, shutdown, status_idle_reuse_keys, test_profiles, two_profiles,
     wait_budget_count, wait_cancel_token, wait_discover_entered,
     wait_idle_cleanup_processed_with_expired_entries,
 };
@@ -214,7 +214,7 @@ async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
         &idle_pool,
         &budget,
         TestParkedIdleCandidateSpec {
-            session_id: "sess-old-active",
+            reuse_key: "sess-old-active",
             profile_name: "vm0/default",
             vcpu: 2,
             memory_mb: 4096,
@@ -228,7 +228,7 @@ async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
         &idle_pool,
         &budget,
         TestParkedIdleCandidateSpec {
-            session_id: "sess-expired-newer",
+            reuse_key: "sess-expired-newer",
             profile_name: "vm0/large",
             vcpu: 4,
             memory_mb: 8192,
@@ -267,7 +267,7 @@ async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
         "expired idle entry should be reclaimed before oldest active entry"
     );
     assert_eq!(
-        status_idle_sessions(&status_path).await,
+        status_idle_reuse_keys(&status_path).await,
         vec!["sess-old-active".to_string()],
         "status.json should reflect the remaining idle VM"
     );
@@ -287,7 +287,7 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
         &idle_pool,
         &budget,
         TestParkedIdleCandidateSpec {
-            session_id: "sess-old-active",
+            reuse_key: "sess-old-active",
             profile_name: "vm0/large",
             vcpu: 4,
             memory_mb: 8192,
@@ -301,7 +301,7 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
         &idle_pool,
         &budget,
         TestParkedIdleCandidateSpec {
-            session_id: "sess-new-active",
+            reuse_key: "sess-new-active",
             profile_name: "vm0/default",
             vcpu: 2,
             memory_mb: 4096,
@@ -315,7 +315,7 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
         &idle_pool,
         &budget,
         TestParkedIdleCandidateSpec {
-            session_id: "sess-expired-small",
+            reuse_key: "sess-expired-small",
             profile_name: "vm0/default",
             // Intentionally smaller than the current min profile. With
             // only profile-sized entries, releasing one expired VM is
@@ -358,7 +358,7 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
         "expired entry and oldest active entry should be reclaimed"
     );
     assert_eq!(
-        status_idle_sessions(&status_path).await,
+        status_idle_reuse_keys(&status_path).await,
         vec!["sess-new-active".to_string()],
         "status.json should reflect only the remaining idle VM"
     );
@@ -397,7 +397,7 @@ async fn idle_vm_is_reclaimed_only_after_candidate_discovery() {
         "idle VM should be retained"
     );
     assert_eq!(
-        status_idle_sessions(&status_path).await,
+        status_idle_reuse_keys(&status_path).await,
         vec!["sess-pressure-status".to_string()],
         "status.json should retain the reusable idle VM"
     );
@@ -421,7 +421,7 @@ async fn idle_vm_is_reclaimed_only_after_candidate_discovery() {
     wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
     assert_eq!(idle_pool.lock().await.len(), 0, "idle pool should be empty");
     assert!(
-        status_idle_sessions(&status_path).await.is_empty(),
+        status_idle_reuse_keys(&status_path).await.is_empty(),
         "status.json should clear the candidate-reclaimed idle VM"
     );
 

@@ -152,26 +152,26 @@ mod tests {
     use super::*;
     use crate::status::IdleVm;
 
-    async fn status_idle_sessions_and_active_runs(
+    async fn status_idle_reuse_keys_and_active_runs(
         status_path: &std::path::Path,
     ) -> (Vec<String>, Vec<(String, String)>) {
         let raw = tokio::fs::read_to_string(status_path).await.unwrap();
         let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        let mut sessions: Vec<String> = status
+        let mut reuse_keys: Vec<String> = status
             .get("idle_vms")
             .and_then(|v| v.as_array())
             .map(|idle_vms| {
                 idle_vms
                     .iter()
                     .filter_map(|vm| {
-                        vm.get("session_id")
-                            .and_then(|session| session.as_str())
+                        vm.get("reuse_key")
+                            .and_then(|reuse_key| reuse_key.as_str())
                             .map(str::to_string)
                     })
                     .collect()
             })
             .unwrap_or_default();
-        sessions.sort_unstable();
+        reuse_keys.sort_unstable();
         let mut active_runs: Vec<(String, String)> = status["active_runs"]
             .as_array()
             .unwrap()
@@ -184,14 +184,14 @@ mod tests {
             })
             .collect();
         active_runs.sort_unstable();
-        (sessions, active_runs)
+        (reuse_keys, active_runs)
     }
 
-    fn idle_snapshot(session_id: &str, sandbox_id: SandboxId) -> IdlePoolSnapshot {
+    fn idle_snapshot(reuse_key: &str, sandbox_id: SandboxId) -> IdlePoolSnapshot {
         IdlePoolSnapshot {
             revision: 1,
             idle_vms: vec![IdleVm {
-                reuse_key: session_id.to_string(),
+                reuse_key: reuse_key.to_string(),
                 sandbox_id,
             }],
         }
@@ -216,8 +216,9 @@ mod tests {
                 .await
         );
 
-        let (idle_sessions, active_runs) = status_idle_sessions_and_active_runs(&status_path).await;
-        assert_eq!(idle_sessions, vec!["sess-owned"]);
+        let (idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&status_path).await;
+        assert_eq!(idle_reuse_keys, vec!["sess-owned"]);
         assert!(active_runs.is_empty());
     }
 
@@ -242,8 +243,9 @@ mod tests {
                 .await
         );
 
-        let (idle_sessions, active_runs) = status_idle_sessions_and_active_runs(&status_path).await;
-        assert_eq!(idle_sessions, vec!["sess-stale"]);
+        let (idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&status_path).await;
+        assert_eq!(idle_reuse_keys, vec!["sess-stale"]);
         assert_eq!(
             active_runs,
             vec![(run_id.to_string(), current_sandbox_id.to_string())]
@@ -263,8 +265,8 @@ mod tests {
 
         transitions.active_ownership_unknown(&orphans, RunSandbox::new(run_id, sandbox_id));
 
-        let (_idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&status_path).await;
+        let (_idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&status_path).await;
         assert_eq!(
             active_runs,
             vec![(run_id.to_string(), sandbox_id.to_string())]
@@ -296,8 +298,9 @@ mod tests {
             .await;
 
         assert!(reconciled.is_empty());
-        let (idle_sessions, active_runs) = status_idle_sessions_and_active_runs(&status_path).await;
-        assert!(idle_sessions.is_empty());
+        let (idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&status_path).await;
+        assert!(idle_reuse_keys.is_empty());
         assert_eq!(
             active_runs,
             vec![(run_id.to_string(), current_sandbox_id.to_string())]
@@ -325,8 +328,8 @@ mod tests {
                 .await
         );
 
-        let (_idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&status_path).await;
+        let (_idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&status_path).await;
         assert_eq!(
             active_runs,
             vec![(run_id.to_string(), current_sandbox_id.to_string())]
@@ -356,8 +359,9 @@ mod tests {
             .await;
 
         assert!(reconciled.is_empty());
-        let (idle_sessions, active_runs) = status_idle_sessions_and_active_runs(&status_path).await;
-        assert!(idle_sessions.is_empty());
+        let (idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&status_path).await;
+        assert!(idle_reuse_keys.is_empty());
         assert_eq!(
             active_runs,
             vec![(run_id.to_string(), sandbox_id.to_string())]

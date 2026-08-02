@@ -2,7 +2,7 @@ use super::super::super::*;
 use super::super::support::{
     context_with_session, minimal_context, mock_run_config_with_overrides, push_job, shutdown,
     test_profiles, wait_budget_count, wait_cancel_token, wait_cancel_token_removed,
-    wait_idle_pool_len, wait_status_idle_sessions_and_active_runs,
+    wait_idle_pool_len, wait_status_idle_reuse_keys_and_active_runs,
 };
 use super::support::assert_no_completion_for_run;
 
@@ -33,7 +33,7 @@ async fn outer_job_panic_after_idle_pool_owned_cleans_token_and_active_status() 
 
     wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
     wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(5)).await;
-    wait_status_idle_sessions_and_active_runs(
+    wait_status_idle_reuse_keys_and_active_runs(
         &status_path,
         &["sess-outer-panic-idle"],
         &[],
@@ -72,7 +72,7 @@ async fn outer_job_panic_active_unknown_reconciles_on_shutdown_final_scan() {
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
     wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(5)).await;
-    wait_status_idle_sessions_and_active_runs(
+    wait_status_idle_reuse_keys_and_active_runs(
         &status_path,
         &[],
         &[run_id.to_string()],
@@ -81,7 +81,8 @@ async fn outer_job_panic_active_unknown_reconciles_on_shutdown_final_scan() {
     .await;
 
     shutdown(&env, run_handle).await;
-    wait_status_idle_sessions_and_active_runs(&status_path, &[], &[], Duration::from_secs(5)).await;
+    wait_status_idle_reuse_keys_and_active_runs(&status_path, &[], &[], Duration::from_secs(5))
+        .await;
     assert_no_completion_for_run(
         &env,
         run_id,
@@ -126,7 +127,7 @@ async fn outer_job_panic_after_active_stop_panic_preserves_status_for_reconcilia
     wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(5)).await;
     wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
     assert_eq!(overrides.destroy_call_count(), 1);
-    wait_status_idle_sessions_and_active_runs(
+    wait_status_idle_reuse_keys_and_active_runs(
         &status_path,
         &[],
         &[run_id.to_string()],
@@ -140,7 +141,8 @@ async fn outer_job_panic_after_active_stop_panic_preserves_status_for_reconcilia
     );
 
     shutdown(&env, run_handle).await;
-    wait_status_idle_sessions_and_active_runs(&status_path, &[], &[], Duration::from_secs(5)).await;
+    wait_status_idle_reuse_keys_and_active_runs(&status_path, &[], &[], Duration::from_secs(5))
+        .await;
     assert_no_completion_for_run(
         &env,
         run_id,
@@ -174,7 +176,8 @@ async fn outer_job_panic_after_destroy_completed_cleans_token_and_active_status(
     destroy_gate.release_one();
 
     wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(5)).await;
-    wait_status_idle_sessions_and_active_runs(&status_path, &[], &[], Duration::from_secs(5)).await;
+    wait_status_idle_reuse_keys_and_active_runs(&status_path, &[], &[], Duration::from_secs(5))
+        .await;
     assert_no_completion_for_run(
         &env,
         run_id,

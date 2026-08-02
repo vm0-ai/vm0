@@ -13,8 +13,8 @@ use crate::lifecycle::RunnerMode;
 use crate::provider::JobProvider;
 use crate::resource_budget::ResourceBudget;
 use crate::types::{
-    HeartbeatState, HeldSandboxState, HeldSessionState, HeldWorkspaceState,
-    MAX_HELD_SESSION_STATES, MAX_WORKSPACE_CACHES_PER_REUSE_KEY,
+    HeartbeatState, HeldSandboxState, HeldWorkspaceState, MAX_HELD_SANDBOX_STATES,
+    MAX_WORKSPACE_CACHES_PER_REUSE_KEY,
 };
 use crate::workspace_image_cache::{WorkspaceImageCache, cap_held_workspace_states};
 
@@ -353,8 +353,6 @@ pub(super) async fn send_heartbeat(
     .await;
     state.held_sandbox_states =
         filter_current_held_sandbox_states(state.held_sandbox_states, hb.active_reuse_keys, None);
-    state.held_session_states =
-        filter_current_held_session_states(state.held_session_states, hb.active_reuse_keys, None);
     state.held_workspace_states =
         filter_current_held_workspace_states(workspace_cache_states, hb.active_reuse_keys, None);
     info!(
@@ -366,7 +364,6 @@ pub(super) async fn send_heartbeat(
     );
     debug!(
         reusable_sandboxes = state.held_sandbox_states.len(),
-        legacy_sessions = state.held_session_states.len(),
         workspace_states = state.held_workspace_states.len(),
         "heartbeat held reusable states"
     );
@@ -410,29 +407,6 @@ async fn workspace_cache_states(
         .await
 }
 
-fn filter_current_held_session_states(
-    states: Vec<HeldSessionState>,
-    active_reuse_key_registry: &ActiveReuseKeys,
-    extra_active_reuse_key: Option<&str>,
-) -> Vec<HeldSessionState> {
-    let mut active_reuse_keys = active_reuse_keys(active_reuse_key_registry);
-    if let Some(reuse_key) = extra_active_reuse_key {
-        active_reuse_keys.insert(reuse_key.to_owned());
-    }
-    let mut states = states
-        .into_iter()
-        .filter(|state| !active_reuse_keys.contains(&state.reuse_key))
-        .collect::<Vec<_>>();
-    states.sort_unstable_by(|a, b| {
-        b.last_completed_at
-            .cmp(&a.last_completed_at)
-            .then_with(|| a.reuse_key.cmp(&b.reuse_key))
-    });
-    states.truncate(MAX_HELD_SESSION_STATES);
-    states.sort_unstable_by(|a, b| a.reuse_key.cmp(&b.reuse_key));
-    states
-}
-
 fn filter_current_held_sandbox_states(
     states: Vec<HeldSandboxState>,
     active_reuse_key_registry: &ActiveReuseKeys,
@@ -451,7 +425,7 @@ fn filter_current_held_sandbox_states(
             .cmp(&a.last_completed_at)
             .then_with(|| a.reuse_key.cmp(&b.reuse_key))
     });
-    states.truncate(MAX_HELD_SESSION_STATES);
+    states.truncate(MAX_HELD_SANDBOX_STATES);
     states.sort_unstable_by(|a, b| a.reuse_key.cmp(&b.reuse_key));
     states
 }
@@ -630,7 +604,6 @@ pub(super) fn collect_heartbeat_state(
         running_count,
         admittable_profiles,
         held_sandbox_states: idle_pool.held_sandbox_states(),
-        held_session_states: idle_pool.held_session_states(),
         held_workspace_states: Vec::new(),
         mode: match mode {
             RunnerMode::Starting => "starting".to_string(),
@@ -686,10 +659,10 @@ mod tests {
         }
     }
 
-    fn make_synthetic_parked_candidate(session_id: &str) -> ParkedIdleCandidate {
+    fn make_synthetic_parked_candidate(reuse_key: &str) -> ParkedIdleCandidate {
         let budget = Arc::new(ResourceBudget::new(1, 1, 1.0, 0));
         ParkedIdleCandidateBuilder::new(
-            session_id,
+            reuse_key,
             ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
         )
         .with_mock_sandbox_name("test")
@@ -1135,42 +1108,7 @@ mod tests {
     }
 
     #[test]
-    fn held_session_states_filter_active_reuse_keys() {
-        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
-        super::super::active_reuse_keys::insert_active_reuse_key(
-            &active_reuse_keys,
-            "thread-active",
-        );
-        let states = vec![
-            HeldSessionState {
-                session_id: "provider-session-active".into(),
-                reuse_key: "thread-active".into(),
-                last_completed_at: "2026-06-01T00:00:01.000Z".into(),
-                reusable_sandbox: ReusableSandboxState {
-                    profile: "vm0/default".into(),
-                    history_generation_run_id: None,
-                },
-            },
-            HeldSessionState {
-                session_id: "provider-session-held".into(),
-                reuse_key: "thread-held".into(),
-                last_completed_at: "2026-06-01T00:00:02.000Z".into(),
-                reusable_sandbox: ReusableSandboxState {
-                    profile: "vm0/default".into(),
-                    history_generation_run_id: None,
-                },
-            },
-        ];
-
-        let filtered =
-            filter_current_held_session_states(states, &active_reuse_keys, Some("thread-claimed"));
-
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].session_id, "provider-session-held");
-    }
-
-    #[test]
-    fn held_sandbox_states_without_session_filter_active_reuse_keys() {
+    fn held_sandbox_states_filter_active_reuse_keys() {
         let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
         super::super::active_reuse_keys::insert_active_reuse_key(
             &active_reuse_keys,
@@ -1247,7 +1185,7 @@ mod tests {
             RunnerMode::Running,
         );
         assert_eq!(state.running_count, 2);
-        assert!(state.held_session_states.is_empty());
+        assert!(state.held_sandbox_states.is_empty());
     }
 
     #[test]

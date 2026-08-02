@@ -2,7 +2,7 @@ use super::super::super::*;
 use super::super::support::{
     assert_run_exits_within, context_with_session, mock_run_config, mock_run_config_with_overrides,
     push_job, seed_idle_pool, shutdown, test_profiles, wait_cancel_token,
-    wait_idle_pool_reuse_keys, wait_parking_state, wait_status_idle_sessions_and_active_runs,
+    wait_idle_pool_reuse_keys, wait_parking_state, wait_status_idle_reuse_keys_and_active_runs,
 };
 
 use crate::idle_pool::ParkingState;
@@ -207,7 +207,7 @@ async fn shutdown_clears_idle_vms_in_status_json() {
     assert_eq!(idle_pool.lock().await.len(), 1, "VM parked");
 
     // Pre-shutdown sanity: status.json lists the idle VM.
-    wait_status_idle_sessions_and_active_runs(
+    wait_status_idle_reuse_keys_and_active_runs(
         &status_path,
         &["sess-status-clean"],
         &[],

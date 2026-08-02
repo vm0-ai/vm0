@@ -68,10 +68,10 @@ pub(super) struct SpawnContext {
     /// completion so soft-drain/resume races do not depend on a stale
     /// spawn-time mode snapshot.
     pub(super) parking_gate: ParkingGate,
-    /// Notifies the main loop to send an immediate heartbeat after session
+    /// Notifies the main loop to send an immediate heartbeat after reusable
     /// affinity state changes. This eliminates the up-to-10s blind spot where
-    /// the server does not know which runner holds a session VM or workspace
-    /// image cache.
+    /// the server does not know which runner holds a reusable sandbox or
+    /// workspace image cache.
     pub(super) park_notify: Arc<tokio::sync::Notify>,
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
@@ -477,8 +477,7 @@ impl DeferredUploadPhase {
 /// Otherwise it creates a new one via the factory.
 ///
 /// A sandbox is considered for idle parking only after a successful, uncancelled
-/// execution while parking is open and a reuse key is available. A provider CLI
-/// session ID is retained as optional compatibility metadata. Park failure,
+/// execution while parking is open and a reuse key is available. Park failure,
 /// cancellation before idle-pool transfer, or pool rejection falls back to
 /// destruction.
 ///
@@ -1095,26 +1094,26 @@ mod tests {
         );
     }
 
-    async fn status_idle_sessions_and_active_runs(
+    async fn status_idle_reuse_keys_and_active_runs(
         status_path: &std::path::Path,
     ) -> (Vec<String>, Vec<String>) {
         let raw = tokio::fs::read_to_string(status_path).await.unwrap();
         let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        let mut sessions: Vec<String> = status
+        let mut reuse_keys: Vec<String> = status
             .get("idle_vms")
             .and_then(|v| v.as_array())
             .map(|idle_vms| {
                 idle_vms
                     .iter()
                     .filter_map(|vm| {
-                        vm.get("session_id")
-                            .and_then(|session| session.as_str())
+                        vm.get("reuse_key")
+                            .and_then(|reuse_key| reuse_key.as_str())
                             .map(str::to_string)
                     })
                     .collect()
             })
             .unwrap_or_default();
-        sessions.sort_unstable();
+        reuse_keys.sort_unstable();
         let mut run_ids: Vec<String> = status["active_runs"]
             .as_array()
             .unwrap()
@@ -1126,7 +1125,7 @@ mod tests {
             })
             .collect();
         run_ids.sort_unstable();
-        (sessions, run_ids)
+        (reuse_keys, run_ids)
     }
     async fn status_active_run_records(status_path: &std::path::Path) -> Vec<(String, String)> {
         let raw = tokio::fs::read_to_string(status_path).await.unwrap();
@@ -1225,8 +1224,8 @@ mod tests {
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
         assert!(!fixture.tokens.contains(run_id).await);
-        let (_idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&fixture.status_path).await;
+        let (_idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&fixture.status_path).await;
         assert!(active_runs.is_empty());
         assert_eq!(fixture.orphans.len(), 0);
     }
@@ -1242,8 +1241,8 @@ mod tests {
             .await;
 
         assert!(!fixture.tokens.contains(run_id).await);
-        let (_idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&fixture.status_path).await;
+        let (_idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&fixture.status_path).await;
         assert_eq!(active_runs, vec![run_id.to_string()]);
         assert_eq!(fixture.orphans.len(), 1);
     }
@@ -1260,8 +1259,8 @@ mod tests {
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
         assert!(!fixture.tokens.contains(run_id).await);
-        let (_idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&fixture.status_path).await;
+        let (_idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&fixture.status_path).await;
         assert!(active_runs.is_empty());
         assert_eq!(fixture.orphans.len(), 0);
     }
@@ -1323,9 +1322,9 @@ mod tests {
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
         assert!(!fixture.tokens.contains(run_id).await);
-        let (idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&fixture.status_path).await;
-        assert_eq!(idle_sessions, vec!["sess-idle-owned-cleanup"]);
+        let (idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&fixture.status_path).await;
+        assert_eq!(idle_reuse_keys, vec!["sess-idle-owned-cleanup"]);
         assert!(active_runs.is_empty());
         assert_eq!(fixture.orphans.len(), 0);
     }

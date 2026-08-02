@@ -14,18 +14,16 @@ pub(super) use self::idle_pool::{
     seed_idle_pool_with_timing, seed_idle_pool_with_workspace_promotion,
     seed_workspace_cache_state,
 };
-pub(super) use self::jobs::{
-    TEST_SESSION_LAST_COMPLETED_AT, context_with_session, minimal_context, push_job, shutdown,
-};
+pub(super) use self::jobs::{context_with_session, minimal_context, push_job, shutdown};
 pub(super) use self::status::{
-    publish_idle_status, status_idle_sessions, status_idle_sessions_and_active_runs,
-    wait_status_idle_empty_with_active_run, wait_status_idle_sessions_and_active_runs,
+    publish_idle_status, status_idle_reuse_keys, status_idle_reuse_keys_and_active_runs,
+    wait_status_idle_empty_with_active_run, wait_status_idle_reuse_keys_and_active_runs,
     wait_status_mode,
 };
 pub(super) use self::wait::{
     assert_run_exits_within, wait_budget_count, wait_budget_exhausted_reactor, wait_cancel_handle,
     wait_cancel_token, wait_cancel_token_removed, wait_discover_entered,
     wait_idle_cleanup_processed_with_expired_entries, wait_idle_pool_len,
-    wait_idle_pool_reuse_keys, wait_idle_pool_session_states, wait_parking_state,
-    wait_sandbox_lifecycle_counts, wait_usage_flush_requested, wait_workspace_cache_reuse_keys,
+    wait_idle_pool_reuse_keys, wait_parking_state, wait_sandbox_lifecycle_counts,
+    wait_usage_flush_requested, wait_workspace_cache_reuse_keys,
 };

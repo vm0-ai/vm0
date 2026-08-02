@@ -19,7 +19,6 @@ pub(crate) struct ParkedIdleCandidateBuilder {
     sandbox: Box<dyn Sandbox>,
     factory: Arc<Box<dyn SandboxFactory>>,
     reuse_key: String,
-    cli_agent_session_id: Option<String>,
     sandbox_id: SandboxId,
     profile_name: String,
     device_rate_limits: Option<DeviceRateLimits>,
@@ -34,15 +33,13 @@ pub(crate) struct ParkedIdleCandidateBuilder {
 
 impl ParkedIdleCandidateBuilder {
     pub(crate) fn new(
-        session_id: impl Into<String>,
+        reuse_key: impl Into<String>,
         budget_lease: BudgetLease,
     ) -> ParkedIdleCandidateBuilder {
-        let cli_agent_session_id = session_id.into();
         Self {
             sandbox: Box::new(MockSandbox::new(DEFAULT_SANDBOX_NAME)),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            reuse_key: cli_agent_session_id.clone(),
-            cli_agent_session_id: Some(cli_agent_session_id),
+            reuse_key: reuse_key.into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: DEFAULT_PROFILE_NAME.into(),
             device_rate_limits: None,
@@ -58,11 +55,6 @@ impl ParkedIdleCandidateBuilder {
 
     pub(crate) fn with_sandbox(mut self, sandbox: Box<dyn Sandbox>) -> Self {
         self.sandbox = sandbox;
-        self
-    }
-
-    pub(crate) fn with_reuse_key(mut self, reuse_key: impl Into<String>) -> Self {
-        self.reuse_key = reuse_key.into();
         self
     }
 
@@ -117,7 +109,6 @@ impl ParkedIdleCandidateBuilder {
             sandbox,
             factory,
             reuse_key,
-            cli_agent_session_id,
             sandbox_id,
             profile_name,
             device_rate_limits,
@@ -131,7 +122,6 @@ impl ParkedIdleCandidateBuilder {
         } = self;
         let metadata = IdleSandboxMetadata {
             reuse_key,
-            cli_agent_session_id,
             sandbox_id,
             profile_name,
             device_rate_limits,

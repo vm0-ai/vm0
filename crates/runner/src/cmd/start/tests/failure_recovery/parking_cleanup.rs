@@ -2,7 +2,7 @@ use super::super::super::*;
 use super::super::support::{
     MockRunEnv, context_with_session, mock_run_config_with_overrides, push_job, seed_idle_pool,
     shutdown, test_profiles, wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
-    wait_status_idle_sessions_and_active_runs, wait_workspace_cache_reuse_keys,
+    wait_status_idle_reuse_keys_and_active_runs, wait_workspace_cache_reuse_keys,
 };
 use super::support::assert_no_completion_for_run;
 
@@ -217,7 +217,7 @@ async fn non_reusable_park_keeps_budget_until_destroy_and_never_enters_idle_stat
         "non-reusable parked VM must never enter the idle pool",
     )
     .await;
-    wait_status_idle_sessions_and_active_runs(
+    wait_status_idle_reuse_keys_and_active_runs(
         &status_path,
         &[],
         &[run_id.to_string()],
@@ -239,7 +239,8 @@ async fn non_reusable_park_keeps_budget_until_destroy_and_never_enters_idle_stat
     .await;
 
     assert_post_destroy_cleanup(&budget, &idle_pool, None, run_id, 0, 0).await;
-    wait_status_idle_sessions_and_active_runs(&status_path, &[], &[], Duration::from_secs(5)).await;
+    wait_status_idle_reuse_keys_and_active_runs(&status_path, &[], &[], Duration::from_secs(5))
+        .await;
     assert_eq!(counter.park_call_count(), 1);
     assert_eq!(counter.destroy_call_count(), 1);
 

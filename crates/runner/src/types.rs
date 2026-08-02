@@ -9,7 +9,7 @@ use unicode_normalization::UnicodeNormalization;
 use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
 
-pub(crate) const MAX_HELD_SESSION_STATES: usize = 1024;
+pub(crate) const MAX_HELD_SANDBOX_STATES: usize = 1024;
 pub(crate) const MAX_HELD_WORKSPACE_STATES: usize = 1024;
 pub(crate) const MAX_WORKSPACE_CACHES_PER_REUSE_KEY: usize = 8;
 pub(crate) const MAX_WORKSPACE_CACHES_PER_HEARTBEAT: usize = 1024;
@@ -1350,17 +1350,6 @@ pub struct HeldSandboxState {
     pub reusable_sandbox: ReusableSandboxState,
 }
 
-/// Legacy heartbeat projection retained while old API instances can still
-/// receive heartbeats. Remove after the rollout gate in #24489.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct HeldSessionState {
-    pub session_id: String,
-    pub reuse_key: String,
-    pub last_completed_at: String,
-    pub reusable_sandbox: ReusableSandboxState,
-}
-
 /// Workspace cache state owned by a runner reuse key rather than a provider
 /// session identity.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -1388,7 +1377,6 @@ pub struct HeartbeatState {
     pub running_count: usize,
     pub admittable_profiles: Vec<String>,
     pub held_sandbox_states: Vec<HeldSandboxState>,
-    pub held_session_states: Vec<HeldSessionState>,
     pub held_workspace_states: Vec<HeldWorkspaceState>,
     pub mode: String,
 }
@@ -2171,17 +2159,6 @@ mod tests {
                     ),
                 },
             }],
-            held_session_states: vec![HeldSessionState {
-                session_id: "session-abc".into(),
-                reuse_key: "thread:thread-abc".into(),
-                last_completed_at: "2026-05-28T00:00:00.000Z".into(),
-                reusable_sandbox: ReusableSandboxState {
-                    profile: "vm0/default".into(),
-                    history_generation_run_id: Some(
-                        "11111111-1111-4111-8111-111111111111".parse().unwrap(),
-                    ),
-                },
-            }],
             held_workspace_states: vec![HeldWorkspaceState {
                 reuse_key: "thread:thread-abc".into(),
                 last_completed_at: "2026-05-28T00:00:00.000Z".into(),
@@ -2193,58 +2170,45 @@ mod tests {
             mode: "running".into(),
         };
         let json: serde_json::Value = serde_json::to_value(&state).unwrap();
-        assert_eq!(json["runnerId"], "550e8400-e29b-41d4-a716-446655440000");
-        assert_eq!(json["runnerName"], "runner-1");
-        assert_eq!(json["snapshotGeneration"], 7);
-        assert_eq!(json["snapshotSequence"], 42);
-        assert_eq!(json["totalVcpu"], 16);
-        assert_eq!(json["totalMemoryMb"], 32768);
-        assert_eq!(json["maxConcurrent"], 8);
-        assert_eq!(json["allocatedVcpu"], 6);
-        assert_eq!(json["allocatedMemoryMb"], 6144);
-        assert_eq!(json["runningCount"], 2);
-        assert_eq!(json["admittableProfiles"], json!(["vm0/default"]));
         assert_eq!(
-            json["heldSandboxStates"],
-            json!([{
-                "reuseKey": "thread:thread-abc",
-                "lastCompletedAt": "2026-05-28T00:00:00.000Z",
-                "reusableSandbox": {
-                    "profile": "vm0/default",
-                    "historyGenerationRunId": "11111111-1111-4111-8111-111111111111"
-                }
-            }])
+            json,
+            json!({
+                "runnerId": "550e8400-e29b-41d4-a716-446655440000",
+                "runnerName": "runner-1",
+                "group": "vm0/production",
+                "snapshotGeneration": 7,
+                "snapshotSequence": 42,
+                "totalVcpu": 16,
+                "totalMemoryMb": 32768,
+                "maxConcurrent": 8,
+                "allocatedVcpu": 6,
+                "allocatedMemoryMb": 6144,
+                "runningCount": 2,
+                "admittableProfiles": ["vm0/default"],
+                "heldSandboxStates": [{
+                    "reuseKey": "thread:thread-abc",
+                    "lastCompletedAt": "2026-05-28T00:00:00.000Z",
+                    "reusableSandbox": {
+                        "profile": "vm0/default",
+                        "historyGenerationRunId": "11111111-1111-4111-8111-111111111111"
+                    }
+                }],
+                "heldWorkspaceStates": [{
+                    "reuseKey": "thread:thread-abc",
+                    "lastCompletedAt": "2026-05-28T00:00:00.000Z",
+                    "workspaceCaches": [{
+                        "profile": "vm0/large",
+                        "workspaceAffinityVersion": 1
+                    }]
+                }],
+                "mode": "running"
+            })
         );
-        assert_eq!(
-            json["heldSessionStates"],
-            json!([{
-                "sessionId": "session-abc",
-                "reuseKey": "thread:thread-abc",
-                "lastCompletedAt": "2026-05-28T00:00:00.000Z",
-                "reusableSandbox": {
-                    "profile": "vm0/default",
-                    "historyGenerationRunId": "11111111-1111-4111-8111-111111111111"
-                }
-            }])
-        );
-        assert_eq!(
-            json["heldWorkspaceStates"],
-            json!([{
-                "reuseKey": "thread:thread-abc",
-                "lastCompletedAt": "2026-05-28T00:00:00.000Z",
-                "workspaceCaches": [{
-                    "profile": "vm0/large",
-                    "workspaceAffinityVersion": 1
-                }]
-            }])
-        );
-        assert_eq!(json["mode"], "running");
     }
 
     #[test]
-    fn held_session_state_serializes_required_sandbox_without_optional_history_generation() {
-        let state = HeldSessionState {
-            session_id: "session-current".into(),
+    fn held_sandbox_state_serializes_required_sandbox_without_optional_history_generation() {
+        let state = HeldSandboxState {
             reuse_key: "thread:thread-current".into(),
             last_completed_at: "2026-05-28T00:00:00.000Z".into(),
             reusable_sandbox: ReusableSandboxState {
@@ -2277,14 +2241,12 @@ mod tests {
             running_count: 0,
             admittable_profiles: vec!["vm0/default".into()],
             held_sandbox_states: Vec::new(),
-            held_session_states: Vec::new(),
             held_workspace_states: Vec::new(),
             mode: "running".into(),
         };
 
         let serialized = serde_json::to_value(state).unwrap();
         assert_eq!(serialized["heldSandboxStates"], json!([]));
-        assert_eq!(serialized["heldSessionStates"], json!([]));
         assert_eq!(serialized["heldWorkspaceStates"], json!([]));
     }
 }

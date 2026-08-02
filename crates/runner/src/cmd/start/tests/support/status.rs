@@ -26,31 +26,27 @@ struct ActiveRunSnapshot {
 
 #[derive(serde::Deserialize)]
 struct IdleVmSnapshot {
-    session_id: String,
+    reuse_key: String,
 }
 
-pub(in super::super) async fn status_idle_sessions_and_active_runs(
+pub(in super::super) async fn status_idle_reuse_keys_and_active_runs(
     status_path: &std::path::Path,
 ) -> (Vec<String>, Vec<String>) {
     let raw = tokio::fs::read_to_string(status_path).await.unwrap();
     let status: StatusSnapshot = serde_json::from_str(&raw).unwrap();
-    let mut sessions: Vec<String> = status
-        .idle_vms
-        .into_iter()
-        .map(|vm| vm.session_id)
-        .collect();
-    sessions.sort_unstable();
+    let mut reuse_keys: Vec<String> = status.idle_vms.into_iter().map(|vm| vm.reuse_key).collect();
+    reuse_keys.sort_unstable();
     let mut run_ids: Vec<String> = status
         .active_runs
         .into_iter()
         .map(|run| run.run_id)
         .collect();
     run_ids.sort_unstable();
-    (sessions, run_ids)
+    (reuse_keys, run_ids)
 }
 
-pub(in super::super) async fn status_idle_sessions(status_path: &std::path::Path) -> Vec<String> {
-    status_idle_sessions_and_active_runs(status_path).await.0
+pub(in super::super) async fn status_idle_reuse_keys(status_path: &std::path::Path) -> Vec<String> {
+    status_idle_reuse_keys_and_active_runs(status_path).await.0
 }
 
 async fn read_status_mode_if_exists(status_path: &std::path::Path) -> StatusModeRead {
@@ -106,9 +102,9 @@ async fn status_parser_defaults_omitted_idle_vms_to_empty() {
     .await
     .unwrap();
 
-    let (idle_sessions, active_runs) = status_idle_sessions_and_active_runs(&path).await;
+    let (idle_reuse_keys, active_runs) = status_idle_reuse_keys_and_active_runs(&path).await;
 
-    assert!(idle_sessions.is_empty());
+    assert!(idle_reuse_keys.is_empty());
     assert_eq!(active_runs, vec!["run-a", "run-b"]);
 }
 
@@ -119,33 +115,33 @@ async fn status_parser_requires_active_runs() {
     let path = dir.path().join("status.json");
     tokio::fs::write(&path, r#"{"idle_vms":[]}"#).await.unwrap();
 
-    let _ = status_idle_sessions_and_active_runs(&path).await;
+    let _ = status_idle_reuse_keys_and_active_runs(&path).await;
 }
 
-pub(in super::super) async fn wait_status_idle_sessions_and_active_runs(
+pub(in super::super) async fn wait_status_idle_reuse_keys_and_active_runs(
     status_path: &std::path::Path,
-    expected_idle_sessions: &[&str],
+    expected_idle_reuse_keys: &[&str],
     expected_active_runs: &[String],
     timeout: Duration,
 ) {
-    let mut expected_idle_sessions: Vec<String> = expected_idle_sessions
+    let mut expected_idle_reuse_keys: Vec<String> = expected_idle_reuse_keys
         .iter()
-        .map(|session| (*session).to_string())
+        .map(|reuse_key| (*reuse_key).to_string())
         .collect();
-    expected_idle_sessions.sort_unstable();
+    expected_idle_reuse_keys.sort_unstable();
     let mut expected_active_runs = expected_active_runs.to_vec();
     expected_active_runs.sort_unstable();
 
     wait_for_probe(timeout, || async {
-        match status_idle_sessions_and_active_runs_if_exists(status_path).await {
-            Some((idle_sessions, active_runs))
-                if idle_sessions == expected_idle_sessions
+        match status_idle_reuse_keys_and_active_runs_if_exists(status_path).await {
+            Some((idle_reuse_keys, active_runs))
+                if idle_reuse_keys == expected_idle_reuse_keys
                     && active_runs == expected_active_runs =>
             {
                 WaitProbe::Ready(())
             }
-            Some((idle_sessions, active_runs)) => WaitProbe::Pending(format!(
-                "status did not reach expected idle={expected_idle_sessions:?} active={expected_active_runs:?} within {timeout:?} (actual idle={idle_sessions:?} active={active_runs:?})",
+            Some((idle_reuse_keys, active_runs)) => WaitProbe::Pending(format!(
+                "status did not reach expected idle={expected_idle_reuse_keys:?} active={expected_active_runs:?} within {timeout:?} (actual idle={idle_reuse_keys:?} active={active_runs:?})",
             )),
             None => WaitProbe::Pending(format!(
                 "status file {} was not written within {timeout:?}",
@@ -156,11 +152,11 @@ pub(in super::super) async fn wait_status_idle_sessions_and_active_runs(
     .await;
 }
 
-async fn status_idle_sessions_and_active_runs_if_exists(
+async fn status_idle_reuse_keys_and_active_runs_if_exists(
     status_path: &std::path::Path,
 ) -> Option<(Vec<String>, Vec<String>)> {
     match tokio::fs::try_exists(status_path).await {
-        Ok(true) => Some(status_idle_sessions_and_active_runs(status_path).await),
+        Ok(true) => Some(status_idle_reuse_keys_and_active_runs(status_path).await),
         Ok(false) => None,
         Err(err) => panic!(
             "failed to check status file {}: {err}",
@@ -185,12 +181,13 @@ pub(in super::super) async fn wait_status_idle_empty_with_active_run(
 ) {
     let expected = run_id.to_string();
     wait_for_probe(timeout, || async {
-        let (idle_sessions, active_runs) = status_idle_sessions_and_active_runs(status_path).await;
-        if idle_sessions.is_empty() && active_runs.iter().any(|id| id == &expected) {
+        let (idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(status_path).await;
+        if idle_reuse_keys.is_empty() && active_runs.iter().any(|id| id == &expected) {
             WaitProbe::Ready(())
         } else {
             WaitProbe::Pending(format!(
-                "status did not atomically clear idle_vms and add active run {expected} within {timeout:?} (idle: {idle_sessions:?}, active: {active_runs:?})",
+                "status did not atomically clear idle_vms and add active run {expected} within {timeout:?} (idle: {idle_reuse_keys:?}, active: {active_runs:?})",
             ))
         }
     })

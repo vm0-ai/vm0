@@ -446,7 +446,7 @@ async fn generation_protected_different_idle_sandbox_defers_before_claim() {
     let pool = idle_pool.lock().await;
     assert_eq!(pool.held_reuse_keys(), vec![session_id.to_string()]);
     assert_eq!(
-        pool.held_session_states()[0]
+        pool.held_sandbox_states()[0]
             .reusable_sandbox
             .history_generation_run_id,
         Some(held_generation_run_id),

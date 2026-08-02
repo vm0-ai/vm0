@@ -2,7 +2,8 @@ use super::super::super::*;
 use super::super::support::{
     context_with_session, minimal_context, mock_run_config, mock_run_config_with_overrides,
     push_job, seed_idle_pool, shutdown, test_profiles, wait_budget_count, wait_discover_entered,
-    wait_idle_pool_reuse_keys, wait_idle_pool_session_states, wait_sandbox_lifecycle_counts,
+    wait_idle_pool_reuse_keys, wait_sandbox_lifecycle_counts,
+    wait_status_idle_reuse_keys_and_active_runs,
 };
 
 use crate::types::SandboxReuseResult;
@@ -100,6 +101,13 @@ async fn job_without_cli_session_parks_and_reuses_by_reuse_key() {
         .sandbox_id
         .expect("first job should report its sandbox id");
     wait_idle_pool_reuse_keys(&idle_pool, &[reuse_key], Duration::from_secs(5)).await;
+    wait_status_idle_reuse_keys_and_active_runs(
+        &env._temp_dir.path().join("status.json"),
+        &[reuse_key],
+        &[],
+        Duration::from_secs(5),
+    )
+    .await;
     let heartbeat_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     loop {
         let (advertised, current_count, observed_heartbeats) = {
@@ -110,11 +118,10 @@ async fn job_without_cli_session_parks_and_reuses_by_reuse_key() {
                 .unwrap_or_else(|error| error.into_inner());
             (
                 heartbeats[heartbeat_count..].iter().any(|heartbeat| {
-                    heartbeat.held_session_states.is_empty()
-                        && heartbeat
-                            .held_sandbox_states
-                            .iter()
-                            .any(|state| state.reuse_key == reuse_key)
+                    heartbeat
+                        .held_sandbox_states
+                        .iter()
+                        .any(|state| state.reuse_key == reuse_key)
                 }),
                 heartbeats.len(),
                 heartbeats[heartbeat_count..].to_vec(),
@@ -130,12 +137,11 @@ async fn job_without_cli_session_parks_and_reuses_by_reuse_key() {
                     .handle
                     .wait_heartbeat_past(current_count, remaining)
                     .await,
-            "post-park heartbeat should advertise the sandbox without a legacy session projection; heartbeats: {observed_heartbeats:?}",
+            "post-park heartbeat should advertise the reusable sandbox; heartbeats: {observed_heartbeats:?}",
         );
     }
     {
         let pool = idle_pool.lock().await;
-        assert!(pool.held_session_states().is_empty());
         let sandbox_states = pool.held_sandbox_states();
         assert_eq!(sandbox_states.len(), 1);
         assert_eq!(sandbox_states[0].reuse_key, reuse_key);
@@ -265,7 +271,7 @@ async fn sequential_same_reuse_key_cycle() {
         .wait_completion(id1, Duration::from_secs(5))
         .await;
     assert!(c1.is_some(), "job 1 should complete");
-    wait_idle_pool_session_states(&idle_pool, &["sess-seq"], Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&idle_pool, &["sess-seq"], Duration::from_secs(5)).await;
     assert_eq!(idle_pool.lock().await.len(), 1, "job 1 VM should be parked");
 
     // Job 2: same reuse key → take → reuse → re-park.
@@ -315,8 +321,7 @@ async fn same_thread_reuses_vm_across_provider_session_change() {
             .await
             .is_some()
     );
-    wait_idle_pool_session_states(&idle_pool, &["provider-session-a"], Duration::from_secs(5))
-        .await;
+    wait_idle_pool_reuse_keys(&idle_pool, &[reuse_key], Duration::from_secs(5)).await;
 
     let second_run_id = RunId::new_v4();
     let mut second_context = context_with_session(second_run_id, "provider-session-b");
@@ -332,8 +337,6 @@ async fn same_thread_reuses_vm_across_provider_session_change() {
         Some(SandboxReuseResult::Reused),
         "the thread reuse key should select the first job's parked VM"
     );
-    wait_idle_pool_session_states(&idle_pool, &["provider-session-b"], Duration::from_secs(5))
-        .await;
     wait_idle_pool_reuse_keys(&idle_pool, &[reuse_key], Duration::from_secs(5)).await;
 
     shutdown(&env, run_handle).await;
@@ -426,7 +429,7 @@ async fn reuse_cycle_invokes_park_and_unpark_symmetrically() {
             .is_some()
     );
     wait_sandbox_lifecycle_counts(&counter, 1, 0, Duration::from_secs(5)).await;
-    wait_idle_pool_session_states(&idle_pool, &["sess-reuse-cycle"], Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&idle_pool, &["sess-reuse-cycle"], Duration::from_secs(5)).await;
 
     // Job 2: same reuse key → take (unpark) → run → re-park.
     let id2 = RunId::new_v4();

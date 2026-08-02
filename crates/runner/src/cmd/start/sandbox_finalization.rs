@@ -193,7 +193,6 @@ pub(super) async fn finalize_sandbox_for_completion(
             sandbox,
             factory: Arc::clone(&factory),
             reuse_key: reuse_key.clone(),
-            cli_agent_session_id: resolved_cli_agent_session_id.map(str::to_owned),
             sandbox_id,
             profile_name: profile_name.clone(),
             device_rate_limits: device_rate_limits.clone(),
@@ -1591,9 +1590,9 @@ mod tests {
         )
         .await;
 
-        let idle_states = fixture.idle_pool.lock().await.held_session_states();
+        let idle_states = fixture.idle_pool.lock().await.held_sandbox_states();
         assert_eq!(idle_states.len(), 1);
-        assert_eq!(idle_states[0].session_id, "sess-guest");
+        assert_eq!(idle_states[0].reuse_key, "unused-context-session");
         let cache_states = cache.held_workspace_states().await;
         assert!(
             cache_states.is_empty(),
@@ -2272,9 +2271,9 @@ mod tests {
         )
         .await;
 
-        let idle_states = fixture.idle_pool.lock().await.held_session_states();
+        let idle_states = fixture.idle_pool.lock().await.held_sandbox_states();
         assert_eq!(idle_states.len(), 1);
-        assert_eq!(idle_states[0].session_id, "sess-existing");
+        assert_eq!(idle_states[0].reuse_key, "sess-existing");
         let cache_states = cache.held_workspace_states().await;
         assert_eq!(cache_states.len(), 1);
         assert_eq!(cache_states[0].reuse_key, "sess-new");
@@ -2332,7 +2331,6 @@ mod tests {
             sandbox: existing_sandbox,
             factory: existing_factory,
             reuse_key: session_id.into(),
-            cli_agent_session_id: Some(session_id.into()),
             sandbox_id: old_sandbox_id,
             profile_name: "vm0/default".into(),
             device_rate_limits: None,

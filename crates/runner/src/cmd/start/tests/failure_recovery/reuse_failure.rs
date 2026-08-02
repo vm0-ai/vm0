@@ -1,7 +1,7 @@
 use super::super::super::*;
 use super::super::support::{
     context_with_session, mock_run_config_with_overrides, publish_idle_status, push_job,
-    seed_idle_pool_with_overrides, shutdown, status_idle_sessions, test_profiles,
+    seed_idle_pool_with_overrides, shutdown, status_idle_reuse_keys, test_profiles,
     wait_budget_count, wait_idle_pool_len, wait_status_idle_empty_with_active_run,
 };
 
@@ -136,7 +136,7 @@ async fn unpark_failure_status_switches_from_idle_to_active_while_job_runs() {
     .await;
     publish_idle_status(&idle_pool, &status).await;
     assert_eq!(
-        status_idle_sessions(&status_path).await,
+        status_idle_reuse_keys(&status_path).await,
         vec!["sess-unpark-status".to_string()],
         "pre-run status should list the idle VM",
     );

@@ -1338,7 +1338,6 @@ fn is_static_json_field(field: &str) -> bool {
             | "historyRef"
             | "hostPolicy"
             | "heldSandboxStates"
-            | "heldSessionStates"
             | "heldWorkspaceStates"
             | "instructionsTargetFilename"
             | "issued"
@@ -1771,15 +1770,6 @@ mod tests {
                     history_generation_run_id: None,
                 },
             }],
-            held_session_states: vec![crate::types::HeldSessionState {
-                session_id: "held-session-test".to_string(),
-                reuse_key: "thread:heartbeat-test".to_string(),
-                last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
-                reusable_sandbox: crate::types::ReusableSandboxState {
-                    profile: crate::profile::DEFAULT_PROFILE.to_string(),
-                    history_generation_run_id: None,
-                },
-            }],
             held_workspace_states: vec![crate::types::HeldWorkspaceState {
                 reuse_key: "thread:heartbeat-test".to_string(),
                 last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
@@ -1956,7 +1946,7 @@ mod tests {
             "event should not include full URL: {event_debug}"
         );
         assert!(
-            !event_debug.contains("runner-token") && !event_debug.contains("held-session-test"),
+            !event_debug.contains("runner-token") && !event_debug.contains("thread:heartbeat-test"),
             "event should not include bearer token or heartbeat body: {event_debug}"
         );
     }
@@ -1986,8 +1976,7 @@ mod tests {
         assert_eq!(event_field(event, "workspace_states"), "1");
         let event_debug = format!("{event:#?}");
         assert!(
-            !event_debug.contains("held-session-test")
-                && !event_debug.contains("thread:heartbeat-test"),
+            !event_debug.contains("thread:heartbeat-test"),
             "event should not include heartbeat body: {event_debug}"
         );
     }
@@ -2011,7 +2000,6 @@ mod tests {
             crate::profile::DEFAULT_PROFILE
         );
         assert_eq!(body["telemetry"]["pollReason"], "immediate");
-        assert!(body.get("heldSessionStates").is_none());
     }
 
     #[test]
