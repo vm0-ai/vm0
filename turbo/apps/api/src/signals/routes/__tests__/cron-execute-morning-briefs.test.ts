@@ -1312,7 +1312,6 @@ describe("cron execute morning briefs", () => {
   });
 
   it("returns a successful queued response behind an active run", async () => {
-    mockTimedMorningBriefSignedUrls();
     context.mocks.resend.send.mockResolvedValue({
       data: { id: "resend-queued-retry" },
       error: null,
@@ -1321,6 +1320,7 @@ describe("cron execute morning briefs", () => {
     await updateFeatureSwitchesForUser(context, scenario.actor, {
       [FeatureSwitchKey.ManualMorningBrief]: true,
     });
+    mockTimedMorningBriefSignedUrls();
 
     const previousTriggerTime = AFTER_SEVEN_LOCAL - DAY_MS;
     const previousBriefDate = new Intl.DateTimeFormat("en-CA", {
