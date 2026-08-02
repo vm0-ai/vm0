@@ -610,7 +610,7 @@ def _http_network_log_entry(
         "host": host,
         "port": port,
         "method": flow.request.method,
-        "url": network_log_sanitization.sanitize_url_for_network_log(url),
+        "url": network_log_sanitization.sanitize_request_url_for_network_log(url),
         "status": status_code,
         "latency_ms": latency_ms,
         "request_size": request_size,

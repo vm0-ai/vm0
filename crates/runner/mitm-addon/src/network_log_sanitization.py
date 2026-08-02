@@ -80,14 +80,17 @@ def _sanitize_malformed_authority_for_network_log(
 
 
 def sanitize_url_for_network_log(value: str) -> str:
-    """Return a primary request/proxy URL string for persistent logs.
+    """Return a URL string without credentials or query data for diagnostics.
 
     Runtime metadata can keep raw URLs because firewall/auth and connector
-    billing may need query parameters. Persistent logs do not. This sanitizer
-    discards query and fragment contents before URL preprocessing and parsing.
-    It also removes userinfo from malformed HTTP(S) authority positions, but
-    still preserves ordinary paths for request diagnostics. It is not a general
-    sanitizer for arbitrary captured header values or path contents.
+    billing may need query parameters. Captured URL-bearing headers and proxy
+    diagnostics do not, so this sanitizer discards query and fragment contents
+    before URL preprocessing and parsing. Top-level HTTP network entries instead
+    use ``sanitize_request_url_for_network_log`` to retain the complete request
+    URL. This sanitizer also removes userinfo from malformed HTTP(S) authority
+    positions, but it still preserves ordinary paths for request diagnostics. It
+    is not a general sanitizer for arbitrary captured header values or path
+    contents.
     """
     retained_value = _strip_query_fragment_for_network_log(value)
     normalized_value = _normalize_for_urlsplit(retained_value)
@@ -102,3 +105,10 @@ def sanitize_url_for_network_log(value: str) -> str:
 
     netloc = _sanitize_netloc_for_network_log(parts.netloc)
     return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+
+
+def sanitize_request_url_for_network_log(value: str) -> str:
+    """Preserve a complete request URL while removing URL userinfo."""
+    retained_value = _strip_query_fragment_for_network_log(value)
+    suffix = value[len(retained_value) :]
+    return f"{sanitize_url_for_network_log(retained_value)}{suffix}"
