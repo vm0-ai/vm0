@@ -5629,6 +5629,13 @@
       "when": 1785657499556,
       "tag": "0803_optimize_chat_event_revoke_index",
       "breakpoints": true
+    },
+    {
+      "idx": 804,
+      "version": "7",
+      "when": 1785667649461,
+      "tag": "0804_contract_runner_state_runtime_schema",
+      "breakpoints": true
     }
   ]
 }

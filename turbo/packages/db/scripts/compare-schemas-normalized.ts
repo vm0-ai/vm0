@@ -32,6 +32,13 @@ interface ConstraintInfo {
   constraint_def: string;
 }
 
+// Migration 0800 physically owns this rollback column while the runtime and
+// latest snapshot remain canonical-only. #24512 removes both the column and
+// this allowance after legacy-declaring APIs have drained.
+const TRANSITIONAL_RUNNER_SESSION_STATE_COLUMNS = new Set([
+  "runner_state.held_session_states",
+]);
+
 // Get database URLs from command line args
 const db1Url = process.argv[2];
 const db2Url = process.argv[3];
@@ -60,7 +67,11 @@ async function getTableColumns(client: Client): Promise<TableColumn[]> {
       AND t.table_type = 'BASE TABLE'
     ORDER BY c.table_name, c.column_name
   `);
-  return result.rows;
+  return result.rows.filter((column) => {
+    return !TRANSITIONAL_RUNNER_SESSION_STATE_COLUMNS.has(
+      `${column.table_name}.${column.column_name}`,
+    );
+  });
 }
 
 async function getIndexes(client: Client): Promise<IndexInfo[]> {
