@@ -15,7 +15,6 @@ import {
   decryptChatEventInputParamsFixture,
   findAgentphoneChatEventByPromptFixture,
   readChatEventContextFixture,
-  replaceAgentphoneLaunchMaterialWithLegacyParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
@@ -644,15 +643,6 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         userId: actor.userId,
       }),
     ).resolves.toStrictEqual({ version: 1 });
-    await replaceAgentphoneLaunchMaterialWithLegacyParamsFixture(
-      secondEvent.eventId,
-      {
-        orgId: actor.orgId,
-        userId: actor.userId,
-        prompt: "legacy second queued prompt",
-        appendSystemPrompt: "legacy AgentPhone system prompt",
-      },
-    );
     await ap.postAgentPhoneInboundMessage({
       channel: "sms",
       from: phone,
@@ -665,11 +655,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
     const sharedSession = await waitForRunSessionIdPresent(actor, run1.runId);
     const run2 = await claimDispatchedRun(runnerGroup);
-    expect(run2.prompt).toBe("legacy second queued prompt");
-    expectExactSystemPromptSuffix(
-      run2.appendSystemPrompt,
-      "legacy AgentPhone system prompt",
-    );
+    expect(run2.prompt).toBe("second queued prompt");
     await completeSandboxRun(run2.sandboxToken, run2.runId, 0);
     await waitForRunSessionId(actor, run2.runId, sharedSession);
 

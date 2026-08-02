@@ -63,7 +63,6 @@ import {
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
 import { noGoalChangeAfterQueueEvent } from "./chat-goal-queue.service";
-import { agentphoneDeliveryTargetSchema } from "./agentphone-chat-callback-payload";
 import { telegramDeliveryTargetSchema } from "./telegram-chat-callback-payload";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
@@ -88,7 +87,6 @@ const queuedUserMessageRunParamsSchema = z.object({
   prompt: z.string().optional(),
   appendSystemPrompt: z.string().optional(),
   telegramDelivery: telegramDeliveryTargetSchema.optional(),
-  agentphoneDelivery: agentphoneDeliveryTargetSchema.optional(),
   morningBriefDelivery: z
     .object({
       deliveryId: z.string(),
@@ -105,7 +103,6 @@ const queuedUserMessageRunParamsSchema = z.object({
       telegramUsername: z.string().optional(),
       telegramUserId: z.string().optional(),
       telegramLanguage: z.string().optional(),
-      agentphoneHandle: z.string().optional(),
     })
     .optional(),
 });

@@ -2803,14 +2803,6 @@ async function resolveQueuedLaunchMaterial(
   ) {
     return null;
   }
-  if (
-    args.queuedMessage.triggerSource === "agentphone" &&
-    sourceParams?.prompt !== undefined &&
-    sourceParams.appendSystemPrompt !== undefined &&
-    sourceParams.agentphoneDelivery
-  ) {
-    return null;
-  }
   throw new Error(
     `${args.queuedMessage.triggerSource} queue item is missing launch material`,
   );
@@ -2830,9 +2822,6 @@ function queuedIntegrationDeliveries(
   > = {
     telegram: (params) => {
       return { telegramDelivery: params?.telegramDelivery };
-    },
-    agentphone: (params) => {
-      return { agentphoneDelivery: params?.agentphoneDelivery };
     },
     "workflow-schedule": (params) => {
       return { morningBriefDelivery: params?.morningBriefDelivery };
@@ -3015,8 +3004,7 @@ function queuedMessageAdmissionFailure(
     agentphone: (resolverArgs) => {
       return agentPhoneQueuedMessageAdmissionFailure(
         resolverArgs.args,
-        resolverArgs.launchMaterial?.delivery.agentphoneDelivery ??
-          resolverArgs.sourceParams?.agentphoneDelivery,
+        resolverArgs.launchMaterial?.delivery.agentphoneDelivery,
         resolverArgs.error,
       );
     },
@@ -3051,9 +3039,6 @@ function queuedMessagePrompt(args: {
   }
   if (args.triggerSource === "workflow-schedule") {
     return args.sourceParams?.prompt ?? args.projectedPrompt;
-  }
-  if (args.triggerSource === "agentphone") {
-    return args.sourceParams?.prompt ?? "";
   }
   return args.projectedPrompt;
 }
