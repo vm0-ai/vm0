@@ -20,7 +20,7 @@ import { chatEvents } from "@vm0/db/schema/chat-event";
 import { and, desc, eq, isNull, notExists, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
-import { env, optionalEnv } from "../../lib/env";
+import { env } from "../../lib/env";
 import { inferMimetype } from "../../lib/mimetype";
 import { now } from "../external/time";
 import {
@@ -46,10 +46,6 @@ import {
   type AgentPhoneChannel,
   type AgentPhoneUserLink,
 } from "./agentphone-shared.service";
-import {
-  agentphoneDeliveryTargetSchema,
-  type AgentPhoneDeliveryTarget,
-} from "./agentphone-chat-callback-payload";
 import { ensureAgentPhoneChatThreadRoute } from "./agentphone-chat-ingress.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import {
@@ -884,16 +880,10 @@ function buildAgentPhoneContextBlock(
 
 function enrichAgentPhonePrompt(opts: {
   readonly prompt: string;
-  readonly phoneHandle: string;
-  readonly channel: AgentPhoneChannel;
   readonly messageId: string;
   readonly mediaUrl: string | null;
   readonly isGroup: boolean;
-}): {
-  readonly prompt: string;
-  readonly userInfoExtras: { readonly agentphoneHandle: string };
-} {
-  const normalized = normalizeAgentPhoneHandle(opts.phoneHandle, opts.channel);
+}): string {
   const promptText = opts.isGroup
     ? stripZeroMention(opts.prompt)
     : opts.prompt.trim();
@@ -906,47 +896,7 @@ function enrichAgentPhonePrompt(opts: {
       }),
     );
   }
-  return {
-    prompt: parts.filter(Boolean).join("\n\n"),
-    userInfoExtras: { agentphoneHandle: normalized },
-  };
-}
-
-function buildIntegrationPrompt(platform: string): string {
-  return `# Current Integration\nYou are currently running inside: ${platform}`;
-}
-
-function buildAgentPhonePrompt(
-  opts: {
-    readonly sharedNumber: string;
-    readonly phoneHandle: string;
-    readonly conversationId?: string | null;
-    readonly channel?: string | null;
-    readonly isGroup?: boolean;
-    readonly messageId?: string;
-    readonly agentphoneAgentId?: string;
-  },
-  threadContext: string,
-): string {
-  const headerParts = [buildIntegrationPrompt("AgentPhone")];
-  headerParts.push(`Shared AgentPhone number: ${opts.sharedNumber}`);
-  headerParts.push(`User phone handle: ${opts.phoneHandle}`);
-  if (opts.agentphoneAgentId) {
-    headerParts.push(`AgentPhone Agent ID: ${opts.agentphoneAgentId}`);
-  }
-  if (opts.channel) {
-    headerParts.push(`Channel: ${opts.channel}`);
-  }
-  if (opts.isGroup !== undefined) {
-    headerParts.push(`Conversation type: ${opts.isGroup ? "group" : "dm"}`);
-  }
-  if (opts.conversationId) {
-    headerParts.push(`Conversation ID: ${opts.conversationId}`);
-  }
-  if (opts.messageId) {
-    headerParts.push(`Message ID: ${opts.messageId}`);
-  }
-  return [headerParts.join("\n"), threadContext].filter(Boolean).join("\n\n");
+  return parts.filter(Boolean).join("\n\n");
 }
 
 function parseAgentPhoneCommand(text: string): string | undefined {
@@ -1487,27 +1437,6 @@ const handleAgentPhoneCommandIfPresent$ = command(
   },
 );
 
-function agentPhoneDeliveryTarget(args: {
-  readonly event: AgentPhoneMessageEvent;
-  readonly userLink: AgentPhoneUserLink;
-  readonly agent: WorkspaceAgent;
-  readonly rootMessageId: string;
-}): AgentPhoneDeliveryTarget {
-  return agentphoneDeliveryTargetSchema.parse({
-    messageId: args.event.messageId,
-    conversationId: args.event.conversationId,
-    channel: args.event.channel,
-    isGroup: isAgentPhoneGroupEvent(args.event),
-    rootMessageId: args.rootMessageId,
-    phoneHandle: args.event.fromNumber,
-    fromNumber: args.event.fromNumber,
-    toNumber: args.event.toNumber,
-    userLinkId: args.userLink.id,
-    agentId: args.agent.composeId,
-    agentphoneAgentId: args.event.agentphoneAgentId,
-  });
-}
-
 function agentPhoneChatMessageId(args: {
   readonly event: AgentPhoneMessageEvent;
   readonly userLinkId: string;
@@ -1527,7 +1456,6 @@ async function persistAgentPhoneChatMessage(args: {
   readonly rootMessageId: string;
   readonly prompt: string;
   readonly threadContext: string;
-  readonly userInfoExtras: { readonly agentphoneHandle: string };
   readonly apiStartTime: number;
   readonly modelRoute: ModelRoutePin | undefined;
   readonly signal: AbortSignal;
@@ -1553,24 +1481,7 @@ async function persistAgentPhoneChatMessage(args: {
   args.signal.throwIfAborted();
 
   const encryptedParams = await encryptQueuedUserMessageRunParams(
-    {
-      version: 1,
-      prompt: args.prompt,
-      appendSystemPrompt: buildAgentPhonePrompt(
-        {
-          sharedNumber: optionalEnv("AGENTPHONE_PHONE_NUMBER") ?? "",
-          phoneHandle: args.event.fromNumber,
-          conversationId: args.event.conversationId,
-          channel: args.event.channel,
-          isGroup: isAgentPhoneGroupEvent(args.event),
-          messageId: args.event.messageId,
-          agentphoneAgentId: args.event.agentphoneAgentId,
-        },
-        args.threadContext,
-      ),
-      agentphoneDelivery: agentPhoneDeliveryTarget(args),
-      userInfoExtras: args.userInfoExtras,
-    },
+    { version: 1 },
     {
       orgId: args.userLink.orgId,
       userId: args.userLink.vm0UserId,
@@ -1703,7 +1614,6 @@ const runAgentForAgentPhone$ = command(
       readonly rootMessageId: string;
       readonly prompt: string;
       readonly threadContext: string;
-      readonly userInfoExtras: { readonly agentphoneHandle: string };
       readonly apiStartTime: number;
       readonly modelRoute: ModelRoutePin | undefined;
     },
@@ -1829,10 +1739,8 @@ export const handleAgentPhoneMessage$ = command(
     });
     signal.throwIfAborted();
 
-    const { prompt, userInfoExtras } = enrichAgentPhonePrompt({
+    const prompt = enrichAgentPhonePrompt({
       prompt: params.event.body,
-      phoneHandle: params.event.fromNumber,
-      channel: params.event.channel,
       messageId: params.event.messageId,
       mediaUrl: params.event.mediaUrl,
       isGroup,
@@ -1847,7 +1755,6 @@ export const handleAgentPhoneMessage$ = command(
         rootMessageId,
         prompt,
         threadContext: executionContext,
-        userInfoExtras,
         event: params.event,
         apiStartTime: params.apiStartTime,
         modelRoute,
