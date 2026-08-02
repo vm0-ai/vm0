@@ -2724,7 +2724,6 @@ function launchLoader<Material extends NativeQueuedLaunchMaterial>(
 
 async function resolveQueuedLaunchMaterial(
   args: CreateQueuedChatRunInputArgs,
-  sourceParams: QueuedSourceParams,
 ): Promise<QueuedLaunchMaterial | null> {
   const launchLoaders: Partial<Record<TriggerSource, LaunchLoader>> = {
     slack: launchLoader(loadSlackQueuedLaunchMaterial, (material) => {
@@ -2753,14 +2752,6 @@ async function resolveQueuedLaunchMaterial(
   if (material) {
     return material;
   }
-  if (
-    args.queuedMessage.triggerSource === "github" &&
-    sourceParams?.prompt !== undefined &&
-    sourceParams.appendSystemPrompt !== undefined &&
-    sourceParams.githubDelivery
-  ) {
-    return null;
-  }
   throw new Error(
     `${args.queuedMessage.triggerSource} queue item is missing launch material`,
   );
@@ -2783,9 +2774,6 @@ function queuedIntegrationDeliveries(
     },
     agentphone: (params) => {
       return { agentphoneDelivery: params?.agentphoneDelivery };
-    },
-    github: (params) => {
-      return { githubDelivery: params?.githubDelivery };
     },
     "workflow-schedule": (params) => {
       return { morningBriefDelivery: params?.morningBriefDelivery };
@@ -2972,8 +2960,7 @@ function queuedMessageAdmissionFailure(
     github: (resolverArgs) => {
       return githubQueuedMessageAdmissionFailure(
         resolverArgs.args,
-        resolverArgs.launchMaterial?.delivery.githubDelivery ??
-          resolverArgs.sourceParams?.githubDelivery,
+        resolverArgs.launchMaterial?.delivery.githubDelivery,
         resolverArgs.error,
       );
     },
@@ -2997,9 +2984,6 @@ function queuedMessagePrompt(args: {
 }): string {
   if (args.launchMaterial) {
     return args.launchMaterial.prompt;
-  }
-  if (args.triggerSource === "github") {
-    return args.sourceParams?.prompt ?? "";
   }
   if (args.triggerSource === "workflow-schedule") {
     return args.sourceParams?.prompt ?? args.projectedPrompt;
@@ -3050,7 +3034,7 @@ async function loadQueuedRunMaterial(args: CreateQueuedChatRunInputArgs) {
   if (args.queuedMessage.triggerSource !== "web" && !sourceParams) {
     throw new Error("Canonical integration queue item is missing run params");
   }
-  const launchMaterial = await resolveQueuedLaunchMaterial(args, sourceParams);
+  const launchMaterial = await resolveQueuedLaunchMaterial(args);
   return {
     sourceParams,
     launchMaterial,
