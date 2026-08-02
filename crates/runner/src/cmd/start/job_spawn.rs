@@ -68,10 +68,10 @@ pub(super) struct SpawnContext {
     /// completion so soft-drain/resume races do not depend on a stale
     /// spawn-time mode snapshot.
     pub(super) parking_gate: ParkingGate,
-    /// Notifies the main loop to send an immediate heartbeat after session
+    /// Notifies the main loop to send an immediate heartbeat after reusable
     /// affinity state changes. This eliminates the up-to-10s blind spot where
-    /// the server does not know which runner holds a session VM or workspace
-    /// image cache.
+    /// the server does not know which runner holds a reusable sandbox or
+    /// workspace image cache.
     pub(super) park_notify: Arc<tokio::sync::Notify>,
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
