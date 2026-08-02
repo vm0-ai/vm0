@@ -110,6 +110,7 @@ import {
   setSecretKmsClientForTests,
   type SecretKmsClient,
 } from "../../../lib/secret-kms-client";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /**
  * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
@@ -9453,6 +9454,19 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const fw = createFirewallApi(context);
     const misc = createMiscRoutesApi(context);
     const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Zero runner context requires an organization");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        ...actor,
+        orgId: actor.orgId,
+      },
+      {
+        [FeatureSwitchKey.ZeroBrowser]: true,
+      },
+    );
     bdd.acceptAgentStorageWrites();
     api.acceptStorageDownloads();
     api.acceptTelemetryIngest();
@@ -9640,6 +9654,12 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).not.toContain("zero chat send");
     expect(appendSystemPrompt).not.toContain("zero chat cancel");
     expect(appendSystemPrompt).not.toContain("zero chat queued");
+    expect(appendSystemPrompt).not.toContain(
+      "`zero browser use` creates, reuses, or resumes a remote browser",
+    );
+    expect(appendSystemPrompt).not.toContain(
+      "Zero Browser is currently off for this chat thread",
+    );
     for (const otherIntegrationHint of [
       "zero slack download-file -h",
       "zero github download-file -h",

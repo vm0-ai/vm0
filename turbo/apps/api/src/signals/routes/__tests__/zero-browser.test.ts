@@ -10,6 +10,7 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, test as vitestTest } from "vitest";
 import { z } from "zod";
@@ -31,6 +32,7 @@ import {
   setBrowserTabSnapshotAsPreviousApi,
   setComputerUseHostAsPreviousApi,
 } from "./helpers/runtime-state";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -193,6 +195,10 @@ async function setupBrowserScenario() {
   const callbacks = createChatCallbacksApi(context);
   const webhooks = createWebhookCallbackApi(context);
   const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Managed browser tests require an organization");
+  }
+  const orgActor = { ...actor, orgId: actor.orgId };
   callbacks.acceptChatObjectStorage();
   callbacks.disableVapid();
   callbacks.failIfChatCallbackRouteIsFetched();
@@ -201,9 +207,9 @@ async function setupBrowserScenario() {
   runs.acceptTelemetryIngest();
   const runnerGroup = runs.configureRunnerGroup();
   await runs.heartbeatRunner(runnerGroup);
-  await runs.grantProEntitlement(actor);
-  await runs.ensureOrgModelProvider(actor);
-  const agent = await bdd.createAgent(actor, {
+  await runs.grantProEntitlement(orgActor);
+  await runs.ensureOrgModelProvider(orgActor);
+  const agent = await bdd.createAgent(orgActor, {
     displayName: "Managed Browser Test",
     visibility: "private",
   });
@@ -213,7 +219,7 @@ async function setupBrowserScenario() {
     runs,
     chat,
     webhooks,
-    actor,
+    actor: orgActor,
     runnerGroup,
     agent,
   };
@@ -258,6 +264,9 @@ async function reconcileBrowsers() {
 describe("zero browser route", () => {
   it("keeps managed browser access off for a default chat thread", async () => {
     const { runs, chat, actor, agent } = await setupBrowserScenario();
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.ZeroBrowser]: true,
+    });
     const sent = await chat.requestSendEvent(
       actor,
       {
@@ -269,6 +278,10 @@ describe("zero browser route", () => {
     if (sent.status !== 201 || sent.body.runId === null) {
       throw new Error("Expected a chat run");
     }
+    const claim = await runs.claimRunnerJob(sent.body.runId);
+    expect(claim.appendSystemPrompt ?? "").toContain(
+      "Zero Browser is currently off for this chat thread",
+    );
     const browserToken = runs.zeroTokenForRunWithCapabilities(
       actor,
       sent.body.runId,
@@ -285,6 +298,34 @@ describe("zero browser route", () => {
         message: "Cloud browser is not enabled for this chat thread",
       },
     });
+  });
+
+  it("advertises managed browser access for an enabled chat thread", async () => {
+    const { runs, chat, actor, agent } = await setupBrowserScenario();
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.ZeroBrowser]: true,
+    });
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "Open a managed browser",
+        cloudBrowserEnabled: true,
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected a chat run");
+    }
+
+    const claim = await runs.claimRunnerJob(sent.body.runId);
+    const appendSystemPrompt = claim.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain(
+      "`zero browser use` creates, reuses, or resumes a remote browser",
+    );
+    expect(appendSystemPrompt).not.toContain(
+      "Zero Browser is currently off for this chat thread",
+    );
   });
 
   it("normalizes a previous API host-only write during cloud browser rollout", async () => {
