@@ -14683,6 +14683,403 @@ async function validateChatEventLowTrafficIndexes(): Promise<void> {
   }
 }
 
+const CHAT_EVENT_REVOKE_INDEX_PREVIOUS_MIGRATION = 802;
+const CHAT_EVENT_REVOKE_INDEX_MIGRATION = 803;
+
+async function validateChatEventRevokeIndex(): Promise<void> {
+  console.log("=== Validate chat event revoke index optimization ===\n");
+  const testDb = "migration_chat_event_revoke_index_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "00000000-0000-4000-8000-000000080201";
+  const threadId = "00000000-0000-4000-8000-000000080202";
+  const otherThreadId = "00000000-0000-4000-8000-000000080203";
+  const targetEventId = "00000000-0000-4000-8000-000000080204";
+  const replacementEventId = "00000000-0000-4000-8000-000000080205";
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0803_optimize_chat_event_revoke_index.sql"),
+    "utf8",
+  );
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.equal(
+    (migrationSql.match(/\bCREATE UNIQUE INDEX CONCURRENTLY\b/gu) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (migrationSql.match(/\bDROP INDEX CONCURRENTLY IF EXISTS\b/gu) ?? [])
+      .length,
+    2,
+  );
+  const dropPartialIndexPosition = migrationSql.indexOf(
+    'DROP INDEX CONCURRENTLY IF EXISTS "chat_events_revokes_event_id_not_null_unique"',
+  );
+  const createPartialIndexPosition = migrationSql.indexOf(
+    'CREATE UNIQUE INDEX CONCURRENTLY "chat_events_revokes_event_id_not_null_unique"',
+  );
+  const dropOldIndexPosition = migrationSql.indexOf(
+    'DROP INDEX CONCURRENTLY IF EXISTS "chat_events_revokes_event_id_unique"',
+  );
+  assert.ok(dropPartialIndexPosition >= 0);
+  assert.ok(createPartialIndexPosition > dropPartialIndexPosition);
+  assert.ok(dropOldIndexPosition > createPartialIndexPosition);
+  assert.doesNotMatch(migrationSql, /idx_chat_events_run_id/u);
+  assert.doesNotMatch(migrationSql, /interrupts_run_id/u);
+  assert.doesNotMatch(migrationSql, /run_terminal/u);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CHAT_EVENT_REVOKE_INDEX_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'revoke-index-test-user',
+            'revoke-index-test',
+            'revoke-index-test-org'
+          )
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES
+            ($1, 'revoke-index-test-user', $3, 'revoke index test'),
+            ($2, 'revoke-index-test-user', $3, 'revoke index plan filler')
+        `,
+        [threadId, otherThreadId, composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'run.queued', 1)
+        `,
+        [targetEventId, threadId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "revokes_event_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES
+            ($1, $2, $3, 'control.revoke', 2),
+            (gen_random_uuid(), $2, NULL, 'run.queued', 3)
+        `,
+        [replacementEventId, threadId, targetEventId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "event_type",
+            "seq_id"
+          )
+          SELECT $1, 'output.message', "sequence"
+          FROM generate_series(1, 2000) AS "sequence"
+        `,
+        [otherThreadId],
+      );
+
+      const indexesBefore = await client.query<{ indexName: string }>(`
+        SELECT "index_class"."relname" AS "indexName"
+        FROM "pg_index" AS "index"
+        INNER JOIN "pg_class" AS "index_class"
+          ON "index_class"."oid" = "index"."indexrelid"
+        WHERE "index_class"."relname" IN (
+          'chat_events_revokes_event_id_unique',
+          'chat_events_revokes_event_id_not_null_unique'
+        )
+        ORDER BY "index_class"."relname"
+      `);
+      assert.deepEqual(indexesBefore.rows, [
+        { indexName: "chat_events_revokes_event_id_unique" },
+      ]);
+
+      await applyMigrationsUpTo(client, CHAT_EVENT_REVOKE_INDEX_MIGRATION);
+
+      const migrationStatements = migrationSql
+        .split("--> statement-breakpoint")
+        .map((statement) => {
+          return statement.trim();
+        })
+        .filter((statement) => {
+          return statement.length > 0;
+        });
+      for (const statement of migrationStatements) {
+        await client.query(statement);
+      }
+
+      const indexesAfter = await client.query<{
+        indexName: string;
+        isReady: boolean;
+        isUnique: boolean;
+        isValid: boolean;
+        predicate: string | null;
+      }>(`
+        SELECT
+          "index_class"."relname" AS "indexName",
+          "index"."indisready" AS "isReady",
+          "index"."indisunique" AS "isUnique",
+          "index"."indisvalid" AS "isValid",
+          pg_get_expr(
+            "index"."indpred",
+            "index"."indrelid"
+          ) AS "predicate"
+        FROM "pg_index" AS "index"
+        INNER JOIN "pg_class" AS "index_class"
+          ON "index_class"."oid" = "index"."indexrelid"
+        WHERE "index_class"."relname" IN (
+          'chat_events_revokes_event_id_unique',
+          'chat_events_revokes_event_id_not_null_unique',
+          'chat_events_interrupts_run_id_not_null_unique',
+          'idx_chat_events_run_id',
+          'chat_events_run_terminal_unique',
+          'idx_chat_events_thread_run_terminal_created'
+        )
+        ORDER BY "index_class"."relname"
+      `);
+      assert.deepEqual(
+        indexesAfter.rows.map((index) => {
+          return {
+            indexName: index.indexName,
+            isReady: index.isReady,
+            isUnique: index.isUnique,
+            isValid: index.isValid,
+          };
+        }),
+        [
+          {
+            indexName: "chat_events_interrupts_run_id_not_null_unique",
+            isReady: true,
+            isUnique: true,
+            isValid: true,
+          },
+          {
+            indexName: "chat_events_revokes_event_id_not_null_unique",
+            isReady: true,
+            isUnique: true,
+            isValid: true,
+          },
+          {
+            indexName: "chat_events_run_terminal_unique",
+            isReady: true,
+            isUnique: true,
+            isValid: true,
+          },
+          {
+            indexName: "idx_chat_events_run_id",
+            isReady: true,
+            isUnique: false,
+            isValid: true,
+          },
+          {
+            indexName: "idx_chat_events_thread_run_terminal_created",
+            isReady: true,
+            isUnique: false,
+            isValid: true,
+          },
+        ],
+      );
+      const partialIndex = indexesAfter.rows.find((index) => {
+        return (
+          index.indexName === "chat_events_revokes_event_id_not_null_unique"
+        );
+      });
+      assert.match(
+        partialIndex?.predicate ?? "",
+        /revokes_event_id IS NOT NULL/u,
+      );
+
+      const survivingReplacement = await client.query<{
+        id: string;
+        revokesEventId: string;
+      }>(
+        `
+          SELECT
+            "id",
+            "revokes_event_id" AS "revokesEventId"
+          FROM "chat_events"
+          WHERE "revokes_event_id" = $1
+        `,
+        [targetEventId],
+      );
+      assert.deepEqual(survivingReplacement.rows, [
+        { id: replacementEventId, revokesEventId: targetEventId },
+      ]);
+
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "revokes_event_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES
+            ($1, NULL, 'run.queued', 4),
+            ($1, NULL, 'run.queued', 5)
+        `,
+        [threadId],
+      );
+      const nullRevokeRows = await client.query<{ count: string }>(
+        `
+          SELECT count(*)::text AS "count"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+            AND "revokes_event_id" IS NULL
+        `,
+        [threadId],
+      );
+      assert.deepEqual(nullRevokeRows.rows, [{ count: "4" }]);
+
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "chat_events_revokes_event_id_not_null_unique",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "revokes_event_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'control.revoke', 6)
+        `,
+        values: [threadId, targetEventId],
+      });
+
+      await client.query(`ANALYZE "chat_events"`);
+      await client.query(`SET enable_seqscan = off`);
+      const equalityPlan = await client.query<{ "QUERY PLAN": string }>(
+        `
+          EXPLAIN (COSTS OFF)
+          SELECT "id"
+          FROM "chat_events"
+          WHERE "revokes_event_id" = $1
+        `,
+        [targetEventId],
+      );
+      const equalityPlanText = equalityPlan.rows
+        .map((row) => {
+          return row["QUERY PLAN"];
+        })
+        .join("\n");
+      assert.match(
+        equalityPlanText,
+        /\bchat_events_revokes_event_id_not_null_unique\b/u,
+      );
+
+      const replacementJoinPlan = await client.query<{ "QUERY PLAN": string }>(
+        `
+          EXPLAIN (COSTS OFF)
+          SELECT "replacement"."id"
+          FROM "chat_events" AS "original"
+          LEFT JOIN "chat_events" AS "replacement"
+            ON "replacement"."revokes_event_id" = "original"."id"
+          WHERE "original"."id" = $1
+        `,
+        [targetEventId],
+      );
+      const replacementJoinPlanText = replacementJoinPlan.rows
+        .map((row) => {
+          return row["QUERY PLAN"];
+        })
+        .join("\n");
+      assert.match(
+        replacementJoinPlanText,
+        /\bchat_events_revokes_event_id_not_null_unique\b/u,
+      );
+
+      await client.query(`RESET enable_seqscan`);
+      const visibilityPlan = await client.query<{ "QUERY PLAN": string }>(
+        `
+          EXPLAIN (COSTS OFF)
+          SELECT "id"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+            AND "event_type" <> 'input.goal'
+            AND (
+              "event_type" NOT IN (
+                'input.prompt',
+                'input.automation',
+                'input.rejected',
+                'control.interrupt',
+                'control.revoke'
+              )
+              OR "run_id" IS NOT NULL
+              OR "revokes_event_id" IS NULL
+              OR "content" IS NOT NULL
+              OR "error" IS NOT NULL
+            )
+            AND (
+              "event_type" NOT IN (
+                'input.prompt',
+                'input.automation',
+                'input.rejected',
+                'control.interrupt',
+                'control.revoke'
+              )
+              OR "run_id" IS NOT NULL
+              OR "interrupts_run_id" IS NULL
+            )
+        `,
+        [threadId],
+      );
+      const visibilityPlanText = visibilityPlan.rows
+        .map((row) => {
+          return row["QUERY PLAN"];
+        })
+        .join("\n");
+      assert.match(visibilityPlanText, /Filter:.*revokes_event_id IS NULL/su);
+      assert.match(
+        visibilityPlanText,
+        /\b(?:idx_chat_events_thread_created|chat_events_thread_seq_unique)\b/u,
+      );
+      assert.doesNotMatch(
+        visibilityPlanText,
+        /\bchat_events_revokes_event_id_not_null_unique\b/u,
+      );
+
+      console.log(
+        "   ✅ Full migration retry preserves the partial unique index catalog state",
+      );
+      console.log("   ✅ Duplicate non-null revoke event IDs fail with 23505");
+      console.log("   ✅ Multiple NULL revoke event IDs remain valid");
+      console.log(`   ✅ Equality lookup plan:\n${equalityPlanText}`);
+      console.log(
+        `   ✅ Replacement self-join plan:\n${replacementJoinPlanText}`,
+      );
+      console.log(
+        `   ✅ Composite visibility plan keeps revokes_event_id IS NULL as a filter:\n${visibilityPlanText}\n`,
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateGithubIssueSessionContraction(): Promise<void> {
   console.log("=== Validate legacy GitHub issue session contraction ===\n");
   const testDb = "migration_github_issue_session_contraction_test";
@@ -16582,6 +16979,7 @@ async function main(): Promise<void> {
     await validateChatEventTerminalIndexExpansion();
     await validateChatEventRunLifecycleContraction();
     await validateChatEventLowTrafficIndexes();
+    await validateChatEventRevokeIndex();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();

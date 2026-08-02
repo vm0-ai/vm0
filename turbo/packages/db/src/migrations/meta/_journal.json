@@ -5622,6 +5622,13 @@
       "when": 1785655499795,
       "tag": "0802_rich_echo",
       "breakpoints": true
+    },
+    {
+      "idx": 803,
+      "version": "7",
+      "when": 1785657499556,
+      "tag": "0803_optimize_chat_event_revoke_index",
+      "breakpoints": true
     }
   ]
 }

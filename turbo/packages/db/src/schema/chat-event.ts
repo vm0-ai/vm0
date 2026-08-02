@@ -156,9 +156,9 @@ export const chatEvents = pgTable(
       index("chat_events_usage_run_id_idx")
         .on(table.runId)
         .where(sql`${table.usagePayload} IS NOT NULL`),
-      uniqueIndex("chat_events_revokes_event_id_unique").on(
-        table.revokesEventId,
-      ),
+      uniqueIndex("chat_events_revokes_event_id_not_null_unique")
+        .on(table.revokesEventId)
+        .where(sql`${table.revokesEventId} IS NOT NULL`),
       uniqueIndex("chat_events_interrupts_run_id_not_null_unique")
         .on(table.interruptsRunId)
         .where(sql`${table.interruptsRunId} IS NOT NULL`),
