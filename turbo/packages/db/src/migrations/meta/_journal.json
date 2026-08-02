@@ -5594,6 +5594,13 @@
       "when": 1785642513771,
       "tag": "0798_bright_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 799,
+      "version": "7",
+      "when": 1785643630260,
+      "tag": "0799_keen_smiling_tiger",
+      "breakpoints": true
     }
   ]
 }

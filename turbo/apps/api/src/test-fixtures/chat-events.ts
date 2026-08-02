@@ -16,6 +16,7 @@ import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
 import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
+import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
@@ -124,6 +125,9 @@ interface ChatEventContextFixture {
   readonly githubMessageText: string | null;
   readonly githubTriggerReactionId: string | null;
   readonly githubTriggerCommentBody: string | null;
+  readonly morningBriefDeliveryId: string | null;
+  readonly morningBriefTimezone: string | null;
+  readonly morningBriefTriggeredAt: Date | null;
   readonly goalObjectiveBrief: string | null;
 }
 
@@ -198,6 +202,9 @@ export async function readChatEventContextFixture(
       githubMessageText: chatGithubContext.messageText,
       githubTriggerReactionId: chatGithubContext.triggerReactionId,
       githubTriggerCommentBody: chatGithubContext.triggerCommentBody,
+      morningBriefDeliveryId: chatMorningBriefContext.deliveryId,
+      morningBriefTimezone: chatMorningBriefContext.timezone,
+      morningBriefTriggeredAt: chatMorningBriefContext.triggeredAt,
       goalObjectiveBrief: chatGoalContext.objectiveBrief,
     })
     .from(chatEvents)
@@ -207,6 +214,10 @@ export async function readChatEventContextFixture(
     .leftJoin(chatTeamsContext, eq(chatTeamsContext.id, contextId))
     .leftJoin(chatTelegramContext, eq(chatTelegramContext.id, contextId))
     .leftJoin(chatGithubContext, eq(chatGithubContext.id, contextId))
+    .leftJoin(
+      chatMorningBriefContext,
+      eq(chatMorningBriefContext.id, contextId),
+    )
     .leftJoin(chatGoalContext, eq(chatGoalContext.id, contextId))
     .where(eq(chatEvents.id, eventId))
     .limit(1);

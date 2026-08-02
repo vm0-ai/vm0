@@ -18,6 +18,7 @@ import {
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
 import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
+import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
@@ -64,6 +65,7 @@ type ChatEventDisplayContext =
       readonly teamsContext?: never;
       readonly telegramContext?: never;
       readonly githubContext?: never;
+      readonly morningBriefContext?: never;
     }
   | {
       readonly slackContext?: never;
@@ -85,6 +87,7 @@ type ChatEventDisplayContext =
       readonly teamsContext?: never;
       readonly telegramContext?: never;
       readonly githubContext?: never;
+      readonly morningBriefContext?: never;
     }
   | {
       readonly slackContext?: never;
@@ -113,6 +116,7 @@ type ChatEventDisplayContext =
       };
       readonly telegramContext?: never;
       readonly githubContext?: never;
+      readonly morningBriefContext?: never;
     }
   | {
       readonly slackContext?: never;
@@ -125,6 +129,7 @@ type ChatEventDisplayContext =
         readonly messageThreadId: number | null;
       };
       readonly githubContext?: never;
+      readonly morningBriefContext?: never;
     }
   | {
       readonly slackContext?: never;
@@ -141,6 +146,7 @@ type ChatEventDisplayContext =
         readonly triggerReactionId: string | null;
         readonly triggerCommentBody: string | null;
       };
+      readonly morningBriefContext?: never;
     }
   | {
       readonly slackContext?: never;
@@ -148,6 +154,19 @@ type ChatEventDisplayContext =
       readonly teamsContext?: never;
       readonly telegramContext?: never;
       readonly githubContext?: never;
+      readonly morningBriefContext: {
+        readonly deliveryId: string;
+        readonly timezone: string;
+        readonly triggeredAt: Date;
+      };
+    }
+  | {
+      readonly slackContext?: never;
+      readonly feishuContext?: never;
+      readonly teamsContext?: never;
+      readonly telegramContext?: never;
+      readonly githubContext?: never;
+      readonly morningBriefContext?: never;
     };
 
 type ChatEventInputPayload = Pick<
@@ -462,6 +481,14 @@ type NewDisplayContext =
       readonly id: string;
       readonly chatThreadId: string;
       readonly objectiveBrief: string;
+    }
+  | {
+      readonly type: "morning_brief";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly deliveryId: string;
+      readonly timezone: string;
+      readonly triggeredAt: Date;
     };
 
 function isPendingInputEvent(values: NewChatEvent): boolean {
@@ -600,6 +627,17 @@ function newDisplayContext(
     };
   }
 
+  const morningBriefContext =
+    "morningBriefContext" in values ? values.morningBriefContext : undefined;
+  if (morningBriefContext !== undefined) {
+    return {
+      type: "morning_brief",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      ...morningBriefContext,
+    };
+  }
+
   const automationContext = newAutomationDisplayContext(eventId, values);
   if (automationContext !== undefined) {
     return automationContext;
@@ -652,6 +690,21 @@ function replacementContext(
     pointer: displayContextPointer(displayContext),
     displayContext,
   };
+}
+
+async function insertMorningBriefContext(
+  tx: ChatEventWriteTransaction,
+  context: Extract<NewDisplayContext, { readonly type: "morning_brief" }>,
+  createdAt: Date,
+): Promise<void> {
+  await tx.insert(chatMorningBriefContext).values({
+    id: context.id,
+    chatThreadId: context.chatThreadId,
+    deliveryId: context.deliveryId,
+    timezone: context.timezone,
+    triggeredAt: context.triggeredAt,
+    createdAt,
+  });
 }
 
 async function insertDisplayContext(
@@ -767,6 +820,10 @@ async function insertDisplayContext(
       triggerBrief: context.triggerBrief,
       createdAt,
     });
+    return;
+  }
+  if (context.type === "morning_brief") {
+    await insertMorningBriefContext(tx, context, createdAt);
     return;
   }
   await tx.insert(chatGoalContext).values({
