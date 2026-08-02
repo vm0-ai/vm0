@@ -32,13 +32,6 @@ interface ConstraintInfo {
   constraint_def: string;
 }
 
-// Migration 0800 physically owns this column while the runtime schema remains
-// legacy-only for deploy-before-migrate safety. #24510 removes this allowance
-// when it declares both Drizzle properties.
-const TRANSITIONAL_RUNNER_SANDBOX_STATE_COLUMNS = new Set([
-  "runner_state.held_sandbox_states",
-]);
-
 // Get database URLs from command line args
 const db1Url = process.argv[2];
 const db2Url = process.argv[3];
@@ -67,11 +60,7 @@ async function getTableColumns(client: Client): Promise<TableColumn[]> {
       AND t.table_type = 'BASE TABLE'
     ORDER BY c.table_name, c.column_name
   `);
-  return result.rows.filter((column) => {
-    return !TRANSITIONAL_RUNNER_SANDBOX_STATE_COLUMNS.has(
-      `${column.table_name}.${column.column_name}`,
-    );
-  });
+  return result.rows;
 }
 
 async function getIndexes(client: Client): Promise<IndexInfo[]> {

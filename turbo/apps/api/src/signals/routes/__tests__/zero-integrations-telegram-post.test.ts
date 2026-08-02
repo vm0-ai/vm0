@@ -1272,9 +1272,8 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       runnerId,
       group: runnerGroup,
       admittableProfiles: [],
-      heldSessionStates: [
+      heldSandboxStates: [
         {
-          sessionId: "diagnostic-session-does-not-match",
           reuseKey,
           lastCompletedAt: nowDate().toISOString(),
           reusableSandbox: { profile: "vm0/default" },

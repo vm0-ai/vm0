@@ -15989,16 +15989,99 @@ async function validateRunnerSandboxStateExpansion(): Promise<void> {
     await client.connect();
     try {
       const database = drizzle(client);
+      function heartbeatLastSeenAt(sequence: number): Date {
+        return new Date(Date.UTC(2026, 7, 2, 0, 0, sequence));
+      }
+
       async function writeLegacyHeartbeat(args: {
         readonly generation: number;
         readonly runnerId: string;
         readonly sequence: number;
         readonly states: RunnerHeldSandboxStates;
       }): Promise<void> {
-        const lastSeenAt = new Date(
-          `2026-08-02T00:${String(args.sequence).padStart(2, "0")}:00.000Z`,
+        const lastSeenAt = heartbeatLastSeenAt(args.sequence);
+        await client.query(
+          `
+            INSERT INTO "runner_state" (
+              "runner_id",
+              "runner_name",
+              "runner_group",
+              "heartbeat_generation",
+              "heartbeat_sequence",
+              "total_vcpu",
+              "total_memory_mb",
+              "max_concurrent",
+              "allocated_vcpu",
+              "allocated_memory_mb",
+              "running_count",
+              "admittable_profiles",
+              "held_session_states",
+              "held_workspace_states",
+              "mode",
+              "last_seen_at"
+            )
+            VALUES (
+              $1,
+              'migration-runner',
+              'default',
+              $2,
+              $3,
+              8,
+              16384,
+              4,
+              2,
+              4096,
+              1,
+              '["standard", "browser"]'::jsonb,
+              $4::jsonb,
+              '[]'::jsonb,
+              'running',
+              $5
+            )
+            ON CONFLICT ("runner_id") DO UPDATE SET
+              "runner_name" = EXCLUDED."runner_name",
+              "runner_group" = EXCLUDED."runner_group",
+              "heartbeat_generation" = EXCLUDED."heartbeat_generation",
+              "heartbeat_sequence" = EXCLUDED."heartbeat_sequence",
+              "total_vcpu" = EXCLUDED."total_vcpu",
+              "total_memory_mb" = EXCLUDED."total_memory_mb",
+              "max_concurrent" = EXCLUDED."max_concurrent",
+              "allocated_vcpu" = EXCLUDED."allocated_vcpu",
+              "allocated_memory_mb" = EXCLUDED."allocated_memory_mb",
+              "running_count" = EXCLUDED."running_count",
+              "admittable_profiles" = EXCLUDED."admittable_profiles",
+              "held_session_states" = EXCLUDED."held_session_states",
+              "held_workspace_states" = EXCLUDED."held_workspace_states",
+              "mode" = EXCLUDED."mode",
+              "last_seen_at" = EXCLUDED."last_seen_at"
+            WHERE
+              "runner_state"."heartbeat_generation"
+                < EXCLUDED."heartbeat_generation"
+              OR (
+                "runner_state"."heartbeat_generation"
+                  = EXCLUDED."heartbeat_generation"
+                AND "runner_state"."heartbeat_sequence"
+                  < EXCLUDED."heartbeat_sequence"
+              )
+          `,
+          [
+            args.runnerId,
+            args.generation,
+            args.sequence,
+            JSON.stringify(args.states),
+            lastSeenAt,
+          ],
         );
-        await database
+      }
+
+      async function writeCanonicalHeartbeat(args: {
+        readonly generation: number;
+        readonly runnerId: string;
+        readonly sequence: number;
+        readonly states: RunnerHeldSandboxStates;
+      }): Promise<void> {
+        const lastSeenAt = heartbeatLastSeenAt(args.sequence);
+        const query = database
           .insert(runnerState)
           .values({
             runnerId: args.runnerId,
@@ -16013,7 +16096,7 @@ async function validateRunnerSandboxStateExpansion(): Promise<void> {
             allocatedMemoryMb: 4096,
             runningCount: 1,
             admittableProfiles: ["standard", "browser"],
-            heldSessionStates: args.states,
+            heldSandboxStates: args.states,
             heldWorkspaceStates: [],
             mode: "running",
             lastSeenAt,
@@ -16032,7 +16115,7 @@ async function validateRunnerSandboxStateExpansion(): Promise<void> {
               allocatedMemoryMb: 4096,
               runningCount: 1,
               admittableProfiles: ["standard", "browser"],
-              heldSessionStates: args.states,
+              heldSandboxStates: args.states,
               heldWorkspaceStates: [],
               mode: "running",
               lastSeenAt,
@@ -16045,6 +16128,19 @@ async function validateRunnerSandboxStateExpansion(): Promise<void> {
               ),
             ),
           });
+
+        const [insertSql, conflictSql] = query
+          .toSQL()
+          .sql.split(" on conflict ");
+        assert.ok(insertSql);
+        assert.ok(conflictSql);
+        assert.match(
+          insertSql,
+          /"held_sandbox_states", "held_session_states", "held_workspace_states"/u,
+        );
+        assert.match(insertSql, /values \([^)]*\$\d+, default, \$\d+,/u);
+        assert.doesNotMatch(conflictSql, /held_session_states/u);
+        await query;
       }
 
       async function readRunnerState(runnerId: string): Promise<{
@@ -16219,21 +16315,12 @@ async function validateRunnerSandboxStateExpansion(): Promise<void> {
         sequence: "2",
       });
 
-      await client.query(
-        `
-          INSERT INTO "runner_state" (
-            "runner_id",
-            "runner_name",
-            "runner_group",
-            "heartbeat_generation",
-            "heartbeat_sequence",
-            "held_sandbox_states",
-            "last_seen_at"
-          )
-          VALUES ($1, 'next-api-runner', 'default', 1, 1, $2::jsonb, NOW())
-        `,
-        [runnerIds.next, JSON.stringify(states.canonicalInitial)],
-      );
+      await writeCanonicalHeartbeat({
+        generation: 1,
+        runnerId: runnerIds.next,
+        sequence: 1,
+        states: states.canonicalInitial,
+      });
       assert.deepEqual(await readRunnerState(runnerIds.next), {
         canonical: states.canonicalInitial,
         generation: "1",
@@ -16241,50 +16328,24 @@ async function validateRunnerSandboxStateExpansion(): Promise<void> {
         sequence: "1",
       });
 
-      const canonicalHeartbeatUpsert = `
-        INSERT INTO "runner_state" (
-          "runner_id",
-          "runner_name",
-          "runner_group",
-          "heartbeat_generation",
-          "heartbeat_sequence",
-          "held_sandbox_states",
-          "last_seen_at"
-        )
-        VALUES ($1, 'next-api-runner', 'default', $2, $3, $4::jsonb, NOW())
-        ON CONFLICT ("runner_id") DO UPDATE SET
-          "heartbeat_generation" = EXCLUDED."heartbeat_generation",
-          "heartbeat_sequence" = EXCLUDED."heartbeat_sequence",
-          "held_sandbox_states" = EXCLUDED."held_sandbox_states",
-          "last_seen_at" = EXCLUDED."last_seen_at"
-        WHERE
-          "runner_state"."heartbeat_generation"
-            < EXCLUDED."heartbeat_generation"
-          OR (
-            "runner_state"."heartbeat_generation"
-              = EXCLUDED."heartbeat_generation"
-            AND "runner_state"."heartbeat_sequence"
-              < EXCLUDED."heartbeat_sequence"
-          )
-      `;
-      await client.query(canonicalHeartbeatUpsert, [
-        runnerIds.next,
-        2,
-        1,
-        JSON.stringify(states.canonicalUpdate),
-      ]);
+      await writeCanonicalHeartbeat({
+        generation: 2,
+        runnerId: runnerIds.next,
+        sequence: 1,
+        states: states.canonicalUpdate,
+      });
       assert.deepEqual(await readRunnerState(runnerIds.next), {
         canonical: states.canonicalUpdate,
         generation: "2",
         legacy: states.canonicalUpdate,
         sequence: "1",
       });
-      await client.query(canonicalHeartbeatUpsert, [
-        runnerIds.next,
-        1,
-        99,
-        JSON.stringify(states.stale),
-      ]);
+      await writeCanonicalHeartbeat({
+        generation: 1,
+        runnerId: runnerIds.next,
+        sequence: 99,
+        states: states.stale,
+      });
       assert.deepEqual(await readRunnerState(runnerIds.next), {
         canonical: states.canonicalUpdate,
         generation: "2",

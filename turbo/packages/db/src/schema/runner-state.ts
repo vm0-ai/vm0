@@ -42,8 +42,12 @@ export const runnerState = pgTable(
       .$type<RunnerAdmittableProfiles>()
       .default([])
       .notNull(),
-    // Migration 0800 physically bridges held_sandbox_states while this release
-    // remains legacy-only. #24510 declares/cuts over; #24512 removes this field.
+    heldSandboxStates: jsonb("held_sandbox_states")
+      .$type<RunnerHeldSandboxStates>()
+      .default([])
+      .notNull(),
+    // Migration 0800 keeps this column synchronized for API rollback.
+    // #24512 removes the bridge and this declaration.
     heldSessionStates: jsonb("held_session_states")
       .$type<RunnerHeldSandboxStates>()
       .default([])

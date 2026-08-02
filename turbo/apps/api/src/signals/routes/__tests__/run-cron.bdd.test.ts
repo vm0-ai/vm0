@@ -174,12 +174,11 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
     expect(missingContext.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("keeps official runner held-session heartbeat and empty polling visible through public endpoints", async () => {
+  it("keeps official runner held-sandbox heartbeat and empty polling visible through public endpoints", async () => {
     const api = createRunsApi(context);
     const runnerGroup = api.configureRunnerGroup();
-    const heldSessionStates = [
+    const heldSandboxStates = [
       {
-        sessionId: "session-bdd-held",
         reuseKey: "thread:cron-bdd-held",
         lastCompletedAt: new Date(now()).toISOString(),
         reusableSandbox: { profile: "vm0/default" },
@@ -187,7 +186,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
     ];
 
     const heartbeat = await api.requestHeartbeatRunner(true, [200], {
-      heldSessionStates,
+      heldSandboxStates,
     });
     if (heartbeat.status !== 200) {
       throw new Error(
