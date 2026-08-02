@@ -1398,8 +1398,8 @@ pub struct CompleteRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox_id: Option<SandboxId>,
     /// Outcome of the sandbox-reuse decision made before this run started.
-    /// `None` is reserved for callers that cannot determine it (tests, future
-    /// transports); the runner itself always sets this.
+    /// `None` means the run failed before the runner reached that decision, or
+    /// that the caller could not determine it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox_reuse_result: Option<SandboxReuseResult>,
 }
@@ -1412,7 +1412,6 @@ pub struct CompleteRequest {
 pub enum SandboxReuseResult {
     Reused,
     NoReuseKey,
-    InvalidResumeSessionId,
     PoolMiss,
     ProfileMismatch,
     DeviceLimitMismatch,
@@ -1426,7 +1425,6 @@ impl SandboxReuseResult {
         match self {
             Self::Reused => "reused",
             Self::NoReuseKey => "noReuseKey",
-            Self::InvalidResumeSessionId => "invalidResumeSessionId",
             Self::PoolMiss => "poolMiss",
             Self::ProfileMismatch => "profileMismatch",
             Self::DeviceLimitMismatch => "deviceLimitMismatch",
@@ -1787,10 +1785,6 @@ mod tests {
             serde_json::json!("noReuseKey"),
         );
         assert_eq!(
-            serde_json::to_value(SandboxReuseResult::InvalidResumeSessionId).unwrap(),
-            serde_json::json!("invalidResumeSessionId"),
-        );
-        assert_eq!(
             serde_json::to_value(SandboxReuseResult::PoolMiss).unwrap(),
             serde_json::json!("poolMiss"),
         );
@@ -1815,7 +1809,6 @@ mod tests {
         for variant in [
             SandboxReuseResult::Reused,
             SandboxReuseResult::NoReuseKey,
-            SandboxReuseResult::InvalidResumeSessionId,
             SandboxReuseResult::PoolMiss,
             SandboxReuseResult::ProfileMismatch,
             SandboxReuseResult::DeviceLimitMismatch,

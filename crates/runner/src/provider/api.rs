@@ -3447,37 +3447,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_client_complete_serializes_new_reuse_results() {
-        for (reuse_result, expected_wire) in [
-            (SandboxReuseResult::NoReuseKey, "noReuseKey"),
-            (
-                SandboxReuseResult::InvalidResumeSessionId,
-                "invalidResumeSessionId",
-            ),
-        ] {
-            let server = MockServer::start_async().await;
-            let run_id = RunId::nil();
-            let mock = server
-                .mock_async(|when, then| {
-                    when.method(POST)
-                        .path(routes::webhooks::agent::complete::COMPLETE.path)
-                        .header("authorization", "Bearer sandbox-token")
-                        .json_body(serde_json::json!({
-                            "runId": run_id,
-                            "exitCode": 0,
-                            "sandboxReuseResult": expected_wire,
-                        }));
-                    then.status(200);
-                })
-                .await;
-            let api = api_client_for_server(&server);
+    async fn api_client_complete_serializes_no_reuse_key() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::webhooks::agent::complete::COMPLETE.path)
+                    .header("authorization", "Bearer sandbox-token")
+                    .json_body(serde_json::json!({
+                        "runId": run_id,
+                        "exitCode": 0,
+                        "sandboxReuseResult": "noReuseKey",
+                    }));
+                then.status(200);
+            })
+            .await;
+        let api = api_client_for_server(&server);
 
-            api.complete("sandbox-token", run_id, 0, None, None, Some(reuse_result))
-                .await
-                .unwrap();
+        api.complete(
+            "sandbox-token",
+            run_id,
+            0,
+            None,
+            None,
+            Some(SandboxReuseResult::NoReuseKey),
+        )
+        .await
+        .unwrap();
 
-            mock.assert_async().await;
-        }
+        mock.assert_async().await;
     }
 
     #[tokio::test]

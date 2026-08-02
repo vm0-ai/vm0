@@ -408,10 +408,6 @@ fn build_env_json_sandbox_reuse_result_wire_format() {
     for (variant, expected) in [
         (SandboxReuseResult::Reused, "reused"),
         (SandboxReuseResult::NoReuseKey, "noReuseKey"),
-        (
-            SandboxReuseResult::InvalidResumeSessionId,
-            "invalidResumeSessionId",
-        ),
         (SandboxReuseResult::PoolMiss, "poolMiss"),
         (SandboxReuseResult::ProfileMismatch, "profileMismatch"),
         (

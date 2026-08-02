@@ -2612,20 +2612,10 @@ describe("RUN-04: agent run telemetry families", () => {
       {
         name: "legacy no session ID",
         result: "noSessionId",
-        exitCode: 0,
-        expectedStatus: "completed",
       },
       {
         name: "no reuse key",
         result: "noReuseKey",
-        exitCode: 0,
-        expectedStatus: "completed",
-      },
-      {
-        name: "invalid resume session ID",
-        result: "invalidResumeSessionId",
-        exitCode: 1,
-        expectedStatus: "failed",
       },
     ] as const;
 
@@ -2638,36 +2628,31 @@ describe("RUN-04: agent run telemetry families", () => {
       const claim = await api.claimRunnerJob(run.runId);
       const headers = sandboxHeaders(claim.sandboxToken);
 
-      if (scenario.exitCode === 0) {
-        await webhooks.requestAgentCheckpoint(
-          {
-            runId: run.runId,
-            cliAgentType: "claude-code",
-            cliAgentSessionId: `bdd-cli-${run.runId}`,
-            cliAgentSessionHistoryHash: createHash("sha256")
-              .update(`bdd sandbox reuse ${run.runId}`)
-              .digest("hex"),
-          },
-          headers,
-          [200],
-        );
-      }
+      await webhooks.requestAgentCheckpoint(
+        {
+          runId: run.runId,
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-cli-${run.runId}`,
+          cliAgentSessionHistoryHash: createHash("sha256")
+            .update(`bdd sandbox reuse ${run.runId}`)
+            .digest("hex"),
+        },
+        headers,
+        [200],
+      );
 
       const completion = await webhooks.requestAgentComplete(
         {
           runId: run.runId,
-          exitCode: scenario.exitCode,
+          exitCode: 0,
           sandboxReuseResult: scenario.result,
-          ...(scenario.exitCode === 0
-            ? {}
-            : { error: "Invalid resume session ID" }),
         },
         headers,
         [200],
       );
       expect(completion.body).toStrictEqual({
         success: true,
-        status: scenario.expectedStatus,
+        status: "completed",
       });
 
       const runner = await api.requestRunRunner(actor, run.runId, [200]);

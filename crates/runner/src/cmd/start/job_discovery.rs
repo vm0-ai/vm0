@@ -85,7 +85,6 @@ struct ReuseAdmissionRequest<'a> {
     device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
     workspace_disk_mb: u32,
     context: &'a ExecutionContext,
-    resume_session_valid: bool,
     job_lease: BudgetLease,
 }
 
@@ -94,7 +93,6 @@ struct ReservedActivationRequest<'a> {
     profile_name: &'a str,
     workspace_disk_mb: u32,
     context: &'a ExecutionContext,
-    resume_session_valid: bool,
 }
 
 impl LocalAdmission {
@@ -160,23 +158,11 @@ pub(super) async fn handle_discovered_job(
     let mut pre_spawn_timing = RunnerPreSpawnTiming::start_after_claim();
     let started_at = Instant::now();
     let resume_session_error = validate_resume_session_id(claimed.context()).err();
-    let resume_session_valid = resume_session_error.is_none();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ResumeSessionValidation, started_at);
-    let resource = match (resource, resume_session_error) {
-        (LocalAdmissionResource::Reusable(reservation), Some(error)) => {
-            fail_claimed_without_sandbox(
-                claimed,
-                cancellation,
-                LocalAdmissionResource::Reusable(reservation),
-                SandboxReuseResult::InvalidResumeSessionId,
-                error,
-                &mut ctx,
-            )
-            .await;
-            return true;
-        }
-        (resource, _) => resource,
-    };
+    if let Some(error) = resume_session_error {
+        fail_claimed_without_sandbox(claimed, cancellation, resource, None, error, &mut ctx).await;
+        return true;
+    }
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
     let started_at = Instant::now();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::DeviceRateLimits, started_at);
@@ -199,7 +185,6 @@ pub(super) async fn handle_discovered_job(
                         device_rate_limits: &device_rate_limits,
                         workspace_disk_mb: job_workspace_disk_mb,
                         context: claimed.context(),
-                        resume_session_valid,
                         job_lease,
                     },
                     &mut ctx,
@@ -215,7 +200,6 @@ pub(super) async fn handle_discovered_job(
                         profile_name: &profile_name,
                         workspace_disk_mb: job_workspace_disk_mb,
                         context: claimed.context(),
-                        resume_session_valid,
                     },
                     &mut ctx,
                     &mut pre_spawn_timing,
@@ -243,7 +227,7 @@ pub(super) async fn handle_discovered_job(
                             claimed,
                             cancellation,
                             LocalAdmissionResource::Fresh(budget_lease),
-                            reuse_result,
+                            Some(reuse_result),
                             error,
                             &mut ctx,
                         )
@@ -256,7 +240,6 @@ pub(super) async fn handle_discovered_job(
 
     let session_history_restore_plan =
         build_session_history_restore_plan(SessionHistoryRestorePlanInput {
-            resume_session_valid,
             http: &ctx.spawn_ctx.exec_config.http,
             cpu: &ctx.spawn_ctx.exec_config.session_history_cpu,
             context: claimed.context(),
@@ -688,17 +671,14 @@ async fn activate_reserved_idle(
         profile_name,
         workspace_disk_mb,
         context,
-        resume_session_valid,
     } = request;
     let started_at = Instant::now();
     let requested_reuse_key = context.reuse_key();
     let reserved_reuse_key = reservation.reuse_key().to_owned();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
 
-    if !resume_session_valid || requested_reuse_key != Some(reserved_reuse_key.as_str()) {
-        let reuse_result = if !resume_session_valid {
-            SandboxReuseResult::InvalidResumeSessionId
-        } else if requested_reuse_key.is_none() {
+    if requested_reuse_key != Some(reserved_reuse_key.as_str()) {
+        let reuse_result = if requested_reuse_key.is_none() {
             SandboxReuseResult::NoReuseKey
         } else {
             SandboxReuseResult::PoolMiss
@@ -817,7 +797,7 @@ async fn fail_claimed_without_sandbox(
     claimed: ClaimedJob,
     cancellation: RunCancellationRegistration,
     resource: LocalAdmissionResource,
-    reuse_result: SandboxReuseResult,
+    reuse_result: Option<SandboxReuseResult>,
     error: String,
     ctx: &mut DiscoveredJobContext<'_>,
 ) {
@@ -832,7 +812,7 @@ async fn fail_claimed_without_sandbox(
             failure.exit_code,
             Some(&failure.error),
             None,
-            Some(reuse_result),
+            reuse_result,
             completion_auth,
         )
         .await;
@@ -857,21 +837,10 @@ async fn try_reuse_from_pool(
         device_rate_limits,
         workspace_disk_mb,
         context,
-        resume_session_valid,
         job_lease,
     } = request;
 
     let started_at = Instant::now();
-    if !resume_session_valid {
-        pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
-        return (
-            None,
-            job_lease,
-            SandboxReuseResult::InvalidResumeSessionId,
-            None,
-            false,
-        );
-    }
     let Some(reuse_key) = context.reuse_key() else {
         pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
         return (None, job_lease, SandboxReuseResult::NoReuseKey, None, false);

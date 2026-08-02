@@ -2550,27 +2550,16 @@ describe("activity detail polling", () => {
       runId: "a0000000-0000-4000-a000-000000000406",
       result: "noReuseKey",
       description: "No reuse key was available to match an idle sandbox.",
-      status: "completed",
-      error: null,
-    },
-    {
-      runId: "a0000000-0000-4000-a000-000000000407",
-      result: "invalidResumeSessionId",
-      description: "The provider CLI resume session ID was invalid.",
-      status: "failed",
-      error: "Invalid resume session ID",
     },
     {
       runId: "a0000000-0000-4000-a000-000000000408",
       result: "noSessionId",
       description:
         "Legacy result: the exact reason the sandbox was not reused is unavailable.",
-      status: "completed",
-      error: null,
     },
   ] as const)(
     "shows the $result sandbox reuse reason",
-    async ({ runId, result, description, status, error }) => {
+    async ({ runId, result, description }) => {
       context.mocks.data.composesList([]);
       context.mocks.api(logsByIdContract.getById, ({ respond }) => {
         return respond(
@@ -2578,8 +2567,8 @@ describe("activity detail polling", () => {
           makeLogDetail({
             id: runId,
             displayName: "Sandbox Reuse Reason",
-            status,
-            error,
+            status: "completed",
+            error: null,
             completedAt: "2026-03-10T15:00:18Z",
           }),
         );

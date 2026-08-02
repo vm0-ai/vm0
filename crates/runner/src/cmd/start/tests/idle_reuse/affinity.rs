@@ -99,7 +99,7 @@ async fn job_without_reuse_key_reports_no_reuse_key() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn invalid_resume_session_does_not_reuse_idle_vm() {
+async fn invalid_reserved_resume_session_fails_before_reuse() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
@@ -139,10 +139,7 @@ async fn invalid_resume_session_does_not_reuse_idle_vm() {
         .await
         .expect("job should complete");
     assert_eq!(completion.exit_code, 1);
-    assert_eq!(
-        completion.reuse_result,
-        Some(SandboxReuseResult::InvalidResumeSessionId),
-    );
+    assert_eq!(completion.reuse_result, None);
     assert_eq!(completion.sandbox_id, None);
     let error = completion.error.as_deref().expect("error should be set");
     assert!(error.contains("invalid session_id"));
@@ -180,10 +177,8 @@ async fn invalid_resume_session_fails_before_fresh_sandbox_creation() {
         .await
         .expect("job should complete");
     assert_eq!(completion.exit_code, 1);
-    assert_eq!(
-        completion.reuse_result,
-        Some(SandboxReuseResult::InvalidResumeSessionId),
-    );
+    assert_eq!(completion.reuse_result, None);
+    assert_eq!(completion.sandbox_id, None);
     let error = completion.error.as_deref().expect("error should be set");
     assert!(error.contains("invalid session_id"));
     assert!(!error.contains(invalid_session_id));
