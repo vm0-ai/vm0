@@ -193,6 +193,10 @@ import {
   type MorningBriefQueuedLaunchMaterial,
 } from "./morning-brief-queued-launch-context.service";
 import { MORNING_BRIEF_SIGNED_URL_TTL_SECONDS } from "./morning-brief-run-prompt";
+import {
+  loadAgentPhoneQueuedLaunchMaterial,
+  type AgentPhoneQueuedLaunchMaterial,
+} from "./agentphone-queued-launch-context.service";
 
 const log = logger("callback:chat");
 const PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -2719,6 +2723,7 @@ type NativeQueuedLaunchMaterial =
   | FeishuQueuedLaunchMaterial
   | TeamsQueuedLaunchMaterial
   | (GitHubQueuedLaunchMaterial & { readonly userInfoExtras?: undefined })
+  | AgentPhoneQueuedLaunchMaterial
   | MorningBriefQueuedLaunchMaterial;
 
 function launchLoader<Material extends NativeQueuedLaunchMaterial>(
@@ -2771,6 +2776,9 @@ async function resolveQueuedLaunchMaterial(
         };
       },
     ),
+    agentphone: launchLoader(loadAgentPhoneQueuedLaunchMaterial, (material) => {
+      return { agentphoneDelivery: material.agentphoneDelivery };
+    }),
   };
   const load = launchLoaders[args.queuedMessage.triggerSource];
   if (!load) {
@@ -2792,6 +2800,14 @@ async function resolveQueuedLaunchMaterial(
     args.queuedMessage.triggerSource === "workflow-schedule" &&
     sourceParams?.prompt !== undefined &&
     sourceParams.appendSystemPrompt !== undefined
+  ) {
+    return null;
+  }
+  if (
+    args.queuedMessage.triggerSource === "agentphone" &&
+    sourceParams?.prompt !== undefined &&
+    sourceParams.appendSystemPrompt !== undefined &&
+    sourceParams.agentphoneDelivery
   ) {
     return null;
   }
@@ -2925,12 +2941,12 @@ function telegramQueuedMessageAdmissionFailure(
 
 function agentPhoneQueuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
+  agentphoneDelivery: CreateQueuedChatRunInput["agentphoneDelivery"],
   error: QueuedMessageModelRouteError,
 ): AgentPhoneQueuedMessageAdmissionFailure | null {
   if (
     args.queuedMessage.triggerSource !== "agentphone" ||
-    !sourceParams?.agentphoneDelivery
+    !agentphoneDelivery
   ) {
     return null;
   }
@@ -2941,7 +2957,7 @@ function agentPhoneQueuedMessageAdmissionFailure(
     agentId: args.agent.id,
     threadId: args.threadId,
     queuedMessage: args.queuedMessage,
-    agentphoneDelivery: sourceParams.agentphoneDelivery,
+    agentphoneDelivery,
     error,
   };
 }
@@ -2999,7 +3015,8 @@ function queuedMessageAdmissionFailure(
     agentphone: (resolverArgs) => {
       return agentPhoneQueuedMessageAdmissionFailure(
         resolverArgs.args,
-        resolverArgs.sourceParams,
+        resolverArgs.launchMaterial?.delivery.agentphoneDelivery ??
+          resolverArgs.sourceParams?.agentphoneDelivery,
         resolverArgs.error,
       );
     },
@@ -3034,6 +3051,9 @@ function queuedMessagePrompt(args: {
   }
   if (args.triggerSource === "workflow-schedule") {
     return args.sourceParams?.prompt ?? args.projectedPrompt;
+  }
+  if (args.triggerSource === "agentphone") {
+    return args.sourceParams?.prompt ?? "";
   }
   return args.projectedPrompt;
 }
