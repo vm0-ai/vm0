@@ -200,7 +200,10 @@ import {
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
-import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
+import {
+  recordSameThreadRunnerJobPersisted,
+  runnerJobQueueTimestamps,
+} from "./runner-job-queue-lifecycle.service";
 import {
   connectorRuntimeCredentialStatusWithMethod,
   type ConnectorCredentialStatus,
@@ -7780,6 +7783,10 @@ async function committedAtomicLaunchResponse(args: {
   }
 
   if (args.createArgs.chatThreadId) {
+    recordSameThreadRunnerJobPersisted({
+      runId: args.committed.run.id,
+      createdAt: args.committed.runnerJobCreatedAt,
+    });
     recordFirstAssistantEventEligibility({
       runId: args.committed.run.id,
       apiStartedAt: args.createArgs.apiStartTime,

@@ -302,6 +302,7 @@ impl FinalizationPhase {
             discovered_cli_agent_session_id,
             restored_session_identity,
         } = outcome;
+        let had_sandbox = sandbox.is_some();
         let has_restored_session_identity = restored_session_identity.is_some();
         let cleanup_state_after_finalize = cleanup_state.clone();
 
@@ -316,6 +317,7 @@ impl FinalizationPhase {
         // Cancellation can arrive after terminal logging or while
         // `sandbox.park()` is in flight. Pass the live handle so finalization
         // can synchronize the final idle-pool ownership transfer.
+        let finalization_started = Instant::now();
         let completion_ready = finalize_sandbox_for_completion(
             sandbox,
             ActiveBudgetLease::new(active_lease),
@@ -351,9 +353,37 @@ impl FinalizationPhase {
             },
         )
         .await;
+        let finalization_duration = finalization_started.elapsed();
+        let disposition = cleanup_state_after_finalize.disposition();
+        let session_affinity_changed = completion_ready.session_affinity_changed();
+        let (finalization_action, finalization_success, finalization_error) = match disposition {
+            RunCleanupDisposition::IdlePoolOwned => {
+                ("runner_host_finalization_reusable_sandbox", true, None)
+            }
+            _ if session_affinity_changed => {
+                ("runner_host_finalization_workspace_cache", true, None)
+            }
+            RunCleanupDisposition::DestroyCompleted | RunCleanupDisposition::StatusRemoved => {
+                ("runner_host_finalization_no_resource", true, None)
+            }
+            RunCleanupDisposition::ActiveOrUnknown if !had_sandbox => {
+                ("runner_host_finalization_no_resource", true, None)
+            }
+            RunCleanupDisposition::ActiveOrUnknown => (
+                "runner_host_finalization_failed",
+                false,
+                Some("sandbox ownership unresolved"),
+            ),
+        };
+        telemetry.record(
+            finalization_action,
+            finalization_duration,
+            finalization_success,
+            finalization_error,
+        );
         record_session_history_identity_park_telemetry(
             &mut telemetry,
-            cleanup_state_after_finalize.disposition(),
+            disposition,
             has_restored_session_identity,
         );
 
@@ -391,7 +421,7 @@ struct CompletionPhase {
 }
 
 impl CompletionPhase {
-    async fn complete(self, completion_ready: CompletionReady) {
+    async fn complete(self, completion_ready: CompletionReady, telemetry: &mut JobTelemetry) {
         let Self {
             run_id,
             provider,
@@ -406,10 +436,23 @@ impl CompletionPhase {
         signal_usage_flush(run_id, &usage_flush_tx);
         let ownership = OwnershipTransitions::new(status.as_ref());
         let session_affinity_changed = completion_ready.session_affinity_changed();
-        completion_ready
+        let provider_completion_duration = completion_ready
             .complete_and_release(provider.as_ref(), &ownership, &cleanup_state)
             .await;
-        drop(active_reuse_key_guard);
+        telemetry.record(
+            "runner_host_completion_fallback",
+            provider_completion_duration,
+            true,
+            None,
+        );
+        if active_reuse_key_guard.release() {
+            telemetry.record(
+                "runner_active_reuse_key_released",
+                Duration::ZERO,
+                true,
+                None,
+            );
+        }
         if session_affinity_changed {
             park_notify.notify_one();
         }
@@ -651,7 +694,7 @@ pub(super) fn spawn_job(
 
             let FinalizedJob {
                 completion_ready,
-                telemetry,
+                mut telemetry,
             } = finalization.finalize(executor_result).await;
             CompletionPhase {
                 run_id,
@@ -662,7 +705,7 @@ pub(super) fn spawn_job(
                 active_reuse_key_guard,
                 cleanup_state: cleanup_state_for_body,
             }
-            .complete(completion_ready)
+            .complete(completion_ready, &mut telemetry)
             .await;
             deferred_upload.flush(telemetry).await;
         };
@@ -917,6 +960,23 @@ mod tests {
         }
     }
 
+    fn executor_phase_outcome_without_sandbox(run_id: RunId) -> ExecutorPhaseOutcome {
+        ExecutorPhaseOutcome {
+            outcome: executor::ExecuteOutcome {
+                failure: None,
+                sandbox: None,
+                source_ip: String::new(),
+                network_log_session: None,
+                workspace_image: None,
+                discovered_cli_agent_session_id: None,
+                restored_session_identity: None,
+            },
+            exit_code: 1,
+            err: Some("sandbox unavailable".into()),
+            telemetry: JobTelemetry::new(test_http_client(), run_id, "sandbox-token".into()),
+        }
+    }
+
     #[test]
     fn generic_zero_exit_code_normalizes_to_generic_failure() {
         let failure = executor::ExecutionFailure::new(0, "", None);
@@ -979,6 +1039,10 @@ mod tests {
             ))
             .await;
 
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_finalization_reusable_sandbox",
+        );
         assert_telemetry_action(&finalized.telemetry, "session_history_identity_parked");
         assert_eq!(
             cleanup_state.disposition(),
@@ -1041,6 +1105,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn finalization_records_no_resource_when_execution_has_no_sandbox() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            "sess-no-sandbox",
+            lease,
+            RunCleanupState::new(),
+        );
+
+        let finalized = finalization
+            .finalize(executor_phase_outcome_without_sandbox(run_id))
+            .await;
+
+        assert_telemetry_action(&finalized.telemetry, "runner_host_finalization_no_resource");
+    }
+
+    #[tokio::test]
     async fn completion_notifies_again_after_releasing_active_session_guard() {
         let fixture = FinalizationTelemetryFixture::new().await;
         let (_budget, lease) = test_budget_lease();
@@ -1055,7 +1140,10 @@ mod tests {
             lease,
             RunCleanupState::new(),
         );
-        let finalized = finalization
+        let FinalizedJob {
+            completion_ready,
+            mut telemetry,
+        } = finalization
             .finalize(executor_phase_outcome(
                 run_id,
                 "post-complete-refresh",
@@ -1081,8 +1169,11 @@ mod tests {
             active_reuse_key_guard,
             cleanup_state: RunCleanupState::new(),
         }
-        .complete(finalized.completion_ready)
+        .complete(completion_ready, &mut telemetry)
         .await;
+
+        assert_telemetry_action(&telemetry, "runner_host_completion_fallback");
+        assert_telemetry_action(&telemetry, "runner_active_reuse_key_released");
 
         assert!(
             super::super::active_reuse_keys::active_reuse_keys(&active_reuse_keys).is_empty(),

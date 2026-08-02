@@ -215,6 +215,7 @@ enum DiscoveryWakeup {
 pub struct ApiProvider {
     api: ApiClient,
     runner_id: String,
+    heartbeat_generation: u64,
     group: String,
     /// Profile names this runner supports (e.g., ["vm0/default"]).
     /// Sent in poll requests so the server only returns jobs this runner can handle.
@@ -241,6 +242,7 @@ pub struct BuiltinFirewallCatalogCachePaths {
 
 pub struct ApiProviderConfig {
     pub runner_id: String,
+    pub heartbeat_generation: u64,
     pub group: String,
     pub supported_profiles: Vec<String>,
 }
@@ -257,6 +259,7 @@ impl ApiProvider {
     ) -> Arc<Self> {
         let ApiProviderConfig {
             runner_id,
+            heartbeat_generation,
             group,
             supported_profiles,
         } = config;
@@ -277,6 +280,7 @@ impl ApiProvider {
         Arc::new(Self {
             api,
             runner_id,
+            heartbeat_generation,
             group,
             supported_profiles,
             poll_wakeups,
@@ -630,7 +634,12 @@ impl JobProvider for ApiProvider {
                     }
                 };
                 self.claim_cooldowns.remove(run_id).await;
-                info!(run_id = %run_id, "job claimed");
+                info!(
+                    run_id = %run_id,
+                    runner_id = %self.runner_id,
+                    heartbeat_generation = self.heartbeat_generation,
+                    "job claimed"
+                );
                 Some(claimed)
             }
             Ok(None) => {
@@ -1704,6 +1713,7 @@ mod tests {
             builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,
             runner_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            heartbeat_generation: 7,
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,
@@ -3761,13 +3771,18 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let claimed = provider
-            .claim(JobCandidate::new(
-                run_id,
-                crate::profile::DEFAULT_PROFILE.to_string(),
-            ))
-            .await
-            .expect("claim should succeed");
+        let (claimed, events) = capture_api_provider_events(provider.claim(JobCandidate::new(
+            run_id,
+            crate::profile::DEFAULT_PROFILE.to_string(),
+        )))
+        .await;
+        let claimed = claimed.expect("claim should succeed");
+        let event = captured_event(&events, "job claimed");
+        assert_eq!(
+            event_field(event, "runner_id"),
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
+        assert_eq!(event_field(event, "heartbeat_generation"), "7");
         let (context, completion_auth, active_input_source) = claimed.into_parts();
         assert_eq!(context.sandbox_token, "claim-sandbox-token");
         assert!(active_input_source.is_none());

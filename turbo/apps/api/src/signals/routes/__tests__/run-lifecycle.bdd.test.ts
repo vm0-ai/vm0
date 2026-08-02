@@ -11009,6 +11009,20 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       agentId,
       prompt: "bdd cleanup wins before late event",
     });
+    const persistedEvents = sandboxOperationEventsForRunByAction(
+      runId,
+      "same_thread_runner_job_persisted",
+    );
+    expect(persistedEvents).toStrictEqual([
+      expect.objectContaining({
+        duration_ms: 0,
+        sandbox_type: "runner",
+        success: true,
+        run_id: runId,
+      }),
+    ]);
+    expect(persistedEvents[0]).not.toHaveProperty("chat_thread_id");
+    expect(persistedEvents[0]).not.toHaveProperty("predecessor_run_id");
 
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(runId);
@@ -11684,6 +11698,12 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         "first_assistant_message_eligible",
       ),
     ).toStrictEqual([]);
+    expect(
+      sandboxOperationEventsForRunByAction(
+        queued.runId,
+        "same_thread_runner_job_persisted",
+      ),
+    ).toStrictEqual([]);
 
     mockNow(promotedAt);
     await api.requestCancelRun(actor, first.runId, [200]);
@@ -11699,6 +11719,22 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         _time: new Date(promotedAt).toISOString(),
         source: "api",
         op_type: "first_assistant_message_eligible",
+        sandbox_type: "runner",
+        duration_ms: 0,
+        success: true,
+        run_id: queued.runId,
+      },
+    ]);
+    expect(
+      sandboxOperationEventsForRunByAction(
+        queued.runId,
+        "same_thread_runner_job_persisted",
+      ),
+    ).toStrictEqual([
+      {
+        _time: new Date(promotedAt).toISOString(),
+        source: "api",
+        op_type: "same_thread_runner_job_persisted",
         sandbox_type: "runner",
         duration_ms: 0,
         success: true,
@@ -12394,6 +12430,19 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     const settled = await api.readRun(actor, created.runId);
     expect(settled.status).toBe("completed");
     expect(settled.error ?? null).toBeNull();
+    expect(
+      sandboxOperationEventsForRunByAction(
+        created.runId,
+        "run_terminal_transition_committed",
+      ),
+    ).toStrictEqual([
+      expect.objectContaining({
+        duration_ms: 0,
+        sandbox_type: "runner",
+        success: true,
+        run_id: created.runId,
+      }),
+    ]);
   });
 });
 

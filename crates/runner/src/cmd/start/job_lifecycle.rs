@@ -1,6 +1,7 @@
 use sandbox::SandboxId;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::time::{Duration, Instant};
 
 use crate::ids::RunId;
 use crate::provider::{CompletionAuth, JobProvider};
@@ -184,7 +185,7 @@ impl CompletionReady {
         provider: &dyn JobProvider,
         ownership: &OwnershipTransitions<'_>,
         cleanup_state: &RunCleanupState,
-    ) {
+    ) -> Duration {
         let Self {
             payload, budget, ..
         } = self;
@@ -197,6 +198,7 @@ impl CompletionReady {
             completion_auth,
         } = payload;
 
+        let provider_completion_started = Instant::now();
         provider
             .complete(
                 run_id,
@@ -207,11 +209,13 @@ impl CompletionReady {
                 completion_auth,
             )
             .await;
+        let provider_completion_duration = provider_completion_started.elapsed();
         ownership
             .active_completed(RunSandbox::new(run_id, sandbox_id))
             .await;
         cleanup_state.mark_status_removed();
         budget.release();
+        provider_completion_duration
     }
 }
 
@@ -363,7 +367,7 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
 
-        CompletionReady::new(
+        let _ = CompletionReady::new(
             test_completion_payload(run_id, sandbox_id),
             BudgetOwnership::active(ActiveBudgetLease::new(lease)),
         )
@@ -407,7 +411,7 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
 
-        CompletionReady::new(
+        let _ = CompletionReady::new(
             CompletionPayload::new(
                 run_id,
                 0,
@@ -448,7 +452,7 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
 
-        CompletionReady::new(
+        let _ = CompletionReady::new(
             test_completion_payload(run_id, sandbox_id),
             BudgetOwnership::idle_owned(),
         )
@@ -490,7 +494,7 @@ mod tests {
         status.add_run(run_id, completed_sandbox_id).await;
         status.add_run(run_id, current_sandbox_id).await;
 
-        CompletionReady::new(
+        let _ = CompletionReady::new(
             test_completion_payload(run_id, completed_sandbox_id),
             BudgetOwnership::active(ActiveBudgetLease::new(lease)),
         )
@@ -528,7 +532,7 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
 
-        CompletionReady::new(
+        let _ = CompletionReady::new(
             test_completion_payload(run_id, sandbox_id),
             BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(lease)),
         )
