@@ -120,6 +120,10 @@ interface ChatEventContextFixture {
   readonly githubSubjectNumber: number | null;
   readonly githubSubjectKind: "issue" | "pull_request" | null;
   readonly githubTriggerCommentId: string | null;
+  readonly githubIssueContext: string | null;
+  readonly githubMessageText: string | null;
+  readonly githubTriggerReactionId: string | null;
+  readonly githubTriggerCommentBody: string | null;
   readonly goalObjectiveBrief: string | null;
 }
 
@@ -190,6 +194,10 @@ export async function readChatEventContextFixture(
       githubSubjectNumber: chatGithubContext.subjectNumber,
       githubSubjectKind: chatGithubContext.subjectKind,
       githubTriggerCommentId: chatGithubContext.triggerCommentId,
+      githubIssueContext: chatGithubContext.issueContext,
+      githubMessageText: chatGithubContext.messageText,
+      githubTriggerReactionId: chatGithubContext.triggerReactionId,
+      githubTriggerCommentBody: chatGithubContext.triggerCommentBody,
       goalObjectiveBrief: chatGoalContext.objectiveBrief,
     })
     .from(chatEvents)
@@ -350,6 +358,10 @@ const annotationProjectionInputs = [
         subjectNumber: 24_218,
         subjectKind: "issue",
         triggerCommentId: "123456",
+        issueContext: "",
+        messageText: "github issue comment linked",
+        triggerReactionId: null,
+        triggerCommentBody: null,
       },
     },
   },
@@ -362,6 +374,10 @@ const annotationProjectionInputs = [
         subjectNumber: 24_219,
         subjectKind: "pull_request",
         triggerCommentId: null,
+        issueContext: "",
+        messageText: "github pull request linked",
+        triggerReactionId: null,
+        triggerCommentBody: null,
       },
     },
   },
@@ -451,6 +467,10 @@ export async function seedChatEventAnnotationProjectionFixture(
         subjectNumber: 24_218,
         subjectKind: "issue",
         triggerCommentId: "654321",
+        issueContext: "",
+        messageText: "claimed annotation",
+        triggerReactionId: null,
+        triggerCommentBody: null,
       },
     });
     await replaceChatEvent(tx, claimedPendingId, {

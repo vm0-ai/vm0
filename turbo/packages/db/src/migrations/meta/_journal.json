@@ -5587,6 +5587,13 @@
       "when": 1785599674500,
       "tag": "0797_drop_chat_feishu_context_tenant_key",
       "breakpoints": true
+    },
+    {
+      "idx": 798,
+      "version": "7",
+      "when": 1785642513771,
+      "tag": "0798_bright_scorpion",
+      "breakpoints": true
     }
   ]
 }

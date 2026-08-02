@@ -9,6 +9,11 @@ import { env } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
+  decryptChatEventInputParamsFixture,
+  findPendingChatEventInputParamsByPromptFixture,
+  readChatEventContextFixture,
+} from "../../../test-fixtures/chat-events";
+import {
   countGitHubRunsByPromptFixture,
   findGitHubInstallationIdFixture,
   findGitHubRunStateFixture,
@@ -496,6 +501,50 @@ describe("GitHub canonical chat threads", () => {
         "follow up in FIFO order",
       ),
     ).resolves.toBe(0);
+    const queuedParams = await findPendingChatEventInputParamsByPromptFixture(
+      "follow up in FIFO order",
+    );
+    if (!queuedParams) {
+      throw new Error("Expected queued GitHub chat input params");
+    }
+    if (!fixture.actorA.orgId) {
+      throw new Error("Expected org-scoped GitHub actor");
+    }
+    await expect(
+      decryptChatEventInputParamsFixture(queuedParams.eventId, {
+        orgId: fixture.actorA.orgId,
+        userId: fixture.actorA.userId,
+      }),
+    ).resolves.toMatchObject({
+      version: 1,
+      prompt: "follow up in FIFO order",
+      githubDelivery: {
+        installationId: fixture.installationId,
+        repo: REPO,
+        subjectNumber,
+        subjectKind: "pull_request",
+        agentId: fixture.agentId,
+        triggerCommentId: "30002",
+        triggerReactionId: expect.any(String),
+        triggerCommentBody: "@Zero follow up in FIFO order",
+      },
+    });
+    await expect(
+      readChatEventContextFixture(queuedParams.eventId),
+    ).resolves.toMatchObject({
+      contextType: "github",
+      contextId: expect.any(String),
+      githubRepo: REPO,
+      githubSubjectNumber: subjectNumber,
+      githubSubjectKind: "pull_request",
+      githubTriggerCommentId: "30002",
+      githubIssueContext: expect.stringContaining(
+        `Pull Request URL: https://github.com/${REPO}/pull/${subjectNumber}`,
+      ),
+      githubMessageText: "follow up in FIFO order",
+      githubTriggerReactionId: expect.any(String),
+      githubTriggerCommentBody: "@Zero follow up in FIFO order",
+    });
 
     const firstCliSession = await claimAndFinish({ fixture, run });
     const followUp = await runState(
