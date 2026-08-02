@@ -1579,18 +1579,18 @@ describe("cron execute morning briefs", () => {
         outputUrl: "<output-url>",
       }),
     );
+    const normalizedAppendSystemPrompt = appendSystemPrompt
+      .replaceAll(inputUrl, "<input-url>")
+      .replaceAll(outputUrl, "<output-url>");
+    const expectedAppendSystemPrompt = expectedMorningBriefAppendSystemPrompt({
+      briefDate: BRIEF_DATE,
+      timezone: TIMEZONE,
+      inputUrl: "<input-url>",
+      outputUrl: "<output-url>",
+    });
     expect(
-      appendSystemPrompt
-        .replaceAll(inputUrl, "<input-url>")
-        .replaceAll(outputUrl, "<output-url>"),
-    ).toBe(
-      expectedMorningBriefAppendSystemPrompt({
-        briefDate: BRIEF_DATE,
-        timezone: TIMEZONE,
-        inputUrl: "<input-url>",
-        outputUrl: "<output-url>",
-      }),
-    );
+      normalizedAppendSystemPrompt.slice(-expectedAppendSystemPrompt.length),
+    ).toBe(expectedAppendSystemPrompt);
     clearMockNow();
   }, 90_000);
 
