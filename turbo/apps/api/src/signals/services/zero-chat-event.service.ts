@@ -892,8 +892,7 @@ async function insertDisplayContext(
     return;
   }
   if (context.type === "agentphone") {
-    await insertAgentphoneDisplayContext(tx, context, createdAt);
-    return;
+    return insertAgentphoneDisplayContext(tx, context, createdAt);
   }
   if (context.type === "automation") {
     await tx.insert(chatAutomationContext).values({
@@ -909,8 +908,7 @@ async function insertDisplayContext(
     return;
   }
   if (context.type === "morning_brief") {
-    await insertMorningBriefContext(tx, context, createdAt);
-    return;
+    return insertMorningBriefContext(tx, context, createdAt);
   }
   await tx.insert(chatGoalContext).values({
     id: context.id,
