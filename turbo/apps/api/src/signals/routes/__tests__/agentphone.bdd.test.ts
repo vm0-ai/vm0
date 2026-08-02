@@ -312,6 +312,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       isGroup: false,
     });
     await waitForTyping(sends, [conversationId]);
+    await flushWaitUntilForTest();
 
     const pending =
       await findPendingChatEventInputParamsByPromptFixture(
@@ -495,6 +496,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       from: phone,
       body: "start on my phone",
     });
+    await flushWaitUntilForTest();
     const pendingSms =
       await findPendingChatEventInputParamsByPromptFixture("start on my phone");
     if (!pendingSms) {
@@ -860,6 +862,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         },
       ],
     });
+    await flushWaitUntilForTest();
     const pendingGroup = await findPendingChatEventInputParamsByPromptFixture(
       "summarize this thread",
     );
