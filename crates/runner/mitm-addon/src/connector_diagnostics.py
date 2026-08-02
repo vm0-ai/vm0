@@ -49,6 +49,7 @@ import flow_metadata_keys as metadata_keys
 import matching
 import network_log_sanitization
 import request_classification
+import runtime_url_parsing
 from logging_utils import log_proxy_entry
 
 _HTTP_STATUS_UNAUTHORIZED = 401
@@ -270,9 +271,50 @@ def install_response_stream_if_needed(flow: http.HTTPFlow) -> bool:
     diagnostic callback was installed, although candidate lookup may have
     populated flow-private cache state.
     """
-    if not _should_stream_response(flow):
+    if flow.response is None:
         return False
-    return _install_response_stream(flow)
+    if flow.response.status_code not in (
+        _HTTP_STATUS_UNAUTHORIZED,
+        _HTTP_STATUS_FORBIDDEN,
+    ):
+        return False
+    if _is_browser_diagnostic_skip(flow):
+        return False
+
+    original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+    if not isinstance(original_url, str):
+        return False
+    candidate = _resolve_candidate(flow, original_url=original_url)
+    if candidate is None:
+        return False
+    if _request_has_auth_material(flow, candidate, original_url):
+        return False
+
+    upstream_status = flow.response.status_code
+    _set_failure_metadata(flow, candidate)
+    body = _replace_response_content(
+        flow,
+        candidate,
+        upstream_status=upstream_status,
+    )
+    if body is None:
+        return False
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_BODY] = body
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS] = True
+
+    def stream_connector_diagnostic_response(chunk: bytes) -> bytes | tuple[bytes, ...]:
+        if chunk:
+            return _EMPTY_RESPONSE_STREAM_CHUNKS
+        if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT):
+            return _EMPTY_RESPONSE_STREAM_CHUNKS
+        flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT] = True
+        return body
+
+    flow.response.stream = stream_connector_diagnostic_response
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_CALLBACK] = (
+        stream_connector_diagnostic_response
+    )
+    return True
 
 
 def maybe_replace_response(
@@ -615,7 +657,7 @@ def _request_has_auth_material(
     configured_query_params = set(candidate.auth_query_param_names)
     normalized_configured_query_params = {name.lower() for name in candidate.auth_query_param_names}
     try:
-        parsed = urllib.parse.urlparse(original_url)
+        parsed = runtime_url_parsing.split_runtime_url(original_url)
     except ValueError:
         return False
     for name, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True):
@@ -722,65 +764,6 @@ def _log_proxy_entry(
 
 def _firewall_allow_is_unknown_endpoint(allow: matching.FirewallAllow) -> bool:
     return allow.permission is None and allow.rule is None
-
-
-def _should_stream_response(flow: http.HTTPFlow) -> bool:
-    if flow.response is None:
-        return False
-    if flow.response.status_code not in (
-        _HTTP_STATUS_UNAUTHORIZED,
-        _HTTP_STATUS_FORBIDDEN,
-    ):
-        return False
-    if _is_browser_diagnostic_skip(flow):
-        return False
-
-    original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
-    if not isinstance(original_url, str):
-        return False
-    candidate = _resolve_candidate(flow, original_url=original_url)
-    if candidate is None:
-        return False
-    return not _request_has_auth_material(flow, candidate, original_url)
-
-
-def _install_response_stream(flow: http.HTTPFlow) -> bool:
-    if flow.response is None:
-        return False
-    original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
-    if not isinstance(original_url, str):
-        return False
-    candidate = _resolve_candidate(flow, original_url=original_url)
-    if candidate is None:
-        return False
-    if _request_has_auth_material(flow, candidate, original_url):
-        return False
-
-    upstream_status = flow.response.status_code
-    _set_failure_metadata(flow, candidate)
-    body = _replace_response_content(
-        flow,
-        candidate,
-        upstream_status=upstream_status,
-    )
-    if body is None:
-        return False
-    flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_BODY] = body
-    flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS] = True
-
-    def stream_connector_diagnostic_response(chunk: bytes) -> bytes | tuple[bytes, ...]:
-        if chunk:
-            return _EMPTY_RESPONSE_STREAM_CHUNKS
-        if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT):
-            return _EMPTY_RESPONSE_STREAM_CHUNKS
-        flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT] = True
-        return body
-
-    flow.response.stream = stream_connector_diagnostic_response
-    flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_CALLBACK] = (
-        stream_connector_diagnostic_response
-    )
-    return True
 
 
 def _is_browser_diagnostic_skip(flow: http.HTTPFlow) -> bool:
