@@ -1,8 +1,9 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
+import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
 import {
   morningBriefDeliveries,
   morningBriefSchedules,
@@ -20,11 +21,7 @@ import {
   publishThreadListChanged,
 } from "../external/realtime";
 import { nowDate } from "../external/time";
-import {
-  generatePresignedGetUrl,
-  generatePresignedPutUrl,
-  putS3Object,
-} from "../external/s3";
+import { putS3Object } from "../external/s3";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { listPendingChatQueueEvents } from "./chat-event-queue.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
@@ -39,6 +36,7 @@ import {
   morningBriefLocalDate,
   nextMorningBriefRunAt,
 } from "./morning-brief-schedule.service";
+import { buildMorningBriefChatMessage } from "./morning-brief-run-prompt";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import {
@@ -55,7 +53,6 @@ const CLAIM_LIMIT = 50;
 const PROCESS_CONCURRENCY = 5;
 const MAX_LOOKBACK_MS = 72 * 60 * 60 * 1000;
 const MIN_LOOKBACK_MS = 24 * 60 * 60 * 1000;
-const SIGNED_URL_TTL_SECONDS = 24 * 60 * 60;
 const MORNING_BRIEF_THREAD_TITLE = "Morning Brief";
 
 interface ExecuteMorningBriefsResult {
@@ -71,10 +68,6 @@ interface DueMorningBriefRow {
   readonly lastSuccessAt: Date | null;
   readonly timezone: string | null;
   readonly enabled: boolean;
-}
-
-function generateCallbackSecret(): string {
-  return randomBytes(32).toString("hex");
 }
 
 function morningBriefStorageKey(
@@ -122,97 +115,6 @@ async function markDeliveryFailed(
     .update(morningBriefDeliveries)
     .set({ status: "failed", error, updatedAt: currentTime })
     .where(eq(morningBriefDeliveries.id, deliveryId));
-}
-
-/** The line the member sees in the Morning Brief chat thread. */
-function buildMorningBriefChatMessage(briefDate: string): string {
-  return `Generate my Morning Brief for ${briefDate}.`;
-}
-
-function formatMorningBriefLocalTime(timezone: string, date: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
-
-/**
- * The prompt the run actually receives.
- *
- * The Morning Brief thread keeps one persistent session, so a scheduled run
- * arrives on top of the previous days' runs. State the facts that separate
- * this delivery from those: where it came from, which URLs belong to it, and
- * what the server does with the uploaded object. Facts only — the agent
- * decides how to act on them.
- */
-function buildMorningBriefRunPrompt(args: {
-  readonly briefDate: string;
-  readonly timezone: string;
-  readonly deliveryId: string;
-  readonly triggeredAt: Date;
-  readonly inputUrl: string;
-  readonly outputUrl: string;
-}): string {
-  return [
-    buildMorningBriefChatMessage(args.briefDate),
-    "",
-    "# Run facts",
-    "",
-    `- trigger: the Morning Brief schedule fired for ${args.briefDate}; nobody typed this message`,
-    `- fired at: ${formatMorningBriefLocalTime(args.timezone, args.triggeredAt)} (${args.timezone})`,
-    `- delivery id: ${args.deliveryId}`,
-    "- chat thread: every Morning Brief delivery runs in this one thread and keeps its session, so the messages above are earlier deliveries; the URLs they carried are expired",
-    `- collected input for this delivery: HTTP GET ${args.inputUrl}`,
-    `- destination for this delivery's brief: HTTP PUT ${args.outputUrl}`,
-    `- both URLs are signed for delivery ${args.deliveryId} only and expire ${SIGNED_URL_TTL_SECONDS / 60} minutes after the trigger above`,
-    "- email assembly: a server-side job reads the object at the PUT URL, renders the email, and queues it; it runs once a minute",
-    "- when a run ends with no object at the PUT URL: the delivery is recorded failed, no email is queued, and nothing re-runs it",
-    '- the JSON shape expected at the PUT URL is in your system instructions under "# Morning Brief run"',
-  ].join("\n");
-}
-
-function buildMorningBriefAppendSystemPrompt(args: {
-  readonly briefDate: string;
-  readonly timezone: string;
-  readonly inputUrl: string;
-  readonly outputUrl: string;
-}): string {
-  return [
-    "# Morning Brief run",
-    `You are generating the user's Morning Brief for ${args.briefDate} (timezone ${args.timezone}).`,
-    "",
-    "1. Download the collected data (GitHub, Gmail, Google Calendar, unread vm0 chat threads) with an HTTP GET request to this URL (valid for 30 minutes):",
-    args.inputUrl,
-    "2. Analyze the data and write the brief. Only use predefined sections, omit empty ones, order by importance:",
-    "   - `schedule`: today's meetings and events",
-    "   - `needs_attention`: items that need the user's action or reply",
-    "   - `unread_threads`: vm0 chat threads with results the user has not read yet — summarize what each task produced while they were away",
-    "   - `github_updates`: PRs, reviews, CI, mentions involving the user",
-    "   - `email_updates`: notable email threads",
-    "   - `suggestions`: at most 3 suggestions, each grounded in today's data",
-    "3. Keep it a 3-5 minute read: at most 5 primary items per section; fold the rest into a single 'N more updates' item. Do not pad.",
-    "4. After choosing the final section items, write `headline` as the email opening:",
-    "   - Begin exactly with `Good morning.`",
-    "   - Derive it from the final sections and summarize the overall shape of the brief without sensitive details.",
-    "   - Use one or two short sentences, no more than 180 characters. Do not repeat a section title or list every item.",
-    "5. Upload the result as JSON with an HTTP PUT request (Content-Type: application/json) to this URL (valid for 30 minutes):",
-    args.outputUrl,
-    "   The JSON shape is:",
-    "   {",
-    '     "version": 1,',
-    '     "headline": "natural opening derived from the final sections; begins with Good morning.",',
-    '     "sections": [{"key": "schedule|needs_attention|unread_threads|github_updates|email_updates|suggestions", "title": "string", "items": [{"title": "string", "detail": "string (optional)", "url": "https source link (optional)"}]}]',
-    "   }",
-    "   Item `url` values must point at the original Gmail message, Calendar event, GitHub page, or the vm0 chat thread `url` provided in the input.",
-    "6. Also post the same brief as well-formatted Markdown in this chat so the user can read it here and ask follow-up questions.",
-    "7. If a source in the input is marked failed, mention briefly in the brief that the source was unavailable.",
-    "The email is assembled server-side from the uploaded JSON; do not try to send any email yourself.",
-  ].join("\n");
 }
 
 function allSourcesFailed(input: MorningBriefInput): boolean {
@@ -285,8 +187,6 @@ async function admitMorningBriefDelivery(
 interface StagedMorningBriefInput {
   readonly inputKey: string;
   readonly outputKey: string;
-  readonly inputUrl: string;
-  readonly outputUrl: string;
 }
 
 const stageMorningBriefInput$ = command(
@@ -351,21 +251,7 @@ const stageMorningBriefInput$ = command(
       putS3Object(bucket, inputKey, JSON.stringify(input), "application/json"),
     );
     signal.throwIfAborted();
-    const inputUrl = await get(
-      generatePresignedGetUrl(bucket, inputKey, SIGNED_URL_TTL_SECONDS),
-    );
-    signal.throwIfAborted();
-    const outputUrl = await get(
-      generatePresignedPutUrl(
-        bucket,
-        outputKey,
-        "application/json",
-        SIGNED_URL_TTL_SECONDS,
-      ),
-    );
-    signal.throwIfAborted();
-
-    return { inputKey, outputKey, inputUrl, outputUrl };
+    return { inputKey, outputKey };
   },
 );
 
@@ -462,7 +348,7 @@ const startMorningBriefRun$ = command(
   ): Promise<{ readonly runId: string | null } | "skipped"> => {
     const db = set(writeDb$);
     const { claimed, staged } = args;
-    const { row, timezone, briefDate, deliveryId, currentTime } = claimed;
+    const { row, briefDate, deliveryId, currentTime } = claimed;
 
     const agentId = await resolveDefaultAgent(db, row.orgId);
     signal.throwIfAborted();
@@ -485,31 +371,8 @@ const startMorningBriefRun$ = command(
     signal.throwIfAborted();
 
     const chatMessage = buildMorningBriefChatMessage(briefDate);
-    const runPrompt = buildMorningBriefRunPrompt({
-      briefDate,
-      timezone,
-      deliveryId,
-      triggeredAt: currentTime,
-      inputUrl: staged.inputUrl,
-      outputUrl: staged.outputUrl,
-    });
     const encryptedParams = await encryptQueuedUserMessageRunParams(
-      {
-        version: 1,
-        prompt: runPrompt,
-        appendSystemPrompt: buildMorningBriefAppendSystemPrompt({
-          briefDate,
-          timezone,
-          inputUrl: staged.inputUrl,
-          outputUrl: staged.outputUrl,
-        }),
-        morningBriefDelivery: {
-          deliveryId,
-          internalKind: "morning-brief:email",
-          secret: generateCallbackSecret(),
-          payload: { deliveryId },
-        },
-      },
+      { version: 1 },
       { orgId: row.orgId, userId: row.userId },
     );
     signal.throwIfAborted();
@@ -621,9 +484,17 @@ async function hasPendingMorningBriefQueueEvent(
   }
   const messages = await db
     .select({
+      deliveryId: chatMorningBriefContext.deliveryId,
       encryptedParams: chatEventInputParams.encryptedParams,
     })
     .from(chatEvents)
+    .leftJoin(
+      chatMorningBriefContext,
+      and(
+        eq(chatMorningBriefContext.id, chatEvents.contextId),
+        eq(chatMorningBriefContext.chatThreadId, chatEvents.chatThreadId),
+      ),
+    )
     .leftJoin(
       chatEventInputParams,
       eq(chatEventInputParams.eventId, chatEvents.id),
@@ -635,6 +506,9 @@ async function hasPendingMorningBriefQueueEvent(
       ),
     );
   for (const message of messages) {
+    if (message.deliveryId === args.deliveryId) {
+      return true;
+    }
     const params = await decryptQueuedUserMessageRunParams(
       message.encryptedParams,
       { orgId: args.orgId, userId: args.userId },
