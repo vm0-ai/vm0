@@ -23,6 +23,7 @@ const runs = createRunsApi(context);
 
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const FNV_PRIME = 16_777_619;
+// Multiplicative inverse of FNV_PRIME modulo 2^32.
 const FNV_PRIME_INVERSE = 899_433_627;
 const ROLLOUT_COLLISION_ALPHABET =
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -40,6 +41,8 @@ function rolloutCollisionSuffix(
   prefix: string,
   targetHash: number,
 ): string | null {
+  // Meet in the middle over two three-character halves instead of scanning
+  // all 62^6 suffixes. FNV-1a is reversible one character at a time.
   const prefixHash = Number.parseInt(fnv1a(prefix), 16);
   const firstHalves = new Map<number, string>();
   for (const first of ROLLOUT_COLLISION_ALPHABET) {
