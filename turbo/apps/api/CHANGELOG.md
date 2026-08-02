@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.364.9](https://github.com/vm0-ai/vm0/compare/api-v1.364.8...api-v1.364.9) (2026-08-02)
+
+
+### Bug Fixes
+
+* accept distinct sandbox reuse result reasons ([#24556](https://github.com/vm0-ai/vm0/issues/24556)) ([a1bfbf8](https://github.com/vm0-ai/vm0/commit/a1bfbf883e98fca8a557cb1cf45d4bee85d0a552))
+
+
+### Refactoring
+
+* claim telegram launch context ([#24547](https://github.com/vm0-ai/vm0/issues/24547)) ([7d47941](https://github.com/vm0-ai/vm0/commit/7d47941a345cc8b4c0ec1418dbb40cb751b7335a))
+* remove morning brief launch fallback ([#24544](https://github.com/vm0-ai/vm0/issues/24544)) ([eeadf00](https://github.com/vm0-ai/vm0/commit/eeadf00628cb2e2ebaec61bd906a162cc46e04b8))
+* require telegram launch context ([#24552](https://github.com/vm0-ai/vm0/issues/24552)) ([0715875](https://github.com/vm0-ai/vm0/commit/071587582c0ffdfd98caef4b252cba38e5b9a0dc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.6
+    * @vm0/core bumped to 8.502.6
+    * @vm0/db bumped to 1.160.11
+
 ## [1.364.8](https://github.com/vm0-ai/vm0/compare/api-v1.364.7...api-v1.364.8) (2026-08-02)
 
 
