@@ -36,11 +36,7 @@ import {
 } from "../signals/services/zero-chat-event.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
-import {
-  decryptQueuedUserMessageRunParams,
-  encryptQueuedUserMessageRunParams,
-} from "../signals/services/zero-chat-queued-event.service";
-import { agentphoneDeliveryTargetSchema } from "../signals/services/agentphone-chat-callback-payload";
+import { decryptQueuedUserMessageRunParams } from "../signals/services/zero-chat-queued-event.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -614,99 +610,6 @@ export async function decryptChatEventInputParamsFixture(
     return null;
   }
   return await decryptQueuedUserMessageRunParams(row.encryptedParams, ctx);
-}
-
-export async function replaceAgentphoneLaunchMaterialWithLegacyParamsFixture(
-  eventId: string,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly prompt: string;
-    readonly appendSystemPrompt: string;
-  },
-): Promise<void> {
-  const [row] = await db()
-    .select({
-      contextId: chatAgentphoneContext.id,
-      messageId: chatAgentphoneContext.messageId,
-      conversationId: chatAgentphoneContext.conversationId,
-      channel: chatAgentphoneContext.channel,
-      isGroup: chatAgentphoneContext.isGroup,
-      rootMessageId: chatAgentphoneContext.rootMessageId,
-      phoneHandle: chatAgentphoneContext.phoneHandle,
-      fromNumber: chatAgentphoneContext.fromNumber,
-      toNumber: chatAgentphoneContext.toNumber,
-      userLinkId: chatAgentphoneContext.userLinkId,
-      agentId: chatThreads.agentComposeId,
-      agentphoneAgentId: chatAgentphoneContext.agentphoneAgentId,
-    })
-    .from(chatEvents)
-    .innerJoin(
-      chatAgentphoneContext,
-      and(
-        eq(chatAgentphoneContext.id, chatEvents.contextId),
-        eq(chatAgentphoneContext.chatThreadId, chatEvents.chatThreadId),
-      ),
-    )
-    .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
-    .where(
-      and(
-        eq(chatEvents.id, eventId),
-        eq(chatEvents.contextType, "agentphone"),
-        eq(chatEvents.triggerSource, "agentphone"),
-        isNull(chatEvents.runId),
-      ),
-    )
-    .limit(1);
-  if (!row) {
-    throw new Error("Expected pending AgentPhone launch context");
-  }
-  const agentphoneDelivery = agentphoneDeliveryTargetSchema.parse({
-    messageId: row.messageId,
-    conversationId: row.conversationId,
-    channel: row.channel,
-    isGroup: row.isGroup,
-    rootMessageId: row.rootMessageId,
-    phoneHandle: row.phoneHandle,
-    fromNumber: row.fromNumber,
-    toNumber: row.toNumber,
-    userLinkId: row.userLinkId,
-    agentId: row.agentId,
-    agentphoneAgentId: row.agentphoneAgentId,
-  });
-  const encryptedParams = await encryptQueuedUserMessageRunParams(
-    {
-      version: 1,
-      prompt: args.prompt,
-      appendSystemPrompt: args.appendSystemPrompt,
-      agentphoneDelivery,
-      userInfoExtras: { agentphoneHandle: agentphoneDelivery.phoneHandle },
-    },
-    { orgId: args.orgId, userId: args.userId },
-  );
-  await db().transaction(async (tx) => {
-    await tx
-      .update(chatAgentphoneContext)
-      .set({
-        messageText: null,
-        threadContext: null,
-        messageId: null,
-        rootMessageId: null,
-        conversationId: null,
-        channel: null,
-        isGroup: null,
-        phoneHandle: null,
-        fromNumber: null,
-        toNumber: null,
-        userLinkId: null,
-        agentphoneAgentId: null,
-      })
-      .where(eq(chatAgentphoneContext.id, row.contextId));
-    await tx
-      .update(chatEventInputParams)
-      .set({ encryptedParams })
-      .where(eq(chatEventInputParams.eventId, eventId));
-  });
 }
 
 export async function clearGitHubTriggerCommentBodyFixture(
