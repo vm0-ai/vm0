@@ -124,11 +124,14 @@ function mockTimedMorningBriefSignedUrls(): void {
 }
 
 function morningBriefPromptUrl(prompt: string, method: "GET" | "PUT"): string {
-  const match = prompt.match(new RegExp(`HTTP ${method} (https://\\S+)`, "u"));
-  if (!match?.[1]) {
+  const prefix = `HTTP ${method} `;
+  const start = prompt.indexOf(prefix);
+  if (start === -1) {
     throw new Error(`Expected a Morning Brief ${method} URL`);
   }
-  return match[1];
+  const urlStart = start + prefix.length;
+  const newline = prompt.indexOf("\n", urlStart);
+  return prompt.slice(urlStart, newline === -1 ? undefined : newline);
 }
 
 function cronHeaders() {
