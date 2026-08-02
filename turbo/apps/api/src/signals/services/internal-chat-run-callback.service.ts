@@ -2684,10 +2684,6 @@ function loadQueuedMessageSessionState(
   );
 }
 
-type QueuedSourceParams = Awaited<
-  ReturnType<typeof decryptQueuedUserMessageRunParams>
->;
-
 type QueuedIntegrationDeliveries = Pick<
   CreateQueuedChatRunInput,
   | "slackDelivery"
@@ -2753,7 +2749,6 @@ function launchLoader<Material extends NativeQueuedLaunchMaterial>(
 
 async function resolveQueuedLaunchMaterial(
   args: CreateQueuedChatRunInputArgs,
-  sourceParams: QueuedSourceParams,
 ): Promise<QueuedLaunchMaterial | null> {
   const launchLoaders: Partial<Record<TriggerSource, LaunchLoader>> = {
     slack: launchLoader(loadSlackQueuedLaunchMaterial, (material) => {
@@ -2804,45 +2799,19 @@ async function resolveQueuedLaunchMaterial(
   if (material) {
     return material;
   }
-  if (
-    args.queuedMessage.triggerSource === "telegram" &&
-    sourceParams?.prompt !== undefined &&
-    sourceParams.appendSystemPrompt !== undefined &&
-    sourceParams.telegramDelivery
-  ) {
-    return null;
-  }
   throw new Error(
     `${args.queuedMessage.triggerSource} queue item is missing launch material`,
   );
 }
 
-type SourceParamDeliveryLoader = (
-  sourceParams: QueuedSourceParams,
-) => QueuedIntegrationDeliveries;
-
 function queuedIntegrationDeliveries(
-  triggerSource: QueuedUserMessage["triggerSource"],
-  sourceParams: QueuedSourceParams,
   launchMaterial: QueuedLaunchMaterial | null,
 ): QueuedIntegrationDeliveries {
-  const sourceParamDeliveryLoaders: Partial<
-    Record<TriggerSource, SourceParamDeliveryLoader>
-  > = {
-    telegram: (params) => {
-      return { telegramDelivery: params?.telegramDelivery };
-    },
-  };
-  return (
-    launchMaterial?.delivery ??
-    sourceParamDeliveryLoaders[triggerSource]?.(sourceParams) ??
-    {}
-  );
+  return launchMaterial?.delivery ?? {};
 }
 
 interface QueuedAdmissionFailureResolverArgs {
   readonly args: CreateQueuedChatRunInputArgs;
-  readonly sourceParams: QueuedSourceParams;
   readonly launchMaterial: QueuedLaunchMaterial | null;
   readonly error: QueuedMessageModelRouteError;
 }
@@ -2973,7 +2942,6 @@ function githubQueuedMessageAdmissionFailure(
 
 function queuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
-  sourceParams: QueuedSourceParams,
   launchMaterial: QueuedLaunchMaterial | null,
   error: QueuedMessageModelRouteError,
 ): QueuedMessageAdmissionFailure | null {
@@ -2997,8 +2965,7 @@ function queuedMessageAdmissionFailure(
     telegram: (resolverArgs) => {
       return telegramQueuedMessageAdmissionFailure(
         resolverArgs.args,
-        resolverArgs.launchMaterial?.delivery.telegramDelivery ??
-          resolverArgs.sourceParams?.telegramDelivery,
+        resolverArgs.launchMaterial?.delivery.telegramDelivery,
         resolverArgs.error,
       );
     },
@@ -3025,33 +2992,20 @@ function queuedMessageAdmissionFailure(
     },
   };
   const resolve = admissionFailureResolvers[args.queuedMessage.triggerSource];
-  return resolve?.({ args, sourceParams, launchMaterial, error }) ?? null;
+  return resolve?.({ args, launchMaterial, error }) ?? null;
 }
 
 function queuedMessagePrompt(args: {
-  readonly triggerSource: QueuedUserMessage["triggerSource"];
   readonly launchMaterial: QueuedLaunchMaterial | null;
-  readonly sourceParams: QueuedSourceParams;
   readonly projectedPrompt: string;
 }): string {
-  if (args.launchMaterial) {
-    return args.launchMaterial.prompt;
-  }
-  if (args.triggerSource === "telegram") {
-    return args.sourceParams?.prompt ?? "";
-  }
-  return args.projectedPrompt;
+  return args.launchMaterial?.prompt ?? args.projectedPrompt;
 }
 
 function queuedIntegrationPrompt(args: {
   readonly launchMaterial: QueuedLaunchMaterial | null;
-  readonly sourceParams: QueuedSourceParams;
 }): string {
-  return (
-    args.launchMaterial?.appendSystemPrompt ??
-    args.sourceParams?.appendSystemPrompt ??
-    buildWebChatPrompt()
-  );
+  return args.launchMaterial?.appendSystemPrompt ?? buildWebChatPrompt();
 }
 
 function resolveQueuedMessageGenerationTemplatePrompt(args: {
@@ -3086,11 +3040,7 @@ async function loadQueuedRunMaterial(args: CreateQueuedChatRunInputArgs) {
   if (args.queuedMessage.triggerSource !== "web" && !sourceParams) {
     throw new Error("Canonical integration queue item is missing run params");
   }
-  const launchMaterial = await resolveQueuedLaunchMaterial(args, sourceParams);
-  return {
-    sourceParams,
-    launchMaterial,
-  };
+  return await resolveQueuedLaunchMaterial(args);
 }
 
 function queuedUserMessageProjection(
@@ -3110,21 +3060,18 @@ function queuedUserMessageProjection(
 }
 
 function queuedIntegrationLaunchFields(
-  triggerSource: QueuedUserMessage["triggerSource"],
-  sourceParams: QueuedSourceParams,
   launchMaterial: QueuedLaunchMaterial | null,
 ) {
   return {
-    ...queuedIntegrationDeliveries(triggerSource, sourceParams, launchMaterial),
-    userInfoExtras:
-      launchMaterial?.userInfoExtras ?? sourceParams?.userInfoExtras,
+    ...queuedIntegrationDeliveries(launchMaterial),
+    userInfoExtras: launchMaterial?.userInfoExtras,
   };
 }
 
 async function buildCreateQueuedChatRunInput(
   args: CreateQueuedChatRunInputArgs,
 ): Promise<CreateQueuedChatRunInput | QueuedMessageAdmissionFailure | null> {
-  const { sourceParams, launchMaterial } = await loadQueuedRunMaterial(args);
+  const launchMaterial = await loadQueuedRunMaterial(args);
   const modelRouteResolution = await resolveQueuedMessageModelRoute({
     db: args.db,
     threadId: args.threadId,
@@ -3136,7 +3083,6 @@ async function buildCreateQueuedChatRunInput(
   if ("error" in modelRouteResolution) {
     return queuedMessageAdmissionFailure(
       args,
-      sourceParams,
       launchMaterial,
       modelRouteResolution.error,
     );
@@ -3195,9 +3141,7 @@ async function buildCreateQueuedChatRunInput(
     },
   );
   const prompt = queuedMessagePrompt({
-    triggerSource: args.queuedMessage.triggerSource,
     launchMaterial,
-    sourceParams,
     projectedPrompt: userMessageProjection.agentPrompt,
   });
 
@@ -3209,7 +3153,6 @@ async function buildCreateQueuedChatRunInput(
     appendSystemPrompt: buildAppendSystemPrompt(
       queuedIntegrationPrompt({
         launchMaterial,
-        sourceParams,
       }),
       incompleteContext,
       priorContext,
@@ -3229,11 +3172,7 @@ async function buildCreateQueuedChatRunInput(
       FeatureSwitchKey.RealAgentInPreview,
       featureSwitchContext,
     ),
-    ...queuedIntegrationLaunchFields(
-      args.queuedMessage.triggerSource,
-      sourceParams,
-      launchMaterial,
-    ),
+    ...queuedIntegrationLaunchFields(launchMaterial),
     apiStartTime: args.queuedMessage.createdAt.getTime(),
   };
 }

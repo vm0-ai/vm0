@@ -24,7 +24,6 @@ import {
   findTelegramChatEventByPromptFixture,
   readChatEventContextFixture,
   readChatEventInputParamsFixture,
-  replaceTelegramLaunchMaterialWithLegacyParamsFixture,
   setTelegramThinkingMessageIdFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -1389,7 +1388,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await runsApi.requestCancelRun(actorForFixture(fixture), runId, [200]);
   });
 
-  it("rebuilds queued Telegram launch material and preserves the legacy fallback", async () => {
+  it("rebuilds queued Telegram launch material from context", async () => {
     const runnerGroup = configureCanonicalTelegramRunner();
     const fixture = await trackFixture(
       seedTelegramPostFixture({ linkTelegramUser: true }),
@@ -1494,50 +1493,6 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       readChatEventInputParamsFixture(queuedParams.eventId),
     ).resolves.toBeNull();
 
-    const legacyQueuedPrompt = "legacy Telegram queue fallback";
-    expect(
-      (
-        await postWebhook({
-          telegramBotId: fixture.telegramBotId,
-          secret: fixture.webhookSecret,
-          body: {
-            update_id: 203,
-            message: {
-              message_id: 2203,
-              chat: { id: chatId, type: "private" },
-              from: {
-                id: Number(fixture.telegramUserId),
-                username: "alice",
-                first_name: "Alice",
-              },
-              text: legacyQueuedPrompt,
-            },
-          },
-        })
-      ).status,
-    ).toBe(200);
-    await flushWaitUntilForTest();
-    const legacyQueuedParams =
-      await findPendingChatEventInputParamsByPromptFixture(legacyQueuedPrompt);
-    if (!legacyQueuedParams) {
-      throw new Error("Expected legacy Telegram fallback queue item");
-    }
-    await expect(
-      decryptChatEventInputParamsFixture(legacyQueuedParams.eventId, {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-      }),
-    ).resolves.toStrictEqual({ version: 1 });
-    await replaceTelegramLaunchMaterialWithLegacyParamsFixture(
-      legacyQueuedParams.eventId,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        prompt: "legacy Telegram launch prompt",
-        appendSystemPrompt: "legacy Telegram system prompt",
-      },
-    );
-
     const queuedClaim = await claimTelegramRun(queuedRunId, runnerGroup);
     expect(queuedClaim.prompt).toBe(queuedPrompt);
     const queuedThreadContext = queuedLaunchContext?.telegramThreadContext;
@@ -1567,30 +1522,6 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       chat_id: String(chatId),
       message_id: 701,
     });
-
-    let legacyRunId: string | null = null;
-    await expect
-      .poll(async () => {
-        legacyRunId =
-          (await telegramPostRunState(fixture, "legacy Telegram launch prompt"))
-            .run?.id ?? null;
-        return legacyRunId;
-      })
-      .toStrictEqual(expect.any(String));
-    if (!legacyRunId) {
-      throw new Error("Expected the legacy Telegram fallback run");
-    }
-    const legacyClaim = await claimTelegramRun(legacyRunId, runnerGroup);
-    expect(legacyClaim.prompt).toBe("legacy Telegram launch prompt");
-    expectExactSystemPromptFragment(
-      legacyClaim.appendSystemPrompt,
-      "legacy Telegram system prompt",
-    );
-    await runsApi.requestCancelRun(
-      actorForFixture(fixture),
-      legacyRunId,
-      [200],
-    );
   });
 
   it("shares one canonical DM session with web and keeps the legacy cursor monotonic", async () => {
