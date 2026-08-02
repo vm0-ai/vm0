@@ -1405,13 +1405,14 @@ pub struct CompleteRequest {
 }
 
 /// Outcome of the sandbox-reuse decision made at job dispatch time. `Reused`
-/// means the VM was unparked from the idle pool; the other variants name the
-/// branch that caused a fresh create. Wire name: `sandboxReuseResult`.
+/// means the VM was unparked from the idle pool; the other variants describe
+/// why reuse did not happen. Wire name: `sandboxReuseResult`.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum SandboxReuseResult {
     Reused,
-    NoSessionId,
+    NoReuseKey,
+    InvalidResumeSessionId,
     PoolMiss,
     ProfileMismatch,
     DeviceLimitMismatch,
@@ -1424,7 +1425,8 @@ impl SandboxReuseResult {
     pub const fn as_wire(self) -> &'static str {
         match self {
             Self::Reused => "reused",
-            Self::NoSessionId => "noSessionId",
+            Self::NoReuseKey => "noReuseKey",
+            Self::InvalidResumeSessionId => "invalidResumeSessionId",
             Self::PoolMiss => "poolMiss",
             Self::ProfileMismatch => "profileMismatch",
             Self::DeviceLimitMismatch => "deviceLimitMismatch",
@@ -1781,8 +1783,12 @@ mod tests {
     #[test]
     fn sandbox_reuse_result_serializes_camel_case() {
         assert_eq!(
-            serde_json::to_value(SandboxReuseResult::NoSessionId).unwrap(),
-            serde_json::json!("noSessionId"),
+            serde_json::to_value(SandboxReuseResult::NoReuseKey).unwrap(),
+            serde_json::json!("noReuseKey"),
+        );
+        assert_eq!(
+            serde_json::to_value(SandboxReuseResult::InvalidResumeSessionId).unwrap(),
+            serde_json::json!("invalidResumeSessionId"),
         );
         assert_eq!(
             serde_json::to_value(SandboxReuseResult::PoolMiss).unwrap(),
@@ -1808,7 +1814,8 @@ mod tests {
     fn as_wire_matches_serde_serialization() {
         for variant in [
             SandboxReuseResult::Reused,
-            SandboxReuseResult::NoSessionId,
+            SandboxReuseResult::NoReuseKey,
+            SandboxReuseResult::InvalidResumeSessionId,
             SandboxReuseResult::PoolMiss,
             SandboxReuseResult::ProfileMismatch,
             SandboxReuseResult::DeviceLimitMismatch,

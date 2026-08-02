@@ -168,7 +168,7 @@ pub(super) async fn handle_discovered_job(
                 claimed,
                 cancellation,
                 LocalAdmissionResource::Reusable(reservation),
-                SandboxReuseResult::NoSessionId,
+                SandboxReuseResult::InvalidResumeSessionId,
                 error,
                 &mut ctx,
             )
@@ -696,8 +696,10 @@ async fn activate_reserved_idle(
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
 
     if !resume_session_valid || requested_reuse_key != Some(reserved_reuse_key.as_str()) {
-        let reuse_result = if requested_reuse_key.is_none() || !resume_session_valid {
-            SandboxReuseResult::NoSessionId
+        let reuse_result = if !resume_session_valid {
+            SandboxReuseResult::InvalidResumeSessionId
+        } else if requested_reuse_key.is_none() {
+            SandboxReuseResult::NoReuseKey
         } else {
             SandboxReuseResult::PoolMiss
         };
@@ -865,20 +867,14 @@ async fn try_reuse_from_pool(
         return (
             None,
             job_lease,
-            SandboxReuseResult::NoSessionId,
+            SandboxReuseResult::InvalidResumeSessionId,
             None,
             false,
         );
     }
     let Some(reuse_key) = context.reuse_key() else {
         pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
-        return (
-            None,
-            job_lease,
-            SandboxReuseResult::NoSessionId,
-            None,
-            false,
-        );
+        return (None, job_lease, SandboxReuseResult::NoReuseKey, None, false);
     };
     // Take the entry under the pool lock, then drop the lock before any awaits
     // so unpark does not block other take/park operations.

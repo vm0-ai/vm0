@@ -206,7 +206,8 @@ impl RunnerSpawnTiming {
 pub(super) fn record_reuse_result(telemetry: &mut JobTelemetry, result: SandboxReuseResult) {
     let action_type = match result {
         SandboxReuseResult::Reused => "sandbox_reuse_hit",
-        SandboxReuseResult::NoSessionId
+        SandboxReuseResult::NoReuseKey
+        | SandboxReuseResult::InvalidResumeSessionId
         | SandboxReuseResult::PoolMiss
         | SandboxReuseResult::ProfileMismatch
         | SandboxReuseResult::DeviceLimitMismatch

@@ -37,9 +37,8 @@ pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
 
 /// Wire value for the runner's sandbox-reuse decision.
 ///
-/// `reused` means an idle VM was unparked. Other values name the branch that
-/// caused the runner to create a fresh sandbox instead, such as `poolMiss` or
-/// `noSessionId`.
+/// `reused` means an idle VM was unparked. Other values describe why reuse did
+/// not happen, such as `poolMiss`, `noReuseKey`, or `invalidResumeSessionId`.
 pub const SANDBOX_REUSE_RESULT_ENV: &str = "VM0_SANDBOX_REUSE_RESULT";
 
 /// Logical run-payload field name for the user prompt.
