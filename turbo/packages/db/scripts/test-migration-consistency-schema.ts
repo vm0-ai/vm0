@@ -15921,7 +15921,7 @@ async function validateTimestampOrdering(): Promise<void> {
   console.log();
 }
 
-const RUNNER_SANDBOX_STATE_PREVIOUS_MIGRATION = 797;
+const RUNNER_SANDBOX_STATE_PREVIOUS_MIGRATION = 799;
 const RUNNER_SANDBOX_STATE_EXPANSION_MIGRATION = 800;
 
 async function validateRunnerSandboxStateExpansion(): Promise<void> {
