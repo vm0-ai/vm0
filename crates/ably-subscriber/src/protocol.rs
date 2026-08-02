@@ -176,16 +176,21 @@ pub struct AblyMessage {
 
 type MsgpackMap = Vec<(rmpv::Value, rmpv::Value)>;
 
+// rmpv's default depth can exhaust a normal Rust thread stack before returning an error.
+// This still permits roughly 128 nested containers, matching serde_json's default limit.
+const MAX_MSGPACK_DECODE_DEPTH: usize = 256;
+
 pub fn encode_msg(msg: &ProtocolMessage) -> Result<Vec<u8>, Error> {
     Ok(rmp_serde::to_vec_named(msg)?)
 }
 
 pub fn decode_msg(data: &[u8]) -> Result<ProtocolMessage, Error> {
     let mut cursor = std::io::Cursor::new(data);
-    let value = rmpv::decode::read_value(&mut cursor).map_err(|e| Error::Protocol {
-        code: error_code::BAD_REQUEST,
-        message: format!("msgpack decode error: {e}"),
-    })?;
+    let value = rmpv::decode::read_value_with_max_depth(&mut cursor, MAX_MSGPACK_DECODE_DEPTH)
+        .map_err(|e| Error::Protocol {
+            code: error_code::BAD_REQUEST,
+            message: format!("msgpack decode error: {e}"),
+        })?;
     if cursor.position() != data.len() as u64 {
         return Err(Error::Protocol {
             code: error_code::BAD_REQUEST,
