@@ -29,10 +29,11 @@ import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { onRef, resetSignal } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
-  createFeedbackSignals,
+  createComposerFeedbackModel,
   formatFeedbackPrompt,
+  type ComposerFeedbackModel,
+  type ComposerFeedbackSignals,
   type FeedbackItem,
-  type FeedbackSignals,
 } from "./chat-feedback.ts";
 import {
   findActiveChatThreadSuggestionRange,
@@ -226,7 +227,7 @@ export interface WorkflowComposerSignals {
     (() => void) | undefined,
     [HTMLButtonElement | null]
   >;
-  readonly feedback: FeedbackSignals;
+  readonly feedback: ComposerFeedbackSignals;
 }
 
 export type ComposerTemplateAttachmentType =
@@ -252,8 +253,11 @@ function createComposerAgentResources<T extends AgentIdValue>(
   return { agentId$, workflows$: createComposerWorkflows(agentId$) };
 }
 
-function createComposerFeedback(threadId: string | undefined, editor: Editor) {
-  return createFeedbackSignals(threadId ?? "", {
+function connectComposerFeedback(
+  feedback: ComposerFeedbackModel,
+  editor: Editor,
+): void {
+  feedback.connectEditor({
     insertItem(item) {
       insertFeedbackItem(editor, item);
     },
@@ -1865,32 +1869,18 @@ interface MountEditorOptions {
   caretIndex$: State<number>;
   editorFocusedState$: State<boolean>;
   selectedSuggestionIndexState$: State<number>;
-  feedback: FeedbackSignals;
+  feedback: ComposerFeedbackModel;
   compositionGate: CompositionGate;
   syncWorkflowNames$: WorkflowNamesSyncCommand;
   syncAgentMentionAvatars$: AgentMentionAvatarsSyncCommand;
   inlineTemplatesEnabled: boolean;
-  autoFocus: boolean | Computed<Promise<boolean>>;
+  autoFocus: boolean;
   singleLineOnMobile: boolean;
 }
 
 interface WorkflowComposerMountOptions {
-  readonly autoFocus?: boolean | Computed<Promise<boolean>>;
+  readonly autoFocus?: boolean;
   readonly singleLineOnMobile?: boolean;
-}
-
-function createFocusEditorWhenReadyCommand(
-  editor: Editor,
-  autoFocus: MountEditorOptions["autoFocus"],
-): Command<Promise<void>, [AbortSignal]> {
-  return command(async ({ get }, signal: AbortSignal): Promise<void> => {
-    const shouldAutoFocus =
-      typeof autoFocus === "boolean" ? autoFocus : await get(autoFocus);
-    signal.throwIfAborted();
-    if (shouldAutoFocus && !isIOS()) {
-      editor.commands.focus("end");
-    }
-  });
 }
 
 function createMountEditorCommand({
@@ -1908,10 +1898,6 @@ function createMountEditorCommand({
   autoFocus,
   singleLineOnMobile,
 }: MountEditorOptions) {
-  const focusEditorWhenReady$ = createFocusEditorWhenReadyCommand(
-    editor,
-    autoFocus,
-  );
   return onRef(
     command(async ({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       runtime.update = (updatedEditor) => {
@@ -1943,7 +1929,7 @@ function createMountEditorCommand({
         set(feedback.replaceFromEditor$, items);
       };
       runtime.removeFeedback = (id) => {
-        set(feedback.removeFeedback$, id);
+        set(feedback.signals.remove$, id);
       };
       configureMountedWorkflowEditor(editor, singleLineOnMobile);
       setWorkflowComposerDocument(
@@ -2007,6 +1993,9 @@ function createMountEditorCommand({
         mountSignal: signal,
       };
       set(registerMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
+      if (autoFocus && !isIOS()) {
+        editor.commands.focus("end");
+      }
       signal.addEventListener("abort", () => {
         set(unregisterMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
         compositionGate.cancel(signal.reason);
@@ -2016,7 +2005,6 @@ function createMountEditorCommand({
         editor.unmount();
       });
       await Promise.all([
-        set(focusEditorWhenReady$, signal),
         set(syncWorkflowNames$, signal, signal),
         set(syncAgentMentionAvatars$, signal),
       ]);
@@ -2433,10 +2421,10 @@ export function createWorkflowComposerSignals<
   T extends AgentIdValue = Promise<string | null>,
 >(
   draft: DraftSignals,
-  threadId?: string,
   agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
   inlineTemplatesEnabled = false,
   mountOptions: WorkflowComposerMountOptions = {},
+  feedback: ComposerFeedbackModel = createComposerFeedbackModel(),
 ): WorkflowComposerSignals {
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
@@ -2448,6 +2436,7 @@ export function createWorkflowComposerSignals<
   const { agentId$, workflows$ } = createComposerAgentResources(agentIdSource$);
 
   const editor = createWorkflowEditor(runtime, agentMentionAvatarRuntime);
+  connectComposerFeedback(feedback, editor);
   const syncWorkflowNames$ = createSyncWorkflowNamesCommand(
     editor,
     agentId$,
@@ -2457,8 +2446,6 @@ export function createWorkflowComposerSignals<
     agentMentionAvatarRuntime,
   );
   const templateAttachment = createTemplateAttachmentControls(editor, runtime);
-  const feedback = createComposerFeedback(threadId, editor);
-
   const selectedSuggestionIndex$ = computed((get) => {
     return get(selectedSuggestionIndexState$);
   });
@@ -2554,6 +2541,6 @@ export function createWorkflowComposerSignals<
     insertUserMessage$,
     readInputForSubmission$,
     setTemplateAttachmentLifecycleRef$: templateAttachment.setLifecycleRef$,
-    feedback,
+    feedback: feedback.signals,
   };
 }

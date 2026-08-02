@@ -10,6 +10,7 @@ import { onRef, withCleanup } from "../utils.ts";
 import { isVisualAttachment } from "../chat-page/resolve-draft-attachments.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ZeroChatAttachment } from "./chat-draft.ts";
+import type { ComposerFeedbackModel } from "./chat-feedback.ts";
 import type { ChatEvent } from "../chat-page/chat-event-types.ts";
 import {
   deriveRunIndicatorStateFromChatEvents,
@@ -219,6 +220,7 @@ interface CreateComposerSignalsOptions {
   };
   readonly chatEvents$: Computed<ChatEvent[]>;
   readonly threadId?: string;
+  readonly feedbackModel?: ComposerFeedbackModel;
   readonly inlineTemplatesEnabled: boolean;
   readonly generationTemplate$?: ComposerTemplateSignals["generationTemplate$"];
   readonly setGenerationTemplate$?: ComposerTemplateSignals["setGenerationTemplate$"];
@@ -425,18 +427,17 @@ export function createComposerSignals(
   const agentId$ = computed(async (get): Promise<string | null> => {
     return (await get(options.agent$)).agentId;
   });
-  const autoFocus$ = computed(async (get): Promise<boolean> => {
-    return !(await get(eventSignals.hasEvents$));
-  });
   const workflowComposer = createWorkflowComposerSignals(
     draft,
-    options.threadId,
     agentId$,
     options.inlineTemplatesEnabled,
     {
-      autoFocus: autoFocus$,
+      // Existing threads must not steal selection while cached events hydrate.
+      // Empty new chats live in the agent composer, which still auto-focuses.
+      autoFocus: options.threadId === undefined,
       singleLineOnMobile: options.singleLineOnMobile,
     },
+    options.feedbackModel,
   );
   const submission = createComposerSubmissionSignals(
     options,

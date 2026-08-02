@@ -24,6 +24,7 @@ import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type { ThreadScrollPosition } from "./chat-thread-scroll.ts";
 import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
 import type { ComposerSignals } from "../zero-page/composer-signals.ts";
+import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 
 type RecommendedFollowup = NonNullable<
   ChatFollowupsEvent["recommendedFollowups"]
@@ -122,6 +123,7 @@ export interface ChatThreadSignals {
   awayFromBottom$: Computed<boolean>;
   draft: DraftSignals;
   composer: ComposerSignals;
+  feedback: ChatThreadFeedbackSignals;
   // -- Agent info (derived from threadMeta$.agentId) ------------------------
   agent$: Computed<Promise<ZeroAgentResponse>>;
   agentId$: Computed<string | null>;

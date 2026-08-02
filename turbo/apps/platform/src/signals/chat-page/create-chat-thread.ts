@@ -193,10 +193,13 @@ import {
   createComposerSignals,
   type ComposerSubmission,
 } from "../zero-page/composer-signals.ts";
+import type { ComposerFeedbackModel } from "../zero-page/chat-feedback.ts";
 import {
   openChatThreadGoalDialog$,
   pauseChatThreadGoal$,
 } from "./chat-goal.ts";
+import { createChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
+
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
 const L = logger("ChatThread");
@@ -4159,6 +4162,7 @@ interface ThreadRootComposerOptions {
   readonly threadId: string;
   readonly draft: DraftSignals;
   readonly chatEvents$: Computed<ChatEvent[]>;
+  readonly feedbackModel: ComposerFeedbackModel;
   readonly inlineTemplatesEnabled: boolean;
   readonly dataSource: ChatThreadRemote;
   readonly threadOwned: ReturnType<typeof createThreadOwnedSignals>;
@@ -4276,6 +4280,7 @@ function createThreadRootComposer(options: ThreadRootComposerOptions) {
     },
     chatEvents$: options.chatEvents$,
     threadId: options.threadId,
+    feedbackModel: options.feedbackModel,
     inlineTemplatesEnabled: options.inlineTemplatesEnabled,
     singleLineOnMobile: true,
     modelSelection$: composerModelSelection$,
@@ -4362,10 +4367,12 @@ export function createChatThreadSignals(
     selectedModel$: modelSelection.selectedModel$,
     sendMessage$: messageActions.sendMessage$,
   });
+  const feedback = createChatThreadFeedbackSignals(threadId);
   const rootComposer = createThreadRootComposer({
     threadId,
     draft,
     chatEvents$: events.chatEvents$,
+    feedbackModel: feedback.composer,
     inlineTemplatesEnabled: options.inlineTemplatesEnabled ?? false,
     dataSource,
     threadOwned,
@@ -4393,6 +4400,7 @@ export function createChatThreadSignals(
     ...container,
     draft,
     composer: rootComposer,
+    feedback: feedback.signals,
     ...threadOwned,
     sidebar: events.sidebar,
     queueDraftSync$,

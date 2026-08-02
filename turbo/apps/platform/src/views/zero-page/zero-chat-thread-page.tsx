@@ -3565,7 +3565,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
         </div>
       </div>
 
-      <ChatFeedbackSelection feedback={thread.composer.feedback} />
+      <ChatFeedbackSelection feedback={thread.feedback} />
     </>
   );
 }
