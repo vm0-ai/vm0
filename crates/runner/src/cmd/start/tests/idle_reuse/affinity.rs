@@ -103,30 +103,27 @@ async fn invalid_reserved_resume_session_fails_before_reuse() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = "thread:invalid-resume-reserved";
     let invalid_session_id = "../invalid-session";
-    let seeded_sandbox_id = seed_idle_pool(
-        &idle_pool,
-        &budget,
-        invalid_session_id,
-        "vm0/default",
-        2,
-        4096,
-    )
-    .await;
+    let seeded_sandbox_id =
+        seed_idle_pool(&idle_pool, &budget, reuse_key, "vm0/default", 2, 4096).await;
 
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
-    env.provider.set_claim_result(
-        run_id,
-        Some(context_with_session(run_id, invalid_session_id)),
-    );
+    let mut context = minimal_context(run_id);
+    context.reuse_key = Some(reuse_key.to_string());
+    context.resume_session = Some(crate::types::ResumeSession::inline(
+        invalid_session_id.to_string(),
+        String::new(),
+    ));
+    env.provider.set_claim_result(run_id, Some(context));
     env.handle
         .discover_tx
         .send(
             crate::provider::JobCandidate::new(run_id, "vm0/default".into())
                 .with_affinity_metadata(
-                    Some(invalid_session_id.to_string()),
+                    Some(reuse_key.to_string()),
                     Some(invalid_session_id.to_string()),
                     None,
                 ),
@@ -144,7 +141,7 @@ async fn invalid_reserved_resume_session_fails_before_reuse() {
     let error = completion.error.as_deref().expect("error should be set");
     assert!(error.contains("invalid session_id"));
     assert!(!error.contains(invalid_session_id));
-    wait_idle_pool_reuse_keys(&idle_pool, &[invalid_session_id], Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&idle_pool, &[reuse_key], Duration::from_secs(5)).await;
     assert_eq!(
         idle_pool.lock().await.status_snapshot().idle_vms[0].sandbox_id,
         seeded_sandbox_id,
@@ -162,14 +159,16 @@ async fn invalid_resume_session_fails_before_fresh_sandbox_creation() {
     let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
     let run_id = RunId::new_v4();
+    let reuse_key = "thread:invalid-resume-fresh";
     let invalid_session_id = "../invalid-fresh-session";
+    let mut context = minimal_context(run_id);
+    context.reuse_key = Some(reuse_key.to_string());
+    context.resume_session = Some(crate::types::ResumeSession::inline(
+        invalid_session_id.to_string(),
+        String::new(),
+    ));
 
-    push_job(
-        &env,
-        run_id,
-        "vm0/default",
-        Some(context_with_session(run_id, invalid_session_id)),
-    );
+    push_job(&env, run_id, "vm0/default", Some(context));
 
     let completion = env
         .handle
