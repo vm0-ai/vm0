@@ -6914,6 +6914,28 @@ async function loadUserTimezone(
   return row?.timezone ?? undefined;
 }
 
+async function resolvePreparedUserTimezone(input: {
+  readonly db: Db;
+  readonly args: CreateAgentRunArgs;
+  readonly timing: ApiDispatchTimingCollector;
+  readonly preloadedUserTimezone: string | null | undefined;
+}): Promise<string | undefined> {
+  return await input.timing.measure(
+    "api_dispatch_prepare_context_load_user_timezone",
+    "nested",
+    async () => {
+      if (input.preloadedUserTimezone !== undefined) {
+        return input.preloadedUserTimezone ?? undefined;
+      }
+      return await loadUserTimezone(input.db, input.args);
+    },
+    {
+      user_timezone_source:
+        input.preloadedUserTimezone === undefined ? "database" : "preloaded",
+    },
+  );
+}
+
 async function loadRunConnectorContexts(
   db: Db,
   args: {
@@ -7590,6 +7612,7 @@ function prepareRunContext(input: {
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
   readonly preloadedFeatureSwitchContext: FeatureSwitchContext | undefined;
+  readonly preloadedUserTimezone: string | null | undefined;
   readonly preloadedConnectorCatalogSnapshot:
     | ConnectorRuntimeSnapshot
     | undefined;
@@ -7664,13 +7687,7 @@ function prepareRunContext(input: {
         return validation;
       }
 
-      const userTimezone = await timing.measure(
-        "api_dispatch_prepare_context_load_user_timezone",
-        "nested",
-        async () => {
-          return await loadUserTimezone(db, args);
-        },
-      );
+      const userTimezone = await resolvePreparedUserTimezone(input);
       signal.throwIfAborted();
 
       const outputMetadata = await timing.measure(
@@ -8037,6 +8054,8 @@ interface PrepareAgentRunArgs {
   readonly timing: ApiDispatchTimingCollector;
   readonly checkOrgPlanStatusBeforeContext: boolean;
   readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
+  // Undefined means not preloaded; null is an authoritative missing value.
+  readonly preloadedUserTimezone?: string | null;
   readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
 }
 
@@ -8109,6 +8128,7 @@ export const prepareAgentRun$ = command(
             timing,
             signal,
             preloadedFeatureSwitchContext: input.preloadedFeatureSwitchContext,
+            preloadedUserTimezone: input.preloadedUserTimezone,
             preloadedConnectorCatalogSnapshot:
               input.preloadedConnectorCatalogSnapshot,
           }),

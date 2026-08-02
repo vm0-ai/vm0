@@ -1001,6 +1001,7 @@ const createAgentRunAfterZeroPreCreate$ = command(
           timing: input.timing,
           checkOrgPlanStatusBeforeContext: false,
           preloadedFeatureSwitchContext: input.featureSwitchContext,
+          preloadedUserTimezone: input.userInfo.timezone,
           preloadedConnectorCatalogSnapshot: input.connectorCatalogSnapshot,
         },
         signal,
