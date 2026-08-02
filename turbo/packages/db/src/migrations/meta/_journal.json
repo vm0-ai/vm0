@@ -5636,6 +5636,13 @@
       "when": 1785667649461,
       "tag": "0804_contract_runner_state_runtime_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 805,
+      "version": "7",
+      "when": 1785681651300,
+      "tag": "0805_contract_legacy_runner_session_state_persistence",
+      "breakpoints": true
     }
   ]
 }
