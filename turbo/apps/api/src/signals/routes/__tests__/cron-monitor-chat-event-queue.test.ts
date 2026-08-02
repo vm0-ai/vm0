@@ -88,7 +88,11 @@ describe("cron monitor chat event queue", () => {
 
     const response = await accept(
       stateClient().monitor({
-        body: { event_ids: fixtures.map((fixture) => fixture.eventId) },
+        body: {
+          event_ids: fixtures.map((fixture) => {
+            return fixture.eventId;
+          }),
+        },
       }),
       [200],
     );
