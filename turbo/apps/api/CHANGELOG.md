@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.364.5](https://github.com/vm0-ai/vm0/compare/api-v1.364.4...api-v1.364.5) (2026-08-01)
+
+
+### Refactoring
+
+* contract runner heartbeat persistence ([#24481](https://github.com/vm0-ai/vm0/issues/24481)) ([56a6cf6](https://github.com/vm0-ai/vm0/commit/56a6cf68172c246592a9726564a39954fa582b5b))
+* derive feishu tenant key at claim ([#24490](https://github.com/vm0-ai/vm0/issues/24490)) ([14e3023](https://github.com/vm0-ai/vm0/commit/14e3023bad0da131d12f0152449fec3e73d90bc9))
+* derive workflow automation launch context at claim ([#24494](https://github.com/vm0-ai/vm0/issues/24494)) ([459d15d](https://github.com/vm0-ai/vm0/commit/459d15d1949818ecb4862f96d3cff49762daa1dc))
+* drop feishu context tenant key ([#24493](https://github.com/vm0-ai/vm0/issues/24493)) ([9eb9173](https://github.com/vm0-ai/vm0/commit/9eb9173562b629769c73014ed51de4110c18b282))
+* dual-write workflow automation launch context ([#24487](https://github.com/vm0-ai/vm0/issues/24487)) ([e5d0bbc](https://github.com/vm0-ai/vm0/commit/e5d0bbc320c7af34bda83890de401043326a962e))
+* **runner:** decouple idle parking from cli session identity ([#24492](https://github.com/vm0-ai/vm0/issues/24492)) ([2cdd0f6](https://github.com/vm0-ai/vm0/commit/2cdd0f6f3024e6076c9493c6e034d3ea9e3ac163))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.3
+    * @vm0/connectors bumped to 1.202.5
+    * @vm0/core bumped to 8.502.3
+    * @vm0/db bumped to 1.160.7
+
 ## [1.364.4](https://github.com/vm0-ai/vm0/compare/api-v1.364.3...api-v1.364.4) (2026-08-01)
 
 
