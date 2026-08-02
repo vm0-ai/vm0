@@ -41,13 +41,13 @@ function reusableSandboxCondition(args: {
         'historyGenerationRunId', cast(${args.historyGenerationRunId} as text)
       )`
       : sql`jsonb_build_object('profile', cast(${args.profile} as text))`;
-  const heldSessionStates = sql`jsonb_build_array(
+  const heldSandboxStates = sql`jsonb_build_array(
     jsonb_build_object(
       'reuseKey', cast(${args.reuseKey} as text),
       'reusableSandbox', ${reusableSandbox}
     )
   )`;
-  return arrayContains(runnerState.heldSessionStates, heldSessionStates);
+  return arrayContains(runnerState.heldSandboxStates, heldSandboxStates);
 }
 
 function capableWorkspaceCondition(args: {

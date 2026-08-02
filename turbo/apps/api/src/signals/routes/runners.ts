@@ -439,10 +439,8 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage("Invalid runner group");
   }
 
-  // Old runners omit the exact field. #24489 removes this fallback after the
-  // #24486 runner rollout and rollback window complete.
   const heldSandboxStates = canonicalizeHeldSandboxStates(
-    body.data.heldSandboxStates ?? body.data.heldSessionStates,
+    body.data.heldSandboxStates,
   );
   const heldWorkspaceStates = canonicalizeHeldWorkspaceStates(
     body.data.heldWorkspaceStates,
@@ -469,7 +467,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       allocatedMemoryMb: body.data.allocatedMemoryMb,
       runningCount: body.data.runningCount,
       admittableProfiles,
-      heldSessionStates: heldSandboxStates,
+      heldSandboxStates,
       heldWorkspaceStates,
       mode: body.data.mode,
       lastSeenAt: currentDate,
@@ -488,7 +486,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         allocatedMemoryMb: body.data.allocatedMemoryMb,
         runningCount: body.data.runningCount,
         admittableProfiles,
-        heldSessionStates: heldSandboxStates,
+        heldSandboxStates,
         heldWorkspaceStates,
         mode: body.data.mode,
         lastSeenAt: currentDate,

@@ -297,10 +297,6 @@ export const heldSandboxStateSchema = z.object({
   }),
 });
 
-export const heldSessionStateSchema = heldSandboxStateSchema.extend({
-  sessionId: z.string(),
-});
-
 export const heldWorkspaceStateSchema = z.object({
   reuseKey: z.string(),
   lastCompletedAt: z.string().datetime({ offset: true }),
@@ -785,8 +781,7 @@ export const heartbeatBodySchema = z
     allocatedMemoryMb: z.number().int().nonnegative(),
     runningCount: z.number().int().nonnegative(),
     admittableProfiles: runnerProfileListSchema,
-    heldSandboxStates: z.array(heldSandboxStateSchema).max(1024).optional(),
-    heldSessionStates: z.array(heldSessionStateSchema).max(1024),
+    heldSandboxStates: z.array(heldSandboxStateSchema).max(1024),
     heldWorkspaceStates: z.array(heldWorkspaceStateSchema).max(1024),
     mode: z.enum(["starting", "running", "draining", "stopping"]),
   })
@@ -837,7 +832,6 @@ export type RunnersBuiltinFirewallsResolveContract =
   typeof runnersBuiltinFirewallsResolveContract;
 export type Job = z.infer<typeof jobSchema>;
 export type HeldSandboxState = z.infer<typeof heldSandboxStateSchema>;
-export type HeldSessionState = z.infer<typeof heldSessionStateSchema>;
 export type HeldWorkspaceState = z.infer<typeof heldWorkspaceStateSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<

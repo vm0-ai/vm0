@@ -3335,7 +3335,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       runnerId: randomUUID(),
       group: runnerGroup,
       admittableProfiles: [],
-      heldSessionStates: [],
     });
 
     const resumed = await api.createRun(actor, {
@@ -3460,7 +3459,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
               },
             ]
           : [],
-        heldSessionStates: [],
         heldWorkspaceStates: args.workspaceCaches
           ? [
               {
@@ -3529,7 +3527,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         allocatedVcpu: 0,
         allocatedMemoryMb: 0,
         runningCount: 0,
-        heldSessionStates: [],
         heldWorkspaceStates: [],
         mode: "running",
         ...extra,
@@ -3539,15 +3536,23 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const missingProfileListHeartbeat = await api.requestRawHeartbeatRunner(
       true,
       [400],
-      rawHeartbeatBody({}),
+      rawHeartbeatBody({ heldSandboxStates: [] }),
     );
     expectApiError(missingProfileListHeartbeat.body);
+
+    const missingSandboxStatesHeartbeat = await api.requestRawHeartbeatRunner(
+      true,
+      [400],
+      rawHeartbeatBody({ admittableProfiles: ["vm0/default"] }),
+    );
+    expectApiError(missingSandboxStatesHeartbeat.body);
 
     const canonicalHeartbeat = await api.requestRawHeartbeatRunner(
       true,
       [200],
       rawHeartbeatBody({
         admittableProfiles: ["vm0/default"],
+        heldSandboxStates: [],
       }),
     );
     expect(canonicalHeartbeat.body).toStrictEqual({
@@ -3559,6 +3564,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         [400],
         rawHeartbeatBody({
           admittableProfiles: ["vm0/default"],
+          heldSandboxStates: [],
           heldWorkspaceStates: [
             {
               reuseKey,
@@ -3588,27 +3594,32 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       sessionAffinityResource(canonicalHeartbeatHolder.job),
     ).toBeUndefined();
 
-    await api.requestHeartbeatRunner(true, [200], {
-      runnerId: affinityRunnerId,
-      group: runnerGroup,
-      snapshotGeneration: 1,
-      snapshotSequence: nextAffinitySnapshotSequence(),
-      admittableProfiles: [],
-      heldSandboxStates: [],
-      heldSessionStates: [
-        {
-          sessionId: cliAgentSessionId,
-          reuseKey,
-          lastCompletedAt: nowDate().toISOString(),
-          reusableSandbox: { profile: "vm0/default" },
-        },
-      ],
-    });
-    const currentEmptyWins = await pollFollowUp(
-      "ignore legacy state when current state is explicitly empty",
+    const dualFieldHeartbeat = await api.requestRawHeartbeatRunner(
+      true,
+      [200],
+      rawHeartbeatBody({
+        admittableProfiles: [],
+        heldSandboxStates: [],
+        heldSessionStates: [
+          {
+            sessionId: cliAgentSessionId,
+            reuseKey,
+            lastCompletedAt: nowDate().toISOString(),
+            reusableSandbox: { profile: "vm0/default" },
+          },
+        ],
+      }),
     );
-    expect(sessionAffinityProtectedUntil(currentEmptyWins.job)).toBeNull();
-    expect(sessionAffinityResource(currentEmptyWins.job)).toBeUndefined();
+    expect(dualFieldHeartbeat.body).toStrictEqual({ ok: true });
+    const ignoredLegacyProjection = await pollFollowUp(
+      "ignore the deployed runner's extra legacy projection",
+    );
+    expect(
+      sessionAffinityProtectedUntil(ignoredLegacyProjection.job),
+    ).toBeNull();
+    expect(
+      sessionAffinityResource(ignoredLegacyProjection.job),
+    ).toBeUndefined();
 
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: affinityRunnerId,
@@ -3616,7 +3627,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       snapshotGeneration: 1,
       snapshotSequence: nextAffinitySnapshotSequence(),
       admittableProfiles: ["vm0/default"],
-      heldSessionStates: [],
       heldWorkspaceStates: [
         {
           reuseKey,
@@ -3658,9 +3668,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       snapshotGeneration: 1,
       snapshotSequence: 1,
       admittableProfiles: [],
-      heldSessionStates: [
+      heldSandboxStates: [
         {
-          sessionId: cliAgentSessionId,
           reuseKey,
           lastCompletedAt: nowDate().toISOString(),
           reusableSandbox: { profile: "vm0/default" },
@@ -3686,7 +3695,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       snapshotGeneration: 1,
       snapshotSequence: 2,
       admittableProfiles: [],
-      heldSessionStates: [],
       mode: "stopping",
     });
 
@@ -4093,11 +4101,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         snapshotGeneration: args.generation,
         snapshotSequence: args.sequence,
         admittableProfiles: ["vm0/default"],
-        heldSessionStates:
+        heldSandboxStates:
           args.resource === "reusableSandbox"
             ? [
                 {
-                  sessionId: cliAgentSessionId,
                   reuseKey,
                   lastCompletedAt,
                   reusableSandbox: { profile: "vm0/default" },
@@ -4235,9 +4242,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       runnerId: affinityRunnerId,
       group: runnerGroup,
       admittableProfiles: [],
-      heldSessionStates: [
+      heldSandboxStates: [
         {
-          sessionId: cliAgentSessionId,
           reuseKey,
           lastCompletedAt: nowDate().toISOString(),
           reusableSandbox: {
@@ -4311,9 +4317,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       runnerId: affinityRunnerId,
       group: runnerGroup,
       admittableProfiles: [],
-      heldSessionStates: [
+      heldSandboxStates: [
         {
-          sessionId: cliAgentSessionId,
           reuseKey,
           lastCompletedAt: nowDate().toISOString(),
           reusableSandbox: { profile: "vm0/default" },
@@ -4397,7 +4402,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       runnerId: workspaceRunnerId,
       group: runnerGroup,
       admittableProfiles: ["vm0/default"],
-      heldSessionStates: [],
       heldWorkspaceStates: [
         {
           reuseKey,
