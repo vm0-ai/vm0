@@ -63,12 +63,14 @@ impl RunnerServiceUnit {
         Self::from_suffix(suffix).ok()
     }
 
-    /// Return the validated suffix without `vm0-runner-` or `.service`.
+    /// Return the validated suffix before adding the `vm0-runner-` prefix or
+    /// final `.service` extension.
     pub(crate) fn suffix(&self) -> &str {
         &self.suffix
     }
 
-    /// Return the unit name `vm0-runner-<suffix>`, without `.service`.
+    /// Return the unit name `vm0-runner-<suffix>`, before adding the final
+    /// `.service` extension.
     pub(crate) fn unit_name(&self) -> &str {
         &self.unit_name
     }
