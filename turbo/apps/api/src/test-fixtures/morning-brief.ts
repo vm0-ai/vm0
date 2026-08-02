@@ -7,10 +7,7 @@ import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../lib/db";
-import {
-  decryptQueuedUserMessageRunParams,
-  encryptQueuedUserMessageRunParams,
-} from "../signals/services/zero-chat-queued-event.service";
+import { decryptQueuedUserMessageRunParams } from "../signals/services/zero-chat-queued-event.service";
 import { insertChatEvent } from "../signals/services/zero-chat-event.service";
 import { touchChatThreadLastMessageAt } from "../signals/services/zero-chat-event-shared.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
@@ -92,28 +89,6 @@ export async function setMorningBriefTriggeredAtFixture(args: {
   }
 }
 
-export async function readMorningBriefQueuedParamsFixture(args: {
-  readonly messageId: string;
-  readonly orgId: string;
-  readonly userId: string;
-}) {
-  const [event] = await db()
-    .select({
-      encryptedParams: chatEventInputParams.encryptedParams,
-    })
-    .from(chatEvents)
-    .leftJoin(
-      chatEventInputParams,
-      eq(chatEventInputParams.eventId, chatEvents.id),
-    )
-    .where(eq(chatEvents.id, args.messageId))
-    .limit(1);
-  return await decryptQueuedUserMessageRunParams(
-    event?.encryptedParams ?? null,
-    { orgId: args.orgId, userId: args.userId },
-  );
-}
-
 /**
  * Appends a normal web user message without invoking a drain. Product sends
  * persist this same event before draining, but cannot pause at that boundary.
@@ -136,52 +111,6 @@ export async function insertQueuedWebUserMessageFixture(args: {
     });
     if (!inserted) {
       throw new Error("Expected the queued web user message fixture");
-    }
-    await touchChatThreadLastMessageAt(
-      tx,
-      args.threadId,
-      inserted.createdAt,
-      inserted.id,
-    );
-  });
-  return messageId;
-}
-
-/**
- * Inserts the pre-Morning-Brief-extension queued params shape. No product API
- * can create an integration queue item with a historical encrypted payload.
- */
-export async function insertOldFormatQueuedUserMessageFixture(args: {
-  readonly threadId: string;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly content: string;
-  readonly prompt: string;
-  readonly appendSystemPrompt: string;
-  readonly createdAt?: Date;
-}): Promise<string> {
-  const messageId = randomUUID();
-  const encryptedParams = await encryptQueuedUserMessageRunParams(
-    {
-      version: 1,
-      prompt: args.prompt,
-      appendSystemPrompt: args.appendSystemPrompt,
-    },
-    { orgId: args.orgId, userId: args.userId },
-  );
-  await db().transaction(async (tx) => {
-    const inserted = await insertChatEvent(tx, {
-      id: messageId,
-      chatThreadId: args.threadId,
-      eventType: "input.prompt",
-      userMessage: createUserMessageDocument({ text: args.content }),
-      runId: null,
-      triggerSource: "workflow-schedule",
-      encryptedParams,
-      ...(args.createdAt ? { createdAt: args.createdAt } : {}),
-    });
-    if (!inserted) {
-      throw new Error("Expected the old-format queued message fixture");
     }
     await touchChatThreadLastMessageAt(
       tx,

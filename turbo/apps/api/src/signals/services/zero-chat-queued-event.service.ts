@@ -87,14 +87,6 @@ const queuedUserMessageRunParamsSchema = z.object({
   prompt: z.string().optional(),
   appendSystemPrompt: z.string().optional(),
   telegramDelivery: telegramDeliveryTargetSchema.optional(),
-  morningBriefDelivery: z
-    .object({
-      deliveryId: z.string(),
-      internalKind: z.literal("morning-brief:email"),
-      secret: z.string(),
-      payload: z.unknown(),
-    })
-    .optional(),
   userInfoExtras: z
     .object({
       slackDisplayName: z.string().optional(),

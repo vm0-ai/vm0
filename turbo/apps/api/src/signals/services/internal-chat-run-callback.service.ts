@@ -2748,7 +2748,6 @@ function launchLoader<Material extends NativeQueuedLaunchMaterial>(
 
 async function resolveQueuedLaunchMaterial(
   args: CreateQueuedChatRunInputArgs,
-  sourceParams: QueuedSourceParams,
 ): Promise<QueuedLaunchMaterial | null> {
   const launchLoaders: Partial<Record<TriggerSource, LaunchLoader>> = {
     slack: launchLoader(loadSlackQueuedLaunchMaterial, (material) => {
@@ -2796,13 +2795,6 @@ async function resolveQueuedLaunchMaterial(
   if (material) {
     return material;
   }
-  if (
-    args.queuedMessage.triggerSource === "workflow-schedule" &&
-    sourceParams?.prompt !== undefined &&
-    sourceParams.appendSystemPrompt !== undefined
-  ) {
-    return null;
-  }
   throw new Error(
     `${args.queuedMessage.triggerSource} queue item is missing launch material`,
   );
@@ -2822,9 +2814,6 @@ function queuedIntegrationDeliveries(
   > = {
     telegram: (params) => {
       return { telegramDelivery: params?.telegramDelivery };
-    },
-    "workflow-schedule": (params) => {
-      return { morningBriefDelivery: params?.morningBriefDelivery };
     },
   };
   return (
@@ -2887,7 +2876,6 @@ function teamsQueuedMessageAdmissionFailure(
 
 function morningBriefQueuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
   launchMaterial: QueuedLaunchMaterial | null,
   error: QueuedMessageModelRouteError,
 ): MorningBriefQueuedMessageAdmissionFailure | null {
@@ -2898,9 +2886,7 @@ function morningBriefQueuedMessageAdmissionFailure(
     kind: "morning_brief_admission_failure",
     threadId: args.threadId,
     queuedMessage: args.queuedMessage,
-    morningBriefDelivery:
-      launchMaterial?.delivery.morningBriefDelivery ??
-      sourceParams?.morningBriefDelivery,
+    morningBriefDelivery: launchMaterial?.delivery.morningBriefDelivery,
     error,
   };
 }
@@ -3018,7 +3004,6 @@ function queuedMessageAdmissionFailure(
     "workflow-schedule": (resolverArgs) => {
       return morningBriefQueuedMessageAdmissionFailure(
         resolverArgs.args,
-        resolverArgs.sourceParams,
         resolverArgs.launchMaterial,
         resolverArgs.error,
       );
@@ -3029,18 +3014,10 @@ function queuedMessageAdmissionFailure(
 }
 
 function queuedMessagePrompt(args: {
-  readonly triggerSource: QueuedUserMessage["triggerSource"];
   readonly launchMaterial: QueuedLaunchMaterial | null;
-  readonly sourceParams: QueuedSourceParams;
   readonly projectedPrompt: string;
 }): string {
-  if (args.launchMaterial) {
-    return args.launchMaterial.prompt;
-  }
-  if (args.triggerSource === "workflow-schedule") {
-    return args.sourceParams?.prompt ?? args.projectedPrompt;
-  }
-  return args.projectedPrompt;
+  return args.launchMaterial?.prompt ?? args.projectedPrompt;
 }
 
 function queuedIntegrationPrompt(args: {
@@ -3086,7 +3063,7 @@ async function loadQueuedRunMaterial(args: CreateQueuedChatRunInputArgs) {
   if (args.queuedMessage.triggerSource !== "web" && !sourceParams) {
     throw new Error("Canonical integration queue item is missing run params");
   }
-  const launchMaterial = await resolveQueuedLaunchMaterial(args, sourceParams);
+  const launchMaterial = await resolveQueuedLaunchMaterial(args);
   return {
     sourceParams,
     launchMaterial,
@@ -3195,9 +3172,7 @@ async function buildCreateQueuedChatRunInput(
     },
   );
   const prompt = queuedMessagePrompt({
-    triggerSource: args.queuedMessage.triggerSource,
     launchMaterial,
-    sourceParams,
     projectedPrompt: userMessageProjection.agentPrompt,
   });
 
