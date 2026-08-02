@@ -3594,33 +3594,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       sessionAffinityResource(canonicalHeartbeatHolder.job),
     ).toBeUndefined();
 
-    const dualFieldHeartbeat = await api.requestRawHeartbeatRunner(
-      true,
-      [200],
-      rawHeartbeatBody({
-        admittableProfiles: [],
-        heldSandboxStates: [],
-        heldSessionStates: [
-          {
-            sessionId: cliAgentSessionId,
-            reuseKey,
-            lastCompletedAt: nowDate().toISOString(),
-            reusableSandbox: { profile: "vm0/default" },
-          },
-        ],
-      }),
-    );
-    expect(dualFieldHeartbeat.body).toStrictEqual({ ok: true });
-    const ignoredLegacyProjection = await pollFollowUp(
-      "ignore the deployed runner's extra legacy projection",
-    );
-    expect(
-      sessionAffinityProtectedUntil(ignoredLegacyProjection.job),
-    ).toBeNull();
-    expect(
-      sessionAffinityResource(ignoredLegacyProjection.job),
-    ).toBeUndefined();
-
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: affinityRunnerId,
       group: runnerGroup,

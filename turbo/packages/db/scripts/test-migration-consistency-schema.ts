@@ -11018,12 +11018,6 @@ function extractSchemaFromSnapshot(snapshotPath: string): {
   return { tables, columns };
 }
 
-// Migration 0800 retains this physical rollback column after the current
-// snapshot becomes canonical-only. #24512 removes the column and allowance.
-const TRANSITIONAL_LATEST_SNAPSHOT_COLUMNS = new Set([
-  "runner_state.held_session_states",
-]);
-
 function compareSchemas(
   dbSchema: { tables: Set<string>; columns: Map<string, Set<string>> },
   snapshotSchema: { tables: Set<string>; columns: Map<string, Set<string>> },
@@ -11063,10 +11057,7 @@ function compareSchemas(
     ).sort();
 
     const missingCols = dbCols.filter((column) => {
-      return (
-        !snapshotCols.includes(column) &&
-        !TRANSITIONAL_LATEST_SNAPSHOT_COLUMNS.has(`${tableName}.${column}`)
-      );
+      return !snapshotCols.includes(column);
     });
     const extraCols = snapshotCols.filter((c) => {
       return !dbCols.includes(c);
@@ -16330,14 +16321,18 @@ async function validateTimestampOrdering(): Promise<void> {
 const RUNNER_SANDBOX_STATE_PREVIOUS_MIGRATION = 799;
 const RUNNER_SANDBOX_STATE_EXPANSION_MIGRATION = 800;
 const RUNNER_SANDBOX_STATE_RUNTIME_SCHEMA_MIGRATION = 804;
+const RUNNER_SANDBOX_STATE_CONTRACTION_MIGRATION = 805;
 
-async function validateRunnerSandboxStateExpansion(): Promise<void> {
-  console.log("=== Validate runner sandbox state persistence expansion ===\n");
-  const testDb = "migration_runner_sandbox_state_expansion_test";
+async function validateRunnerSandboxStatePersistence(): Promise<void> {
+  console.log("=== Validate runner sandbox state persistence ===\n");
+  const testDb = "migration_runner_sandbox_state_persistence_test";
+  const divergenceDb = "migration_runner_sandbox_state_divergence_test";
   const testDbUrl = createTestDbUrl(testDb);
+  const divergenceDbUrl = createTestDbUrl(divergenceDb);
   const runnerIds = {
     conflict: "98000000-0000-4000-8000-000000000003",
     current: "98000000-0000-4000-8000-000000000001",
+    divergent: "98000000-0000-4000-8000-000000000005",
     legacyAfterExpansion: "98000000-0000-4000-8000-000000000004",
     next: "98000000-0000-4000-8000-000000000002",
   } as const;
@@ -16566,6 +16561,32 @@ async function validateRunnerSandboxStateExpansion(): Promise<void> {
             SELECT
               "held_sandbox_states" AS "canonical",
               "held_session_states" AS "legacy",
+              "heartbeat_generation"::text AS "generation",
+              "heartbeat_sequence"::text AS "sequence"
+            FROM "runner_state"
+            WHERE "runner_id" = $1
+          `,
+          [runnerId],
+        );
+        assert.equal(result.rows.length, 1);
+        const row = result.rows[0];
+        assert.ok(row);
+        return row;
+      }
+
+      async function readCanonicalRunnerState(runnerId: string): Promise<{
+        readonly canonical: RunnerHeldSandboxStates;
+        readonly generation: string;
+        readonly sequence: string;
+      }> {
+        const result = await client.query<{
+          canonical: RunnerHeldSandboxStates;
+          generation: string;
+          sequence: string;
+        }>(
+          `
+            SELECT
+              "held_sandbox_states" AS "canonical",
               "heartbeat_generation"::text AS "generation",
               "heartbeat_sequence"::text AS "sequence"
             FROM "runner_state"
@@ -16928,6 +16949,104 @@ async function validateRunnerSandboxStateExpansion(): Promise<void> {
         WHERE "held_sandbox_states" IS DISTINCT FROM "held_session_states"
       `);
       assert.deepEqual(divergentRows.rows, [{ count: "0" }]);
+
+      const blocker = new Client({ connectionString: testDbUrl });
+      await blocker.connect();
+      let blockerOpen = false;
+      try {
+        await blocker.query("BEGIN");
+        blockerOpen = true;
+        await blocker.query(`LOCK TABLE "runner_state" IN ACCESS SHARE MODE`);
+
+        try {
+          await applyMigrationsUpToInTransaction(
+            client,
+            RUNNER_SANDBOX_STATE_CONTRACTION_MIGRATION,
+          );
+          assert.fail(
+            "Runner sandbox state contraction waited for a table lock",
+          );
+        } catch (error) {
+          assert.equal(databaseErrorCode(error), "55P03");
+        }
+
+        await blocker.query("ROLLBACK");
+        blockerOpen = false;
+
+        await applyMigrationsUpToInTransaction(
+          client,
+          RUNNER_SANDBOX_STATE_CONTRACTION_MIGRATION,
+        );
+      } finally {
+        if (blockerOpen) {
+          await blocker.query("ROLLBACK");
+        }
+        await blocker.end();
+      }
+
+      const contractedSchema = await client.query<{
+        bridgeFunction: boolean;
+        bridgeTrigger: boolean;
+        canonicalColumn: boolean;
+        equalityConstraint: boolean;
+        legacyColumn: boolean;
+      }>(`
+        SELECT
+          EXISTS (
+            SELECT 1
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'runner_state'
+              AND "column_name" = 'held_sandbox_states'
+          ) AS "canonicalColumn",
+          EXISTS (
+            SELECT 1
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'runner_state'
+              AND "column_name" = 'held_session_states'
+          ) AS "legacyColumn",
+          EXISTS (
+            SELECT 1
+            FROM "pg_proc"
+            WHERE "pronamespace" = 'public'::regnamespace
+              AND "proname" = 'bridge_runner_state_sandbox_states_0800'
+          ) AS "bridgeFunction",
+          EXISTS (
+            SELECT 1
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'runner_state'::regclass
+              AND "tgname" = 'bridge_runner_state_sandbox_states_0800'
+              AND NOT "tgisinternal"
+          ) AS "bridgeTrigger",
+          EXISTS (
+            SELECT 1
+            FROM "pg_constraint"
+            WHERE "conrelid" = 'runner_state'::regclass
+              AND "conname" = 'chk_runner_state_held_sandbox_states_match'
+          ) AS "equalityConstraint"
+      `);
+      assert.deepEqual(contractedSchema.rows, [
+        {
+          bridgeFunction: false,
+          bridgeTrigger: false,
+          canonicalColumn: true,
+          equalityConstraint: false,
+          legacyColumn: false,
+        },
+      ]);
+
+      await writeCanonicalHeartbeat({
+        generation: 4,
+        runnerId: runnerIds.next,
+        sequence: 1,
+        states: states.canonicalUpdate,
+      });
+      assert.deepEqual(await readCanonicalRunnerState(runnerIds.next), {
+        canonical: states.canonicalUpdate,
+        generation: "4",
+        sequence: "1",
+      });
     } finally {
       await client.end();
     }
@@ -16935,8 +17054,158 @@ async function validateRunnerSandboxStateExpansion(): Promise<void> {
     await dropDatabase(testDb);
   }
 
+  await createDatabase(divergenceDb);
+  try {
+    await runMigrationsUpTo(
+      divergenceDbUrl,
+      RUNNER_SANDBOX_STATE_RUNTIME_SCHEMA_MIGRATION,
+    );
+    const client = new Client({ connectionString: divergenceDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "runner_state" (
+            "runner_id",
+            "runner_name",
+            "runner_group",
+            "held_sandbox_states",
+            "last_seen_at"
+          )
+          VALUES ($1, 'divergent-runner', 'default', $2::jsonb, NOW())
+        `,
+        [runnerIds.divergent, JSON.stringify(states.canonicalUpdate)],
+      );
+      await client.query(
+        `ALTER TABLE "runner_state" DROP CONSTRAINT "chk_runner_state_held_sandbox_states_match"`,
+      );
+      await client.query(
+        `ALTER TABLE "runner_state" DISABLE TRIGGER "bridge_runner_state_sandbox_states_0800"`,
+      );
+      await client.query(
+        `UPDATE "runner_state" SET "held_session_states" = $2::jsonb WHERE "runner_id" = $1`,
+        [runnerIds.divergent, JSON.stringify(states.conflict)],
+      );
+
+      const divergentState = await client.query<{
+        canonical: RunnerHeldSandboxStates;
+        legacy: RunnerHeldSandboxStates;
+      }>(
+        `
+          SELECT
+            "held_sandbox_states" AS "canonical",
+            "held_session_states" AS "legacy"
+          FROM "runner_state"
+          WHERE "runner_id" = $1
+        `,
+        [runnerIds.divergent],
+      );
+      assert.deepEqual(divergentState.rows, [
+        {
+          canonical: states.canonicalUpdate,
+          legacy: states.conflict,
+        },
+      ]);
+
+      try {
+        await applyMigrationsUpToInTransaction(
+          client,
+          RUNNER_SANDBOX_STATE_CONTRACTION_MIGRATION,
+        );
+        assert.fail("Runner sandbox state contraction accepted divergent rows");
+      } catch (error) {
+        assert.equal(databaseErrorCode(error), "P0001");
+        assert.ok(error instanceof Error);
+        assert.ok(
+          error.message.includes(
+            "Cannot contract runner sandbox state persistence: bridge values diverge",
+          ),
+        );
+      }
+
+      const retainedAfterFailure = await client.query<{
+        bridgeFunction: boolean;
+        bridgeTrigger: boolean;
+        canonicalColumn: boolean;
+        equalityConstraint: boolean;
+        legacyColumn: boolean;
+        triggerEnabled: string | null;
+      }>(`
+        SELECT
+          EXISTS (
+            SELECT 1
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'runner_state'
+              AND "column_name" = 'held_sandbox_states'
+          ) AS "canonicalColumn",
+          EXISTS (
+            SELECT 1
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'runner_state'
+              AND "column_name" = 'held_session_states'
+          ) AS "legacyColumn",
+          EXISTS (
+            SELECT 1
+            FROM "pg_proc"
+            WHERE "pronamespace" = 'public'::regnamespace
+              AND "proname" = 'bridge_runner_state_sandbox_states_0800'
+          ) AS "bridgeFunction",
+          EXISTS (
+            SELECT 1
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'runner_state'::regclass
+              AND "tgname" = 'bridge_runner_state_sandbox_states_0800'
+              AND NOT "tgisinternal"
+          ) AS "bridgeTrigger",
+          EXISTS (
+            SELECT 1
+            FROM "pg_constraint"
+            WHERE "conrelid" = 'runner_state'::regclass
+              AND "conname" = 'chk_runner_state_held_sandbox_states_match'
+          ) AS "equalityConstraint",
+          (
+            SELECT "tgenabled"
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'runner_state'::regclass
+              AND "tgname" = 'bridge_runner_state_sandbox_states_0800'
+              AND NOT "tgisinternal"
+          ) AS "triggerEnabled"
+      `);
+      assert.deepEqual(retainedAfterFailure.rows, [
+        {
+          bridgeFunction: true,
+          bridgeTrigger: true,
+          canonicalColumn: true,
+          equalityConstraint: false,
+          legacyColumn: true,
+          triggerEnabled: "D",
+        },
+      ]);
+      const preservedDivergence = await client.query<{
+        canonical: RunnerHeldSandboxStates;
+        legacy: RunnerHeldSandboxStates;
+      }>(
+        `
+          SELECT
+            "held_sandbox_states" AS "canonical",
+            "held_session_states" AS "legacy"
+          FROM "runner_state"
+          WHERE "runner_id" = $1
+        `,
+        [runnerIds.divergent],
+      );
+      assert.deepEqual(preservedDivergence.rows, divergentState.rows);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(divergenceDb);
+  }
+
   console.log(
-    "   ✅ Legacy and canonical heartbeat writers preserve ordered, synchronized sandbox state across migration 0800\n",
+    "   ✅ Runner sandbox state expands compatibly and contracts atomically after migration 0804\n",
   );
 }
 
@@ -16981,17 +17250,6 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
       `${String(latestIdx).padStart(4, "0")}_snapshot.json`,
     );
     const snapshotSchema = extractSchemaFromSnapshot(snapshotPath);
-
-    // Keep this exact transition directional: migrations retain the rollback
-    // column while current metadata omits it. #24512 removes these assertions.
-    assert.equal(
-      dbSchema.columns.get("runner_state")?.has("held_session_states"),
-      true,
-    );
-    assert.equal(
-      snapshotSchema.columns.get("runner_state")?.has("held_session_states"),
-      false,
-    );
 
     // Compare
     const { matches, differences } = compareSchemas(
@@ -17102,7 +17360,7 @@ async function main(): Promise<void> {
     await validateHostedSiteChatScopeRollout();
     await validateCurrentBrowserApiBeforeBillingMigration();
     await validateBrowserUsageCompatibilityContraction();
-    await validateRunnerSandboxStateExpansion();
+    await validateRunnerSandboxStatePersistence();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

@@ -581,7 +581,7 @@ describe("runner resume session contract", () => {
     ).toBe(false);
   });
 
-  it("requires canonical heartbeat state and strips the legacy projection", () => {
+  it("requires canonical heartbeat state", () => {
     const heartbeat = {
       runnerId: "33333333-3333-4333-8333-333333333333",
       runnerName: "runner-contract-test",
@@ -604,7 +604,6 @@ describe("runner resume session contract", () => {
       heartbeatBodySchema.safeParse({
         ...heartbeat,
         heldSandboxStates: undefined,
-        heldSessionStates: [],
       }).success,
     ).toBe(false);
 
@@ -617,18 +616,9 @@ describe("runner resume session contract", () => {
           reusableSandbox: { profile: "vm0/default" },
         },
       ],
-      heldSessionStates: [
-        {
-          sessionId: "legacy-session",
-          reuseKey: "thread:legacy",
-          lastCompletedAt: "2026-07-15T00:00:00.000Z",
-          reusableSandbox: { profile: "vm0/default" },
-        },
-      ],
     });
     expect(parsed.heldSandboxStates).toHaveLength(1);
     expect(parsed.heldSandboxStates[0]?.reuseKey).toBe("thread:canonical");
-    expect(parsed).not.toHaveProperty("heldSessionStates");
   });
 
   it("bounds profile-qualified workspace cache heartbeat state", () => {
