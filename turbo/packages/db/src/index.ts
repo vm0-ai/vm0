@@ -20,6 +20,7 @@ import * as chatEventInputParamsSchema from "./schema/chat-event-input-params";
 import * as chatFeishuContextSchema from "./schema/chat-feishu-context";
 import * as chatGithubContextSchema from "./schema/chat-github-context";
 import * as chatGoalContextSchema from "./schema/chat-goal-context";
+import * as chatMorningBriefContextSchema from "./schema/chat-morning-brief-context";
 import * as chatSlackContextSchema from "./schema/chat-slack-context";
 import * as chatTeamsContextSchema from "./schema/chat-teams-context";
 import * as chatTelegramContextSchema from "./schema/chat-telegram-context";
@@ -145,6 +146,7 @@ export const schema = {
   ...chatFeishuContextSchema,
   ...chatGithubContextSchema,
   ...chatGoalContextSchema,
+  ...chatMorningBriefContextSchema,
   ...chatSlackContextSchema,
   ...chatTeamsContextSchema,
   ...chatTelegramContextSchema,

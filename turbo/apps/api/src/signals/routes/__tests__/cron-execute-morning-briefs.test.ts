@@ -43,6 +43,7 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   holdOrgAdmissionLockFixture,
   readChatEventInputParamsFixture,
+  readChatEventContextFixture,
 } from "../../../test-fixtures/chat-events";
 import {
   insertOldFormatQueuedUserMessageFixture,
@@ -1360,6 +1361,15 @@ describe("cron execute morning briefs", () => {
     if (!strandedEvent) {
       throw new Error("Expected the pending Morning Brief queue event");
     }
+    await expect(
+      readChatEventContextFixture(strandedEvent.id),
+    ).resolves.toMatchObject({
+      contextType: "morning_brief",
+      contextId: strandedEvent.id,
+      morningBriefDeliveryId: delivery.id,
+      morningBriefTimezone: TIMEZONE,
+      morningBriefTriggeredAt: new Date(AFTER_SEVEN_LOCAL),
+    });
     await expect(
       readChatEventInputParamsFixture(strandedEvent.id),
     ).resolves.toMatchObject({
