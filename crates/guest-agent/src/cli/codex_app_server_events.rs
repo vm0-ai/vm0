@@ -18,8 +18,9 @@
 //! captured separately as first-output timing metadata. Other item starts are
 //! ignored. Completed items with known types receive strict, type-specific
 //! normalization. Unknown completed types use a bounded, shallow, and lossy
-//! projection: names become snake case, scalar data is retained, nested data is
-//! dropped, and collections beyond fixed limits are omitted.
+//! projection: names become snake case, scalar values and scalar members of
+//! shallow collections are retained, deeper collections are dropped, and
+//! collections beyond fixed limits are omitted.
 //!
 //! Statuses, file-change patch kinds, and error fields are normalized into the
 //! legacy JSONL and failure-diagnostic shapes rather than preserving their raw
