@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import {
-  findChatEventByPromptFixture,
+  findAgentphoneChatEventByPromptFixture,
   readChatEventContextFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -313,7 +313,8 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     await waitForTyping(sends, [conversationId]);
 
-    const admitted = await findChatEventByPromptFixture("summarize my inbox");
+    const admitted =
+      await findAgentphoneChatEventByPromptFixture("summarize my inbox");
     expect(admitted).toMatchObject({ eventId: expect.any(String) });
     if (!admitted) {
       throw new Error("Expected admitted AgentPhone input event");
@@ -494,7 +495,8 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       from: phone,
       body: "start on my phone",
     });
-    const admittedSms = await findChatEventByPromptFixture("start on my phone");
+    const admittedSms =
+      await findAgentphoneChatEventByPromptFixture("start on my phone");
     if (!admittedSms) {
       throw new Error("Expected admitted AgentPhone SMS input event");
     }
@@ -858,7 +860,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         },
       ],
     });
-    const admittedGroup = await findChatEventByPromptFixture(
+    const admittedGroup = await findAgentphoneChatEventByPromptFixture(
       "summarize this thread",
     );
     expect(admittedGroup).toMatchObject({ eventId: expect.any(String) });

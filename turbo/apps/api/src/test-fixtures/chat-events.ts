@@ -678,20 +678,25 @@ export async function clearGitHubTriggerCommentBodyFixture(
     .where(eq(chatGithubContext.id, event.contextId));
 }
 
-interface ChatEventByPromptFixture {
+interface AgentphoneChatEventByPromptFixture {
   readonly eventId: string;
 }
 
-export async function findChatEventByPromptFixture(
+export async function findAgentphoneChatEventByPromptFixture(
   prompt: string,
-): Promise<ChatEventByPromptFixture | null> {
+): Promise<AgentphoneChatEventByPromptFixture | null> {
   const rows = await db()
     .select({
       eventId: chatEvents.id,
       userMessage: chatEvents.userMessage,
     })
     .from(chatEvents)
-    .where(eq(chatEvents.eventType, "input.prompt"));
+    .where(
+      and(
+        eq(chatEvents.eventType, "input.prompt"),
+        eq(chatEvents.triggerSource, "agentphone"),
+      ),
+    );
   const row = rows.find((candidate) => {
     return candidate.userMessage?.parts.some((part) => {
       return part.type === "text" && part.text === prompt;
