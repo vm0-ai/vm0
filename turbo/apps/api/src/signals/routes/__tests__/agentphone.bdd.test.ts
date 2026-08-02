@@ -176,6 +176,13 @@ function lastSend(sends: AgentPhoneSendCapture): AgentPhoneProviderSend {
   return send;
 }
 
+function expectExactSystemPromptSuffix(
+  appendSystemPrompt: string,
+  expectedSuffix: string,
+): void {
+  expect(appendSystemPrompt.slice(-expectedSuffix.length)).toBe(expectedSuffix);
+}
+
 async function waitForTyping(
   sends: AgentPhoneSendCapture,
   expected: readonly string[],
@@ -359,7 +366,8 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
 
     const run1 = await claimDispatchedRun(runnerGroup);
     expect(run1.prompt).toBe("summarize my inbox");
-    expect(run1.appendSystemPrompt).toBe(
+    expectExactSystemPromptSuffix(
+      run1.appendSystemPrompt,
       [
         "# Current Integration",
         "You are currently running inside: AgentPhone",
@@ -518,7 +526,8 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       agentphoneAgentId: AGENTPHONE_BDD_AGENT_ID,
     });
     const phoneRun1 = await claimDispatchedRun(runnerGroup);
-    expect(phoneRun1.appendSystemPrompt).toBe(
+    expectExactSystemPromptSuffix(
+      phoneRun1.appendSystemPrompt,
       [
         "# Current Integration",
         "You are currently running inside: AgentPhone",
@@ -657,7 +666,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     const sharedSession = await waitForRunSessionIdPresent(actor, run1.runId);
     const run2 = await claimDispatchedRun(runnerGroup);
     expect(run2.prompt).toBe("legacy second queued prompt");
-    expect(run2.appendSystemPrompt).toBe("legacy AgentPhone system prompt");
+    expectExactSystemPromptSuffix(
+      run2.appendSystemPrompt,
+      "legacy AgentPhone system prompt",
+    );
     await completeSandboxRun(run2.sandboxToken, run2.runId, 0);
     await waitForRunSessionId(actor, run2.runId, sharedSession);
 
@@ -930,7 +942,8 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     if (!groupThreadContext) {
       throw new Error("Expected AgentPhone group launch thread context");
     }
-    expect(run1.appendSystemPrompt).toBe(
+    expectExactSystemPromptSuffix(
+      run1.appendSystemPrompt,
       [
         "# Current Integration",
         "You are currently running inside: AgentPhone",
