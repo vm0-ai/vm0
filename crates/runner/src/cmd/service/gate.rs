@@ -406,7 +406,7 @@ mod tests {
                 }
             ],
             "idle_vms": [
-                {"session_id":"sess-1","sandbox_id":"bbbbbbbb-0000-7000-8000-000000000001"}
+                {"reuse_key":"sess-1","sandbox_id":"bbbbbbbb-0000-7000-8000-000000000001"}
             ],
             "proxy_port": 8080,
             "dns_port": 5300,

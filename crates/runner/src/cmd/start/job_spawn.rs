@@ -1095,26 +1095,26 @@ mod tests {
         );
     }
 
-    async fn status_idle_sessions_and_active_runs(
+    async fn status_idle_reuse_keys_and_active_runs(
         status_path: &std::path::Path,
     ) -> (Vec<String>, Vec<String>) {
         let raw = tokio::fs::read_to_string(status_path).await.unwrap();
         let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        let mut sessions: Vec<String> = status
+        let mut reuse_keys: Vec<String> = status
             .get("idle_vms")
             .and_then(|v| v.as_array())
             .map(|idle_vms| {
                 idle_vms
                     .iter()
                     .filter_map(|vm| {
-                        vm.get("session_id")
-                            .and_then(|session| session.as_str())
+                        vm.get("reuse_key")
+                            .and_then(|reuse_key| reuse_key.as_str())
                             .map(str::to_string)
                     })
                     .collect()
             })
             .unwrap_or_default();
-        sessions.sort_unstable();
+        reuse_keys.sort_unstable();
         let mut run_ids: Vec<String> = status["active_runs"]
             .as_array()
             .unwrap()
@@ -1126,7 +1126,7 @@ mod tests {
             })
             .collect();
         run_ids.sort_unstable();
-        (sessions, run_ids)
+        (reuse_keys, run_ids)
     }
     async fn status_active_run_records(status_path: &std::path::Path) -> Vec<(String, String)> {
         let raw = tokio::fs::read_to_string(status_path).await.unwrap();
@@ -1225,8 +1225,8 @@ mod tests {
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
         assert!(!fixture.tokens.contains(run_id).await);
-        let (_idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&fixture.status_path).await;
+        let (_idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&fixture.status_path).await;
         assert!(active_runs.is_empty());
         assert_eq!(fixture.orphans.len(), 0);
     }
@@ -1242,8 +1242,8 @@ mod tests {
             .await;
 
         assert!(!fixture.tokens.contains(run_id).await);
-        let (_idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&fixture.status_path).await;
+        let (_idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&fixture.status_path).await;
         assert_eq!(active_runs, vec![run_id.to_string()]);
         assert_eq!(fixture.orphans.len(), 1);
     }
@@ -1260,8 +1260,8 @@ mod tests {
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
         assert!(!fixture.tokens.contains(run_id).await);
-        let (_idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&fixture.status_path).await;
+        let (_idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&fixture.status_path).await;
         assert!(active_runs.is_empty());
         assert_eq!(fixture.orphans.len(), 0);
     }
@@ -1323,9 +1323,9 @@ mod tests {
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
         assert!(!fixture.tokens.contains(run_id).await);
-        let (idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&fixture.status_path).await;
-        assert_eq!(idle_sessions, vec!["sess-idle-owned-cleanup"]);
+        let (idle_reuse_keys, active_runs) =
+            status_idle_reuse_keys_and_active_runs(&fixture.status_path).await;
+        assert_eq!(idle_reuse_keys, vec!["sess-idle-owned-cleanup"]);
         assert!(active_runs.is_empty());
         assert_eq!(fixture.orphans.len(), 0);
     }

@@ -226,7 +226,6 @@ mod tests {
     #[tokio::test]
     async fn destroy_idle_jobs_and_wait_reports_workspace_cache_promotion() {
         let fixture = WorkspacePromotionFixture::new("thread:idle-destroy-cache").await;
-        let provider_session_id = "sess-idle-destroy-cache";
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
         add_healthy_reuse_preparation_matcher(&overrides);
         let factory: Arc<Box<dyn SandboxFactory>> =
@@ -250,7 +249,6 @@ mod tests {
             sandbox,
             factory,
             reuse_key: fixture.reuse_key.clone(),
-            cli_agent_session_id: Some(provider_session_id.into()),
             sandbox_id: fixture.sandbox_id,
             profile_name: "vm0/default".into(),
             device_rate_limits: None,

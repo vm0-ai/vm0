@@ -3,7 +3,7 @@ use super::super::support::{
     WorkspacePromotionSeedSpec, context_with_session, mock_run_config,
     mock_run_config_with_overrides, push_job, seed_idle_pool,
     seed_idle_pool_with_workspace_promotion, shutdown, test_profiles, wait_budget_count,
-    wait_discover_entered, wait_idle_pool_reuse_keys, wait_idle_pool_session_states,
+    wait_discover_entered, wait_idle_pool_reuse_keys,
 };
 
 use crate::paths::RunnerPaths;
@@ -329,7 +329,7 @@ async fn reuse_take_preserves_cached_workspace_snapshot_state() {
         .await
         .expect("job should complete");
     assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
-    wait_idle_pool_session_states(&idle_pool, &["sess-refresh"], Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&idle_pool, &["sess-refresh"], Duration::from_secs(5)).await;
 
     shutdown(&env, run_handle).await;
 }

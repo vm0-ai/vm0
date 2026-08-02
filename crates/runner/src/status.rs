@@ -56,13 +56,8 @@ struct ActiveRunState {
 }
 
 /// One parked sandbox's reuse identity and Firecracker sandbox identity.
-///
-/// The serialized `session_id` name is retained only so old runner tooling can
-/// read status written during the #24486 rollout. Current ownership is keyed by
-/// `reuse_key`; #24489 removes the compatibility wire name after rollout.
 #[derive(Debug, Clone, Serialize)]
 pub struct IdleVm {
-    #[serde(rename = "session_id")]
     pub reuse_key: String,
     pub sandbox_id: SandboxId,
 }
@@ -863,9 +858,9 @@ mod tests {
         let status = read_status(&path);
         let vms = status["idle_vms"].as_array().unwrap();
         assert_eq!(vms.len(), 2);
-        assert_eq!(vms[0]["session_id"], "sess-1");
+        assert_eq!(vms[0]["reuse_key"], "sess-1");
         assert_eq!(vms[0]["sandbox_id"], sb1.to_string());
-        assert_eq!(vms[1]["session_id"], "sess-2");
+        assert_eq!(vms[1]["reuse_key"], "sess-2");
         assert_eq!(vms[1]["sandbox_id"], sb2.to_string());
     }
 
@@ -904,7 +899,7 @@ mod tests {
         let status = read_status(&path);
         let vms = status["idle_vms"].as_array().unwrap();
         assert_eq!(vms.len(), 1);
-        assert_eq!(vms[0]["session_id"], "fresh");
+        assert_eq!(vms[0]["reuse_key"], "fresh");
         assert_eq!(vms[0]["sandbox_id"], fresh_id.to_string());
     }
 
@@ -956,7 +951,7 @@ mod tests {
         let status = read_status(&path);
         let vms = status["idle_vms"].as_array().unwrap();
         assert_eq!(vms.len(), 1);
-        assert_eq!(vms[0]["session_id"], "sess-replaced");
+        assert_eq!(vms[0]["reuse_key"], "sess-replaced");
         assert_eq!(vms[0]["sandbox_id"], replacement_id.to_string());
     }
 
@@ -1004,7 +999,7 @@ mod tests {
         assert_eq!(runs[0]["phase"], "running");
         let vms = status["idle_vms"].as_array().unwrap();
         assert_eq!(vms.len(), 1);
-        assert_eq!(vms[0]["session_id"], "fresh");
+        assert_eq!(vms[0]["reuse_key"], "fresh");
         assert_eq!(vms[0]["sandbox_id"], idle_id.to_string());
     }
 
@@ -1040,7 +1035,7 @@ mod tests {
         assert_eq!(runs[0]["phase"], "preparing");
         let vms = status["idle_vms"].as_array().unwrap();
         assert_eq!(vms.len(), 1);
-        assert_eq!(vms[0]["session_id"], "fresh-create-after-reuse-miss");
+        assert_eq!(vms[0]["reuse_key"], "fresh-create-after-reuse-miss");
         assert_eq!(vms[0]["sandbox_id"], idle_id.to_string());
     }
 

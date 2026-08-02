@@ -520,15 +520,15 @@ mod tests {
                     idle_vms
                         .iter()
                         .map(|vm| {
-                            let session_id = vm
-                                .get("session_id")
-                                .and_then(|session| session.as_str())
-                                .expect("idle VM must include session_id");
+                            let reuse_key = vm
+                                .get("reuse_key")
+                                .and_then(|reuse_key| reuse_key.as_str())
+                                .expect("idle VM must include reuse_key");
                             let sandbox_id = vm
                                 .get("sandbox_id")
                                 .and_then(|sandbox| sandbox.as_str())
                                 .expect("idle VM must include sandbox_id");
-                            (session_id.to_string(), sandbox_id.to_string())
+                            (reuse_key.to_string(), sandbox_id.to_string())
                         })
                         .collect()
                 })

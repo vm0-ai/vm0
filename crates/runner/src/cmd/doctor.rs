@@ -1472,7 +1472,7 @@ mod tests {
             r#"{
                 "mode":"running",
                 "started_at":"2026-01-01T00:00:00.000Z",
-                "idle_vms":[{"session_id":"session-a"}]
+                "idle_vms":[{"reuse_key":"session-a"}]
             }"#,
         )
         .unwrap();
@@ -2123,7 +2123,7 @@ mod tests {
                 "max_concurrent": 4,
                 "active_runs": [],
                 "idle_vms": [
-                    {"session_id": "sess-1", "sandbox_id": "S1"}
+                    {"reuse_key": "sess-1", "sandbox_id": "S1"}
                 ],
                 "started_at": "2026-01-01T00:00:00.000Z",
                 "updated_at": "2026-01-01T00:00:00.000Z"
