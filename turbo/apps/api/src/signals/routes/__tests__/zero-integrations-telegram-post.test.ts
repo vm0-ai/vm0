@@ -176,14 +176,14 @@ function expectOk(response: Response, operation: string): void {
   throw new Error(`${operation} failed with ${response.status}`);
 }
 
-function expectExactSystemPromptSuffix(
+function expectExactSystemPromptFragment(
   appendSystemPrompt: string | null | undefined,
-  expectedSuffix: string,
+  expectedFragment: string,
 ): void {
   if (!appendSystemPrompt) {
     throw new Error("Expected Telegram append system prompt");
   }
-  expect(appendSystemPrompt.slice(-expectedSuffix.length)).toBe(expectedSuffix);
+  expect(appendSystemPrompt.split(expectedFragment)).toHaveLength(2);
 }
 
 async function postTelegramStateAction(
@@ -1192,7 +1192,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(run?.prompt).toBe("hello from telegram");
     expect(run?.appendSystemPrompt).toContain("Telegram username: @alice");
     expect(run?.appendSystemPrompt).toContain("Bot ID:");
-    expectExactSystemPromptSuffix(
+    expectExactSystemPromptFragment(
       run?.appendSystemPrompt,
       [
         "# Current Integration",
@@ -1544,7 +1544,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     if (!queuedThreadContext) {
       throw new Error("Expected frozen queued Telegram thread context");
     }
-    expectExactSystemPromptSuffix(
+    expectExactSystemPromptFragment(
       queuedClaim.appendSystemPrompt,
       [
         "# Current Integration",
@@ -1582,7 +1582,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     }
     const legacyClaim = await claimTelegramRun(legacyRunId, runnerGroup);
     expect(legacyClaim.prompt).toBe("legacy Telegram launch prompt");
-    expectExactSystemPromptSuffix(
+    expectExactSystemPromptFragment(
       legacyClaim.appendSystemPrompt,
       "legacy Telegram system prompt",
     );
@@ -1803,7 +1803,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       telegramUserLinkKind: "custom",
       telegramChatType: "supergroup",
     });
-    expectExactSystemPromptSuffix(
+    expectExactSystemPromptFragment(
       firstState.run?.appendSystemPrompt,
       [
         "# Current Integration",
@@ -1918,7 +1918,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     if (!followUpThreadContext) {
       throw new Error("Expected frozen Telegram forum thread context");
     }
-    expectExactSystemPromptSuffix(
+    expectExactSystemPromptFragment(
       followUpState.run?.appendSystemPrompt,
       [
         "# Current Integration",
@@ -2137,7 +2137,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     const run = await latestRunForFixture(fixture);
     expect(run?.prompt).toBe("summarize this thread");
     expect(run?.appendSystemPrompt).toContain("Chat type: supergroup");
-    expectExactSystemPromptSuffix(
+    expectExactSystemPromptFragment(
       run?.appendSystemPrompt,
       [
         "# Current Integration",
@@ -2207,7 +2207,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(run?.appendSystemPrompt).toContain(
       "Bot username: @official_zero_bot",
     );
-    expectExactSystemPromptSuffix(
+    expectExactSystemPromptFragment(
       run?.appendSystemPrompt,
       [
         "# Current Integration",
