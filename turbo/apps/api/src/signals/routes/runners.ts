@@ -452,6 +452,8 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     sequence: body.data.snapshotSequence,
   };
   const db = set(writeDb$);
+  // Keep runtime SQL canonical-only while migration 0800 mirrors writes for
+  // rollback APIs. #24512 removes the physical compatibility bridge.
   await db
     .insert(runnerState)
     .values({

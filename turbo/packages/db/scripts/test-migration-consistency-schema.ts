@@ -11018,6 +11018,12 @@ function extractSchemaFromSnapshot(snapshotPath: string): {
   return { tables, columns };
 }
 
+// Migration 0800 retains this physical rollback column after the current
+// snapshot becomes canonical-only. #24512 removes the column and allowance.
+const TRANSITIONAL_LATEST_SNAPSHOT_COLUMNS = new Set([
+  "runner_state.held_session_states",
+]);
+
 function compareSchemas(
   dbSchema: { tables: Set<string>; columns: Map<string, Set<string>> },
   snapshotSchema: { tables: Set<string>; columns: Map<string, Set<string>> },
@@ -11056,8 +11062,11 @@ function compareSchemas(
       snapshotSchema.columns.get(tableName) || [],
     ).sort();
 
-    const missingCols = dbCols.filter((c) => {
-      return !snapshotCols.includes(c);
+    const missingCols = dbCols.filter((column) => {
+      return (
+        !snapshotCols.includes(column) &&
+        !TRANSITIONAL_LATEST_SNAPSHOT_COLUMNS.has(`${tableName}.${column}`)
+      );
     });
     const extraCols = snapshotCols.filter((c) => {
       return !dbCols.includes(c);
@@ -16320,6 +16329,7 @@ async function validateTimestampOrdering(): Promise<void> {
 
 const RUNNER_SANDBOX_STATE_PREVIOUS_MIGRATION = 799;
 const RUNNER_SANDBOX_STATE_EXPANSION_MIGRATION = 800;
+const RUNNER_SANDBOX_STATE_RUNTIME_SCHEMA_MIGRATION = 804;
 
 async function validateRunnerSandboxStateExpansion(): Promise<void> {
   console.log("=== Validate runner sandbox state persistence expansion ===\n");
@@ -16533,9 +16543,9 @@ async function validateRunnerSandboxStateExpansion(): Promise<void> {
         assert.ok(conflictSql);
         assert.match(
           insertSql,
-          /"held_sandbox_states", "held_session_states", "held_workspace_states"/u,
+          /"held_sandbox_states", "held_workspace_states"/u,
         );
-        assert.match(insertSql, /values \([^)]*\$\d+, default, \$\d+,/u);
+        assert.doesNotMatch(insertSql, /held_session_states/u);
         assert.doesNotMatch(conflictSql, /held_session_states/u);
         await query;
       }
@@ -16830,6 +16840,88 @@ async function validateRunnerSandboxStateExpansion(): Promise<void> {
         sequence: "2",
       });
 
+      await applyMigrationsUpTo(
+        client,
+        RUNNER_SANDBOX_STATE_RUNTIME_SCHEMA_MIGRATION,
+      );
+      const retainedBridge = await client.query<{
+        bridgeFunction: boolean;
+        bridgeTrigger: boolean;
+        canonicalColumn: boolean;
+        equalityConstraint: boolean;
+        legacyColumn: boolean;
+      }>(`
+        SELECT
+          EXISTS (
+            SELECT 1
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'runner_state'
+              AND "column_name" = 'held_sandbox_states'
+          ) AS "canonicalColumn",
+          EXISTS (
+            SELECT 1
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'runner_state'
+              AND "column_name" = 'held_session_states'
+          ) AS "legacyColumn",
+          EXISTS (
+            SELECT 1
+            FROM "pg_proc"
+            WHERE "pronamespace" = 'public'::regnamespace
+              AND "proname" = 'bridge_runner_state_sandbox_states_0800'
+          ) AS "bridgeFunction",
+          EXISTS (
+            SELECT 1
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'runner_state'::regclass
+              AND "tgname" = 'bridge_runner_state_sandbox_states_0800'
+              AND NOT "tgisinternal"
+          ) AS "bridgeTrigger",
+          EXISTS (
+            SELECT 1
+            FROM "pg_constraint"
+            WHERE "conrelid" = 'runner_state'::regclass
+              AND "conname" = 'chk_runner_state_held_sandbox_states_match'
+          ) AS "equalityConstraint"
+      `);
+      assert.deepEqual(retainedBridge.rows, [
+        {
+          bridgeFunction: true,
+          bridgeTrigger: true,
+          canonicalColumn: true,
+          equalityConstraint: true,
+          legacyColumn: true,
+        },
+      ]);
+
+      await writeLegacyHeartbeat({
+        generation: 2,
+        runnerId: runnerIds.current,
+        sequence: 1,
+        states: states.historical,
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: states.historical,
+        generation: "2",
+        legacy: states.historical,
+        sequence: "1",
+      });
+
+      await writeCanonicalHeartbeat({
+        generation: 3,
+        runnerId: runnerIds.next,
+        sequence: 1,
+        states: states.canonicalInitial,
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.next), {
+        canonical: states.canonicalInitial,
+        generation: "3",
+        legacy: states.canonicalInitial,
+        sequence: "1",
+      });
+
       const divergentRows = await client.query<{ count: string }>(`
         SELECT count(*)::text AS "count"
         FROM "runner_state"
@@ -16889,6 +16981,17 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
       `${String(latestIdx).padStart(4, "0")}_snapshot.json`,
     );
     const snapshotSchema = extractSchemaFromSnapshot(snapshotPath);
+
+    // Keep this exact transition directional: migrations retain the rollback
+    // column while current metadata omits it. #24512 removes these assertions.
+    assert.equal(
+      dbSchema.columns.get("runner_state")?.has("held_session_states"),
+      true,
+    );
+    assert.equal(
+      snapshotSchema.columns.get("runner_state")?.has("held_session_states"),
+      false,
+    );
 
     // Compare
     const { matches, differences } = compareSchemas(

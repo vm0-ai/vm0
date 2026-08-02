@@ -46,12 +46,6 @@ export const runnerState = pgTable(
       .$type<RunnerHeldSandboxStates>()
       .default([])
       .notNull(),
-    // Migration 0800 keeps this column synchronized for API rollback.
-    // #24512 removes the bridge and this declaration.
-    heldSessionStates: jsonb("held_session_states")
-      .$type<RunnerHeldSandboxStates>()
-      .default([])
-      .notNull(),
     heldWorkspaceStates: jsonb("held_workspace_states")
       .$type<RunnerHeldWorkspaceStates>()
       .default([])
