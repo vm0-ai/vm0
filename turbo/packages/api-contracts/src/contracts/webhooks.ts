@@ -277,11 +277,16 @@ export const webhookBuiltInGenerationBytePlusContract = c.router({
  * by the `sandboxReuse` feature flag (removed when reuse went to full rollout
  * in #10744). Retained here so historical `agent_runs.sandbox_reuse_result`
  * rows still parse on read. The runner no longer emits it.
+ *
+ * `noSessionId` is also legacy: preceding runners use it for multiple causes,
+ * so historical rows cannot identify the exact non-reuse reason.
  */
 export const sandboxReuseResultSchema = z.enum([
   "reused",
   "featureDisabled",
   "noSessionId",
+  "noReuseKey",
+  "invalidResumeSessionId",
   "poolMiss",
   "profileMismatch",
   "deviceLimitMismatch",

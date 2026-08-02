@@ -117,7 +117,9 @@
       "runner": {
         "deviceLimitMismatch": "Une entrée de pool inactif existe mais son état de limiteur de débit de l'appareil ne correspond pas.",
         "featureDisabled": "La réutilisation du bac à sable est désactivée pour cette exécution.",
-        "noSessionId": "Aucun ID de session disponible pour correspondre au pool inactif.",
+        "invalidResumeSessionId": "L'identifiant de session de reprise de la CLI du fournisseur n'était pas valide.",
+        "noReuseKey": "Aucune clé de réutilisation n'était disponible pour trouver un bac à sable inactif.",
+        "noSessionId": "Résultat hérité : la raison exacte pour laquelle le bac à sable n'a pas été réutilisé n'est pas disponible.",
         "notReused": "Non réutilisé",
         "poolMiss": "Aucun bac à sable correspondant trouvé dans le pool inactif.",
         "profileMismatch": "Une entrée de pool inactif existe mais son profil ne correspond pas.",

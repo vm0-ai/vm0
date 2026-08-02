@@ -56,9 +56,10 @@ export const agentRuns = pgTable(
     // Canonical resolved mounts used by new run writers.
     storageMounts: jsonb("storage_mounts").$type<AgentRunStorageMounts>(),
     sandboxId: varchar("sandbox_id", { length: 255 }),
-    // One of: "reused" | "featureDisabled" | "noSessionId" | "poolMiss" |
-    // "profileMismatch" | "deviceLimitMismatch" | "unparkFailed". Null means
-    // unknown (old runner or historical row).
+    // One of: "reused" | "featureDisabled" | "noSessionId" | "noReuseKey" |
+    // "invalidResumeSessionId" | "poolMiss" | "profileMismatch" |
+    // "deviceLimitMismatch" | "unparkFailed". Null means unknown (old runner
+    // or historical row); "noSessionId" is a legacy ambiguous result.
     sandboxReuseResult: varchar("sandbox_reuse_result", { length: 50 }),
     // Null identifies a historical claim without cancellation recovery.
     // Current claims initialize false; false/true records whether recovery

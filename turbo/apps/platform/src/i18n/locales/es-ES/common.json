@@ -117,7 +117,9 @@
       "runner": {
         "deviceLimitMismatch": "Existe una entrada en el pool inactivo, pero no coincide con el estado del límite de dispositivos.",
         "featureDisabled": "La reutilización del sandbox está desactivada para esta ejecución.",
-        "noSessionId": "No hay un ID de sesión disponible para compararlo con el pool inactivo.",
+        "invalidResumeSessionId": "El ID de sesión de reanudación de la CLI del proveedor no era válido.",
+        "noReuseKey": "No había una clave de reutilización disponible para buscar un sandbox inactivo.",
+        "noSessionId": "Resultado heredado: no se conoce el motivo exacto por el que no se reutilizó el sandbox.",
         "notReused": "No reutilizado",
         "poolMiss": "No se encontró un sandbox coincidente en el pool inactivo.",
         "profileMismatch": "Existe una entrada en el pool inactivo, pero su perfil no coincide.",

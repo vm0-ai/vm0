@@ -2600,6 +2600,83 @@ describe("RUN-04: agent run telemetry families", () => {
     });
   });
 
+  it("preserves sandbox reuse reasons from completion through runner reads", async () => {
+    const actor = await entitledActor();
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD sandbox reuse reason agent",
+      description: "Sandbox reuse reason compatibility.",
+      visibility: "private",
+    });
+    const scenarios = [
+      {
+        name: "legacy no session ID",
+        result: "noSessionId",
+        exitCode: 0,
+        expectedStatus: "completed",
+      },
+      {
+        name: "no reuse key",
+        result: "noReuseKey",
+        exitCode: 0,
+        expectedStatus: "completed",
+      },
+      {
+        name: "invalid resume session ID",
+        result: "invalidResumeSessionId",
+        exitCode: 1,
+        expectedStatus: "failed",
+      },
+    ] as const;
+
+    for (const scenario of scenarios) {
+      const run = await api.createRun(actor, {
+        agentId: agent.agentId,
+        prompt: `record ${scenario.name}`,
+        modelProvider: "anthropic-api-key",
+      });
+      const claim = await api.claimRunnerJob(run.runId);
+      const headers = sandboxHeaders(claim.sandboxToken);
+
+      if (scenario.exitCode === 0) {
+        await webhooks.requestAgentCheckpoint(
+          {
+            runId: run.runId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: `bdd-cli-${run.runId}`,
+            cliAgentSessionHistoryHash: createHash("sha256")
+              .update(`bdd sandbox reuse ${run.runId}`)
+              .digest("hex"),
+          },
+          headers,
+          [200],
+        );
+      }
+
+      const completion = await webhooks.requestAgentComplete(
+        {
+          runId: run.runId,
+          exitCode: scenario.exitCode,
+          sandboxReuseResult: scenario.result,
+          ...(scenario.exitCode === 0
+            ? {}
+            : { error: "Invalid resume session ID" }),
+        },
+        headers,
+        [200],
+      );
+      expect(completion.body).toStrictEqual({
+        success: true,
+        status: scenario.expectedStatus,
+      });
+
+      const runner = await api.requestRunRunner(actor, run.runId, [200]);
+      expect(runner.body).toStrictEqual({
+        sandboxReuseResult: scenario.result,
+      });
+    }
+  });
+
   it("maps zero run context, network, events, and runner metadata from axiom snapshots", async () => {
     const actor = await entitledActor();
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });

@@ -115,7 +115,9 @@
       "runner": {
         "deviceLimitMismatch": "Entri pool idle ada, tetapi status rate limiter perangkatnya tidak cocok.",
         "featureDisabled": "Penggunaan ulang sandbox dinonaktifkan untuk run ini.",
-        "noSessionId": "Tidak ada ID sesi yang tersedia untuk dicocokkan dengan pool idle.",
+        "invalidResumeSessionId": "ID sesi lanjutan CLI penyedia tidak valid.",
+        "noReuseKey": "Tidak ada kunci penggunaan ulang yang tersedia untuk mencocokkan sandbox idle.",
+        "noSessionId": "Hasil lama: alasan pasti sandbox tidak digunakan ulang tidak tersedia.",
         "notReused": "Tidak digunakan ulang",
         "poolMiss": "Tidak ada sandbox yang cocok ditemukan di pool idle.",
         "profileMismatch": "Entri pool idle ada, tetapi profilnya tidak cocok.",
