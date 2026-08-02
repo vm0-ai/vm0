@@ -40,7 +40,9 @@ async function monitorChatEventQueue(
     )
     .where(
       and(
-        eventIds ? inArray(chatEvents.id, [...eventIds]) : undefined,
+        eventIds === undefined
+          ? undefined
+          : inArray(chatEvents.id, [...eventIds]),
         isNull(chatEvents.runId),
         visibleChatEventCondition(db),
         or(

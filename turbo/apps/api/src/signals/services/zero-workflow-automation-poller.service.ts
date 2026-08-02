@@ -262,7 +262,9 @@ async function dueWorkflowAutomationRows(
     )
     .where(
       and(
-        automationId ? eq(zeroWorkflowAutomations.id, automationId) : undefined,
+        automationId === undefined
+          ? undefined
+          : eq(zeroWorkflowAutomations.id, automationId),
         eq(zeroWorkflowAutomations.enabled, true),
         eq(zeroWorkflowAutomations.kind, "schedule"),
         lte(zeroWorkflowAutomations.nextRunAt, currentTime),

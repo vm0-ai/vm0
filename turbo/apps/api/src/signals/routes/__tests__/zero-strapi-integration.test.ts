@@ -480,7 +480,7 @@ describe("Strapi integration", () => {
     });
 
     mockNow(publishStartedAt + 46_000);
-    const cronResponses = await Promise.all(
+    const executionResponses = await Promise.all(
       [0, 1].map(() => {
         return accept(
           workflowAutomationExecutionClient().execute({
@@ -491,12 +491,12 @@ describe("Strapi integration", () => {
       }),
     );
     expect(
-      cronResponses.every((response) => {
+      executionResponses.every((response) => {
         return response.body.success;
       }),
     ).toBeTruthy();
     expect(
-      cronResponses.reduce((total, response) => {
+      executionResponses.reduce((total, response) => {
         return total + response.body.executed;
       }, 0),
     ).toBe(1);
@@ -550,13 +550,13 @@ describe("Strapi integration", () => {
     });
 
     mockNow(nextPublishStartedAt + 46_000);
-    const successorCron = await accept(
+    const successorExecution = await accept(
       workflowAutomationExecutionClient().execute({
         body: { automation_id: automation.body.id },
       }),
       [200],
     );
-    expect(successorCron.body).toMatchObject({
+    expect(successorExecution.body).toMatchObject({
       success: true,
       executed: 1,
     });

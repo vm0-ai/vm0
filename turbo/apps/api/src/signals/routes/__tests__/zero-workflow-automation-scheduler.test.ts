@@ -698,7 +698,7 @@ describe("zero workflow automation scheduler", () => {
     const base = now();
     const seenRunIds = new Set<string>();
 
-    // Three fire + failed-completion cycles through the public cron, runner,
+    // Three fire + failed-completion cycles through scoped execution, runner,
     // and sandbox completion surfaces auto-disable the automation.
     for (let failure = 1; failure <= 3; failure += 1) {
       if (failure > 1) {

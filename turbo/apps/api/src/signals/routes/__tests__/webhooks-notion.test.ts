@@ -153,15 +153,7 @@ function configureNotionChildPageMock(
     http.get(
       "https://api.notion.com/v1/pages/:pageId",
       ({ request, params }) => {
-        // Pending events left behind by earlier runs of this file may probe
-        // other page ids during the global cron sweep; only this test's page
-        // resolves.
-        if (params.pageId !== entities.childPageId) {
-          return HttpResponse.json(
-            { object: "error", status: 404, code: "object_not_found" },
-            { status: 404 },
-          );
-        }
+        expect(params.pageId).toBe(entities.childPageId);
         expect(request.headers.get("authorization")).toBe(
           "Bearer notion-access-token",
         );

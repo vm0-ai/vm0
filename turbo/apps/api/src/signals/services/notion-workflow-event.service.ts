@@ -1649,9 +1649,9 @@ async function loadDueNotionPendingEvents(args: {
     .from(notionWorkflowPendingEvents)
     .where(
       and(
-        args.automationId
-          ? eq(notionWorkflowPendingEvents.automationId, args.automationId)
-          : undefined,
+        args.automationId === undefined
+          ? undefined
+          : eq(notionWorkflowPendingEvents.automationId, args.automationId),
         eq(notionWorkflowPendingEvents.status, "pending"),
         lte(notionWorkflowPendingEvents.runAfter, args.currentTime),
       ),

@@ -669,9 +669,9 @@ async function executeDueStrapiWorkflowEvents(args: {
     .from(strapiWorkflowPendingEvents)
     .where(
       and(
-        args.automationId
-          ? eq(strapiWorkflowPendingEvents.automationId, args.automationId)
-          : undefined,
+        args.automationId === undefined
+          ? undefined
+          : eq(strapiWorkflowPendingEvents.automationId, args.automationId),
         eq(strapiWorkflowPendingEvents.status, "pending"),
         lte(strapiWorkflowPendingEvents.runAfter, nowDate()),
       ),
