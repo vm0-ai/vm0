@@ -117,7 +117,6 @@
       "runner": {
         "deviceLimitMismatch": "A entrada no pool ocioso existe, mas o estado do limitador de uso do dispositivo não corresponde.",
         "featureDisabled": "A reutilização de sandbox está desativada para esta execução.",
-        "invalidResumeSessionId": "O ID da sessão de retomada da CLI do provedor era inválido.",
         "noReuseKey": "Nenhuma chave de reutilização estava disponível para encontrar uma sandbox ociosa.",
         "noSessionId": "Resultado legado: o motivo exato pelo qual a sandbox não foi reutilizada não está disponível.",
         "notReused": "Não reutilizado",

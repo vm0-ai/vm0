@@ -286,7 +286,6 @@ export const sandboxReuseResultSchema = z.enum([
   "featureDisabled",
   "noSessionId",
   "noReuseKey",
-  "invalidResumeSessionId",
   "poolMiss",
   "profileMismatch",
   "deviceLimitMismatch",

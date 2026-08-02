@@ -687,14 +687,6 @@ function ActivityRunnerTab({ detailId }: { detailId: string }) {
           }),
         };
       }
-      case "invalidResumeSessionId": {
-        return {
-          label: notReused,
-          description: t(($) => {
-            return $.activity.detail.runner.invalidResumeSessionId;
-          }),
-        };
-      }
       case "poolMiss": {
         return {
           label: notReused,

@@ -115,7 +115,6 @@
       "runner": {
         "deviceLimitMismatch": "유휴 풀 항목이 존재하지만 장치 속도 제한기 상태가 일치하지 않습니다.",
         "featureDisabled": "이 실행에 대해 샌드박스 재사용이 비활성화되었습니다.",
-        "invalidResumeSessionId": "공급자 CLI의 재개 세션 ID가 유효하지 않았습니다.",
         "noReuseKey": "유휴 샌드박스와 일치시킬 재사용 키가 없었습니다.",
         "noSessionId": "레거시 결과: 샌드박스가 재사용되지 않은 정확한 이유를 확인할 수 없습니다.",
         "notReused": "재사용되지 않음",

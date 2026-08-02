@@ -495,7 +495,6 @@ fn record_reuse_result_emits_hit_for_reuse() {
 fn record_reuse_result_emits_miss_for_every_miss_variant() {
     let variants = [
         SandboxReuseResult::NoReuseKey,
-        SandboxReuseResult::InvalidResumeSessionId,
         SandboxReuseResult::PoolMiss,
         SandboxReuseResult::ProfileMismatch,
         SandboxReuseResult::DeviceLimitMismatch,

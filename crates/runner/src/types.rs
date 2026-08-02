@@ -1392,14 +1392,14 @@ pub struct CompleteRequest {
     pub exit_code: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-    /// Sandbox the run executed against. `None` when no sandbox was
-    /// provisioned (e.g. a pre-claim failure); otherwise set on every
-    /// completion regardless of reuse status.
+    /// Sandbox the run executed against. `None` when the run failed before
+    /// sandbox allocation; otherwise set on every completion regardless of
+    /// reuse status.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox_id: Option<SandboxId>,
     /// Outcome of the sandbox-reuse decision made before this run started.
-    /// `None` is reserved for callers that cannot determine it (tests, future
-    /// transports); the runner itself always sets this.
+    /// `None` means the run failed before the runner reached that decision, or
+    /// that the caller could not determine it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox_reuse_result: Option<SandboxReuseResult>,
 }
@@ -1412,7 +1412,6 @@ pub struct CompleteRequest {
 pub enum SandboxReuseResult {
     Reused,
     NoReuseKey,
-    InvalidResumeSessionId,
     PoolMiss,
     ProfileMismatch,
     DeviceLimitMismatch,
@@ -1426,7 +1425,6 @@ impl SandboxReuseResult {
         match self {
             Self::Reused => "reused",
             Self::NoReuseKey => "noReuseKey",
-            Self::InvalidResumeSessionId => "invalidResumeSessionId",
             Self::PoolMiss => "poolMiss",
             Self::ProfileMismatch => "profileMismatch",
             Self::DeviceLimitMismatch => "deviceLimitMismatch",
@@ -1749,7 +1747,7 @@ mod tests {
     }
 
     #[test]
-    fn complete_request_with_error() {
+    fn complete_request_with_pre_sandbox_error_omits_sandbox_fields() {
         let req = CompleteRequest {
             run_id: "550e8400-e29b-41d4-a716-446655440000"
                 .parse::<RunId>()
@@ -1761,6 +1759,8 @@ mod tests {
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["error"], "timeout");
+        assert!(json.get("sandboxId").is_none());
+        assert!(json.get("sandboxReuseResult").is_none());
     }
 
     #[test]
@@ -1787,10 +1787,6 @@ mod tests {
             serde_json::json!("noReuseKey"),
         );
         assert_eq!(
-            serde_json::to_value(SandboxReuseResult::InvalidResumeSessionId).unwrap(),
-            serde_json::json!("invalidResumeSessionId"),
-        );
-        assert_eq!(
             serde_json::to_value(SandboxReuseResult::PoolMiss).unwrap(),
             serde_json::json!("poolMiss"),
         );
@@ -1815,7 +1811,6 @@ mod tests {
         for variant in [
             SandboxReuseResult::Reused,
             SandboxReuseResult::NoReuseKey,
-            SandboxReuseResult::InvalidResumeSessionId,
             SandboxReuseResult::PoolMiss,
             SandboxReuseResult::ProfileMismatch,
             SandboxReuseResult::DeviceLimitMismatch,

@@ -107,3 +107,44 @@ async fn telemetry_flush_includes_reuse_hit_claim_phase_spans() {
 
     telemetry_mock.assert_calls_async(1).await;
 }
+
+#[tokio::test]
+async fn invalid_resume_session_emits_no_reuse_telemetry() {
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+    let reuse_telemetry_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/telemetry")
+                .body_includes("sandbox_reuse_");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"success":true,"id":"ok"}"#);
+        })
+        .await;
+
+    let (config, env) =
+        mock_run_config_with_api_url(test_profiles(), 8, 32768, 4, &server.base_url());
+    let run_handle = tokio::spawn(run(config));
+    let run_id = RunId::new_v4();
+
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(run_id, "../invalid-session")),
+    );
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("job should complete");
+    assert_eq!(completion.exit_code, 1);
+    assert_eq!(completion.reuse_result, None);
+
+    shutdown(&env, run_handle).await;
+
+    reuse_telemetry_mock.assert_calls_async(0).await;
+}

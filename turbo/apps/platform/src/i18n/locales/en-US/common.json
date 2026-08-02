@@ -115,7 +115,6 @@
       "runner": {
         "deviceLimitMismatch": "Idle pool entry exists but its device rate limiter state does not match.",
         "featureDisabled": "Sandbox reuse is disabled for this run.",
-        "invalidResumeSessionId": "The provider CLI resume session ID was invalid.",
         "noReuseKey": "No reuse key was available to match an idle sandbox.",
         "noSessionId": "Legacy result: the exact reason the sandbox was not reused is unavailable.",
         "notReused": "Not reused",
