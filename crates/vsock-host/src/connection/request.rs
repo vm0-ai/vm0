@@ -501,11 +501,31 @@ impl VsockHost {
 
     /// Ask the guest to quiesce its own operation dispatcher.
     ///
+    /// On receipt, the guest atomically fences new operations before checking
+    /// its pending-operation count. If the guest reports that operations are
+    /// still pending, this method returns an error but guest admission remains
+    /// fenced. Those operations finish independently; the guest does not wait
+    /// or send a later acknowledgement. The caller must either retry this
+    /// method after they drain or call [`Self::resume_operations`] to abandon
+    /// the attempt and reopen guest admission.
+    ///
     /// This does not fence host-side normal operations. Callers that need a
     /// no-new-normal-operation boundary must hold a
     /// [`crate::NormalOperationFence`] before sending this lifecycle request.
+    /// A transport error or timeout does not reveal whether the guest received
+    /// the request. A caller that keeps using the guest after such an uncertain
+    /// attempt must explicitly resume guest operations before releasing its
+    /// host-side fence.
+    ///
     /// The timeout covers waiting for the shared writer, writing the request,
     /// and waiting for the response.
+    ///
+    /// # Errors
+    ///
+    /// Returns the request error if the guest cannot be reached, does not
+    /// respond before the deadline, or reports pending operations or another
+    /// lifecycle error. An unexpected response type or non-empty
+    /// acknowledgement returns [`io::ErrorKind::InvalidData`].
     pub async fn quiesce_operations(&self, timeout: Duration) -> io::Result<()> {
         self.lifecycle_request(
             MSG_QUIESCE_OPERATIONS,
@@ -518,8 +538,22 @@ impl VsockHost {
 
     /// Resume guest operations after a failed or aborted quiesce attempt.
     ///
+    /// Resume reopens guest admission immediately without waiting for
+    /// previously admitted operations to finish. The transition is idempotent,
+    /// so callers may use it after a guest-reported busy result or a
+    /// delivery-uncertain quiesce failure. This does not release a held
+    /// [`crate::NormalOperationFence`]; the caller retains ownership of that
+    /// host-side boundary.
+    ///
     /// The timeout covers waiting for the shared writer, writing the request,
     /// and waiting for the response.
+    ///
+    /// # Errors
+    ///
+    /// Returns the request error if the guest cannot be reached, does not
+    /// respond before the deadline, or reports a lifecycle error. An unexpected
+    /// response type or non-empty acknowledgement returns
+    /// [`io::ErrorKind::InvalidData`].
     pub async fn resume_operations(&self, timeout: Duration) -> io::Result<()> {
         self.lifecycle_request(
             MSG_RESUME_OPERATIONS,
