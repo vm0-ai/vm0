@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 from mitmproxy.test import tutils
 
-import connector_diagnostics
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 from tests.connector_diagnostic_helpers import (
@@ -232,11 +231,12 @@ async def test_streams_unauthenticated_connector_401_diagnostic_without_upstream
 
 def test_responseheaders_parses_large_connector_auth_query_once(tmp_path, real_flow, mitm_ctx):
     reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+    query = "&".join(["noise=x"] * 25_000)
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
         host="fal.run",
-        path=f"/fal-ai/nano-banana-pro?noise={'x' * 200_000}",
+        path=f"/fal-ai/nano-banana-pro?{query}",
         method="POST",
     )
 
@@ -254,7 +254,7 @@ def test_responseheaders_parses_large_connector_auth_query_once(tmp_path, real_f
             stable_cache = urllib.parse.urlsplit.cache_info()
             real_parse_qsl = urllib.parse.parse_qsl
             with patch.object(
-                connector_diagnostics.urllib.parse,
+                urllib.parse,
                 "parse_qsl",
                 wraps=real_parse_qsl,
             ) as parse_qsl:
