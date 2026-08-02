@@ -4,6 +4,7 @@ import {
   chatEventsContract,
   chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
 import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { onTestFinished, test as vitestTest } from "vitest";
@@ -31,6 +32,7 @@ import {
 import { readThreadSessionBinding } from "./helpers/runtime-state";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import {
   completeRunWithoutCallbacksFixture,
   holdChatEventQueueAdmissionLockFixture,
@@ -50,8 +52,6 @@ const chatCallbacks = createChatCallbacksApi(context);
 
 const WORKFLOW_NAME = "workflow-queue-workflow";
 const CRON_CLEANUP_SANDBOXES_ROUTE = "/api/cron/cleanup-sandboxes";
-const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
-  "/api/cron/execute-workflow-automations";
 const CRON_SECRET = "test-cron-secret";
 
 function it(name: string, test: () => Promise<void>, timeout?: number): void {
@@ -70,6 +70,13 @@ function authHeaders() {
 
 function automationsClient() {
   return setupApp({ context })(zeroWorkflowAutomationsContract);
+}
+
+function workflowAutomationExecutionClient() {
+  return setupApp({
+    context,
+    routes: testWorkflowAutomationExecutionRoutes,
+  })(testWorkflowAutomationExecutionContract);
 }
 
 function chatEventsClient() {
@@ -324,12 +331,16 @@ async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
   return claim;
 }
 
-async function executeDueWorkflowAutomations(): Promise<void> {
-  const response = await createApp({ signal: context.signal }).request(
-    CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE,
-    { headers: { authorization: `Bearer ${CRON_SECRET}` } },
+async function executeDueWorkflowAutomations(
+  automationId: string,
+): Promise<void> {
+  const response = await accept(
+    workflowAutomationExecutionClient().execute({
+      body: { automation_id: automationId },
+    }),
+    [200],
   );
-  expect(response.status).toBe(200);
+  expect(response.body.success).toBeTruthy();
 }
 
 async function cleanupSandboxes(): Promise<void> {
@@ -676,7 +687,6 @@ describe("workflow queue", () => {
   });
 
   it("labels a queued schedule tick with the time it fired, not the time it drained", async () => {
-    // Keep this global cron scan before schedules created by parallel test files.
     mockNow(Date.UTC(2020, 0, 2));
     const scenario = await setup();
     const webhookAutomation = await createWebhookAutomation(scenario);
@@ -706,7 +716,7 @@ describe("workflow queue", () => {
 
     const firedAt = Date.parse(created.body.nextRunAt) + 60_000;
     mockNow(firedAt);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
     const pendingTick = await pendingWorkflowEventForAutomation(
       webhookAutomation.threadId,
       created.body.id,
@@ -775,7 +785,6 @@ describe("workflow queue", () => {
   });
 
   it("coalesces schedule ticks: at most one pending tick per automation", async () => {
-    // Keep this global cron scan before schedules created by parallel test files.
     mockNow(Date.UTC(2020, 0, 1));
     const scenario = await setup();
     const webhookAutomation = await createWebhookAutomation(scenario);
@@ -808,7 +817,7 @@ describe("workflow queue", () => {
 
     // Two due ticks while busy: the second coalesces into the pending one.
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
     expect(kms.generateDataKeyCalls).toBe(1);
     const updated = await accept(
       automationsClient().update({
@@ -829,7 +838,7 @@ describe("workflow queue", () => {
     }
     const coalescedKms = useSecretKmsProbe();
     mockNow(Date.parse(updated.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
     expect(coalescedKms.generateDataKeyCalls).toBe(0);
     const coalescedEvents = await pendingWorkflowEvents(
       webhookAutomation.threadId,
@@ -1169,8 +1178,8 @@ describe("workflow queue", () => {
     );
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
+    await executeDueWorkflowAutomations(created.body.id);
 
     const automation = await wf.readAutomation(created.body.id);
     expect(automation.nextRunAt).not.toBeNull();
@@ -1184,7 +1193,7 @@ describe("workflow queue", () => {
       throw new Error("Expected the failed recurring schedule to re-arm");
     }
     mockNow(Date.parse(automation.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
     await expect(
       workflowRunIds(created.body.chatThreadId),
     ).resolves.toHaveLength(1);
@@ -1218,7 +1227,7 @@ describe("workflow queue", () => {
     expect(created.body.chatThreadId).toBe(webhookAutomation.threadId);
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
     const claimed = await wf.readAutomation(created.body.id);
     expect(claimed.enabled).toBeTruthy();
     expect(claimed.nextRunAt).toBeNull();

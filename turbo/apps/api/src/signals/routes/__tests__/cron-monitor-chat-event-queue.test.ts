@@ -1,12 +1,12 @@
 import { cronMonitorChatEventQueueContract } from "@vm0/api-contracts/contracts/cron";
-import type {
-  TestCronMonitorChatEventQueueStateActionBody,
-  TestCronMonitorChatEventQueueStateActionResponse,
+import {
+  testCronMonitorChatEventQueueStateContract,
+  type TestCronMonitorChatEventQueueStateActionBody,
+  type TestCronMonitorChatEventQueueStateActionResponse,
 } from "@vm0/api-contracts/contracts/test-cron-monitor-chat-event-queue-state";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { createApp } from "../../../app-factory";
-import { createAppWithRoutes } from "../../../app-factory-core";
+import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { testCronMonitorChatEventQueueStateRoutes } from "../test-cron-monitor-chat-event-queue-state";
@@ -14,56 +14,28 @@ import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
 const CRON_SECRET = "test-cron-secret";
-const STATE_ROUTE = "/api/test/cron-monitor-chat-event-queue-state/action";
 
 interface MonitorFixture {
   readonly composeId: string;
+  readonly eventId: string;
 }
 
 function apiClient() {
   return setupApp({ context })(cronMonitorChatEventQueueContract);
 }
 
-function cronHeaders(secret = CRON_SECRET) {
-  return { authorization: `Bearer ${secret}` };
-}
-
-async function rawCronRequest(
-  headers: Record<string, string> = {},
-): Promise<Response> {
-  const app = createApp({ signal: context.signal });
-  return await app.request("/api/cron/monitor-chat-event-queue", {
-    method: "GET",
-    headers,
-  });
+function stateClient() {
+  return setupAppWithRoutes({
+    context,
+    routes: testCronMonitorChatEventQueueStateRoutes,
+  })(testCronMonitorChatEventQueueStateContract);
 }
 
 async function postState(
   body: TestCronMonitorChatEventQueueStateActionBody,
 ): Promise<TestCronMonitorChatEventQueueStateActionResponse> {
-  const app = createAppWithRoutes({
-    signal: context.signal,
-    routes: testCronMonitorChatEventQueueStateRoutes,
-  });
-  const response = await app.request(STATE_ROUTE, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    throw new Error(
-      `orphan monitor state action failed with ${response.status}`,
-    );
-  }
-  return (await response.json()) as TestCronMonitorChatEventQueueStateActionResponse;
-}
-
-function stringField(body: Record<string, unknown>, key: string): string {
-  const value = body[key];
-  if (typeof value !== "string") {
-    throw new Error(`orphan monitor state response missing ${key}`);
-  }
-  return value;
+  const response = await accept(stateClient().action({ body }), [200]);
+  return response.body;
 }
 
 async function seedFixture(
@@ -76,7 +48,10 @@ async function seedFixture(
     action: "seed-fixture",
     fixture_kind: fixtureKind,
   });
-  return { composeId: stringField(response, "compose_id") };
+  if (!response.compose_id || !response.event_id) {
+    throw new Error("orphan monitor seed response is missing fixture IDs");
+  }
+  return { composeId: response.compose_id, eventId: response.event_id };
 }
 
 async function cleanupFixture(fixture: MonitorFixture): Promise<void> {
@@ -102,16 +77,23 @@ describe("cron monitor chat event queue", () => {
   });
 
   it("reports zero for legitimate unassociated user messages", async () => {
-    await Promise.all([
+    const fixtures = await Promise.all([
       trackFixture(seedFixture("active-run")),
       trackFixture(seedFixture("failed-message")),
       trackFixture(seedFixture("queued-integration")),
       trackFixture(seedFixture("queued-message")),
       trackFixture(seedFixture("revoked-message")),
     ]);
+    await trackFixture(seedFixture("orphan"));
 
     const response = await accept(
-      apiClient().monitor({ headers: cronHeaders() }),
+      stateClient().monitor({
+        body: {
+          event_ids: fixtures.map((fixture) => {
+            return fixture.eventId;
+          }),
+        },
+      }),
       [200],
     );
 
@@ -123,12 +105,14 @@ describe("cron monitor chat event queue", () => {
   });
 
   it("raises the existing error alert for a malformed pending event", async () => {
-    await trackFixture(seedFixture("orphan"));
+    const fixture = await trackFixture(seedFixture("orphan"));
 
-    const response = await rawCronRequest(cronHeaders());
+    const response = await accept(
+      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
+      [500],
+    );
 
-    expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toStrictEqual({
+    expect(response.body).toStrictEqual({
       error: "Internal server error",
     });
     expect(
@@ -141,8 +125,8 @@ describe("cron monitor chat event queue", () => {
     const [, fields] = context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
     expect(fields).toMatchObject({
       type: "unhandled_request_error",
-      route: "/api/cron/monitor-chat-event-queue",
-      method: "GET",
+      route: "/api/test/cron-monitor-chat-event-queue-state/monitor",
+      method: "POST",
       errorCode: "ORPHANED_QUEUED_CHAT_MESSAGES",
       error: {
         name: "OrphanedQueuedChatEventsError",
@@ -153,16 +137,32 @@ describe("cron monitor chat event queue", () => {
   });
 
   it("detects an automation event missing its typed context", async () => {
-    await trackFixture(seedFixture("orphaned-automation"));
+    const fixture = await trackFixture(seedFixture("orphaned-automation"));
 
-    const response = await rawCronRequest(cronHeaders());
+    const response = await accept(
+      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
+      [500],
+    );
 
-    expect(response.status).toBe(500);
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
     expect(
       context.mocks.sentry.captureException.mock.calls.at(-1)?.[0],
     ).toMatchObject({
       code: "ORPHANED_QUEUED_CHAT_MESSAGES",
       orphanedMessages: 1,
     });
+  });
+
+  it("does not expose scoped monitoring in production", async () => {
+    mockEnv("ENV", "production");
+
+    const response = await accept(
+      stateClient().monitor({
+        body: { event_ids: ["00000000-0000-4000-8000-000000000001"] },
+      }),
+      [404],
+    );
+
+    expect(response.body).toBe("Not found");
   });
 });

@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 
+import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
 import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { fnv1a } from "@vm0/core/identity-hash";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -12,6 +14,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventAutomationPart } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -19,12 +22,73 @@ const workflows = createWorkflowsBddApi(context);
 const runs = createRunsApi(context);
 
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
-// Synthetic tenant whose FNV-1a value matches the staff rollout allowlist, so
-// tenant isolation can be exercised entirely through external API behavior.
-const SECOND_ROLLOUT_ORG_ID = "org_j3tn5H";
-const CRON_SECRET = "strapi-cron-secret";
+const FNV_PRIME = 16_777_619;
+// Multiplicative inverse of FNV_PRIME modulo 2^32.
+const FNV_PRIME_INVERSE = 899_433_627;
+const ROLLOUT_COLLISION_ALPHABET =
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const WORKFLOW_NAME = "publish-strapi-blog";
-const STRAPI_AUTOMATION_USER_ID = "user_strapi_automation_admin";
+
+function advanceFnv1a(hash: number, character: string): number {
+  return Math.imul(hash ^ character.charCodeAt(0), FNV_PRIME) >>> 0;
+}
+
+function reverseFnv1a(hash: number, character: string): number {
+  return (Math.imul(hash, FNV_PRIME_INVERSE) ^ character.charCodeAt(0)) >>> 0;
+}
+
+function rolloutCollisionSuffix(
+  prefix: string,
+  targetHash: number,
+): string | null {
+  // Meet in the middle over two three-character halves instead of scanning
+  // all 62^6 suffixes. FNV-1a is reversible one character at a time.
+  const prefixHash = Number.parseInt(fnv1a(prefix), 16);
+  const firstHalves = new Map<number, string>();
+  for (const first of ROLLOUT_COLLISION_ALPHABET) {
+    for (const second of ROLLOUT_COLLISION_ALPHABET) {
+      for (const third of ROLLOUT_COLLISION_ALPHABET) {
+        const hash = advanceFnv1a(
+          advanceFnv1a(advanceFnv1a(prefixHash, first), second),
+          third,
+        );
+        firstHalves.set(hash, `${first}${second}${third}`);
+      }
+    }
+  }
+
+  for (const fourth of ROLLOUT_COLLISION_ALPHABET) {
+    for (const fifth of ROLLOUT_COLLISION_ALPHABET) {
+      for (const sixth of ROLLOUT_COLLISION_ALPHABET) {
+        const precedingHash = reverseFnv1a(
+          reverseFnv1a(reverseFnv1a(targetHash, sixth), fifth),
+          fourth,
+        );
+        const firstHalf = firstHalves.get(precedingHash);
+        if (firstHalf) {
+          return `${firstHalf}${fourth}${fifth}${sixth}`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function uniqueRolloutOrgId(): string {
+  const targetHash = Number.parseInt(fnv1a(STAFF_ORG_ID), 16);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const prefix = `org_${randomUUID()}_`;
+    const suffix = rolloutCollisionSuffix(prefix, targetHash);
+    if (suffix) {
+      return `${prefix}${suffix}`;
+    }
+  }
+  throw new Error("Failed to generate a unique Strapi rollout organization");
+}
+
+// Each test process gets an unshared tenant that still exercises the real
+// organization-hash rollout path.
+const SECOND_ROLLOUT_ORG_ID = uniqueRolloutOrgId();
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" } as const;
@@ -36,6 +100,13 @@ function integrationsClient() {
 
 function automationsClient() {
   return setupApp({ context })(zeroWorkflowAutomationsContract);
+}
+
+function workflowAutomationExecutionClient() {
+  return setupApp({
+    context,
+    routes: testWorkflowAutomationExecutionRoutes,
+  })(testWorkflowAutomationExecutionContract);
 }
 
 async function postStrapiEvent(args: {
@@ -97,7 +168,6 @@ async function workflowAutomationRuns(threadId: string, workflowId: string) {
 beforeEach(() => {
   clearMockNow();
   mockEnv("VM0_WEB_URL", "https://www.vm0.test");
-  mockEnv("CRON_SECRET", CRON_SECRET);
   context.mocks.s3.send.mockResolvedValue({});
 });
 
@@ -262,8 +332,7 @@ describe("Strapi integration", () => {
 
   it("tests the external webhook and coalesces localized publishes", async () => {
     const actor = workflows.user({
-      userId: STRAPI_AUTOMATION_USER_ID,
-      orgId: STAFF_ORG_ID,
+      orgId: SECOND_ROLLOUT_ORG_ID,
       orgRole: "org:admin",
     });
     await runs.grantProEntitlement(actor, { tier: "team" });
@@ -411,38 +480,24 @@ describe("Strapi integration", () => {
     });
 
     mockNow(publishStartedAt + 46_000);
-    const cronResponses = await Promise.all(
+    const executionResponses = await Promise.all(
       [0, 1].map(() => {
-        return createApp({ signal: context.signal }).request(
-          "/api/cron/execute-workflow-automations",
-          { headers: { authorization: `Bearer ${CRON_SECRET}` } },
+        return accept(
+          workflowAutomationExecutionClient().execute({
+            body: { automation_id: automation.body.id },
+          }),
+          [200],
         );
       }),
     );
     expect(
-      cronResponses.map((response) => {
-        return response.status;
-      }),
-    ).toStrictEqual([200, 200]);
-    const cronBodies = (await Promise.all(
-      cronResponses.map(async (response) => {
-        return (await response.json()) as {
-          readonly success: boolean;
-          readonly executed: number;
-        };
-      }),
-    )) satisfies readonly {
-      readonly success: boolean;
-      readonly executed: number;
-    }[];
-    expect(
-      cronBodies.every((body) => {
-        return body.success;
+      executionResponses.every((response) => {
+        return response.body.success;
       }),
     ).toBeTruthy();
     expect(
-      cronBodies.reduce((total, body) => {
-        return total + body.executed;
+      executionResponses.reduce((total, response) => {
+        return total + response.body.executed;
       }, 0),
     ).toBe(1);
 
@@ -495,13 +550,13 @@ describe("Strapi integration", () => {
     });
 
     mockNow(nextPublishStartedAt + 46_000);
-    const successorCron = await createApp({
-      signal: context.signal,
-    }).request("/api/cron/execute-workflow-automations", {
-      headers: { authorization: `Bearer ${CRON_SECRET}` },
-    });
-    expect(successorCron.status).toBe(200);
-    await expect(successorCron.json()).resolves.toMatchObject({
+    const successorExecution = await accept(
+      workflowAutomationExecutionClient().execute({
+        body: { automation_id: automation.body.id },
+      }),
+      [200],
+    );
+    expect(successorExecution.body).toMatchObject({
       success: true,
       executed: 1,
     });

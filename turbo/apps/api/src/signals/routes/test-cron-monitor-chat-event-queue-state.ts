@@ -23,6 +23,7 @@ import {
   replaceChatEvent,
 } from "../services/zero-chat-event.service";
 import { createUserMessageDocument } from "../services/zero-chat-user-message.service";
+import { monitorChatEventQueueForEvents$ } from "../services/cron-monitor-chat-event-queue.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -30,6 +31,9 @@ import {
 
 const actionBody$ = bodyResultOf(
   testCronMonitorChatEventQueueStateContract.action,
+);
+const monitorBody$ = bodyResultOf(
+  testCronMonitorChatEventQueueStateContract.monitor,
 );
 
 type FixtureKind = Extract<
@@ -188,7 +192,7 @@ async function seedFixture(
   }
   signal.throwIfAborted();
 
-  return actionOk({ compose_id: compose.id });
+  return actionOk({ compose_id: compose.id, event_id: event.id });
 }
 
 const mutateTestCronMonitorChatEventQueueState$ = command(
@@ -215,9 +219,34 @@ const mutateTestCronMonitorChatEventQueueState$ = command(
   },
 );
 
+const monitorTestCronMonitorChatEventQueueState$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (!isTestEndpointAllowed(get(request$))) {
+      return testEndpointNotFoundResponse();
+    }
+    const bodyResult = await get(monitorBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const body = await set(
+      monitorChatEventQueueForEvents$,
+      bodyResult.data.event_ids,
+      signal,
+    );
+    signal.throwIfAborted();
+    return { status: 200 as const, body };
+  },
+);
+
 export const testCronMonitorChatEventQueueStateRoutes: readonly RouteEntry[] = [
   {
     route: testCronMonitorChatEventQueueStateContract.action,
     handler: mutateTestCronMonitorChatEventQueueState$,
+  },
+  {
+    route: testCronMonitorChatEventQueueStateContract.monitor,
+    handler: monitorTestCronMonitorChatEventQueueState$,
   },
 ];
