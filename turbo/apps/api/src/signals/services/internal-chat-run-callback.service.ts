@@ -42,10 +42,15 @@ import {
 import { z } from "zod";
 
 import { nullableDriverValueDecoder } from "../../lib/db-structured-result";
+import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
+import {
+  generatePresignedGetUrl,
+  generatePresignedPutUrl,
+} from "../external/s3";
 import {
   publishChatThreadDetailChangedSafely,
   publishChatThreadMessageCreatedSafely,
@@ -183,6 +188,11 @@ import {
   loadGitHubQueuedLaunchMaterial,
   type GitHubQueuedLaunchMaterial,
 } from "./github-queued-launch-context.service";
+import {
+  loadMorningBriefQueuedLaunchMaterial,
+  type MorningBriefQueuedLaunchMaterial,
+} from "./morning-brief-queued-launch-context.service";
+import { MORNING_BRIEF_SIGNED_URL_TTL_SECONDS } from "./morning-brief-run-prompt";
 
 const log = logger("callback:chat");
 const PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -2622,6 +2632,10 @@ interface CreateQueuedChatRunInputArgs {
     attachFiles: readonly string[] | null,
     signal: AbortSignal,
   ) => Promise<ChatEventAttachFileMetadata[] | null>;
+  readonly resolveMorningBriefSignedUrls: (
+    keys: { readonly inputKey: string; readonly outputKey: string },
+    signal: AbortSignal,
+  ) => Promise<{ readonly inputUrl: string; readonly outputUrl: string }>;
 }
 
 function loadQueuedMessageSessionState(
@@ -2689,6 +2703,10 @@ interface QueuedLaunchLoaderArgs {
   readonly chatThreadId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly resolveSignedUrls: (keys: {
+    readonly inputKey: string;
+    readonly outputKey: string;
+  }) => Promise<{ readonly inputUrl: string; readonly outputUrl: string }>;
 }
 
 type LaunchLoader = (
@@ -2700,7 +2718,8 @@ type NativeQueuedLaunchMaterial =
   | SlackQueuedLaunchMaterial
   | FeishuQueuedLaunchMaterial
   | TeamsQueuedLaunchMaterial
-  | (GitHubQueuedLaunchMaterial & { readonly userInfoExtras?: undefined });
+  | (GitHubQueuedLaunchMaterial & { readonly userInfoExtras?: undefined })
+  | MorningBriefQueuedLaunchMaterial;
 
 function launchLoader<Material extends NativeQueuedLaunchMaterial>(
   load: (db: Db, args: QueuedLaunchLoaderArgs) => Promise<Material | null>,
@@ -2738,6 +2757,19 @@ async function resolveQueuedLaunchMaterial(
     github: launchLoader(loadGitHubQueuedLaunchMaterial, (material) => {
       return { githubDelivery: material.githubDelivery };
     }),
+    "workflow-schedule": launchLoader(
+      loadMorningBriefQueuedLaunchMaterial,
+      (material) => {
+        return {
+          morningBriefDelivery: {
+            deliveryId: material.deliveryId,
+            internalKind: "morning-brief:email",
+            secret: generateCallbackSecret(),
+            payload: { deliveryId: material.deliveryId },
+          },
+        };
+      },
+    ),
   };
   const load = launchLoaders[args.queuedMessage.triggerSource];
   if (!load) {
@@ -2748,9 +2780,19 @@ async function resolveQueuedLaunchMaterial(
     chatThreadId: args.threadId,
     orgId: args.agent.orgId,
     userId: args.userId,
+    resolveSignedUrls: (keys) => {
+      return args.resolveMorningBriefSignedUrls(keys, args.signal);
+    },
   });
   if (material) {
     return material;
+  }
+  if (
+    args.queuedMessage.triggerSource === "workflow-schedule" &&
+    sourceParams?.prompt !== undefined &&
+    sourceParams.appendSystemPrompt !== undefined
+  ) {
+    return null;
   }
   throw new Error(
     `${args.queuedMessage.triggerSource} queue item is missing launch material`,
@@ -2840,6 +2882,7 @@ function teamsQueuedMessageAdmissionFailure(
 function morningBriefQueuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
   sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
+  launchMaterial: QueuedLaunchMaterial | null,
   error: QueuedMessageModelRouteError,
 ): MorningBriefQueuedMessageAdmissionFailure | null {
   if (args.queuedMessage.triggerSource !== "workflow-schedule") {
@@ -2849,7 +2892,9 @@ function morningBriefQueuedMessageAdmissionFailure(
     kind: "morning_brief_admission_failure",
     threadId: args.threadId,
     queuedMessage: args.queuedMessage,
-    morningBriefDelivery: sourceParams?.morningBriefDelivery,
+    morningBriefDelivery:
+      launchMaterial?.delivery.morningBriefDelivery ??
+      sourceParams?.morningBriefDelivery,
     error,
   };
 }
@@ -2968,6 +3013,7 @@ function queuedMessageAdmissionFailure(
       return morningBriefQueuedMessageAdmissionFailure(
         resolverArgs.args,
         resolverArgs.sourceParams,
+        resolverArgs.launchMaterial,
         resolverArgs.error,
       );
     },
@@ -3666,6 +3712,7 @@ interface AutoSendQueuedMessageArgs {
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
   readonly resolveAttachFileMetadata: CreateQueuedChatRunInputArgs["resolveAttachFileMetadata"];
+  readonly resolveMorningBriefSignedUrls: CreateQueuedChatRunInputArgs["resolveMorningBriefSignedUrls"];
   readonly formatIntegrationRunError: ChatCallbackDependencies["formatIntegrationRunError"];
   readonly deliverSlackAdmissionFailure: ChatCallbackDependencies["deliverSlackAdmissionFailure"];
   readonly deliverTeamsAdmissionFailure: ChatCallbackDependencies["deliverTeamsAdmissionFailure"];
@@ -3755,6 +3802,7 @@ async function autoSendQueuedMessageForThread(
         timing: args.timing,
         signal: args.signal,
         resolveAttachFileMetadata: args.resolveAttachFileMetadata,
+        resolveMorningBriefSignedUrls: args.resolveMorningBriefSignedUrls,
       });
     },
   );
@@ -4966,7 +5014,7 @@ const buildChatCallbackDependencies$ = command(
 /** User-message drain used by the shared event-backed thread scheduler. */
 export const drainQueuedUserMessagesForThread$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly chatThreadId: string;
       readonly apiStartTime?: number;
@@ -5016,6 +5064,27 @@ export const drainQueuedUserMessagesForThread$ = command(
           { userId, attachFiles },
           inputSignal,
         );
+      },
+      resolveMorningBriefSignedUrls: async (keys, inputSignal) => {
+        const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+        const inputUrl = await get(
+          generatePresignedGetUrl(
+            bucket,
+            keys.inputKey,
+            MORNING_BRIEF_SIGNED_URL_TTL_SECONDS,
+          ),
+        );
+        inputSignal.throwIfAborted();
+        const outputUrl = await get(
+          generatePresignedPutUrl(
+            bucket,
+            keys.outputKey,
+            "application/json",
+            MORNING_BRIEF_SIGNED_URL_TTL_SECONDS,
+          ),
+        );
+        inputSignal.throwIfAborted();
+        return { inputUrl, outputUrl };
       },
       formatIntegrationRunError: dependencies.formatIntegrationRunError,
       deliverSlackAdmissionFailure: dependencies.deliverSlackAdmissionFailure,

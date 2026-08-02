@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
+import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
 
@@ -10,10 +11,7 @@ import {
   decryptQueuedUserMessageRunParams,
   encryptQueuedUserMessageRunParams,
 } from "../signals/services/zero-chat-queued-event.service";
-import {
-  insertChatEvent,
-  replaceChatEvent,
-} from "../signals/services/zero-chat-event.service";
+import { insertChatEvent } from "../signals/services/zero-chat-event.service";
 import { touchChatThreadLastMessageAt } from "../signals/services/zero-chat-event-shared.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
 
@@ -51,95 +49,47 @@ export async function readMorningBriefQueuedParamsForDeliveryFixture(args: {
 }) {
   const messages = await db()
     .select({
+      deliveryId: chatMorningBriefContext.deliveryId,
       encryptedParams: chatEventInputParams.encryptedParams,
     })
     .from(chatEvents)
+    .leftJoin(
+      chatMorningBriefContext,
+      and(
+        eq(chatMorningBriefContext.id, chatEvents.contextId),
+        eq(chatMorningBriefContext.chatThreadId, chatEvents.chatThreadId),
+      ),
+    )
     .leftJoin(
       chatEventInputParams,
       eq(chatEventInputParams.eventId, chatEvents.id),
     )
     .where(eq(chatEvents.chatThreadId, args.threadId));
   for (const message of messages) {
+    if (message.deliveryId !== args.deliveryId) {
+      continue;
+    }
     const params = await decryptQueuedUserMessageRunParams(
       message.encryptedParams,
       { orgId: args.orgId, userId: args.userId },
     );
-    if (params?.morningBriefDelivery?.deliveryId === args.deliveryId) {
-      return params;
-    }
+    return params;
   }
   return null;
 }
 
-/**
- * Replace the opaque callback payload on a queued Morning Brief. Public APIs
- * always create the valid shape, so only a fixture can exercise terminal chat
- * handling when the internal callback rejects persisted payload data.
- */
-export async function replaceMorningBriefQueuedCallbackPayloadFixture(args: {
-  readonly deliveryId: string;
-  readonly threadId: string;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly payload: unknown;
+export async function setMorningBriefTriggeredAtFixture(args: {
+  readonly eventId: string;
+  readonly triggeredAt: Date;
 }): Promise<void> {
-  const messages = await db()
-    .select({
-      id: chatEvents.id,
-      encryptedParams: chatEventInputParams.encryptedParams,
-      userMessage: chatEvents.userMessage,
-      attachFiles: chatEvents.attachFiles,
-      generationTemplate: chatEvents.generationTemplate,
-      triggerSource: chatEvents.triggerSource,
-    })
-    .from(chatEvents)
-    .leftJoin(
-      chatEventInputParams,
-      eq(chatEventInputParams.eventId, chatEvents.id),
-    )
-    .where(eq(chatEvents.chatThreadId, args.threadId));
-  for (const message of messages) {
-    const params = await decryptQueuedUserMessageRunParams(
-      message.encryptedParams,
-      { orgId: args.orgId, userId: args.userId },
-    );
-    if (params?.morningBriefDelivery?.deliveryId !== args.deliveryId) {
-      continue;
-    }
-    const encryptedParams = await encryptQueuedUserMessageRunParams(
-      {
-        ...params,
-        morningBriefDelivery: {
-          ...params.morningBriefDelivery,
-          payload: args.payload,
-        },
-      },
-      { orgId: args.orgId, userId: args.userId },
-    );
-    if (!message.userMessage) {
-      throw new Error("Expected the queued Morning Brief user message");
-    }
-    const userMessage = message.userMessage;
-    const replaced = await db().transaction(async (tx) => {
-      return await replaceChatEvent(tx, message.id, {
-        chatThreadId: args.threadId,
-        eventType: "input.prompt",
-        userMessage,
-        runId: null,
-        encryptedParams,
-        attachFiles: message.attachFiles ? [...message.attachFiles] : null,
-        generationTemplate: message.generationTemplate,
-        ...(message.triggerSource
-          ? { triggerSource: message.triggerSource }
-          : {}),
-      });
-    });
-    if (!replaced) {
-      throw new Error("Expected the queued Morning Brief callback payload");
-    }
-    return;
+  const updated = await db()
+    .update(chatMorningBriefContext)
+    .set({ triggeredAt: args.triggeredAt })
+    .where(eq(chatMorningBriefContext.id, args.eventId))
+    .returning({ id: chatMorningBriefContext.id });
+  if (updated.length !== 1) {
+    throw new Error("Expected one queued Morning Brief context");
   }
-  throw new Error("Expected the queued Morning Brief delivery");
 }
 
 export async function readMorningBriefQueuedParamsFixture(args: {
