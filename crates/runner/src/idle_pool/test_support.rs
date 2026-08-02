@@ -58,11 +58,6 @@ impl ParkedIdleCandidateBuilder {
         self
     }
 
-    pub(crate) fn with_reuse_key(mut self, reuse_key: impl Into<String>) -> Self {
-        self.reuse_key = reuse_key.into();
-        self
-    }
-
     pub(crate) fn with_mock_sandbox_name(mut self, name: &str) -> Self {
         self.sandbox = Box::new(MockSandbox::new(name));
         self

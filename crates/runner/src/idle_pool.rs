@@ -1384,16 +1384,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn parked_candidate_exposes_reuse_key() {
-        let candidate =
-            ParkedIdleCandidateBuilder::new("initial-reuse-key", make_budget_lease(1, 1024))
-                .with_reuse_key("thread:chat-thread")
-                .build();
-
-        assert_eq!(candidate.reuse_key(), "thread:chat-thread");
-    }
-
     async fn make_idle_park_request(
         overrides: Arc<MockSandboxOverrides>,
         reuse_key: &str,
