@@ -9,9 +9,11 @@ import { env } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
+  clearGitHubTriggerCommentBodyFixture,
   decryptChatEventInputParamsFixture,
   findPendingChatEventInputParamsByPromptFixture,
   readChatEventContextFixture,
+  replaceGitHubLaunchMaterialWithLegacyParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import {
   countGitHubRunsByPromptFixture,
@@ -471,18 +473,24 @@ describe("GitHub canonical chat threads", () => {
   it("routes pull request mentions through the same canonical table and preserves PR context", async () => {
     const fixture = await seedFixture();
     const subjectNumber = 24_001;
+    const githubFileUrl =
+      "https://github.com/user-attachments/files/12345/review.txt";
+    const rawFilePrompt = `review this pull request ${githubFileUrl}`;
+    const filePrompt = [
+      "review this pull request [GitHub file]",
+      `[URL] ${githubFileUrl}`,
+      "[FILENAME] review.txt",
+    ].join("\n");
     await sendGitHubComment({
       fixture,
       githubUserId: fixture.githubUserA,
       commentId: 30_001,
-      prompt: "review this pull request",
+      prompt: rawFilePrompt,
       subjectNumber,
       subjectKind: "pull_request",
     });
-    const run = await runState(
-      fixture.actorA.userId,
-      "review this pull request",
-    );
+    const run = await runState(fixture.actorA.userId, filePrompt);
+    expect(run.prompt).toBe(filePrompt);
     expect(run.triggerSource).toBe("github");
     expect(run.appendSystemPrompt).toContain(
       `Pull Request URL: https://github.com/${REPO}/pull/${subjectNumber}`,
@@ -515,20 +523,7 @@ describe("GitHub canonical chat threads", () => {
         orgId: fixture.actorA.orgId,
         userId: fixture.actorA.userId,
       }),
-    ).resolves.toMatchObject({
-      version: 1,
-      prompt: "follow up in FIFO order",
-      githubDelivery: {
-        installationId: fixture.installationId,
-        repo: REPO,
-        subjectNumber,
-        subjectKind: "pull_request",
-        agentId: fixture.agentId,
-        triggerCommentId: "30002",
-        triggerReactionId: expect.any(String),
-        triggerCommentBody: "@Zero follow up in FIFO order",
-      },
-    });
+    ).resolves.toStrictEqual({ version: 1 });
     await expect(
       readChatEventContextFixture(queuedParams.eventId),
     ).resolves.toMatchObject({
@@ -545,6 +540,49 @@ describe("GitHub canonical chat threads", () => {
       githubTriggerReactionId: expect.any(String),
       githubTriggerCommentBody: "@Zero follow up in FIFO order",
     });
+    await clearGitHubTriggerCommentBodyFixture(queuedParams.eventId);
+
+    const legacyQueuedPrompt = "queued before the GitHub claim cutover";
+    await sendGitHubComment({
+      fixture,
+      githubUserId: fixture.githubUserA,
+      commentId: 30_003,
+      prompt: legacyQueuedPrompt,
+      subjectNumber,
+      subjectKind: "pull_request",
+    });
+    const legacyQueuedParams =
+      await findPendingChatEventInputParamsByPromptFixture(legacyQueuedPrompt);
+    if (!legacyQueuedParams) {
+      throw new Error("Expected legacy queued GitHub chat input params");
+    }
+    const legacyContext = await readChatEventContextFixture(
+      legacyQueuedParams.eventId,
+    );
+    if (!legacyContext?.githubTriggerReactionId) {
+      throw new Error("Expected queued GitHub reaction context");
+    }
+    const legacyPrompt = "legacy queued GitHub prompt";
+    const legacySystemPrompt = "legacy queued GitHub system prompt";
+    await replaceGitHubLaunchMaterialWithLegacyParamsFixture(
+      legacyQueuedParams.eventId,
+      {
+        orgId: fixture.actorA.orgId,
+        userId: fixture.actorA.userId,
+        prompt: legacyPrompt,
+        appendSystemPrompt: legacySystemPrompt,
+        githubDelivery: {
+          installationId: fixture.installationId,
+          repo: REPO,
+          subjectNumber,
+          subjectKind: "pull_request",
+          agentId: fixture.agentId,
+          triggerCommentId: "30003",
+          triggerReactionId: legacyContext.githubTriggerReactionId,
+          triggerCommentBody: `@Zero ${legacyQueuedPrompt}`,
+        },
+      },
+    );
 
     const firstCliSession = await claimAndFinish({ fixture, run });
     const followUp = await runState(
@@ -553,10 +591,17 @@ describe("GitHub canonical chat threads", () => {
     );
     expect(followUp.chatThreadId).toBe(run.chatThreadId);
     expect(followUp.sessionId).toBe(run.sessionId);
-    await claimAndFinish({
+    const followUpCliSession = await claimAndFinish({
       fixture,
       run: followUp,
       expectedResumeSessionId: firstCliSession,
+    });
+    const legacyRun = await runState(fixture.actorA.userId, legacyPrompt);
+    expect(legacyRun.appendSystemPrompt).toContain(legacySystemPrompt);
+    await claimAndFinish({
+      fixture,
+      run: legacyRun,
+      expectedResumeSessionId: followUpCliSession,
     });
 
     const routes = await routeRows({
@@ -567,17 +612,20 @@ describe("GitHub canonical chat threads", () => {
       expect.objectContaining({
         userId: fixture.actorA.userId,
         chatThreadId: run.chatThreadId,
-        lastCommentId: "30002",
+        lastCommentId: "30003",
       }),
     ]);
     expect(fixture.postedComments).toStrictEqual([
       expect.objectContaining({
         subjectNumber,
-        body: expect.stringContaining("> @Zero review this pull request"),
+        body: expect.stringContaining(`> @Zero ${rawFilePrompt}`),
       }),
       expect.objectContaining({
         subjectNumber,
-        body: expect.stringContaining("> @Zero follow up in FIFO order"),
+      }),
+      expect.objectContaining({
+        subjectNumber,
+        body: expect.stringContaining(`> @Zero ${legacyQueuedPrompt}`),
       }),
     ]);
   });

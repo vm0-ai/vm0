@@ -35,7 +35,11 @@ import {
 } from "../signals/services/zero-chat-event.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
-import { decryptQueuedUserMessageRunParams } from "../signals/services/zero-chat-queued-event.service";
+import type { GitHubDeliveryTarget } from "../signals/services/github-chat-callback-payload";
+import {
+  decryptQueuedUserMessageRunParams,
+  encryptQueuedUserMessageRunParams,
+} from "../signals/services/zero-chat-queued-event.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -582,6 +586,68 @@ export async function decryptChatEventInputParamsFixture(
     return null;
   }
   return await decryptQueuedUserMessageRunParams(row.encryptedParams, ctx);
+}
+
+export async function replaceGitHubLaunchMaterialWithLegacyParamsFixture(
+  eventId: string,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly prompt: string;
+    readonly appendSystemPrompt: string;
+    readonly githubDelivery: GitHubDeliveryTarget;
+  },
+): Promise<void> {
+  const [event] = await db()
+    .select({ contextId: chatEvents.contextId })
+    .from(chatEvents)
+    .where(eq(chatEvents.id, eventId))
+    .limit(1);
+  if (!event?.contextId) {
+    throw new Error("Expected pending GitHub event context");
+  }
+  const contextId = event.contextId;
+  const encryptedParams = await encryptQueuedUserMessageRunParams(
+    {
+      version: 1,
+      prompt: args.prompt,
+      appendSystemPrompt: args.appendSystemPrompt,
+      githubDelivery: args.githubDelivery,
+    },
+    { orgId: args.orgId, userId: args.userId },
+  );
+  await db().transaction(async (tx) => {
+    await tx
+      .update(chatGithubContext)
+      .set({
+        issueContext: null,
+        messageText: null,
+        triggerReactionId: null,
+        triggerCommentBody: null,
+      })
+      .where(eq(chatGithubContext.id, contextId));
+    await tx
+      .update(chatEventInputParams)
+      .set({ encryptedParams })
+      .where(eq(chatEventInputParams.eventId, eventId));
+  });
+}
+
+export async function clearGitHubTriggerCommentBodyFixture(
+  eventId: string,
+): Promise<void> {
+  const [event] = await db()
+    .select({ contextId: chatEvents.contextId })
+    .from(chatEvents)
+    .where(eq(chatEvents.id, eventId))
+    .limit(1);
+  if (!event?.contextId) {
+    throw new Error("Expected pending GitHub event context");
+  }
+  await db()
+    .update(chatGithubContext)
+    .set({ triggerCommentBody: null })
+    .where(eq(chatGithubContext.id, event.contextId));
 }
 
 export async function findPendingChatEventInputParamsByPromptFixture(

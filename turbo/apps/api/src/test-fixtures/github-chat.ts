@@ -11,6 +11,7 @@ import { dispatchGitHubChatDeliveryOnce } from "../signals/services/internal-git
 export interface GitHubRunStateFixture {
   readonly id: string;
   readonly userId: string;
+  readonly prompt: string;
   readonly sessionId: string;
   readonly continuedFromSessionId: string | null;
   readonly appendSystemPrompt: string | null;
@@ -51,6 +52,7 @@ export async function findGitHubRunStateFixture(
     .select({
       id: agentRuns.id,
       userId: agentRuns.userId,
+      prompt: agentRuns.prompt,
       sessionId: agentRuns.sessionId,
       continuedFromSessionId: agentRuns.continuedFromSessionId,
       appendSystemPrompt: agentRuns.appendSystemPrompt,
