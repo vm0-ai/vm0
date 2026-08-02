@@ -63,7 +63,6 @@ import {
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
 import { noGoalChangeAfterQueueEvent } from "./chat-goal-queue.service";
-import { telegramDeliveryTargetSchema } from "./telegram-chat-callback-payload";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
 import { attachCanonicalWebInputAssetsToEvent } from "./canonical-asset.service";
@@ -84,19 +83,6 @@ const queuedUserMessageTriggerSourceSchema = z.enum([
 
 const queuedUserMessageRunParamsSchema = z.object({
   version: z.literal(1),
-  prompt: z.string().optional(),
-  appendSystemPrompt: z.string().optional(),
-  telegramDelivery: telegramDeliveryTargetSchema.optional(),
-  userInfoExtras: z
-    .object({
-      slackDisplayName: z.string().optional(),
-      slackUserId: z.string().optional(),
-      telegramDisplayName: z.string().optional(),
-      telegramUsername: z.string().optional(),
-      telegramUserId: z.string().optional(),
-      telegramLanguage: z.string().optional(),
-    })
-    .optional(),
 });
 
 type QueuedUserMessageRunParams = z.infer<
