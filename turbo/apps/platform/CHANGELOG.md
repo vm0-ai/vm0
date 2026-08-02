@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.675.11](https://github.com/vm0-ai/vm0/compare/app-v0.675.10...app-v0.675.11) (2026-08-02)
+
+
+### Refactoring
+
+* move chat composer state into signals ([#24441](https://github.com/vm0-ai/vm0/issues/24441)) ([d6647b7](https://github.com/vm0-ai/vm0/commit/d6647b76063b5897aa0901c0414f06d346f277c0))
+* **runner:** treat invalid resume sessions as pre-reuse failures ([#24568](https://github.com/vm0-ai/vm0/issues/24568)) ([a3e789f](https://github.com/vm0-ai/vm0/commit/a3e789f626155acb7f3fe280aa4fe60f4579f103))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.7
+    * @vm0/core bumped to 8.502.7
+
 ## [0.675.10](https://github.com/vm0-ai/vm0/compare/app-v0.675.9...app-v0.675.10) (2026-08-02)
 
 

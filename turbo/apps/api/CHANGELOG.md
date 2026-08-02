@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.364.10](https://github.com/vm0-ai/vm0/compare/api-v1.364.9...api-v1.364.10) (2026-08-02)
+
+
+### Refactoring
+
+* **api:** stop runtime sql from using legacy runner state ([#24565](https://github.com/vm0-ai/vm0/issues/24565)) ([22fe6a6](https://github.com/vm0-ai/vm0/commit/22fe6a6fcbfc8f5fed229f175b59a4c657b3cccc))
+* **runner:** treat invalid resume sessions as pre-reuse failures ([#24568](https://github.com/vm0-ai/vm0/issues/24568)) ([a3e789f](https://github.com/vm0-ai/vm0/commit/a3e789f626155acb7f3fe280aa4fe60f4579f103))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.7
+    * @vm0/core bumped to 8.502.7
+    * @vm0/db bumped to 1.160.12
+
 ## [1.364.9](https://github.com/vm0-ai/vm0/compare/api-v1.364.8...api-v1.364.9) (2026-08-02)
 
 
