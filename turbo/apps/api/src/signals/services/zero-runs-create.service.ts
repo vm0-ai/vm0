@@ -19,7 +19,6 @@ import {
   agentComposeVersions,
   agentComposes,
 } from "@vm0/db/schema/agent-compose";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -498,32 +497,6 @@ async function inferAgentIdFromSession(
   return session?.agentComposeId ?? null;
 }
 
-async function loadThreadCloudBrowserEnabled(
-  db: Db,
-  args: {
-    readonly chatThreadId: string | undefined;
-    readonly orgId: string;
-    readonly userId: string;
-  },
-): Promise<boolean | undefined> {
-  if (!args.chatThreadId) {
-    return undefined;
-  }
-  const [thread] = await db
-    .select({ cloudBrowserEnabled: chatThreads.cloudBrowserEnabled })
-    .from(chatThreads)
-    .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
-    .where(
-      and(
-        eq(chatThreads.id, args.chatThreadId),
-        eq(agentComposes.orgId, args.orgId),
-        eq(chatThreads.userId, args.userId),
-      ),
-    )
-    .limit(1);
-  return thread?.cloudBrowserEnabled ?? false;
-}
-
 async function loadZeroAgent(
   db: Db,
   agentId: string,
@@ -966,6 +939,7 @@ async function resolveThreadSessionForZeroRun(
     ...input,
     command: { ...input.command, body },
     threadSessionResolution: resolution,
+    cloudBrowserEnabled: resolution.cloudBrowserEnabled,
   };
 }
 
@@ -1095,12 +1069,6 @@ const createZeroRunInternal$ = command(
       },
       signal,
     );
-    const cloudBrowserEnabled = await loadThreadCloudBrowserEnabled(db, {
-      chatThreadId: args.chatThreadId,
-      orgId: args.auth.orgId,
-      userId: args.auth.userId,
-    });
-    signal.throwIfAborted();
 
     return await set(
       createAgentRunAfterZeroPreCreate$,
@@ -1117,7 +1085,7 @@ const createZeroRunInternal$ = command(
         allowedCustomConnectorIds,
         customConnectorGrants,
         timing,
-        cloudBrowserEnabled,
+        cloudBrowserEnabled: undefined,
       },
       signal,
     );
