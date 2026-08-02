@@ -160,8 +160,10 @@ pub(super) async fn handle_discovered_job(
     let resume_session_error = validate_resume_session_id(claimed.context()).err();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ResumeSessionValidation, started_at);
     if let Some(error) = resume_session_error {
+        let needs_session_affinity_refresh =
+            matches!(&resource, LocalAdmissionResource::Reusable(_));
         fail_claimed_without_sandbox(claimed, cancellation, resource, None, error, &mut ctx).await;
-        return true;
+        return needs_session_affinity_refresh;
     }
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
     let started_at = Instant::now();
