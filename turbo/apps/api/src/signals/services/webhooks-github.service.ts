@@ -1245,6 +1245,7 @@ async function insertGitHubChatInput(args: {
   readonly target: GitHubRunTarget;
   readonly prompt: string;
   readonly promptParts: ReturnType<typeof buildPromptParts>;
+  readonly issueContext: string;
   readonly reactionId: string | undefined;
   readonly currentTime: Date;
 }): Promise<{ readonly chatEventId: string; readonly inserted: boolean }> {
@@ -1303,6 +1304,10 @@ async function insertGitHubChatInput(args: {
           subjectNumber: issueNumber,
           subjectKind: args.params.subjectKind,
           triggerCommentId: args.params.commentId ?? null,
+          issueContext: args.issueContext,
+          messageText: args.promptParts.prompt,
+          triggerReactionId: args.reactionId ?? null,
+          triggerCommentBody: args.params.comment?.body ?? null,
         },
         createdAt: args.currentTime,
       },
@@ -1407,6 +1412,7 @@ const dispatchGithubAgentRun$ = command(
       target,
       prompt,
       promptParts,
+      issueContext,
       reactionId,
       currentTime,
     });

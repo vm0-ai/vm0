@@ -136,6 +136,10 @@ type ChatEventDisplayContext =
         readonly subjectNumber: number;
         readonly subjectKind: "issue" | "pull_request";
         readonly triggerCommentId: string | null;
+        readonly issueContext: string;
+        readonly messageText: string;
+        readonly triggerReactionId: string | null;
+        readonly triggerCommentBody: string | null;
       };
     }
   | {
@@ -438,6 +442,10 @@ type NewDisplayContext =
       readonly subjectNumber: number;
       readonly subjectKind: "issue" | "pull_request";
       readonly triggerCommentId: string | null;
+      readonly issueContext: string;
+      readonly messageText: string;
+      readonly triggerReactionId: string | null;
+      readonly triggerCommentBody: string | null;
     }
   | {
       readonly type: "automation";
@@ -740,6 +748,10 @@ async function insertDisplayContext(
       subjectNumber: context.subjectNumber,
       subjectKind: context.subjectKind,
       triggerCommentId: context.triggerCommentId,
+      issueContext: context.issueContext,
+      messageText: context.messageText,
+      triggerReactionId: context.triggerReactionId,
+      triggerCommentBody: context.triggerCommentBody,
       createdAt,
     });
     return;
