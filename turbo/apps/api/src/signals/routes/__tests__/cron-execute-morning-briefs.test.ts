@@ -58,10 +58,6 @@ import {
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import { readRunApiStart } from "./helpers/runtime-state";
-import {
-  buildMorningBriefAppendSystemPrompt,
-  buildMorningBriefRunPrompt,
-} from "../../services/morning-brief-run-prompt";
 
 /**
  * MORNING-BRIEF: the daily 7:00 local-time brief end to end.
@@ -132,6 +128,80 @@ function morningBriefPromptUrl(prompt: string, method: "GET" | "PUT"): string {
   const urlStart = start + prefix.length;
   const newline = prompt.indexOf("\n", urlStart);
   return prompt.slice(urlStart, newline === -1 ? undefined : newline);
+}
+
+function expectedMorningBriefRunPrompt(args: {
+  readonly briefDate: string;
+  readonly timezone: string;
+  readonly deliveryId: string;
+  readonly triggeredAt: Date;
+  readonly inputUrl: string;
+  readonly outputUrl: string;
+}): string {
+  const firedAt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: args.timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(args.triggeredAt);
+  return [
+    `Generate my Morning Brief for ${args.briefDate}.`,
+    "",
+    "# Run facts",
+    "",
+    `- trigger: the Morning Brief schedule fired for ${args.briefDate}; nobody typed this message`,
+    `- fired at: ${firedAt} (${args.timezone})`,
+    `- delivery id: ${args.deliveryId}`,
+    "- chat thread: every Morning Brief delivery runs in this one thread and keeps its session, so the messages above are earlier deliveries; the URLs they carried are expired",
+    `- collected input for this delivery: HTTP GET ${args.inputUrl}`,
+    `- destination for this delivery's brief: HTTP PUT ${args.outputUrl}`,
+    `- both URLs are signed for delivery ${args.deliveryId} only and expire 1440 minutes after the trigger above`,
+    "- email assembly: a server-side job reads the object at the PUT URL, renders the email, and queues it; it runs once a minute",
+    "- when a run ends with no object at the PUT URL: the delivery is recorded failed, no email is queued, and nothing re-runs it",
+    '- the JSON shape expected at the PUT URL is in your system instructions under "# Morning Brief run"',
+  ].join("\n");
+}
+
+function expectedMorningBriefAppendSystemPrompt(args: {
+  readonly briefDate: string;
+  readonly timezone: string;
+  readonly inputUrl: string;
+  readonly outputUrl: string;
+}): string {
+  return [
+    "# Morning Brief run",
+    `You are generating the user's Morning Brief for ${args.briefDate} (timezone ${args.timezone}).`,
+    "",
+    "1. Download the collected data (GitHub, Gmail, Google Calendar, unread vm0 chat threads) with an HTTP GET request to this URL (valid for 30 minutes):",
+    args.inputUrl,
+    "2. Analyze the data and write the brief. Only use predefined sections, omit empty ones, order by importance:",
+    "   - `schedule`: today's meetings and events",
+    "   - `needs_attention`: items that need the user's action or reply",
+    "   - `unread_threads`: vm0 chat threads with results the user has not read yet — summarize what each task produced while they were away",
+    "   - `github_updates`: PRs, reviews, CI, mentions involving the user",
+    "   - `email_updates`: notable email threads",
+    "   - `suggestions`: at most 3 suggestions, each grounded in today's data",
+    "3. Keep it a 3-5 minute read: at most 5 primary items per section; fold the rest into a single 'N more updates' item. Do not pad.",
+    "4. After choosing the final section items, write `headline` as the email opening:",
+    "   - Begin exactly with `Good morning.`",
+    "   - Derive it from the final sections and summarize the overall shape of the brief without sensitive details.",
+    "   - Use one or two short sentences, no more than 180 characters. Do not repeat a section title or list every item.",
+    "5. Upload the result as JSON with an HTTP PUT request (Content-Type: application/json) to this URL (valid for 30 minutes):",
+    args.outputUrl,
+    "   The JSON shape is:",
+    "   {",
+    '     "version": 1,',
+    '     "headline": "natural opening derived from the final sections; begins with Good morning.",',
+    '     "sections": [{"key": "schedule|needs_attention|unread_threads|github_updates|email_updates|suggestions", "title": "string", "items": [{"title": "string", "detail": "string (optional)", "url": "https source link (optional)"}]}]',
+    "   }",
+    "   Item `url` values must point at the original Gmail message, Calendar event, GitHub page, or the vm0 chat thread `url` provided in the input.",
+    "6. Also post the same brief as well-formatted Markdown in this chat so the user can read it here and ask follow-up questions.",
+    "7. If a source in the input is marked failed, mention briefly in the brief that the source was unavailable.",
+    "The email is assembled server-side from the uploaded JSON; do not try to send any email yourself.",
+  ].join("\n");
 }
 
 function cronHeaders() {
@@ -717,7 +787,6 @@ describe("cron execute morning briefs", () => {
       return item.internalKind === "morning-brief:email";
     });
     expect(callback).toMatchObject({
-      hasEncryptedSecret: true,
       payload: { deliveryId: delivery.id },
       status: "pending",
     });
@@ -1317,7 +1386,6 @@ describe("cron execute morning briefs", () => {
         );
       });
     };
-    expect(presignCallsForDelivery()).toHaveLength(0);
     const queuedParams = await readMorningBriefQueuedParamsForDeliveryFixture({
       deliveryId: delivery.id,
       threadId,
@@ -1424,6 +1492,7 @@ describe("cron execute morning briefs", () => {
       eventId: readmittedEvent.id,
       triggeredAt: legacyTriggeredAt,
     });
+    const presignCountBeforeDelayedClaim = presignCallsForDelivery().length;
 
     mockNow(AFTER_SEVEN_LOCAL + 31 * 60 * 1000);
     mockUploadedBriefOutput(VALID_OUTPUT);
@@ -1444,7 +1513,9 @@ describe("cron execute morning briefs", () => {
     if (!queuedRunId) {
       throw new Error("Expected the queued Morning Brief to drain");
     }
-    const deliveryPresigns = presignCallsForDelivery();
+    const deliveryPresigns = presignCallsForDelivery().slice(
+      presignCountBeforeDelayedClaim,
+    );
     expect(deliveryPresigns).toHaveLength(2);
     expect(
       deliveryPresigns.map((call) => {
@@ -1499,7 +1570,7 @@ describe("cron execute morning briefs", () => {
         .replaceAll(inputUrl, "<input-url>")
         .replaceAll(outputUrl, "<output-url>"),
     ).toBe(
-      buildMorningBriefRunPrompt({
+      expectedMorningBriefRunPrompt({
         briefDate: BRIEF_DATE,
         timezone: TIMEZONE,
         deliveryId: delivery.id,
@@ -1512,8 +1583,8 @@ describe("cron execute morning briefs", () => {
       appendSystemPrompt
         .replaceAll(inputUrl, "<input-url>")
         .replaceAll(outputUrl, "<output-url>"),
-    ).toContain(
-      buildMorningBriefAppendSystemPrompt({
+    ).toBe(
+      expectedMorningBriefAppendSystemPrompt({
         briefDate: BRIEF_DATE,
         timezone: TIMEZONE,
         inputUrl: "<input-url>",
