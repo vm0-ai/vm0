@@ -27,7 +27,10 @@ import { logger } from "../../lib/log";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
-import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
+import {
+  recordSameThreadRunnerJobPersisted,
+  runnerJobQueueTimestamps,
+} from "./runner-job-queue-lifecycle.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import {
   revokeQueuedRunAssistantMarkers,
@@ -440,6 +443,12 @@ async function promoteQueuedCandidateWithSideEffects(
 
   if (result.firstAssistantEventEligibility) {
     recordFirstAssistantEventEligibility(result.firstAssistantEventEligibility);
+  }
+  if (args.row.chatThreadId && result.runnerNotification) {
+    recordSameThreadRunnerJobPersisted({
+      runId: result.runnerNotification.runId,
+      createdAt: result.runnerNotification.createdAt,
+    });
   }
 
   await publishPromotedQueueSideEffects(db, {

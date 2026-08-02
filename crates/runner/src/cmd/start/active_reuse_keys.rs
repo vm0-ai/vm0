@@ -42,6 +42,14 @@ impl ActiveReuseKeyGuard {
             reuse_key,
         }
     }
+
+    pub(super) fn release(mut self) -> bool {
+        let Some(reuse_key) = self.reuse_key.take() else {
+            return false;
+        };
+        remove_active_reuse_key(&self.active_reuse_keys, &reuse_key);
+        true
+    }
 }
 
 impl Drop for ActiveReuseKeyGuard {

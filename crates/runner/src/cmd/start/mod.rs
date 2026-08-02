@@ -658,6 +658,7 @@ async fn run_start_with_home(
             server.token,
             ApiProviderConfig {
                 runner_id: runner_id.clone(),
+                heartbeat_generation,
                 group,
                 supported_profiles: profiles,
             },

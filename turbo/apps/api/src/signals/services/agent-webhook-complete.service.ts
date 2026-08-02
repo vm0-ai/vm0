@@ -13,6 +13,7 @@ import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
+import { recordSandboxOperation } from "../external/sandbox-op-log";
 import {
   publishChatThreadDetailChangedSafely,
   publishRunChangedForUserSafely,
@@ -153,7 +154,17 @@ async function transitionRunStatus(
       ),
     )
     .returning({ id: agentRuns.id });
-  return !!updated;
+  if (!updated) {
+    return false;
+  }
+  recordSandboxOperation({
+    sandboxType: "runner",
+    actionType: "run_terminal_transition_committed",
+    durationMs: 0,
+    success: true,
+    runId,
+  });
+  return true;
 }
 
 function successResponse(
