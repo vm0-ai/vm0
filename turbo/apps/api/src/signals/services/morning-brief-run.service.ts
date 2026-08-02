@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
 import {
   morningBriefDeliveries,
@@ -39,10 +38,7 @@ import {
 import { buildMorningBriefChatMessage } from "./morning-brief-run-prompt";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
-import {
-  decryptQueuedUserMessageRunParams,
-  encryptQueuedUserMessageRunParams,
-} from "./zero-chat-queued-event.service";
+import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { resolveDefaultAgent } from "./zero-email-common.service";
 import { createAutomationChatThread } from "./zero-workflow-user-automation-thread.service";
@@ -468,8 +464,6 @@ type ManualMorningBriefDeliveryAdmission =
 async function hasPendingMorningBriefQueueEvent(
   db: Db,
   args: {
-    readonly orgId: string;
-    readonly userId: string;
     readonly chatThreadId: string;
     readonly deliveryId: string;
   },
@@ -485,7 +479,6 @@ async function hasPendingMorningBriefQueueEvent(
   const messages = await db
     .select({
       deliveryId: chatMorningBriefContext.deliveryId,
-      encryptedParams: chatEventInputParams.encryptedParams,
     })
     .from(chatEvents)
     .leftJoin(
@@ -495,10 +488,6 @@ async function hasPendingMorningBriefQueueEvent(
         eq(chatMorningBriefContext.chatThreadId, chatEvents.chatThreadId),
       ),
     )
-    .leftJoin(
-      chatEventInputParams,
-      eq(chatEventInputParams.eventId, chatEvents.id),
-    )
     .where(
       and(
         inArray(chatEvents.id, pendingMessageIds),
@@ -507,13 +496,6 @@ async function hasPendingMorningBriefQueueEvent(
     );
   for (const message of messages) {
     if (message.deliveryId === args.deliveryId) {
-      return true;
-    }
-    const params = await decryptQueuedUserMessageRunParams(
-      message.encryptedParams,
-      { orgId: args.orgId, userId: args.userId },
-    );
-    if (params?.morningBriefDelivery?.deliveryId === args.deliveryId) {
       return true;
     }
   }
@@ -569,8 +551,6 @@ async function admitManualMorningBriefDelivery(
   }
   if (existing.status === "queued" && args.chatThreadId) {
     const hasPendingEvent = await hasPendingMorningBriefQueueEvent(db, {
-      orgId: args.orgId,
-      userId: args.userId,
       chatThreadId: args.chatThreadId,
       deliveryId: existing.id,
     });

@@ -48,16 +48,13 @@ import {
   setQueuedUserMessageCreatedAtFixture,
 } from "../../../test-fixtures/chat-events";
 import {
-  insertOldFormatQueuedUserMessageFixture,
   insertQueuedWebUserMessageFixture,
   readMorningBriefDeliveryFixture,
   readMorningBriefQueuedParamsForDeliveryFixture,
-  readMorningBriefQueuedParamsFixture,
   setMorningBriefTriggeredAtFixture,
 } from "../../../test-fixtures/morning-brief";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
-import { readRunApiStart } from "./helpers/runtime-state";
 
 /**
  * MORNING-BRIEF: the daily 7:00 local-time brief end to end.
@@ -1713,79 +1710,6 @@ describe("cron execute morning briefs", () => {
     }
     expect(userRunId).not.toBe(briefRunId);
     await completeMorningBriefRun(scenario, userRunId, 0);
-    clearMockNow();
-  }, 90_000);
-
-  it("drains an old-format queued params payload without new delivery fields", async () => {
-    context.mocks.resend.send.mockResolvedValue({
-      data: { id: "resend-old-format" },
-      error: null,
-    });
-    const scenario = await setupMorningBriefActor();
-    await updateFeatureSwitchesForUser(context, scenario.actor, {
-      [FeatureSwitchKey.ManualMorningBrief]: true,
-    });
-    mockNow(AFTER_SEVEN_LOCAL);
-    routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
-    const triggered = await accept(
-      morningBriefTriggerClient().trigger({
-        headers: actorHeaders(),
-        body: {},
-      }),
-      [200],
-    );
-    if (!triggered.body.runId) {
-      throw new Error("Expected the initial Morning Brief run");
-    }
-    const triggeredRunId = triggered.body.runId;
-    const thread = await findMorningBriefThread(scenario);
-
-    const displayContent = "Legacy queued Morning Brief display text.";
-    const realPrompt = "Legacy queued Morning Brief execution prompt.";
-    const appendSystemPrompt = "Legacy Morning Brief system instructions.";
-    const messageId = await insertOldFormatQueuedUserMessageFixture({
-      threadId: thread.threadId,
-      orgId: scenario.actor.orgId,
-      userId: scenario.actor.userId,
-      content: displayContent,
-      prompt: realPrompt,
-      appendSystemPrompt,
-      createdAt: new Date(BEFORE_SEVEN_LOCAL),
-    });
-    const oldParams = await readMorningBriefQueuedParamsFixture({
-      messageId,
-      orgId: scenario.actor.orgId,
-      userId: scenario.actor.userId,
-    });
-    expect(oldParams).toStrictEqual({
-      version: 1,
-      prompt: realPrompt,
-      appendSystemPrompt,
-    });
-
-    mockUploadedBriefOutput(VALID_OUTPUT);
-    await completeMorningBriefRun(scenario, triggeredRunId, 0);
-    await drainOutbox();
-    const events = await readMorningBriefThreadEvents(
-      scenario,
-      thread.threadId,
-    );
-    const claimed = events.find((event) => {
-      return (
-        event.eventType === "input.prompt" &&
-        chatEventDisplayText(event) === displayContent &&
-        event.runId !== undefined
-      );
-    });
-    if (!claimed?.runId) {
-      throw new Error("Expected the old-format queue item to drain");
-    }
-    await expect(readRunApiStart(context, claimed.runId)).resolves.toBe(
-      new Date(BEFORE_SEVEN_LOCAL).toISOString(),
-    );
-    const runInput = await completeMorningBriefRun(scenario, claimed.runId, 0);
-    expect(runInput.prompt).toBe(realPrompt);
-    expect(runInput.appendSystemPrompt).toContain(appendSystemPrompt);
     clearMockNow();
   }, 90_000);
 
