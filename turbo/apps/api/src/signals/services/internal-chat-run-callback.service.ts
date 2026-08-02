@@ -197,6 +197,10 @@ import {
   loadAgentPhoneQueuedLaunchMaterial,
   type AgentPhoneQueuedLaunchMaterial,
 } from "./agentphone-queued-launch-context.service";
+import {
+  loadTelegramQueuedLaunchMaterial,
+  type TelegramQueuedLaunchMaterial,
+} from "./telegram-queued-launch-context.service";
 
 const log = logger("callback:chat");
 const PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -2724,6 +2728,7 @@ type NativeQueuedLaunchMaterial =
   | TeamsQueuedLaunchMaterial
   | (GitHubQueuedLaunchMaterial & { readonly userInfoExtras?: undefined })
   | AgentPhoneQueuedLaunchMaterial
+  | TelegramQueuedLaunchMaterial
   | MorningBriefQueuedLaunchMaterial;
 
 function launchLoader<Material extends NativeQueuedLaunchMaterial>(
@@ -2748,6 +2753,7 @@ function launchLoader<Material extends NativeQueuedLaunchMaterial>(
 
 async function resolveQueuedLaunchMaterial(
   args: CreateQueuedChatRunInputArgs,
+  sourceParams: QueuedSourceParams,
 ): Promise<QueuedLaunchMaterial | null> {
   const launchLoaders: Partial<Record<TriggerSource, LaunchLoader>> = {
     slack: launchLoader(loadSlackQueuedLaunchMaterial, (material) => {
@@ -2778,6 +2784,9 @@ async function resolveQueuedLaunchMaterial(
     agentphone: launchLoader(loadAgentPhoneQueuedLaunchMaterial, (material) => {
       return { agentphoneDelivery: material.agentphoneDelivery };
     }),
+    telegram: launchLoader(loadTelegramQueuedLaunchMaterial, (material) => {
+      return { telegramDelivery: material.telegramDelivery };
+    }),
   };
   const load = launchLoaders[args.queuedMessage.triggerSource];
   if (!load) {
@@ -2794,6 +2803,14 @@ async function resolveQueuedLaunchMaterial(
   });
   if (material) {
     return material;
+  }
+  if (
+    args.queuedMessage.triggerSource === "telegram" &&
+    sourceParams?.prompt !== undefined &&
+    sourceParams.appendSystemPrompt !== undefined &&
+    sourceParams.telegramDelivery
+  ) {
+    return null;
   }
   throw new Error(
     `${args.queuedMessage.triggerSource} queue item is missing launch material`,
@@ -2893,13 +2910,10 @@ function morningBriefQueuedMessageAdmissionFailure(
 
 function telegramQueuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
+  telegramDelivery: CreateQueuedChatRunInput["telegramDelivery"],
   error: QueuedMessageModelRouteError,
 ): TelegramQueuedMessageAdmissionFailure | null {
-  if (
-    args.queuedMessage.triggerSource !== "telegram" ||
-    !sourceParams?.telegramDelivery
-  ) {
+  if (args.queuedMessage.triggerSource !== "telegram" || !telegramDelivery) {
     return null;
   }
   return {
@@ -2909,7 +2923,7 @@ function telegramQueuedMessageAdmissionFailure(
     agentId: args.agent.id,
     threadId: args.threadId,
     queuedMessage: args.queuedMessage,
-    telegramDelivery: sourceParams.telegramDelivery,
+    telegramDelivery,
     error,
   };
 }
@@ -2983,7 +2997,8 @@ function queuedMessageAdmissionFailure(
     telegram: (resolverArgs) => {
       return telegramQueuedMessageAdmissionFailure(
         resolverArgs.args,
-        resolverArgs.sourceParams,
+        resolverArgs.launchMaterial?.delivery.telegramDelivery ??
+          resolverArgs.sourceParams?.telegramDelivery,
         resolverArgs.error,
       );
     },
@@ -3014,10 +3029,18 @@ function queuedMessageAdmissionFailure(
 }
 
 function queuedMessagePrompt(args: {
+  readonly triggerSource: QueuedUserMessage["triggerSource"];
   readonly launchMaterial: QueuedLaunchMaterial | null;
+  readonly sourceParams: QueuedSourceParams;
   readonly projectedPrompt: string;
 }): string {
-  return args.launchMaterial?.prompt ?? args.projectedPrompt;
+  if (args.launchMaterial) {
+    return args.launchMaterial.prompt;
+  }
+  if (args.triggerSource === "telegram") {
+    return args.sourceParams?.prompt ?? "";
+  }
+  return args.projectedPrompt;
 }
 
 function queuedIntegrationPrompt(args: {
@@ -3063,7 +3086,7 @@ async function loadQueuedRunMaterial(args: CreateQueuedChatRunInputArgs) {
   if (args.queuedMessage.triggerSource !== "web" && !sourceParams) {
     throw new Error("Canonical integration queue item is missing run params");
   }
-  const launchMaterial = await resolveQueuedLaunchMaterial(args);
+  const launchMaterial = await resolveQueuedLaunchMaterial(args, sourceParams);
   return {
     sourceParams,
     launchMaterial,
@@ -3172,7 +3195,9 @@ async function buildCreateQueuedChatRunInput(
     },
   );
   const prompt = queuedMessagePrompt({
+    triggerSource: args.queuedMessage.triggerSource,
     launchMaterial,
+    sourceParams,
     projectedPrompt: userMessageProjection.agentPrompt,
   });
 

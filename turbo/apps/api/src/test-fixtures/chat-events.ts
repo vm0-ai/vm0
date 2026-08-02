@@ -36,7 +36,11 @@ import {
 } from "../signals/services/zero-chat-event.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
-import { decryptQueuedUserMessageRunParams } from "../signals/services/zero-chat-queued-event.service";
+import {
+  decryptQueuedUserMessageRunParams,
+  encryptQueuedUserMessageRunParams,
+} from "../signals/services/zero-chat-queued-event.service";
+import { loadTelegramQueuedLaunchMaterial } from "../signals/services/telegram-queued-launch-context.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -667,6 +671,99 @@ export async function decryptChatEventInputParamsFixture(
     return null;
   }
   return await decryptQueuedUserMessageRunParams(row.encryptedParams, ctx);
+}
+
+async function pendingTelegramEventContext(eventId: string) {
+  const [row] = await db()
+    .select({
+      chatThreadId: chatEvents.chatThreadId,
+      contextId: chatTelegramContext.id,
+    })
+    .from(chatEvents)
+    .innerJoin(
+      chatTelegramContext,
+      and(
+        eq(chatTelegramContext.id, chatEvents.contextId),
+        eq(chatTelegramContext.chatThreadId, chatEvents.chatThreadId),
+      ),
+    )
+    .where(
+      and(
+        eq(chatEvents.id, eventId),
+        eq(chatEvents.contextType, "telegram"),
+        eq(chatEvents.triggerSource, "telegram"),
+        isNull(chatEvents.runId),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    throw new Error("Expected pending Telegram launch context");
+  }
+  return row;
+}
+
+export async function setTelegramThinkingMessageIdFixture(
+  eventId: string,
+  thinkingMessageId: string,
+): Promise<void> {
+  const event = await pendingTelegramEventContext(eventId);
+  await db()
+    .update(chatTelegramContext)
+    .set({ thinkingMessageId })
+    .where(eq(chatTelegramContext.id, event.contextId));
+}
+
+export async function replaceTelegramLaunchMaterialWithLegacyParamsFixture(
+  eventId: string,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly prompt: string;
+    readonly appendSystemPrompt: string;
+  },
+): Promise<void> {
+  const event = await pendingTelegramEventContext(eventId);
+  const material = await loadTelegramQueuedLaunchMaterial(db(), {
+    eventId,
+    chatThreadId: event.chatThreadId,
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+  if (!material) {
+    throw new Error("Expected complete Telegram launch context");
+  }
+  const encryptedParams = await encryptQueuedUserMessageRunParams(
+    {
+      version: 1,
+      prompt: args.prompt,
+      appendSystemPrompt: args.appendSystemPrompt,
+      telegramDelivery: material.telegramDelivery,
+      userInfoExtras: material.userInfoExtras,
+    },
+    { orgId: args.orgId, userId: args.userId },
+  );
+  await db().transaction(async (tx) => {
+    await tx
+      .update(chatTelegramContext)
+      .set({
+        messageText: null,
+        threadContext: null,
+        rootMessageId: null,
+        thinkingMessageId: null,
+        userLinkId: null,
+        userLinkKind: null,
+        chatType: null,
+        senderUserId: null,
+        senderDisplayName: null,
+        senderUsername: null,
+        senderLanguage: null,
+      })
+      .where(eq(chatTelegramContext.id, event.contextId));
+    await tx
+      .update(chatEventInputParams)
+      .set({ encryptedParams })
+      .where(eq(chatEventInputParams.eventId, eventId));
+  });
 }
 
 export async function clearGitHubTriggerCommentBodyFixture(
