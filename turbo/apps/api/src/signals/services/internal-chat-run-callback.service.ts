@@ -179,6 +179,10 @@ import {
   loadTeamsQueuedLaunchMaterial,
   type TeamsQueuedLaunchMaterial,
 } from "./teams-queued-launch-context.service";
+import {
+  loadGitHubQueuedLaunchMaterial,
+  type GitHubQueuedLaunchMaterial,
+} from "./github-queued-launch-context.service";
 
 const log = logger("callback:chat");
 const PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -2695,7 +2699,8 @@ type LaunchLoader = (
 type NativeQueuedLaunchMaterial =
   | SlackQueuedLaunchMaterial
   | FeishuQueuedLaunchMaterial
-  | TeamsQueuedLaunchMaterial;
+  | TeamsQueuedLaunchMaterial
+  | (GitHubQueuedLaunchMaterial & { readonly userInfoExtras?: undefined });
 
 function launchLoader<Material extends NativeQueuedLaunchMaterial>(
   load: (db: Db, args: QueuedLaunchLoaderArgs) => Promise<Material | null>,
@@ -2719,6 +2724,7 @@ function launchLoader<Material extends NativeQueuedLaunchMaterial>(
 
 async function resolveQueuedLaunchMaterial(
   args: CreateQueuedChatRunInputArgs,
+  sourceParams: QueuedSourceParams,
 ): Promise<QueuedLaunchMaterial | null> {
   const launchLoaders: Partial<Record<TriggerSource, LaunchLoader>> = {
     slack: launchLoader(loadSlackQueuedLaunchMaterial, (material) => {
@@ -2729,6 +2735,9 @@ async function resolveQueuedLaunchMaterial(
     }),
     teams: launchLoader(loadTeamsQueuedLaunchMaterial, (material) => {
       return { teamsDelivery: material.teamsDelivery };
+    }),
+    github: launchLoader(loadGitHubQueuedLaunchMaterial, (material) => {
+      return { githubDelivery: material.githubDelivery };
     }),
   };
   const load = launchLoaders[args.queuedMessage.triggerSource];
@@ -2743,6 +2752,14 @@ async function resolveQueuedLaunchMaterial(
   });
   if (material) {
     return material;
+  }
+  if (
+    args.queuedMessage.triggerSource === "github" &&
+    sourceParams?.prompt !== undefined &&
+    sourceParams.appendSystemPrompt !== undefined &&
+    sourceParams.githubDelivery
+  ) {
+    return null;
   }
   throw new Error(
     `${args.queuedMessage.triggerSource} queue item is missing launch material`,
@@ -2897,13 +2914,10 @@ function agentPhoneQueuedMessageAdmissionFailure(
 
 function githubQueuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
+  githubDelivery: CreateQueuedChatRunInput["githubDelivery"],
   error: QueuedMessageModelRouteError,
 ): GitHubQueuedMessageAdmissionFailure | null {
-  if (
-    args.queuedMessage.triggerSource !== "github" ||
-    !sourceParams?.githubDelivery
-  ) {
+  if (args.queuedMessage.triggerSource !== "github" || !githubDelivery) {
     return null;
   }
   return {
@@ -2913,7 +2927,7 @@ function githubQueuedMessageAdmissionFailure(
     agentId: args.agent.id,
     threadId: args.threadId,
     queuedMessage: args.queuedMessage,
-    githubDelivery: sourceParams.githubDelivery,
+    githubDelivery,
     error,
   };
 }
@@ -2958,7 +2972,8 @@ function queuedMessageAdmissionFailure(
     github: (resolverArgs) => {
       return githubQueuedMessageAdmissionFailure(
         resolverArgs.args,
-        resolverArgs.sourceParams,
+        resolverArgs.launchMaterial?.delivery.githubDelivery ??
+          resolverArgs.sourceParams?.githubDelivery,
         resolverArgs.error,
       );
     },
@@ -2982,6 +2997,9 @@ function queuedMessagePrompt(args: {
 }): string {
   if (args.launchMaterial) {
     return args.launchMaterial.prompt;
+  }
+  if (args.triggerSource === "github") {
+    return args.sourceParams?.prompt ?? "";
   }
   if (args.triggerSource === "workflow-schedule") {
     return args.sourceParams?.prompt ?? args.projectedPrompt;
@@ -3032,7 +3050,7 @@ async function loadQueuedRunMaterial(args: CreateQueuedChatRunInputArgs) {
   if (args.queuedMessage.triggerSource !== "web" && !sourceParams) {
     throw new Error("Canonical integration queue item is missing run params");
   }
-  const launchMaterial = await resolveQueuedLaunchMaterial(args);
+  const launchMaterial = await resolveQueuedLaunchMaterial(args, sourceParams);
   return {
     sourceParams,
     launchMaterial,
