@@ -115,7 +115,9 @@
       "runner": {
         "deviceLimitMismatch": "Der Leerlauf-Pool-Eintrag ist vorhanden, aber der Geräteratenbegrenzerstatus stimmt nicht überein.",
         "featureDisabled": "Die Wiederverwendung von Sandboxen ist für diese Ausführung deaktiviert.",
-        "noSessionId": "Es ist keine Sitzungs-ID für den Abgleich mit dem Leerlaufpool verfügbar.",
+        "invalidResumeSessionId": "Die Wiederaufnahme-Sitzungs-ID der Anbieter-CLI war ungültig.",
+        "noReuseKey": "Es war kein Wiederverwendungsschlüssel verfügbar, um eine inaktive Sandbox abzugleichen.",
+        "noSessionId": "Altes Ergebnis: Der genaue Grund, warum die Sandbox nicht wiederverwendet wurde, ist nicht verfügbar.",
         "notReused": "Nicht wiederverwendet",
         "poolMiss": "Im Leerlaufpool wurde keine passende Sandbox gefunden.",
         "profileMismatch": "Ein Leerlaufpooleintrag ist vorhanden, sein Profil stimmt jedoch nicht überein.",

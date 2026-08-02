@@ -2545,6 +2545,79 @@ describe("activity detail polling", () => {
     });
   });
 
+  it.each([
+    {
+      runId: "a0000000-0000-4000-a000-000000000406",
+      result: "noReuseKey",
+      description: "No reuse key was available to match an idle sandbox.",
+      status: "completed",
+      error: null,
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000407",
+      result: "invalidResumeSessionId",
+      description: "The provider CLI resume session ID was invalid.",
+      status: "failed",
+      error: "Invalid resume session ID",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000408",
+      result: "noSessionId",
+      description:
+        "Legacy result: the exact reason the sandbox was not reused is unavailable.",
+      status: "completed",
+      error: null,
+    },
+  ] as const)(
+    "shows the $result sandbox reuse reason",
+    async ({ runId, result, description, status, error }) => {
+      context.mocks.data.composesList([]);
+      context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+        return respond(
+          200,
+          makeLogDetail({
+            id: runId,
+            displayName: "Sandbox Reuse Reason",
+            status,
+            error,
+            completedAt: "2026-03-10T15:00:18Z",
+          }),
+        );
+      });
+      context.mocks.api(
+        zeroRunAgentEventsContract.getAgentEvents,
+        ({ respond }) => {
+          return respond(200, {
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          } satisfies AgentEventsResponse);
+        },
+      );
+      context.mocks.api(zeroRunRunnerContract.getRunner, ({ respond }) => {
+        return respond(200, { sandboxReuseResult: result });
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/activities/${runId}`,
+        featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Sandbox Reuse Reason" }),
+        ).toBeInTheDocument();
+      });
+      click(getTabByText("Runner"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Not reused")).toBeInTheDocument();
+      });
+      expect(screen.getByText(description)).toBeInTheDocument();
+    },
+  );
+
   it("ignores stale network page responses after changing activity", async () => {
     const firstRunId = "a0000000-0000-4000-a000-000000000501";
     const secondRunId = "a0000000-0000-4000-a000-000000000502";

@@ -117,7 +117,9 @@
       "runner": {
         "deviceLimitMismatch": "Esiste una voce del pool inattivo ma lo stato del limitatore di velocità del dispositivo non corrisponde.",
         "featureDisabled": "Il riutilizzo del sandbox è disabilitato per questa esecuzione.",
-        "noSessionId": "Nessun ID sessione disponibile da confrontare con il pool inattivo.",
+        "invalidResumeSessionId": "L'ID della sessione di ripresa della CLI del provider non era valido.",
+        "noReuseKey": "Non era disponibile alcuna chiave di riutilizzo per trovare una sandbox inattiva.",
+        "noSessionId": "Risultato legacy: il motivo esatto per cui la sandbox non è stata riutilizzata non è disponibile.",
         "notReused": "Non riutilizzato",
         "poolMiss": "Nessun sandbox corrispondente trovato nel pool inattivo.",
         "profileMismatch": "La voce del pool inattivo esiste ma il suo profilo non corrisponde.",
