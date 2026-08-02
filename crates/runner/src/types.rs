@@ -1392,9 +1392,9 @@ pub struct CompleteRequest {
     pub exit_code: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-    /// Sandbox the run executed against. `None` when no sandbox was
-    /// provisioned (e.g. a pre-claim failure); otherwise set on every
-    /// completion regardless of reuse status.
+    /// Sandbox the run executed against. `None` when the run failed before
+    /// sandbox allocation; otherwise set on every completion regardless of
+    /// reuse status.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox_id: Option<SandboxId>,
     /// Outcome of the sandbox-reuse decision made before this run started.
@@ -1747,7 +1747,7 @@ mod tests {
     }
 
     #[test]
-    fn complete_request_with_error() {
+    fn complete_request_with_pre_sandbox_error_omits_sandbox_fields() {
         let req = CompleteRequest {
             run_id: "550e8400-e29b-41d4-a716-446655440000"
                 .parse::<RunId>()
@@ -1759,6 +1759,8 @@ mod tests {
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["error"], "timeout");
+        assert!(json.get("sandboxId").is_none());
+        assert!(json.get("sandboxReuseResult").is_none());
     }
 
     #[test]
