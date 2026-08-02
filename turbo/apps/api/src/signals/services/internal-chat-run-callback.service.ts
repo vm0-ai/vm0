@@ -7,6 +7,7 @@ import {
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { modelProviderCredentialScopeSchema } from "@vm0/api-contracts/contracts/model-providers";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -166,18 +167,9 @@ import {
   type ModelFirstPin,
 } from "./zero-model-selection.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import {
-  loadSlackQueuedLaunchMaterial,
-  type SlackQueuedLaunchMaterial,
-} from "./slack-queued-launch-context.service";
-import {
-  loadFeishuQueuedLaunchMaterial,
-  type FeishuQueuedLaunchMaterial,
-} from "./feishu-queued-launch-context.service";
-import {
-  loadTeamsQueuedLaunchMaterial,
-  type TeamsQueuedLaunchMaterial,
-} from "./teams-queued-launch-context.service";
+import { loadSlackQueuedLaunchMaterial } from "./slack-queued-launch-context.service";
+import { loadFeishuQueuedLaunchMaterial } from "./feishu-queued-launch-context.service";
+import { loadTeamsQueuedLaunchMaterial } from "./teams-queued-launch-context.service";
 
 const log = logger("callback:chat");
 const PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -2657,12 +2649,173 @@ function loadQueuedMessageSessionState(
   );
 }
 
+type QueuedSourceParams = Awaited<
+  ReturnType<typeof decryptQueuedUserMessageRunParams>
+>;
+
+type QueuedIntegrationDeliveries = Pick<
+  CreateQueuedChatRunInput,
+  | "slackDelivery"
+  | "feishuDelivery"
+  | "teamsDelivery"
+  | "telegramDelivery"
+  | "agentphoneDelivery"
+  | "githubDelivery"
+  | "morningBriefDelivery"
+>;
+
+interface QueuedLaunchMaterial {
+  readonly prompt: string;
+  readonly appendSystemPrompt: string;
+  readonly delivery: QueuedIntegrationDeliveries;
+  readonly userInfoExtras?: CreateQueuedChatRunInput["userInfoExtras"];
+}
+
+interface QueuedLaunchLoaderArgs {
+  readonly eventId: string;
+  readonly chatThreadId: string;
+  readonly orgId: string;
+  readonly userId: string;
+}
+
+type LaunchLoader = (
+  db: Db,
+  args: QueuedLaunchLoaderArgs,
+) => Promise<QueuedLaunchMaterial | null>;
+
+interface NativeQueuedLaunchMaterial {
+  readonly prompt: string;
+  readonly appendSystemPrompt: string;
+  readonly userInfoExtras?: CreateQueuedChatRunInput["userInfoExtras"];
+}
+
+function launchLoader<Material extends NativeQueuedLaunchMaterial>(
+  load: (db: Db, args: QueuedLaunchLoaderArgs) => Promise<Material | null>,
+  delivery: (material: Material) => QueuedIntegrationDeliveries,
+): LaunchLoader {
+  return async (db, args) => {
+    const material = await load(db, args);
+    if (!material) {
+      return null;
+    }
+    return {
+      prompt: material.prompt,
+      appendSystemPrompt: material.appendSystemPrompt,
+      delivery: delivery(material),
+      ...(material.userInfoExtras
+        ? { userInfoExtras: material.userInfoExtras }
+        : {}),
+    };
+  };
+}
+
+const LAUNCH_LOADERS: Partial<Record<TriggerSource, LaunchLoader>> = {
+  slack: launchLoader(loadSlackQueuedLaunchMaterial, (material) => ({
+    slackDelivery: material.slackDelivery,
+  })),
+  feishu: launchLoader(loadFeishuQueuedLaunchMaterial, (material) => ({
+    feishuDelivery: material.feishuDelivery,
+  })),
+  teams: launchLoader(loadTeamsQueuedLaunchMaterial, (material) => ({
+    teamsDelivery: material.teamsDelivery,
+  })),
+};
+
+async function resolveQueuedLaunchMaterial(
+  args: CreateQueuedChatRunInputArgs,
+): Promise<QueuedLaunchMaterial | null> {
+  const load = LAUNCH_LOADERS[args.queuedMessage.triggerSource];
+  if (!load) {
+    return null;
+  }
+  const material = await load(args.db, {
+    eventId: args.queuedMessage.id,
+    chatThreadId: args.threadId,
+    orgId: args.agent.orgId,
+    userId: args.userId,
+  });
+  if (material) {
+    return material;
+  }
+  throw new Error(
+    `${args.queuedMessage.triggerSource} queue item is missing launch material`,
+  );
+}
+
+type SourceParamDeliveryLoader = (
+  sourceParams: QueuedSourceParams,
+) => QueuedIntegrationDeliveries;
+
+const SOURCE_PARAM_DELIVERY_LOADERS: Partial<
+  Record<TriggerSource, SourceParamDeliveryLoader>
+> = {
+  telegram: (sourceParams) => ({
+    telegramDelivery: sourceParams?.telegramDelivery,
+  }),
+  agentphone: (sourceParams) => ({
+    agentphoneDelivery: sourceParams?.agentphoneDelivery,
+  }),
+  github: (sourceParams) => ({
+    githubDelivery: sourceParams?.githubDelivery,
+  }),
+  "workflow-schedule": (sourceParams) => ({
+    morningBriefDelivery: sourceParams?.morningBriefDelivery,
+  }),
+};
+
+function queuedIntegrationDeliveries(
+  triggerSource: QueuedUserMessage["triggerSource"],
+  sourceParams: QueuedSourceParams,
+  launchMaterial: QueuedLaunchMaterial | null,
+): QueuedIntegrationDeliveries {
+  return (
+    launchMaterial?.delivery ??
+    SOURCE_PARAM_DELIVERY_LOADERS[triggerSource]?.(sourceParams) ??
+    {}
+  );
+}
+
+interface QueuedAdmissionFailureResolverArgs {
+  readonly args: CreateQueuedChatRunInputArgs;
+  readonly sourceParams: QueuedSourceParams;
+  readonly launchMaterial: QueuedLaunchMaterial | null;
+  readonly error: QueuedMessageModelRouteError;
+}
+
+type QueuedAdmissionFailureResolver = (
+  args: QueuedAdmissionFailureResolverArgs,
+) => QueuedMessageAdmissionFailure | null;
+
+const QUEUED_ADMISSION_FAILURE_RESOLVERS: Partial<
+  Record<TriggerSource, QueuedAdmissionFailureResolver>
+> = {
+  slack: ({ args, launchMaterial, error }) =>
+    slackQueuedMessageAdmissionFailure(
+      args,
+      launchMaterial?.delivery.slackDelivery,
+      error,
+    ),
+  teams: ({ args, launchMaterial, error }) =>
+    teamsQueuedMessageAdmissionFailure(
+      args,
+      launchMaterial?.delivery.teamsDelivery,
+      error,
+    ),
+  telegram: ({ args, sourceParams, error }) =>
+    telegramQueuedMessageAdmissionFailure(args, sourceParams, error),
+  agentphone: ({ args, sourceParams, error }) =>
+    agentPhoneQueuedMessageAdmissionFailure(args, sourceParams, error),
+  github: ({ args, sourceParams, error }) =>
+    githubQueuedMessageAdmissionFailure(args, sourceParams, error),
+  "workflow-schedule": ({ args, sourceParams, error }) =>
+    morningBriefQueuedMessageAdmissionFailure(args, sourceParams, error),
+};
+
 function slackQueuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
-  slackLaunchMaterial: SlackQueuedLaunchMaterial | null,
+  slackDelivery: CreateQueuedChatRunInput["slackDelivery"],
   error: QueuedMessageModelRouteError,
 ): SlackQueuedMessageAdmissionFailure | null {
-  const slackDelivery = slackLaunchMaterial?.slackDelivery;
   if (args.queuedMessage.triggerSource !== "slack" || !slackDelivery) {
     return null;
   }
@@ -2680,10 +2833,9 @@ function slackQueuedMessageAdmissionFailure(
 
 function teamsQueuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
-  teamsLaunchMaterial: TeamsQueuedLaunchMaterial | null,
+  teamsDelivery: CreateQueuedChatRunInput["teamsDelivery"],
   error: QueuedMessageModelRouteError,
 ): TeamsQueuedMessageAdmissionFailure | null {
-  const teamsDelivery = teamsLaunchMaterial?.teamsDelivery;
   if (args.queuedMessage.triggerSource !== "teams" || !teamsDelivery) {
     return null;
   }
@@ -2787,128 +2939,23 @@ function githubQueuedMessageAdmissionFailure(
 
 function queuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
-  slackLaunchMaterial: SlackQueuedLaunchMaterial | null,
-  teamsLaunchMaterial: TeamsQueuedLaunchMaterial | null,
+  sourceParams: QueuedSourceParams,
+  launchMaterial: QueuedLaunchMaterial | null,
   error: QueuedMessageModelRouteError,
 ): QueuedMessageAdmissionFailure | null {
-  return (
-    slackQueuedMessageAdmissionFailure(args, slackLaunchMaterial, error) ??
-    teamsQueuedMessageAdmissionFailure(args, teamsLaunchMaterial, error) ??
-    telegramQueuedMessageAdmissionFailure(args, sourceParams, error) ??
-    agentPhoneQueuedMessageAdmissionFailure(args, sourceParams, error) ??
-    githubQueuedMessageAdmissionFailure(args, sourceParams, error) ??
-    morningBriefQueuedMessageAdmissionFailure(args, sourceParams, error)
-  );
-}
-
-function queuedIntegrationDeliveries(
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
-  slackLaunchMaterial: SlackQueuedLaunchMaterial | null,
-  feishuLaunchMaterial: FeishuQueuedLaunchMaterial | null,
-  teamsLaunchMaterial: TeamsQueuedLaunchMaterial | null,
-): Pick<
-  CreateQueuedChatRunInput,
-  | "slackDelivery"
-  | "feishuDelivery"
-  | "teamsDelivery"
-  | "telegramDelivery"
-  | "agentphoneDelivery"
-  | "githubDelivery"
-  | "morningBriefDelivery"
-> {
-  return {
-    slackDelivery: slackLaunchMaterial?.slackDelivery,
-    feishuDelivery: feishuLaunchMaterial?.feishuDelivery,
-    teamsDelivery: teamsLaunchMaterial?.teamsDelivery,
-    telegramDelivery: sourceParams?.telegramDelivery,
-    agentphoneDelivery: sourceParams?.agentphoneDelivery,
-    githubDelivery: sourceParams?.githubDelivery,
-    morningBriefDelivery: sourceParams?.morningBriefDelivery,
-  };
-}
-
-async function resolveSlackQueuedLaunchMaterial(
-  args: CreateQueuedChatRunInputArgs,
-): Promise<SlackQueuedLaunchMaterial | null> {
-  if (args.queuedMessage.triggerSource !== "slack") {
-    return null;
-  }
-  const material = await loadSlackQueuedLaunchMaterial(args.db, {
-    eventId: args.queuedMessage.id,
-    chatThreadId: args.threadId,
-    orgId: args.agent.orgId,
-    userId: args.userId,
-  });
-  if (material) {
-    return material;
-  }
-  throw new Error("Slack queue item is missing launch material");
-}
-
-async function resolveFeishuQueuedLaunchMaterial(
-  args: CreateQueuedChatRunInputArgs,
-): Promise<FeishuQueuedLaunchMaterial | null> {
-  if (args.queuedMessage.triggerSource !== "feishu") {
-    return null;
-  }
-  const material = await loadFeishuQueuedLaunchMaterial(args.db, {
-    eventId: args.queuedMessage.id,
-    chatThreadId: args.threadId,
-    orgId: args.agent.orgId,
-    userId: args.userId,
-  });
-  if (material) {
-    return material;
-  }
-  throw new Error("Feishu queue item is missing launch material");
-}
-
-async function resolveTeamsQueuedLaunchMaterial(
-  args: CreateQueuedChatRunInputArgs,
-): Promise<TeamsQueuedLaunchMaterial | null> {
-  if (args.queuedMessage.triggerSource !== "teams") {
-    return null;
-  }
-  const material = await loadTeamsQueuedLaunchMaterial(args.db, {
-    eventId: args.queuedMessage.id,
-    chatThreadId: args.threadId,
-    orgId: args.agent.orgId,
-    userId: args.userId,
-  });
-  if (material) {
-    return material;
-  }
-  throw new Error("Teams queue item is missing launch material");
+  const resolve =
+    QUEUED_ADMISSION_FAILURE_RESOLVERS[args.queuedMessage.triggerSource];
+  return resolve?.({ args, sourceParams, launchMaterial, error }) ?? null;
 }
 
 function queuedMessagePrompt(args: {
   readonly triggerSource: QueuedUserMessage["triggerSource"];
-  readonly slackLaunchMaterial: SlackQueuedLaunchMaterial | null;
-  readonly feishuLaunchMaterial: FeishuQueuedLaunchMaterial | null;
-  readonly teamsLaunchMaterial: TeamsQueuedLaunchMaterial | null;
-  readonly sourceParams: Awaited<
-    ReturnType<typeof decryptQueuedUserMessageRunParams>
-  >;
+  readonly launchMaterial: QueuedLaunchMaterial | null;
+  readonly sourceParams: QueuedSourceParams;
   readonly projectedPrompt: string;
 }): string {
-  if (args.triggerSource === "slack") {
-    if (!args.slackLaunchMaterial) {
-      throw new Error("Slack queue item is missing launch material");
-    }
-    return args.slackLaunchMaterial.prompt;
-  }
-  if (args.triggerSource === "feishu") {
-    if (!args.feishuLaunchMaterial) {
-      throw new Error("Feishu queue item is missing launch material");
-    }
-    return args.feishuLaunchMaterial.prompt;
-  }
-  if (args.triggerSource === "teams") {
-    if (!args.teamsLaunchMaterial) {
-      throw new Error("Teams queue item is missing launch material");
-    }
-    return args.teamsLaunchMaterial.prompt;
+  if (args.launchMaterial) {
+    return args.launchMaterial.prompt;
   }
   if (args.triggerSource === "workflow-schedule") {
     return args.sourceParams?.prompt ?? args.projectedPrompt;
@@ -2917,33 +2964,14 @@ function queuedMessagePrompt(args: {
 }
 
 function queuedIntegrationPrompt(args: {
-  readonly triggerSource: QueuedUserMessage["triggerSource"];
-  readonly slackLaunchMaterial: SlackQueuedLaunchMaterial | null;
-  readonly feishuLaunchMaterial: FeishuQueuedLaunchMaterial | null;
-  readonly teamsLaunchMaterial: TeamsQueuedLaunchMaterial | null;
-  readonly sourceParams: Awaited<
-    ReturnType<typeof decryptQueuedUserMessageRunParams>
-  >;
+  readonly launchMaterial: QueuedLaunchMaterial | null;
+  readonly sourceParams: QueuedSourceParams;
 }): string {
-  if (args.triggerSource === "slack") {
-    if (!args.slackLaunchMaterial) {
-      throw new Error("Slack queue item is missing launch material");
-    }
-    return args.slackLaunchMaterial.appendSystemPrompt;
-  }
-  if (args.triggerSource === "feishu") {
-    if (!args.feishuLaunchMaterial) {
-      throw new Error("Feishu queue item is missing launch material");
-    }
-    return args.feishuLaunchMaterial.appendSystemPrompt;
-  }
-  if (args.triggerSource === "teams") {
-    if (!args.teamsLaunchMaterial) {
-      throw new Error("Teams queue item is missing launch material");
-    }
-    return args.teamsLaunchMaterial.appendSystemPrompt;
-  }
-  return args.sourceParams?.appendSystemPrompt ?? buildWebChatPrompt();
+  return (
+    args.launchMaterial?.appendSystemPrompt ??
+    args.sourceParams?.appendSystemPrompt ??
+    buildWebChatPrompt()
+  );
 }
 
 function resolveQueuedMessageGenerationTemplatePrompt(args: {
@@ -2970,7 +2998,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
   );
 }
 
-async function loadQueuedLaunchMaterials(args: CreateQueuedChatRunInputArgs) {
+async function loadQueuedRunMaterial(args: CreateQueuedChatRunInputArgs) {
   const sourceParams = await decryptQueuedUserMessageRunParams(
     args.queuedMessage.encryptedParams,
     { orgId: args.agent.orgId, userId: args.userId },
@@ -2978,14 +3006,10 @@ async function loadQueuedLaunchMaterials(args: CreateQueuedChatRunInputArgs) {
   if (args.queuedMessage.triggerSource !== "web" && !sourceParams) {
     throw new Error("Canonical integration queue item is missing run params");
   }
-  const slackLaunchMaterial = await resolveSlackQueuedLaunchMaterial(args);
-  const feishuLaunchMaterial = await resolveFeishuQueuedLaunchMaterial(args);
-  const teamsLaunchMaterial = await resolveTeamsQueuedLaunchMaterial(args);
+  const launchMaterial = await resolveQueuedLaunchMaterial(args);
   return {
     sourceParams,
-    slackLaunchMaterial,
-    feishuLaunchMaterial,
-    teamsLaunchMaterial,
+    launchMaterial,
   };
 }
 
@@ -3006,35 +3030,21 @@ function queuedUserMessageProjection(
 }
 
 function queuedIntegrationLaunchFields(
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
-  slackLaunchMaterial: SlackQueuedLaunchMaterial | null,
-  feishuLaunchMaterial: FeishuQueuedLaunchMaterial | null,
-  teamsLaunchMaterial: TeamsQueuedLaunchMaterial | null,
+  triggerSource: QueuedUserMessage["triggerSource"],
+  sourceParams: QueuedSourceParams,
+  launchMaterial: QueuedLaunchMaterial | null,
 ) {
   return {
-    ...queuedIntegrationDeliveries(
-      sourceParams,
-      slackLaunchMaterial,
-      feishuLaunchMaterial,
-      teamsLaunchMaterial,
-    ),
+    ...queuedIntegrationDeliveries(triggerSource, sourceParams, launchMaterial),
     userInfoExtras:
-      slackLaunchMaterial?.userInfoExtras ??
-      feishuLaunchMaterial?.userInfoExtras ??
-      teamsLaunchMaterial?.userInfoExtras ??
-      sourceParams?.userInfoExtras,
+      launchMaterial?.userInfoExtras ?? sourceParams?.userInfoExtras,
   };
 }
 
 async function buildCreateQueuedChatRunInput(
   args: CreateQueuedChatRunInputArgs,
 ): Promise<CreateQueuedChatRunInput | QueuedMessageAdmissionFailure | null> {
-  const {
-    sourceParams,
-    slackLaunchMaterial,
-    feishuLaunchMaterial,
-    teamsLaunchMaterial,
-  } = await loadQueuedLaunchMaterials(args);
+  const { sourceParams, launchMaterial } = await loadQueuedRunMaterial(args);
   const modelRouteResolution = await resolveQueuedMessageModelRoute({
     db: args.db,
     threadId: args.threadId,
@@ -3047,8 +3057,7 @@ async function buildCreateQueuedChatRunInput(
     return queuedMessageAdmissionFailure(
       args,
       sourceParams,
-      slackLaunchMaterial,
-      teamsLaunchMaterial,
+      launchMaterial,
       modelRouteResolution.error,
     );
   }
@@ -3107,9 +3116,7 @@ async function buildCreateQueuedChatRunInput(
   );
   const prompt = queuedMessagePrompt({
     triggerSource: args.queuedMessage.triggerSource,
-    slackLaunchMaterial,
-    feishuLaunchMaterial,
-    teamsLaunchMaterial,
+    launchMaterial,
     sourceParams,
     projectedPrompt: userMessageProjection.agentPrompt,
   });
@@ -3121,10 +3128,7 @@ async function buildCreateQueuedChatRunInput(
     prompt,
     appendSystemPrompt: buildAppendSystemPrompt(
       queuedIntegrationPrompt({
-        triggerSource: args.queuedMessage.triggerSource,
-        slackLaunchMaterial,
-        feishuLaunchMaterial,
-        teamsLaunchMaterial,
+        launchMaterial,
         sourceParams,
       }),
       incompleteContext,
@@ -3146,10 +3150,9 @@ async function buildCreateQueuedChatRunInput(
       featureSwitchContext,
     ),
     ...queuedIntegrationLaunchFields(
+      args.queuedMessage.triggerSource,
       sourceParams,
-      slackLaunchMaterial,
-      feishuLaunchMaterial,
-      teamsLaunchMaterial,
+      launchMaterial,
     ),
     apiStartTime: args.queuedMessage.createdAt.getTime(),
   };
