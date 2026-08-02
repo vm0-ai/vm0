@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.364.6](https://github.com/vm0-ai/vm0/compare/api-v1.364.5...api-v1.364.6) (2026-08-02)
+
+
+### Refactoring
+
+* claim github chat launch context ([#24522](https://github.com/vm0-ai/vm0/issues/24522)) ([e9a269c](https://github.com/vm0-ai/vm0/commit/e9a269cdd8aa905be23a36527c864237f445ef2f))
+* dispatch launch material by trigger source ([#24520](https://github.com/vm0-ai/vm0/issues/24520)) ([a9b1bbe](https://github.com/vm0-ai/vm0/commit/a9b1bbe47079255e21ccae6da9e4511b35331bcb))
+* dual-write github chat launch context ([#24515](https://github.com/vm0-ai/vm0/issues/24515)) ([48a3d86](https://github.com/vm0-ai/vm0/commit/48a3d86c4e23e64048860b9895472db6da599e81))
+* dual-write morning brief launch context ([#24521](https://github.com/vm0-ai/vm0/issues/24521)) ([e6374c4](https://github.com/vm0-ai/vm0/commit/e6374c44874e63f08dba28c450cdf4e745f88eff))
+* remove workflow automation launch blob ([#24497](https://github.com/vm0-ai/vm0/issues/24497)) ([eb129a0](https://github.com/vm0-ai/vm0/commit/eb129a05a73b83a5d1ada63903a32e0727133681))
+
+
+### Performance Improvements
+
+* **api:** reuse thread session browser state ([#24524](https://github.com/vm0-ai/vm0/issues/24524)) ([036087a](https://github.com/vm0-ai/vm0/commit/036087afb2dd8ad07959b62207a329d7d32360da))
+* **api:** reuse zero bootstrap timezone ([#24498](https://github.com/vm0-ai/vm0/issues/24498)) ([47c355e](https://github.com/vm0-ai/vm0/commit/47c355e8f69d2d6dc10feff584eb8f0e58f60152))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.160.8
+
 ## [1.364.5](https://github.com/vm0-ai/vm0/compare/api-v1.364.4...api-v1.364.5) (2026-08-01)
 
 
