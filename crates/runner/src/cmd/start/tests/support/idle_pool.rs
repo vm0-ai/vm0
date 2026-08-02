@@ -1,5 +1,4 @@
 use super::super::super::*;
-use super::TEST_SESSION_LAST_COMPLETED_AT;
 
 use crate::idle_pool::{ParkResult, ParkedIdleCandidate, test_support::ParkedIdleCandidateBuilder};
 use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
@@ -14,18 +13,20 @@ use crate::workspace_image_cache::{
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use sandbox::SandboxId;
 
+const TEST_LAST_COMPLETED_AT: &str = "2026-05-28T00:00:00.000Z";
+
 fn make_synthetic_parked_candidate(
-    session_id: &str,
+    reuse_key: &str,
     profile_name: &str,
     budget_lease: BudgetLease,
 ) -> ParkedIdleCandidate {
-    ParkedIdleCandidateBuilder::new(session_id, budget_lease)
+    ParkedIdleCandidateBuilder::new(reuse_key, budget_lease)
         .with_profile_name(profile_name)
         .build()
 }
 
 struct IdlePoolSeedSpec<'a> {
-    session_id: &'a str,
+    reuse_key: &'a str,
     profile_name: &'a str,
     vcpu: u32,
     memory_mb: u32,
@@ -38,7 +39,7 @@ struct IdlePoolSeedSpec<'a> {
 pub(in super::super) async fn seed_idle_pool(
     pool: &SharedIdlePool,
     budget: &Arc<ResourceBudget>,
-    session_id: &str,
+    reuse_key: &str,
     profile_name: &str,
     vcpu: u32,
     memory_mb: u32,
@@ -50,7 +51,7 @@ pub(in super::super) async fn seed_idle_pool(
         budget,
         &overrides,
         IdlePoolSeedSpec {
-            session_id,
+            reuse_key,
             profile_name,
             vcpu,
             memory_mb,
@@ -63,7 +64,7 @@ pub(in super::super) async fn seed_idle_pool(
 pub(in super::super) async fn seed_idle_pool_with_history_generation(
     pool: &SharedIdlePool,
     budget: &Arc<ResourceBudget>,
-    session_id: &str,
+    reuse_key: &str,
     profile_name: &str,
     vcpu: u32,
     memory_mb: u32,
@@ -76,7 +77,7 @@ pub(in super::super) async fn seed_idle_pool_with_history_generation(
         budget,
         &overrides,
         IdlePoolSeedSpec {
-            session_id,
+            reuse_key,
             profile_name,
             vcpu,
             memory_mb,
@@ -90,7 +91,7 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
     pool: &SharedIdlePool,
     budget: &Arc<ResourceBudget>,
     overrides: &Arc<sandbox_mock::MockSandboxOverrides>,
-    session_id: &str,
+    reuse_key: &str,
     profile_name: &str,
     vcpu: u32,
     memory_mb: u32,
@@ -100,7 +101,7 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
         budget,
         overrides,
         IdlePoolSeedSpec {
-            session_id,
+            reuse_key,
             profile_name,
             vcpu,
             memory_mb,
@@ -117,7 +118,7 @@ async fn seed_idle_pool_with_overrides_and_generation(
     spec: IdlePoolSeedSpec<'_>,
 ) -> SandboxId {
     let IdlePoolSeedSpec {
-        session_id,
+        reuse_key,
         profile_name,
         vcpu,
         memory_mb,
@@ -152,12 +153,12 @@ async fn seed_idle_pool_with_overrides_and_generation(
     let budget_lease =
         ResourceBudget::try_reserve_lease(budget, vcpu, memory_mb).expect("reserve budget");
 
-    let builder = ParkedIdleCandidateBuilder::new(session_id, budget_lease)
+    let builder = ParkedIdleCandidateBuilder::new(reuse_key, budget_lease)
         .with_sandbox(sandbox)
         .with_factory(factory_arc)
         .with_sandbox_id(sandbox_id)
         .with_profile_name(profile_name)
-        .with_last_completed_at(TEST_SESSION_LAST_COMPLETED_AT);
+        .with_last_completed_at(TEST_LAST_COMPLETED_AT);
     let candidate = match history_generation_run_id {
         Some(run_id) => builder.with_history_generation_run_id(run_id).build(),
         None => builder.build(),
@@ -169,7 +170,6 @@ async fn seed_idle_pool_with_overrides_and_generation(
 }
 
 pub(in super::super) struct WorkspacePromotionSeedSpec<'a> {
-    pub(in super::super) provider_session_id: &'a str,
     pub(in super::super) reuse_key: &'a str,
     pub(in super::super) profile_name: &'a str,
     pub(in super::super) vcpu: u32,
@@ -212,19 +212,18 @@ pub(in super::super) async fn seed_idle_pool_with_workspace_promotion(
             sandbox_id,
             restored_session_identity: None,
             terminal_status: WorkspaceCacheTerminalStatus::Success,
-            completed_at: TEST_SESSION_LAST_COMPLETED_AT.into(),
+            completed_at: TEST_LAST_COMPLETED_AT.into(),
             storage_fingerprints: StorageFingerprints::default(),
         })
         .expect("workspace image should be promotable");
     let budget_lease = ResourceBudget::try_reserve_lease(budget, spec.vcpu, spec.memory_mb)
         .expect("reserve budget");
-    let candidate = ParkedIdleCandidateBuilder::new(spec.provider_session_id, budget_lease)
-        .with_reuse_key(spec.reuse_key)
+    let candidate = ParkedIdleCandidateBuilder::new(spec.reuse_key, budget_lease)
         .with_mock_sandbox_name("idle-workspace-promotion-test")
         .with_sandbox_id(sandbox_id)
         .with_profile_name(spec.profile_name)
         .with_workspace_promotion(promotion)
-        .with_last_completed_at(TEST_SESSION_LAST_COMPLETED_AT)
+        .with_last_completed_at(TEST_LAST_COMPLETED_AT)
         .build();
     let mut guard = pool.lock().await;
     let result = guard.park(candidate);
@@ -266,7 +265,7 @@ pub(in super::super) async fn seed_workspace_cache_state(
             .promote(
                 run_id,
                 WorkspaceCacheTerminalStatus::Success,
-                TEST_SESSION_LAST_COMPLETED_AT.into(),
+                TEST_LAST_COMPLETED_AT.into(),
                 &StorageFingerprints::default(),
             )
             .await
@@ -277,13 +276,13 @@ pub(in super::super) async fn seed_workspace_cache_state(
 pub(in super::super) async fn seed_idle_pool_expired(
     pool: &SharedIdlePool,
     budget: &Arc<ResourceBudget>,
-    session_id: &str,
+    reuse_key: &str,
     profile_name: &str,
     vcpu: u32,
     memory_mb: u32,
 ) {
     let budget_lease = ResourceBudget::try_reserve_lease(budget, vcpu, memory_mb).unwrap();
-    let candidate = make_synthetic_parked_candidate(session_id, profile_name, budget_lease);
+    let candidate = make_synthetic_parked_candidate(reuse_key, profile_name, budget_lease);
     let mut guard = pool.lock().await;
     let result = guard.park_at_for_test(
         candidate,
@@ -294,7 +293,7 @@ pub(in super::super) async fn seed_idle_pool_expired(
 }
 
 pub(in super::super) struct TestParkedIdleCandidateSpec<'a> {
-    pub(in super::super) session_id: &'a str,
+    pub(in super::super) reuse_key: &'a str,
     pub(in super::super) profile_name: &'a str,
     pub(in super::super) vcpu: u32,
     pub(in super::super) memory_mb: u32,
@@ -310,7 +309,7 @@ pub(in super::super) async fn seed_idle_pool_with_timing(
 ) {
     let budget_lease =
         ResourceBudget::try_reserve_lease(budget, spec.vcpu, spec.memory_mb).unwrap();
-    let builder = ParkedIdleCandidateBuilder::new(spec.session_id, budget_lease)
+    let builder = ParkedIdleCandidateBuilder::new(spec.reuse_key, budget_lease)
         .with_profile_name(spec.profile_name);
     let candidate = match spec.history_generation_run_id {
         Some(run_id) => builder.with_history_generation_run_id(run_id).build(),

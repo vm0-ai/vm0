@@ -199,7 +199,6 @@ async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates()
         &workspace_cache,
         &runner_paths,
         WorkspacePromotionSeedSpec {
-            provider_session_id,
             reuse_key,
             profile_name: "vm0/default",
             vcpu: 2,

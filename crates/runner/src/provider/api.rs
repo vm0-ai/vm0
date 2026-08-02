@@ -1946,7 +1946,7 @@ mod tests {
             "event should not include full URL: {event_debug}"
         );
         assert!(
-            !event_debug.contains("runner-token") && !event_debug.contains("held-session-test"),
+            !event_debug.contains("runner-token") && !event_debug.contains("thread:heartbeat-test"),
             "event should not include bearer token or heartbeat body: {event_debug}"
         );
     }

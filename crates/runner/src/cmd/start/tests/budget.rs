@@ -214,7 +214,7 @@ async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
         &idle_pool,
         &budget,
         TestParkedIdleCandidateSpec {
-            session_id: "sess-old-active",
+            reuse_key: "sess-old-active",
             profile_name: "vm0/default",
             vcpu: 2,
             memory_mb: 4096,
@@ -228,7 +228,7 @@ async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
         &idle_pool,
         &budget,
         TestParkedIdleCandidateSpec {
-            session_id: "sess-expired-newer",
+            reuse_key: "sess-expired-newer",
             profile_name: "vm0/large",
             vcpu: 4,
             memory_mb: 8192,
@@ -287,7 +287,7 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
         &idle_pool,
         &budget,
         TestParkedIdleCandidateSpec {
-            session_id: "sess-old-active",
+            reuse_key: "sess-old-active",
             profile_name: "vm0/large",
             vcpu: 4,
             memory_mb: 8192,
@@ -301,7 +301,7 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
         &idle_pool,
         &budget,
         TestParkedIdleCandidateSpec {
-            session_id: "sess-new-active",
+            reuse_key: "sess-new-active",
             profile_name: "vm0/default",
             vcpu: 2,
             memory_mb: 4096,
@@ -315,7 +315,7 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
         &idle_pool,
         &budget,
         TestParkedIdleCandidateSpec {
-            session_id: "sess-expired-small",
+            reuse_key: "sess-expired-small",
             profile_name: "vm0/default",
             // Intentionally smaller than the current min profile. With
             // only profile-sized entries, releasing one expired VM is

@@ -659,10 +659,10 @@ mod tests {
         }
     }
 
-    fn make_synthetic_parked_candidate(session_id: &str) -> ParkedIdleCandidate {
+    fn make_synthetic_parked_candidate(reuse_key: &str) -> ParkedIdleCandidate {
         let budget = Arc::new(ResourceBudget::new(1, 1, 1.0, 0));
         ParkedIdleCandidateBuilder::new(
-            session_id,
+            reuse_key,
             ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
         )
         .with_mock_sandbox_name("test")

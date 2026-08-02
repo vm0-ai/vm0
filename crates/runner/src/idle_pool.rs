@@ -1396,7 +1396,7 @@ mod tests {
 
     async fn make_idle_park_request(
         overrides: Arc<MockSandboxOverrides>,
-        session_id: &str,
+        reuse_key: &str,
         budget_lease: BudgetLease,
     ) -> IdleParkRequest {
         add_healthy_reuse_preparation_matcher(&overrides);
@@ -1419,7 +1419,7 @@ mod tests {
             run_id: RunId::new_v4(),
             sandbox,
             factory,
-            reuse_key: session_id.into(),
+            reuse_key: reuse_key.into(),
             sandbox_id,
             profile_name: "vm0/default".into(),
             device_rate_limits: None,

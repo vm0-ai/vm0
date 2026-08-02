@@ -14,9 +14,7 @@ pub(super) use self::idle_pool::{
     seed_idle_pool_with_timing, seed_idle_pool_with_workspace_promotion,
     seed_workspace_cache_state,
 };
-pub(super) use self::jobs::{
-    TEST_SESSION_LAST_COMPLETED_AT, context_with_session, minimal_context, push_job, shutdown,
-};
+pub(super) use self::jobs::{context_with_session, minimal_context, push_job, shutdown};
 pub(super) use self::status::{
     publish_idle_status, status_idle_reuse_keys, status_idle_reuse_keys_and_active_runs,
     wait_status_idle_empty_with_active_run, wait_status_idle_reuse_keys_and_active_runs,

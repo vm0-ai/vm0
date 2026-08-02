@@ -1340,8 +1340,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Notification channel: spawned jobs signal the main loop to send an
     // immediate heartbeat after session affinity state changes, so the server
-    // learns about a held session VM or workspace image cache without waiting
-    // for the next 10-second tick.
+    // learns about a held reusable sandbox or workspace image cache without
+    // waiting for the next 10-second tick.
     let park_notify = Arc::new(tokio::sync::Notify::new());
     let orphaned_active_runs = OrphanedActiveRuns::new();
     let active_reuse_keys = new_active_reuse_keys();
