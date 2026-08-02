@@ -2717,22 +2717,21 @@ function launchLoader<Material extends NativeQueuedLaunchMaterial>(
   };
 }
 
-const LAUNCH_LOADERS: Partial<Record<TriggerSource, LaunchLoader>> = {
-  slack: launchLoader(loadSlackQueuedLaunchMaterial, (material) => ({
-    slackDelivery: material.slackDelivery,
-  })),
-  feishu: launchLoader(loadFeishuQueuedLaunchMaterial, (material) => ({
-    feishuDelivery: material.feishuDelivery,
-  })),
-  teams: launchLoader(loadTeamsQueuedLaunchMaterial, (material) => ({
-    teamsDelivery: material.teamsDelivery,
-  })),
-};
-
 async function resolveQueuedLaunchMaterial(
   args: CreateQueuedChatRunInputArgs,
 ): Promise<QueuedLaunchMaterial | null> {
-  const load = LAUNCH_LOADERS[args.queuedMessage.triggerSource];
+  const launchLoaders: Partial<Record<TriggerSource, LaunchLoader>> = {
+    slack: launchLoader(loadSlackQueuedLaunchMaterial, (material) => {
+      return { slackDelivery: material.slackDelivery };
+    }),
+    feishu: launchLoader(loadFeishuQueuedLaunchMaterial, (material) => {
+      return { feishuDelivery: material.feishuDelivery };
+    }),
+    teams: launchLoader(loadTeamsQueuedLaunchMaterial, (material) => {
+      return { teamsDelivery: material.teamsDelivery };
+    }),
+  };
+  const load = launchLoaders[args.queuedMessage.triggerSource];
   if (!load) {
     return null;
   }
@@ -2754,31 +2753,30 @@ type SourceParamDeliveryLoader = (
   sourceParams: QueuedSourceParams,
 ) => QueuedIntegrationDeliveries;
 
-const SOURCE_PARAM_DELIVERY_LOADERS: Partial<
-  Record<TriggerSource, SourceParamDeliveryLoader>
-> = {
-  telegram: (sourceParams) => ({
-    telegramDelivery: sourceParams?.telegramDelivery,
-  }),
-  agentphone: (sourceParams) => ({
-    agentphoneDelivery: sourceParams?.agentphoneDelivery,
-  }),
-  github: (sourceParams) => ({
-    githubDelivery: sourceParams?.githubDelivery,
-  }),
-  "workflow-schedule": (sourceParams) => ({
-    morningBriefDelivery: sourceParams?.morningBriefDelivery,
-  }),
-};
-
 function queuedIntegrationDeliveries(
   triggerSource: QueuedUserMessage["triggerSource"],
   sourceParams: QueuedSourceParams,
   launchMaterial: QueuedLaunchMaterial | null,
 ): QueuedIntegrationDeliveries {
+  const sourceParamDeliveryLoaders: Partial<
+    Record<TriggerSource, SourceParamDeliveryLoader>
+  > = {
+    telegram: (params) => {
+      return { telegramDelivery: params?.telegramDelivery };
+    },
+    agentphone: (params) => {
+      return { agentphoneDelivery: params?.agentphoneDelivery };
+    },
+    github: (params) => {
+      return { githubDelivery: params?.githubDelivery };
+    },
+    "workflow-schedule": (params) => {
+      return { morningBriefDelivery: params?.morningBriefDelivery };
+    },
+  };
   return (
     launchMaterial?.delivery ??
-    SOURCE_PARAM_DELIVERY_LOADERS[triggerSource]?.(sourceParams) ??
+    sourceParamDeliveryLoaders[triggerSource]?.(sourceParams) ??
     {}
   );
 }
@@ -2793,31 +2791,6 @@ interface QueuedAdmissionFailureResolverArgs {
 type QueuedAdmissionFailureResolver = (
   args: QueuedAdmissionFailureResolverArgs,
 ) => QueuedMessageAdmissionFailure | null;
-
-const QUEUED_ADMISSION_FAILURE_RESOLVERS: Partial<
-  Record<TriggerSource, QueuedAdmissionFailureResolver>
-> = {
-  slack: ({ args, launchMaterial, error }) =>
-    slackQueuedMessageAdmissionFailure(
-      args,
-      launchMaterial?.delivery.slackDelivery,
-      error,
-    ),
-  teams: ({ args, launchMaterial, error }) =>
-    teamsQueuedMessageAdmissionFailure(
-      args,
-      launchMaterial?.delivery.teamsDelivery,
-      error,
-    ),
-  telegram: ({ args, sourceParams, error }) =>
-    telegramQueuedMessageAdmissionFailure(args, sourceParams, error),
-  agentphone: ({ args, sourceParams, error }) =>
-    agentPhoneQueuedMessageAdmissionFailure(args, sourceParams, error),
-  github: ({ args, sourceParams, error }) =>
-    githubQueuedMessageAdmissionFailure(args, sourceParams, error),
-  "workflow-schedule": ({ args, sourceParams, error }) =>
-    morningBriefQueuedMessageAdmissionFailure(args, sourceParams, error),
-};
 
 function slackQueuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
@@ -2951,8 +2924,53 @@ function queuedMessageAdmissionFailure(
   launchMaterial: QueuedLaunchMaterial | null,
   error: QueuedMessageModelRouteError,
 ): QueuedMessageAdmissionFailure | null {
-  const resolve =
-    QUEUED_ADMISSION_FAILURE_RESOLVERS[args.queuedMessage.triggerSource];
+  const admissionFailureResolvers: Partial<
+    Record<TriggerSource, QueuedAdmissionFailureResolver>
+  > = {
+    slack: (resolverArgs) => {
+      return slackQueuedMessageAdmissionFailure(
+        resolverArgs.args,
+        resolverArgs.launchMaterial?.delivery.slackDelivery,
+        resolverArgs.error,
+      );
+    },
+    teams: (resolverArgs) => {
+      return teamsQueuedMessageAdmissionFailure(
+        resolverArgs.args,
+        resolverArgs.launchMaterial?.delivery.teamsDelivery,
+        resolverArgs.error,
+      );
+    },
+    telegram: (resolverArgs) => {
+      return telegramQueuedMessageAdmissionFailure(
+        resolverArgs.args,
+        resolverArgs.sourceParams,
+        resolverArgs.error,
+      );
+    },
+    agentphone: (resolverArgs) => {
+      return agentPhoneQueuedMessageAdmissionFailure(
+        resolverArgs.args,
+        resolverArgs.sourceParams,
+        resolverArgs.error,
+      );
+    },
+    github: (resolverArgs) => {
+      return githubQueuedMessageAdmissionFailure(
+        resolverArgs.args,
+        resolverArgs.sourceParams,
+        resolverArgs.error,
+      );
+    },
+    "workflow-schedule": (resolverArgs) => {
+      return morningBriefQueuedMessageAdmissionFailure(
+        resolverArgs.args,
+        resolverArgs.sourceParams,
+        resolverArgs.error,
+      );
+    },
+  };
+  const resolve = admissionFailureResolvers[args.queuedMessage.triggerSource];
   return resolve?.({ args, sourceParams, launchMaterial, error }) ?? null;
 }
 
