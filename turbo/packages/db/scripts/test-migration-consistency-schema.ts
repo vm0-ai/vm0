@@ -35,7 +35,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
 import { connectorExternalCodeSessions } from "../src/schema/connector-external-code-session";
@@ -44,9 +44,11 @@ import { connectorOauthStates } from "../src/schema/connector-oauth-state";
 import { connectors } from "../src/schema/connector";
 import { chatEvents } from "../src/schema/chat-event";
 import { chatThreads } from "../src/schema/chat-thread";
+import { runnerState } from "../src/schema/runner-state";
 import { userConnectors } from "../src/schema/user-connector";
 import { userPermissionGrants } from "../src/schema/user-permission-grant";
 import { zeroRuns } from "../src/schema/zero-run";
+import type { RunnerHeldSandboxStates } from "../src/jsonb-contracts/runner-state";
 import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -15919,6 +15921,475 @@ async function validateTimestampOrdering(): Promise<void> {
   console.log();
 }
 
+const RUNNER_SANDBOX_STATE_PREVIOUS_MIGRATION = 797;
+const RUNNER_SANDBOX_STATE_EXPANSION_MIGRATION = 800;
+
+async function validateRunnerSandboxStateExpansion(): Promise<void> {
+  console.log("=== Validate runner sandbox state persistence expansion ===\n");
+  const testDb = "migration_runner_sandbox_state_expansion_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const runnerIds = {
+    conflict: "98000000-0000-4000-8000-000000000003",
+    current: "98000000-0000-4000-8000-000000000001",
+    legacyAfterExpansion: "98000000-0000-4000-8000-000000000004",
+    next: "98000000-0000-4000-8000-000000000002",
+  } as const;
+  const states = {
+    canonicalInitial: [
+      {
+        reuseKey: "thread:canonical-initial",
+        lastCompletedAt: "2026-08-02T00:02:00.000Z",
+        reusableSandbox: { profile: "standard" },
+      },
+    ],
+    canonicalUpdate: [
+      {
+        reuseKey: "thread:canonical-update",
+        lastCompletedAt: "2026-08-02T00:03:00.000Z",
+        reusableSandbox: {
+          profile: "browser",
+          historyGenerationRunId: "98000000-0000-4000-8000-000000000020",
+        },
+      },
+    ],
+    conflict: [
+      {
+        reuseKey: "thread:conflict",
+        lastCompletedAt: "2026-08-02T00:05:00.000Z",
+        reusableSandbox: { profile: "standard" },
+      },
+    ],
+    historical: [
+      {
+        reuseKey: "thread:historical",
+        lastCompletedAt: "2026-08-02T00:00:00.000Z",
+        reusableSandbox: { profile: "standard" },
+      },
+    ],
+    legacyUpdate: [
+      {
+        reuseKey: "thread:legacy-update",
+        lastCompletedAt: "2026-08-02T00:01:00.000Z",
+        reusableSandbox: { profile: "standard" },
+      },
+    ],
+    stale: [
+      {
+        reuseKey: "thread:stale",
+        lastCompletedAt: "2026-08-02T00:04:00.000Z",
+        reusableSandbox: { profile: "standard" },
+      },
+    ],
+  } satisfies Record<string, RunnerHeldSandboxStates>;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, RUNNER_SANDBOX_STATE_PREVIOUS_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const database = drizzle(client);
+      async function writeLegacyHeartbeat(args: {
+        readonly generation: number;
+        readonly runnerId: string;
+        readonly sequence: number;
+        readonly states: RunnerHeldSandboxStates;
+      }): Promise<void> {
+        const lastSeenAt = new Date(
+          `2026-08-02T00:${String(args.sequence).padStart(2, "0")}:00.000Z`,
+        );
+        await database
+          .insert(runnerState)
+          .values({
+            runnerId: args.runnerId,
+            runnerName: "migration-runner",
+            runnerGroup: "default",
+            heartbeatGeneration: args.generation,
+            heartbeatSequence: args.sequence,
+            totalVcpu: 8,
+            totalMemoryMb: 16_384,
+            maxConcurrent: 4,
+            allocatedVcpu: 2,
+            allocatedMemoryMb: 4096,
+            runningCount: 1,
+            admittableProfiles: ["standard", "browser"],
+            heldSessionStates: args.states,
+            heldWorkspaceStates: [],
+            mode: "running",
+            lastSeenAt,
+          })
+          .onConflictDoUpdate({
+            target: runnerState.runnerId,
+            set: {
+              runnerName: "migration-runner",
+              runnerGroup: "default",
+              heartbeatGeneration: args.generation,
+              heartbeatSequence: args.sequence,
+              totalVcpu: 8,
+              totalMemoryMb: 16_384,
+              maxConcurrent: 4,
+              allocatedVcpu: 2,
+              allocatedMemoryMb: 4096,
+              runningCount: 1,
+              admittableProfiles: ["standard", "browser"],
+              heldSessionStates: args.states,
+              heldWorkspaceStates: [],
+              mode: "running",
+              lastSeenAt,
+            },
+            setWhere: or(
+              lt(runnerState.heartbeatGeneration, args.generation),
+              and(
+                eq(runnerState.heartbeatGeneration, args.generation),
+                lt(runnerState.heartbeatSequence, args.sequence),
+              ),
+            ),
+          });
+      }
+
+      async function readRunnerState(runnerId: string): Promise<{
+        readonly canonical: RunnerHeldSandboxStates;
+        readonly generation: string;
+        readonly legacy: RunnerHeldSandboxStates;
+        readonly sequence: string;
+      }> {
+        const result = await client.query<{
+          canonical: RunnerHeldSandboxStates;
+          generation: string;
+          legacy: RunnerHeldSandboxStates;
+          sequence: string;
+        }>(
+          `
+            SELECT
+              "held_sandbox_states" AS "canonical",
+              "held_session_states" AS "legacy",
+              "heartbeat_generation"::text AS "generation",
+              "heartbeat_sequence"::text AS "sequence"
+            FROM "runner_state"
+            WHERE "runner_id" = $1
+          `,
+          [runnerId],
+        );
+        assert.equal(result.rows.length, 1);
+        const row = result.rows[0];
+        assert.ok(row);
+        return row;
+      }
+
+      await writeLegacyHeartbeat({
+        generation: 1,
+        runnerId: runnerIds.current,
+        sequence: 1,
+        states: states.historical,
+      });
+      const preExpansionCanonicalColumn = await client.query<{ count: string }>(
+        `
+          SELECT count(*)::text AS "count"
+          FROM "information_schema"."columns"
+          WHERE "table_schema" = 'public'
+            AND "table_name" = 'runner_state'
+            AND "column_name" = 'held_sandbox_states'
+        `,
+      );
+      assert.deepEqual(preExpansionCanonicalColumn.rows, [{ count: "0" }]);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        RUNNER_SANDBOX_STATE_EXPANSION_MIGRATION,
+      );
+
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: states.historical,
+        generation: "1",
+        legacy: states.historical,
+        sequence: "1",
+      });
+
+      const columns = await client.query<{
+        columnDefault: string | null;
+        columnName: string;
+        isNullable: string;
+      }>(`
+        SELECT
+          "column_name" AS "columnName",
+          "column_default" AS "columnDefault",
+          "is_nullable" AS "isNullable"
+        FROM "information_schema"."columns"
+        WHERE "table_schema" = 'public'
+          AND "table_name" = 'runner_state'
+          AND "column_name" IN (
+            'held_sandbox_states',
+            'held_session_states'
+          )
+        ORDER BY "column_name"
+      `);
+      assert.deepEqual(columns.rows, [
+        {
+          columnDefault: "'[]'::jsonb",
+          columnName: "held_sandbox_states",
+          isNullable: "NO",
+        },
+        {
+          columnDefault: "'[]'::jsonb",
+          columnName: "held_session_states",
+          isNullable: "NO",
+        },
+      ]);
+
+      const bridgeFunction = await client.query<{ exists: boolean }>(`
+        SELECT EXISTS (
+          SELECT 1
+          FROM "pg_proc"
+          WHERE "pronamespace" = 'public'::regnamespace
+            AND "proname" = 'bridge_runner_state_sandbox_states_0800'
+        ) AS "exists"
+      `);
+      assert.deepEqual(bridgeFunction.rows, [{ exists: true }]);
+      const bridgeTrigger = await client.query<{
+        enabled: string;
+        triggerDefinition: string;
+      }>(`
+        SELECT
+          "tgenabled" AS "enabled",
+          pg_get_triggerdef("oid") AS "triggerDefinition"
+        FROM "pg_trigger"
+        WHERE "tgrelid" = 'runner_state'::regclass
+          AND "tgname" = 'bridge_runner_state_sandbox_states_0800'
+          AND NOT "tgisinternal"
+      `);
+      assert.equal(bridgeTrigger.rows.length, 1);
+      assert.equal(bridgeTrigger.rows[0]?.enabled, "O");
+      assert.match(
+        bridgeTrigger.rows[0]?.triggerDefinition ?? "",
+        /BEFORE INSERT OR UPDATE OF held_sandbox_states, held_session_states/u,
+      );
+      const equalityConstraint = await client.query<{
+        constraintDefinition: string;
+        validated: boolean;
+      }>(`
+        SELECT
+          pg_get_constraintdef("oid") AS "constraintDefinition",
+          "convalidated" AS "validated"
+        FROM "pg_constraint"
+        WHERE "conrelid" = 'runner_state'::regclass
+          AND "conname" = 'chk_runner_state_held_sandbox_states_match'
+      `);
+      assert.equal(equalityConstraint.rows.length, 1);
+      assert.equal(equalityConstraint.rows[0]?.validated, true);
+      assert.match(
+        equalityConstraint.rows[0]?.constraintDefinition ?? "",
+        /held_sandbox_states.*held_session_states/u,
+      );
+
+      await writeLegacyHeartbeat({
+        generation: 1,
+        runnerId: runnerIds.legacyAfterExpansion,
+        sequence: 1,
+        states: states.legacyUpdate,
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.legacyAfterExpansion), {
+        canonical: states.legacyUpdate,
+        generation: "1",
+        legacy: states.legacyUpdate,
+        sequence: "1",
+      });
+
+      await writeLegacyHeartbeat({
+        generation: 1,
+        runnerId: runnerIds.current,
+        sequence: 2,
+        states: states.legacyUpdate,
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: states.legacyUpdate,
+        generation: "1",
+        legacy: states.legacyUpdate,
+        sequence: "2",
+      });
+      await writeLegacyHeartbeat({
+        generation: 1,
+        runnerId: runnerIds.current,
+        sequence: 1,
+        states: states.stale,
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: states.legacyUpdate,
+        generation: "1",
+        legacy: states.legacyUpdate,
+        sequence: "2",
+      });
+
+      await client.query(
+        `
+          INSERT INTO "runner_state" (
+            "runner_id",
+            "runner_name",
+            "runner_group",
+            "heartbeat_generation",
+            "heartbeat_sequence",
+            "held_sandbox_states",
+            "last_seen_at"
+          )
+          VALUES ($1, 'next-api-runner', 'default', 1, 1, $2::jsonb, NOW())
+        `,
+        [runnerIds.next, JSON.stringify(states.canonicalInitial)],
+      );
+      assert.deepEqual(await readRunnerState(runnerIds.next), {
+        canonical: states.canonicalInitial,
+        generation: "1",
+        legacy: states.canonicalInitial,
+        sequence: "1",
+      });
+
+      const canonicalHeartbeatUpsert = `
+        INSERT INTO "runner_state" (
+          "runner_id",
+          "runner_name",
+          "runner_group",
+          "heartbeat_generation",
+          "heartbeat_sequence",
+          "held_sandbox_states",
+          "last_seen_at"
+        )
+        VALUES ($1, 'next-api-runner', 'default', $2, $3, $4::jsonb, NOW())
+        ON CONFLICT ("runner_id") DO UPDATE SET
+          "heartbeat_generation" = EXCLUDED."heartbeat_generation",
+          "heartbeat_sequence" = EXCLUDED."heartbeat_sequence",
+          "held_sandbox_states" = EXCLUDED."held_sandbox_states",
+          "last_seen_at" = EXCLUDED."last_seen_at"
+        WHERE
+          "runner_state"."heartbeat_generation"
+            < EXCLUDED."heartbeat_generation"
+          OR (
+            "runner_state"."heartbeat_generation"
+              = EXCLUDED."heartbeat_generation"
+            AND "runner_state"."heartbeat_sequence"
+              < EXCLUDED."heartbeat_sequence"
+          )
+      `;
+      await client.query(canonicalHeartbeatUpsert, [
+        runnerIds.next,
+        2,
+        1,
+        JSON.stringify(states.canonicalUpdate),
+      ]);
+      assert.deepEqual(await readRunnerState(runnerIds.next), {
+        canonical: states.canonicalUpdate,
+        generation: "2",
+        legacy: states.canonicalUpdate,
+        sequence: "1",
+      });
+      await client.query(canonicalHeartbeatUpsert, [
+        runnerIds.next,
+        1,
+        99,
+        JSON.stringify(states.stale),
+      ]);
+      assert.deepEqual(await readRunnerState(runnerIds.next), {
+        canonical: states.canonicalUpdate,
+        generation: "2",
+        legacy: states.canonicalUpdate,
+        sequence: "1",
+      });
+
+      await client.query(
+        `UPDATE "runner_state" SET "held_session_states" = '[]'::jsonb WHERE "runner_id" = $1`,
+        [runnerIds.current],
+      );
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: [],
+        generation: "1",
+        legacy: [],
+        sequence: "2",
+      });
+      await client.query(
+        `UPDATE "runner_state" SET "held_sandbox_states" = $2::jsonb WHERE "runner_id" = $1`,
+        [runnerIds.current, JSON.stringify(states.legacyUpdate)],
+      );
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: states.legacyUpdate,
+        generation: "1",
+        legacy: states.legacyUpdate,
+        sequence: "2",
+      });
+      await client.query(
+        `UPDATE "runner_state" SET "held_sandbox_states" = '[]'::jsonb WHERE "runner_id" = $1`,
+        [runnerIds.current],
+      );
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: [],
+        generation: "1",
+        legacy: [],
+        sequence: "2",
+      });
+
+      await expectDatabaseError(client, {
+        code: "P0001",
+        messageIncludes: "runner sandbox state columns must match",
+        query: `
+          INSERT INTO "runner_state" (
+            "runner_id",
+            "runner_name",
+            "runner_group",
+            "held_sandbox_states",
+            "held_session_states",
+            "last_seen_at"
+          )
+          VALUES ($1, 'conflicting-runner', 'default', $2::jsonb, $3::jsonb, NOW())
+        `,
+        values: [
+          runnerIds.conflict,
+          JSON.stringify(states.canonicalUpdate),
+          JSON.stringify(states.conflict),
+        ],
+      });
+      const conflictingInsert = await client.query<{ count: string }>(
+        `SELECT count(*)::text AS "count" FROM "runner_state" WHERE "runner_id" = $1`,
+        [runnerIds.conflict],
+      );
+      assert.deepEqual(conflictingInsert.rows, [{ count: "0" }]);
+
+      await expectDatabaseError(client, {
+        code: "P0001",
+        messageIncludes: "runner sandbox state columns must match",
+        query: `
+          UPDATE "runner_state"
+          SET
+            "held_sandbox_states" = $2::jsonb,
+            "held_session_states" = $3::jsonb
+          WHERE "runner_id" = $1
+        `,
+        values: [
+          runnerIds.current,
+          JSON.stringify(states.canonicalUpdate),
+          JSON.stringify(states.conflict),
+        ],
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: [],
+        generation: "1",
+        legacy: [],
+        sequence: "2",
+      });
+
+      const divergentRows = await client.query<{ count: string }>(`
+        SELECT count(*)::text AS "count"
+        FROM "runner_state"
+        WHERE "held_sandbox_states" IS DISTINCT FROM "held_session_states"
+      `);
+      assert.deepEqual(divergentRows.rows, [{ count: "0" }]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Legacy and canonical heartbeat writers preserve ordered, synchronized sandbox state across migration 0800\n",
+  );
+}
+
 async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log("=== Phase 1.5: Validate Latest Snapshot Accuracy ===\n");
 
@@ -16069,6 +16540,7 @@ async function main(): Promise<void> {
     await validateHostedSiteChatScopeRollout();
     await validateCurrentBrowserApiBeforeBillingMigration();
     await validateBrowserUsageCompatibilityContraction();
+    await validateRunnerSandboxStateExpansion();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
