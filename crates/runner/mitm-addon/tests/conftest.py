@@ -320,7 +320,7 @@ def real_tcp_flow():
 
 
 class _StubOptions:
-    """Plain stand-in for addon-specific ``ctx.options`` fields."""
+    """Plain stand-in for ``ctx.options`` fields consumed by the addon."""
 
     def __init__(
         self,
@@ -330,6 +330,7 @@ class _StubOptions:
         builtin_firewall_catalog_cache_path: str,
         client_session_id: str,
         client_version: str,
+        ssl_insecure: bool,
     ) -> None:
         self.vm0_proxy_registry_path = registry_path
         self.vm0_api_url = api_url
@@ -337,6 +338,7 @@ class _StubOptions:
         self.vm0_client_session_id = client_session_id
         self.vm0_client_version = client_version
         self.vm0_usage_flush_interval_seconds = usage.DEFAULT_FLUSH_INTERVAL_SECONDS
+        self.ssl_insecure = ssl_insecure
 
 
 @pytest.fixture
@@ -368,6 +370,7 @@ def mitm_ctx(tmp_path):
         builtin_firewall_catalog_cache_path: str | None = None,
         client_session_id: str = "runner-session-test",
         client_version: str = "runner-version-test",
+        ssl_insecure: bool = False,
     ) -> Iterator[MagicMock]:
         if registry_path is None:
             registry_path = default_registry_path
@@ -379,6 +382,7 @@ def mitm_ctx(tmp_path):
             builtin_firewall_catalog_cache_path=builtin_firewall_catalog_cache_path,
             client_session_id=client_session_id,
             client_version=client_version,
+            ssl_insecure=ssl_insecure,
         )
         log = MagicMock()
         with (
