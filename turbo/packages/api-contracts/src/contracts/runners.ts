@@ -101,9 +101,18 @@ const runnerProcessIdentitySchema = z
   })
   .strict();
 
-export const predecessorRunnerAffinitySchema = runnerProcessIdentitySchema
-  .extend({
-    sourceRunId: z.uuid(),
+/**
+ * Advisory cross-runner coordination, not an exclusive assignment. A runner
+ * with an equivalent compatible local resource remains eligible to claim.
+ */
+export const runnerPreferenceSchema = z
+  .object({
+    runnerIdentity: runnerProcessIdentitySchema,
+    reason: z.enum([
+      "exactHistoryGeneration",
+      "matchingReuseKey",
+      "finalizingPredecessor",
+    ]),
     expiresAt: z.string().datetime({ offset: true }),
   })
   .strict();
@@ -301,7 +310,7 @@ export const jobSchema = z.object({
     .nullable()
     .optional(),
   sessionAffinityResource: sessionAffinityResourceSchema.optional(),
-  predecessorRunnerAffinity: predecessorRunnerAffinitySchema.optional(),
+  runnerPreference: runnerPreferenceSchema.optional(),
 });
 
 const heldWorkspaceCacheSchema = z.object({
@@ -849,6 +858,7 @@ export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
 export type RunnersBuiltinFirewallsResolveContract =
   typeof runnersBuiltinFirewallsResolveContract;
 export type Job = z.infer<typeof jobSchema>;
+export type RunnerPreference = z.infer<typeof runnerPreferenceSchema>;
 export type HeldSandboxState = z.infer<typeof heldSandboxStateSchema>;
 export type HeldWorkspaceState = z.infer<typeof heldWorkspaceStateSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;

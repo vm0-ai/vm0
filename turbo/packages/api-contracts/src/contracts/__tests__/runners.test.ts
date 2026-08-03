@@ -515,44 +515,70 @@ describe("runner resume session contract", () => {
     });
     expect(job.historyGenerationAffinityProtectedUntil).toBeNull();
     expect(job.sessionAffinityResource).toBeUndefined();
-    expect(job.predecessorRunnerAffinity).toBeUndefined();
+    expect(job.runnerPreference).toBeUndefined();
   });
 
-  it("accepts a complete dormant predecessor runner affinity", () => {
-    const predecessorRunnerAffinity = {
-      sourceRunId: "11111111-1111-4111-8111-111111111111",
-      runnerId: "22222222-2222-4222-8222-222222222222",
-      heartbeatGeneration: 7,
+  it("accepts one strict optional runner preference", () => {
+    const runnerPreference = {
+      runnerIdentity: {
+        runnerId: "22222222-2222-4222-8222-222222222222",
+        heartbeatGeneration: 7,
+      },
       expiresAt: "2026-08-03T00:00:01.000Z",
     };
-    const job = jobSchema.parse({
+    const jobInput = {
       runId: "33333333-3333-4333-8333-333333333333",
       prompt: "continue",
       appendSystemPrompt: null,
       agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
-      predecessorRunnerAffinity,
-    });
+    };
 
-    expect(job.predecessorRunnerAffinity).toStrictEqual(
-      predecessorRunnerAffinity,
-    );
+    for (const reason of [
+      "exactHistoryGeneration",
+      "matchingReuseKey",
+      "finalizingPredecessor",
+    ] as const) {
+      const job = jobSchema.parse({
+        ...jobInput,
+        runnerPreference: { ...runnerPreference, reason },
+      });
+      expect(job.runnerPreference).toStrictEqual({
+        ...runnerPreference,
+        reason,
+      });
+    }
     expect(
       jobSchema.safeParse({
-        ...job,
-        predecessorRunnerAffinity: {
-          ...predecessorRunnerAffinity,
+        ...jobInput,
+        runnerPreference: {
+          ...runnerPreference,
+          reason: "matchingReuseKey",
           expiresAt: undefined,
         },
       }).success,
     ).toBe(false);
     expect(
       jobSchema.safeParse({
-        ...job,
-        predecessorRunnerAffinity: {
-          ...predecessorRunnerAffinity,
+        ...jobInput,
+        runnerPreference: {
+          ...runnerPreference,
+          reason: "matchingReuseKey",
           resource: "reusableSandbox",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreference: {
+          ...runnerPreference,
+          reason: "matchingReuseKey",
+          runnerIdentity: {
+            ...runnerPreference.runnerIdentity,
+            resource: "reusableSandbox",
+          },
         },
       }).success,
     ).toBe(false);
