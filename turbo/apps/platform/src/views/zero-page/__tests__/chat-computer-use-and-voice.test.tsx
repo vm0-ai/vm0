@@ -1008,6 +1008,89 @@ describe("chat lifecycle", () => {
     expect(transcriptionCalls).toBe(1);
   });
 
+  it("uploads voice input segments one at a time", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-serialized-segments-thread";
+    const firstRequestStarted = context.mocks.deferred<void>();
+    const releaseFirstRequest = context.mocks.deferred<void>();
+    const speechResumed = context.mocks.deferred<void>();
+    const finalRecorderStopped = context.mocks.deferred<void>();
+    let currentRms = 0.1;
+    let recorderStopCount = 0;
+    let requestCount = 0;
+    let activeRequestCount = 0;
+    let maxActiveRequestCount = 0;
+    context.mocks.browser.voiceInput({
+      onRecorderStop: () => {
+        recorderStopCount += 1;
+        if (recorderStopCount === 2) {
+          finalRecorderStopped.resolve(undefined);
+        }
+      },
+      rms: () => {
+        if (
+          currentRms > 0 &&
+          firstRequestStarted.settled() &&
+          !speechResumed.settled()
+        ) {
+          speechResumed.resolve(undefined);
+        }
+        return currentRms;
+      },
+    });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+      return respond(200, { allowed: true, count: 0, limit: null });
+    });
+    context.mocks.http.post("*/api/zero/voice-io/stt", async () => {
+      const requestIndex = requestCount;
+      requestCount += 1;
+      activeRequestCount += 1;
+      maxActiveRequestCount = Math.max(
+        maxActiveRequestCount,
+        activeRequestCount,
+      );
+      if (requestIndex === 0) {
+        firstRequestStarted.resolve(undefined);
+        await releaseFirstRequest.promise;
+      }
+      activeRequestCount -= 1;
+      return new Response(
+        JSON.stringify({
+          text: requestIndex === 0 ? "First sentence" : "Second sentence",
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+
+    currentRms = 0;
+    await firstRequestStarted.promise;
+    currentRms = 0.1;
+    await speechResumed.promise;
+    await user.click(screen.getByLabelText("Stop recording"));
+    await finalRecorderStopped.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(requestCount).toBe(1);
+
+    releaseFirstRequest.resolve(undefined);
+    await waitFor(() => {
+      expect(composer).toHaveTextContent("First sentence Second sentence");
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    });
+    expect(requestCount).toBe(2);
+    expect(maxActiveRequestCount).toBe(1);
+  });
+
   it("automatically stops voice input after extended silence", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "voice-input-auto-stop-thread";

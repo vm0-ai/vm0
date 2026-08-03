@@ -20,6 +20,22 @@ import {
 
 const L = logger("ZeroVoiceIoStt");
 
+function logSttUploadInspection(
+  file: File,
+  parsedDurationSeconds: number | null,
+  formData: FormData,
+): void {
+  const clientDiagnostics = formData.get("clientDiagnostics");
+  L.debug("STT upload inspected", {
+    fileMime: file.type,
+    fileSize: file.size,
+    fileName: file.name,
+    parsedDurationSeconds,
+    clientDiagnostics:
+      typeof clientDiagnostics === "string" ? clientDiagnostics : null,
+  });
+}
+
 const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const quota = await get(audioInputLifetimeQuota(auth.orgId, auth.userId));
@@ -71,6 +87,7 @@ const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const durationSeconds = await getAudioDuration(file);
   signal.throwIfAborted();
+  logSttUploadInspection(file, durationSeconds, formData);
   if (
     durationSeconds !== null &&
     durationSeconds > MAX_STT_REQUEST_DURATION_SECONDS
