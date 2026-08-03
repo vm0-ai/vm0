@@ -6,8 +6,8 @@
 
 mod api;
 mod api_ably_supervisor;
-mod api_claim_cooldowns;
 mod api_direct_candidates;
+mod api_run_exclusions;
 mod builtin_firewall_catalog;
 mod local;
 #[cfg(test)]
@@ -35,6 +35,27 @@ use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult, Session
 pub(crate) enum JobDiscoverySource {
     Ably,
     Poll,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) enum CandidateExclusionReason {
+    HistoryGenerationAffinity,
+    SessionAffinity,
+}
+
+impl CandidateExclusionReason {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::HistoryGenerationAffinity => "history_generation_affinity",
+            Self::SessionAffinity => "session_affinity",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CandidateExclusionOutcome {
+    Recorded,
+    AtCapacity,
 }
 
 impl JobDiscoverySource {
@@ -534,10 +555,17 @@ pub trait JobProvider: Send + Sync {
     /// the future to enforce single-flight and lifecycle ordering.
     async fn heartbeat(&self, state: &HeartbeatState);
 
-    /// Delay the next API-backed poll until a protected same-reuse-key job can
-    /// fall back to normal compatible-runner claiming.
-    /// Default no-op — only relevant for API-backed providers.
-    async fn defer_poll_after(&self, _delay: Duration) {}
+    /// Exclude one affinity-protected candidate from local discovery until its
+    /// original deadline. Providers that cannot retain the exclusion return
+    /// [`CandidateExclusionOutcome::AtCapacity`] so the caller can compete cold.
+    async fn record_candidate_exclusion(
+        &self,
+        _run_id: RunId,
+        _reason: CandidateExclusionReason,
+        _remaining: Duration,
+    ) -> CandidateExclusionOutcome {
+        CandidateExclusionOutcome::AtCapacity
+    }
 
     /// Release discovery resources (subscriptions, background tasks).
     ///

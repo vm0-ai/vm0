@@ -33,7 +33,9 @@ use crate::idle_pool::{
 use crate::ids::RunId;
 use crate::lifecycle::RunnerMode;
 use crate::paths::short_digest;
-use crate::provider::{ClaimedJob, JobCandidate};
+use crate::provider::{
+    CandidateExclusionOutcome, CandidateExclusionReason, ClaimedJob, JobCandidate,
+};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::status::StatusTracker;
@@ -447,18 +449,32 @@ async fn prepare_affinity_protected_candidate(
             });
         }
 
-        let delay = candidate
+        let remaining = candidate
             .history_generation_affinity_protection_remaining()
             .unwrap_or_default();
+        let outcome = ctx
+            .spawn_ctx
+            .provider
+            .record_candidate_exclusion(
+                candidate.run_id(),
+                CandidateExclusionReason::HistoryGenerationAffinity,
+                remaining,
+            )
+            .await;
+        if outcome == CandidateExclusionOutcome::AtCapacity {
+            return Some(PreparedAffinityCandidate {
+                candidate,
+                resource: None,
+            });
+        }
         let reuse_key_fingerprint = diagnostic_reuse_key_fingerprint(&reuse_key);
         info!(
             run_id = %candidate.run_id(),
             reuse_key_fingerprint = %reuse_key_fingerprint,
             reuse_key_kind = reuse_key_kind(&reuse_key),
-            delay_ms = delay.as_millis(),
-            "exact session-history generation protected by another runner, deferring claim"
+            delay_ms = remaining.as_millis(),
+            "exact session-history generation protected by another runner, excluding claim"
         );
-        ctx.spawn_ctx.provider.defer_poll_after(delay).await;
         return None;
     }
 
@@ -469,16 +485,30 @@ async fn prepare_affinity_protected_candidate(
         });
     }
     let Some(reuse_key) = candidate.reuse_key().map(str::to_owned) else {
-        let delay = candidate
+        let remaining = candidate
             .affinity_protection_remaining()
             .unwrap_or_default();
+        let outcome = ctx
+            .spawn_ctx
+            .provider
+            .record_candidate_exclusion(
+                candidate.run_id(),
+                CandidateExclusionReason::SessionAffinity,
+                remaining,
+            )
+            .await;
+        if outcome == CandidateExclusionOutcome::AtCapacity {
+            return Some(PreparedAffinityCandidate {
+                candidate,
+                resource: None,
+            });
+        }
         info!(
             run_id = %candidate.run_id(),
             has_cli_agent_session_id = candidate.cli_agent_session_id().is_some(),
-            delay_ms = delay.as_millis(),
-            "affinity-protected candidate missing session metadata, deferring claim"
+            delay_ms = remaining.as_millis(),
+            "affinity-protected candidate missing session metadata, excluding claim"
         );
-        ctx.spawn_ctx.provider.defer_poll_after(delay).await;
         return None;
     };
 
@@ -525,18 +555,32 @@ async fn prepare_affinity_protected_candidate(
         None => {}
     }
 
-    let delay = candidate
+    let remaining = candidate
         .affinity_protection_remaining()
         .unwrap_or_default();
+    let outcome = ctx
+        .spawn_ctx
+        .provider
+        .record_candidate_exclusion(
+            candidate.run_id(),
+            CandidateExclusionReason::SessionAffinity,
+            remaining,
+        )
+        .await;
+    if outcome == CandidateExclusionOutcome::AtCapacity {
+        return Some(PreparedAffinityCandidate {
+            candidate,
+            resource: None,
+        });
+    }
     let reuse_key_fingerprint = diagnostic_reuse_key_fingerprint(&reuse_key);
     info!(
         run_id = %candidate.run_id(),
         reuse_key_fingerprint = %reuse_key_fingerprint,
         reuse_key_kind = reuse_key_kind(&reuse_key),
-        delay_ms = delay.as_millis(),
-        "same-reuse-key affinity protected by another runner, deferring claim"
+        delay_ms = remaining.as_millis(),
+        "same-reuse-key affinity protected by another runner, excluding claim"
     );
-    ctx.spawn_ctx.provider.defer_poll_after(delay).await;
     None
 }
 

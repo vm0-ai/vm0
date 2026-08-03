@@ -405,7 +405,7 @@ async fn reusable_claim_without_generation_target_reuses_sandbox() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn generation_protected_different_idle_sandbox_defers_before_claim() {
+async fn generation_protected_different_idle_sandbox_excludes_before_claim() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&env.idle_pool);
@@ -442,7 +442,18 @@ async fn generation_protected_different_idle_sandbox_defers_before_claim() {
         env.handle.claim_candidates().is_empty(),
         "a different reusable generation must not reach claim during exact protection"
     );
-    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+    let exclusions = env.handle.candidate_exclusion_requests();
+    assert_eq!(exclusions.len(), 1);
+    assert_eq!(exclusions[0].run_id, run_id);
+    assert_eq!(
+        exclusions[0].reason,
+        crate::provider::CandidateExclusionReason::HistoryGenerationAffinity
+    );
+    assert_eq!(
+        exclusions[0].outcome,
+        crate::provider::CandidateExclusionOutcome::Recorded
+    );
+    assert!(!exclusions[0].remaining.is_zero());
     let pool = idle_pool.lock().await;
     assert_eq!(pool.held_reuse_keys(), vec![session_id.to_string()]);
     assert_eq!(
@@ -458,7 +469,7 @@ async fn generation_protected_different_idle_sandbox_defers_before_claim() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn affinity_protected_candidate_without_local_session_defers_before_claim() {
+async fn affinity_protected_candidate_without_local_session_excludes_before_claim() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
@@ -486,17 +497,23 @@ async fn affinity_protected_candidate_without_local_session_defers_before_claim(
         env.handle.claim_candidates().is_empty(),
         "runner must not claim a protected same-reuse-key candidate without local reusable state"
     );
+    let exclusions = env.handle.candidate_exclusion_requests();
+    assert_eq!(exclusions.len(), 1);
+    assert_eq!(exclusions[0].run_id, run_id);
     assert_eq!(
-        env.handle.deferred_poll_delays().len(),
-        1,
-        "runner should schedule a follow-up poll after the affinity protection expires"
+        exclusions[0].reason,
+        crate::provider::CandidateExclusionReason::SessionAffinity
+    );
+    assert_eq!(
+        exclusions[0].outcome,
+        crate::provider::CandidateExclusionOutcome::Recorded
     );
 
     shutdown(&env, run_handle).await;
 }
 
 #[tokio::test(start_paused = true)]
-async fn affinity_protected_candidate_without_session_metadata_defers_before_claim() {
+async fn affinity_protected_candidate_without_session_metadata_excludes_before_claim() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
@@ -526,13 +543,13 @@ async fn affinity_protected_candidate_without_session_metadata_defers_before_cla
         env.handle.claim_candidates().is_empty(),
         "a protected candidate without session metadata must not reach claim"
     );
-    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+    assert_eq!(env.handle.candidate_exclusion_requests().len(), 1);
 
     shutdown(&env, run_handle).await;
 }
 
 #[tokio::test(start_paused = true)]
-async fn affinity_protected_candidate_without_resource_defers_even_when_session_is_local() {
+async fn affinity_protected_candidate_without_resource_excludes_even_when_session_is_local() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&env.idle_pool);
@@ -556,7 +573,7 @@ async fn affinity_protected_candidate_without_resource_defers_even_when_session_
         env.handle.claim_candidates().is_empty(),
         "a protected candidate without a typed resource must not use legacy local admission"
     );
-    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+    assert_eq!(env.handle.candidate_exclusion_requests().len(), 1);
     assert_eq!(
         idle_pool.lock().await.held_reuse_keys(),
         vec![session_id.to_string()]
@@ -566,7 +583,7 @@ async fn affinity_protected_candidate_without_resource_defers_even_when_session_
 }
 
 #[tokio::test(start_paused = true)]
-async fn ready_direct_drain_continues_after_affinity_defer() {
+async fn ready_direct_drain_continues_after_affinity_exclusion() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let run_handle = tokio::spawn(run(config));
 
@@ -616,7 +633,7 @@ async fn ready_direct_drain_continues_after_affinity_defer() {
         .await;
     assert!(
         followup_completion.is_some(),
-        "ready drain should continue to a later candidate after deferring a protected one"
+        "ready drain should continue to a later candidate after excluding a protected one"
     );
     wait_cancel_token_removed(&env.cancel_tokens, protected_run_id, Duration::from_secs(5)).await;
 
@@ -637,12 +654,60 @@ async fn ready_direct_drain_continues_after_affinity_defer() {
         !claim_candidates
             .iter()
             .any(|candidate| candidate.run_id() == protected_run_id),
-        "protected ready candidate should be deferred before claim"
+        "protected ready candidate should be excluded before claim"
     );
     assert_eq!(
-        env.handle.deferred_poll_delays().len(),
+        env.handle.candidate_exclusion_requests().len(),
         1,
-        "protected ready candidate should schedule one follow-up poll"
+        "protected ready candidate should record one per-run exclusion"
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn affinity_exclusion_capacity_allows_cold_claim() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    env.handle.set_candidate_exclusion_at_capacity(true);
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        run_id,
+        Some(context_with_session(run_id, "sess-capacity-fallback")),
+    );
+    env.handle
+        .discover_tx
+        .send(reusable_affinity_protected_candidate(
+            run_id,
+            "sess-capacity-fallback",
+        ))
+        .unwrap();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await;
+    assert!(
+        completion.is_some(),
+        "affinity exclusion overflow should retain ordinary cold admission"
+    );
+
+    let exclusions = env.handle.candidate_exclusion_requests();
+    assert_eq!(exclusions.len(), 1);
+    assert_eq!(exclusions[0].run_id, run_id);
+    assert_eq!(
+        exclusions[0].outcome,
+        crate::provider::CandidateExclusionOutcome::AtCapacity
+    );
+    assert!(
+        env.handle
+            .claim_candidates()
+            .iter()
+            .any(|candidate| candidate.run_id() == run_id),
+        "overflowed affinity candidate should reach claim"
     );
 
     shutdown(&env, run_handle).await;
@@ -768,15 +833,15 @@ async fn expired_generation_protection_preserves_local_session_claim() {
             .is_some()
     );
     assert!(
-        env.handle.deferred_poll_delays().is_empty(),
-        "runner holding the protected session should not defer the claim"
+        env.handle.candidate_exclusion_requests().is_empty(),
+        "runner holding the protected session should not exclude the claim"
     );
 
     shutdown(&env, run_handle).await;
 }
 
 #[tokio::test]
-async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspace() {
+async fn resource_class_workspace_cache_excludes_for_reusable_then_claims_workspace() {
     let reuse_key = "thread:cache-local";
     let provider_session_id = "provider-session-cache-local";
     let image_size_bytes = 1024 * 1024;
@@ -833,7 +898,7 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
         env.handle.claim_candidates().is_empty(),
         "workspace-only state must not satisfy reusable-sandbox selection"
     );
-    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+    assert_eq!(env.handle.candidate_exclusion_requests().len(), 1);
 
     tokio::fs::remove_dir_all(&cache_entry_dir).await.unwrap();
     let generation_protected_run_id = RunId::new_v4();
@@ -855,7 +920,7 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
         env.handle.claim_candidates().is_empty(),
         "workspace-cache state and fresh capacity must not impersonate an exact reusable generation"
     );
-    assert_eq!(env.handle.deferred_poll_delays().len(), 2);
+    assert_eq!(env.handle.candidate_exclusion_requests().len(), 2);
 
     let run_id = RunId::new_v4();
     let mut workspace_context = context_with_session(run_id, provider_session_id);
@@ -889,16 +954,16 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
         Some(SessionAffinityResource::WorkspaceCache)
     );
     assert_eq!(
-        env.handle.deferred_poll_delays().len(),
+        env.handle.candidate_exclusion_requests().len(),
         2,
-        "the workspace-selected candidate should not add another deferral"
+        "the workspace-selected candidate should not add another exclusion"
     );
 
     shutdown(&env, run_handle).await;
 }
 
 #[tokio::test]
-async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
+async fn saturated_cache_only_holder_excludes_before_reclaiming_unrelated_idle() {
     let reuse_key = "thread:cache-saturated";
     let provider_session_id = "provider-session-cache-saturated";
     let image_size_bytes = 1024 * 1024;
@@ -952,14 +1017,14 @@ async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
         "cache-only affinity must not bypass exhausted fresh admission"
     );
     assert_eq!(
-        env.handle.deferred_poll_delays().len(),
+        env.handle.candidate_exclusion_requests().len(),
         1,
-        "workspace-selected work should defer when fresh budget is unavailable"
+        "workspace-selected work should be excluded when fresh budget is unavailable"
     );
     assert_eq!(
         idle_pool.lock().await.held_reuse_keys(),
         vec!["sess-unrelated-idle".to_string()],
-        "affinity deferral must happen before candidate-aware reclamation"
+        "affinity exclusion must happen before candidate-aware reclamation"
     );
     assert_eq!(budget.allocated(), (2, 4096, 1));
 

@@ -26,7 +26,10 @@ use tokio::sync::{Mutex, Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
-use super::{ClaimedJob, CompletionAuth, JobCandidate, JobProvider};
+use super::{
+    CandidateExclusionOutcome, CandidateExclusionReason, ClaimedJob, CompletionAuth, JobCandidate,
+    JobProvider,
+};
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
@@ -40,6 +43,14 @@ pub struct Completion {
     pub error: Option<String>,
     pub sandbox_id: Option<SandboxId>,
     pub reuse_result: Option<SandboxReuseResult>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CandidateExclusionRequest {
+    pub run_id: RunId,
+    pub reason: CandidateExclusionReason,
+    pub remaining: Duration,
+    pub outcome: CandidateExclusionOutcome,
 }
 
 /// Channel-driven mock provider.
@@ -63,7 +74,8 @@ pub struct MockJobProvider {
     claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
     completions: Arc<StdMutex<Vec<Completion>>>,
     heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
-    deferred_poll_delays: Arc<StdMutex<Vec<Duration>>>,
+    candidate_exclusion_requests: Arc<StdMutex<Vec<CandidateExclusionRequest>>>,
+    candidate_exclusion_at_capacity: Arc<AtomicBool>,
     cancel: CancellationToken,
     /// Fired each time `discover()` has reached its inner `select!` await
     /// point (lock + optional `poll_delay` complete, about to park on
@@ -100,7 +112,8 @@ pub struct MockProviderHandle {
     claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
     pub completions: Arc<StdMutex<Vec<Completion>>>,
     pub heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
-    deferred_poll_delays: Arc<StdMutex<Vec<Duration>>>,
+    candidate_exclusion_requests: Arc<StdMutex<Vec<CandidateExclusionRequest>>>,
+    candidate_exclusion_at_capacity: Arc<AtomicBool>,
     /// See [`Self::wait_discover_entered`].
     discover_entered: Arc<Notify>,
     /// See [`MockJobProvider::completion_notify`].
@@ -250,7 +263,8 @@ impl MockJobProvider {
         let claim_candidates = Arc::new(StdMutex::new(Vec::new()));
         let completions = Arc::new(StdMutex::new(Vec::new()));
         let heartbeats = Arc::new(StdMutex::new(Vec::new()));
-        let deferred_poll_delays = Arc::new(StdMutex::new(Vec::new()));
+        let candidate_exclusion_requests = Arc::new(StdMutex::new(Vec::new()));
+        let candidate_exclusion_at_capacity = Arc::new(AtomicBool::new(false));
         let startup_readiness = Arc::new(MockStartupReadiness::default());
         let discover_entered = Arc::new(Notify::new());
         let completion_notify = Arc::new(Notify::new());
@@ -267,7 +281,8 @@ impl MockJobProvider {
             claim_candidates: Arc::clone(&claim_candidates),
             completions: Arc::clone(&completions),
             heartbeats: Arc::clone(&heartbeats),
-            deferred_poll_delays: Arc::clone(&deferred_poll_delays),
+            candidate_exclusion_requests: Arc::clone(&candidate_exclusion_requests),
+            candidate_exclusion_at_capacity: Arc::clone(&candidate_exclusion_at_capacity),
             cancel,
             discover_entered: Arc::clone(&discover_entered),
             completion_notify: Arc::clone(&completion_notify),
@@ -283,7 +298,8 @@ impl MockJobProvider {
             claim_candidates,
             completions,
             heartbeats,
-            deferred_poll_delays,
+            candidate_exclusion_requests,
+            candidate_exclusion_at_capacity,
             discover_entered,
             completion_notify,
             discover_poll_started,
@@ -446,11 +462,16 @@ impl MockProviderHandle {
             .clone()
     }
 
-    pub fn deferred_poll_delays(&self) -> Vec<Duration> {
-        self.deferred_poll_delays
+    pub fn candidate_exclusion_requests(&self) -> Vec<CandidateExclusionRequest> {
+        self.candidate_exclusion_requests
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
+    }
+
+    pub fn set_candidate_exclusion_at_capacity(&self, at_capacity: bool) {
+        self.candidate_exclusion_at_capacity
+            .store(at_capacity, Ordering::SeqCst);
     }
 
     pub fn push_ready_candidate(&self, candidate: JobCandidate) {
@@ -593,11 +614,27 @@ impl JobProvider for MockJobProvider {
         }
     }
 
-    async fn defer_poll_after(&self, delay: Duration) {
-        self.deferred_poll_delays
+    async fn record_candidate_exclusion(
+        &self,
+        run_id: RunId,
+        reason: CandidateExclusionReason,
+        remaining: Duration,
+    ) -> CandidateExclusionOutcome {
+        let outcome = if self.candidate_exclusion_at_capacity.load(Ordering::SeqCst) {
+            CandidateExclusionOutcome::AtCapacity
+        } else {
+            CandidateExclusionOutcome::Recorded
+        };
+        self.candidate_exclusion_requests
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .push(delay);
+            .push(CandidateExclusionRequest {
+                run_id,
+                reason,
+                remaining,
+                outcome,
+            });
+        outcome
     }
 
     /// Acquire the discovery Mutex to preserve the shutdown deadlock regression shape.

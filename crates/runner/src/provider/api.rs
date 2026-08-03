@@ -20,17 +20,18 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use super::api_ably_supervisor::{
     AblySupervisor, AblySupervisorConfig, PollDue, PollOutcome, PollReason, PollWakeups,
 };
-use super::api_claim_cooldowns::{ClaimCooldownRecord, ClaimCooldowns};
 use super::api_direct_candidates::{
     DIRECT_CANDIDATE_STALE_AFTER, DirectCandidateInbox, DirectCandidatePruneSnapshot,
     DirectJobCandidate,
 };
+use super::api_run_exclusions::{RunExclusionRecord, RunExclusions};
 use super::builtin_firewall_catalog::{
     BuiltinFirewallCatalog, BuiltinFirewallCatalogRefreshController,
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
-    ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
+    CandidateExclusionOutcome, CandidateExclusionReason, ClaimedJob, CompletionAuth,
+    CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
 };
 use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
@@ -169,7 +170,7 @@ const POLL_FAST: Duration = Duration::from_secs(5);
 /// Retry delay after a job-notification wakeup reaches poll but poll fails.
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
 const DIRECT_CANDIDATE_INBOX_CAPACITY: usize = 128;
-const CLAIM_COOLDOWN_CAPACITY: usize = RUNNER_POLL_EXCLUDED_RUN_IDS_MAX as usize;
+const RUN_EXCLUSION_CAPACITY: usize = RUNNER_POLL_EXCLUDED_RUN_IDS_MAX as usize;
 const CLAIM_TRANSIENT_COOLDOWN: Duration = POLL_FAST;
 const CLAIM_DETERMINISTIC_COOLDOWN: Duration = POLL_SLOW;
 const NETWORK_POLICY_REFRESH_TIMEOUT: Duration = Duration::from_secs(3);
@@ -193,25 +194,25 @@ enum DiscoveryWakeup {
 /// - **Claim**: `POST /api/runners/jobs/{id}/claim`
 /// - **Complete**: `POST /api/webhooks/agent/complete` with per-job sandbox token
 ///
-/// ## Claim failure and rediscovery
+/// ## Run exclusion and rediscovery
 ///
 /// Claim is also feedback into discovery. A successful or unavailable claim
-/// clears any per-run cooldown; an unavailable claim promptly polls the backlog.
-/// Other failures are classified as transient or deterministic and give that run
-/// a corresponding runner-local cooldown.
+/// clears its claim-failure reason; an unavailable claim promptly polls the
+/// backlog. Other failures are classified as transient or deterministic and
+/// renew that run's runner-local failure deadline. Affinity admission records
+/// independent immutable deadlines after local reusable resources are checked.
 ///
-/// While a run is cooling down, matching direct candidates are skipped and the
+/// While a run is excluded, matching direct candidates are skipped and the
 /// bounded active run IDs are sent as optional poll exclusions. Recording a
-/// per-run cooldown requests an immediate poll so unrelated candidates can make
-/// progress. An empty excluded poll schedules a deferred retry through the
-/// `PollWakeups` state machine. If every exclusion expires while that poll is in
-/// flight, the provider immediately polls again without the stale exclusions.
+/// per-run reason requests an immediate poll so unrelated candidates can make
+/// progress. An empty excluded poll schedules a non-blocking release wake through
+/// `PollWakeups`. If every exclusion expires while that poll is in flight, the
+/// provider immediately polls again without the stale exclusions.
 ///
-/// An older API may ignore the additive exclusions and return a cooled run. The
-/// provider therefore checks returned candidates locally and defers rather than
-/// reclaiming that run at network-round-trip cadence. Cooldown capacity never
-/// evicts an active entry; saturation instead applies a short provider-wide
-/// cooldown and defers all discovery before retrying.
+/// An older API may ignore the additive exclusions and return an excluded run.
+/// The provider therefore checks returned candidates locally. Capacity never
+/// evicts an active entry. Affinity overflow remains cold-capable; claim-failure
+/// overflow retains a short provider-wide blocking fallback.
 pub struct ApiProvider {
     api: ApiClient,
     runner_id: String,
@@ -224,8 +225,8 @@ pub struct ApiProvider {
     poll_wakeups: Arc<PollWakeups>,
     /// Supported direct job candidates delivered by Ably notifications.
     direct_candidates: Arc<DirectCandidateInbox>,
-    /// Runs temporarily ineligible for this runner after a failed claim.
-    claim_cooldowns: ClaimCooldowns,
+    /// Runs temporarily ineligible for this runner by independent admission reason.
+    run_exclusions: RunExclusions,
     /// Background Ably control-plane task.
     ably_supervisor: Mutex<Option<AblySupervisor>>,
     cancel_tokens: RunCancellationRegistry,
@@ -285,7 +286,7 @@ impl ApiProvider {
             supported_profiles,
             poll_wakeups,
             direct_candidates,
-            claim_cooldowns: ClaimCooldowns::new(CLAIM_COOLDOWN_CAPACITY),
+            run_exclusions: RunExclusions::new(RUN_EXCLUSION_CAPACITY),
             ably_supervisor: Mutex::new(None),
             cancel_tokens,
             network_policy_refresh,
@@ -309,14 +310,14 @@ impl ApiProvider {
             }
             let candidate = outcome.candidate?;
             let run_id = candidate.run_id();
-            let Some(retry_after) = self.claim_cooldowns.remaining(run_id).await else {
+            let Some(retry_after) = self.run_exclusions.remaining(run_id).await else {
                 return Some(candidate);
             };
 
             info!(
                 run_id = %run_id,
                 retry_after_ms = duration_ms(retry_after),
-                "ably: direct candidate skipped during claim cooldown"
+                "ably: direct candidate skipped during run exclusion"
             );
             self.poll_wakeups.request_immediate_poll().await;
             if self.cancel.is_cancelled() {
@@ -325,11 +326,18 @@ impl ApiProvider {
         }
     }
 
-    async fn schedule_claim_retry_after_poll(&self, polled_with_exclusions: bool) {
-        let snapshot = self.claim_cooldowns.snapshot().await;
-        if let Some(retry_after) = snapshot.retry_after {
+    async fn schedule_exclusion_retry_after_poll(&self, polled_with_exclusions: bool) {
+        let snapshot = self.run_exclusions.snapshot().await;
+        if snapshot.next_release_after.is_none() {
+            self.poll_wakeups.clear_exclusion_poll().await;
+        }
+        if let Some(retry_after) = snapshot.block_all_remaining {
             self.poll_wakeups
                 .request_deferred_poll_after(retry_after)
+                .await;
+        } else if let Some(retry_after) = snapshot.next_release_after {
+            self.poll_wakeups
+                .request_exclusion_poll_after(retry_after)
                 .await;
         } else if polled_with_exclusions {
             // Every exclusion expired while the HTTP poll was in flight.
@@ -346,8 +354,12 @@ impl ApiProvider {
         let response_run_id = decision
             .response_run_id
             .map_or_else(String::new, |run_id| run_id.to_string());
-        match self.claim_cooldowns.record(run_id, decision.cooldown).await {
-            ClaimCooldownRecord::Recorded { active_count } => {
+        match self
+            .run_exclusions
+            .record_claim_failure(run_id, decision.cooldown)
+            .await
+        {
+            RunExclusionRecord::Recorded { active_count } => {
                 error!(
                     run_id = %run_id,
                     failure_class = decision.class.as_str(),
@@ -358,13 +370,13 @@ impl ApiProvider {
                     retry_scope = "candidate",
                     retry_scheduled = true,
                     active_cooldowns = active_count,
-                    cooldown_capacity = CLAIM_COOLDOWN_CAPACITY,
+                    cooldown_capacity = RUN_EXCLUSION_CAPACITY,
                     "claim failed, candidate cooling down"
                 );
                 self.poll_wakeups.request_immediate_poll().await;
             }
-            ClaimCooldownRecord::Saturated { active_count } => {
-                self.claim_cooldowns.block_all(POLL_FAST).await;
+            RunExclusionRecord::AtCapacity { active_count } => {
+                self.run_exclusions.block_all(POLL_FAST).await;
                 error!(
                     run_id = %run_id,
                     failure_class = decision.class.as_str(),
@@ -375,7 +387,7 @@ impl ApiProvider {
                     retry_scope = "provider",
                     retry_scheduled = true,
                     active_cooldowns = active_count,
-                    cooldown_capacity = CLAIM_COOLDOWN_CAPACITY,
+                    cooldown_capacity = RUN_EXCLUSION_CAPACITY,
                     "claim failed, candidate cooldown capacity reached"
                 );
                 self.poll_wakeups
@@ -488,7 +500,7 @@ impl JobProvider for ApiProvider {
             };
             let reason = due.reason();
             let poll_due_started_at = Instant::now();
-            let excluded_run_ids = self.claim_cooldowns.snapshot().await.run_ids;
+            let excluded_run_ids = self.run_exclusions.snapshot().await.run_ids;
 
             let poll_result = tokio::select! {
                 biased;
@@ -526,7 +538,7 @@ impl JobProvider for ApiProvider {
                     job: Some(job),
                     http_request_elapsed,
                 }) => {
-                    if let Some(retry_after) = self.claim_cooldowns.remaining(job.run_id).await {
+                    if let Some(retry_after) = self.run_exclusions.remaining(job.run_id).await {
                         self.poll_wakeups
                             .record_poll_result(due, PollOutcome::Empty, POLL_WAKEUP_RETRY)
                             .await;
@@ -534,9 +546,9 @@ impl JobProvider for ApiProvider {
                             run_id = %job.run_id,
                             retry_after_ms = duration_ms(retry_after),
                             excluded_run_count = excluded_run_ids.len(),
-                            "poll: API returned candidate excluded by claim cooldown"
+                            "poll: API returned candidate excluded by runner admission state"
                         );
-                        self.schedule_claim_retry_after_poll(true).await;
+                        self.schedule_exclusion_retry_after_poll(true).await;
                         continue;
                     }
                     let record = self
@@ -585,7 +597,7 @@ impl JobProvider for ApiProvider {
                     self.poll_wakeups
                         .record_poll_result(due, PollOutcome::Empty, POLL_WAKEUP_RETRY)
                         .await;
-                    self.schedule_claim_retry_after_poll(!excluded_run_ids.is_empty())
+                    self.schedule_exclusion_retry_after_poll(!excluded_run_ids.is_empty())
                         .await;
                 }
                 Err(e) => {
@@ -633,7 +645,7 @@ impl JobProvider for ApiProvider {
                         return None;
                     }
                 };
-                self.claim_cooldowns.remove(run_id).await;
+                self.run_exclusions.remove_claim_failure(run_id).await;
                 info!(
                     run_id = %run_id,
                     runner_id = %self.runner_id,
@@ -643,7 +655,7 @@ impl JobProvider for ApiProvider {
                 Some(claimed)
             }
             Ok(None) => {
-                self.claim_cooldowns.remove(run_id).await;
+                self.run_exclusions.remove_claim_failure(run_id).await;
                 info!(run_id = %run_id, "job unavailable, skipping");
                 self.poll_wakeups.request_immediate_poll().await;
                 None
@@ -662,8 +674,41 @@ impl JobProvider for ApiProvider {
         }
     }
 
-    async fn defer_poll_after(&self, delay: Duration) {
-        self.poll_wakeups.request_deferred_poll_after(delay).await;
+    async fn record_candidate_exclusion(
+        &self,
+        run_id: RunId,
+        reason: CandidateExclusionReason,
+        remaining: Duration,
+    ) -> CandidateExclusionOutcome {
+        match self
+            .run_exclusions
+            .record_candidate(run_id, reason, remaining)
+            .await
+        {
+            RunExclusionRecord::Recorded { active_count } => {
+                info!(
+                    run_id = %run_id,
+                    reason = reason.as_str(),
+                    retry_after_ms = duration_ms(remaining),
+                    active_exclusions = active_count,
+                    exclusion_capacity = RUN_EXCLUSION_CAPACITY,
+                    "candidate excluded from admission"
+                );
+                self.poll_wakeups.request_immediate_poll().await;
+                CandidateExclusionOutcome::Recorded
+            }
+            RunExclusionRecord::AtCapacity { active_count } => {
+                warn!(
+                    run_id = %run_id,
+                    reason = reason.as_str(),
+                    retry_after_ms = duration_ms(remaining),
+                    active_exclusions = active_count,
+                    exclusion_capacity = RUN_EXCLUSION_CAPACITY,
+                    "candidate exclusion capacity reached, allowing cold competition"
+                );
+                CandidateExclusionOutcome::AtCapacity
+            }
+        }
     }
 
     async fn shutdown(&self) {
@@ -1672,11 +1717,11 @@ mod tests {
         cancel: CancellationToken,
         poll_wakeups: Arc<PollWakeups>,
     ) -> Arc<ApiProvider> {
-        api_provider_for_test_with_claim_cooldown_capacity(
+        api_provider_for_test_with_run_exclusion_capacity(
             api_url,
             cancel,
             poll_wakeups,
-            CLAIM_COOLDOWN_CAPACITY,
+            RUN_EXCLUSION_CAPACITY,
         )
     }
 
@@ -1693,11 +1738,11 @@ mod tests {
         provider
     }
 
-    fn api_provider_for_test_with_claim_cooldown_capacity(
+    fn api_provider_for_test_with_run_exclusion_capacity(
         api_url: String,
         cancel: CancellationToken,
         poll_wakeups: Arc<PollWakeups>,
-        claim_cooldown_capacity: usize,
+        run_exclusion_capacity: usize,
     ) -> Arc<ApiProvider> {
         let api = ApiClient::new(
             HttpClient::new(HttpClientConfig {
@@ -1721,7 +1766,7 @@ mod tests {
                 DIRECT_CANDIDATE_INBOX_CAPACITY,
                 DIRECT_CANDIDATE_STALE_AFTER,
             ),
-            claim_cooldowns: ClaimCooldowns::new(claim_cooldown_capacity),
+            run_exclusions: RunExclusions::new(run_exclusion_capacity),
             ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
             cancel_tokens: RunCancellationRegistry::new(),
             cancel,
@@ -2488,6 +2533,265 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn affinity_exclusion_filters_direct_and_poll_without_blocking_other_runs() {
+        let server = MockServer::start_async().await;
+        let earlier_protected_run_id: RunId =
+            "00000000-0000-0000-0000-000000000020".parse().unwrap();
+        let protected_run_id: RunId = "00000000-0000-0000-0000-000000000021".parse().unwrap();
+        let direct_run_id: RunId = "00000000-0000-0000-0000-000000000022".parse().unwrap();
+        let poll_run_id: RunId = "00000000-0000-0000-0000-000000000023".parse().unwrap();
+        let poll_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::runners::poll::POLL.path)
+                    .json_body(serde_json::json!({
+                        "runnerId": "550e8400-e29b-41d4-a716-446655440000",
+                        "group": "default",
+                        "supportedProfiles": [crate::profile::DEFAULT_PROFILE],
+                        "excludedRunIds": [earlier_protected_run_id, protected_run_id],
+                        "telemetry": {
+                            "pollReason": "immediate"
+                        }
+                    }));
+                then.status(200).json_body(serde_json::json!({
+                    "job": {
+                        "runId": poll_run_id,
+                        "experimentalProfile": crate::profile::DEFAULT_PROFILE
+                    }
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(true)),
+        );
+
+        assert_eq!(
+            provider
+                .record_candidate_exclusion(
+                    protected_run_id,
+                    CandidateExclusionReason::SessionAffinity,
+                    Duration::from_secs(2),
+                )
+                .await,
+            CandidateExclusionOutcome::Recorded
+        );
+        assert_eq!(
+            provider
+                .record_candidate_exclusion(
+                    protected_run_id,
+                    CandidateExclusionReason::HistoryGenerationAffinity,
+                    Duration::from_secs(1),
+                )
+                .await,
+            CandidateExclusionOutcome::Recorded
+        );
+        assert_eq!(
+            provider
+                .record_candidate_exclusion(
+                    earlier_protected_run_id,
+                    CandidateExclusionReason::SessionAffinity,
+                    Duration::from_secs(2),
+                )
+                .await,
+            CandidateExclusionOutcome::Recorded
+        );
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(
+                protected_run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ),
+        )
+        .await;
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(direct_run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+
+        let direct = provider.discover().await.unwrap();
+        assert_eq!(direct.run_id(), direct_run_id);
+        assert_eq!(direct.discovery_source(), Some(JobDiscoverySource::Ably));
+
+        let polled = provider.discover().await.unwrap();
+        assert_eq!(polled.run_id(), poll_run_id);
+        assert_eq!(polled.discovery_source(), Some(JobDiscoverySource::Poll));
+        poll_mock.assert_async().await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn affinity_reasons_expire_independently_and_duplicate_does_not_extend() {
+        let server = MockServer::start_async().await;
+        let run_id: RunId = "00000000-0000-0000-0000-000000000024".parse().unwrap();
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(true)),
+        );
+
+        assert_eq!(
+            provider
+                .record_candidate_exclusion(
+                    run_id,
+                    CandidateExclusionReason::SessionAffinity,
+                    Duration::from_secs(2),
+                )
+                .await,
+            CandidateExclusionOutcome::Recorded
+        );
+        assert_eq!(
+            provider
+                .record_candidate_exclusion(
+                    run_id,
+                    CandidateExclusionReason::SessionAffinity,
+                    Duration::from_secs(10),
+                )
+                .await,
+            CandidateExclusionOutcome::Recorded
+        );
+        assert_eq!(
+            provider
+                .record_candidate_exclusion(
+                    run_id,
+                    CandidateExclusionReason::HistoryGenerationAffinity,
+                    Duration::from_secs(1),
+                )
+                .await,
+            CandidateExclusionOutcome::Recorded
+        );
+
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+        assert!(
+            provider.try_discover_ready().await.is_none(),
+            "session reason should remain after history-generation expiry"
+        );
+
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+        assert_eq!(
+            provider.try_discover_ready().await.unwrap().run_id(),
+            run_id,
+            "later duplicate must not extend the original session deadline"
+        );
+    }
+
+    #[tokio::test]
+    async fn claim_failure_and_affinity_reasons_release_independently() {
+        let server = MockServer::start_async().await;
+        let run_id: RunId = "00000000-0000-0000-0000-000000000025".parse().unwrap();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(400);
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(true)),
+        );
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+        let candidate = provider.discover().await.unwrap();
+        assert!(provider.claim(candidate).await.is_none());
+        claim_mock.assert_calls_async(1).await;
+
+        tokio::time::pause();
+        assert_eq!(
+            provider
+                .record_candidate_exclusion(
+                    run_id,
+                    CandidateExclusionReason::SessionAffinity,
+                    Duration::from_secs(60),
+                )
+                .await,
+            CandidateExclusionOutcome::Recorded
+        );
+        tokio::time::advance(Duration::from_secs(31)).await;
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+        assert!(
+            provider.try_discover_ready().await.is_none(),
+            "claim-failure expiry must not clear the affinity reason"
+        );
+
+        tokio::time::advance(Duration::from_secs(30)).await;
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+        assert_eq!(
+            provider.try_discover_ready().await.unwrap().run_id(),
+            run_id
+        );
+    }
+
+    #[tokio::test]
+    async fn affinity_exclusion_capacity_does_not_block_overflow_run() {
+        let server = MockServer::start_async().await;
+        let retained_run_id: RunId = "00000000-0000-0000-0000-000000000026".parse().unwrap();
+        let overflow_run_id: RunId = "00000000-0000-0000-0000-000000000027".parse().unwrap();
+        let wakeups = Arc::new(PollWakeups::new(true));
+        let provider = api_provider_for_test_with_run_exclusion_capacity(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::clone(&wakeups),
+            1,
+        );
+
+        assert_eq!(
+            provider
+                .record_candidate_exclusion(
+                    retained_run_id,
+                    CandidateExclusionReason::SessionAffinity,
+                    Duration::from_secs(2),
+                )
+                .await,
+            CandidateExclusionOutcome::Recorded
+        );
+        assert_eq!(
+            provider
+                .record_candidate_exclusion(
+                    overflow_run_id,
+                    CandidateExclusionReason::SessionAffinity,
+                    Duration::from_secs(2),
+                )
+                .await,
+            CandidateExclusionOutcome::AtCapacity
+        );
+        assert!(wakeups.snapshot().await.deferred_poll_at.is_none());
+
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new(overflow_run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+        )
+        .await;
+        assert_eq!(
+            provider.try_discover_ready().await.unwrap().run_id(),
+            overflow_run_id
+        );
+    }
+
+    #[tokio::test]
     async fn deterministic_claim_failure_excludes_run_and_polls_next_candidate() {
         let server = MockServer::start_async().await;
         let rejected_run_id: RunId = "00000000-0000-0000-0000-000000000009".parse().unwrap();
@@ -2875,7 +3179,7 @@ mod tests {
             })
             .await;
         let wakeups = Arc::new(PollWakeups::new(true));
-        let provider = api_provider_for_test_with_claim_cooldown_capacity(
+        let provider = api_provider_for_test_with_run_exclusion_capacity(
             server.base_url(),
             CancellationToken::new(),
             Arc::clone(&wakeups),

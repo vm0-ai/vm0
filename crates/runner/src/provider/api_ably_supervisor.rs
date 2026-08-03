@@ -116,6 +116,9 @@ struct PollWakeupsInner {
     deferred_poll_at: Option<tokio::time::Instant>,
     /// Upper bound for repeated deferral extension.
     deferred_poll_cap_at: Option<tokio::time::Instant>,
+    /// Earliest per-run exclusion release. Unlike `deferred_poll_at`, this
+    /// schedules a future poll without blocking earlier discovery wakeups.
+    exclusion_poll_at: Option<tokio::time::Instant>,
     /// Retry deadline for failed wakeup-driven polls only.
     wakeup_retry_at: Option<tokio::time::Instant>,
     /// Bumped whenever a new wakeup is recorded. This keeps an older HTTP poll
@@ -132,7 +135,27 @@ impl PollWakeupsInner {
 #[derive(Debug, Clone, Copy)]
 struct ScheduledPoll {
     at: tokio::time::Instant,
-    reason: PollReason,
+    kind: ScheduledPollKind,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ScheduledPollKind {
+    BlockingDeferred,
+    ExclusionRelease,
+    WakeupRetry,
+    Slow,
+    Fast,
+}
+
+impl ScheduledPollKind {
+    fn reason(self) -> PollReason {
+        match self {
+            Self::BlockingDeferred | Self::ExclusionRelease => PollReason::Deferred,
+            Self::WakeupRetry => PollReason::WakeupRetry,
+            Self::Slow => PollReason::Slow,
+            Self::Fast => PollReason::Fast,
+        }
+    }
 }
 
 impl PollWakeups {
@@ -143,6 +166,7 @@ impl PollWakeups {
                 poll_now: true,
                 deferred_poll_at: None,
                 deferred_poll_cap_at: None,
+                exclusion_poll_at: None,
                 wakeup_retry_at: None,
                 generation: 0,
             }),
@@ -171,6 +195,31 @@ impl PollWakeups {
         let now = tokio::time::Instant::now();
         self.request_deferred_poll_capped_at(now + delay, now + DEFERRED_POLL_MAX)
             .await;
+    }
+
+    pub(super) async fn request_exclusion_poll_after(&self, delay: Duration) {
+        let at = tokio::time::Instant::now() + delay;
+        let mut inner = self.inner.lock().await;
+        if inner
+            .exclusion_poll_at
+            .is_some_and(|existing| existing <= at)
+        {
+            return;
+        }
+        inner.exclusion_poll_at = Some(at);
+        inner.bump_generation();
+        drop(inner);
+        self.notify.notify_waiters();
+    }
+
+    pub(super) async fn clear_exclusion_poll(&self) {
+        let mut inner = self.inner.lock().await;
+        if inner.exclusion_poll_at.take().is_none() {
+            return;
+        }
+        inner.bump_generation();
+        drop(inner);
+        self.notify.notify_waiters();
     }
 
     async fn request_deferred_poll_capped_at(
@@ -286,6 +335,12 @@ impl PollWakeups {
                         reason: PollReason::WakeupRetry,
                         generation: inner.generation,
                     });
+                } else if inner.exclusion_poll_at.is_some_and(|at| at <= now) {
+                    inner.exclusion_poll_at = None;
+                    return Some(PollDue {
+                        reason: PollReason::Deferred,
+                        generation: inner.generation,
+                    });
                 } else {
                     Self::next_scheduled(&inner, now, slow_interval, fast_interval)
                 }
@@ -316,17 +371,17 @@ impl PollWakeups {
             // deadline, even when an immediate poll or wakeup retry exists.
             ScheduledPoll {
                 at,
-                reason: PollReason::Deferred,
+                kind: ScheduledPollKind::BlockingDeferred,
             }
         } else if inner.ably_connected {
             ScheduledPoll {
                 at: now + slow_interval,
-                reason: PollReason::Slow,
+                kind: ScheduledPollKind::Slow,
             }
         } else {
             ScheduledPoll {
                 at: now + fast_interval,
-                reason: PollReason::Fast,
+                kind: ScheduledPollKind::Fast,
             }
         };
 
@@ -336,7 +391,16 @@ impl PollWakeups {
         {
             scheduled = ScheduledPoll {
                 at,
-                reason: PollReason::WakeupRetry,
+                kind: ScheduledPollKind::WakeupRetry,
+            };
+        }
+        if inner.deferred_poll_at.is_none()
+            && let Some(at) = inner.exclusion_poll_at
+            && at < scheduled.at
+        {
+            scheduled = ScheduledPoll {
+                at,
+                kind: ScheduledPollKind::ExclusionRelease,
             };
         }
         scheduled
@@ -346,9 +410,8 @@ impl PollWakeups {
         let mut inner = self.inner.lock().await;
         let now = tokio::time::Instant::now();
 
-        let is_due = match scheduled.reason {
-            PollReason::Immediate => false,
-            PollReason::WakeupRetry => {
+        let is_due = match scheduled.kind {
+            ScheduledPollKind::WakeupRetry => {
                 if inner.deferred_poll_at.is_none()
                     && inner.wakeup_retry_at.is_some_and(|at| at <= now)
                 {
@@ -358,7 +421,7 @@ impl PollWakeups {
                     false
                 }
             }
-            PollReason::Deferred => {
+            ScheduledPollKind::BlockingDeferred => {
                 if inner.deferred_poll_at.is_some_and(|at| at <= now) {
                     inner.deferred_poll_at = None;
                     inner.deferred_poll_cap_at = None;
@@ -368,13 +431,23 @@ impl PollWakeups {
                     false
                 }
             }
-            PollReason::Slow => {
+            ScheduledPollKind::ExclusionRelease => {
+                if inner.deferred_poll_at.is_none()
+                    && inner.exclusion_poll_at.is_some_and(|at| at <= now)
+                {
+                    inner.exclusion_poll_at = None;
+                    true
+                } else {
+                    false
+                }
+            }
+            ScheduledPollKind::Slow => {
                 inner.deferred_poll_at.is_none()
                     && inner.ably_connected
                     && !inner.poll_now
                     && !Self::has_due_wakeup(&inner, now)
             }
-            PollReason::Fast => {
+            ScheduledPollKind::Fast => {
                 inner.deferred_poll_at.is_none()
                     && !inner.ably_connected
                     && !inner.poll_now
@@ -382,7 +455,7 @@ impl PollWakeups {
             }
         };
         is_due.then_some(PollDue {
-            reason: scheduled.reason,
+            reason: scheduled.kind.reason(),
             generation: inner.generation,
         })
     }
@@ -390,6 +463,7 @@ impl PollWakeups {
     fn has_due_wakeup(inner: &PollWakeupsInner, now: tokio::time::Instant) -> bool {
         inner.wakeup_retry_at.is_some_and(|at| at <= now)
             || inner.deferred_poll_at.is_some_and(|at| at <= now)
+            || inner.exclusion_poll_at.is_some_and(|at| at <= now)
     }
 
     #[cfg(test)]
@@ -400,6 +474,7 @@ impl PollWakeups {
             poll_now: inner.poll_now,
             deferred_poll_at: inner.deferred_poll_at,
             deferred_poll_cap_at: inner.deferred_poll_cap_at,
+            exclusion_poll_at: inner.exclusion_poll_at,
             wakeup_retry_at: inner.wakeup_retry_at,
         }
     }
@@ -412,6 +487,7 @@ pub(super) struct PollWakeupsSnapshot {
     pub(super) poll_now: bool,
     pub(super) deferred_poll_at: Option<tokio::time::Instant>,
     pub(super) deferred_poll_cap_at: Option<tokio::time::Instant>,
+    pub(super) exclusion_poll_at: Option<tokio::time::Instant>,
     pub(super) wakeup_retry_at: Option<tokio::time::Instant>,
 }
 
@@ -1432,6 +1508,118 @@ mod tests {
             )
             .await;
         assert_eq!(poll_reason(reason), Some(PollReason::Immediate));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn exclusion_poll_does_not_block_immediate_poll() {
+        let wakeups = PollWakeups::new(true);
+        let initial = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(initial, PollOutcome::Empty, Duration::from_secs(5))
+            .await;
+
+        wakeups
+            .request_exclusion_poll_after(Duration::from_secs(2))
+            .await;
+        assert!(wakeups.snapshot().await.exclusion_poll_at.is_some());
+        wakeups.request_immediate_poll().await;
+
+        let immediate = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        assert_eq!(immediate.reason(), PollReason::Immediate);
+        wakeups
+            .record_poll_result(immediate, PollOutcome::Empty, Duration::from_secs(5))
+            .await;
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let release = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        assert_eq!(release.reason(), PollReason::Deferred);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn ordinary_poll_can_precede_exclusion_release() {
+        let wakeups = Arc::new(PollWakeups::new(true));
+        let initial = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(1),
+                Duration::from_secs(1),
+            )
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(initial, PollOutcome::Empty, Duration::from_secs(5))
+            .await;
+        wakeups
+            .request_exclusion_poll_after(Duration::from_secs(2))
+            .await;
+
+        let wakeups_for_wait = Arc::clone(&wakeups);
+        let wait = tokio::spawn(async move {
+            wakeups_for_wait
+                .wait_for_poll_due(
+                    &CancellationToken::new(),
+                    Duration::from_secs(1),
+                    Duration::from_secs(1),
+                )
+                .await
+                .unwrap()
+        });
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let ordinary = wait.await.unwrap();
+        assert_eq!(ordinary.reason(), PollReason::Slow);
+        assert!(wakeups.snapshot().await.exclusion_poll_at.is_some());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wakeup_retry_can_precede_exclusion_release() {
+        let wakeups = PollWakeups::new(true);
+        let initial = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(initial, PollOutcome::Failure, Duration::from_secs(1))
+            .await;
+        wakeups
+            .request_exclusion_poll_after(Duration::from_secs(2))
+            .await;
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let retry = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        assert_eq!(retry.reason(), PollReason::WakeupRetry);
+        assert!(wakeups.snapshot().await.exclusion_poll_at.is_some());
     }
 
     #[tokio::test(start_paused = true)]
