@@ -23,7 +23,7 @@ import { drainGoalQueueForThread$ } from "./zero-goal-queue-drain.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
-const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
+export const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
 const L = logger("ChatThreadQueueDrain");
 
 type QueueDrainSweepCandidate =

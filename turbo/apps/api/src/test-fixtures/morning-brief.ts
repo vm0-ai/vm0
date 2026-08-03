@@ -1,13 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../lib/db";
-import { decryptQueuedUserMessageRunParams } from "../signals/services/zero-chat-queued-event.service";
 import { insertChatEvent } from "../signals/services/zero-chat-event.service";
 import { touchChatThreadLastMessageAt } from "../signals/services/zero-chat-event-shared.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
@@ -36,43 +34,6 @@ export async function readMorningBriefDeliveryFixture(args: {
     )
     .limit(1);
   return delivery ?? null;
-}
-
-export async function readMorningBriefQueuedParamsForDeliveryFixture(args: {
-  readonly deliveryId: string;
-  readonly threadId: string;
-  readonly orgId: string;
-  readonly userId: string;
-}) {
-  const messages = await db()
-    .select({
-      deliveryId: chatMorningBriefContext.deliveryId,
-      encryptedParams: chatEventInputParams.encryptedParams,
-    })
-    .from(chatEvents)
-    .leftJoin(
-      chatMorningBriefContext,
-      and(
-        eq(chatMorningBriefContext.id, chatEvents.contextId),
-        eq(chatMorningBriefContext.chatThreadId, chatEvents.chatThreadId),
-      ),
-    )
-    .leftJoin(
-      chatEventInputParams,
-      eq(chatEventInputParams.eventId, chatEvents.id),
-    )
-    .where(eq(chatEvents.chatThreadId, args.threadId));
-  for (const message of messages) {
-    if (message.deliveryId !== args.deliveryId) {
-      continue;
-    }
-    const params = await decryptQueuedUserMessageRunParams(
-      message.encryptedParams,
-      { orgId: args.orgId, userId: args.userId },
-    );
-    return params;
-  }
-  return null;
 }
 
 export async function setMorningBriefTriggeredAtFixture(args: {

@@ -10,8 +10,7 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   clearGitHubTriggerCommentBodyFixture,
-  decryptChatEventInputParamsFixture,
-  findPendingChatEventInputParamsByPromptFixture,
+  findPendingChatEventByPromptFixture,
   readChatEventContextFixture,
 } from "../../../test-fixtures/chat-events";
 import {
@@ -508,21 +507,12 @@ describe("GitHub canonical chat threads", () => {
         "follow up in FIFO order",
       ),
     ).resolves.toBe(0);
-    const queuedParams = await findPendingChatEventInputParamsByPromptFixture(
+    const queuedParams = await findPendingChatEventByPromptFixture(
       "follow up in FIFO order",
     );
     if (!queuedParams) {
-      throw new Error("Expected queued GitHub chat input params");
+      throw new Error("Expected queued GitHub chat event");
     }
-    if (!fixture.actorA.orgId) {
-      throw new Error("Expected org-scoped GitHub actor");
-    }
-    await expect(
-      decryptChatEventInputParamsFixture(queuedParams.eventId, {
-        orgId: fixture.actorA.orgId,
-        userId: fixture.actorA.userId,
-      }),
-    ).resolves.toStrictEqual({ version: 1 });
     await expect(
       readChatEventContextFixture(queuedParams.eventId),
     ).resolves.toMatchObject({

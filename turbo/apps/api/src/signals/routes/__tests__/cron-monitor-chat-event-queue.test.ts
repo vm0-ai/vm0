@@ -18,6 +18,7 @@ const CRON_SECRET = "test-cron-secret";
 interface MonitorFixture {
   readonly composeId: string;
   readonly eventId: string;
+  readonly eventIds: readonly string[];
 }
 
 function apiClient() {
@@ -51,7 +52,19 @@ async function seedFixture(
   if (!response.compose_id || !response.event_id) {
     throw new Error("orphan monitor seed response is missing fixture IDs");
   }
-  return { composeId: response.compose_id, eventId: response.event_id };
+  if (
+    !Array.isArray(response.event_ids) ||
+    !response.event_ids.every((eventId) => {
+      return typeof eventId === "string";
+    })
+  ) {
+    throw new Error("orphan monitor seed response is missing event IDs");
+  }
+  return {
+    composeId: response.compose_id,
+    eventId: response.event_id,
+    eventIds: response.event_ids,
+  };
 }
 
 async function cleanupFixture(fixture: MonitorFixture): Promise<void> {
@@ -84,13 +97,12 @@ describe("cron monitor chat event queue", () => {
       trackFixture(seedFixture("queued-message")),
       trackFixture(seedFixture("revoked-message")),
     ]);
-    await trackFixture(seedFixture("orphan"));
 
     const response = await accept(
       stateClient().monitor({
         body: {
-          event_ids: fixtures.map((fixture) => {
-            return fixture.eventId;
+          event_ids: fixtures.flatMap((fixture) => {
+            return fixture.eventIds;
           }),
         },
       }),
@@ -104,11 +116,11 @@ describe("cron monitor chat event queue", () => {
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it("raises the existing error alert for a malformed pending event", async () => {
+  it("raises a grouped alert for every source with a missing context row", async () => {
     const fixture = await trackFixture(seedFixture("orphan"));
 
     const response = await accept(
-      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
+      stateClient().monitor({ body: { event_ids: [...fixture.eventIds] } }),
       [500],
     );
 
@@ -120,7 +132,18 @@ describe("cron monitor chat event queue", () => {
     ).toMatchObject({
       name: "OrphanedQueuedChatEventsError",
       code: "ORPHANED_QUEUED_CHAT_MESSAGES",
-      orphanedMessages: 1,
+      orphanedMessages: 9,
+      orphanedMessagesBySource: {
+        agentphone: 1,
+        automation: 1,
+        feishu: 1,
+        github: 1,
+        goal: 1,
+        morning_brief: 1,
+        slack: 1,
+        teams: 1,
+        telegram: 1,
+      },
     });
     const [, fields] = context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
     expect(fields).toMatchObject({
@@ -131,26 +154,50 @@ describe("cron monitor chat event queue", () => {
       error: {
         name: "OrphanedQueuedChatEventsError",
         code: "ORPHANED_QUEUED_CHAT_MESSAGES",
-        orphanedMessages: 1,
+        orphanedMessages: 9,
+        orphanedMessagesBySource: {
+          agentphone: 1,
+          automation: 1,
+          feishu: 1,
+          github: 1,
+          goal: 1,
+          morning_brief: 1,
+          slack: 1,
+          teams: 1,
+          telegram: 1,
+        },
       },
     });
   });
 
-  it("detects an automation event missing its typed context", async () => {
+  it("does not flag input.automation without legacy encrypted params", async () => {
     const fixture = await trackFixture(seedFixture("orphaned-automation"));
 
     const response = await accept(
       stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
-      [500],
+      [200],
     );
 
-    expect(response.body).toStrictEqual({ error: "Internal server error" });
-    expect(
-      context.mocks.sentry.captureException.mock.calls.at(-1)?.[0],
-    ).toMatchObject({
-      code: "ORPHANED_QUEUED_CHAT_MESSAGES",
-      orphanedMessages: 1,
+    expect(response.body).toStrictEqual({
+      success: true,
+      orphanedMessages: 0,
     });
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("does not alert for a newly queued event below the age threshold", async () => {
+    const fixture = await trackFixture(seedFixture("queued-integration"));
+
+    const response = await accept(
+      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      orphanedMessages: 0,
+    });
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
   it("does not expose scoped monitoring in production", async () => {

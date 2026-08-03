@@ -141,7 +141,6 @@ import {
 } from "./assistant-event-id";
 import { attachCanonicalPublishedAssetsToCompletionEvent } from "./canonical-published-asset-event.service";
 import {
-  decryptQueuedUserMessageRunParams,
   discardUnclaimedUserMessageInTransaction,
   failQueuedUserMessage,
   loadNextUnclaimedQueuedUserMessage,
@@ -3033,13 +3032,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
 }
 
 async function loadQueuedRunMaterial(args: CreateQueuedChatRunInputArgs) {
-  const sourceParams = await decryptQueuedUserMessageRunParams(
-    args.queuedMessage.encryptedParams,
-    { orgId: args.agent.orgId, userId: args.userId },
-  );
-  if (args.queuedMessage.triggerSource !== "web" && !sourceParams) {
-    throw new Error("Canonical integration queue item is missing run params");
-  }
   return await resolveQueuedLaunchMaterial(args);
 }
 

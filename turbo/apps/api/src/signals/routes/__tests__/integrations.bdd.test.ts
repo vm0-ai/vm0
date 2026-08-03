@@ -12,10 +12,8 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import {
-  decryptChatEventInputParamsFixture,
-  findPendingChatEventInputParamsByPromptFixture,
+  findPendingChatEventByPromptFixture,
   readChatEventContextFixture,
-  readChatEventInputParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -295,8 +293,14 @@ async function pollRunnerRun(
 ): Promise<string> {
   await runs.heartbeatRunner(runnerGroup);
   await flushWaitUntilForTest();
-  const poll = await runs.pollRunner(runnerGroup);
-  const runId = poll.body.job?.runId;
+  let runId: string | null = null;
+  await expect
+    .poll(async () => {
+      const poll = await runs.pollRunner(runnerGroup);
+      runId = poll.body.job?.runId ?? null;
+      return runId;
+    })
+    .toStrictEqual(expect.any(String));
   if (!runId) {
     throw new Error(message);
   }
@@ -310,12 +314,12 @@ async function pollSlackRun(runnerGroup: string): Promise<string> {
   );
 }
 
-async function requirePendingChatEventInputParams(prompt: string) {
-  const params = await findPendingChatEventInputParamsByPromptFixture(prompt);
-  if (!params) {
-    throw new Error(`Expected queued input params for ${prompt}`);
+async function requirePendingChatEvent(prompt: string) {
+  const event = await findPendingChatEventByPromptFixture(prompt);
+  if (!event) {
+    throw new Error(`Expected queued event for ${prompt}`);
   }
-  return params;
+  return event;
 }
 
 async function pollQueuedWebAndSlackRuns(args: {
@@ -1756,19 +1760,12 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       ]),
     );
-    const queuedSlackParams = await requirePendingChatEventInputParams(
+    const queuedSlackParams = await requirePendingChatEvent(
       "stay canonical on the same route",
     );
     expect(queuedSlackParams).toMatchObject({
       eventId: expect.any(String),
-      encryptedParams: expect.any(String),
     });
-    await expect(
-      decryptChatEventInputParamsFixture(queuedSlackParams.eventId, {
-        orgId,
-        userId: actor.userId,
-      }),
-    ).resolves.toStrictEqual({ version: 1 });
     await expect(
       readChatEventContextFixture(queuedSlackParams.eventId),
     ).resolves.toMatchObject({
@@ -1894,9 +1891,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       run2Id,
       claim2,
     }));
-    await expect(
-      readChatEventInputParamsFixture(queuedSlackParams.eventId),
-    ).resolves.toBeNull();
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${webRunId}`);
     state = await integrations.readSlackTestState(teamId);
     expect(state.recent_runs).toContainEqual(

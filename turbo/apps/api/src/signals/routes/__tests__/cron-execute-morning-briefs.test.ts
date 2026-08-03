@@ -43,14 +43,12 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   holdOrgAdmissionLockFixture,
-  readChatEventInputParamsFixture,
   readChatEventContextFixture,
   setQueuedUserMessageCreatedAtFixture,
 } from "../../../test-fixtures/chat-events";
 import {
   insertQueuedWebUserMessageFixture,
   readMorningBriefDeliveryFixture,
-  readMorningBriefQueuedParamsForDeliveryFixture,
   setMorningBriefTriggeredAtFixture,
 } from "../../../test-fixtures/morning-brief";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
@@ -1383,14 +1381,6 @@ describe("cron execute morning briefs", () => {
         );
       });
     };
-    const queuedParams = await readMorningBriefQueuedParamsForDeliveryFixture({
-      deliveryId: delivery.id,
-      threadId,
-      orgId: scenario.actor.orgId,
-      userId: scenario.actor.userId,
-    });
-    expect(queuedParams).toStrictEqual({ version: 1 });
-
     const queuedEvents = await readMorningBriefThreadEvents(scenario, threadId);
     const strandedEvent = queuedEvents.find((event) => {
       return (
@@ -1412,12 +1402,6 @@ describe("cron execute morning briefs", () => {
       morningBriefTimezone: TIMEZONE,
       morningBriefTriggeredAt: new Date(AFTER_SEVEN_LOCAL),
     });
-    await expect(
-      readChatEventInputParamsFixture(strandedEvent.id),
-    ).resolves.toMatchObject({
-      eventId: strandedEvent.id,
-      encryptedParams: expect.any(String),
-    });
     await chat.requestSendEvent(
       scenario.actor,
       {
@@ -1428,10 +1412,6 @@ describe("cron execute morning briefs", () => {
       },
       [201],
     );
-    await expect(
-      readChatEventInputParamsFixture(strandedEvent.id),
-    ).resolves.toBeNull();
-
     routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
     const readmitted = await accept(
       morningBriefTriggerClient().trigger({
@@ -1473,13 +1453,6 @@ describe("cron execute morning briefs", () => {
     if (!readmittedEvent) {
       throw new Error("Expected the readmitted Morning Brief queue event");
     }
-    await expect(
-      readChatEventInputParamsFixture(readmittedEvent.id),
-    ).resolves.toMatchObject({
-      eventId: readmittedEvent.id,
-      encryptedParams: expect.any(String),
-    });
-
     const legacyTriggeredAt = new Date(AFTER_SEVEN_LOCAL - DAY_MS - 60 * 1000);
     await setQueuedUserMessageCreatedAtFixture({
       eventId: readmittedEvent.id,
@@ -1545,9 +1518,6 @@ describe("cron execute morning briefs", () => {
         expiresIn: DAY_MS / 1000,
       },
     ]);
-    await expect(
-      readChatEventInputParamsFixture(readmittedEvent.id),
-    ).resolves.toBeNull();
     expect(previousBriefDate).not.toBe(BRIEF_DATE);
     const { prompt, appendSystemPrompt } = await completeMorningBriefRun(
       scenario,

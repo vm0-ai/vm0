@@ -19,11 +19,9 @@ import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
-  decryptChatEventInputParamsFixture,
-  findPendingChatEventInputParamsByPromptFixture,
+  findPendingChatEventByPromptFixture,
   findTelegramChatEventByPromptFixture,
   readChatEventContextFixture,
-  readChatEventInputParamsFixture,
   setTelegramThinkingMessageIdFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -1449,20 +1447,13 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     ).toBe(200);
     await flushWaitUntilForTest();
     const queuedParams =
-      await findPendingChatEventInputParamsByPromptFixture(queuedPrompt);
+      await findPendingChatEventByPromptFixture(queuedPrompt);
     expect(queuedParams).toMatchObject({
       eventId: expect.any(String),
-      encryptedParams: expect.any(String),
     });
     if (!queuedParams) {
-      throw new Error("Expected queued Telegram transport params");
+      throw new Error("Expected queued Telegram event");
     }
-    await expect(
-      decryptChatEventInputParamsFixture(queuedParams.eventId, {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-      }),
-    ).resolves.toStrictEqual({ version: 1 });
     const queuedLaunchContext = await readChatEventContextFixture(
       queuedParams.eventId,
     );
@@ -1489,10 +1480,6 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     if (!queuedRunId) {
       throw new Error("Expected the queued Telegram run");
     }
-    await expect(
-      readChatEventInputParamsFixture(queuedParams.eventId),
-    ).resolves.toBeNull();
-
     const queuedClaim = await claimTelegramRun(queuedRunId, runnerGroup);
     expect(queuedClaim.prompt).toBe(queuedPrompt);
     const queuedThreadContext = queuedLaunchContext?.telegramThreadContext;
