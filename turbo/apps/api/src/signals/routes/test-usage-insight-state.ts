@@ -49,6 +49,7 @@ import {
   deleteOrgUsageData,
   deleteUserUsageData,
 } from "../services/usage-event-cleanup.service";
+import { lockUsageEventCompaction } from "../services/usage-event-compaction-lock.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -816,6 +817,8 @@ async function materializeHourlyUsage(
   signal: AbortSignal,
 ): Promise<number> {
   return await db.transaction(async (tx) => {
+    await lockUsageEventCompaction(tx);
+    signal.throwIfAborted();
     const runPredicate =
       args.runId === null
         ? isNull(usageEvent.runId)

@@ -790,6 +790,36 @@ describe("usage event compaction cron", () => {
     });
   });
 
+  it("serializes scoped materialization with usage compaction", async () => {
+    const fixture = await seedFixture();
+    await store.set(
+      insertUsageEvent$,
+      {
+        ...fixture,
+        status: "processed",
+        processedAt: new Date("0500-01-01T00:15:00.000Z"),
+      },
+      context.signal,
+    );
+    const gate = await startUsageCompactionLockGate();
+
+    const materialization = createStore().set(
+      materializeHourlyUsage$,
+      { ...fixture, runId: null },
+      context.signal,
+    );
+    await waitForUsageCompactionLockWaiters(gate, 1);
+    await releaseUsageCompactionLockGate(gate);
+
+    await expect(materialization).resolves.toBe(1);
+    await expect(readStorage(fixture)).resolves.toStrictEqual({
+      raw: 0,
+      processedRaw: 0,
+      compactedRaw: 0,
+      hourly: 1,
+    });
+  });
+
   it("lets organization cleanup remove a batch aggregated ahead of it", async () => {
     const fixture = await seedFixture();
     const quantity = 8_000_000_000_000_123;
