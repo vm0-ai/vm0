@@ -38,7 +38,7 @@ def build_api_opener() -> urllib.request.OpenerDirector:
 
 
 def configure_client_headers(*, client_session_id: str, client_version: str) -> None:
-    """Snapshot runner-provided client header values for worker-thread requests."""
+    """Snapshot runner-provided client header values for platform API requests."""
     global _CLIENT_HEADERS
     _CLIENT_HEADERS = (client_session_id, client_version)
 

@@ -337,7 +337,8 @@ async def _resolve_addresses(host: str, port: int) -> tuple[_ResolvedAddress, ..
 def _abort_socket(sock: socket.socket) -> None:
     with suppress(OSError):
         sock.shutdown(socket.SHUT_RDWR)
-    sock.close()
+    with suppress(OSError):
+        sock.close()
 
 
 async def _open_connected_stream(
