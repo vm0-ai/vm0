@@ -1412,4 +1412,3 @@ class TestFirewallAuthAsyncTransport:
         assert origin_requests[0].target == "/api/webhooks/agent/firewall/auth"
         assert origin_requests[0].headers["authorization"] == "Bearer tok-xyz"
         assert "proxy-authorization" not in origin_requests[0].headers
-

@@ -92,6 +92,12 @@ class _ResolvedAddress(NamedTuple):
     port: int
 
 
+class _ConnectedStream(NamedTuple):
+    reader: asyncio.StreamReader
+    writer: asyncio.StreamWriter
+    socket: socket.socket
+
+
 @dataclass(frozen=True)
 class _ConnectionPlan:
     origin_scheme: str
@@ -336,7 +342,7 @@ def _abort_socket(sock: socket.socket) -> None:
 
 async def _open_connected_stream(
     addresses: tuple[_ResolvedAddress, ...],
-) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+) -> _ConnectedStream:
     loop = asyncio.get_running_loop()
     last_error: OSError | None = None
     for address in addresses:
@@ -365,17 +371,18 @@ async def _open_connected_stream(
         except BaseException:
             _abort_socket(sock)
             raise
-        return reader, writer
+        return _ConnectedStream(reader, writer, sock)
 
     if last_error is None:
         raise OSError("Firewall auth connection failed")
     raise last_error
 
 
-async def _abort_writer(writer: asyncio.StreamWriter) -> None:
-    writer.transport.abort()
-    with suppress(OSError):
-        await writer.wait_closed()
+def _abort_stream(stream: _ConnectedStream) -> None:
+    try:
+        stream.writer.transport.abort()
+    finally:
+        _abort_socket(stream.socket)
 
 
 async def _read_proxy_connect_status(reader: asyncio.StreamReader) -> int:
@@ -415,21 +422,21 @@ async def _establish_proxy_tunnel(
         raise OSError(f"Firewall auth HTTP proxy CONNECT failed with status {status}")
 
 
-async def _open_stream(plan: _ConnectionPlan) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+async def _open_stream(plan: _ConnectionPlan) -> _ConnectedStream:
     addresses = await _resolve_addresses(plan.connect_host, plan.connect_port)
-    reader, writer = await _open_connected_stream(addresses)
+    stream = await _open_connected_stream(addresses)
     try:
         if plan.use_proxy_tunnel:
-            await _establish_proxy_tunnel(writer, reader, plan)
+            await _establish_proxy_tunnel(stream.writer, stream.reader, plan)
         if plan.origin_scheme == "https":
-            await writer.start_tls(
+            await stream.writer.start_tls(
                 _get_https_context(),
                 server_hostname=plan.origin_host,
             )
     except BaseException:
-        await _abort_writer(writer)
+        _abort_stream(stream)
         raise
-    return reader, writer
+    return stream
 
 
 def _request_headers(
@@ -513,13 +520,13 @@ async def _perform_http_request(
     plan: _ConnectionPlan,
     body: bytes,
 ) -> _HttpResponse:
-    reader, writer = await _open_stream(plan)
+    stream = await _open_stream(plan)
     connection = h11.Connection(
         h11.CLIENT,
         max_incomplete_event_size=_MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES,
     )
     try:
-        writer.write(
+        stream.writer.write(
             connection.send(
                 h11.Request(
                     method=req.get_method(),
@@ -528,16 +535,17 @@ async def _perform_http_request(
                 )
             )
         )
-        writer.write(connection.send(h11.Data(data=body)))
-        writer.write(connection.send(h11.EndOfMessage()))
-        await writer.drain()
-        response = await _read_http_response(reader, connection)
-        writer.close()
+        stream.writer.write(connection.send(h11.Data(data=body)))
+        stream.writer.write(connection.send(h11.EndOfMessage()))
+        await stream.writer.drain()
+        response = await _read_http_response(stream.reader, connection)
+        stream.writer.close()
         with suppress(OSError):
-            await writer.wait_closed()
+            await stream.writer.wait_closed()
+        stream.socket.close()
         return response
     except BaseException:
-        await _abort_writer(writer)
+        _abort_stream(stream)
         raise
 
 
