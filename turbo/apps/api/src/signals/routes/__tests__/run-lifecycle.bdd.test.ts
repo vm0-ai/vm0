@@ -158,6 +158,10 @@ const EXPECTED_ZERO_RUN_DISALLOWED_TOOLS = [
   "Skill(loop)",
   "Skill(loop *)",
 ] as const;
+const CLAIM_ROUTE_PARENT_TIMING_ACTION_TYPES = [
+  "claim_route_request_to_transition_start",
+  "claim_route_request_to_response_ready",
+] as const;
 const CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES = [
   "claim_route_request_prepare",
   "claim_route_lookup_authorization",
@@ -179,6 +183,7 @@ const CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES = [
   "claim_route_transition_execute",
 ] as const;
 const CLAIM_ROUTE_TIMING_ACTION_TYPES = [
+  ...CLAIM_ROUTE_PARENT_TIMING_ACTION_TYPES,
   ...CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES,
   ...CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES,
 ] as const;
@@ -3224,6 +3229,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const running = await api.readRun(actor, run.runId);
     expect(running.status).toBe("running");
     expect(running.startedAt).toBeDefined();
+    for (const actionType of CLAIM_ROUTE_PARENT_TIMING_ACTION_TYPES) {
+      expect(
+        singleSandboxOperationEvent(
+          claimRouteTimingEventsForRun(run.runId),
+          actionType,
+        ),
+      ).toStrictEqual(
+        expect.objectContaining({
+          span_kind: "parent",
+        }),
+      );
+    }
 
     const laterClaim = await api.requestClaimRunnerJob(true, run.runId, [404]);
     expectApiError(laterClaim.body);
@@ -10287,6 +10304,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       [500],
     );
     expect(failedClaim.status).toBe(500);
+    expect(claimRouteTimingEventsForRun(resumed.runId)).toHaveLength(0);
 
     await api.requestCancelRun(actor, resumed.runId, [200]);
   });
@@ -10358,6 +10376,17 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     for (const actionType of CLAIM_ROUTE_PREPARED_PATH_OMITTED_ACTION_TYPES) {
       expect(observedClaimRouteActionTypes).not.toContain(actionType);
     }
+    for (const actionType of CLAIM_ROUTE_PARENT_TIMING_ACTION_TYPES) {
+      const events = claimRouteTimingEvents.filter((event) => {
+        return event.op_type === actionType;
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          span_kind: "parent",
+        }),
+      );
+    }
     for (const actionType of CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES) {
       const events = claimRouteTimingEvents.filter((event) => {
         return event.op_type === actionType;
@@ -10396,7 +10425,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       );
       expect(event.duration_ms).toStrictEqual(expect.any(Number));
       expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
-      expect(["top_level", "nested"]).toContain(event.span_kind);
+      expect(["parent", "top_level", "nested"]).toContain(event.span_kind);
       expect(event).not.toHaveProperty("fallback_reason");
       for (const forbiddenKey of FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS) {
         expect(event).not.toHaveProperty(forbiddenKey);

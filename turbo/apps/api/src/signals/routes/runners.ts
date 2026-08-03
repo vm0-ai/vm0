@@ -160,7 +160,7 @@ function isResumeSessionHistoryLoadError(
   return error instanceof ResumeSessionHistoryLoadError;
 }
 
-type ClaimRouteTimingSpanKind = "top_level" | "nested";
+type ClaimRouteTimingSpanKind = "parent" | "top_level" | "nested";
 type ClaimNetworkPolicyRefreshPath =
   | "baseline"
   | "baseline_empty"
@@ -168,6 +168,8 @@ type ClaimNetworkPolicyRefreshPath =
   | "full_invalid_baseline"
   | "full_incompatible_baseline";
 type ClaimRouteTimingActionType =
+  | "claim_route_request_to_transition_start"
+  | "claim_route_request_to_response_ready"
   | "claim_route_request_prepare"
   | "claim_route_lookup_authorization"
   | "claim_route_context_parse"
@@ -1886,6 +1888,8 @@ function scheduleSuccessfulClaimSideEffects(args: {
     ),
     claimRequestToRunningMs: Math.max(
       0,
+      // This historical state boundary ends at PostgreSQL's in-transaction
+      // claimedAt, not at an application-clock route parent.
       args.claimResult.claimedAt.getTime() - args.claimRequestStartedAtMs,
     ),
     jobDiscoveredToClaimRequestMs:
@@ -2285,6 +2289,11 @@ const claimAuthorizedJob$ = command(
     }
     signal.throwIfAborted();
 
+    claimRouteTiming.recordElapsed(
+      "claim_route_request_to_transition_start",
+      "parent",
+      args.claimRequestStartedAtMs,
+    );
     const claimResult = await claimRouteTiming.measure(
       "claim_route_transition_running",
       "top_level",
@@ -2303,6 +2312,12 @@ const claimAuthorizedJob$ = command(
       return claimTransitionErrorResponse(claimResult);
     }
 
+    const response = { status: 200 as const, body: responseBodyResult.value };
+    claimRouteTiming.recordElapsed(
+      "claim_route_request_to_response_ready",
+      "parent",
+      args.claimRequestStartedAtMs,
+    );
     scheduleSuccessfulClaimSideEffects({
       jobWithRun,
       authType: args.authType,
@@ -2313,7 +2328,7 @@ const claimAuthorizedJob$ = command(
       claimRouteTiming,
     });
 
-    return { status: 200 as const, body: responseBodyResult.value };
+    return response;
   },
 );
 
