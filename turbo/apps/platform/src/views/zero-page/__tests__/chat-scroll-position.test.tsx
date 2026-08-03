@@ -470,6 +470,7 @@ function mockLateGrowingThread({
 }): {
   readonly publishAppendedEvents: () => Promise<void>;
   readonly growContent: (extraScrollHeight: number) => void;
+  readonly growContentAbove: (extraScrollHeight: number) => void;
 } {
   const { publishAppendedEvents } = mockLiveThread({
     threadId,
@@ -477,6 +478,7 @@ function mockLateGrowingThread({
     appendedEvents: simpleUserEvents(threadId, prefix, 9).slice(8),
   });
   let extraScrollHeight = 0;
+  let eventTopShift = 0;
   installChatLayout(
     new Map([
       [
@@ -496,7 +498,7 @@ function mockLateGrowingThread({
           eventRect: (eventId) => {
             const index = Number(eventId.split("-").at(-1));
             return Number.isFinite(index)
-              ? { top: index * 100, height: 80 }
+              ? { top: index * 100 + eventTopShift, height: 80 }
               : undefined;
           },
         },
@@ -507,6 +509,12 @@ function mockLateGrowingThread({
     publishAppendedEvents,
     growContent: (nextExtraScrollHeight: number) => {
       extraScrollHeight = nextExtraScrollHeight;
+    },
+    // Content that grows above the reader — a diagram rendering in history —
+    // pushes every message down by the same amount.
+    growContentAbove: (nextExtraScrollHeight: number) => {
+      extraScrollHeight = nextExtraScrollHeight;
+      eventTopShift = nextExtraScrollHeight;
     },
   };
 }
@@ -755,6 +763,76 @@ describe("chat scroll position", () => {
         container.scrollHeight - container.clientHeight,
       );
       expect(document.querySelector("[data-scroll-to-bottom]")).toBeNull();
+    });
+  });
+
+  it("follows the tail when content finishes rendering after the tail scroll", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000811";
+    const { growContent } = mockLateGrowingThread({
+      threadId,
+      prefix: "content-growth",
+    });
+    const resizeObserver = installResizeObserver();
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const container = await waitFor(() => {
+      expect(screen.getByText("content-growth message 7")).toBeInTheDocument();
+      const current = chatScrollContainer();
+      expect(current.scrollTop).toBe(700);
+      return current;
+    });
+    const messageContainer = container.querySelector(
+      "[data-message-container]",
+    );
+    if (!messageContainer) {
+      throw new Error("Chat message container not found");
+    }
+    expect(resizeObserver.isObserved(messageContainer)).toBeTruthy();
+
+    // A diagram finishes rendering well after its message was committed. Only
+    // the content box changes, so the container observer never sees it.
+    growContent(400);
+    resizeObserver.trigger(messageContainer);
+
+    await waitFor(() => {
+      expect(container.scrollTop).toBe(
+        container.scrollHeight - container.clientHeight,
+      );
+    });
+  });
+
+  it("keeps the visible anchor when content above the reader grows", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000812";
+    const { growContentAbove } = mockLateGrowingThread({
+      threadId,
+      prefix: "grow-above",
+    });
+    const resizeObserver = installResizeObserver();
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const container = await waitFor(() => {
+      expect(screen.getByText("grow-above message 7")).toBeInTheDocument();
+      const current = chatScrollContainer();
+      expect(current.scrollTop).toBe(700);
+      return current;
+    });
+    const messageContainer = container.querySelector(
+      "[data-message-container]",
+    );
+    if (!messageContainer) {
+      throw new Error("Chat message container not found");
+    }
+    scrollTo(container, 420);
+    expect(viewportOffsetTop("grow-above-4")).toBe(-20);
+
+    growContentAbove(400);
+    resizeObserver.trigger(messageContainer);
+
+    await waitFor(() => {
+      expect(viewportOffsetTop("grow-above-4")).toBe(-20);
+      expect(container.scrollTop).toBe(820);
     });
   });
 
@@ -1404,7 +1482,7 @@ describe("chat scroll position", () => {
       throw new Error("Chat message container not found");
     }
     expect(resizeObserver.isObserved(container)).toBeTruthy();
-    expect(resizeObserver.isObserved(messageContainer)).toBeFalsy();
+    expect(resizeObserver.isObserved(messageContainer)).toBeTruthy();
     scrollTo(container, 420);
     expect(viewportOffsetTop("resize-preserve-4")).toBe(-20);
 

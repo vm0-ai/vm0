@@ -22,6 +22,10 @@ interface ChatThreadScrollSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
+  readonly scrollContentOnRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   readonly awayFromBottom$: Computed<boolean>;
   readonly autoScroll$: Command<
@@ -274,6 +278,43 @@ function createScrollNavigationSignals(
     set(scrollToBottom$);
   });
 
+  // Coalesced across the container and content observers: a resize that changes
+  // both boxes still restores once.
+  const scheduleRestoreAfterResize$ = command(
+    ({ set }, signal: AbortSignal) => {
+      if (!runtime.initialized || runtime.resizeScheduled) {
+        return;
+      }
+      runtime.resizeScheduled = true;
+      L.debug("resize scroll restore scheduled", { threadId });
+      animationFrame(
+        () => {
+          runtime.resizeScheduled = false;
+          set(restoreAfterResize$);
+        },
+        { signal },
+      );
+    },
+  );
+
+  return {
+    scrollTo$,
+    scrollToBottom$,
+    scrollToTop$,
+    scheduleRestoreAfterResize$,
+  };
+}
+
+/**
+ * Commits the scroll that belongs to a rendered batch of events: one frame
+ * after the events change, either back to the bottom or onto the anchor the
+ * reader is holding.
+ */
+function createRenderScrollSignals(
+  threadId: string,
+  scroll: InternalScrollSignals,
+  runtime: ScrollRuntime,
+) {
   const commitScrollAfterRender$ = command(
     ({ get }, request: ScrollAfterRenderRequest): void => {
       if (request.revision !== runtime.latestRenderRequestRevision) {
@@ -344,13 +385,7 @@ function createScrollNavigationSignals(
     },
   );
 
-  return {
-    scrollTo$,
-    scrollToBottom$,
-    scrollToTop$,
-    restoreAfterResize$,
-    autoScroll$,
-  };
+  return { autoScroll$ };
 }
 
 type ScrollNavigationSignals = ReturnType<typeof createScrollNavigationSignals>;
@@ -386,18 +421,7 @@ function createScrollContainerOnRef(
         set(scroll.syncThreadScrollPosition$, container, !programmatic);
       };
       const scheduleRestoreAfterResize = () => {
-        if (!runtime.initialized || runtime.resizeScheduled) {
-          return;
-        }
-        runtime.resizeScheduled = true;
-        L.debug("resize scroll restore scheduled", { threadId });
-        animationFrame(
-          () => {
-            runtime.resizeScheduled = false;
-            set(navigation.restoreAfterResize$);
-          },
-          { signal },
-        );
+        set(navigation.scheduleRestoreAfterResize$, signal);
       };
       const resizeObserver = new ResizeObserver(scheduleRestoreAfterResize);
 
@@ -435,6 +459,36 @@ function createScrollContainerOnRef(
   );
 }
 
+/**
+ * Observes the element that holds the messages. The container's own box only
+ * changes with the viewport or the composer, so content that arrives after its
+ * scroll was committed — a diagram that finishes rendering, an image that
+ * finishes loading — is invisible to the container observer and leaves the
+ * thread stranded above the bottom.
+ */
+function createScrollContentOnRef(
+  threadId: string,
+  navigation: ScrollNavigationSignals,
+) {
+  return onRef(
+    command(({ set }, content: HTMLElement, signal: AbortSignal) => {
+      L.debug("content bound", { threadId });
+      const resizeObserver = new ResizeObserver(() => {
+        set(navigation.scheduleRestoreAfterResize$, signal);
+      });
+      resizeObserver.observe(content);
+      signal.addEventListener(
+        "abort",
+        () => {
+          resizeObserver.disconnect();
+          L.debug("content unbound", { threadId });
+        },
+        { once: true },
+      );
+    }),
+  );
+}
+
 export function createChatThreadScrollSignals(
   threadId: string,
 ): ChatThreadScrollSignals {
@@ -446,18 +500,21 @@ export function createChatThreadScrollSignals(
   };
   const scroll = createInternalScrollSignals(threadId);
   const navigation = createScrollNavigationSignals(threadId, scroll, runtime);
+  const render = createRenderScrollSignals(threadId, scroll, runtime);
   const scrollContainerOnRef$ = createScrollContainerOnRef(
     threadId,
     scroll,
     navigation,
     runtime,
   );
+  const scrollContentOnRef$ = createScrollContentOnRef(threadId, navigation);
 
   return {
     scrollContainerOnRef$,
+    scrollContentOnRef$,
     threadScrollPosition$: scroll.threadScrollPosition$,
     awayFromBottom$: scroll.awayFromBottom$,
-    autoScroll$: navigation.autoScroll$,
+    autoScroll$: render.autoScroll$,
     scrollTo$: navigation.scrollTo$,
     scrollToTop$: navigation.scrollToTop$,
     scrollToBottom$: navigation.scrollToBottom$,
