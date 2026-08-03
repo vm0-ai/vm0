@@ -125,6 +125,8 @@ import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
 import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-template";
 
 const L = logger("ZeroChatEvents");
+// Mirrors the guest process-control payload limit enforced by the runner.
+const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES = 1024 * 1024;
 
 type SendBody = z.infer<typeof chatEventsContract.send.body>;
 
@@ -2062,11 +2064,26 @@ function appendActiveInput(params: AppendActiveInputParams) {
       target.generationTemplate !== null ||
       !target.userMessage.parts.every((part) => {
         return part.type === "text";
-      }) ||
-      projectUserMessage(target.userMessage).agentPrompt.length === 0
+      })
     ) {
       return badRequestMessage(
         "Only plain text queued messages can be sent to an active run",
+      );
+    }
+    const activeInputText = projectUserMessage(target.userMessage).agentPrompt;
+    if (activeInputText.length === 0) {
+      return badRequestMessage(
+        "Only plain text queued messages can be sent to an active run",
+      );
+    }
+    if (
+      Buffer.byteLength(
+        JSON.stringify({ type: "active-input", text: activeInputText }),
+        "utf8",
+      ) > ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES
+    ) {
+      return badRequestMessage(
+        "Queued message is too large to send to the active run",
       );
     }
 
