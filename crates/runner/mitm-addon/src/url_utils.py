@@ -379,6 +379,9 @@ def _merge_rewrite_query(
     orig_query: str,
     resolved_query: dict[str, str] | None,
 ) -> str:
+    if not base_query and not resolved_query:
+        return orig_query
+
     base_pairs = _split_query_pairs(base_query)
     orig_pairs = _split_query_pairs(orig_query)
     auth_keys = set(resolved_query or {})
