@@ -79,6 +79,31 @@ describe("connector/providers/zoom", () => {
       expect(result.userInfo.email).toBe("test@example.com");
     });
 
+    it("rejects user info without the required Zoom user id", async () => {
+      const tokenHandler = http.post("https://zoom.us/oauth/token", () => {
+        return HttpResponse.json({
+          access_token: "zoom-test-token",
+        });
+      });
+      const meHandler = http.get("https://api.zoom.us/v2/users/me", () => {
+        return HttpResponse.json({
+          email: "test@example.com",
+          display_name: "Test User",
+        });
+      });
+      server.use(tokenHandler, meHandler);
+
+      await expect(
+        exchangeZoomCode(
+          authCodeGrant(),
+          "client-id",
+          "client-secret",
+          "test-code",
+          "https://example.com/callback",
+        ),
+      ).rejects.toThrow("No user id in Zoom user info response");
+    });
+
     it("throws when Zoom returns an error in response body", async () => {
       const tokenHandler = http.post("https://zoom.us/oauth/token", () => {
         return HttpResponse.json({
