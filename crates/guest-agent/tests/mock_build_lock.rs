@@ -2,7 +2,6 @@
 
 mod common;
 
-use std::ffi::OsStr;
 use std::fs::{OpenOptions, TryLockError};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -11,7 +10,7 @@ use std::time::Duration;
 use tokio::process::{Child, Command};
 
 const TEST_NAME: &str = "mock_build_lock_recovers_after_holder_exit";
-const MODE_ENV: &str = "VM0_MOCK_BUILD_LOCK_TEST_MODE";
+const HOLDER_ENV: &str = "VM0_MOCK_BUILD_LOCK_TEST_HOLDER";
 const LOCK_PATH_ENV: &str = "VM0_MOCK_BUILD_LOCK_TEST_PATH";
 const STARTED_PATH_ENV: &str = "VM0_MOCK_BUILD_LOCK_TEST_STARTED_PATH";
 const READY_PATH_ENV: &str = "VM0_MOCK_BUILD_LOCK_TEST_READY_PATH";
@@ -23,8 +22,12 @@ struct HolderProcess {
 
 impl HolderProcess {
     fn spawn(lock: &Path, started: &Path, ready: &Path) -> io::Result<Self> {
-        let mut command = child_command("holder", lock)?;
-        let child = command
+        let child = Command::new(std::env::current_exe()?)
+            .arg("--exact")
+            .arg(TEST_NAME)
+            .arg("--nocapture")
+            .env(HOLDER_ENV, "1")
+            .env(LOCK_PATH_ENV, lock)
             .env(STARTED_PATH_ENV, started)
             .env(READY_PATH_ENV, ready)
             .stdin(Stdio::piped())
@@ -58,8 +61,8 @@ impl HolderProcess {
 
 #[tokio::test]
 async fn mock_build_lock_recovers_after_holder_exit() -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(mode) = std::env::var_os(MODE_ENV) {
-        run_child_mode(&mode)?;
+    if std::env::var_os(HOLDER_ENV).is_some() {
+        run_holder(&required_path(LOCK_PATH_ENV)?)?;
         return Ok(());
     }
 
@@ -99,28 +102,6 @@ async fn mock_build_lock_recovers_after_holder_exit() -> Result<(), Box<dyn std:
     assert!(lock.is_file(), "lock pathname should remain stable");
 
     Ok(())
-}
-
-fn child_command(mode: &str, lock: &Path) -> io::Result<Command> {
-    let mut command = Command::new(std::env::current_exe()?);
-    command
-        .arg("--exact")
-        .arg(TEST_NAME)
-        .arg("--nocapture")
-        .env(MODE_ENV, mode)
-        .env(LOCK_PATH_ENV, lock);
-    Ok(command)
-}
-
-fn run_child_mode(mode: &OsStr) -> io::Result<()> {
-    let lock = required_path(LOCK_PATH_ENV)?;
-    if mode == OsStr::new("holder") {
-        return run_holder(&lock);
-    }
-    Err(io::Error::new(
-        io::ErrorKind::InvalidInput,
-        format!("unknown mock build lock child mode: {mode:?}"),
-    ))
 }
 
 fn run_holder(lock: &Path) -> io::Result<()> {
