@@ -14,15 +14,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { writeDb$ } from "../external/db";
 import { now, nowDate } from "../../lib/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import {
-  buildChatOnlyWorkflowAutomationCallbacks,
-  runWorkflowAutomationNow$,
-} from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
 const CHAT_RUN_FINISHED_EVENT_TYPE = "chat-run-finished";
@@ -96,6 +89,7 @@ function chatRunFinishedTriggerContext(args: {
   const excerpt = args.event.lastResultText?.slice(0, OUTPUT_EXCERPT_CHAR_CAP);
   return {
     workflowName: args.workflowName,
+    eventType: "chat-run-finished",
     trigger: `run ${args.event.runId} in watched chat thread ${args.event.chatThreadId} finished with status "${args.event.runStatus}".`,
     notes: [
       "Not included below: the finished run's full transcript, and its final output beyond the excerpt. `zero logs <runId>` returns the transcript.",
@@ -198,21 +192,12 @@ export const dispatchChatRunFinishedWorkflowEvents$ = command(
           due: {
             automation: row.automation,
             agentId: row.agentId,
-            workflowName: row.workflowName,
             chatThreadId,
           },
+          automationContext: context,
           apiStartTime: now(),
           triggerSource: "workflow-event",
-          prompt: workflowAutomationPrompt(context),
-          appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
           triggerBrief: `Chat run ${event.runStatus} in watched thread`,
-          callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-            chatThreadId,
-            row.agentId,
-          ),
-          activePreviousRunPolicy: "allow",
-          recordLastRunId: false,
-          recordLastRunAt: true,
           dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         },
         signal,

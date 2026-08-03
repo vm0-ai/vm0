@@ -168,6 +168,34 @@ describe("assistant markdown", () => {
     expect(screen.getByText("Diagram source")).toBeInTheDocument();
   });
 
+  it("uses redux themes for light and dark diagrams", async () => {
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
+
+    const settingsDialog = await openSettingsDialog();
+
+    click(getButtonByText(settingsDialog, "Light"));
+
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-testid="mermaid-svg"]'),
+      ).toHaveAttribute("data-mermaid-theme", "redux");
+    });
+
+    click(getButtonByText(settingsDialog, "Dark"));
+
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-testid="mermaid-svg"]'),
+      ).toHaveAttribute("data-mermaid-theme", "redux-dark");
+    });
+  });
+
   it("opens a rendered mermaid diagram in the zoomable lightbox", async () => {
     mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
 

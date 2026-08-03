@@ -9,7 +9,7 @@
 load '../../helpers/setup'
 
 # Set up connectors ONCE before parallel tests to avoid race conditions.
-# Both tests write to the same connector record (orgId + userId + type),
+# Both tests write to the same connector record (orgId + userId + connector slug),
 # so concurrent setup_test_connector calls would overwrite each other.
 setup_file() {
     if [[ -z "$VM0_API_BACKEND_URL" ]]; then

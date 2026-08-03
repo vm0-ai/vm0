@@ -528,7 +528,51 @@ describe("zero chat thread IndexedDB fallback", () => {
     }
   });
 
-  it("hides the message skeleton after IndexedDB loads without waiting for remote events", async () => {
+  it("hides the message skeleton when IndexedDB loads any cached event", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+    const runtimeDb = await primeRuntimeChatDb();
+    await runtimeDb.put(CHAT_MESSAGES_STORE, {
+      id: "00000000-0000-4000-8000-000000000103",
+      threadId: THREAD_ID,
+      eventType: "usage.recorded",
+      runId: "run-cached-usage",
+      content: null,
+      usage: {
+        version: 1,
+        totalCredits: 1,
+        settledAt: "2026-03-10T00:00:01Z",
+        breakdown: [],
+      },
+      seqId: 1,
+      createdAt: "2026-03-10T00:00:01Z",
+    });
+
+    const initialMessageList = context.mocks.deferred<void>();
+    const messageListRequested = context.mocks.deferred<void>();
+    context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
+      messageListRequested.resolve();
+      await initialMessageList.promise;
+      return respond(200, { events: [] });
+    });
+
+    try {
+      setupChatPage();
+      await messageListRequested.promise;
+
+      await waitFor(() => {
+        expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+      });
+    } finally {
+      if (!initialMessageList.settled()) {
+        initialMessageList.resolve();
+      }
+      runtimeDb.close();
+    }
+  });
+
+  it("shows the message skeleton until the initial remote event request resolves", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
     mockSidebarThread();
@@ -547,11 +591,8 @@ describe("zero chat thread IndexedDB fallback", () => {
       await messageListRequested.promise;
 
       await waitFor(() => {
-        expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+        expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
       });
-      expect(
-        screen.getByText("Send a message to start the conversation"),
-      ).toBeInTheDocument();
       expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
 
       initialMessageList.resolve();

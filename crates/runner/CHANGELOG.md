@@ -1,5 +1,121 @@
 # Changelog
 
+## [0.151.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.14...runner-rs-v0.151.15) (2026-08-03)
+
+
+### Documentation
+
+* **runner:** document firewall catalog boundary ([#24630](https://github.com/vm0-ai/vm0/issues/24630)) ([de5c053](https://github.com/vm0-ai/vm0/commit/de5c0533fbd09d0314f81ad424a4de5ba2faf5c5))
+
+## [0.151.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.13...runner-rs-v0.151.14) (2026-08-03)
+
+
+### Bug Fixes
+
+* **python:** reject superseded catalog owners ([#24603](https://github.com/vm0-ai/vm0/issues/24603)) ([d54cab8](https://github.com/vm0-ai/vm0/commit/d54cab803fa7d4d034a3a6672f859dcc98a5d74a))
+
+
+### Documentation
+
+* **runner:** document session-history sidecar contract ([#24605](https://github.com/vm0-ai/vm0/issues/24605)) ([65df99a](https://github.com/vm0-ai/vm0/commit/65df99aa6e733d5aa665da960bd7a023f97afa56))
+
+
+### Refactoring
+
+* **runner:** split idle pool lifecycle modules ([#24609](https://github.com/vm0-ai/vm0/issues/24609)) ([d2328f2](https://github.com/vm0-ai/vm0/commit/d2328f28d2c15fc61330ee5ff81bee32c2272305))
+
+
+### Performance Improvements
+
+* **python:** avoid duplicate connector auth query parsing ([#24582](https://github.com/vm0-ai/vm0/issues/24582)) ([62da4e5](https://github.com/vm0-ai/vm0/commit/62da4e54f6f74bc21352dde436d0b461f98f7f95))
+* **python:** avoid parsing discarded local-response queries ([#24604](https://github.com/vm0-ai/vm0/issues/24604)) ([a69e16e](https://github.com/vm0-ai/vm0/commit/a69e16ee44ac8e235e55299b766c7172769235f7))
+
+## [0.151.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.12...runner-rs-v0.151.13) (2026-08-02)
+
+## [0.151.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.11...runner-rs-v0.151.12) (2026-08-02)
+
+
+### Bug Fixes
+
+* **runner:** distinguish sandbox reuse result causes ([#24562](https://github.com/vm0-ai/vm0/issues/24562)) ([3988072](https://github.com/vm0-ai/vm0/commit/3988072cba1e7e821f976598b1de7da3a6a22ee1))
+
+
+### Refactoring
+
+* **runner:** treat invalid resume sessions as pre-reuse failures ([#24568](https://github.com/vm0-ai/vm0/issues/24568)) ([a3e789f](https://github.com/vm0-ai/vm0/commit/a3e789f626155acb7f3fe280aa4fe60f4579f103))
+
+## [0.151.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.10...runner-rs-v0.151.11) (2026-08-02)
+
+
+### Bug Fixes
+
+* **runner:** preserve full network log urls ([#24554](https://github.com/vm0-ai/vm0/issues/24554)) ([283bd1f](https://github.com/vm0-ai/vm0/commit/283bd1f74902e804b8e88acafe53e50adfbf04e2))
+
+
+### Performance Improvements
+
+* **python:** strip discarded log query before parsing ([#24548](https://github.com/vm0-ai/vm0/issues/24548)) ([f05235b](https://github.com/vm0-ai/vm0/commit/f05235b1092e99a2e4e72146cbe2807d6e73e36a))
+
+## [0.151.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.9...runner-rs-v0.151.10) (2026-08-02)
+
+
+### Documentation
+
+* **runner:** document service unit identity forms ([#24533](https://github.com/vm0-ai/vm0/issues/24533)) ([66c754f](https://github.com/vm0-ai/vm0/commit/66c754f2cb8f383e2afa5b7f0bbf52cf9352a83a))
+
+## [0.151.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.8...runner-rs-v0.151.9) (2026-08-01)
+
+
+### Refactoring
+
+* **runner:** decouple idle parking from cli session identity ([#24492](https://github.com/vm0-ai/vm0/issues/24492)) ([2cdd0f6](https://github.com/vm0-ai/vm0/commit/2cdd0f6f3024e6076c9493c6e034d3ea9e3ac163))
+
+## [0.151.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.7...runner-rs-v0.151.8) (2026-08-01)
+
+
+### Refactoring
+
+* **runner:** finish workspace image cache cutover ([#24474](https://github.com/vm0-ai/vm0/issues/24474)) ([ae59d2d](https://github.com/vm0-ai/vm0/commit/ae59d2d1af1620d68ea28dfa1825d3619c8081e2))
+
+## [0.151.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.6...runner-rs-v0.151.7) (2026-08-01)
+
+
+### Refactoring
+
+* **connectors:** finish local slug terminology cleanup ([#24472](https://github.com/vm0-ai/vm0/issues/24472)) ([c3000d8](https://github.com/vm0-ai/vm0/commit/c3000d888cf153dc57208c91e69097bdea400a56))
+
+## [0.151.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.5...runner-rs-v0.151.6) (2026-08-01)
+
+
+### Bug Fixes
+
+* **runner:** reap timed-out host oom diagnostics ([#24438](https://github.com/vm0-ai/vm0/issues/24438)) ([497fc38](https://github.com/vm0-ai/vm0/commit/497fc38c5db12e041891b70cddd7bad612821b20))
+
+
+### Documentation
+
+* **python:** clarify parsed empty x stream contract ([#24449](https://github.com/vm0-ai/vm0/issues/24449)) ([1f3a15c](https://github.com/vm0-ai/vm0/commit/1f3a15cb2f0b7109f316885f5b4f8b9192b7c2b3))
+
+
+### Refactoring
+
+* make chat threads the sole runner reuse key ([#24440](https://github.com/vm0-ai/vm0/issues/24440)) ([61dc78f](https://github.com/vm0-ai/vm0/commit/61dc78fd9b32e0a154285e12fc7f6434cc86122c))
+* **python:** split auth base forwarder tests by contract ([#24451](https://github.com/vm0-ai/vm0/issues/24451)) ([ec67485](https://github.com/vm0-ai/vm0/commit/ec67485ab3f5680caeaa0ad584f48de47ab86c7f))
+* **runner:** emit exact heartbeat capabilities ([#24456](https://github.com/vm0-ai/vm0/issues/24456)) ([bedd684](https://github.com/vm0-ai/vm0/commit/bedd684ac763f7405851e0b40dec2bcd72ff4071))
+* **runner:** split agent run tests by contract ([#24439](https://github.com/vm0-ai/vm0/issues/24439)) ([2164dff](https://github.com/vm0-ai/vm0/commit/2164dff4323ab34852db70f22cc5b35c2300216d))
+
+
+### Performance Improvements
+
+* **python:** skip unconnected client binding scans ([#24452](https://github.com/vm0-ai/vm0/issues/24452)) ([3412278](https://github.com/vm0-ai/vm0/commit/3412278416e0e55eb6e44d1780a1b9cdff5d086d))
+
+## [0.151.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.4...runner-rs-v0.151.5) (2026-08-01)
+
+
+### Bug Fixes
+
+* trigger api platform and runner releases ([#24389](https://github.com/vm0-ai/vm0/issues/24389)) ([5e32b07](https://github.com/vm0-ai/vm0/commit/5e32b07956572689916ff1348deab37be627ab0f))
+
 ## [0.151.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.3...runner-rs-v0.151.4) (2026-07-31)
 
 

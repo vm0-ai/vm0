@@ -1,5 +1,150 @@
 # Changelog
 
+## [8.503.0](https://github.com/vm0-ai/vm0/compare/core-v8.502.9...core-v8.503.0) (2026-08-03)
+
+
+### Features
+
+* **feishu:** add managed connector permission controls ([#24344](https://github.com/vm0-ai/vm0/issues/24344)) ([49d167d](https://github.com/vm0-ai/vm0/commit/49d167da75e79c360fd4f7baf59032b49ba6776d))
+
+
+### Bug Fixes
+
+* allow overriding every feature switch ([#24632](https://github.com/vm0-ai/vm0/issues/24632)) ([d428036](https://github.com/vm0-ai/vm0/commit/d428036e06a2a2589129a3599d671f188b5a05c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.263.0
+
+## [8.502.9](https://github.com/vm0-ai/vm0/compare/core-v8.502.8...core-v8.502.9) (2026-08-03)
+
+
+### Bug Fixes
+
+* **mail:** restrict reply follow-up switch to staff ([#24619](https://github.com/vm0-ai/vm0/issues/24619)) ([025fa7d](https://github.com/vm0-ai/vm0/commit/025fa7d7ad8d95572518ca237fc0537448eb184b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.262.0
+
+## [8.502.8](https://github.com/vm0-ai/vm0/compare/core-v8.502.7...core-v8.502.8) (2026-08-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.8
+
+## [8.502.7](https://github.com/vm0-ai/vm0/compare/core-v8.502.6...core-v8.502.7) (2026-08-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.7
+
+## [8.502.6](https://github.com/vm0-ai/vm0/compare/core-v8.502.5...core-v8.502.6) (2026-08-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.6
+
+## [8.502.5](https://github.com/vm0-ai/vm0/compare/core-v8.502.4...core-v8.502.5) (2026-08-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.5
+
+## [8.502.4](https://github.com/vm0-ai/vm0/compare/core-v8.502.3...core-v8.502.4) (2026-08-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.4
+
+## [8.502.3](https://github.com/vm0-ai/vm0/compare/core-v8.502.2...core-v8.502.3) (2026-08-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.3
+
+## [8.502.2](https://github.com/vm0-ai/vm0/compare/core-v8.502.1...core-v8.502.2) (2026-08-01)
+
+
+### Refactoring
+
+* **connectors:** finish local slug terminology cleanup ([#24472](https://github.com/vm0-ai/vm0/issues/24472)) ([c3000d8](https://github.com/vm0-ai/vm0/commit/c3000d888cf153dc57208c91e69097bdea400a56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.2
+
+## [8.502.1](https://github.com/vm0-ai/vm0/compare/core-v8.502.0...core-v8.502.1) (2026-08-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.1
+
+## [8.502.0](https://github.com/vm0-ai/vm0/compare/core-v8.501.1...core-v8.502.0) (2026-08-01)
+
+
+### Features
+
+* add conditional image recognition fallback ([#24390](https://github.com/vm0-ai/vm0/issues/24390)) ([376a6fa](https://github.com/vm0-ai/vm0/commit/376a6fa3068e6d3033592b7702dbe8872dc51da4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.0
+
+## [8.501.1](https://github.com/vm0-ai/vm0/compare/core-v8.501.0...core-v8.501.1) (2026-08-01)
+
+
+### Refactoring
+
+* remove DeepSeek V4 Flash feature switch ([#24411](https://github.com/vm0-ai/vm0/issues/24411)) ([e589e06](https://github.com/vm0-ai/vm0/commit/e589e0624d057086451eccac56d20302f6754a5d))
+
+## [8.501.0](https://github.com/vm0-ai/vm0/compare/core-v8.500.0...core-v8.501.0) (2026-07-31)
+
+
+### Features
+
+* fully enable DeepSeek V4 Flash feature switch ([#24376](https://github.com/vm0-ai/vm0/issues/24376)) ([8586d1e](https://github.com/vm0-ai/vm0/commit/8586d1e3667f1166022f0c41b97f7ee1bda4cb74))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.260.2
+
 ## [8.500.0](https://github.com/vm0-ai/vm0/compare/core-v8.499.0...core-v8.500.0) (2026-07-31)
 
 

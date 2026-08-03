@@ -1,10 +1,19 @@
 import { command, computed, state } from "ccstate";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
+  type AgentCustomConnectorResponse,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroCustomConnectorByIdContract,
+  type CustomConnectorPermissionBundleResponse,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { zeroClient$ } from "../../api-client.ts";
 import { withCleanup } from "../../utils.ts";
 import { accept } from "../../../lib/accept.ts";
 import { agentDetail$ } from "./detail.ts";
 import { reloadCustomConnectorAuthorizedAgents$ } from "../settings/custom-connectors.ts";
+import { customConnectorPermissionsEnabled$ } from "../../external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
 // Per-agent custom connector authorization — mirrors connectors.ts but keyed
@@ -19,19 +28,147 @@ const reloadAgentCustomConnectors$ = command(({ set }) => {
   });
 });
 
+const seededCustomConnectorAccess$ = computed(
+  async (get): Promise<AgentCustomConnectorResponse> => {
+    get(internalReload$);
+    const detail = await get(agentDetail$);
+    if (!detail?.agentId) {
+      return { enabledIds: [], grants: [] };
+    }
+    const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+    const result = await accept(
+      client.get({ params: { id: detail.agentId } }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
 const seededCustomConnectors$ = computed(async (get): Promise<string[]> => {
-  get(internalReload$);
-  const detail = await get(agentDetail$);
-  if (!detail?.agentId) {
-    return [];
-  }
-  const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
-  const result = await accept(
-    client.get({ params: { id: detail.agentId } }),
-    [200],
-  );
-  return result.body.enabledIds;
+  return (await get(seededCustomConnectorAccess$)).enabledIds;
 });
+
+export const agentCustomConnectorGrants$ = computed(
+  async (get): Promise<readonly AgentCustomConnectorGrant[]> => {
+    return (await get(seededCustomConnectorAccess$)).grants ?? [];
+  },
+);
+
+interface CustomConnectorPermissionTarget {
+  readonly agentId: string;
+  readonly connectorId: string;
+}
+
+const internalPermissionTarget$ = state<CustomConnectorPermissionTarget | null>(
+  null,
+);
+
+interface CustomConnectorPermissionDraft {
+  readonly agentId: string;
+  readonly connectorId: string;
+  readonly initialPermissionNames: readonly string[];
+  readonly permissionNames: readonly string[];
+}
+
+const internalPermissionDraft$ = state<CustomConnectorPermissionDraft | null>(
+  null,
+);
+
+export const customConnectorPermissionDraft$ = computed((get) => {
+  return get(internalPermissionDraft$);
+});
+
+export const openCustomConnectorPermissions$ = command(
+  (
+    { set },
+    args: {
+      readonly agentId: string;
+      readonly connectorId: string;
+      readonly permissionNames: readonly string[];
+    },
+  ): void => {
+    set(internalPermissionTarget$, {
+      agentId: args.agentId,
+      connectorId: args.connectorId,
+    });
+    set(internalPermissionDraft$, {
+      agentId: args.agentId,
+      connectorId: args.connectorId,
+      initialPermissionNames: [...args.permissionNames],
+      permissionNames: [...args.permissionNames],
+    });
+  },
+);
+
+export const closeCustomConnectorPermissions$ = command(
+  (
+    { set },
+    args: { readonly agentId: string; readonly connectorId: string },
+  ): void => {
+    set(internalPermissionTarget$, (current) => {
+      return current?.agentId === args.agentId &&
+        current.connectorId === args.connectorId
+        ? null
+        : current;
+    });
+    set(internalPermissionDraft$, (current) => {
+      return current?.agentId === args.agentId &&
+        current.connectorId === args.connectorId
+        ? null
+        : current;
+    });
+  },
+);
+
+export const setCustomConnectorPermissionDraftValue$ = command(
+  (
+    { set },
+    args: {
+      readonly agentId: string;
+      readonly connectorId: string;
+      readonly permissionName: string;
+      readonly allow: boolean;
+    },
+  ): void => {
+    set(internalPermissionDraft$, (current) => {
+      if (
+        current?.agentId !== args.agentId ||
+        current.connectorId !== args.connectorId
+      ) {
+        return current;
+      }
+      const permissionNames = new Set(current.permissionNames);
+      if (args.allow) {
+        permissionNames.add(args.permissionName);
+      } else {
+        permissionNames.delete(args.permissionName);
+      }
+      return { ...current, permissionNames: [...permissionNames] };
+    });
+  },
+);
+
+export const agentCustomConnectorPermissionBundle$ = computed(
+  async (get): Promise<CustomConnectorPermissionBundleResponse | null> => {
+    if (!get(customConnectorPermissionsEnabled$)) {
+      return null;
+    }
+    const target = get(internalPermissionTarget$);
+    if (!target) {
+      return null;
+    }
+    const detail = await get(agentDetail$);
+    if (detail?.agentId !== target.agentId) {
+      return null;
+    }
+    const client = get(zeroClient$)(zeroCustomConnectorByIdContract);
+    const result = await accept(
+      client.permissions({ params: { id: target.connectorId } }),
+      [200, 404],
+    );
+    return result.status === 200 ? result.body : null;
+  },
+);
 
 type CustomConnectorsDraft = {
   readonly agentId: string;
@@ -182,5 +319,44 @@ export const toggleAgentCustomConnector$ = command(
     );
     signal.throwIfAborted();
     return true;
+  },
+);
+
+export const saveAgentCustomConnectorPermissions$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly agentId: string;
+      readonly connectorId: string;
+      readonly permissionNames: readonly string[];
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    signal.throwIfAborted();
+    const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+    await withCleanup(
+      accept(
+        client.update({
+          params: { id: args.agentId },
+          body: {
+            grants: [
+              {
+                customConnectorId: args.connectorId,
+                permissionNames: [...args.permissionNames],
+              },
+            ],
+            operation: "add",
+          },
+          fetchOptions: { signal },
+        }),
+        [200],
+      ),
+      () => {
+        set(clearAgentCustomConnectorDraft$, args.agentId);
+        set(reloadAgentCustomConnectors$);
+        set(reloadCustomConnectorAuthorizedAgents$);
+      },
+    );
+    signal.throwIfAborted();
   },
 );

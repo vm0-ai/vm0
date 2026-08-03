@@ -1,0 +1,72 @@
+use api_contracts::generated::constants::runners::paths::CANONICAL_GUEST_HOME_DIR;
+use guest_contracts::session_history_identity::{
+    FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
+};
+use sha2::{Digest, Sha256};
+
+pub(super) fn claude_history_path(session_id: &str) -> String {
+    format!("/home/user/.claude/projects/-home-user-workspace/{session_id}.jsonl")
+}
+
+pub(super) fn final_identity_runtime_paths(
+    ctx: &crate::types::ExecutionContext,
+) -> (String, String) {
+    let run_dir = guest_contracts::runtime_paths::run_dir_for_home(
+        CANONICAL_GUEST_HOME_DIR,
+        &ctx.run_id.to_string(),
+    )
+    .unwrap();
+    let metadata_path =
+        guest_contracts::runtime_paths::final_session_history_identity_file(&run_dir)
+            .to_string_lossy()
+            .into_owned();
+    (metadata_path, run_dir.to_string_lossy().into_owned())
+}
+
+pub(super) fn final_identity_metadata_bytes(
+    session_id: &str,
+    history: &[u8],
+    history_marker_payload: impl Into<String>,
+) -> Vec<u8> {
+    FinalSessionHistoryIdentity::new(
+        FinalSessionHistoryFramework::ClaudeCode,
+        hex::encode(Sha256::digest(session_id.as_bytes())),
+        FinalSessionHistoryRefKind::Blob,
+        hex::encode(Sha256::digest(history)),
+        history.len() as u64,
+        history_marker_payload,
+    )
+    .unwrap()
+    .to_json_vec()
+    .unwrap()
+}
+
+pub(super) fn assert_successful_action_once(ops: &[(String, bool, Option<String>)], action: &str) {
+    let matches = ops.iter().filter(|op| op.0 == action && op.1).count();
+    assert_eq!(
+        matches, 1,
+        "expected exactly one successful {action} telemetry, got: {ops:?}"
+    );
+}
+
+pub(super) fn assert_failed_action_error_once(
+    ops: &[(String, bool, Option<String>)],
+    action: &str,
+    error: &str,
+) {
+    let matches = ops
+        .iter()
+        .filter(|op| op.0 == action && !op.1 && op.2.as_deref() == Some(error))
+        .count();
+    assert_eq!(
+        matches, 1,
+        "expected exactly one failed {action} telemetry with {error:?}, got: {ops:?}"
+    );
+}
+
+pub(super) fn assert_no_action(ops: &[(String, bool, Option<String>)], action: &str) {
+    assert!(
+        ops.iter().all(|op| op.0 != action),
+        "expected no {action} telemetry, got: {ops:?}"
+    );
+}

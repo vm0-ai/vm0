@@ -6,16 +6,16 @@ use super::super::metadata::{
     WorkspaceCacheMetadata, WorkspaceCacheState, WorkspaceImageFileIdentity, WorkspaceTrust,
 };
 use super::super::{
-    CACHE_FORMAT_VERSION, CACHE_KEY_VERSION, CacheBudget, FsStats, SessionWorkspaceCache,
-    TEST_FS_AVAILABLE_BYTES, TEST_FS_TOTAL_BYTES, WORKSPACE_DRIVE_LAYOUT,
-    WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
+    CACHE_FORMAT_VERSION, CacheBudget, FsStats, TEST_FS_AVAILABLE_BYTES, TEST_FS_TOTAL_BYTES,
+    WORKSPACE_DRIVE_LAYOUT, WorkspaceCacheTerminalStatus, WorkspaceImageCache,
+    WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
 };
 use super::support::{
     TEST_PROFILE_NAME, local_cache, promote_current_cache_entry, timestamp_for_index,
     write_current_cache_entry,
 };
 use crate::ids::RunId;
-use crate::paths::{HomePaths, RunnerPaths, session_workspace_cache_key};
+use crate::paths::{HomePaths, RunnerPaths, workspace_image_cache_key};
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::MAX_HELD_WORKSPACE_STATES;
 
@@ -34,8 +34,8 @@ async fn global_gc_preserves_other_group_cache_entries_when_under_budget() {
     tokio::fs::create_dir_all(runner_b.base_dir())
         .await
         .unwrap();
-    let cache_a = SessionWorkspaceCache::shared(runner_a.clone(), &home, "group-a");
-    let cache_b = SessionWorkspaceCache::shared(runner_b, &home, "group-b");
+    let cache_a = WorkspaceImageCache::shared(runner_a.clone(), &home, "group-a");
+    let cache_b = WorkspaceImageCache::shared(runner_b, &home, "group-b");
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
 
@@ -46,7 +46,6 @@ async fn global_gc_preserves_other_group_cache_entries_when_under_budget() {
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-1"),
-                cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
             },
@@ -62,7 +61,6 @@ async fn global_gc_preserves_other_group_cache_entries_when_under_budget() {
         lease
             .promote(
                 run_id,
-                None,
                 WorkspaceCacheTerminalStatus::Success,
                 "2026-05-01T00:00:00.000Z".into(),
                 &StorageFingerprints::default(),
@@ -89,8 +87,8 @@ async fn maintenance_gc_preserves_valid_group_scoped_entry() {
     tokio::fs::create_dir_all(maintenance_runner.base_dir())
         .await
         .unwrap();
-    let cache = SessionWorkspaceCache::shared(runner.clone(), &home, "group-a");
-    let maintenance_cache = SessionWorkspaceCache::shared(maintenance_runner, &home, "");
+    let cache = WorkspaceImageCache::shared(runner.clone(), &home, "group-a");
+    let maintenance_cache = WorkspaceImageCache::shared(maintenance_runner, &home, "");
     let key = promote_current_cache_entry(
         &cache,
         &runner,
@@ -99,13 +97,85 @@ async fn maintenance_gc_preserves_valid_group_scoped_entry() {
         "2026-05-01T00:00:00.000Z",
     )
     .await;
-    let current = cache.session_workspace_cache_current_image(&key);
-    let metadata = cache.session_workspace_cache_metadata(&key);
+    let current = cache.workspace_image_cache_current_image(&key);
+    let metadata = cache.workspace_image_cache_metadata(&key);
 
     maintenance_cache.gc(false).await.unwrap();
 
     assert!(current.exists());
     assert!(metadata.exists());
+}
+
+#[tokio::test]
+async fn unknown_metadata_format_is_not_reused_or_advertised_and_is_reclaimed() {
+    let (_dir, paths, cache) = local_cache().await;
+    let checkout_reuse_key = "thread:unknown-format-checkout";
+    let checkout_key = write_current_cache_entry(
+        &cache,
+        RunId::new_v4(),
+        checkout_reuse_key,
+        "/workspace",
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let checkout_metadata_path = paths.workspace_image_cache_metadata(&checkout_key);
+    let mut checkout_metadata = cache
+        .read_metadata_file(&checkout_metadata_path)
+        .await
+        .unwrap();
+    checkout_metadata.format_version = CACHE_FORMAT_VERSION + 1;
+    cache
+        .write_metadata(&checkout_key, RunId::new_v4(), checkout_metadata)
+        .await
+        .unwrap();
+
+    let gc_reuse_key = "thread:unknown-format-gc";
+    let gc_key = write_current_cache_entry(
+        &cache,
+        RunId::new_v4(),
+        gc_reuse_key,
+        "/workspace",
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let gc_metadata_path = paths.workspace_image_cache_metadata(&gc_key);
+    let mut gc_metadata = cache.read_metadata_file(&gc_metadata_path).await.unwrap();
+    gc_metadata.format_version = CACHE_FORMAT_VERSION + 1;
+    cache
+        .write_metadata(&gc_key, RunId::new_v4(), gc_metadata)
+        .await
+        .unwrap();
+
+    assert!(cache.held_workspace_states().await.is_empty());
+    let checkout = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(checkout_reuse_key),
+                working_dir: "/workspace",
+                image_size_bytes: format!("image-{checkout_reuse_key}").len() as u64,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(
+        checkout.result(),
+        super::super::WorkspaceCacheCheckoutResult::Miss
+    );
+    assert!(
+        !paths
+            .workspace_image_cache_entry_dir(&checkout_key)
+            .exists()
+    );
+
+    let freed = cache.gc(false).await.unwrap();
+
+    assert!(freed > 0);
+    assert!(!paths.workspace_image_cache_entry_dir(&gc_key).exists());
 }
 
 #[tokio::test]
@@ -123,8 +193,8 @@ async fn global_gc_candidates_include_other_group_cache_entries() {
     tokio::fs::create_dir_all(runner_b.base_dir())
         .await
         .unwrap();
-    let cache_a = SessionWorkspaceCache::shared(runner_a.clone(), &home, "group-a");
-    let cache_b = SessionWorkspaceCache::shared(runner_b.clone(), &home, "group-b");
+    let cache_a = WorkspaceImageCache::shared(runner_a.clone(), &home, "group-a");
+    let cache_b = WorkspaceImageCache::shared(runner_b.clone(), &home, "group-b");
 
     let group_a_key = promote_current_cache_entry(
         &cache_a,
@@ -186,14 +256,14 @@ async fn global_gc_evicts_old_entry_from_other_group_under_free_space_pressure()
     };
     let cache_dir = home.workspace_image_cache_dir();
     let lock_dir = home.locks_dir();
-    let cache_a = SessionWorkspaceCache::with_cache_dirs_and_fs_stats(
+    let cache_a = WorkspaceImageCache::with_cache_dirs_and_fs_stats(
         runner_a.clone(),
         cache_dir.clone(),
         lock_dir.clone(),
         "group-a",
         pressure_stats,
     );
-    let cache_b = SessionWorkspaceCache::with_cache_dirs_and_fs_stats(
+    let cache_b = WorkspaceImageCache::with_cache_dirs_and_fs_stats(
         runner_b.clone(),
         cache_dir,
         lock_dir,
@@ -225,13 +295,13 @@ async fn global_gc_evicts_old_entry_from_other_group_under_free_space_pressure()
     assert!(freed > 0);
     assert!(
         !cache_a
-            .session_workspace_cache_current_image(&old_key)
+            .workspace_image_cache_current_image(&old_key)
             .exists(),
         "oldest global candidate can be evicted even when it belongs to another group"
     );
     assert!(
         cache_b
-            .session_workspace_cache_current_image(&new_key)
+            .workspace_image_cache_current_image(&new_key)
             .exists(),
         "newer candidate from the current group should be retained once pressure is relieved"
     );
@@ -257,14 +327,14 @@ async fn global_gc_prunes_oldest_entries_above_limit_across_runner_groups() {
         total_bytes: TEST_FS_TOTAL_BYTES,
         available_bytes: TEST_FS_AVAILABLE_BYTES,
     };
-    let cache_a = SessionWorkspaceCache::with_cache_dirs_and_fs_stats(
+    let cache_a = WorkspaceImageCache::with_cache_dirs_and_fs_stats(
         runner_a.clone(),
         cache_dir.clone(),
         lock_dir.clone(),
         "group-a",
         fs_stats,
     );
-    let cache_b = SessionWorkspaceCache::with_cache_dirs_and_fs_stats(
+    let cache_b = WorkspaceImageCache::with_cache_dirs_and_fs_stats(
         runner_b.clone(),
         cache_dir,
         lock_dir,
@@ -283,12 +353,12 @@ async fn global_gc_prunes_oldest_entries_above_limit_across_runner_groups() {
     .await;
     let mut newest_key = String::new();
     for index in 1..=MAX_HELD_WORKSPACE_STATES {
-        let session_id = format!("sess-b-{index:04}");
+        let reuse_key = format!("sess-b-{index:04}");
         let timestamp = timestamp_for_index(index);
         let key = write_current_cache_entry(
             &cache_b,
             run_id,
-            &session_id,
+            &reuse_key,
             "/workspace",
             &timestamp,
             &timestamp,
@@ -304,13 +374,13 @@ async fn global_gc_prunes_oldest_entries_above_limit_across_runner_groups() {
     assert!(freed > 0);
     assert!(
         !cache_a
-            .session_workspace_cache_current_image(&oldest_key)
+            .workspace_image_cache_current_image(&oldest_key)
             .exists(),
         "oldest global candidate should be removed when the shared cache exceeds the entry cap"
     );
     assert!(
         cache_b
-            .session_workspace_cache_current_image(&newest_key)
+            .workspace_image_cache_current_image(&newest_key)
             .exists(),
         "newest candidate should be retained"
     );
@@ -382,10 +452,10 @@ fn gc_budget_satisfied_enforces_entry_cap_even_without_disk_pressure() {
 async fn gc_candidate_detects_replaced_image_with_same_timestamp() {
     let (_dir, paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
-    let cache_key = session_workspace_cache_key("sess-1", "/workspace");
-    let entry_dir = paths.session_workspace_cache_entry_dir(&cache_key);
+    let cache_key = workspace_image_cache_key("sess-1", "/workspace");
+    let entry_dir = paths.workspace_image_cache_entry_dir(&cache_key);
     tokio::fs::create_dir_all(&entry_dir).await.unwrap();
-    let current = paths.session_workspace_cache_current_image(&cache_key);
+    let current = paths.workspace_image_cache_current_image(&cache_key);
     tokio::fs::write(&current, b"old image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -394,11 +464,9 @@ async fn gc_candidate_detects_replaced_image_with_same_timestamp() {
             run_id,
             WorkspaceCacheMetadata {
                 format_version: CACHE_FORMAT_VERSION,
-                key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "sess-1".into(),
-                cli_agent_session_id: Some("sess-1".into()),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
                 last_used_at: "2026-05-01T00:00:00.000Z".into(),
@@ -431,11 +499,11 @@ async fn gc_candidate_detects_replaced_image_with_same_timestamp() {
 #[tokio::test]
 async fn gc_candidate_includes_current_image_without_metadata() {
     let (_dir, paths, cache) = local_cache().await;
-    let cache_key = session_workspace_cache_key("sess-1", "/workspace");
-    tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&cache_key))
+    let cache_key = workspace_image_cache_key("sess-1", "/workspace");
+    tokio::fs::create_dir_all(paths.workspace_image_cache_entry_dir(&cache_key))
         .await
         .unwrap();
-    let current = paths.session_workspace_cache_current_image(&cache_key);
+    let current = paths.workspace_image_cache_current_image(&cache_key);
     tokio::fs::write(&current, b"orphan image").await.unwrap();
 
     let candidate = cache.gc_candidate(cache_key.clone()).await.unwrap();
@@ -447,7 +515,7 @@ async fn gc_candidate_includes_current_image_without_metadata() {
 }
 
 #[tokio::test]
-async fn gc_counts_busy_entry_when_pruning_above_held_session_limit() {
+async fn gc_counts_busy_entry_when_pruning_above_held_workspace_limit() {
     let (_dir, paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
 
@@ -455,12 +523,12 @@ async fn gc_counts_busy_entry_when_pruning_above_held_session_limit() {
     let mut second_oldest_key = String::new();
     let mut newest_key = String::new();
     for index in 0..=MAX_HELD_WORKSPACE_STATES {
-        let session_id = format!("sess-{index:04}");
+        let reuse_key = format!("sess-{index:04}");
         let timestamp = timestamp_for_index(index);
         let key = write_current_cache_entry(
             &cache,
             run_id,
-            &session_id,
+            &reuse_key,
             "/workspace",
             &timestamp,
             &timestamp,
@@ -486,19 +554,19 @@ async fn gc_counts_busy_entry_when_pruning_above_held_session_limit() {
     assert!(freed > 0);
     assert!(
         paths
-            .session_workspace_cache_current_image(&oldest_key)
+            .workspace_image_cache_current_image(&oldest_key)
             .exists(),
         "the oldest busy entry must remain protected by its entry lock"
     );
     assert!(
         !paths
-            .session_workspace_cache_entry_dir(&second_oldest_key)
+            .workspace_image_cache_entry_dir(&second_oldest_key)
             .exists(),
         "a valid busy entry must still count toward the cap and force eviction of the next eligible candidate"
     );
     assert!(
         paths
-            .session_workspace_cache_current_image(&newest_key)
+            .workspace_image_cache_current_image(&newest_key)
             .exists(),
         "newest cache entry should be retained"
     );
@@ -525,7 +593,7 @@ async fn gc_removes_stale_entry_without_current_image() {
         "2026-05-01T00:00:00.000Z",
     )
     .await;
-    tokio::fs::remove_file(paths.session_workspace_cache_current_image(&key))
+    tokio::fs::remove_file(paths.workspace_image_cache_current_image(&key))
         .await
         .unwrap();
 
@@ -533,7 +601,7 @@ async fn gc_removes_stale_entry_without_current_image() {
 
     assert!(freed > 0);
     assert!(
-        !paths.session_workspace_cache_entry_dir(&key).exists(),
+        !paths.workspace_image_cache_entry_dir(&key).exists(),
         "stale metadata-only entries should not accumulate and slow heartbeat scans"
     );
 }
@@ -541,12 +609,12 @@ async fn gc_removes_stale_entry_without_current_image() {
 #[tokio::test]
 async fn gc_removes_unusable_current_entry_without_metadata() {
     let (_dir, paths, cache) = local_cache().await;
-    let key = session_workspace_cache_key("sess-1", "/workspace");
-    tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+    let key = workspace_image_cache_key("sess-1", "/workspace");
+    tokio::fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
         .await
         .unwrap();
     tokio::fs::write(
-        paths.session_workspace_cache_current_image(&key),
+        paths.workspace_image_cache_current_image(&key),
         b"orphan image",
     )
     .await
@@ -556,7 +624,7 @@ async fn gc_removes_unusable_current_entry_without_metadata() {
 
     assert!(freed > 0);
     assert!(
-        !paths.session_workspace_cache_entry_dir(&key).exists(),
+        !paths.workspace_image_cache_entry_dir(&key).exists(),
         "current images without metadata are not reusable and should not accumulate"
     );
 }
@@ -564,13 +632,13 @@ async fn gc_removes_unusable_current_entry_without_metadata() {
 #[tokio::test]
 async fn gc_removes_unusable_current_symlink_loop_without_aborting() {
     let (_dir, paths, cache) = local_cache().await;
-    let key = session_workspace_cache_key("sess-1", "/workspace");
-    tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+    let key = workspace_image_cache_key("sess-1", "/workspace");
+    tokio::fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
         .await
         .unwrap();
     std::os::unix::fs::symlink(
         "current.ext4",
-        paths.session_workspace_cache_current_image(&key),
+        paths.workspace_image_cache_current_image(&key),
     )
     .unwrap();
 
@@ -578,7 +646,7 @@ async fn gc_removes_unusable_current_symlink_loop_without_aborting() {
 
     assert!(freed > 0);
     assert!(
-        !paths.session_workspace_cache_entry_dir(&key).exists(),
+        !paths.workspace_image_cache_entry_dir(&key).exists(),
         "symlink-loop current images are unusable and should not abort cache GC"
     );
 }
@@ -586,17 +654,17 @@ async fn gc_removes_unusable_current_symlink_loop_without_aborting() {
 #[tokio::test]
 async fn gc_removes_unusable_current_entry_with_unreadable_metadata_path() {
     let (_dir, paths, cache) = local_cache().await;
-    let key = session_workspace_cache_key("sess-1", "/workspace");
-    tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+    let key = workspace_image_cache_key("sess-1", "/workspace");
+    tokio::fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
         .await
         .unwrap();
     tokio::fs::write(
-        paths.session_workspace_cache_current_image(&key),
+        paths.workspace_image_cache_current_image(&key),
         b"orphan image",
     )
     .await
     .unwrap();
-    tokio::fs::create_dir(paths.session_workspace_cache_metadata(&key))
+    tokio::fs::create_dir(paths.workspace_image_cache_metadata(&key))
         .await
         .unwrap();
 
@@ -604,7 +672,7 @@ async fn gc_removes_unusable_current_entry_with_unreadable_metadata_path() {
 
     assert!(freed > 0);
     assert!(
-        !paths.session_workspace_cache_entry_dir(&key).exists(),
+        !paths.workspace_image_cache_entry_dir(&key).exists(),
         "unreadable metadata paths make entries unusable and should not block cache GC"
     );
 }
@@ -612,10 +680,10 @@ async fn gc_removes_unusable_current_entry_with_unreadable_metadata_path() {
 #[tokio::test]
 async fn gc_dry_run_counts_temporary_only_entry_once() {
     let (_dir, paths, cache) = local_cache().await;
-    let key = session_workspace_cache_key("sess-1", "/workspace");
-    let entry_dir = paths.session_workspace_cache_entry_dir(&key);
+    let key = workspace_image_cache_key("sess-1", "/workspace");
+    let entry_dir = paths.workspace_image_cache_entry_dir(&key);
     tokio::fs::create_dir_all(&entry_dir).await.unwrap();
-    let tmp = paths.session_workspace_cache_tmp_image(&key, RunId::new_v4());
+    let tmp = paths.workspace_image_cache_tmp_image(&key, RunId::new_v4());
     tokio::fs::write(&tmp, vec![1_u8; 4096]).await.unwrap();
     let expected = workspace_cache_path_allocated_bytes(&entry_dir).await;
 
@@ -632,12 +700,12 @@ async fn gc_dry_run_counts_temporary_only_entry_once() {
 #[tokio::test]
 async fn gc_dry_run_counts_unusable_entry_with_temporary_path_once() {
     let (_dir, paths, cache) = local_cache().await;
-    let key = session_workspace_cache_key("sess-1", "/workspace");
-    let entry_dir = paths.session_workspace_cache_entry_dir(&key);
+    let key = workspace_image_cache_key("sess-1", "/workspace");
+    let entry_dir = paths.workspace_image_cache_entry_dir(&key);
     tokio::fs::create_dir_all(&entry_dir).await.unwrap();
-    let current = paths.session_workspace_cache_current_image(&key);
+    let current = paths.workspace_image_cache_current_image(&key);
     tokio::fs::write(&current, b"orphan image").await.unwrap();
-    let tmp = paths.session_workspace_cache_tmp_image(&key, RunId::new_v4());
+    let tmp = paths.workspace_image_cache_tmp_image(&key, RunId::new_v4());
     tokio::fs::write(&tmp, vec![1_u8; 4096]).await.unwrap();
     let expected = workspace_cache_path_allocated_bytes(&entry_dir).await;
 
@@ -657,7 +725,7 @@ async fn gc_dry_run_uses_pre_cleanup_freed_bytes_for_disk_pressure() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-    let setup_cache = SessionWorkspaceCache::new(paths.clone());
+    let setup_cache = WorkspaceImageCache::new(paths.clone());
     let run_id = RunId::new_v4();
     let key = write_current_cache_entry(
         &setup_cache,
@@ -668,7 +736,7 @@ async fn gc_dry_run_uses_pre_cleanup_freed_bytes_for_disk_pressure() {
         "2026-05-01T00:00:00.000Z",
     )
     .await;
-    let tmp = paths.session_workspace_cache_tmp_image(&key, run_id);
+    let tmp = paths.workspace_image_cache_tmp_image(&key, run_id);
     tokio::fs::write(&tmp, vec![1_u8; 4096]).await.unwrap();
     let temporary_allocated = workspace_cache_path_allocated_bytes(&tmp).await;
     assert!(temporary_allocated > 0);
@@ -679,7 +747,7 @@ async fn gc_dry_run_uses_pre_cleanup_freed_bytes_for_disk_pressure() {
         available_bytes: fs_total,
     })
     .min_free_bytes;
-    let cache = SessionWorkspaceCache::new_with_fs_stats(
+    let cache = WorkspaceImageCache::new_with_fs_stats(
         paths.clone(),
         FsStats {
             total_bytes: fs_total,
@@ -695,7 +763,7 @@ async fn gc_dry_run_uses_pre_cleanup_freed_bytes_for_disk_pressure() {
     );
     assert!(tmp.exists());
     assert!(
-        paths.session_workspace_cache_current_image(&key).exists(),
+        paths.workspace_image_cache_current_image(&key).exists(),
         "dry-run must not preview deleting a valid entry when temporary cleanup would relieve disk pressure"
     );
 }
@@ -704,14 +772,14 @@ async fn gc_dry_run_uses_pre_cleanup_freed_bytes_for_disk_pressure() {
 async fn gc_removes_current_directory_even_when_metadata_matches() {
     let (dir, paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
-    let session_id = "sess-1";
+    let reuse_key = "sess-1";
     let working_dir = "/workspace";
     let probe = dir.path().join("current-probe");
     tokio::fs::create_dir_all(&probe).await.unwrap();
     let image_size_bytes = fs::metadata(&probe).await.unwrap().len();
     tokio::fs::remove_dir_all(&probe).await.unwrap();
-    let key = cache.scoped_cache_key(TEST_PROFILE_NAME, session_id, working_dir, image_size_bytes);
-    let current = paths.session_workspace_cache_current_image(&key);
+    let key = cache.scoped_cache_key(TEST_PROFILE_NAME, reuse_key, working_dir, image_size_bytes);
+    let current = paths.workspace_image_cache_current_image(&key);
     tokio::fs::create_dir_all(&current).await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -720,11 +788,9 @@ async fn gc_removes_current_directory_even_when_metadata_matches() {
             run_id,
             WorkspaceCacheMetadata {
                 format_version: CACHE_FORMAT_VERSION,
-                key_version: CACHE_KEY_VERSION,
                 cache_scope: cache.inner.cache_scope.clone(),
                 profile_name: TEST_PROFILE_NAME.into(),
-                reuse_key: session_id.into(),
-                cli_agent_session_id: Some(session_id.into()),
+                reuse_key: reuse_key.into(),
                 working_dir: working_dir.into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
                 last_used_at: "2026-05-01T00:00:00.000Z".into(),
@@ -745,7 +811,7 @@ async fn gc_removes_current_directory_even_when_metadata_matches() {
 
     assert!(freed > 0);
     assert!(
-        !paths.session_workspace_cache_entry_dir(&key).exists(),
+        !paths.workspace_image_cache_entry_dir(&key).exists(),
         "current directories must not remain as reusable workspace cache entries"
     );
 }
@@ -754,11 +820,11 @@ async fn gc_removes_current_directory_even_when_metadata_matches() {
 async fn gc_counts_nested_current_directory_bytes() {
     let (_dir, paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
-    let session_id = "sess-1";
+    let reuse_key = "sess-1";
     let working_dir = "/workspace";
     let image_size_bytes = 1024 * 1024;
-    let key = cache.scoped_cache_key(TEST_PROFILE_NAME, session_id, working_dir, image_size_bytes);
-    let current = paths.session_workspace_cache_current_image(&key);
+    let key = cache.scoped_cache_key(TEST_PROFILE_NAME, reuse_key, working_dir, image_size_bytes);
+    let current = paths.workspace_image_cache_current_image(&key);
     let nested = current.join("nested");
     tokio::fs::create_dir_all(&nested).await.unwrap();
     tokio::fs::write(
@@ -774,11 +840,9 @@ async fn gc_counts_nested_current_directory_bytes() {
             run_id,
             WorkspaceCacheMetadata {
                 format_version: CACHE_FORMAT_VERSION,
-                key_version: CACHE_KEY_VERSION,
                 cache_scope: cache.inner.cache_scope.clone(),
                 profile_name: TEST_PROFILE_NAME.into(),
-                reuse_key: session_id.into(),
-                cli_agent_session_id: Some(session_id.into()),
+                reuse_key: reuse_key.into(),
                 working_dir: working_dir.into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
                 last_used_at: "2026-05-01T00:00:00.000Z".into(),
@@ -801,18 +865,18 @@ async fn gc_counts_nested_current_directory_bytes() {
         freed >= image_size_bytes,
         "GC must report nested current directory bytes so callers refresh disk stats after cleanup"
     );
-    assert!(!paths.session_workspace_cache_entry_dir(&key).exists());
+    assert!(!paths.workspace_image_cache_entry_dir(&key).exists());
 }
 
 #[tokio::test]
 async fn gc_keeps_unusable_current_entry_when_entry_lock_is_held() {
     let (_dir, paths, cache) = local_cache().await;
-    let key = session_workspace_cache_key("sess-1", "/workspace");
-    tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+    let key = workspace_image_cache_key("sess-1", "/workspace");
+    tokio::fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
         .await
         .unwrap();
     tokio::fs::write(
-        paths.session_workspace_cache_current_image(&key),
+        paths.workspace_image_cache_current_image(&key),
         b"orphan image",
     )
     .await
@@ -825,7 +889,7 @@ async fn gc_keeps_unusable_current_entry_when_entry_lock_is_held() {
 
     assert_eq!(freed, 0);
     assert!(
-        paths.session_workspace_cache_entry_dir(&key).exists(),
+        paths.workspace_image_cache_entry_dir(&key).exists(),
         "entry locks must protect in-progress promotions from GC removal"
     );
 }
@@ -843,7 +907,7 @@ async fn gc_keeps_stale_entry_without_current_image_when_entry_lock_is_held() {
         "2026-05-01T00:00:00.000Z",
     )
     .await;
-    tokio::fs::remove_file(paths.session_workspace_cache_current_image(&key))
+    tokio::fs::remove_file(paths.workspace_image_cache_current_image(&key))
         .await
         .unwrap();
     let _lock = crate::lock::acquire(cache.entry_lock_path(&key))
@@ -854,7 +918,7 @@ async fn gc_keeps_stale_entry_without_current_image_when_entry_lock_is_held() {
 
     assert_eq!(freed, 0);
     assert!(
-        paths.session_workspace_cache_entry_dir(&key).exists(),
+        paths.workspace_image_cache_entry_dir(&key).exists(),
         "entry locks must protect stale entries from GC removal"
     );
 }
@@ -863,13 +927,13 @@ async fn gc_keeps_stale_entry_without_current_image_when_entry_lock_is_held() {
 async fn gc_removes_orphan_temporary_workspace_cache_files() {
     let (_dir, paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
-    let cache_key = session_workspace_cache_key("sess-1", "/workspace");
-    tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&cache_key))
+    let cache_key = workspace_image_cache_key("sess-1", "/workspace");
+    tokio::fs::create_dir_all(paths.workspace_image_cache_entry_dir(&cache_key))
         .await
         .unwrap();
-    let tmp = paths.session_workspace_cache_tmp_image(&cache_key, run_id);
+    let tmp = paths.workspace_image_cache_tmp_image(&cache_key, run_id);
     let metadata_tmp = paths
-        .session_workspace_cache_metadata(&cache_key)
+        .workspace_image_cache_metadata(&cache_key)
         .with_file_name(format!("metadata.json.tmp.{run_id}"));
     tokio::fs::write(&tmp, b"partial image").await.unwrap();
     tokio::fs::write(&metadata_tmp, b"partial metadata")
@@ -896,9 +960,9 @@ async fn gc_removes_orphan_temporary_workspace_cache_directories() {
         "2026-05-01T00:00:00.000Z",
     )
     .await;
-    let tmp = paths.session_workspace_cache_tmp_image(&cache_key, run_id);
+    let tmp = paths.workspace_image_cache_tmp_image(&cache_key, run_id);
     let metadata_tmp = paths
-        .session_workspace_cache_metadata(&cache_key)
+        .workspace_image_cache_metadata(&cache_key)
         .with_file_name(format!("metadata.json.tmp.{run_id}"));
     tokio::fs::create_dir_all(&tmp).await.unwrap();
     tokio::fs::write(tmp.join("partial-image"), b"partial image")
@@ -916,7 +980,7 @@ async fn gc_removes_orphan_temporary_workspace_cache_directories() {
     assert!(!metadata_tmp.exists());
     assert!(
         paths
-            .session_workspace_cache_current_image(&cache_key)
+            .workspace_image_cache_current_image(&cache_key)
             .exists()
     );
 }
@@ -934,7 +998,7 @@ async fn gc_counts_nested_temporary_workspace_cache_directories() {
         "2026-05-01T00:00:00.000Z",
     )
     .await;
-    let tmp = paths.session_workspace_cache_tmp_image(&cache_key, run_id);
+    let tmp = paths.workspace_image_cache_tmp_image(&cache_key, run_id);
     let nested = tmp.join("nested");
     tokio::fs::create_dir_all(&nested).await.unwrap();
     tokio::fs::write(nested.join("partial-image"), vec![1_u8; 4096])
@@ -950,7 +1014,7 @@ async fn gc_counts_nested_temporary_workspace_cache_directories() {
     assert!(!tmp.exists());
     assert!(
         paths
-            .session_workspace_cache_current_image(&cache_key)
+            .workspace_image_cache_current_image(&cache_key)
             .exists()
     );
 }
@@ -959,13 +1023,13 @@ async fn gc_counts_nested_temporary_workspace_cache_directories() {
 async fn gc_keeps_temporary_workspace_cache_files_when_entry_lock_is_held() {
     let (_dir, paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
-    let cache_key = session_workspace_cache_key("sess-1", "/workspace");
-    tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&cache_key))
+    let cache_key = workspace_image_cache_key("sess-1", "/workspace");
+    tokio::fs::create_dir_all(paths.workspace_image_cache_entry_dir(&cache_key))
         .await
         .unwrap();
-    let tmp = paths.session_workspace_cache_tmp_image(&cache_key, run_id);
+    let tmp = paths.workspace_image_cache_tmp_image(&cache_key, run_id);
     let metadata_tmp = paths
-        .session_workspace_cache_metadata(&cache_key)
+        .workspace_image_cache_metadata(&cache_key)
         .with_file_name(format!("metadata.json.tmp.{run_id}"));
     tokio::fs::write(&tmp, b"partial image").await.unwrap();
     tokio::fs::write(&metadata_tmp, b"partial metadata")

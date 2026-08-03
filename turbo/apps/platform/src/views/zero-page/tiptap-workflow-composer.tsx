@@ -8,13 +8,14 @@ import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { useTranslation } from "react-i18next";
 
 import { i18n } from "../../i18n/index.ts";
 import type { ComposerAgentSuggestion } from "../../signals/zero-page/composer-agent-suggestion-domain.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/zero-page/chat-thread-suggestion-domain.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import type { WorkflowComposerSignals } from "../../signals/zero-page/tiptap-workflow-composer.ts";
+import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
 import { ComposerMentionSuggestionMenu } from "./chat-thread-suggestion.tsx";
 import {
   buildComposerSlashWorkflows,
@@ -82,6 +83,12 @@ interface ComposerSuggestionRange {
   readonly end: number;
 }
 
+function resolvedAgentId(
+  agent: ZeroAgentResponse | undefined,
+): string | undefined {
+  return agent?.agentId;
+}
+
 interface ComposerSuggestionCaretVirtualRef {
   current: {
     readonly contextElement: HTMLElement;
@@ -141,12 +148,14 @@ function WorkflowComposerPlaceholder({
   composer,
   sending,
 }: {
-  composer: WorkflowComposerSignals;
+  composer: ComposerSignals;
   sending: boolean | undefined;
 }) {
   useTranslation();
-  const hasInput = useGet(composer.hasInput$);
-  const hasTemplateAttachment = useGet(composer.hasTemplateAttachment$);
+  const hasInput = useGet(composer.editor.hasInput$);
+  const hasTemplateAttachment = useGet(
+    composer.template.hasTemplateAttachment$,
+  );
   if (hasInput) {
     return null;
   }
@@ -163,17 +172,15 @@ function WorkflowComposerPlaceholder({
 }
 
 interface TiptapWorkflowComposerProps {
-  readonly composer: WorkflowComposerSignals;
+  readonly signals: ComposerSignals;
   readonly onDraftChange: (() => void) | undefined;
   readonly sending: boolean | undefined;
-  readonly autoFocus: boolean | undefined;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
   readonly onPaste: (event: ComposerPasteEvent) => void;
-  readonly singleLineOnMobile: boolean;
 }
 
 interface ComposerKeyDownContext {
-  readonly composer: WorkflowComposerSignals;
+  readonly composer: ComposerSignals;
   readonly suggestionCount: number;
   readonly selectedSuggestionIndex: number;
   readonly showSuggestionMenu: boolean;
@@ -212,16 +219,16 @@ function handleComposerKeyDownCapture(
     !event.altKey
   ) {
     event.preventDefault();
-    context.composer.editor.commands.splitBlock();
+    context.composer.editor.editor.commands.splitBlock();
     return true;
   }
   const lineNavigationPos = resolveMacControlLineNavigation(
-    context.composer.editor,
+    context.composer.editor.editor,
     event,
   );
   if (lineNavigationPos !== null) {
     event.preventDefault();
-    context.composer.editor.commands.setTextSelection(lineNavigationPos);
+    context.composer.editor.editor.commands.setTextSelection(lineNavigationPos);
     return true;
   }
   if (!context.showSuggestionMenu) {
@@ -283,23 +290,29 @@ function useComposerSuggestionMenu({
   composer,
   onKeyDown,
 }: {
-  readonly composer: WorkflowComposerSignals;
+  readonly composer: ComposerSignals;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
 }): ComposerSuggestionMenuState {
-  const slashRange = useGet(composer.activeSlashRange$);
-  const chatThreadRange = useGet(composer.activeChatThreadSuggestionRange$);
-  const chatThreadResult = useLastResolved(composer.chatThreadSuggestions$);
+  const slashRange = useGet(composer.suggestion.activeSlashRange$);
+  const chatThreadRange = useGet(
+    composer.suggestion.activeChatThreadSuggestionRange$,
+  );
+  const chatThreadResult = useLastResolved(
+    composer.suggestion.chatThreadSuggestions$,
+  );
   const skillSubstringSearchEnabled =
     useGet(featureSwitch$)[FeatureSwitchKey.ComposerSkillSubstringSearch] ??
     false;
-  const selectedIndex = useGet(composer.selectedSuggestionIndex$);
-  const setSelectedIndex = useSet(composer.setSelectedSuggestionIndex$);
-  const close = useSet(composer.closeSuggestionMenu$);
-  const insertWorkflow = useSet(composer.insertWorkflow$);
-  const insertAgent = useSet(composer.insertAgent$);
-  const insertChatThread = useSet(composer.insertChatThread$);
-  const currentAgentId = useLastResolved(composer.agentId$);
-  const workflowsLoadable = useLastLoadable(composer.workflows$);
+  const selectedIndex = useGet(composer.suggestion.selectedSuggestionIndex$);
+  const setSelectedIndex = useSet(
+    composer.suggestion.setSelectedSuggestionIndex$,
+  );
+  const close = useSet(composer.suggestion.closeSuggestionMenu$);
+  const insertWorkflow = useSet(composer.workflow.insertWorkflow$);
+  const insertAgent = useSet(composer.suggestion.insertAgent$);
+  const insertChatThread = useSet(composer.suggestion.insertChatThread$);
+  const currentAgentId = resolvedAgentId(useLastResolved(composer.agent$));
+  const workflowsLoadable = useLastLoadable(composer.workflow.workflows$);
   const workflows = buildComposerSlashWorkflows({
     agentId: currentAgentId,
     workflows:
@@ -407,26 +420,23 @@ function useComposerSuggestionMenu({
 }
 
 export function TiptapWorkflowComposer({
-  composer,
+  signals,
   onDraftChange,
   sending,
-  autoFocus,
   onKeyDown,
   onPaste,
-  singleLineOnMobile,
 }: TiptapWorkflowComposerProps) {
+  const composer = signals;
+  const singleLineOnMobile = composer.editor.singleLineOnMobile;
   const suggestionMenu = useComposerSuggestionMenu({
     composer,
     onKeyDown,
   });
-  const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
-  const hasTemplateAttachment = useGet(composer.hasTemplateAttachment$);
-  const containerRefSignal = singleLineOnMobile
-    ? composer.setCompactContainerRef$
-    : autoFocus
-      ? composer.setAutoFocusContainerRef$
-      : composer.setContainerRef$;
-  const setContainerRef = useSet(containerRefSignal);
+  const insertPromptMarkdown = useSet(composer.editor.insertPromptMarkdown$);
+  const hasTemplateAttachment = useGet(
+    composer.template.hasTemplateAttachment$,
+  );
+  const setContainerRef = useSet(composer.editor.setContainerRef$);
 
   function handlePaste(
     event: ClipboardEvent,
@@ -467,7 +477,7 @@ export function TiptapWorkflowComposer({
       }}
     >
       <ComposerSuggestionCaretAnchor
-        editor={composer.editor}
+        editor={composer.editor.editor}
         range={suggestionMenu.range}
       />
       <div className="relative">
@@ -502,7 +512,7 @@ export function TiptapWorkflowComposer({
           onPasteCapture={(event) => {
             const handled = handlePaste(
               event.nativeEvent,
-              composer.editor.view.dom,
+              composer.editor.editor.view.dom,
             );
             if (handled) {
               event.stopPropagation();

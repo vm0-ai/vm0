@@ -776,7 +776,7 @@ describe("GET /api/zero/connector-catalog", () => {
     }
   });
 
-  it("returns 404 for hidden connector catalog refs", async () => {
+  it("returns 404 for hidden connector catalog slugs", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
@@ -795,7 +795,7 @@ describe("GET /api/zero/connector-catalog", () => {
     );
   });
 
-  it("rejects connector catalog refs outside the public connector-ref bounds", async () => {
+  it("rejects connector catalog slugs outside the public slug bounds", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);

@@ -12,6 +12,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use clap::Args;
+use uuid::Uuid;
 
 use crate::active_input::{ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, active_input_payload_len};
 use crate::error::{RunnerError, RunnerResult};
@@ -45,7 +46,10 @@ pub struct SubmitArgs {
     /// VM profile to use (e.g. "vm0/default")
     #[arg(long)]
     profile: Option<String>,
-    /// Session ID for sandbox reuse across conversation turns
+    /// Chat thread ID for sandbox and workspace reuse across turns
+    #[arg(long)]
+    chat_thread_id: Option<Uuid>,
+    /// Provider-native session ID to resume
     #[arg(long)]
     session_id: Option<String>,
     /// Feature flags (repeatable, format: key=value, e.g. --feature-flag myFlag=true)
@@ -352,6 +356,7 @@ impl SubmitPlan {
             prompt,
             cli_agent_type,
             profile,
+            chat_thread_id,
             session_id,
             feature_flags,
             env,
@@ -396,6 +401,7 @@ impl SubmitPlan {
             secret_environment,
             user_timezone: detect_system_timezone(),
             profile: Some(profile.clone()),
+            reuse_key: chat_thread_id.map(|thread_id| format!("thread:{thread_id}")),
             session_id,
             feature_flags,
             active_input: (!active_inputs.is_empty()).then_some(true),

@@ -13,7 +13,7 @@ import {
   storedConnectorPermissionBaselineSchema,
   type CompatibleStoredExecutionContext,
   type ExecutionContext,
-  type HeldSessionState,
+  type HeldSandboxState,
   type HeldWorkspaceState,
   type SessionHistoryDownloadSource,
   type StoredConnectorPermissionBaseline,
@@ -30,7 +30,8 @@ import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import {
   runnerState,
-  type RunnerHeldSessionState as PersistedRunnerHeldSessionState,
+  type RunnerHeldSandboxState as PersistedRunnerHeldSandboxState,
+  type RunnerHeldWorkspaceState as PersistedRunnerHeldWorkspaceState,
 } from "@vm0/db/schema/runner-state";
 import {
   and,
@@ -107,6 +108,9 @@ const L = logger("Runners");
 type SandboxOperationAttrs = Parameters<
   typeof recordSandboxOperations
 >[0][number];
+type RunnerClaimIdentity = NonNullable<
+  z.infer<(typeof runnersJobClaimContract.claim)["body"]>["runnerIdentity"]
+>;
 
 const STALE_RUNNER_THRESHOLD_MS = 5 * 60 * 1000;
 const INVALID_EXECUTION_CONTEXT_ERROR =
@@ -370,65 +374,51 @@ function isOfficialRunnerGroup(group: string): boolean {
   return group.split("/")[0] === "vm0";
 }
 
-function canonicalizeHeldSessionStates(
-  states: readonly HeldSessionState[] | undefined,
-): HeldSessionState[] | undefined {
-  return states?.map((state) => {
-    const cliAgentSessionId = state.sessionId;
+function canonicalizeHeldSandboxStates(
+  states: readonly HeldSandboxState[],
+): PersistedRunnerHeldSandboxState[] {
+  return states.map((state) => {
     return {
-      sessionId: cliAgentSessionId,
-      ...(state.reuseKey ? { reuseKey: state.reuseKey } : {}),
+      reuseKey: state.reuseKey,
       lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
-      ...(state.reusableSandbox
-        ? {
-            reusableSandbox: {
-              profile: state.reusableSandbox.profile,
-              ...(state.reusableSandbox.historyGenerationRunId
-                ? {
-                    historyGenerationRunId:
-                      state.reusableSandbox.historyGenerationRunId,
-                  }
-                : {}),
-            },
-          }
-        : {}),
-      ...(state.workspaceCaches
-        ? {
-            workspaceCaches: state.workspaceCaches.map((workspaceCache) => {
-              return {
-                profile: workspaceCache.profile,
-                ...(workspaceCache.workspaceAffinityVersion
-                  ? {
-                      workspaceAffinityVersion:
-                        workspaceCache.workspaceAffinityVersion,
-                    }
-                  : {}),
-              };
-            }),
-          }
-        : {}),
+      reusableSandbox: {
+        profile: state.reusableSandbox.profile,
+        ...(state.reusableSandbox.historyGenerationRunId
+          ? {
+              historyGenerationRunId:
+                state.reusableSandbox.historyGenerationRunId,
+            }
+          : {}),
+      },
     };
   });
 }
 
 function canonicalizeHeldWorkspaceStates(
-  states: readonly HeldWorkspaceState[] | undefined,
-): PersistedRunnerHeldSessionState[] | undefined {
-  return states?.map((state) => {
+  states: readonly HeldWorkspaceState[],
+): PersistedRunnerHeldWorkspaceState[] {
+  return states.map((state) => {
+    const [firstWorkspaceCache, ...remainingWorkspaceCaches] =
+      state.workspaceCaches;
+    if (!firstWorkspaceCache) {
+      throw new Error("Held workspace state requires a workspace cache");
+    }
     return {
       reuseKey: state.reuseKey,
       lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
-      workspaceCaches: state.workspaceCaches.map((workspaceCache) => {
-        return {
-          profile: workspaceCache.profile,
-          ...(workspaceCache.workspaceAffinityVersion
-            ? {
-                workspaceAffinityVersion:
-                  workspaceCache.workspaceAffinityVersion,
-              }
-            : {}),
-        };
-      }),
+      workspaceCaches: [
+        {
+          profile: firstWorkspaceCache.profile,
+          workspaceAffinityVersion:
+            firstWorkspaceCache.workspaceAffinityVersion,
+        },
+        ...remainingWorkspaceCaches.map((workspaceCache) => {
+          return {
+            profile: workspaceCache.profile,
+            workspaceAffinityVersion: workspaceCache.workspaceAffinityVersion,
+          };
+        }),
+      ],
     };
   });
 }
@@ -452,10 +442,12 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage("Invalid runner group");
   }
 
-  const heldSessionStates: PersistedRunnerHeldSessionState[] = [
-    ...(canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? []),
-    ...(canonicalizeHeldWorkspaceStates(body.data.heldWorkspaceStates) ?? []),
-  ];
+  const heldSandboxStates = canonicalizeHeldSandboxStates(
+    body.data.heldSandboxStates,
+  );
+  const heldWorkspaceStates = canonicalizeHeldWorkspaceStates(
+    body.data.heldWorkspaceStates,
+  );
   const admittableProfiles = body.data.admittableProfiles;
   const currentDate = nowDate();
   const snapshotOrder = {
@@ -478,7 +470,8 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       allocatedMemoryMb: body.data.allocatedMemoryMb,
       runningCount: body.data.runningCount,
       admittableProfiles,
-      heldSessionStates,
+      heldSandboxStates,
+      heldWorkspaceStates,
       mode: body.data.mode,
       lastSeenAt: currentDate,
     })
@@ -496,7 +489,8 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         allocatedMemoryMb: body.data.allocatedMemoryMb,
         runningCount: body.data.runningCount,
         admittableProfiles,
-        heldSessionStates,
+        heldSandboxStates,
+        heldWorkspaceStates,
         mode: body.data.mode,
         lastSeenAt: currentDate,
       },
@@ -925,6 +919,22 @@ const claimTransitionSqlRowSchema = z.object({
   claimedAtMs: z.number().nullable(),
 });
 
+function decodeClaimTransitionResult(
+  rows: readonly z.infer<typeof claimTransitionSqlRowSchema>[],
+): ClaimTransitionResult {
+  const row = rows[0];
+  if (!row || row.status === "invariant-error") {
+    throw new Error("Runner job claim transition violated its invariant");
+  }
+  if (row.status === "claimed") {
+    if (row.claimedAtMs === null) {
+      throw new Error("Claimed runner job is missing its transition time");
+    }
+    return { status: "claimed", claimedAt: new Date(row.claimedAtMs) };
+  }
+  return { status: row.status };
+}
+
 async function lockClaimRun(
   db: Pick<Db, "select">,
   runId: string,
@@ -962,9 +972,12 @@ async function lockRunnerJob(
 async function transitionClaimedJobToRunning(
   db: Db,
   runId: string,
+  runnerIdentity: RunnerClaimIdentity | undefined,
   signal: AbortSignal,
   timing: ClaimRouteTimingCollector,
 ): Promise<ClaimTransitionResult> {
+  const runnerId = runnerIdentity?.runnerId ?? null;
+  const runnerHeartbeatGeneration = runnerIdentity?.heartbeatGeneration ?? null;
   return await db.transaction(async (tx) => {
     const result = await timing.measure(
       "claim_route_transition_execute",
@@ -1010,7 +1023,9 @@ async function transitionClaimedJobToRunning(
               status = 'running',
               started_at = claim_clock."claimedAt",
               last_heartbeat_at = claim_clock."claimedAt",
-              cancellation_recovery_completed = false
+              cancellation_recovery_completed = false,
+              runner_id = ${runnerId},
+              runner_heartbeat_generation = ${runnerHeartbeatGeneration}
             FROM locked_run
             INNER JOIN locked_job
               ON locked_job."runId" = locked_run."id"
@@ -1073,17 +1088,7 @@ async function transitionClaimedJobToRunning(
       },
     );
     signal.throwIfAborted();
-    const row = result[0];
-    if (!row || row.status === "invariant-error") {
-      throw new Error("Runner job claim transition violated its invariant");
-    }
-    if (row.status === "claimed") {
-      if (row.claimedAtMs === null) {
-        throw new Error("Claimed runner job is missing its transition time");
-      }
-      return { status: "claimed", claimedAt: new Date(row.claimedAtMs) };
-    }
-    return { status: row.status };
+    return decodeClaimTransitionResult(result);
   });
 }
 
@@ -2213,6 +2218,7 @@ const claimAuthorizedJob$ = command(
       readonly db: Db;
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
+      readonly runnerIdentity: RunnerClaimIdentity | undefined;
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
@@ -2286,6 +2292,7 @@ const claimAuthorizedJob$ = command(
         return await transitionClaimedJobToRunning(
           db,
           runId,
+          args.runnerIdentity,
           signal,
           claimRouteTiming,
         );
@@ -2352,6 +2359,8 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     db,
     runId,
     authType: auth.type,
+    runnerIdentity:
+      auth.type === "official-runner" ? body.data.runnerIdentity : undefined,
     jobWithRun,
     telemetry: body.data.telemetry,
     claimRequestStartedAtMs,

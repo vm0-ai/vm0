@@ -108,16 +108,12 @@ impl LocalProvider {
 }
 
 fn job_candidate_from_discovered(discovered: LocalDiscoveredJob) -> JobCandidate {
-    let reuse_key = discovered
-        .cli_agent_session_id
-        .as_ref()
-        .map(|session_id| format!("session:{session_id}"));
     JobCandidate::local(
         discovered.run_id,
         discovered.profile_name,
         discovered.job_path,
     )
-    .with_affinity_metadata(reuse_key, discovered.cli_agent_session_id, None)
+    .with_affinity_metadata(discovered.reuse_key, discovered.cli_agent_session_id, None)
 }
 
 #[async_trait::async_trait]
@@ -168,14 +164,9 @@ impl JobProvider for LocalProvider {
         };
 
         let environment_merge = merge_local_environments(req.environment, req.secret_environment);
-        let reuse_key = req
-            .session_id
-            .as_ref()
-            .map(|session_id| format!("session:{session_id}"));
-
         let context = ExecutionContext {
             run_id,
-            reuse_key,
+            reuse_key: req.reuse_key,
             prompt: req.prompt,
             append_system_prompt: None,
             vars: req.vars,

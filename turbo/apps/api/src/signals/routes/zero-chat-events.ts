@@ -1444,6 +1444,93 @@ function resolveInitialThreadModelPin(params: {
   return params.explicitRunConfiguration.modelPin;
 }
 
+function resolveTimedExistingThreadSessionContext(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly runConfiguration: ResolvedRunConfiguration;
+  readonly timing?: ApiDispatchTimingCollector;
+}): Promise<
+  [
+    Awaited<ReturnType<typeof resolveChatThreadSession>>,
+    Awaited<ReturnType<typeof loadWebChatIncompleteContext>>,
+  ]
+> {
+  return measureApiDispatchTiming(
+    params.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_session_context_parallel",
+    "nested",
+    () => {
+      return Promise.all([
+        measureApiDispatchTiming(
+          params.timing,
+          "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_session",
+          "nested",
+          () => {
+            return resolveChatThreadSession({
+              db: params.db,
+              threadId: params.threadId,
+              userId: params.userId,
+              orgId: params.orgId,
+              agentComposeId: params.agentId,
+              route: {
+                selectedModel: params.runConfiguration.modelPin.selectedModel,
+                modelProvider:
+                  params.runConfiguration.providerAdmission
+                    .effectiveModelProvider ?? null,
+                modelProviderId:
+                  params.runConfiguration.modelPin.modelProviderId,
+                cliAgentType:
+                  params.runConfiguration.providerAdmission.cliAgentType,
+              },
+            });
+          },
+        ),
+        measureApiDispatchTiming(
+          params.timing,
+          "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_incomplete_context",
+          "nested",
+          () => {
+            return loadWebChatIncompleteContext(params.db, params.threadId);
+          },
+        ),
+      ]);
+    },
+  );
+}
+
+function loadTimedExistingThreadSnapshot(params: {
+  readonly db: Db;
+  readonly userId: string;
+  readonly threadId: string;
+  readonly timing?: ApiDispatchTimingCollector;
+}) {
+  return measureApiDispatchTiming(
+    params.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
+    "nested",
+    () => {
+      return params.db
+        .select({
+          id: chatThreads.id,
+          computerUseHostId: chatThreads.computerUseHostId,
+          cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
+          ...persistedChatThreadModelSnapshotColumns(),
+        })
+        .from(chatThreads)
+        .where(
+          and(
+            eq(chatThreads.id, params.threadId),
+            eq(chatThreads.userId, params.userId),
+          ),
+        )
+        .limit(1);
+    },
+  );
+}
+
 async function resolveThread(params: {
   readonly db: Db;
   readonly orgId: string;
@@ -1458,6 +1545,7 @@ async function resolveThread(params: {
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
   readonly userMessageInlineTemplatesEnabled: boolean;
+  readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
   if (!params.existingThreadId) {
     if (!params.explicitRunConfiguration) {
@@ -1489,21 +1577,12 @@ async function resolveThread(params: {
     };
   }
 
-  const [thread] = await params.db
-    .select({
-      id: chatThreads.id,
-      computerUseHostId: chatThreads.computerUseHostId,
-      cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
-      ...persistedChatThreadModelSnapshotColumns(),
-    })
-    .from(chatThreads)
-    .where(
-      and(
-        eq(chatThreads.id, params.existingThreadId),
-        eq(chatThreads.userId, params.userId),
-      ),
-    )
-    .limit(1);
+  const [thread] = await loadTimedExistingThreadSnapshot({
+    db: params.db,
+    userId: params.userId,
+    threadId: params.existingThreadId,
+    timing: params.timing,
+  });
   if (!thread) {
     return notFound("Chat thread not found");
   }
@@ -1513,16 +1592,24 @@ async function resolveThread(params: {
     | PersistedChatThreadModelResolutionPath
     | undefined;
   if (!runConfiguration) {
-    const persisted = await resolvePersistedChatThreadModel({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
-      threadId: thread.id,
-      threadSnapshot: thread,
-      requestedCodexServiceTier: params.requestedCodexServiceTier,
-      persistRequestedCodexServiceTier: params.persistRequestedCodexServiceTier,
-      codexFastModeEnabled: params.codexFastModeEnabled,
-    });
+    const persisted = await measureApiDispatchTiming(
+      params.timing,
+      "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_persisted_model",
+      "nested",
+      () => {
+        return resolvePersistedChatThreadModel({
+          db: params.db,
+          orgId: params.orgId,
+          userId: params.userId,
+          threadId: thread.id,
+          threadSnapshot: thread,
+          requestedCodexServiceTier: params.requestedCodexServiceTier,
+          persistRequestedCodexServiceTier:
+            params.persistRequestedCodexServiceTier,
+          codexFastModeEnabled: params.codexFastModeEnabled,
+        });
+      },
+    );
     if (!persisted) {
       return notFound("Chat thread not found");
     }
@@ -1537,23 +1624,16 @@ async function resolveThread(params: {
     persistedModelResolutionPath = persisted.resolutionPath;
   }
 
-  const [sessionResolution, incompleteContext] = await Promise.all([
-    resolveChatThreadSession({
+  const [sessionResolution, incompleteContext] =
+    await resolveTimedExistingThreadSessionContext({
       db: params.db,
-      threadId: thread.id,
-      userId: params.userId,
       orgId: params.orgId,
-      agentComposeId: params.agentId,
-      route: {
-        selectedModel: runConfiguration.modelPin.selectedModel,
-        modelProvider:
-          runConfiguration.providerAdmission.effectiveModelProvider ?? null,
-        modelProviderId: runConfiguration.modelPin.modelProviderId,
-        cliAgentType: runConfiguration.providerAdmission.cliAgentType,
-      },
-    }),
-    loadWebChatIncompleteContext(params.db, thread.id),
-  ]);
+      userId: params.userId,
+      agentId: params.agentId,
+      threadId: thread.id,
+      runConfiguration,
+      timing: params.timing,
+    });
   const startNewSession = sessionResolution.action === "rotated";
   return {
     thread: {
@@ -2286,6 +2366,7 @@ function resolveTimedThread(
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
         userMessageInlineTemplatesEnabled:
           featureSwitches.userMessageInlineTemplatesEnabled,
+        timing: args.timing,
       });
       if (!("status" in resolved)) {
         modelResolutionPath = resolved.modelResolutionPath;

@@ -43,6 +43,7 @@ export enum FeatureSwitchKey {
   ZeroDebug = "zeroDebug",
   ZeroBrowser = "zeroBrowser",
   ZeroChatMessaging = "zeroChatMessaging",
+  ZeroImageRecognition = "zeroImageRecognition",
   ZeroMailReplyFollowUp = "zeroMailReplyFollowUp",
   Banking = "banking",
   Lab = "lab",
@@ -61,7 +62,6 @@ export enum FeatureSwitchKey {
   ComposerUploadPopover = "composerUploadPopover",
   StructuredPromptInlineTemplates = "structuredPromptInlineTemplates",
   CustomModelGateways = "customModelGateways",
-  DeepSeekV4Flash = "deepSeekV4Flash",
 
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
@@ -86,4 +86,5 @@ export enum FeatureSwitchKey {
   CustomConnectorCliCreate = "customConnectorCliCreate",
   CustomConnectorOAuth2 = "customConnectorOAuth2",
   MermaidDiagrams = "mermaidDiagrams",
+  CustomConnectorPermissions = "customConnectorPermissions",
 }

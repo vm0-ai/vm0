@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.62.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.3...guest-agent-v0.62.4) (2026-08-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** redact overlapping secret matches ([#24639](https://github.com/vm0-ai/vm0/issues/24639)) ([dc20d30](https://github.com/vm0-ai/vm0/commit/dc20d300941918f11f98738142bca5fabfff6301))
+
+
+### Refactoring
+
+* **guest-agent:** split checkpoint integration tests ([#24626](https://github.com/vm0-ai/vm0/issues/24626)) ([40a7e1f](https://github.com/vm0-ai/vm0/commit/40a7e1f137751a8aeab2e9d1def2fefd49940572))
+
+## [0.62.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.2...guest-agent-v0.62.3) (2026-08-03)
+
+## [0.62.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.1...guest-agent-v0.62.2) (2026-08-02)
+
+
+### Documentation
+
+* **guest-agent:** document app-server event policy ([#24581](https://github.com/vm0-ai/vm0/issues/24581)) ([d9a27da](https://github.com/vm0-ai/vm0/commit/d9a27dad6d414438ec8af864b6e80e0c712fce7c))
+
+## [0.62.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.0...guest-agent-v0.62.1) (2026-08-02)
+
+## [0.62.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.6...guest-agent-v0.62.0) (2026-08-01)
+
+
+### Features
+
+* **guest-agent:** set fable effort to max ([#24483](https://github.com/vm0-ai/vm0/issues/24483)) ([f6e92b9](https://github.com/vm0-ai/vm0/commit/f6e92b97b32aec30c26e9e10eb613874d8cc6fff))
+
+## [0.61.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.5...guest-agent-v0.61.6) (2026-08-01)
+
+
+### Bug Fixes
+
+* **guest-agent:** ignore secondary codex thread events ([#24466](https://github.com/vm0-ai/vm0/issues/24466)) ([20ed365](https://github.com/vm0-ai/vm0/commit/20ed365bf6639fdce6c6b42cb64f5a45ed3d2562))
+
+## [0.61.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.4...guest-agent-v0.61.5) (2026-08-01)
+
 ## [0.61.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.3...guest-agent-v0.61.4) (2026-07-31)
 
 ## [0.61.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.2...guest-agent-v0.61.3) (2026-07-31)

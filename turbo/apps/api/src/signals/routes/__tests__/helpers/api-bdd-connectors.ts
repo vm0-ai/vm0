@@ -33,6 +33,7 @@ import {
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
+  type CustomConnectorPermissionBundleResponse,
   type CustomConnectorResponse,
   type CustomConnectorValueInput,
   type PatchCustomConnectorBody,
@@ -1647,6 +1648,34 @@ export function createConnectorBddApi(context: TestContext) {
       const response = await api.requestListCustomConnectors(actor, [200]);
       expectStatus(response, 200);
       return response.body.connectors;
+    },
+
+    async requestCustomConnectorPermissions(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      statuses: readonly (200 | 401 | 403 | 404 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroCustomConnectorByIdContract);
+      return await accept(
+        client.permissions({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+        }),
+        statuses,
+      );
+    },
+
+    async readCustomConnectorPermissions(
+      actor: ApiTestUser,
+      connectorId: string,
+    ): Promise<CustomConnectorPermissionBundleResponse> {
+      const response = await api.requestCustomConnectorPermissions(
+        actor,
+        connectorId,
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body;
     },
 
     async requestPatchCustomConnector(

@@ -80,6 +80,20 @@ export type CustomConnectorPermissionBundleRef = z.infer<
   typeof customConnectorPermissionBundleRefSchema
 >;
 
+const customConnectorPermissionSchema = z.object({
+  name: z.string().min(1).max(128),
+  description: z.string().optional(),
+});
+
+export const customConnectorPermissionBundleSchema = z.object({
+  ref: customConnectorPermissionBundleRefSchema,
+  permissions: z.array(customConnectorPermissionSchema),
+  defaultPolicies: z.record(z.string(), z.enum(["allow", "deny", "ask"])),
+});
+export type CustomConnectorPermissionBundleResponse = z.infer<
+  typeof customConnectorPermissionBundleSchema
+>;
+
 export const customConnectorSkillMarkdownSchema = z.string().refine(
   (value) => {
     return new TextEncoder().encode(value).byteLength <= 65_536;
@@ -330,6 +344,20 @@ export const zeroCustomConnectorByIdContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Update an org custom connector",
+  },
+  permissions: {
+    method: "GET",
+    path: "/api/zero/custom-connectors/:id/permissions",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string().uuid() }),
+    responses: {
+      200: customConnectorPermissionBundleSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Get an org custom connector permission bundle",
   },
 });
 export type ZeroCustomConnectorByIdContract =

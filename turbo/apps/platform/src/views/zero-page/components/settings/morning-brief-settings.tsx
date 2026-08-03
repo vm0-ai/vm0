@@ -84,54 +84,56 @@ export function MorningBriefSettings() {
   }
 
   return (
-    <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
-      <div className="shrink-0">
-        <div className="flex h-7 w-7 items-center justify-center">
-          <IconSunrise
-            size={22}
-            stroke={1.5}
-            className="text-muted-foreground"
-          />
-        </div>
-      </div>
-      <div className="flex flex-1 flex-col gap-1 min-w-0">
-        <div className="text-sm font-medium text-foreground">
-          {t(($) => {
-            return $.settings.preferences.morningBrief.title;
-          })}
-        </div>
-        <div className="text-sm text-muted-foreground">
-          {t(($) => {
-            return $.settings.preferences.morningBrief.description;
-          })}
-        </div>
-        {preferences.morningBriefEnabled && (
-          <div className="text-xs text-muted-foreground">
-            {nextRun === null
-              ? t(($) => {
-                  return $.settings.preferences.morningBrief.notScheduled;
-                })
-              : preferences.timezone
-                ? t(
-                    ($) => {
-                      return $.settings.preferences.morningBrief
-                        .nextEmailInTimezone;
-                    },
-                    {
-                      date: nextRun,
-                      timezone: preferences.timezone,
-                    },
-                  )
-                : t(
-                    ($) => {
-                      return $.settings.preferences.morningBrief.nextEmail;
-                    },
-                    {
-                      date: nextRun,
-                    },
-                  )}
+    <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
+      <div className="flex flex-1 items-center gap-4 min-w-0">
+        <div className="shrink-0">
+          <div className="flex h-7 w-7 items-center justify-center">
+            <IconSunrise
+              size={22}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
           </div>
-        )}
+        </div>
+        <div className="flex flex-1 flex-col gap-1 min-w-0">
+          <div className="text-sm font-medium text-foreground">
+            {t(($) => {
+              return $.settings.preferences.morningBrief.title;
+            })}
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {t(($) => {
+              return $.settings.preferences.morningBrief.description;
+            })}
+          </div>
+          {preferences.morningBriefEnabled && (
+            <div className="text-xs text-muted-foreground">
+              {nextRun === null
+                ? t(($) => {
+                    return $.settings.preferences.morningBrief.notScheduled;
+                  })
+                : preferences.timezone
+                  ? t(
+                      ($) => {
+                        return $.settings.preferences.morningBrief
+                          .nextEmailInTimezone;
+                      },
+                      {
+                        date: nextRun,
+                        timezone: preferences.timezone,
+                      },
+                    )
+                  : t(
+                      ($) => {
+                        return $.settings.preferences.morningBrief.nextEmail;
+                      },
+                      {
+                        date: nextRun,
+                      },
+                    )}
+            </div>
+          )}
+        </div>
       </div>
       <div className="flex shrink-0 items-center gap-3">
         {manualEnabled && (

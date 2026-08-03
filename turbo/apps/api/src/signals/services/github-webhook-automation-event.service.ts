@@ -30,15 +30,10 @@ import { nowDate } from "../external/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 import {
   WorkflowEventSourceTiming,
@@ -777,6 +772,7 @@ function githubWebhookTriggerContext(args: {
 }): WorkflowAutomationContext {
   return {
     workflowName: args.automation.workflowName,
+    eventType: args.event.eventType,
     trigger: `${eventPromptSummary(args.event)} (GitHub webhook delivery ${args.deliveryId}).`,
     notes: [
       "Not included below: user-authored review and comment bodies, logs, and artifacts. Connected GitHub tools and the GitHub API return them.",
@@ -808,20 +804,11 @@ const startGithubWebhookAutomation$ = command(
         due: {
           automation: args.automation.automation,
           agentId: args.automation.agentId,
-          workflowName: args.automation.workflowName,
           chatThreadId: args.automation.chatThreadId,
         },
+        automationContext: context,
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
-        prompt: workflowAutomationPrompt(context),
-        appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
-        callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-          args.automation.chatThreadId,
-          args.automation.agentId,
-        ),
-        activePreviousRunPolicy: "allow",
-        recordLastRunId: false,
-        recordLastRunAt: true,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),
       },

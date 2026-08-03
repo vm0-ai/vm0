@@ -679,6 +679,14 @@ function ActivityRunnerTab({ detailId }: { detailId: string }) {
           }),
         };
       }
+      case "noReuseKey": {
+        return {
+          label: notReused,
+          description: t(($) => {
+            return $.activity.detail.runner.noReuseKey;
+          }),
+        };
+      }
       case "poolMiss": {
         return {
           label: notReused,

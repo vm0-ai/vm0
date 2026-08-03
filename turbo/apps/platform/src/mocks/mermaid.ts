@@ -34,8 +34,14 @@ function isSupportedDiagram(text: string): boolean {
   });
 }
 
+type MermaidInitializeConfig = { readonly theme?: string };
+
+let activeTheme = "";
+
 const mermaid = {
-  initialize: () => {},
+  initialize: (config: MermaidInitializeConfig) => {
+    activeTheme = config.theme ?? "";
+  },
   parse: (text: string) => {
     if (!isSupportedDiagram(text)) {
       return Promise.resolve(false as const);
@@ -44,7 +50,7 @@ const mermaid = {
   },
   render: (id: string) => {
     return Promise.resolve({
-      svg: `<svg data-testid="mermaid-svg" id="${id}"></svg>`,
+      svg: `<svg data-testid="mermaid-svg" data-mermaid-theme="${activeTheme}" id="${id}"></svg>`,
     });
   },
 };

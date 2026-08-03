@@ -156,7 +156,7 @@ describe("zero ideation page", () => {
     expect(screen.queryByText("Daily standup report")).not.toBeInTheDocument();
   });
 
-  it("hides connector-only use cases when catalog omits all refs", async () => {
+  it("hides connector-only use cases when catalog omits all connector slugs", async () => {
     mockConnectorCatalogStatus([]);
 
     detachedSetupPage({

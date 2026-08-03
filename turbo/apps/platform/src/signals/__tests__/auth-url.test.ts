@@ -237,7 +237,7 @@ describe("platform auth redirects", () => {
       signUpUrl: "https://app.vm0.ai/sign-up",
       ui: expect.objectContaining({
         ClerkUI: expect.any(Function),
-        version: "1.26.0",
+        version: "1.27.0",
       }),
     });
   });
@@ -272,7 +272,7 @@ describe("platform auth redirects", () => {
       signUpUrl: "https://app.vm0.ai/sign-up",
       ui: expect.objectContaining({
         ClerkUI: expect.any(Function),
-        version: "1.26.0",
+        version: "1.27.0",
       }),
     });
   });

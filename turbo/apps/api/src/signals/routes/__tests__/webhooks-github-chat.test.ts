@@ -9,6 +9,11 @@ import { env } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
+  clearGitHubTriggerCommentBodyFixture,
+  findPendingChatEventByPromptFixture,
+  readChatEventContextFixture,
+} from "../../../test-fixtures/chat-events";
+import {
   countGitHubRunsByPromptFixture,
   findGitHubInstallationIdFixture,
   findGitHubRunStateFixture,
@@ -466,18 +471,24 @@ describe("GitHub canonical chat threads", () => {
   it("routes pull request mentions through the same canonical table and preserves PR context", async () => {
     const fixture = await seedFixture();
     const subjectNumber = 24_001;
+    const githubFileUrl =
+      "https://github.com/user-attachments/files/12345/review.txt";
+    const rawFilePrompt = `review this pull request ${githubFileUrl}`;
+    const filePrompt = [
+      "review this pull request [GitHub file]",
+      `[URL] ${githubFileUrl}`,
+      "[FILENAME] review.txt",
+    ].join("\n");
     await sendGitHubComment({
       fixture,
       githubUserId: fixture.githubUserA,
       commentId: 30_001,
-      prompt: "review this pull request",
+      prompt: rawFilePrompt,
       subjectNumber,
       subjectKind: "pull_request",
     });
-    const run = await runState(
-      fixture.actorA.userId,
-      "review this pull request",
-    );
+    const run = await runState(fixture.actorA.userId, filePrompt);
+    expect(run.prompt).toBe(filePrompt);
     expect(run.triggerSource).toBe("github");
     expect(run.appendSystemPrompt).toContain(
       `Pull Request URL: https://github.com/${REPO}/pull/${subjectNumber}`,
@@ -496,6 +507,29 @@ describe("GitHub canonical chat threads", () => {
         "follow up in FIFO order",
       ),
     ).resolves.toBe(0);
+    const queuedParams = await findPendingChatEventByPromptFixture(
+      "follow up in FIFO order",
+    );
+    if (!queuedParams) {
+      throw new Error("Expected queued GitHub chat event");
+    }
+    await expect(
+      readChatEventContextFixture(queuedParams.eventId),
+    ).resolves.toMatchObject({
+      contextType: "github",
+      contextId: expect.any(String),
+      githubRepo: REPO,
+      githubSubjectNumber: subjectNumber,
+      githubSubjectKind: "pull_request",
+      githubTriggerCommentId: "30002",
+      githubIssueContext: expect.stringContaining(
+        `Pull Request URL: https://github.com/${REPO}/pull/${subjectNumber}`,
+      ),
+      githubMessageText: "follow up in FIFO order",
+      githubTriggerReactionId: expect.any(String),
+      githubTriggerCommentBody: "@Zero follow up in FIFO order",
+    });
+    await clearGitHubTriggerCommentBodyFixture(queuedParams.eventId);
 
     const firstCliSession = await claimAndFinish({ fixture, run });
     const followUp = await runState(
@@ -524,11 +558,10 @@ describe("GitHub canonical chat threads", () => {
     expect(fixture.postedComments).toStrictEqual([
       expect.objectContaining({
         subjectNumber,
-        body: expect.stringContaining("> @Zero review this pull request"),
+        body: expect.stringContaining(`> @Zero ${rawFilePrompt}`),
       }),
       expect.objectContaining({
         subjectNumber,
-        body: expect.stringContaining("> @Zero follow up in FIFO order"),
       }),
     ]);
   });

@@ -117,7 +117,8 @@
       "runner": {
         "deviceLimitMismatch": "Une entrée de pool inactif existe mais son état de limiteur de débit de l'appareil ne correspond pas.",
         "featureDisabled": "La réutilisation du bac à sable est désactivée pour cette exécution.",
-        "noSessionId": "Aucun ID de session disponible pour correspondre au pool inactif.",
+        "noReuseKey": "Aucune clé de réutilisation n'était disponible pour trouver un bac à sable inactif.",
+        "noSessionId": "Résultat hérité : la raison exacte pour laquelle le bac à sable n'a pas été réutilisé n'est pas disponible.",
         "notReused": "Non réutilisé",
         "poolMiss": "Aucun bac à sable correspondant trouvé dans le pool inactif.",
         "profileMismatch": "Une entrée de pool inactif existe mais son profil ne correspond pas.",
@@ -1253,7 +1254,6 @@
       "configureModel": "Configurer le modèle",
       "createWorkflow": "Créer un workflow",
       "message": "Message",
-      "modelConfigureAction": "Configurer le modèle",
       "placeholder": "Demandez-moi d’automatiser des workflows, de gérer des tâches...",
       "selectedModelUnavailable": "Le modèle sélectionné n'est pas disponible. Configurez-le avant d'envoyer.",
       "selectedModelUnavailableToast": "Le modèle sélectionné n'est pas disponible",
@@ -1393,6 +1393,7 @@
     },
     "newChat": "Nouvelle discussion",
     "origins": {
+      "agentphone": "AgentPhone",
       "feishu": "Feishu",
       "github": "GitHub",
       "openChat": "Ouvrir la discussion",

@@ -96,6 +96,7 @@ class _InFlight:
     future: asyncio.Future[_CacheEntry | None] = field(repr=False)
     prefetch_owner: bool
     waiters: int = 0
+    observed_etag: str | None = field(default=None, repr=False)
 
 
 @dataclass
@@ -857,11 +858,12 @@ def finalize_response(flow: http.HTTPFlow) -> None:
         if isinstance(validated, str):
             _set_not_stored(flow, state, validated, now=now)
             return
-        if state.key in _entries:
+        body, content_type, etag = validated
+        observed_etag = state.in_flight.observed_etag
+        if state.key in _entries or (observed_etag is not None and observed_etag != etag):
             _set_not_stored(flow, state, "concurrent_change", now=now)
             return
 
-        body, content_type, etag = validated
         entry = _CacheEntry(
             body=body,
             content_type=content_type,
@@ -915,6 +917,10 @@ def observe_authenticated_models_etag(flow: http.HTTPFlow) -> None:
     credential_digest = _credential_digest(flow)
     if credential_digest is None:
         return
+
+    for key, in_flight in _in_flight.items():
+        if key.credential_digest == credential_digest:
+            in_flight.observed_etag = signal_etag
 
     keys = [key for key in _entries if key.credential_digest == credential_digest]
     if not keys:

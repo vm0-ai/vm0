@@ -47,17 +47,12 @@ import {
   encryptStoredSecretValue,
 } from "./crypto.utils";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
   type RunWorkflowAutomationNowArgs,
   type RunWorkflowAutomationResult,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 
 const log = logger("api:notion-workflow-event");
 
@@ -1647,12 +1642,16 @@ async function loadDueNotionPendingEvents(args: {
   readonly db: Db;
   readonly currentTime: Date;
   readonly signal: AbortSignal;
+  readonly automationId?: string;
 }): Promise<readonly NotionPendingRow[]> {
   const rows = await args.db
     .select(notionPendingEventColumns())
     .from(notionWorkflowPendingEvents)
     .where(
       and(
+        args.automationId === undefined
+          ? undefined
+          : eq(notionWorkflowPendingEvents.automationId, args.automationId),
         eq(notionWorkflowPendingEvents.status, "pending"),
         lte(notionWorkflowPendingEvents.runAfter, args.currentTime),
       ),
@@ -1661,6 +1660,45 @@ async function loadDueNotionPendingEvents(args: {
     .limit(NOTION_PENDING_BATCH_SIZE);
   args.signal.throwIfAborted();
   return rows;
+}
+
+async function executeDueNotionWorkflowEvents(args: {
+  readonly db: Db;
+  readonly signal: AbortSignal;
+  readonly automationId?: string;
+  readonly startRun: NotionRunStarter;
+}): Promise<ExecuteDueNotionEventsResult> {
+  const dueEvents = await loadDueNotionPendingEvents({
+    db: args.db,
+    currentTime: nowDate(),
+    signal: args.signal,
+    automationId: args.automationId,
+  });
+  let executed = 0;
+  let skipped = 0;
+  for (const pending of dueEvents) {
+    const claimed = await claimNotionPendingEvent({
+      db: args.db,
+      pending,
+      currentTime: nowDate(),
+      signal: args.signal,
+    });
+    if (!claimed) {
+      continue;
+    }
+    const outcome = await processClaimedNotionPendingEvent({
+      db: args.db,
+      pending: claimed,
+      signal: args.signal,
+      startRun: args.startRun,
+    });
+    if (outcome === "executed") {
+      executed += 1;
+    } else {
+      skipped += 1;
+    }
+  }
+  return { executed, skipped };
 }
 
 async function claimNotionPendingEvent(args: {
@@ -1810,6 +1848,7 @@ function notionChildPageTriggerContext(args: {
   const pageTitle = notionTitleFromProperties(args.page.properties);
   return {
     workflowName: args.workflowName,
+    eventType: "notion-child-page-created",
     trigger: `Notion child page ${args.page.id} was created under the configured parent page (latest change ${args.latestEventAt.toISOString()}).`,
     notes: [NOTION_PAGE_BODY_NOTE],
     event: {
@@ -1846,6 +1885,7 @@ function notionDatabaseItemTriggerContext(args: {
   const pageTitle = notionTitleFromProperties(args.page.properties);
   return {
     workflowName: args.workflowName,
+    eventType: "notion-database-item-created",
     trigger: `Notion database item ${args.page.id} was created in the configured database (latest change ${args.latestEventAt.toISOString()}).`,
     notes: [NOTION_PAGE_BODY_NOTE],
     event: {
@@ -1902,6 +1942,7 @@ function notionPageContentUpdatedTriggerContext(args: {
         };
   return {
     workflowName: args.workflowName,
+    eventType: "notion-page-content-updated",
     trigger: `Notion page ${args.page.id} content was updated (latest change ${args.latestEventAt.toISOString()}).`,
     notes: [NOTION_PAGE_BODY_NOTE],
     event: {
@@ -2047,21 +2088,12 @@ async function startNotionWorkflowRun(args: {
       due: {
         automation: args.row.automation,
         agentId: args.row.agentId,
-        workflowName: args.row.workflowName,
         chatThreadId: args.chatThreadId,
       },
+      automationContext: args.context,
       apiStartTime: now(),
       triggerSource: "workflow-event",
-      prompt: workflowAutomationPrompt(args.context),
-      appendSystemPrompt: workflowAutomationAppendSystemPrompt(args.context),
       triggerBrief: args.triggerBrief,
-      callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-        args.chatThreadId,
-        args.row.agentId,
-      ),
-      activePreviousRunPolicy: "allow",
-      recordLastRunId: false,
-      recordLastRunAt: true,
       dispatchFailedCallbacks: dispatchFailedRunCallbacks,
     },
     args.signal,
@@ -2504,38 +2536,29 @@ export const executeDueNotionWorkflowEvents$ = command(
     { set },
     signal: AbortSignal,
   ): Promise<ExecuteDueNotionEventsResult> => {
-    const db = set(writeDb$);
-    const dueEvents = await loadDueNotionPendingEvents({
-      db,
-      currentTime: nowDate(),
+    return await executeDueNotionWorkflowEvents({
+      db: set(writeDb$),
       signal,
+      startRun: (input, childSignal) => {
+        return set(runWorkflowAutomationNow$, input, childSignal);
+      },
     });
-    let executed = 0;
-    let skipped = 0;
-    for (const pending of dueEvents) {
-      const claimed = await claimNotionPendingEvent({
-        db,
-        pending,
-        currentTime: nowDate(),
-        signal,
-      });
-      if (!claimed) {
-        continue;
-      }
-      const outcome = await processClaimedNotionPendingEvent({
-        db,
-        pending: claimed,
-        signal,
-        startRun: (input, childSignal) => {
-          return set(runWorkflowAutomationNow$, input, childSignal);
-        },
-      });
-      if (outcome === "executed") {
-        executed += 1;
-      } else {
-        skipped += 1;
-      }
-    }
-    return { executed, skipped };
+  },
+);
+
+export const executeDueNotionWorkflowEventsForAutomation$ = command(
+  async (
+    { set },
+    automationId: string,
+    signal: AbortSignal,
+  ): Promise<ExecuteDueNotionEventsResult> => {
+    return await executeDueNotionWorkflowEvents({
+      db: set(writeDb$),
+      automationId,
+      signal,
+      startRun: (input, childSignal) => {
+        return set(runWorkflowAutomationNow$, input, childSignal);
+      },
+    });
   },
 );

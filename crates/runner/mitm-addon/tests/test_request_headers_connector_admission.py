@@ -714,8 +714,8 @@ async def test_firewall_allow_prior_client_binding_endpoint_match_still_requires
     assert flow.server_conn.id not in upstream_destination_binding.binding_snapshot_for_tests()
 
 
-async def test_firewall_allow_header_auth_requestheaders_retargets_unconnected_upstream(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+async def test_firewall_allow_header_auth_unconnected_skips_prior_client_binding_scan(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
@@ -732,6 +732,39 @@ async def test_firewall_allow_header_auth_requestheaders_retargets_unconnected_u
             ("Host", "api.github.com"),
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
+    )
+    prior_server = connection.Server(address=("198.18.20.34", 443))
+    seed_server_binding(
+        prior_server,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("198.18.20.34", 443),
+    )
+    client_binding_lookups = 0
+    matching_client_bindings = upstream_destination_binding._matching_client_bindings
+
+    def track_matching_client_bindings(
+        client: object,
+        *,
+        host: str,
+        port: int,
+        allowed_kinds: frozenset[upstream_destination_binding.BindingKind],
+    ) -> tuple[upstream_destination_binding.UpstreamDestinationBinding, ...]:
+        nonlocal client_binding_lookups
+        client_binding_lookups += 1
+        return matching_client_bindings(
+            client,
+            host=host,
+            port=port,
+            allowed_kinds=allowed_kinds,
+        )
+
+    monkeypatch.setattr(
+        upstream_destination_binding,
+        "_matching_client_bindings",
+        track_matching_client_bindings,
     )
 
     with (
@@ -752,6 +785,7 @@ async def test_firewall_allow_header_auth_requestheaders_retargets_unconnected_u
     assert flow.response is None
     assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
     assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
+    assert client_binding_lookups == 0
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
     assert binding.host == "api.github.com"
     assert binding.kinds == frozenset(("connector_auth",))

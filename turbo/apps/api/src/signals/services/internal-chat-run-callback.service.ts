@@ -41,13 +41,19 @@ import {
 import { z } from "zod";
 
 import { nullableDriverValueDecoder } from "../../lib/db-structured-result";
+import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
+  generatePresignedGetUrl,
+  generatePresignedPutUrl,
+} from "../external/s3";
+import {
   publishChatThreadDetailChangedSafely,
   publishChatThreadMessageCreatedSafely,
+  publishChatThreadRunCreatedSafely,
   publishThreadListChanged,
   publishThreadListChangedSafely,
   publishUserSignal,
@@ -77,6 +83,7 @@ import {
 } from "./internal-slack-chat-run-callback.service";
 import {
   clearCanonicalFeishuThinkingReaction,
+  deliverFeishuChatAdmissionFailure,
   dispatchFeishuChatDeliveryOnce,
 } from "./internal-feishu-chat-run-callback.service";
 import {
@@ -135,8 +142,6 @@ import {
 } from "./assistant-event-id";
 import { attachCanonicalPublishedAssetsToCompletionEvent } from "./canonical-published-asset-event.service";
 import {
-  decryptQueuedUserMessageRunParams,
-  discardUnclaimedUserMessageInTransaction,
   failQueuedUserMessage,
   loadNextUnclaimedQueuedUserMessage,
   resolveAttachFileMetadata$,
@@ -166,6 +171,35 @@ import {
   type ModelFirstPin,
 } from "./zero-model-selection.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import {
+  loadSlackQueuedLaunchMaterial,
+  type SlackQueuedLaunchMaterial,
+} from "./slack-queued-launch-context.service";
+import {
+  loadFeishuQueuedLaunchMaterial,
+  type FeishuQueuedLaunchMaterial,
+} from "./feishu-queued-launch-context.service";
+import {
+  loadTeamsQueuedLaunchMaterial,
+  type TeamsQueuedLaunchMaterial,
+} from "./teams-queued-launch-context.service";
+import {
+  loadGitHubQueuedLaunchMaterial,
+  type GitHubQueuedLaunchMaterial,
+} from "./github-queued-launch-context.service";
+import {
+  loadMorningBriefQueuedLaunchMaterial,
+  type MorningBriefQueuedLaunchMaterial,
+} from "./morning-brief-queued-launch-context.service";
+import { MORNING_BRIEF_SIGNED_URL_TTL_SECONDS } from "./morning-brief-run-prompt";
+import {
+  loadAgentPhoneQueuedLaunchMaterial,
+  type AgentPhoneQueuedLaunchMaterial,
+} from "./agentphone-queued-launch-context.service";
+import {
+  loadTelegramQueuedLaunchMaterial,
+  type TelegramQueuedLaunchMaterial,
+} from "./telegram-queued-launch-context.service";
 
 const log = logger("callback:chat");
 const PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -478,6 +512,16 @@ interface ChatCallbackDependencies {
     callbackId: string,
     signal: AbortSignal,
   ) => Promise<void>;
+  readonly deliverFeishuAdmissionFailure: (
+    args: {
+      readonly chatThreadId: string;
+      readonly userId: string;
+      readonly orgId: string;
+      readonly target: FeishuDeliveryTarget;
+      readonly chatEventId: string;
+    },
+    signal: AbortSignal,
+  ) => Promise<void>;
   readonly clearFeishuThinkingReaction: (
     target: FeishuDeliveryTarget,
     signal: AbortSignal,
@@ -633,6 +677,25 @@ interface SlackQueuedMessageAdmissionFailure {
   readonly error: QueuedMessageModelRouteError;
 }
 
+interface WebQueuedMessageAdmissionFailure {
+  readonly kind: "web_admission_failure";
+  readonly orgId: string;
+  readonly userId: string;
+  readonly threadId: string;
+  readonly queuedMessage: QueuedUserMessage;
+  readonly error: QueuedMessageModelRouteError;
+}
+
+interface FeishuQueuedMessageAdmissionFailure {
+  readonly kind: "feishu_admission_failure";
+  readonly orgId: string;
+  readonly userId: string;
+  readonly threadId: string;
+  readonly queuedMessage: QueuedUserMessage;
+  readonly feishuDelivery: FeishuDeliveryTarget;
+  readonly error: QueuedMessageModelRouteError;
+}
+
 interface TeamsQueuedMessageAdmissionFailure {
   readonly kind: "teams_admission_failure";
   readonly orgId: string;
@@ -646,9 +709,11 @@ interface TeamsQueuedMessageAdmissionFailure {
 
 interface MorningBriefQueuedMessageAdmissionFailure {
   readonly kind: "morning_brief_admission_failure";
+  readonly orgId: string;
+  readonly userId: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
-  readonly morningBriefDelivery?: NonNullable<
+  readonly morningBriefDelivery: NonNullable<
     CreateQueuedChatRunInput["morningBriefDelivery"]
   >;
   readonly error: QueuedMessageModelRouteError;
@@ -688,7 +753,9 @@ interface GitHubQueuedMessageAdmissionFailure {
 }
 
 type QueuedMessageAdmissionFailure =
+  | WebQueuedMessageAdmissionFailure
   | SlackQueuedMessageAdmissionFailure
+  | FeishuQueuedMessageAdmissionFailure
   | TeamsQueuedMessageAdmissionFailure
   | TelegramQueuedMessageAdmissionFailure
   | AgentPhoneQueuedMessageAdmissionFailure
@@ -2568,17 +2635,9 @@ async function resolveQueuedMessageModelRoute(args: {
         return unpinnedRoute;
       }
     }
-    log.warn("Auto-send aborted: current model route is unavailable", {
-      threadId: args.threadId,
-      error: modelContext.body.error.message,
-    });
     return { error: modelContext.body.error };
   }
   if (modelContext.providerAdmission.error) {
-    log.warn("Auto-send aborted: current model route was not admitted", {
-      threadId: args.threadId,
-      error: modelContext.providerAdmission.error.body.error.message,
-    });
     return { error: modelContext.providerAdmission.error.body.error };
   }
   return {
@@ -2605,6 +2664,10 @@ interface CreateQueuedChatRunInputArgs {
     attachFiles: readonly string[] | null,
     signal: AbortSignal,
   ) => Promise<ChatEventAttachFileMetadata[] | null>;
+  readonly resolveMorningBriefSignedUrls: (
+    keys: { readonly inputKey: string; readonly outputKey: string },
+    signal: AbortSignal,
+  ) => Promise<{ readonly inputUrl: string; readonly outputUrl: string }>;
 }
 
 function loadQueuedMessageSessionState(
@@ -2645,156 +2708,7 @@ function loadQueuedMessageSessionState(
   );
 }
 
-function slackQueuedMessageAdmissionFailure(
-  args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
-  error: QueuedMessageModelRouteError,
-): SlackQueuedMessageAdmissionFailure | null {
-  if (
-    args.queuedMessage.triggerSource !== "slack" ||
-    !sourceParams?.slackDelivery
-  ) {
-    return null;
-  }
-  return {
-    kind: "slack_admission_failure",
-    orgId: args.agent.orgId,
-    userId: args.userId,
-    agentId: args.agent.id,
-    threadId: args.threadId,
-    queuedMessage: args.queuedMessage,
-    slackDelivery: sourceParams.slackDelivery,
-    error,
-  };
-}
-
-function teamsQueuedMessageAdmissionFailure(
-  args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
-  error: QueuedMessageModelRouteError,
-): TeamsQueuedMessageAdmissionFailure | null {
-  if (
-    args.queuedMessage.triggerSource !== "teams" ||
-    !sourceParams?.teamsDelivery
-  ) {
-    return null;
-  }
-  return {
-    kind: "teams_admission_failure",
-    orgId: args.agent.orgId,
-    userId: args.userId,
-    agentId: args.agent.id,
-    threadId: args.threadId,
-    queuedMessage: args.queuedMessage,
-    teamsDelivery: sourceParams.teamsDelivery,
-    error,
-  };
-}
-
-function morningBriefQueuedMessageAdmissionFailure(
-  args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
-  error: QueuedMessageModelRouteError,
-): MorningBriefQueuedMessageAdmissionFailure | null {
-  if (args.queuedMessage.triggerSource !== "workflow-schedule") {
-    return null;
-  }
-  return {
-    kind: "morning_brief_admission_failure",
-    threadId: args.threadId,
-    queuedMessage: args.queuedMessage,
-    morningBriefDelivery: sourceParams?.morningBriefDelivery,
-    error,
-  };
-}
-
-function telegramQueuedMessageAdmissionFailure(
-  args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
-  error: QueuedMessageModelRouteError,
-): TelegramQueuedMessageAdmissionFailure | null {
-  if (
-    args.queuedMessage.triggerSource !== "telegram" ||
-    !sourceParams?.telegramDelivery
-  ) {
-    return null;
-  }
-  return {
-    kind: "telegram_admission_failure",
-    orgId: args.agent.orgId,
-    userId: args.userId,
-    agentId: args.agent.id,
-    threadId: args.threadId,
-    queuedMessage: args.queuedMessage,
-    telegramDelivery: sourceParams.telegramDelivery,
-    error,
-  };
-}
-
-function agentPhoneQueuedMessageAdmissionFailure(
-  args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
-  error: QueuedMessageModelRouteError,
-): AgentPhoneQueuedMessageAdmissionFailure | null {
-  if (
-    args.queuedMessage.triggerSource !== "agentphone" ||
-    !sourceParams?.agentphoneDelivery
-  ) {
-    return null;
-  }
-  return {
-    kind: "agentphone_admission_failure",
-    orgId: args.agent.orgId,
-    userId: args.userId,
-    agentId: args.agent.id,
-    threadId: args.threadId,
-    queuedMessage: args.queuedMessage,
-    agentphoneDelivery: sourceParams.agentphoneDelivery,
-    error,
-  };
-}
-
-function githubQueuedMessageAdmissionFailure(
-  args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
-  error: QueuedMessageModelRouteError,
-): GitHubQueuedMessageAdmissionFailure | null {
-  if (
-    args.queuedMessage.triggerSource !== "github" ||
-    !sourceParams?.githubDelivery
-  ) {
-    return null;
-  }
-  return {
-    kind: "github_admission_failure",
-    orgId: args.agent.orgId,
-    userId: args.userId,
-    agentId: args.agent.id,
-    threadId: args.threadId,
-    queuedMessage: args.queuedMessage,
-    githubDelivery: sourceParams.githubDelivery,
-    error,
-  };
-}
-
-function queuedMessageAdmissionFailure(
-  args: CreateQueuedChatRunInputArgs,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
-  error: QueuedMessageModelRouteError,
-): QueuedMessageAdmissionFailure | null {
-  return (
-    slackQueuedMessageAdmissionFailure(args, sourceParams, error) ??
-    teamsQueuedMessageAdmissionFailure(args, sourceParams, error) ??
-    telegramQueuedMessageAdmissionFailure(args, sourceParams, error) ??
-    agentPhoneQueuedMessageAdmissionFailure(args, sourceParams, error) ??
-    githubQueuedMessageAdmissionFailure(args, sourceParams, error) ??
-    morningBriefQueuedMessageAdmissionFailure(args, sourceParams, error)
-  );
-}
-
-function queuedIntegrationDeliveries(
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
-): Pick<
+type QueuedIntegrationDeliveries = Pick<
   CreateQueuedChatRunInput,
   | "slackDelivery"
   | "feishuDelivery"
@@ -2803,16 +2717,265 @@ function queuedIntegrationDeliveries(
   | "agentphoneDelivery"
   | "githubDelivery"
   | "morningBriefDelivery"
-> {
-  return {
-    slackDelivery: sourceParams?.slackDelivery,
-    feishuDelivery: sourceParams?.feishuDelivery,
-    teamsDelivery: sourceParams?.teamsDelivery,
-    telegramDelivery: sourceParams?.telegramDelivery,
-    agentphoneDelivery: sourceParams?.agentphoneDelivery,
-    githubDelivery: sourceParams?.githubDelivery,
-    morningBriefDelivery: sourceParams?.morningBriefDelivery,
+>;
+
+interface QueuedLaunchMaterial {
+  readonly prompt: string;
+  readonly appendSystemPrompt: string;
+  readonly delivery: QueuedIntegrationDeliveries;
+  readonly userInfoExtras?: CreateQueuedChatRunInput["userInfoExtras"];
+}
+
+interface QueuedLaunchLoaderArgs {
+  readonly eventId: string;
+  readonly chatThreadId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly resolveSignedUrls: (keys: {
+    readonly inputKey: string;
+    readonly outputKey: string;
+  }) => Promise<{ readonly inputUrl: string; readonly outputUrl: string }>;
+}
+
+type LaunchLoader = (
+  db: Db,
+  args: QueuedLaunchLoaderArgs,
+) => Promise<QueuedLaunchMaterial | null>;
+
+type NativeQueuedLaunchMaterial =
+  | SlackQueuedLaunchMaterial
+  | FeishuQueuedLaunchMaterial
+  | TeamsQueuedLaunchMaterial
+  | (GitHubQueuedLaunchMaterial & { readonly userInfoExtras?: undefined })
+  | AgentPhoneQueuedLaunchMaterial
+  | TelegramQueuedLaunchMaterial
+  | MorningBriefQueuedLaunchMaterial;
+
+function launchLoader<Material extends NativeQueuedLaunchMaterial>(
+  load: (db: Db, args: QueuedLaunchLoaderArgs) => Promise<Material | null>,
+  delivery: (material: Material) => QueuedIntegrationDeliveries,
+): LaunchLoader {
+  return async (db, args) => {
+    const material = await load(db, args);
+    if (!material) {
+      return null;
+    }
+    return {
+      prompt: material.prompt,
+      appendSystemPrompt: material.appendSystemPrompt,
+      delivery: delivery(material),
+      ...(material.userInfoExtras
+        ? { userInfoExtras: material.userInfoExtras }
+        : {}),
+    };
   };
+}
+
+async function resolveQueuedLaunchMaterial(
+  args: CreateQueuedChatRunInputArgs,
+): Promise<QueuedLaunchMaterial | null> {
+  const triggerSource = args.queuedMessage.triggerSource;
+  let load: LaunchLoader;
+  switch (triggerSource) {
+    case "web": {
+      return null;
+    }
+    case "slack": {
+      load = launchLoader(loadSlackQueuedLaunchMaterial, (material) => {
+        return { slackDelivery: material.slackDelivery };
+      });
+      break;
+    }
+    case "feishu": {
+      load = launchLoader(loadFeishuQueuedLaunchMaterial, (material) => {
+        return { feishuDelivery: material.feishuDelivery };
+      });
+      break;
+    }
+    case "teams": {
+      load = launchLoader(loadTeamsQueuedLaunchMaterial, (material) => {
+        return { teamsDelivery: material.teamsDelivery };
+      });
+      break;
+    }
+    case "telegram": {
+      load = launchLoader(loadTelegramQueuedLaunchMaterial, (material) => {
+        return { telegramDelivery: material.telegramDelivery };
+      });
+      break;
+    }
+    case "agentphone": {
+      load = launchLoader(loadAgentPhoneQueuedLaunchMaterial, (material) => {
+        return { agentphoneDelivery: material.agentphoneDelivery };
+      });
+      break;
+    }
+    case "github": {
+      load = launchLoader(loadGitHubQueuedLaunchMaterial, (material) => {
+        return { githubDelivery: material.githubDelivery };
+      });
+      break;
+    }
+    case "workflow-schedule": {
+      load = launchLoader(loadMorningBriefQueuedLaunchMaterial, (material) => {
+        return {
+          morningBriefDelivery: {
+            deliveryId: material.deliveryId,
+            internalKind: "morning-brief:email",
+            secret: generateCallbackSecret(),
+            payload: { deliveryId: material.deliveryId },
+          },
+        };
+      });
+      break;
+    }
+    default: {
+      return unreachableQueuedTriggerSource(triggerSource);
+    }
+  }
+  const material = await load(args.db, {
+    eventId: args.queuedMessage.id,
+    chatThreadId: args.threadId,
+    orgId: args.agent.orgId,
+    userId: args.userId,
+    resolveSignedUrls: (keys) => {
+      return args.resolveMorningBriefSignedUrls(keys, args.signal);
+    },
+  });
+  if (material) {
+    return material;
+  }
+  throw new Error(`${triggerSource} queue item is missing launch material`);
+}
+
+function queuedIntegrationDeliveries(
+  launchMaterial: QueuedLaunchMaterial | null,
+): QueuedIntegrationDeliveries {
+  return launchMaterial?.delivery ?? {};
+}
+
+function unreachableQueuedTriggerSource(triggerSource: never): never {
+  throw new Error(
+    `Unsupported queued trigger source: ${String(triggerSource)}`,
+  );
+}
+
+function requiredQueuedDelivery<Delivery>(
+  delivery: Delivery | undefined,
+  triggerSource: QueuedUserMessage["triggerSource"],
+): Delivery {
+  if (!delivery) {
+    throw new Error(`${triggerSource} queue item is missing delivery material`);
+  }
+  return delivery;
+}
+
+function queuedMessageAdmissionFailure(
+  args: CreateQueuedChatRunInputArgs,
+  launchMaterial: QueuedLaunchMaterial | null,
+  error: QueuedMessageModelRouteError,
+): QueuedMessageAdmissionFailure {
+  const common = {
+    orgId: args.agent.orgId,
+    userId: args.userId,
+    agentId: args.agent.id,
+    threadId: args.threadId,
+    queuedMessage: args.queuedMessage,
+    error,
+  };
+  const triggerSource = args.queuedMessage.triggerSource;
+  switch (triggerSource) {
+    case "web": {
+      return { kind: "web_admission_failure", ...common };
+    }
+    case "slack": {
+      return {
+        kind: "slack_admission_failure",
+        ...common,
+        slackDelivery: requiredQueuedDelivery(
+          launchMaterial?.delivery.slackDelivery,
+          triggerSource,
+        ),
+      };
+    }
+    case "feishu": {
+      return {
+        kind: "feishu_admission_failure",
+        ...common,
+        feishuDelivery: requiredQueuedDelivery(
+          launchMaterial?.delivery.feishuDelivery,
+          triggerSource,
+        ),
+      };
+    }
+    case "teams": {
+      return {
+        kind: "teams_admission_failure",
+        ...common,
+        teamsDelivery: requiredQueuedDelivery(
+          launchMaterial?.delivery.teamsDelivery,
+          triggerSource,
+        ),
+      };
+    }
+    case "telegram": {
+      return {
+        kind: "telegram_admission_failure",
+        ...common,
+        telegramDelivery: requiredQueuedDelivery(
+          launchMaterial?.delivery.telegramDelivery,
+          triggerSource,
+        ),
+      };
+    }
+    case "agentphone": {
+      return {
+        kind: "agentphone_admission_failure",
+        ...common,
+        agentphoneDelivery: requiredQueuedDelivery(
+          launchMaterial?.delivery.agentphoneDelivery,
+          triggerSource,
+        ),
+      };
+    }
+    case "github": {
+      return {
+        kind: "github_admission_failure",
+        ...common,
+        githubDelivery: requiredQueuedDelivery(
+          launchMaterial?.delivery.githubDelivery,
+          triggerSource,
+        ),
+      };
+    }
+    case "workflow-schedule": {
+      return {
+        kind: "morning_brief_admission_failure",
+        ...common,
+        morningBriefDelivery: requiredQueuedDelivery(
+          launchMaterial?.delivery.morningBriefDelivery,
+          triggerSource,
+        ),
+        error,
+      };
+    }
+    default: {
+      return unreachableQueuedTriggerSource(triggerSource);
+    }
+  }
+}
+
+function queuedMessagePrompt(args: {
+  readonly launchMaterial: QueuedLaunchMaterial | null;
+  readonly projectedPrompt: string;
+}): string {
+  return args.launchMaterial?.prompt ?? args.projectedPrompt;
+}
+
+function queuedIntegrationPrompt(args: {
+  readonly launchMaterial: QueuedLaunchMaterial | null;
+}): string {
+  return args.launchMaterial?.appendSystemPrompt ?? buildWebChatPrompt();
 }
 
 function resolveQueuedMessageGenerationTemplatePrompt(args: {
@@ -2839,16 +3002,39 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
   );
 }
 
+async function loadQueuedRunMaterial(args: CreateQueuedChatRunInputArgs) {
+  return await resolveQueuedLaunchMaterial(args);
+}
+
+function queuedUserMessageProjection(
+  message: QueuedUserMessage["userMessage"],
+  inlineTemplatesEnabled: boolean,
+) {
+  const queuedUserMessage = requiredUserMessageForEvent(
+    "input.prompt",
+    message,
+  );
+  if (!queuedUserMessage) {
+    throw new Error("Queued input event is missing userMessage");
+  }
+  return projectUserMessage(queuedUserMessage, {
+    inlineTemplates: inlineTemplatesEnabled,
+  });
+}
+
+function queuedIntegrationLaunchFields(
+  launchMaterial: QueuedLaunchMaterial | null,
+) {
+  return {
+    ...queuedIntegrationDeliveries(launchMaterial),
+    userInfoExtras: launchMaterial?.userInfoExtras,
+  };
+}
+
 async function buildCreateQueuedChatRunInput(
   args: CreateQueuedChatRunInputArgs,
-): Promise<CreateQueuedChatRunInput | QueuedMessageAdmissionFailure | null> {
-  const sourceParams = await decryptQueuedUserMessageRunParams(
-    args.queuedMessage.encryptedParams,
-    { orgId: args.agent.orgId, userId: args.userId },
-  );
-  if (args.queuedMessage.triggerSource !== "web" && !sourceParams) {
-    throw new Error("Canonical integration queue item is missing run params");
-  }
+): Promise<CreateQueuedChatRunInput | QueuedMessageAdmissionFailure> {
+  const launchMaterial = await loadQueuedRunMaterial(args);
   const modelRouteResolution = await resolveQueuedMessageModelRoute({
     db: args.db,
     threadId: args.threadId,
@@ -2860,7 +3046,7 @@ async function buildCreateQueuedChatRunInput(
   if ("error" in modelRouteResolution) {
     return queuedMessageAdmissionFailure(
       args,
-      sourceParams,
+      launchMaterial,
       modelRouteResolution.error,
     );
   }
@@ -2878,16 +3064,10 @@ async function buildCreateQueuedChatRunInput(
     FeatureSwitchKey.StructuredPromptInlineTemplates,
     featureSwitchContext,
   );
-  const queuedUserMessage = requiredUserMessageForEvent(
-    "input.prompt",
+  const userMessageProjection = queuedUserMessageProjection(
     args.queuedMessage.userMessage,
+    inlineTemplatesEnabled,
   );
-  if (!queuedUserMessage) {
-    throw new Error("Queued input event is missing userMessage");
-  }
-  const userMessageProjection = projectUserMessage(queuedUserMessage, {
-    inlineTemplates: inlineTemplatesEnabled,
-  });
   const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
     args.timing,
@@ -2923,10 +3103,10 @@ async function buildCreateQueuedChatRunInput(
       });
     },
   );
-  const prompt =
-    args.queuedMessage.triggerSource === "workflow-schedule"
-      ? (sourceParams?.prompt ?? userMessageProjection.agentPrompt)
-      : userMessageProjection.agentPrompt;
+  const prompt = queuedMessagePrompt({
+    launchMaterial,
+    projectedPrompt: userMessageProjection.agentPrompt,
+  });
 
   return {
     orgId: args.agent.orgId,
@@ -2934,7 +3114,9 @@ async function buildCreateQueuedChatRunInput(
     agentId: args.agent.id,
     prompt,
     appendSystemPrompt: buildAppendSystemPrompt(
-      sourceParams?.appendSystemPrompt ?? buildWebChatPrompt(),
+      queuedIntegrationPrompt({
+        launchMaterial,
+      }),
       incompleteContext,
       priorContext,
       generationTemplatePrompt,
@@ -2953,9 +3135,8 @@ async function buildCreateQueuedChatRunInput(
       FeatureSwitchKey.RealAgentInPreview,
       featureSwitchContext,
     ),
-    ...queuedIntegrationDeliveries(sourceParams),
+    ...queuedIntegrationLaunchFields(launchMaterial),
     apiStartTime: args.queuedMessage.createdAt.getTime(),
-    userInfoExtras: sourceParams?.userInfoExtras,
   };
 }
 
@@ -3039,15 +3220,130 @@ async function publishAutoSentQueuedRunSignals(args: {
     "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
     "nested",
     async () => {
-      await publishUserSignal(
-        [args.userId],
-        `chatThreadMessageCreated:${args.threadId}`,
-      );
-      await publishUserSignal(
-        [args.userId],
-        `chatThreadRunCreated:${args.threadId}`,
-      );
-      await publishThreadListChanged(args.userId);
+      await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
+      await publishChatThreadRunCreatedSafely(args.userId, args.threadId);
+      await publishThreadListChangedSafely(args.userId);
+    },
+  );
+}
+
+function recordQueuedMessageAdmissionFailure(
+  failure: QueuedMessageAdmissionFailure,
+): void {
+  const fields = {
+    threadId: failure.threadId,
+    userMessageId: failure.queuedMessage.id,
+    triggerSource: failure.queuedMessage.triggerSource,
+    code: failure.error.code,
+  };
+  if (failure.error.code === "INSUFFICIENT_CREDITS") {
+    log.debug("Queued message rejected by current model admission", fields);
+    return;
+  }
+  log.warn("Queued message rejected because the model route is unavailable", {
+    ...fields,
+    error: failure.error.message,
+  });
+}
+
+async function handleWebQueuedMessageAdmissionFailure(args: {
+  readonly db: Db;
+  readonly failure: WebQueuedMessageAdmissionFailure;
+  readonly signal: AbortSignal;
+  readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
+}): Promise<void> {
+  const displayError = await args.formatError(
+    {
+      orgId: args.failure.orgId,
+      userId: args.failure.userId,
+      code: args.failure.error.code,
+      message: args.failure.error.message,
+    },
+    args.signal,
+  );
+  args.signal.throwIfAborted();
+  const failed = await failQueuedUserMessage(args.db, {
+    threadId: args.failure.threadId,
+    eventId: args.failure.queuedMessage.id,
+    assistantContent: displayError,
+    errorMarker: args.failure.error.code.toLowerCase(),
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  if (!failed) {
+    return;
+  }
+
+  recordQueuedMessageAdmissionFailure(args.failure);
+  await publishUserSignal(
+    [args.failure.userId],
+    `chatThreadMessageCreated:${args.failure.threadId}`,
+  );
+  await publishThreadListChanged(args.failure.userId);
+}
+
+async function handleFeishuQueuedMessageAdmissionFailure(args: {
+  readonly db: Db;
+  readonly failure: FeishuQueuedMessageAdmissionFailure;
+  readonly signal: AbortSignal;
+  readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
+  readonly deliver: ChatCallbackDependencies["deliverFeishuAdmissionFailure"];
+  readonly clearThinking: ChatCallbackDependencies["clearFeishuThinkingReaction"];
+}): Promise<void> {
+  const displayError = await args.formatError(
+    {
+      orgId: args.failure.orgId,
+      userId: args.failure.userId,
+      code: args.failure.error.code,
+      message: args.failure.error.message,
+    },
+    args.signal,
+  );
+  args.signal.throwIfAborted();
+  const failed = await failQueuedUserMessage(args.db, {
+    threadId: args.failure.threadId,
+    eventId: args.failure.queuedMessage.id,
+    assistantContent: displayError,
+    errorMarker: args.failure.error.code.toLowerCase(),
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  if (!failed) {
+    return;
+  }
+
+  recordQueuedMessageAdmissionFailure(args.failure);
+  await publishUserSignal(
+    [args.failure.userId],
+    `chatThreadMessageCreated:${args.failure.threadId}`,
+  );
+  await publishThreadListChanged(args.failure.userId);
+  args.signal.throwIfAborted();
+  await tapError(
+    args.deliver(
+      {
+        chatThreadId: args.failure.threadId,
+        userId: args.failure.userId,
+        orgId: args.failure.orgId,
+        target: args.failure.feishuDelivery,
+        chatEventId: failed.assistantEventId,
+      },
+      args.signal,
+    ),
+    (error) => {
+      log.warn("Failed to deliver canonical Feishu admission error", {
+        threadId: args.failure.threadId,
+        error,
+      });
+    },
+  );
+  await tapError(
+    args.clearThinking(args.failure.feishuDelivery, args.signal),
+    (error) => {
+      log.warn("Failed to clear Feishu admission thinking reaction", {
+        threadId: args.failure.threadId,
+        error,
+      });
     },
   );
 }
@@ -3081,6 +3377,7 @@ async function handleSlackQueuedMessageAdmissionFailure(args: {
     return;
   }
 
+  recordQueuedMessageAdmissionFailure(args.failure);
   await publishUserSignal(
     [args.failure.userId],
     `chatThreadMessageCreated:${args.failure.threadId}`,
@@ -3141,6 +3438,7 @@ async function handleTeamsQueuedMessageAdmissionFailure(args: {
     return;
   }
 
+  recordQueuedMessageAdmissionFailure(args.failure);
   await publishUserSignal(
     [args.failure.userId],
     `chatThreadMessageCreated:${args.failure.threadId}`,
@@ -3197,6 +3495,7 @@ async function handleTelegramQueuedMessageAdmissionFailure(args: {
     return;
   }
 
+  recordQueuedMessageAdmissionFailure(args.failure);
   await publishUserSignal(
     [args.failure.userId],
     `chatThreadMessageCreated:${args.failure.threadId}`,
@@ -3253,6 +3552,7 @@ async function handleAgentPhoneQueuedMessageAdmissionFailure(args: {
     return;
   }
 
+  recordQueuedMessageAdmissionFailure(args.failure);
   await publishUserSignal(
     [args.failure.userId],
     `chatThreadMessageCreated:${args.failure.threadId}`,
@@ -3309,6 +3609,7 @@ async function handleGitHubQueuedMessageAdmissionFailure(args: {
     return;
   }
 
+  recordQueuedMessageAdmissionFailure(args.failure);
   await publishUserSignal(
     [args.failure.userId],
     `chatThreadMessageCreated:${args.failure.threadId}`,
@@ -3336,94 +3637,163 @@ async function handleGitHubQueuedMessageAdmissionFailure(args: {
   );
 }
 
+async function handleMorningBriefQueuedMessageAdmissionFailure(args: {
+  readonly db: Db;
+  readonly failure: MorningBriefQueuedMessageAdmissionFailure;
+  readonly signal: AbortSignal;
+  readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
+}): Promise<void> {
+  const displayError = await args.formatError(
+    {
+      orgId: args.failure.orgId,
+      userId: args.failure.userId,
+      code: args.failure.error.code,
+      message: args.failure.error.message,
+    },
+    args.signal,
+  );
+  args.signal.throwIfAborted();
+  const failed = await failQueuedUserMessage(args.db, {
+    threadId: args.failure.threadId,
+    eventId: args.failure.queuedMessage.id,
+    assistantContent: displayError,
+    errorMarker: args.failure.error.code.toLowerCase(),
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  if (!failed) {
+    return;
+  }
+
+  const [delivery] = await args.db
+    .update(morningBriefDeliveries)
+    .set({
+      status: "failed",
+      error: args.failure.error.message,
+      updatedAt: nowDate(),
+    })
+    .where(
+      eq(
+        morningBriefDeliveries.id,
+        args.failure.morningBriefDelivery.deliveryId,
+      ),
+    )
+    .returning({ id: morningBriefDeliveries.id });
+  args.signal.throwIfAborted();
+  if (!delivery) {
+    throw new Error("Failed to record Morning Brief admission failure");
+  }
+
+  recordQueuedMessageAdmissionFailure(args.failure);
+  await publishUserSignal(
+    [args.failure.userId],
+    `chatThreadMessageCreated:${args.failure.threadId}`,
+  );
+  await publishThreadListChanged(args.failure.userId);
+}
+
 async function handleQueuedMessageAdmissionFailure(args: {
   readonly db: Db;
   readonly failure: QueuedMessageAdmissionFailure;
   readonly signal: AbortSignal;
   readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
   readonly deliverSlack: ChatCallbackDependencies["deliverSlackAdmissionFailure"];
+  readonly deliverFeishu: ChatCallbackDependencies["deliverFeishuAdmissionFailure"];
+  readonly clearFeishuThinking: ChatCallbackDependencies["clearFeishuThinkingReaction"];
   readonly deliverTeams: ChatCallbackDependencies["deliverTeamsAdmissionFailure"];
   readonly deliverTelegram: ChatCallbackDependencies["deliverTelegramAdmissionFailure"];
   readonly deliverAgentPhone: ChatCallbackDependencies["deliverAgentPhoneAdmissionFailure"];
   readonly deliverGitHub: ChatCallbackDependencies["deliverGitHubAdmissionFailure"];
-  readonly continueDrain: () => Promise<void>;
 }): Promise<void> {
-  if (args.failure.kind === "slack_admission_failure") {
-    await handleSlackQueuedMessageAdmissionFailure({
-      db: args.db,
-      failure: args.failure,
-      signal: args.signal,
-      formatError: args.formatError,
-      deliver: args.deliverSlack,
-    });
-    return;
-  }
-  if (args.failure.kind === "telegram_admission_failure") {
-    await handleTelegramQueuedMessageAdmissionFailure({
-      db: args.db,
-      failure: args.failure,
-      signal: args.signal,
-      formatError: args.formatError,
-      deliver: args.deliverTelegram,
-    });
-    return;
-  }
-  if (args.failure.kind === "github_admission_failure") {
-    await handleGitHubQueuedMessageAdmissionFailure({
-      db: args.db,
-      failure: args.failure,
-      signal: args.signal,
-      formatError: args.formatError,
-      deliver: args.deliverGitHub,
-    });
-    return;
-  }
-  if (args.failure.kind === "teams_admission_failure") {
-    await handleTeamsQueuedMessageAdmissionFailure({
-      db: args.db,
-      failure: args.failure,
-      signal: args.signal,
-      formatError: args.formatError,
-      deliver: args.deliverTeams,
-    });
-    return;
-  }
-  if (args.failure.kind === "agentphone_admission_failure") {
-    await handleAgentPhoneQueuedMessageAdmissionFailure({
-      db: args.db,
-      failure: args.failure,
-      signal: args.signal,
-      formatError: args.formatError,
-      deliver: args.deliverAgentPhone,
-    });
-    return;
-  }
   const failure = args.failure;
-  await args.db.transaction(async (tx) => {
-    const discarded = await discardUnclaimedUserMessageInTransaction(tx, {
-      threadId: failure.threadId,
-      eventId: failure.queuedMessage.id,
-    });
-    if (!discarded || !failure.morningBriefDelivery) {
+  switch (failure.kind) {
+    case "web_admission_failure": {
+      await handleWebQueuedMessageAdmissionFailure({
+        db: args.db,
+        failure,
+        signal: args.signal,
+        formatError: args.formatError,
+      });
       return;
     }
-    const [delivery] = await tx
-      .update(morningBriefDeliveries)
-      .set({
-        status: "failed",
-        error: failure.error.message,
-        updatedAt: nowDate(),
-      })
-      .where(
-        eq(morningBriefDeliveries.id, failure.morningBriefDelivery.deliveryId),
-      )
-      .returning({ id: morningBriefDeliveries.id });
-    if (!delivery) {
-      throw new Error("Failed to record Morning Brief admission failure");
+    case "slack_admission_failure": {
+      await handleSlackQueuedMessageAdmissionFailure({
+        db: args.db,
+        failure,
+        signal: args.signal,
+        formatError: args.formatError,
+        deliver: args.deliverSlack,
+      });
+      return;
     }
-  });
-  args.signal.throwIfAborted();
-  await args.continueDrain();
+    case "feishu_admission_failure": {
+      await handleFeishuQueuedMessageAdmissionFailure({
+        db: args.db,
+        failure,
+        signal: args.signal,
+        formatError: args.formatError,
+        deliver: args.deliverFeishu,
+        clearThinking: args.clearFeishuThinking,
+      });
+      return;
+    }
+    case "teams_admission_failure": {
+      await handleTeamsQueuedMessageAdmissionFailure({
+        db: args.db,
+        failure,
+        signal: args.signal,
+        formatError: args.formatError,
+        deliver: args.deliverTeams,
+      });
+      return;
+    }
+    case "telegram_admission_failure": {
+      await handleTelegramQueuedMessageAdmissionFailure({
+        db: args.db,
+        failure,
+        signal: args.signal,
+        formatError: args.formatError,
+        deliver: args.deliverTelegram,
+      });
+      return;
+    }
+    case "agentphone_admission_failure": {
+      await handleAgentPhoneQueuedMessageAdmissionFailure({
+        db: args.db,
+        failure,
+        signal: args.signal,
+        formatError: args.formatError,
+        deliver: args.deliverAgentPhone,
+      });
+      return;
+    }
+    case "github_admission_failure": {
+      await handleGitHubQueuedMessageAdmissionFailure({
+        db: args.db,
+        failure,
+        signal: args.signal,
+        formatError: args.formatError,
+        deliver: args.deliverGitHub,
+      });
+      return;
+    }
+    case "morning_brief_admission_failure": {
+      await handleMorningBriefQueuedMessageAdmissionFailure({
+        db: args.db,
+        failure,
+        signal: args.signal,
+        formatError: args.formatError,
+      });
+      return;
+    }
+    default: {
+      return unreachableQueuedAdmissionFailure(failure);
+    }
+  }
+}
+
+function unreachableQueuedAdmissionFailure(failure: never): never {
+  throw new Error(`Unsupported queued admission failure: ${String(failure)}`);
 }
 
 interface AutoSendQueuedMessageArgs {
@@ -3439,8 +3809,11 @@ interface AutoSendQueuedMessageArgs {
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
   readonly resolveAttachFileMetadata: CreateQueuedChatRunInputArgs["resolveAttachFileMetadata"];
+  readonly resolveMorningBriefSignedUrls: CreateQueuedChatRunInputArgs["resolveMorningBriefSignedUrls"];
   readonly formatIntegrationRunError: ChatCallbackDependencies["formatIntegrationRunError"];
   readonly deliverSlackAdmissionFailure: ChatCallbackDependencies["deliverSlackAdmissionFailure"];
+  readonly deliverFeishuAdmissionFailure: ChatCallbackDependencies["deliverFeishuAdmissionFailure"];
+  readonly clearFeishuThinkingReaction: ChatCallbackDependencies["clearFeishuThinkingReaction"];
   readonly deliverTeamsAdmissionFailure: ChatCallbackDependencies["deliverTeamsAdmissionFailure"];
   readonly deliverTelegramAdmissionFailure: ChatCallbackDependencies["deliverTelegramAdmissionFailure"];
   readonly deliverAgentPhoneAdmissionFailure: ChatCallbackDependencies["deliverAgentPhoneAdmissionFailure"];
@@ -3528,12 +3901,10 @@ async function autoSendQueuedMessageForThread(
         timing: args.timing,
         signal: args.signal,
         resolveAttachFileMetadata: args.resolveAttachFileMetadata,
+        resolveMorningBriefSignedUrls: args.resolveMorningBriefSignedUrls,
       });
     },
   );
-  if (!runInput) {
-    return;
-  }
   const activeRunExists = await autoSendAdmissionBlocked(args, threadId);
   if (activeRunExists) {
     return;
@@ -3545,13 +3916,12 @@ async function autoSendQueuedMessageForThread(
       signal: args.signal,
       formatError: args.formatIntegrationRunError,
       deliverSlack: args.deliverSlackAdmissionFailure,
+      deliverFeishu: args.deliverFeishuAdmissionFailure,
+      clearFeishuThinking: args.clearFeishuThinkingReaction,
       deliverTeams: args.deliverTeamsAdmissionFailure,
       deliverTelegram: args.deliverTelegramAdmissionFailure,
       deliverAgentPhone: args.deliverAgentPhoneAdmissionFailure,
       deliverGitHub: args.deliverGitHubAdmissionFailure,
-      continueDrain: async () => {
-        await autoSendQueuedMessageForThread(args);
-      },
     });
     return;
   }
@@ -4268,6 +4638,7 @@ function withoutQueuedRunDependency(
     refreshSlackThreadStatus: dependencies.refreshSlackThreadStatus,
     formatIntegrationRunError: dependencies.formatIntegrationRunError,
     deliverSlackAdmissionFailure: dependencies.deliverSlackAdmissionFailure,
+    deliverFeishuAdmissionFailure: dependencies.deliverFeishuAdmissionFailure,
     deliverTeamsAdmissionFailure: dependencies.deliverTeamsAdmissionFailure,
     deliverTelegramAdmissionFailure:
       dependencies.deliverTelegramAdmissionFailure,
@@ -4442,6 +4813,27 @@ async function handleChatInternalCallback(args: {
   return { success: true };
 }
 
+function feishuChatDeliveryDependencies(
+  db: Db,
+): Pick<
+  ChatCallbackDependencies,
+  | "deliverFeishuAdmissionFailure"
+  | "dispatchFeishuDelivery"
+  | "clearFeishuThinkingReaction"
+> {
+  return {
+    deliverFeishuAdmissionFailure: (params, signal) => {
+      return deliverFeishuChatAdmissionFailure({ db, ...params, signal });
+    },
+    dispatchFeishuDelivery: (callbackId, signal) => {
+      return dispatchFeishuChatDeliveryOnce(db, callbackId, signal);
+    },
+    clearFeishuThinkingReaction: (target, signal) => {
+      return clearCanonicalFeishuThinkingReaction(db, target, signal);
+    },
+  };
+}
+
 function teamsChatDeliveryDependencies(
   db: Db,
 ): Pick<
@@ -4589,16 +4981,11 @@ export async function handleChatInternalCallbackWithoutCcstate(
           signal: inputSignal,
         });
       },
-      dispatchFeishuDelivery: (callbackId, inputSignal) => {
-        return dispatchFeishuChatDeliveryOnce(db, callbackId, inputSignal);
-      },
+      ...feishuChatDeliveryDependencies(db),
       ...teamsChatDeliveryDependencies(db),
       ...telegramChatDeliveryDependencies(db),
       ...agentPhoneChatDeliveryDependencies(db),
       ...githubChatDeliveryDependencies(db),
-      clearFeishuThinkingReaction: (target, inputSignal) => {
-        return clearCanonicalFeishuThinkingReaction(db, target, inputSignal);
-      },
     },
   });
 }
@@ -4660,16 +5047,11 @@ const buildChatCallbackDependencies$ = command(
           signal: inputSignal,
         });
       },
-      dispatchFeishuDelivery: (callbackId, inputSignal) => {
-        return dispatchFeishuChatDeliveryOnce(db, callbackId, inputSignal);
-      },
+      ...feishuChatDeliveryDependencies(db),
       ...teamsChatDeliveryDependencies(db),
       ...telegramChatDeliveryDependencies(db),
       ...agentPhoneChatDeliveryDependencies(db),
       ...githubChatDeliveryDependencies(db),
-      clearFeishuThinkingReaction: (target, inputSignal) => {
-        return clearCanonicalFeishuThinkingReaction(db, target, inputSignal);
-      },
       drainThreadQueue: input.drainThreadQueue,
     };
     const dependencies: ChatCallbackDependencies = {
@@ -4739,7 +5121,7 @@ const buildChatCallbackDependencies$ = command(
 /** User-message drain used by the shared event-backed thread scheduler. */
 export const drainQueuedUserMessagesForThread$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly chatThreadId: string;
       readonly apiStartTime?: number;
@@ -4790,8 +5172,31 @@ export const drainQueuedUserMessagesForThread$ = command(
           inputSignal,
         );
       },
+      resolveMorningBriefSignedUrls: async (keys, inputSignal) => {
+        const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+        const inputUrl = await get(
+          generatePresignedGetUrl(
+            bucket,
+            keys.inputKey,
+            MORNING_BRIEF_SIGNED_URL_TTL_SECONDS,
+          ),
+        );
+        inputSignal.throwIfAborted();
+        const outputUrl = await get(
+          generatePresignedPutUrl(
+            bucket,
+            keys.outputKey,
+            "application/json",
+            MORNING_BRIEF_SIGNED_URL_TTL_SECONDS,
+          ),
+        );
+        inputSignal.throwIfAborted();
+        return { inputUrl, outputUrl };
+      },
       formatIntegrationRunError: dependencies.formatIntegrationRunError,
       deliverSlackAdmissionFailure: dependencies.deliverSlackAdmissionFailure,
+      deliverFeishuAdmissionFailure: dependencies.deliverFeishuAdmissionFailure,
+      clearFeishuThinkingReaction: dependencies.clearFeishuThinkingReaction,
       deliverTeamsAdmissionFailure: dependencies.deliverTeamsAdmissionFailure,
       deliverTelegramAdmissionFailure:
         dependencies.deliverTelegramAdmissionFailure,

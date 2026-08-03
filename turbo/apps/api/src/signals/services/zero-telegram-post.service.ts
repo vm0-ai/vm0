@@ -74,13 +74,11 @@ import {
   ensureTelegramChatThreadRoute,
   type TelegramOwnerLink,
 } from "./telegram-chat-ingress.service";
-import type { TelegramDeliveryTarget } from "./telegram-chat-callback-payload";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import { telegramIntegrationBotStatus } from "./zero-telegram-data.service";
 import {
   formatTelegramUserDisplayName,
@@ -1605,46 +1603,6 @@ async function fetchTelegramContext(args: {
   ].join("\n");
 }
 
-function buildTelegramPrompt(
-  opts: {
-    readonly botId?: string;
-    readonly botUsername?: string | null;
-    readonly chatId?: string;
-    readonly chatType?: string;
-    readonly messageId?: string;
-    readonly rootMessageId?: string | null;
-    readonly messageThreadId?: string | number | null;
-  },
-  threadContext: string,
-): string {
-  const headerParts = [
-    "# Current Integration",
-    "You are currently running inside: Telegram",
-  ];
-  if (opts.botId) {
-    headerParts.push(`Bot ID: ${opts.botId}`);
-  }
-  if (opts.botUsername) {
-    headerParts.push(`Bot username: @${opts.botUsername}`);
-  }
-  if (opts.chatId) {
-    headerParts.push(`Chat ID: ${opts.chatId}`);
-  }
-  if (opts.chatType) {
-    headerParts.push(`Chat type: ${opts.chatType}`);
-  }
-  if (opts.messageId) {
-    headerParts.push(`Message ID: ${opts.messageId}`);
-  }
-  if (opts.rootMessageId) {
-    headerParts.push(`Root message ID: ${opts.rootMessageId}`);
-  }
-  if (opts.messageThreadId) {
-    headerParts.push(`Message thread ID: ${opts.messageThreadId}`);
-  }
-  return [headerParts.join("\n"), threadContext].filter(Boolean).join("\n\n");
-}
-
 function agentMessageScope(args: {
   readonly userLinkKind: "custom" | "official";
   readonly botId: string;
@@ -1741,23 +1699,30 @@ async function resetTelegramDmConversation(
     );
 }
 
-function telegramDeliveryTarget(args: {
+function telegramLaunchContext(args: {
   readonly source: TelegramAgentMessageArgs;
   readonly chatId: string;
   readonly rootMessageId: string | undefined;
-}): TelegramDeliveryTarget {
+  readonly context: string;
+  readonly prompt: string;
+  readonly userInfoExtras: TelegramUserInfoExtras;
+}) {
   return {
-    installationId: args.source.botId,
     chatId: args.chatId,
     messageId: String(args.source.message.message_id),
+    isDm: args.source.isDM,
+    messageThreadId: args.source.message.message_thread_id ?? null,
+    messageText: args.prompt,
+    threadContext: args.context,
     rootMessageId: args.rootMessageId ?? null,
+    thinkingMessageId: null,
     userLinkId: args.source.userLink.id,
     userLinkKind: args.source.userLinkKind,
-    agentId: args.source.composeId,
-    isDM: args.source.isDM,
-    ...(args.source.message.message_thread_id !== undefined
-      ? { messageThreadId: args.source.message.message_thread_id }
-      : {}),
+    chatType: args.source.message.chat.type,
+    senderUserId: args.userInfoExtras.telegramUserId ?? null,
+    senderDisplayName: args.userInfoExtras.telegramDisplayName ?? null,
+    senderUsername: args.userInfoExtras.telegramUsername ?? null,
+    senderLanguage: args.userInfoExtras.telegramLanguage ?? null,
   };
 }
 
@@ -1822,34 +1787,6 @@ async function persistTelegramChatMessage(args: {
         });
   args.signal.throwIfAborted();
 
-  const delivery = telegramDeliveryTarget(args);
-  const appendSystemPrompt = buildTelegramPrompt(
-    {
-      botId: args.source.botId,
-      botUsername: args.source.botUsername,
-      chatId: args.chatId,
-      chatType: args.source.message.chat.type,
-      messageId: String(args.source.message.message_id),
-      rootMessageId: args.rootMessageId ?? null,
-      messageThreadId: args.source.message.message_thread_id,
-    },
-    args.context,
-  );
-  const encryptedParams = await encryptQueuedUserMessageRunParams(
-    {
-      version: 1,
-      prompt: args.prompt,
-      appendSystemPrompt,
-      telegramDelivery: delivery,
-      userInfoExtras: args.userInfoExtras,
-    },
-    {
-      orgId: args.source.orgId,
-      userId: args.source.userLink.vm0UserId,
-    },
-  );
-  args.signal.throwIfAborted();
-
   const inserted = await args.source.db.transaction(async (tx) => {
     const event = await insertChatEvent(
       tx,
@@ -1862,20 +1799,14 @@ async function persistTelegramChatMessage(args: {
           text: args.prompt,
           nonContentPart: createChatEventSourcePart({
             kind: "telegram",
-            chatId: delivery.chatId,
-            messageId: delivery.messageId,
-            isDm: delivery.isDM,
+            chatId: args.chatId,
+            messageId: String(args.source.message.message_id),
+            isDm: args.source.isDM,
           }),
         }),
         runId: null,
         triggerSource: "telegram",
-        encryptedParams,
-        telegramContext: {
-          chatId: delivery.chatId,
-          messageId: delivery.messageId,
-          isDm: delivery.isDM,
-          messageThreadId: delivery.messageThreadId ?? null,
-        },
+        telegramContext: telegramLaunchContext(args),
         createdAt: currentTime,
       },
       "id",

@@ -193,8 +193,12 @@ async function fetchSpotifyUserInfo(
     })
     .parse(await response.json());
 
+  if (!data.id) {
+    throw new Error("No user id in Spotify user info response");
+  }
+
   return {
-    id: data.id ?? "",
+    id: data.id,
     username: data.display_name ?? null,
     email: data.email ?? null,
   };

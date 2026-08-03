@@ -11,12 +11,12 @@ import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { writeDb$, type Db } from "../external/db";
 import { now } from "../external/time";
 import {
-  decryptWorkflowQueueEventParams,
   loadNextWorkflowQueueEvent,
   rejectWorkflowQueueEvent,
   type PendingWorkflowQueueEvent,
 } from "./workflow-chat-event-queue.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
+import { buildWorkflowAutomationQueuedLaunchMaterial } from "./workflow-automation-queued-launch-context.service";
 import {
   launchQueuedWorkflowAutomation$,
   type RunWorkflowAutomationResult,
@@ -31,7 +31,6 @@ const MAX_DRAIN_ATTEMPTS = 5;
 interface DequeueTarget {
   readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   readonly agentId: string;
-  readonly workflowName: string;
 }
 
 async function loadDequeueTarget(
@@ -42,7 +41,6 @@ async function loadDequeueTarget(
     .select({
       automation: zeroWorkflowAutomations,
       agentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
     })
     .from(zeroWorkflowAutomations)
     .innerJoin(
@@ -213,16 +211,17 @@ export const drainWorkflowQueueForThread$ = command(
         continue;
       }
 
-      const params = await decryptWorkflowQueueEventParams(
-        event.encryptedParams,
-        {
-          userId: target.automation.ownerUserId,
-          orgId: target.automation.orgId,
-        },
-      );
+      const launchMaterial = buildWorkflowAutomationQueuedLaunchMaterial({
+        workflowName: event.workflowName,
+        eventType: event.workflowAutomationEventType,
+        eventPayload: event.workflowAutomationEventPayload,
+        automation: target.automation,
+        agentId: target.agentId,
+        chatThreadId: event.chatThreadId,
+      });
       signal.throwIfAborted();
-      if (!params) {
-        log.error("Consuming undecryptable workflow queue event", {
+      if (!launchMaterial) {
+        log.error("Consuming workflow queue event with incomplete context", {
           eventId: event.id,
           automationId: event.automationId,
         });
@@ -249,22 +248,20 @@ export const drainWorkflowQueueForThread$ = command(
           due: {
             automation: target.automation,
             agentId: target.agentId,
-            workflowName: target.workflowName,
             chatThreadId: event.chatThreadId,
             allowClaimedOnceScheduleAutomation:
-              params.allowClaimedOnceScheduleAutomation,
+              launchMaterial.allowClaimedOnceScheduleAutomation,
           },
           queueEventId: event.id,
-          queueEventCreatedAt: event.createdAt,
           apiStartTime: launchHint?.apiStartTime ?? args.apiStartTime ?? now(),
-          prompt: params.prompt,
+          prompt: launchMaterial.prompt,
           triggerBrief: event.triggerBrief ?? undefined,
           triggerSource: event.triggerSource,
-          appendSystemPrompt: params.appendSystemPrompt,
-          callbacks: params.callbacks,
-          activePreviousRunPolicy: params.activePreviousRunPolicy,
-          recordLastRunId: params.recordLastRunId,
-          recordLastRunAt: params.recordLastRunAt,
+          appendSystemPrompt: launchMaterial.appendSystemPrompt,
+          callbacks: launchMaterial.callbacks,
+          activePreviousRunPolicy: launchMaterial.activePreviousRunPolicy,
+          recordLastRunId: launchMaterial.recordLastRunId,
+          recordLastRunAt: launchMaterial.recordLastRunAt,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,
           timing: launchHint?.timing,
         },

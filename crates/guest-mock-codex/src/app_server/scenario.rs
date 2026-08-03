@@ -40,6 +40,7 @@ pub(super) enum Scenario {
     UnexpectedThreadOutputItemStarted,
     UnexpectedTurnOutputItemStarted,
     UnexpectedThreadTurnCompleted,
+    SecondaryThreadNotifications,
 }
 
 impl Scenario {
@@ -96,6 +97,7 @@ impl Scenario {
                 }
                 "unexpected-turn-output-item-started" => Ok(Self::UnexpectedTurnOutputItemStarted),
                 "unexpected-thread-turn-completed" => Ok(Self::UnexpectedThreadTurnCompleted),
+                "secondary-thread-notifications" => Ok(Self::SecondaryThreadNotifications),
                 _ => Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!("unsupported MOCK_CODEX_APP_SERVER_SCENARIO={value:?}"),

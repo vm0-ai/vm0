@@ -18,7 +18,10 @@ pub(crate) struct JobRequest {
     pub(crate) user_timezone: Option<String>,
     #[serde(default)]
     pub(crate) profile: Option<String>,
-    /// Session ID for sandbox reuse across conversation turns.
+    /// Enqueue-time snapshot for sandbox and workspace reuse ownership.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) reuse_key: Option<String>,
+    /// Provider-native session ID to resume.
     #[serde(default)]
     pub(crate) session_id: Option<String>,
     #[serde(default)]

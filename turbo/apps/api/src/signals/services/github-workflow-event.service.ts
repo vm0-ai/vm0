@@ -24,15 +24,10 @@ import {
   type WorkflowEventRunTiming,
 } from "./workflow-event-source-timing.service";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
@@ -401,6 +396,7 @@ function githubLabelTriggerContext(args: {
     args.subjectKind === "pull_request" ? "pull request" : "issue";
   return {
     workflowName: args.automation.workflowName,
+    eventType: "github-label-applied",
     trigger: `GitHub label "${args.matchedLabelName}" was applied to ${subjectLabel} #${args.payload.issue.number} (GitHub webhook delivery ${args.deliveryId}).`,
     notes: [
       "Not included below: the issue or pull request body, comments, files, and diffs. Connected GitHub tools and the GitHub API return them.",
@@ -477,14 +473,7 @@ const startGithubWorkflowRun$ = command(
       "api_dispatch_pre_create_zero_workflow_event_build_run_input",
       () => {
         const context = githubLabelTriggerContext(args);
-        return {
-          prompt: workflowAutomationPrompt(context),
-          appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
-          callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-            args.automation.chatThreadId,
-            args.automation.agentId,
-          ),
-        };
+        return { context };
       },
     );
     signal.throwIfAborted();
@@ -494,17 +483,11 @@ const startGithubWorkflowRun$ = command(
         due: {
           automation: args.automation.automation,
           agentId: args.automation.agentId,
-          workflowName: args.automation.workflowName,
           chatThreadId: args.automation.chatThreadId,
         },
+        automationContext: runInput.context,
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
-        prompt: runInput.prompt,
-        appendSystemPrompt: runInput.appendSystemPrompt,
-        callbacks: runInput.callbacks,
-        activePreviousRunPolicy: "allow",
-        recordLastRunId: false,
-        recordLastRunAt: true,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),
       },

@@ -1,7 +1,8 @@
 use super::super::super::*;
 use super::super::support::{
-    context_with_session, minimal_context, mock_run_config, push_job, seed_idle_pool, shutdown,
-    test_profiles, two_profiles, wait_budget_count, wait_idle_pool_sessions,
+    context_with_session, minimal_context, mock_run_config, mock_run_config_with_overrides,
+    push_job, seed_idle_pool, shutdown, test_profiles, two_profiles, wait_budget_count,
+    wait_idle_pool_reuse_keys,
 };
 
 use crate::types::SandboxReuseResult;
@@ -23,7 +24,7 @@ async fn session_affinity_reuses_idle_vm() {
 
     let run_handle = tokio::spawn(run(config));
 
-    // Push job for same session — should reuse the idle VM.
+    // Push job for same reuse key — should reuse the idle VM.
     let run_id = RunId::new_v4();
     push_job(
         &env,
@@ -51,7 +52,7 @@ async fn session_affinity_reuses_idle_vm() {
     );
 
     // After reuse + re-park: pool should still have 1 entry, budget count=1.
-    wait_idle_pool_sessions(&idle_pool, &["sess-reuse"], Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&idle_pool, &["sess-reuse"], Duration::from_secs(5)).await;
     {
         let pool = idle_pool.lock().await;
         assert_eq!(pool.len(), 1, "VM should be re-parked after reuse");
@@ -66,16 +67,15 @@ async fn session_affinity_reuses_idle_vm() {
 }
 
 // -----------------------------------------------------------------------
-// Test 13b: Job with no session reports NoSessionId
+// Test 13b: Job with no reuse key reports NoReuseKey
 // -----------------------------------------------------------------------
 
 #[tokio::test(start_paused = true)]
-async fn job_without_session_reports_no_session_id() {
+async fn job_without_reuse_key_reports_no_reuse_key() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
 
     let run_handle = tokio::spawn(run(config));
 
-    // No resume_session → NoSessionId branch.
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
@@ -88,7 +88,7 @@ async fn job_without_session_reports_no_session_id() {
     assert_eq!(completion.exit_code, 0);
     assert_eq!(
         completion.reuse_result,
-        Some(SandboxReuseResult::NoSessionId),
+        Some(SandboxReuseResult::NoReuseKey),
     );
     assert!(
         completion.sandbox_id.is_some(),
@@ -99,30 +99,36 @@ async fn job_without_session_reports_no_session_id() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn invalid_resume_session_does_not_reuse_idle_vm() {
+async fn invalid_reserved_resume_session_fails_before_reuse() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = "thread:invalid-resume-reserved";
     let invalid_session_id = "../invalid-session";
-    seed_idle_pool(
-        &idle_pool,
-        &budget,
-        invalid_session_id,
-        "vm0/default",
-        2,
-        4096,
-    )
-    .await;
+    let seeded_sandbox_id =
+        seed_idle_pool(&idle_pool, &budget, reuse_key, "vm0/default", 2, 4096).await;
 
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
-    push_job(
-        &env,
-        run_id,
-        "vm0/default",
-        Some(context_with_session(run_id, invalid_session_id)),
-    );
+    let mut context = minimal_context(run_id);
+    context.reuse_key = Some(reuse_key.to_string());
+    context.resume_session = Some(crate::types::ResumeSession::inline(
+        invalid_session_id.to_string(),
+        String::new(),
+    ));
+    env.provider.set_claim_result(run_id, Some(context));
+    env.handle
+        .discover_tx
+        .send(
+            crate::provider::JobCandidate::new(run_id, "vm0/default".into())
+                .with_affinity_metadata(
+                    Some(reuse_key.to_string()),
+                    Some(invalid_session_id.to_string()),
+                    None,
+                ),
+        )
+        .unwrap();
 
     let completion = env
         .handle
@@ -130,14 +136,56 @@ async fn invalid_resume_session_does_not_reuse_idle_vm() {
         .await
         .expect("job should complete");
     assert_eq!(completion.exit_code, 1);
-    assert_eq!(
-        completion.reuse_result,
-        Some(SandboxReuseResult::NoSessionId),
-    );
+    assert_eq!(completion.reuse_result, None);
+    assert_eq!(completion.sandbox_id, None);
     let error = completion.error.as_deref().expect("error should be set");
     assert!(error.contains("invalid session_id"));
     assert!(!error.contains(invalid_session_id));
-    wait_idle_pool_sessions(&idle_pool, &[invalid_session_id], Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&idle_pool, &[reuse_key], Duration::from_secs(5)).await;
+    assert_eq!(
+        idle_pool.lock().await.status_snapshot().idle_vms[0].sandbox_id,
+        seeded_sandbox_id,
+        "invalid continuation metadata must restore the reserved sandbox",
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn invalid_resume_session_fails_before_fresh_sandbox_creation() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, Arc::clone(&overrides));
+    let budget = Arc::clone(&config.capacity.budget);
+    let run_handle = tokio::spawn(run(config));
+    let run_id = RunId::new_v4();
+    let reuse_key = "thread:invalid-resume-fresh";
+    let invalid_session_id = "../invalid-fresh-session";
+    let mut context = minimal_context(run_id);
+    context.reuse_key = Some(reuse_key.to_string());
+    context.resume_session = Some(crate::types::ResumeSession::inline(
+        invalid_session_id.to_string(),
+        String::new(),
+    ));
+
+    push_job(&env, run_id, "vm0/default", Some(context));
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("job should complete");
+    assert_eq!(completion.exit_code, 1);
+    assert_eq!(completion.reuse_result, None);
+    assert_eq!(completion.sandbox_id, None);
+    let error = completion.error.as_deref().expect("error should be set");
+    assert!(error.contains("invalid session_id"));
+    assert!(!error.contains(invalid_session_id));
+    assert!(
+        overrides.create_configs().is_empty(),
+        "invalid continuation metadata must fail before sandbox creation",
+    );
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
 
     shutdown(&env, run_handle).await;
 }
@@ -157,7 +205,7 @@ async fn profile_mismatch_destroys_stale_vm() {
 
     let run_handle = tokio::spawn(run(config));
 
-    // Push job for "vm0/large" (4vcpu) with same session — profile mismatch.
+    // Push job for "vm0/large" (4vcpu) with same reuse key — profile mismatch.
     let run_id = RunId::new_v4();
     push_job(
         &env,

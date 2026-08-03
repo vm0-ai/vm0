@@ -28,6 +28,15 @@ export const chatGithubContext = pgTable(
       .$type<"issue" | "pull_request">()
       .notNull(),
     triggerCommentId: text("trigger_comment_id"),
+    /**
+     * Server-private GitHub launch material retained with the trigger context.
+     * Raw third-party content is intentionally retained permanently; read paths
+     * must continue to project only the explicitly required columns.
+     */
+    issueContext: text("issue_context"),
+    messageText: text("message_text"),
+    triggerReactionId: text("trigger_reaction_id"),
+    triggerCommentBody: text("trigger_comment_body"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

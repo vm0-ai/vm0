@@ -72,9 +72,9 @@ use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::status::{StatusTracker, remove_stale_status_file};
-use crate::workspace_image_cache::SessionWorkspaceCache;
+use crate::workspace_image_cache::WorkspaceImageCache;
 
-mod active_sessions;
+mod active_reuse_keys;
 mod factory_lifecycle;
 mod heartbeat;
 mod identity;
@@ -89,7 +89,7 @@ mod ownership;
 mod sandbox_finalization;
 mod signals;
 
-use active_sessions::new_active_reuse_keys;
+use active_reuse_keys::new_active_reuse_keys;
 use factory_lifecycle::{shutdown_factory_instances, shutdown_runtime, start_factories};
 use heartbeat::{
     HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeartbeatController,
@@ -658,6 +658,7 @@ async fn run_start_with_home(
             server.token,
             ApiProviderConfig {
                 runner_id: runner_id.clone(),
+                heartbeat_generation,
                 group,
                 supported_profiles: profiles,
             },
@@ -685,7 +686,7 @@ async fn run_start_with_home(
         session_history_probe: SessionHistoryProbe::default(),
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
         home: home.clone(),
-        workspace_cache: Some(SessionWorkspaceCache::shared(
+        workspace_cache: Some(WorkspaceImageCache::shared(
             paths.clone(),
             &home,
             &group_name,
@@ -886,7 +887,7 @@ enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
     IdleCleanupProcessed { expired_count: usize },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
-    VmParkedForReuse { run_id: RunId, session_id: String },
+    VmParkedForReuse { run_id: RunId, reuse_key: String },
     UsageFlushRequested,
 }
 
@@ -992,8 +993,8 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id });
     }
 
-    fn notify_vm_parked_for_reuse(&self, run_id: RunId, session_id: String) {
-        self.record(StartLoopEvent::VmParkedForReuse { run_id, session_id });
+    fn notify_vm_parked_for_reuse(&self, run_id: RunId, reuse_key: String) {
+        self.record(StartLoopEvent::VmParkedForReuse { run_id, reuse_key });
     }
 
     fn notify_usage_flush_requested(&self) {
@@ -1039,8 +1040,8 @@ impl StartLoopTestObserver {
         self.wait_for(timeout, "VM parked for reuse", |event| match event {
             StartLoopEvent::VmParkedForReuse {
                 run_id: observed_run_id,
-                session_id,
-            } if *observed_run_id == run_id => Some(session_id.clone()),
+                reuse_key,
+            } if *observed_run_id == run_id => Some(reuse_key.clone()),
             _ => None,
         })
         .await
@@ -1340,8 +1341,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Notification channel: spawned jobs signal the main loop to send an
     // immediate heartbeat after session affinity state changes, so the server
-    // learns about a held session VM or workspace image cache without waiting
-    // for the next 10-second tick.
+    // learns about a held reusable sandbox or workspace image cache without
+    // waiting for the next 10-second tick.
     let park_notify = Arc::new(tokio::sync::Notify::new());
     let orphaned_active_runs = OrphanedActiveRuns::new();
     let active_reuse_keys = new_active_reuse_keys();

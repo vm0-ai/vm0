@@ -136,7 +136,7 @@ export async function publishThreadListChangedSafely(
   userId: string,
 ): Promise<void> {
   await tapError(publishThreadListChanged(userId), (error) => {
-    L.warn("Failed to publish thread list changed signal", { error });
+    L.warn("Failed to publish thread list changed signal", { userId, error });
   });
 }
 
@@ -184,6 +184,26 @@ export async function publishChatThreadMessageCreatedSafely(
     ),
     (error) => {
       L.warn("Failed to publish chat thread message created signal", {
+        threadId,
+        error,
+      });
+    },
+  );
+}
+
+/**
+ * Notify an open chat thread that a persisted run was created.
+ *
+ * Best-effort: a failed publish must not fail the committed run creation.
+ */
+export async function publishChatThreadRunCreatedSafely(
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], `chatThreadRunCreated:${threadId}`),
+    (error) => {
+      L.warn("Failed to publish chat thread run created signal", {
         threadId,
         error,
       });

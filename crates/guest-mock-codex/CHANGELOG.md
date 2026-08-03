@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.15](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.14...guest-mock-codex-v0.6.15) (2026-08-01)
+
+
+### Bug Fixes
+
+* **guest-agent:** ignore secondary codex thread events ([#24466](https://github.com/vm0-ai/vm0/issues/24466)) ([20ed365](https://github.com/vm0-ai/vm0/commit/20ed365bf6639fdce6c6b42cb64f5a45ed3d2562))
+
 ## [0.6.14](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.13...guest-mock-codex-v0.6.14) (2026-07-28)
 
 

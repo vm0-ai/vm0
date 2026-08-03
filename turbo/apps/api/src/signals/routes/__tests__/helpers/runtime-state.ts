@@ -167,6 +167,20 @@ export async function readRunnerJobStorageState(
   return response.runner_job_storage_state;
 }
 
+export async function readRunClaimOwner(
+  context: TestContext,
+  runId: string,
+): Promise<NonNullable<TestRuntimeStateActionResponse["runner_claim_owner"]>> {
+  const response = await postAction(context, {
+    action: "read-run-claim-owner",
+    run_id: runId,
+  });
+  if (!response.runner_claim_owner) {
+    throw new Error("readRunClaimOwner missing runner_claim_owner");
+  }
+  return response.runner_claim_owner;
+}
+
 export async function readStoragePersistenceState(
   context: TestContext,
   ids: {

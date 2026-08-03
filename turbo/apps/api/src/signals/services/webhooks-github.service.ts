@@ -32,6 +32,7 @@ import {
 } from "./github-issues-api.service";
 import { getGithubInstallationAccessToken } from "./github-app.service";
 import { signGithubConnectParams } from "./github-oauth.service";
+import { githubAppBotUsername } from "./github-chat-prompt.service";
 import { resolveIntegrationModelRouteForUser$ } from "./integration-model-route.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
@@ -43,7 +44,6 @@ import { insertChatEvent } from "./zero-chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import { dispatchGithubLabelWorkflowAutomations$ } from "./github-workflow-event.service";
 import {
   dispatchGithubWebhookAutomations$,
@@ -316,14 +316,6 @@ function githubSubjectUrl(args: {
   return `https://github.com/${args.repo}/${pathSegment}/${args.issueNumber}`;
 }
 
-function githubAppBotUsername(): string | undefined {
-  const appSlug = optionalEnv("GITHUB_APP_SLUG")?.trim();
-  if (!appSlug) {
-    return undefined;
-  }
-  return `@${appSlug}[bot]`;
-}
-
 function githubAppMentionHandles(): readonly string[] {
   const handles: string[] = [...GITHUB_ALIAS_MENTION_HANDLES];
   const appSlug = optionalEnv("GITHUB_APP_SLUG")?.trim().replace(/^@+/, "");
@@ -362,49 +354,6 @@ function githubIssueCommentSubjectKind(
   issue: GitHubIssue,
 ): GitHubAutomationKind {
   return issue.pull_request === undefined ? "issue" : "pull_request";
-}
-
-function buildIntegrationPrompt(): string {
-  const headerParts = [
-    "# Current Integration",
-    "You are currently running inside: GitHub",
-    "GitHub comments run agents when issues or pull requests mention Zero.",
-  ];
-  const botUsername = githubAppBotUsername();
-  if (botUsername) {
-    headerParts.push(`Bot username: ${botUsername}`);
-  }
-  return headerParts.join("\n");
-}
-
-function buildGitHubPrompt(args: {
-  readonly issueContext: string;
-  readonly repo: string;
-  readonly issueNumber: number;
-  readonly subjectKind: GitHubAutomationKind;
-}): string {
-  return [buildIntegrationPrompt(), args.issueContext]
-    .filter((part): part is string => {
-      return Boolean(part);
-    })
-    .join("\n\n");
-}
-
-function buildPromptParts(
-  prompt: string,
-  args: {
-    readonly issueContext: string;
-    readonly repo: string;
-    readonly issueNumber: number;
-    readonly subjectKind: GitHubAutomationKind;
-  },
-): {
-  readonly prompt: string;
-  readonly appendSystemPrompt: string | undefined;
-} {
-  const appendSystemPrompt = buildGitHubPrompt(args) || undefined;
-
-  return { prompt, appendSystemPrompt };
 }
 
 function buildGithubMentionConnectUrl(args: {
@@ -1244,30 +1193,11 @@ async function insertGitHubChatInput(args: {
   readonly params: DispatchParams;
   readonly target: GitHubRunTarget;
   readonly prompt: string;
-  readonly promptParts: ReturnType<typeof buildPromptParts>;
+  readonly issueContext: string;
   readonly reactionId: string | undefined;
   readonly currentTime: Date;
 }): Promise<{ readonly chatEventId: string; readonly inserted: boolean }> {
   const issueNumber = args.params.issue.number;
-  const encryptedParams = await encryptQueuedUserMessageRunParams(
-    {
-      version: 1,
-      prompt: args.promptParts.prompt,
-      appendSystemPrompt: args.promptParts.appendSystemPrompt ?? "",
-      githubDelivery: {
-        installationId: args.route.installationId,
-        repo: args.params.repo,
-        subjectNumber: issueNumber,
-        subjectKind: args.params.subjectKind,
-        agentId: args.target.composeId,
-        triggerCommentId: args.params.commentId,
-        triggerReactionId: args.reactionId,
-        triggerCommentBody: args.params.comment?.body,
-      },
-    },
-    { orgId: args.target.orgId, userId: args.params.vm0UserId },
-  );
-
   const chatEventId = uuidv5(
     [
       args.route.installationId,
@@ -1297,12 +1227,15 @@ async function insertGitHubChatInput(args: {
         }),
         runId: null,
         triggerSource: "github",
-        encryptedParams,
         githubContext: {
           repo: args.params.repo,
           subjectNumber: issueNumber,
           subjectKind: args.params.subjectKind,
           triggerCommentId: args.params.commentId ?? null,
+          issueContext: args.issueContext,
+          messageText: args.prompt,
+          triggerReactionId: args.reactionId ?? null,
+          triggerCommentBody: args.params.comment?.body ?? null,
         },
         createdAt: args.currentTime,
       },
@@ -1385,13 +1318,6 @@ const dispatchGithubAgentRun$ = command(
       issueNumber,
       signal,
     });
-    const promptParts = buildPromptParts(prompt, {
-      issueContext,
-      repo: params.repo,
-      issueNumber,
-      subjectKind: params.subjectKind,
-    });
-
     const reactionId = await maybeAddCommentReaction({
       token,
       repo: params.repo,
@@ -1406,7 +1332,7 @@ const dispatchGithubAgentRun$ = command(
       params,
       target,
       prompt,
-      promptParts,
+      issueContext,
       reactionId,
       currentTime,
     });

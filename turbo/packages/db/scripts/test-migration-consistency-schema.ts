@@ -35,7 +35,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
 import { connectorExternalCodeSessions } from "../src/schema/connector-external-code-session";
@@ -44,9 +44,11 @@ import { connectorOauthStates } from "../src/schema/connector-oauth-state";
 import { connectors } from "../src/schema/connector";
 import { chatEvents } from "../src/schema/chat-event";
 import { chatThreads } from "../src/schema/chat-thread";
+import { runnerState } from "../src/schema/runner-state";
 import { userConnectors } from "../src/schema/user-connector";
 import { userPermissionGrants } from "../src/schema/user-permission-grant";
 import { zeroRuns } from "../src/schema/zero-run";
+import type { RunnerHeldSandboxStates } from "../src/jsonb-contracts/runner-state";
 import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -11054,8 +11056,8 @@ function compareSchemas(
       snapshotSchema.columns.get(tableName) || [],
     ).sort();
 
-    const missingCols = dbCols.filter((c) => {
-      return !snapshotCols.includes(c);
+    const missingCols = dbCols.filter((column) => {
+      return !snapshotCols.includes(column);
     });
     const extraCols = snapshotCols.filter((c) => {
       return !dbCols.includes(c);
@@ -14009,6 +14011,1075 @@ async function validateChatEventTerminalIndexExpansion(): Promise<void> {
   }
 }
 
+const CHAT_EVENT_RUN_LIFECYCLE_CONTRACTION_PREVIOUS_MIGRATION = 792;
+const CHAT_EVENT_RUN_LIFECYCLE_CONTRACTION_MIGRATION = 793;
+
+async function validateChatEventRunLifecycleContraction(): Promise<void> {
+  console.log("=== Validate chat event run lifecycle contraction ===\n");
+  const testDb = "migration_chat_event_run_lifecycle_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "00000000-0000-4000-8000-000000079301";
+  const threadId = "00000000-0000-4000-8000-000000079302";
+  const historicalRunId = "00000000-0000-4000-8000-000000079303";
+  const canonicalRunId = "00000000-0000-4000-8000-000000079304";
+  const postContractRunId = "00000000-0000-4000-8000-000000079305";
+  const historicalEventId = "00000000-0000-4000-8000-000000079311";
+  const canonicalEventId = "00000000-0000-4000-8000-000000079312";
+  const outputEventId = "00000000-0000-4000-8000-000000079313";
+  const postContractEventId = "00000000-0000-4000-8000-000000079314";
+
+  const migrationSql = await fs.readFile(
+    path.join(
+      MIGRATIONS_DIR,
+      "0793_contract_chat_event_run_lifecycle_event.sql",
+    ),
+    "utf8",
+  );
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.equal(
+    (migrationSql.match(/\bDROP INDEX CONCURRENTLY IF EXISTS\b/gu) ?? [])
+      .length,
+    2,
+  );
+  assert.match(
+    migrationSql,
+    /ALTER TABLE "chat_events" DROP COLUMN IF EXISTS "run_lifecycle_event"/u,
+  );
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CHAT_EVENT_RUN_LIFECYCLE_CONTRACTION_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'run-lifecycle-contract-user',
+            'run-lifecycle-contract',
+            'run-lifecycle-contract-org'
+          )
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES (
+            $1,
+            'run-lifecycle-contract-user',
+            $2,
+            'run lifecycle contract'
+          )
+        `,
+        [threadId, composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_lifecycle_event",
+            "content",
+            "seq_id",
+            "created_at"
+          )
+          VALUES
+            (
+              $2,
+              $1,
+              $5,
+              'run.completed',
+              'completed',
+              'historical terminal payload',
+              1,
+              '2026-08-01 00:00:00'
+            ),
+            (
+              $3,
+              $1,
+              $6,
+              'run.failed',
+              NULL,
+              'canonical terminal payload',
+              2,
+              '2026-08-01 00:00:01'
+            ),
+            (
+              $4,
+              $1,
+              NULL,
+              'output.message',
+              NULL,
+              'non-terminal payload',
+              3,
+              '2026-08-01 00:00:02'
+            )
+        `,
+        [
+          threadId,
+          historicalEventId,
+          canonicalEventId,
+          outputEventId,
+          historicalRunId,
+          canonicalRunId,
+        ],
+      );
+
+      const legacyObjectsBefore = await client.query<{
+        columnCount: string;
+        indexCount: string;
+      }>(`
+        SELECT
+          (
+            SELECT count(*)::text
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'chat_events'
+              AND "column_name" = 'run_lifecycle_event'
+          ) AS "columnCount",
+          (
+            SELECT count(*)::text
+            FROM "pg_class"
+            WHERE "relname" IN (
+              'chat_events_run_lifecycle_unique',
+              'idx_chat_events_thread_run_finish_created'
+            )
+          ) AS "indexCount"
+      `);
+      assert.deepEqual(legacyObjectsBefore.rows, [
+        { columnCount: "1", indexCount: "2" },
+      ]);
+
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "chat_events_run_terminal_unique",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_lifecycle_event",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'run.failed', NULL, 4)
+        `,
+        values: [threadId, canonicalRunId],
+      });
+
+      await applyMigrationsUpTo(
+        client,
+        CHAT_EVENT_RUN_LIFECYCLE_CONTRACTION_MIGRATION,
+      );
+
+      const migrationStatements = migrationSql
+        .split("--> statement-breakpoint")
+        .map((statement) => {
+          return statement.trim();
+        })
+        .filter((statement) => {
+          return statement.length > 0;
+        });
+      for (const statement of migrationStatements) {
+        await client.query(statement);
+      }
+
+      const legacyObjectsAfter = await client.query<{
+        columnCount: string;
+        indexCount: string;
+      }>(`
+        SELECT
+          (
+            SELECT count(*)::text
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'chat_events'
+              AND "column_name" = 'run_lifecycle_event'
+          ) AS "columnCount",
+          (
+            SELECT count(*)::text
+            FROM "pg_class"
+            WHERE "relname" IN (
+              'chat_events_run_lifecycle_unique',
+              'idx_chat_events_thread_run_finish_created'
+            )
+          ) AS "indexCount"
+      `);
+      assert.deepEqual(legacyObjectsAfter.rows, [
+        { columnCount: "0", indexCount: "0" },
+      ]);
+
+      const canonicalIndexes = await client.query<{
+        indexName: string;
+        isUnique: boolean;
+        isValid: boolean;
+        predicate: string | null;
+      }>(`
+        SELECT
+          "index_class"."relname" AS "indexName",
+          "index"."indisunique" AS "isUnique",
+          "index"."indisvalid" AS "isValid",
+          pg_get_expr(
+            "index"."indpred",
+            "index"."indrelid"
+          ) AS "predicate"
+        FROM "pg_index" AS "index"
+        INNER JOIN "pg_class" AS "index_class"
+          ON "index_class"."oid" = "index"."indexrelid"
+        WHERE "index_class"."relname" IN (
+          'chat_events_run_terminal_unique',
+          'idx_chat_events_thread_run_terminal_created'
+        )
+        ORDER BY "index_class"."relname"
+      `);
+      assert.deepEqual(
+        canonicalIndexes.rows.map((index) => {
+          return {
+            indexName: index.indexName,
+            isUnique: index.isUnique,
+            isValid: index.isValid,
+          };
+        }),
+        [
+          {
+            indexName: "chat_events_run_terminal_unique",
+            isUnique: true,
+            isValid: true,
+          },
+          {
+            indexName: "idx_chat_events_thread_run_terminal_created",
+            isUnique: false,
+            isValid: true,
+          },
+        ],
+      );
+      for (const index of canonicalIndexes.rows) {
+        assert.match(index.predicate ?? "", /\bevent_type\b/u);
+        assert.doesNotMatch(index.predicate ?? "", /\brun_lifecycle_event\b/u);
+      }
+
+      const survivingRows = await client.query<{
+        content: string | null;
+        eventType: string;
+        id: string;
+        seqId: string;
+      }>(
+        `
+          SELECT
+            "id",
+            "event_type" AS "eventType",
+            "content",
+            "seq_id"::text AS "seqId"
+          FROM "chat_events"
+          WHERE "id" IN ($1, $2, $3)
+          ORDER BY "seq_id"
+        `,
+        [historicalEventId, canonicalEventId, outputEventId],
+      );
+      assert.deepEqual(survivingRows.rows, [
+        {
+          id: historicalEventId,
+          eventType: "run.completed",
+          content: "historical terminal payload",
+          seqId: "1",
+        },
+        {
+          id: canonicalEventId,
+          eventType: "run.failed",
+          content: "canonical terminal payload",
+          seqId: "2",
+        },
+        {
+          id: outputEventId,
+          eventType: "output.message",
+          content: "non-terminal payload",
+          seqId: "3",
+        },
+      ]);
+
+      const postContractInsert = await client.query<{
+        eventType: string;
+        id: string;
+      }>(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "content",
+            "seq_id"
+          )
+          VALUES ($1, $2, $3, 'run.cancelled', 'post-contract terminal', 4)
+          RETURNING "id", "event_type" AS "eventType"
+        `,
+        [postContractEventId, threadId, postContractRunId],
+      );
+      assert.deepEqual(postContractInsert.rows, [
+        { id: postContractEventId, eventType: "run.cancelled" },
+      ]);
+
+      const terminalRows = await client.query<{
+        eventType: string;
+        id: string;
+      }>(
+        `
+          SELECT "id", "event_type" AS "eventType"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+            AND "event_type" IN (
+              'run.completed',
+              'run.failed',
+              'run.cancelled'
+            )
+          ORDER BY "created_at", "id"
+        `,
+        [threadId],
+      );
+      assert.deepEqual(terminalRows.rows, [
+        { id: historicalEventId, eventType: "run.completed" },
+        { id: canonicalEventId, eventType: "run.failed" },
+        { id: postContractEventId, eventType: "run.cancelled" },
+      ]);
+
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "chat_events_run_terminal_unique",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'run.completed', 5)
+        `,
+        values: [threadId, postContractRunId],
+      });
+      await assertChatEventsAppendOnlyProtection(client, historicalEventId);
+
+      console.log("   ✅ Historical and canonical terminal rows survive");
+      console.log(
+        "   ✅ Canonical terminal reads and writes remain available after contraction",
+      );
+      console.log(
+        "   ✅ The event_type unique index independently rejects duplicate terminal events",
+      );
+      console.log(
+        "   ✅ Full migration retry removes only the legacy column and indexes",
+      );
+      console.log("   ✅ Chat event append-only protection remains active\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+const CHAT_EVENT_LOW_TRAFFIC_INDEXES_PREVIOUS_MIGRATION = 794;
+const CHAT_EVENT_LOW_TRAFFIC_INDEXES_MIGRATION = 795;
+
+async function validateChatEventLowTrafficIndexes(): Promise<void> {
+  console.log("=== Validate chat event low-traffic index optimization ===\n");
+  const testDb = "migration_chat_event_low_traffic_indexes_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "00000000-0000-4000-8000-000000079501";
+  const threadId = "00000000-0000-4000-8000-000000079502";
+  const interruptsRunId = "00000000-0000-4000-8000-000000079503";
+  const runGroupId = "00000000-0000-4000-8000-000000079504";
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0795_optimize_chat_event_interrupt_indexes.sql"),
+    "utf8",
+  );
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.equal(
+    (migrationSql.match(/\bCREATE UNIQUE INDEX CONCURRENTLY\b/gu) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (migrationSql.match(/\bDROP INDEX CONCURRENTLY IF EXISTS\b/gu) ?? [])
+      .length,
+    3,
+  );
+  const dropPartialIndexPosition = migrationSql.indexOf(
+    'DROP INDEX CONCURRENTLY IF EXISTS "chat_events_interrupts_run_id_not_null_unique"',
+  );
+  const createPartialIndexPosition = migrationSql.indexOf(
+    'CREATE UNIQUE INDEX CONCURRENTLY "chat_events_interrupts_run_id_not_null_unique"',
+  );
+  const dropOldIndexPosition = migrationSql.indexOf(
+    'DROP INDEX CONCURRENTLY IF EXISTS "chat_events_interrupts_run_id_unique"',
+  );
+  const dropRunGroupIndexPosition = migrationSql.indexOf(
+    'DROP INDEX CONCURRENTLY IF EXISTS "idx_chat_events_run_group_id"',
+  );
+  assert.ok(dropPartialIndexPosition >= 0);
+  assert.ok(createPartialIndexPosition > dropPartialIndexPosition);
+  assert.ok(dropOldIndexPosition > createPartialIndexPosition);
+  assert.ok(dropRunGroupIndexPosition > dropOldIndexPosition);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CHAT_EVENT_LOW_TRAFFIC_INDEXES_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'low-traffic-index-test-user',
+            'low-traffic-index-test',
+            'low-traffic-index-test-org'
+          )
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES (
+            $1,
+            'low-traffic-index-test-user',
+            $2,
+            'low traffic index test'
+          )
+        `,
+        [threadId, composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "interrupts_run_id",
+            "run_group_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES
+            ($1, $2, $3, 'run.queued', 1),
+            ($1, NULL, NULL, 'run.queued', 2)
+        `,
+        [threadId, interruptsRunId, runGroupId],
+      );
+
+      const indexesBefore = await client.query<{ indexName: string }>(`
+        SELECT "index_class"."relname" AS "indexName"
+        FROM "pg_index" AS "index"
+        INNER JOIN "pg_class" AS "index_class"
+          ON "index_class"."oid" = "index"."indexrelid"
+        WHERE "index_class"."relname" IN (
+          'chat_events_interrupts_run_id_unique',
+          'chat_events_interrupts_run_id_not_null_unique',
+          'idx_chat_events_run_group_id'
+        )
+        ORDER BY "index_class"."relname"
+      `);
+      assert.deepEqual(indexesBefore.rows, [
+        { indexName: "chat_events_interrupts_run_id_unique" },
+        { indexName: "idx_chat_events_run_group_id" },
+      ]);
+
+      await applyMigrationsUpTo(
+        client,
+        CHAT_EVENT_LOW_TRAFFIC_INDEXES_MIGRATION,
+      );
+
+      const migrationStatements = migrationSql
+        .split("--> statement-breakpoint")
+        .map((statement) => {
+          return statement.trim();
+        })
+        .filter((statement) => {
+          return statement.length > 0;
+        });
+      for (const statement of migrationStatements) {
+        await client.query(statement);
+      }
+
+      const indexesAfter = await client.query<{
+        indexName: string;
+        isUnique: boolean;
+        isValid: boolean;
+        predicate: string | null;
+      }>(`
+        SELECT
+          "index_class"."relname" AS "indexName",
+          "index"."indisunique" AS "isUnique",
+          "index"."indisvalid" AS "isValid",
+          pg_get_expr(
+            "index"."indpred",
+            "index"."indrelid"
+          ) AS "predicate"
+        FROM "pg_index" AS "index"
+        INNER JOIN "pg_class" AS "index_class"
+          ON "index_class"."oid" = "index"."indexrelid"
+        WHERE "index_class"."relname" IN (
+          'chat_events_interrupts_run_id_unique',
+          'chat_events_interrupts_run_id_not_null_unique',
+          'idx_chat_events_run_group_id',
+          'idx_chat_events_run_id',
+          'chat_events_revokes_event_id_unique'
+        )
+        ORDER BY "index_class"."relname"
+      `);
+      assert.deepEqual(
+        indexesAfter.rows.map((index) => {
+          return {
+            indexName: index.indexName,
+            isUnique: index.isUnique,
+            isValid: index.isValid,
+          };
+        }),
+        [
+          {
+            indexName: "chat_events_interrupts_run_id_not_null_unique",
+            isUnique: true,
+            isValid: true,
+          },
+          {
+            indexName: "chat_events_revokes_event_id_unique",
+            isUnique: true,
+            isValid: true,
+          },
+          {
+            indexName: "idx_chat_events_run_id",
+            isUnique: false,
+            isValid: true,
+          },
+        ],
+      );
+      const partialIndex = indexesAfter.rows.find((index) => {
+        return (
+          index.indexName === "chat_events_interrupts_run_id_not_null_unique"
+        );
+      });
+      assert.match(
+        partialIndex?.predicate ?? "",
+        /interrupts_run_id IS NOT NULL/u,
+      );
+      assert.equal(
+        indexesAfter.rows.find((index) => {
+          return index.indexName === "chat_events_revokes_event_id_unique";
+        })?.predicate,
+        null,
+      );
+
+      const survivingRow = await client.query<{
+        interruptsRunId: string;
+        runGroupId: string;
+      }>(
+        `
+          SELECT
+            "interrupts_run_id" AS "interruptsRunId",
+            "run_group_id" AS "runGroupId"
+          FROM "chat_events"
+          WHERE "interrupts_run_id" = $1
+        `,
+        [interruptsRunId],
+      );
+      assert.deepEqual(survivingRow.rows, [{ interruptsRunId, runGroupId }]);
+
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "interrupts_run_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES
+            ($1, NULL, 'run.queued', 3),
+            ($1, NULL, 'run.queued', 4)
+        `,
+        [threadId],
+      );
+      const nullInterruptRows = await client.query<{ count: string }>(
+        `
+          SELECT count(*)::text AS "count"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+            AND "interrupts_run_id" IS NULL
+        `,
+        [threadId],
+      );
+      assert.deepEqual(nullInterruptRows.rows, [{ count: "3" }]);
+
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "chat_events_interrupts_run_id_not_null_unique",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "interrupts_run_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'run.queued', 5)
+        `,
+        values: [threadId, interruptsRunId],
+      });
+
+      await client.query(`ANALYZE "chat_events"`);
+      await client.query(`SET enable_seqscan = off`);
+      const equalityPlan = await client.query<{ "QUERY PLAN": string }>(
+        `
+          EXPLAIN (COSTS OFF)
+          SELECT "id"
+          FROM "chat_events"
+          WHERE "interrupts_run_id" = $1
+        `,
+        [interruptsRunId],
+      );
+      const equalityPlanText = equalityPlan.rows
+        .map((row) => {
+          return row["QUERY PLAN"];
+        })
+        .join("\n");
+      assert.match(
+        equalityPlanText,
+        /\bchat_events_interrupts_run_id_not_null_unique\b/u,
+      );
+
+      console.log(
+        "   ✅ Full migration retry preserves the target index state",
+      );
+      console.log("   ✅ Duplicate non-null interrupt run IDs fail with 23505");
+      console.log("   ✅ Multiple NULL interrupt run IDs remain valid");
+      console.log(
+        "   ✅ Equality EXPLAIN uses chat_events_interrupts_run_id_not_null_unique",
+      );
+      console.log(
+        "   ✅ The zero-read run_group_id index is absent while out-of-scope indexes remain\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+const CHAT_EVENT_REVOKE_INDEX_PREVIOUS_MIGRATION = 802;
+const CHAT_EVENT_REVOKE_INDEX_MIGRATION = 803;
+
+async function validateChatEventRevokeIndex(): Promise<void> {
+  console.log("=== Validate chat event revoke index optimization ===\n");
+  const testDb = "migration_chat_event_revoke_index_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "00000000-0000-4000-8000-000000080201";
+  const threadId = "00000000-0000-4000-8000-000000080202";
+  const otherThreadId = "00000000-0000-4000-8000-000000080203";
+  const targetEventId = "00000000-0000-4000-8000-000000080204";
+  const replacementEventId = "00000000-0000-4000-8000-000000080205";
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0803_optimize_chat_event_revoke_index.sql"),
+    "utf8",
+  );
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.equal(
+    (migrationSql.match(/\bCREATE UNIQUE INDEX CONCURRENTLY\b/gu) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (migrationSql.match(/\bDROP INDEX CONCURRENTLY IF EXISTS\b/gu) ?? [])
+      .length,
+    2,
+  );
+  const dropPartialIndexPosition = migrationSql.indexOf(
+    'DROP INDEX CONCURRENTLY IF EXISTS "chat_events_revokes_event_id_not_null_unique"',
+  );
+  const createPartialIndexPosition = migrationSql.indexOf(
+    'CREATE UNIQUE INDEX CONCURRENTLY "chat_events_revokes_event_id_not_null_unique"',
+  );
+  const dropOldIndexPosition = migrationSql.indexOf(
+    'DROP INDEX CONCURRENTLY IF EXISTS "chat_events_revokes_event_id_unique"',
+  );
+  assert.ok(dropPartialIndexPosition >= 0);
+  assert.ok(createPartialIndexPosition > dropPartialIndexPosition);
+  assert.ok(dropOldIndexPosition > createPartialIndexPosition);
+  assert.doesNotMatch(migrationSql, /idx_chat_events_run_id/u);
+  assert.doesNotMatch(migrationSql, /interrupts_run_id/u);
+  assert.doesNotMatch(migrationSql, /run_terminal/u);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CHAT_EVENT_REVOKE_INDEX_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'revoke-index-test-user',
+            'revoke-index-test',
+            'revoke-index-test-org'
+          )
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES
+            ($1, 'revoke-index-test-user', $3, 'revoke index test'),
+            ($2, 'revoke-index-test-user', $3, 'revoke index plan filler')
+        `,
+        [threadId, otherThreadId, composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'run.queued', 1)
+        `,
+        [targetEventId, threadId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "revokes_event_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES
+            ($1, $2, $3, 'control.revoke', 2),
+            (gen_random_uuid(), $2, NULL, 'run.queued', 3)
+        `,
+        [replacementEventId, threadId, targetEventId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "event_type",
+            "seq_id"
+          )
+          SELECT $1, 'output.message', "sequence"
+          FROM generate_series(1, 2000) AS "sequence"
+        `,
+        [otherThreadId],
+      );
+
+      const indexesBefore = await client.query<{ indexName: string }>(`
+        SELECT "index_class"."relname" AS "indexName"
+        FROM "pg_index" AS "index"
+        INNER JOIN "pg_class" AS "index_class"
+          ON "index_class"."oid" = "index"."indexrelid"
+        WHERE "index_class"."relname" IN (
+          'chat_events_revokes_event_id_unique',
+          'chat_events_revokes_event_id_not_null_unique'
+        )
+        ORDER BY "index_class"."relname"
+      `);
+      assert.deepEqual(indexesBefore.rows, [
+        { indexName: "chat_events_revokes_event_id_unique" },
+      ]);
+
+      await applyMigrationsUpTo(client, CHAT_EVENT_REVOKE_INDEX_MIGRATION);
+
+      const migrationStatements = migrationSql
+        .split("--> statement-breakpoint")
+        .map((statement) => {
+          return statement.trim();
+        })
+        .filter((statement) => {
+          return statement.length > 0;
+        });
+      for (const statement of migrationStatements) {
+        await client.query(statement);
+      }
+
+      const indexesAfter = await client.query<{
+        indexName: string;
+        isReady: boolean;
+        isUnique: boolean;
+        isValid: boolean;
+        predicate: string | null;
+      }>(`
+        SELECT
+          "index_class"."relname" AS "indexName",
+          "index"."indisready" AS "isReady",
+          "index"."indisunique" AS "isUnique",
+          "index"."indisvalid" AS "isValid",
+          pg_get_expr(
+            "index"."indpred",
+            "index"."indrelid"
+          ) AS "predicate"
+        FROM "pg_index" AS "index"
+        INNER JOIN "pg_class" AS "index_class"
+          ON "index_class"."oid" = "index"."indexrelid"
+        WHERE "index_class"."relname" IN (
+          'chat_events_revokes_event_id_unique',
+          'chat_events_revokes_event_id_not_null_unique',
+          'chat_events_interrupts_run_id_not_null_unique',
+          'idx_chat_events_run_id',
+          'chat_events_run_terminal_unique',
+          'idx_chat_events_thread_run_terminal_created'
+        )
+        ORDER BY "index_class"."relname"
+      `);
+      assert.deepEqual(
+        indexesAfter.rows.map((index) => {
+          return {
+            indexName: index.indexName,
+            isReady: index.isReady,
+            isUnique: index.isUnique,
+            isValid: index.isValid,
+          };
+        }),
+        [
+          {
+            indexName: "chat_events_interrupts_run_id_not_null_unique",
+            isReady: true,
+            isUnique: true,
+            isValid: true,
+          },
+          {
+            indexName: "chat_events_revokes_event_id_not_null_unique",
+            isReady: true,
+            isUnique: true,
+            isValid: true,
+          },
+          {
+            indexName: "chat_events_run_terminal_unique",
+            isReady: true,
+            isUnique: true,
+            isValid: true,
+          },
+          {
+            indexName: "idx_chat_events_run_id",
+            isReady: true,
+            isUnique: false,
+            isValid: true,
+          },
+          {
+            indexName: "idx_chat_events_thread_run_terminal_created",
+            isReady: true,
+            isUnique: false,
+            isValid: true,
+          },
+        ],
+      );
+      const partialIndex = indexesAfter.rows.find((index) => {
+        return (
+          index.indexName === "chat_events_revokes_event_id_not_null_unique"
+        );
+      });
+      assert.match(
+        partialIndex?.predicate ?? "",
+        /revokes_event_id IS NOT NULL/u,
+      );
+
+      const survivingReplacement = await client.query<{
+        id: string;
+        revokesEventId: string;
+      }>(
+        `
+          SELECT
+            "id",
+            "revokes_event_id" AS "revokesEventId"
+          FROM "chat_events"
+          WHERE "revokes_event_id" = $1
+        `,
+        [targetEventId],
+      );
+      assert.deepEqual(survivingReplacement.rows, [
+        { id: replacementEventId, revokesEventId: targetEventId },
+      ]);
+
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "revokes_event_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES
+            ($1, NULL, 'run.queued', 4),
+            ($1, NULL, 'run.queued', 5)
+        `,
+        [threadId],
+      );
+      const nullRevokeRows = await client.query<{ count: string }>(
+        `
+          SELECT count(*)::text AS "count"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+            AND "revokes_event_id" IS NULL
+        `,
+        [threadId],
+      );
+      assert.deepEqual(nullRevokeRows.rows, [{ count: "4" }]);
+
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "chat_events_revokes_event_id_not_null_unique",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "revokes_event_id",
+            "event_type",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'control.revoke', 6)
+        `,
+        values: [threadId, targetEventId],
+      });
+
+      await client.query(`ANALYZE "chat_events"`);
+      await client.query(`SET enable_seqscan = off`);
+      const equalityPlan = await client.query<{ "QUERY PLAN": string }>(
+        `
+          EXPLAIN (COSTS OFF)
+          SELECT "id"
+          FROM "chat_events"
+          WHERE "revokes_event_id" = $1
+        `,
+        [targetEventId],
+      );
+      const equalityPlanText = equalityPlan.rows
+        .map((row) => {
+          return row["QUERY PLAN"];
+        })
+        .join("\n");
+      assert.match(
+        equalityPlanText,
+        /\bchat_events_revokes_event_id_not_null_unique\b/u,
+      );
+
+      const replacementJoinPlan = await client.query<{ "QUERY PLAN": string }>(
+        `
+          EXPLAIN (COSTS OFF)
+          SELECT "replacement"."id"
+          FROM "chat_events" AS "original"
+          LEFT JOIN "chat_events" AS "replacement"
+            ON "replacement"."revokes_event_id" = "original"."id"
+          WHERE "original"."id" = $1
+        `,
+        [targetEventId],
+      );
+      const replacementJoinPlanText = replacementJoinPlan.rows
+        .map((row) => {
+          return row["QUERY PLAN"];
+        })
+        .join("\n");
+      assert.match(
+        replacementJoinPlanText,
+        /\bchat_events_revokes_event_id_not_null_unique\b/u,
+      );
+
+      await client.query(`RESET enable_seqscan`);
+      const visibilityPlan = await client.query<{ "QUERY PLAN": string }>(
+        `
+          EXPLAIN (COSTS OFF)
+          SELECT "id"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+            AND "event_type" <> 'input.goal'
+            AND (
+              "event_type" NOT IN (
+                'input.prompt',
+                'input.automation',
+                'input.rejected',
+                'control.interrupt',
+                'control.revoke'
+              )
+              OR "run_id" IS NOT NULL
+              OR "revokes_event_id" IS NULL
+              OR "content" IS NOT NULL
+              OR "error" IS NOT NULL
+            )
+            AND (
+              "event_type" NOT IN (
+                'input.prompt',
+                'input.automation',
+                'input.rejected',
+                'control.interrupt',
+                'control.revoke'
+              )
+              OR "run_id" IS NOT NULL
+              OR "interrupts_run_id" IS NULL
+            )
+        `,
+        [threadId],
+      );
+      const visibilityPlanText = visibilityPlan.rows
+        .map((row) => {
+          return row["QUERY PLAN"];
+        })
+        .join("\n");
+      assert.match(visibilityPlanText, /Filter:.*revokes_event_id IS NULL/su);
+      assert.match(
+        visibilityPlanText,
+        /\b(?:idx_chat_events_thread_created|chat_events_thread_seq_unique)\b/u,
+      );
+      assert.doesNotMatch(
+        visibilityPlanText,
+        /\bchat_events_revokes_event_id_not_null_unique\b/u,
+      );
+
+      console.log(
+        "   ✅ Full migration retry preserves the partial unique index catalog state",
+      );
+      console.log("   ✅ Duplicate non-null revoke event IDs fail with 23505");
+      console.log("   ✅ Multiple NULL revoke event IDs remain valid");
+      console.log(`   ✅ Equality lookup plan:\n${equalityPlanText}`);
+      console.log(
+        `   ✅ Replacement self-join plan:\n${replacementJoinPlanText}`,
+      );
+      console.log(
+        `   ✅ Composite visibility plan keeps revokes_event_id IS NULL as a filter:\n${visibilityPlanText}\n`,
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateGithubIssueSessionContraction(): Promise<void> {
   console.log("=== Validate legacy GitHub issue session contraction ===\n");
   const testDb = "migration_github_issue_session_contraction_test";
@@ -15247,6 +16318,1281 @@ async function validateTimestampOrdering(): Promise<void> {
   console.log();
 }
 
+const RUNNER_SANDBOX_STATE_PREVIOUS_MIGRATION = 799;
+const RUNNER_SANDBOX_STATE_EXPANSION_MIGRATION = 800;
+const RUNNER_SANDBOX_STATE_RUNTIME_SCHEMA_MIGRATION = 804;
+const RUNNER_SANDBOX_STATE_CONTRACTION_MIGRATION = 805;
+
+async function validateRunnerSandboxStatePersistence(): Promise<void> {
+  console.log("=== Validate runner sandbox state persistence ===\n");
+  const testDb = "migration_runner_sandbox_state_persistence_test";
+  const divergenceDb = "migration_runner_sandbox_state_divergence_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const divergenceDbUrl = createTestDbUrl(divergenceDb);
+  const runnerIds = {
+    conflict: "98000000-0000-4000-8000-000000000003",
+    current: "98000000-0000-4000-8000-000000000001",
+    divergent: "98000000-0000-4000-8000-000000000005",
+    legacyAfterExpansion: "98000000-0000-4000-8000-000000000004",
+    next: "98000000-0000-4000-8000-000000000002",
+  } as const;
+  const states = {
+    canonicalInitial: [
+      {
+        reuseKey: "thread:canonical-initial",
+        lastCompletedAt: "2026-08-02T00:02:00.000Z",
+        reusableSandbox: { profile: "standard" },
+      },
+    ],
+    canonicalUpdate: [
+      {
+        reuseKey: "thread:canonical-update",
+        lastCompletedAt: "2026-08-02T00:03:00.000Z",
+        reusableSandbox: {
+          profile: "browser",
+          historyGenerationRunId: "98000000-0000-4000-8000-000000000020",
+        },
+      },
+    ],
+    conflict: [
+      {
+        reuseKey: "thread:conflict",
+        lastCompletedAt: "2026-08-02T00:05:00.000Z",
+        reusableSandbox: { profile: "standard" },
+      },
+    ],
+    historical: [
+      {
+        reuseKey: "thread:historical",
+        lastCompletedAt: "2026-08-02T00:00:00.000Z",
+        reusableSandbox: { profile: "standard" },
+      },
+    ],
+    legacyUpdate: [
+      {
+        reuseKey: "thread:legacy-update",
+        lastCompletedAt: "2026-08-02T00:01:00.000Z",
+        reusableSandbox: { profile: "standard" },
+      },
+    ],
+    stale: [
+      {
+        reuseKey: "thread:stale",
+        lastCompletedAt: "2026-08-02T00:04:00.000Z",
+        reusableSandbox: { profile: "standard" },
+      },
+    ],
+  } satisfies Record<string, RunnerHeldSandboxStates>;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, RUNNER_SANDBOX_STATE_PREVIOUS_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const database = drizzle(client);
+      function heartbeatLastSeenAt(sequence: number): Date {
+        return new Date(Date.UTC(2026, 7, 2, 0, 0, sequence));
+      }
+
+      async function writeLegacyHeartbeat(args: {
+        readonly generation: number;
+        readonly runnerId: string;
+        readonly sequence: number;
+        readonly states: RunnerHeldSandboxStates;
+      }): Promise<void> {
+        const lastSeenAt = heartbeatLastSeenAt(args.sequence);
+        await client.query(
+          `
+            INSERT INTO "runner_state" (
+              "runner_id",
+              "runner_name",
+              "runner_group",
+              "heartbeat_generation",
+              "heartbeat_sequence",
+              "total_vcpu",
+              "total_memory_mb",
+              "max_concurrent",
+              "allocated_vcpu",
+              "allocated_memory_mb",
+              "running_count",
+              "admittable_profiles",
+              "held_session_states",
+              "held_workspace_states",
+              "mode",
+              "last_seen_at"
+            )
+            VALUES (
+              $1,
+              'migration-runner',
+              'default',
+              $2,
+              $3,
+              8,
+              16384,
+              4,
+              2,
+              4096,
+              1,
+              '["standard", "browser"]'::jsonb,
+              $4::jsonb,
+              '[]'::jsonb,
+              'running',
+              $5
+            )
+            ON CONFLICT ("runner_id") DO UPDATE SET
+              "runner_name" = EXCLUDED."runner_name",
+              "runner_group" = EXCLUDED."runner_group",
+              "heartbeat_generation" = EXCLUDED."heartbeat_generation",
+              "heartbeat_sequence" = EXCLUDED."heartbeat_sequence",
+              "total_vcpu" = EXCLUDED."total_vcpu",
+              "total_memory_mb" = EXCLUDED."total_memory_mb",
+              "max_concurrent" = EXCLUDED."max_concurrent",
+              "allocated_vcpu" = EXCLUDED."allocated_vcpu",
+              "allocated_memory_mb" = EXCLUDED."allocated_memory_mb",
+              "running_count" = EXCLUDED."running_count",
+              "admittable_profiles" = EXCLUDED."admittable_profiles",
+              "held_session_states" = EXCLUDED."held_session_states",
+              "held_workspace_states" = EXCLUDED."held_workspace_states",
+              "mode" = EXCLUDED."mode",
+              "last_seen_at" = EXCLUDED."last_seen_at"
+            WHERE
+              "runner_state"."heartbeat_generation"
+                < EXCLUDED."heartbeat_generation"
+              OR (
+                "runner_state"."heartbeat_generation"
+                  = EXCLUDED."heartbeat_generation"
+                AND "runner_state"."heartbeat_sequence"
+                  < EXCLUDED."heartbeat_sequence"
+              )
+          `,
+          [
+            args.runnerId,
+            args.generation,
+            args.sequence,
+            JSON.stringify(args.states),
+            lastSeenAt,
+          ],
+        );
+      }
+
+      async function writeCanonicalHeartbeat(args: {
+        readonly generation: number;
+        readonly runnerId: string;
+        readonly sequence: number;
+        readonly states: RunnerHeldSandboxStates;
+      }): Promise<void> {
+        const lastSeenAt = heartbeatLastSeenAt(args.sequence);
+        const query = database
+          .insert(runnerState)
+          .values({
+            runnerId: args.runnerId,
+            runnerName: "migration-runner",
+            runnerGroup: "default",
+            heartbeatGeneration: args.generation,
+            heartbeatSequence: args.sequence,
+            totalVcpu: 8,
+            totalMemoryMb: 16_384,
+            maxConcurrent: 4,
+            allocatedVcpu: 2,
+            allocatedMemoryMb: 4096,
+            runningCount: 1,
+            admittableProfiles: ["standard", "browser"],
+            heldSandboxStates: args.states,
+            heldWorkspaceStates: [],
+            mode: "running",
+            lastSeenAt,
+          })
+          .onConflictDoUpdate({
+            target: runnerState.runnerId,
+            set: {
+              runnerName: "migration-runner",
+              runnerGroup: "default",
+              heartbeatGeneration: args.generation,
+              heartbeatSequence: args.sequence,
+              totalVcpu: 8,
+              totalMemoryMb: 16_384,
+              maxConcurrent: 4,
+              allocatedVcpu: 2,
+              allocatedMemoryMb: 4096,
+              runningCount: 1,
+              admittableProfiles: ["standard", "browser"],
+              heldSandboxStates: args.states,
+              heldWorkspaceStates: [],
+              mode: "running",
+              lastSeenAt,
+            },
+            setWhere: or(
+              lt(runnerState.heartbeatGeneration, args.generation),
+              and(
+                eq(runnerState.heartbeatGeneration, args.generation),
+                lt(runnerState.heartbeatSequence, args.sequence),
+              ),
+            ),
+          });
+
+        const [insertSql, conflictSql] = query
+          .toSQL()
+          .sql.split(" on conflict ");
+        assert.ok(insertSql);
+        assert.ok(conflictSql);
+        assert.match(
+          insertSql,
+          /"held_sandbox_states", "held_workspace_states"/u,
+        );
+        assert.doesNotMatch(insertSql, /held_session_states/u);
+        assert.doesNotMatch(conflictSql, /held_session_states/u);
+        await query;
+      }
+
+      async function readRunnerState(runnerId: string): Promise<{
+        readonly canonical: RunnerHeldSandboxStates;
+        readonly generation: string;
+        readonly legacy: RunnerHeldSandboxStates;
+        readonly sequence: string;
+      }> {
+        const result = await client.query<{
+          canonical: RunnerHeldSandboxStates;
+          generation: string;
+          legacy: RunnerHeldSandboxStates;
+          sequence: string;
+        }>(
+          `
+            SELECT
+              "held_sandbox_states" AS "canonical",
+              "held_session_states" AS "legacy",
+              "heartbeat_generation"::text AS "generation",
+              "heartbeat_sequence"::text AS "sequence"
+            FROM "runner_state"
+            WHERE "runner_id" = $1
+          `,
+          [runnerId],
+        );
+        assert.equal(result.rows.length, 1);
+        const row = result.rows[0];
+        assert.ok(row);
+        return row;
+      }
+
+      async function readCanonicalRunnerState(runnerId: string): Promise<{
+        readonly canonical: RunnerHeldSandboxStates;
+        readonly generation: string;
+        readonly sequence: string;
+      }> {
+        const result = await client.query<{
+          canonical: RunnerHeldSandboxStates;
+          generation: string;
+          sequence: string;
+        }>(
+          `
+            SELECT
+              "held_sandbox_states" AS "canonical",
+              "heartbeat_generation"::text AS "generation",
+              "heartbeat_sequence"::text AS "sequence"
+            FROM "runner_state"
+            WHERE "runner_id" = $1
+          `,
+          [runnerId],
+        );
+        assert.equal(result.rows.length, 1);
+        const row = result.rows[0];
+        assert.ok(row);
+        return row;
+      }
+
+      await writeLegacyHeartbeat({
+        generation: 1,
+        runnerId: runnerIds.current,
+        sequence: 1,
+        states: states.historical,
+      });
+      const preExpansionCanonicalColumn = await client.query<{ count: string }>(
+        `
+          SELECT count(*)::text AS "count"
+          FROM "information_schema"."columns"
+          WHERE "table_schema" = 'public'
+            AND "table_name" = 'runner_state'
+            AND "column_name" = 'held_sandbox_states'
+        `,
+      );
+      assert.deepEqual(preExpansionCanonicalColumn.rows, [{ count: "0" }]);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        RUNNER_SANDBOX_STATE_EXPANSION_MIGRATION,
+      );
+
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: states.historical,
+        generation: "1",
+        legacy: states.historical,
+        sequence: "1",
+      });
+
+      const columns = await client.query<{
+        columnDefault: string | null;
+        columnName: string;
+        isNullable: string;
+      }>(`
+        SELECT
+          "column_name" AS "columnName",
+          "column_default" AS "columnDefault",
+          "is_nullable" AS "isNullable"
+        FROM "information_schema"."columns"
+        WHERE "table_schema" = 'public'
+          AND "table_name" = 'runner_state'
+          AND "column_name" IN (
+            'held_sandbox_states',
+            'held_session_states'
+          )
+        ORDER BY "column_name"
+      `);
+      assert.deepEqual(columns.rows, [
+        {
+          columnDefault: "'[]'::jsonb",
+          columnName: "held_sandbox_states",
+          isNullable: "NO",
+        },
+        {
+          columnDefault: "'[]'::jsonb",
+          columnName: "held_session_states",
+          isNullable: "NO",
+        },
+      ]);
+
+      const bridgeFunction = await client.query<{ exists: boolean }>(`
+        SELECT EXISTS (
+          SELECT 1
+          FROM "pg_proc"
+          WHERE "pronamespace" = 'public'::regnamespace
+            AND "proname" = 'bridge_runner_state_sandbox_states_0800'
+        ) AS "exists"
+      `);
+      assert.deepEqual(bridgeFunction.rows, [{ exists: true }]);
+      const bridgeTrigger = await client.query<{
+        enabled: string;
+        triggerDefinition: string;
+      }>(`
+        SELECT
+          "tgenabled" AS "enabled",
+          pg_get_triggerdef("oid") AS "triggerDefinition"
+        FROM "pg_trigger"
+        WHERE "tgrelid" = 'runner_state'::regclass
+          AND "tgname" = 'bridge_runner_state_sandbox_states_0800'
+          AND NOT "tgisinternal"
+      `);
+      assert.equal(bridgeTrigger.rows.length, 1);
+      assert.equal(bridgeTrigger.rows[0]?.enabled, "O");
+      assert.match(
+        bridgeTrigger.rows[0]?.triggerDefinition ?? "",
+        /BEFORE INSERT OR UPDATE OF held_sandbox_states, held_session_states/u,
+      );
+      const equalityConstraint = await client.query<{
+        constraintDefinition: string;
+        validated: boolean;
+      }>(`
+        SELECT
+          pg_get_constraintdef("oid") AS "constraintDefinition",
+          "convalidated" AS "validated"
+        FROM "pg_constraint"
+        WHERE "conrelid" = 'runner_state'::regclass
+          AND "conname" = 'chk_runner_state_held_sandbox_states_match'
+      `);
+      assert.equal(equalityConstraint.rows.length, 1);
+      assert.equal(equalityConstraint.rows[0]?.validated, true);
+      assert.match(
+        equalityConstraint.rows[0]?.constraintDefinition ?? "",
+        /held_sandbox_states.*held_session_states/u,
+      );
+
+      await writeLegacyHeartbeat({
+        generation: 1,
+        runnerId: runnerIds.legacyAfterExpansion,
+        sequence: 1,
+        states: states.legacyUpdate,
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.legacyAfterExpansion), {
+        canonical: states.legacyUpdate,
+        generation: "1",
+        legacy: states.legacyUpdate,
+        sequence: "1",
+      });
+
+      await writeLegacyHeartbeat({
+        generation: 1,
+        runnerId: runnerIds.current,
+        sequence: 2,
+        states: states.legacyUpdate,
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: states.legacyUpdate,
+        generation: "1",
+        legacy: states.legacyUpdate,
+        sequence: "2",
+      });
+      await writeLegacyHeartbeat({
+        generation: 1,
+        runnerId: runnerIds.current,
+        sequence: 1,
+        states: states.stale,
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: states.legacyUpdate,
+        generation: "1",
+        legacy: states.legacyUpdate,
+        sequence: "2",
+      });
+
+      await writeCanonicalHeartbeat({
+        generation: 1,
+        runnerId: runnerIds.next,
+        sequence: 1,
+        states: states.canonicalInitial,
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.next), {
+        canonical: states.canonicalInitial,
+        generation: "1",
+        legacy: states.canonicalInitial,
+        sequence: "1",
+      });
+
+      await writeCanonicalHeartbeat({
+        generation: 2,
+        runnerId: runnerIds.next,
+        sequence: 1,
+        states: states.canonicalUpdate,
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.next), {
+        canonical: states.canonicalUpdate,
+        generation: "2",
+        legacy: states.canonicalUpdate,
+        sequence: "1",
+      });
+      await writeCanonicalHeartbeat({
+        generation: 1,
+        runnerId: runnerIds.next,
+        sequence: 99,
+        states: states.stale,
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.next), {
+        canonical: states.canonicalUpdate,
+        generation: "2",
+        legacy: states.canonicalUpdate,
+        sequence: "1",
+      });
+
+      await client.query(
+        `UPDATE "runner_state" SET "held_session_states" = '[]'::jsonb WHERE "runner_id" = $1`,
+        [runnerIds.current],
+      );
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: [],
+        generation: "1",
+        legacy: [],
+        sequence: "2",
+      });
+      await client.query(
+        `UPDATE "runner_state" SET "held_sandbox_states" = $2::jsonb WHERE "runner_id" = $1`,
+        [runnerIds.current, JSON.stringify(states.legacyUpdate)],
+      );
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: states.legacyUpdate,
+        generation: "1",
+        legacy: states.legacyUpdate,
+        sequence: "2",
+      });
+      await client.query(
+        `UPDATE "runner_state" SET "held_sandbox_states" = '[]'::jsonb WHERE "runner_id" = $1`,
+        [runnerIds.current],
+      );
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: [],
+        generation: "1",
+        legacy: [],
+        sequence: "2",
+      });
+
+      await expectDatabaseError(client, {
+        code: "P0001",
+        messageIncludes: "runner sandbox state columns must match",
+        query: `
+          INSERT INTO "runner_state" (
+            "runner_id",
+            "runner_name",
+            "runner_group",
+            "held_sandbox_states",
+            "held_session_states",
+            "last_seen_at"
+          )
+          VALUES ($1, 'conflicting-runner', 'default', $2::jsonb, $3::jsonb, NOW())
+        `,
+        values: [
+          runnerIds.conflict,
+          JSON.stringify(states.canonicalUpdate),
+          JSON.stringify(states.conflict),
+        ],
+      });
+      const conflictingInsert = await client.query<{ count: string }>(
+        `SELECT count(*)::text AS "count" FROM "runner_state" WHERE "runner_id" = $1`,
+        [runnerIds.conflict],
+      );
+      assert.deepEqual(conflictingInsert.rows, [{ count: "0" }]);
+
+      await expectDatabaseError(client, {
+        code: "P0001",
+        messageIncludes: "runner sandbox state columns must match",
+        query: `
+          UPDATE "runner_state"
+          SET
+            "held_sandbox_states" = $2::jsonb,
+            "held_session_states" = $3::jsonb
+          WHERE "runner_id" = $1
+        `,
+        values: [
+          runnerIds.current,
+          JSON.stringify(states.canonicalUpdate),
+          JSON.stringify(states.conflict),
+        ],
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: [],
+        generation: "1",
+        legacy: [],
+        sequence: "2",
+      });
+
+      await applyMigrationsUpTo(
+        client,
+        RUNNER_SANDBOX_STATE_RUNTIME_SCHEMA_MIGRATION,
+      );
+      const retainedBridge = await client.query<{
+        bridgeFunction: boolean;
+        bridgeTrigger: boolean;
+        canonicalColumn: boolean;
+        equalityConstraint: boolean;
+        legacyColumn: boolean;
+      }>(`
+        SELECT
+          EXISTS (
+            SELECT 1
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'runner_state'
+              AND "column_name" = 'held_sandbox_states'
+          ) AS "canonicalColumn",
+          EXISTS (
+            SELECT 1
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'runner_state'
+              AND "column_name" = 'held_session_states'
+          ) AS "legacyColumn",
+          EXISTS (
+            SELECT 1
+            FROM "pg_proc"
+            WHERE "pronamespace" = 'public'::regnamespace
+              AND "proname" = 'bridge_runner_state_sandbox_states_0800'
+          ) AS "bridgeFunction",
+          EXISTS (
+            SELECT 1
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'runner_state'::regclass
+              AND "tgname" = 'bridge_runner_state_sandbox_states_0800'
+              AND NOT "tgisinternal"
+          ) AS "bridgeTrigger",
+          EXISTS (
+            SELECT 1
+            FROM "pg_constraint"
+            WHERE "conrelid" = 'runner_state'::regclass
+              AND "conname" = 'chk_runner_state_held_sandbox_states_match'
+          ) AS "equalityConstraint"
+      `);
+      assert.deepEqual(retainedBridge.rows, [
+        {
+          bridgeFunction: true,
+          bridgeTrigger: true,
+          canonicalColumn: true,
+          equalityConstraint: true,
+          legacyColumn: true,
+        },
+      ]);
+
+      await writeLegacyHeartbeat({
+        generation: 2,
+        runnerId: runnerIds.current,
+        sequence: 1,
+        states: states.historical,
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.current), {
+        canonical: states.historical,
+        generation: "2",
+        legacy: states.historical,
+        sequence: "1",
+      });
+
+      await writeCanonicalHeartbeat({
+        generation: 3,
+        runnerId: runnerIds.next,
+        sequence: 1,
+        states: states.canonicalInitial,
+      });
+      assert.deepEqual(await readRunnerState(runnerIds.next), {
+        canonical: states.canonicalInitial,
+        generation: "3",
+        legacy: states.canonicalInitial,
+        sequence: "1",
+      });
+
+      const divergentRows = await client.query<{ count: string }>(`
+        SELECT count(*)::text AS "count"
+        FROM "runner_state"
+        WHERE "held_sandbox_states" IS DISTINCT FROM "held_session_states"
+      `);
+      assert.deepEqual(divergentRows.rows, [{ count: "0" }]);
+
+      const blocker = new Client({ connectionString: testDbUrl });
+      await blocker.connect();
+      let blockerOpen = false;
+      try {
+        await blocker.query("BEGIN");
+        blockerOpen = true;
+        await blocker.query(`LOCK TABLE "runner_state" IN ACCESS SHARE MODE`);
+
+        try {
+          await applyMigrationsUpToInTransaction(
+            client,
+            RUNNER_SANDBOX_STATE_CONTRACTION_MIGRATION,
+          );
+          assert.fail(
+            "Runner sandbox state contraction waited for a table lock",
+          );
+        } catch (error) {
+          assert.equal(databaseErrorCode(error), "55P03");
+        }
+
+        await blocker.query("ROLLBACK");
+        blockerOpen = false;
+
+        await applyMigrationsUpToInTransaction(
+          client,
+          RUNNER_SANDBOX_STATE_CONTRACTION_MIGRATION,
+        );
+      } finally {
+        if (blockerOpen) {
+          await blocker.query("ROLLBACK");
+        }
+        await blocker.end();
+      }
+
+      const contractedSchema = await client.query<{
+        bridgeFunction: boolean;
+        bridgeTrigger: boolean;
+        canonicalColumn: boolean;
+        equalityConstraint: boolean;
+        legacyColumn: boolean;
+      }>(`
+        SELECT
+          EXISTS (
+            SELECT 1
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'runner_state'
+              AND "column_name" = 'held_sandbox_states'
+          ) AS "canonicalColumn",
+          EXISTS (
+            SELECT 1
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'runner_state'
+              AND "column_name" = 'held_session_states'
+          ) AS "legacyColumn",
+          EXISTS (
+            SELECT 1
+            FROM "pg_proc"
+            WHERE "pronamespace" = 'public'::regnamespace
+              AND "proname" = 'bridge_runner_state_sandbox_states_0800'
+          ) AS "bridgeFunction",
+          EXISTS (
+            SELECT 1
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'runner_state'::regclass
+              AND "tgname" = 'bridge_runner_state_sandbox_states_0800'
+              AND NOT "tgisinternal"
+          ) AS "bridgeTrigger",
+          EXISTS (
+            SELECT 1
+            FROM "pg_constraint"
+            WHERE "conrelid" = 'runner_state'::regclass
+              AND "conname" = 'chk_runner_state_held_sandbox_states_match'
+          ) AS "equalityConstraint"
+      `);
+      assert.deepEqual(contractedSchema.rows, [
+        {
+          bridgeFunction: false,
+          bridgeTrigger: false,
+          canonicalColumn: true,
+          equalityConstraint: false,
+          legacyColumn: false,
+        },
+      ]);
+
+      await writeCanonicalHeartbeat({
+        generation: 4,
+        runnerId: runnerIds.next,
+        sequence: 1,
+        states: states.canonicalUpdate,
+      });
+      assert.deepEqual(await readCanonicalRunnerState(runnerIds.next), {
+        canonical: states.canonicalUpdate,
+        generation: "4",
+        sequence: "1",
+      });
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  await createDatabase(divergenceDb);
+  try {
+    await runMigrationsUpTo(
+      divergenceDbUrl,
+      RUNNER_SANDBOX_STATE_RUNTIME_SCHEMA_MIGRATION,
+    );
+    const client = new Client({ connectionString: divergenceDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "runner_state" (
+            "runner_id",
+            "runner_name",
+            "runner_group",
+            "held_sandbox_states",
+            "last_seen_at"
+          )
+          VALUES ($1, 'divergent-runner', 'default', $2::jsonb, NOW())
+        `,
+        [runnerIds.divergent, JSON.stringify(states.canonicalUpdate)],
+      );
+      await client.query(
+        `ALTER TABLE "runner_state" DROP CONSTRAINT "chk_runner_state_held_sandbox_states_match"`,
+      );
+      await client.query(
+        `ALTER TABLE "runner_state" DISABLE TRIGGER "bridge_runner_state_sandbox_states_0800"`,
+      );
+      await client.query(
+        `UPDATE "runner_state" SET "held_session_states" = $2::jsonb WHERE "runner_id" = $1`,
+        [runnerIds.divergent, JSON.stringify(states.conflict)],
+      );
+
+      const divergentState = await client.query<{
+        canonical: RunnerHeldSandboxStates;
+        legacy: RunnerHeldSandboxStates;
+      }>(
+        `
+          SELECT
+            "held_sandbox_states" AS "canonical",
+            "held_session_states" AS "legacy"
+          FROM "runner_state"
+          WHERE "runner_id" = $1
+        `,
+        [runnerIds.divergent],
+      );
+      assert.deepEqual(divergentState.rows, [
+        {
+          canonical: states.canonicalUpdate,
+          legacy: states.conflict,
+        },
+      ]);
+
+      try {
+        await applyMigrationsUpToInTransaction(
+          client,
+          RUNNER_SANDBOX_STATE_CONTRACTION_MIGRATION,
+        );
+        assert.fail("Runner sandbox state contraction accepted divergent rows");
+      } catch (error) {
+        assert.equal(databaseErrorCode(error), "P0001");
+        assert.ok(error instanceof Error);
+        assert.ok(
+          error.message.includes(
+            "Cannot contract runner sandbox state persistence: bridge values diverge",
+          ),
+        );
+      }
+
+      const retainedAfterFailure = await client.query<{
+        bridgeFunction: boolean;
+        bridgeTrigger: boolean;
+        canonicalColumn: boolean;
+        equalityConstraint: boolean;
+        legacyColumn: boolean;
+        triggerEnabled: string | null;
+      }>(`
+        SELECT
+          EXISTS (
+            SELECT 1
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'runner_state'
+              AND "column_name" = 'held_sandbox_states'
+          ) AS "canonicalColumn",
+          EXISTS (
+            SELECT 1
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'runner_state'
+              AND "column_name" = 'held_session_states'
+          ) AS "legacyColumn",
+          EXISTS (
+            SELECT 1
+            FROM "pg_proc"
+            WHERE "pronamespace" = 'public'::regnamespace
+              AND "proname" = 'bridge_runner_state_sandbox_states_0800'
+          ) AS "bridgeFunction",
+          EXISTS (
+            SELECT 1
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'runner_state'::regclass
+              AND "tgname" = 'bridge_runner_state_sandbox_states_0800'
+              AND NOT "tgisinternal"
+          ) AS "bridgeTrigger",
+          EXISTS (
+            SELECT 1
+            FROM "pg_constraint"
+            WHERE "conrelid" = 'runner_state'::regclass
+              AND "conname" = 'chk_runner_state_held_sandbox_states_match'
+          ) AS "equalityConstraint",
+          (
+            SELECT "tgenabled"
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'runner_state'::regclass
+              AND "tgname" = 'bridge_runner_state_sandbox_states_0800'
+              AND NOT "tgisinternal"
+          ) AS "triggerEnabled"
+      `);
+      assert.deepEqual(retainedAfterFailure.rows, [
+        {
+          bridgeFunction: true,
+          bridgeTrigger: true,
+          canonicalColumn: true,
+          equalityConstraint: false,
+          legacyColumn: true,
+          triggerEnabled: "D",
+        },
+      ]);
+      const preservedDivergence = await client.query<{
+        canonical: RunnerHeldSandboxStates;
+        legacy: RunnerHeldSandboxStates;
+      }>(
+        `
+          SELECT
+            "held_sandbox_states" AS "canonical",
+            "held_session_states" AS "legacy"
+          FROM "runner_state"
+          WHERE "runner_id" = $1
+        `,
+        [runnerIds.divergent],
+      );
+      assert.deepEqual(preservedDivergence.rows, divergentState.rows);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(divergenceDb);
+  }
+
+  console.log(
+    "   ✅ Runner sandbox state expands compatibly and contracts atomically after migration 0804\n",
+  );
+}
+
+const RUN_EVENT_SEQUENCE_NUMBER_PREVIOUS_MIGRATION = 806;
+const RUN_EVENT_SEQUENCE_NUMBER_EXPANSION_MIGRATION = 807;
+
+async function validateRunEventSequenceNumberExpansion(): Promise<void> {
+  console.log("=== Validate populated run event sequence expansion ===\n");
+  const testDb = "migration_run_event_sequence_number_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "00000000-0000-4000-8000-000000080701";
+  const threadId = "00000000-0000-4000-8000-000000080702";
+  const historicalRunId = "00000000-0000-4000-8000-000000080703";
+  const previousApiRunId = "00000000-0000-4000-8000-000000080704";
+  const nextApiRunId = "00000000-0000-4000-8000-000000080705";
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0807_expand_run_event_sequence_number.sql"),
+    "utf8",
+  );
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.doesNotMatch(migrationSql, /\bLOCK\s+TABLE\b/u);
+  assert.doesNotMatch(
+    migrationSql,
+    /(?:DROP|DISABLE)\s+TRIGGER\s+"chat_events_reject_update"/u,
+  );
+  assert.equal(
+    (migrationSql.match(/\bCREATE UNIQUE INDEX CONCURRENTLY\b/gu) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (migrationSql.match(/\bDROP INDEX CONCURRENTLY IF EXISTS\b/gu) ?? [])
+      .length,
+    1,
+  );
+  assert.match(migrationSql, /\bLIMIT 10000\b/u);
+  assert.match(migrationSql, /\bFOR UPDATE SKIP LOCKED\b/u);
+  assert.match(migrationSql, /\bCOMMIT\b/u);
+
+  const schemaSource = await fs.readFile(
+    path.join(PACKAGE_DIR, "src/schema/chat-event.ts"),
+    "utf8",
+  );
+  assert.doesNotMatch(schemaSource, /run_event_sequence_number/u);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      RUN_EVENT_SEQUENCE_NUMBER_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'run-event-sequence-test-user',
+            'run-event-sequence-test',
+            'run-event-sequence-test-org'
+          )
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES (
+            $1,
+            'run-event-sequence-test-user',
+            $2,
+            'run event sequence expansion test'
+          )
+        `,
+        [threadId, composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "sequence_number",
+            "seq_id"
+          )
+          SELECT
+            $1,
+            $2,
+            'output.message',
+            "sequence",
+            "sequence"
+          FROM generate_series(1, 10001) AS "sequence"
+        `,
+        [threadId, historicalRunId],
+      );
+
+      await applyMigrationsUpTo(
+        client,
+        RUN_EVENT_SEQUENCE_NUMBER_EXPANSION_MIGRATION,
+      );
+
+      const historicalRows = await client.query<{
+        mismatches: string;
+        rows: string;
+      }>(
+        `
+          SELECT
+            count(*)::text AS "rows",
+            count(*) FILTER (
+              WHERE "run_event_sequence_number"
+                IS DISTINCT FROM "sequence_number"
+            )::text AS "mismatches"
+          FROM "chat_events"
+          WHERE "run_id" = $1
+        `,
+        [historicalRunId],
+      );
+      assert.deepEqual(historicalRows.rows, [
+        { mismatches: "0", rows: "10001" },
+      ]);
+
+      const previousApiInsert = await client.query<{
+        id: string;
+        runEventSequenceNumber: number;
+        sequenceNumber: number;
+      }>(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'output.message', 7, 10002)
+          RETURNING
+            "id",
+            "sequence_number" AS "sequenceNumber",
+            "run_event_sequence_number" AS "runEventSequenceNumber"
+        `,
+        [threadId, previousApiRunId],
+      );
+      assert.equal(previousApiInsert.rows.length, 1);
+      assert.deepEqual(
+        previousApiInsert.rows.map((row) => {
+          return {
+            runEventSequenceNumber: row.runEventSequenceNumber,
+            sequenceNumber: row.sequenceNumber,
+          };
+        }),
+        [{ runEventSequenceNumber: 7, sequenceNumber: 7 }],
+      );
+
+      const nextApiInsert = await client.query<{
+        runEventSequenceNumber: number;
+        sequenceNumber: number;
+      }>(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_event_sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'output.message', 9, 10003)
+          RETURNING
+            "sequence_number" AS "sequenceNumber",
+            "run_event_sequence_number" AS "runEventSequenceNumber"
+        `,
+        [threadId, nextApiRunId],
+      );
+      assert.deepEqual(nextApiInsert.rows, [
+        { runEventSequenceNumber: 9, sequenceNumber: 9 },
+      ]);
+
+      const indexes = await client.query<{
+        definition: string;
+        isUnique: boolean;
+        isValid: boolean;
+        name: string;
+      }>(`
+        SELECT
+          "index_class"."relname" AS "name",
+          "index"."indisunique" AS "isUnique",
+          "index"."indisvalid" AS "isValid",
+          pg_get_indexdef("index"."indexrelid") AS "definition"
+        FROM "pg_index" AS "index"
+        INNER JOIN "pg_class" AS "index_class"
+          ON "index_class"."oid" = "index"."indexrelid"
+        WHERE "index_class"."relname" IN (
+          'chat_events_run_seq_unique',
+          'chat_events_run_event_seq_unique'
+        )
+        ORDER BY "index_class"."relname"
+      `);
+      assert.deepEqual(
+        indexes.rows.map((index) => {
+          return {
+            isUnique: index.isUnique,
+            isValid: index.isValid,
+            name: index.name,
+          };
+        }),
+        [
+          {
+            isUnique: true,
+            isValid: true,
+            name: "chat_events_run_event_seq_unique",
+          },
+          {
+            isUnique: true,
+            isValid: true,
+            name: "chat_events_run_seq_unique",
+          },
+        ],
+      );
+      assert.match(
+        indexes.rows[0]?.definition ?? "",
+        /\(run_id, run_event_sequence_number\)$/u,
+      );
+      assert.match(
+        indexes.rows[1]?.definition ?? "",
+        /\(run_id, sequence_number\)$/u,
+      );
+
+      await client.query(`DROP INDEX "chat_events_run_event_seq_unique"`);
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "chat_events_run_seq_unique",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'output.message', 7, 10004)
+        `,
+        values: [threadId, previousApiRunId],
+      });
+      await client.query(`
+        CREATE UNIQUE INDEX "chat_events_run_event_seq_unique"
+        ON "chat_events" USING btree (
+          "run_id",
+          "run_event_sequence_number"
+        )
+      `);
+
+      await client.query(`DROP INDEX "chat_events_run_seq_unique"`);
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "chat_events_run_event_seq_unique",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_event_sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'output.message', 9, 10005)
+        `,
+        values: [threadId, nextApiRunId],
+      });
+      await client.query(`
+        CREATE UNIQUE INDEX "chat_events_run_seq_unique"
+        ON "chat_events" USING btree ("run_id", "sequence_number")
+      `);
+
+      await expectDatabaseError(client, {
+        code: "P0001",
+        messageIncludes: "chat event run event sequence columns must match",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "sequence_number",
+            "run_event_sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, gen_random_uuid(), 'output.message', 1, 2, 10006)
+        `,
+        values: [threadId],
+      });
+
+      const previousApiEventId = previousApiInsert.rows[0]?.id;
+      assert.ok(previousApiEventId);
+      await assertChatEventsAppendOnlyProtection(client, previousApiEventId);
+      await expectDatabaseError(client, {
+        code: "P0001",
+        messageIncludes: "chat_events is append-only; UPDATE is not allowed",
+        query: `
+          UPDATE "chat_events"
+          SET "run_event_sequence_number" = 10
+          WHERE "run_id" = $1
+        `,
+        values: [nextApiRunId],
+      });
+
+      const rejectFunction = await client.query<{ definition: string }>(`
+        SELECT pg_get_functiondef(
+          'public.reject_chat_event_source_update()'::regprocedure
+        ) AS "definition"
+      `);
+      assert.doesNotMatch(
+        rejectFunction.rows[0]?.definition ?? "",
+        /run_event_sequence_number/u,
+      );
+
+      const migrationStatements = migrationSql
+        .split("--> statement-breakpoint")
+        .map((statement) => {
+          return statement.trim();
+        })
+        .filter((statement) => {
+          return statement.length > 0;
+        });
+      for (const statement of migrationStatements) {
+        await client.query(statement);
+      }
+
+      const retryState = await client.query<{
+        bridgeEnabled: string;
+        mismatches: string;
+        newIndexValid: boolean;
+        rejectEnabled: string;
+      }>(`
+        SELECT
+          count(*) FILTER (
+            WHERE "run_event_sequence_number" IS DISTINCT FROM "sequence_number"
+          )::text AS "mismatches",
+          (
+            SELECT "tgenabled"::text
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'public.chat_events'::regclass
+              AND "tgname" = 'chat_events_reject_update'
+              AND NOT "tgisinternal"
+          ) AS "rejectEnabled",
+          (
+            SELECT "tgenabled"::text
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'public.chat_events'::regclass
+              AND "tgname" =
+                'bridge_chat_event_run_event_sequence_number_0807'
+              AND NOT "tgisinternal"
+          ) AS "bridgeEnabled",
+          (
+            SELECT "indisvalid"
+            FROM "pg_index"
+            WHERE "indexrelid" =
+              'public.chat_events_run_event_seq_unique'::regclass
+          ) AS "newIndexValid"
+        FROM "chat_events"
+      `);
+      assert.deepEqual(retryState.rows, [
+        {
+          bridgeEnabled: "O",
+          mismatches: "0",
+          newIndexValid: true,
+          rejectEnabled: "O",
+        },
+      ]);
+      await assertChatEventsAppendOnlyProtection(client, previousApiEventId);
+
+      console.log("   ✅ 10,001 historical rows backfill across batches");
+      console.log("   ✅ Previous and next API inserts mirror both directions");
+      console.log("   ✅ Both unique index paths reject duplicates with 23505");
+      console.log("   ✅ Strict append-only protection is restored");
+      console.log("   ✅ A full non-transactional retry is idempotent\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log("=== Phase 1.5: Validate Latest Snapshot Accuracy ===\n");
 
@@ -15376,6 +17722,10 @@ async function main(): Promise<void> {
     await validateChatGoalContextBackfill();
     await validateChatEventUserMessagePartBackfill();
     await validateChatEventTerminalIndexExpansion();
+    await validateChatEventRunLifecycleContraction();
+    await validateChatEventLowTrafficIndexes();
+    await validateChatEventRevokeIndex();
+    await validateRunEventSequenceNumberExpansion();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();
@@ -15395,6 +17745,7 @@ async function main(): Promise<void> {
     await validateHostedSiteChatScopeRollout();
     await validateCurrentBrowserApiBeforeBillingMigration();
     await validateBrowserUsageCompatibilityContraction();
+    await validateRunnerSandboxStatePersistence();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

@@ -5,18 +5,17 @@ use super::super::metadata::{
     WorkspaceCacheMetadata, WorkspaceCacheState, WorkspaceImageFileIdentity, WorkspaceTrust,
 };
 use super::super::{
-    CACHE_FORMAT_VERSION, CACHE_KEY_VERSION, CacheBudget, FsStats, SessionWorkspaceCache,
-    TEST_FS_TOTAL_BYTES, WORKSPACE_DRIVE_LAYOUT, WorkspaceCacheCheckoutResult,
-    WorkspaceCacheTerminalStatus, WorkspaceImageActiveLeaseRequest, WorkspaceImageLeaseIdentity,
-    WorkspaceImagePrepareRequest,
+    CACHE_FORMAT_VERSION, CacheBudget, FsStats, TEST_FS_TOTAL_BYTES, WORKSPACE_DRIVE_LAYOUT,
+    WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus, WorkspaceImageActiveLeaseRequest,
+    WorkspaceImageCache, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
 };
 use super::support::{TEST_PROFILE_NAME, local_cache, write_current_cache_entry};
 use crate::ids::RunId;
-use crate::paths::{HomePaths, RunnerPaths, session_workspace_cache_key};
+use crate::paths::{HomePaths, RunnerPaths, workspace_image_cache_key};
 use crate::storage_fingerprints::StorageFingerprints;
 
 #[tokio::test]
-async fn thread_cache_is_reusable_across_cli_session_rotation() {
+async fn thread_cache_is_reusable_across_runs() {
     let (_dir, paths, cache) = local_cache().await;
     let reuse_key = "thread:chat-thread";
     let first_run_id = RunId::new_v4();
@@ -28,7 +27,6 @@ async fn thread_cache_is_reusable_across_cli_session_rotation() {
                 sandbox_id: first_sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some(reuse_key),
-                cli_agent_session_id: Some("provider-session-a"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
             },
@@ -45,7 +43,6 @@ async fn thread_cache_is_reusable_across_cli_session_rotation() {
         first
             .promote(
                 first_run_id,
-                None,
                 WorkspaceCacheTerminalStatus::Success,
                 "2026-05-01T00:00:00.000Z".into(),
                 &StorageFingerprints::default(),
@@ -61,7 +58,6 @@ async fn thread_cache_is_reusable_across_cli_session_rotation() {
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some(reuse_key),
-                cli_agent_session_id: Some("provider-session-b"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
             },
@@ -87,8 +83,8 @@ async fn shared_cache_is_reusable_across_runner_base_dirs() {
     tokio::fs::create_dir_all(runner_b.base_dir())
         .await
         .unwrap();
-    let cache_a = SessionWorkspaceCache::shared(runner_a.clone(), &home, "test-group");
-    let cache_b = SessionWorkspaceCache::shared(runner_b.clone(), &home, "test-group");
+    let cache_a = WorkspaceImageCache::shared(runner_a.clone(), &home, "test-group");
+    let cache_b = WorkspaceImageCache::shared(runner_b.clone(), &home, "test-group");
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
 
@@ -99,7 +95,6 @@ async fn shared_cache_is_reusable_across_runner_base_dirs() {
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-1"),
-                cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
             },
@@ -116,7 +111,6 @@ async fn shared_cache_is_reusable_across_runner_base_dirs() {
         lease
             .promote(
                 run_id,
-                None,
                 WorkspaceCacheTerminalStatus::Success,
                 "2026-05-01T00:00:00.000Z".into(),
                 &StorageFingerprints::default(),
@@ -132,7 +126,6 @@ async fn shared_cache_is_reusable_across_runner_base_dirs() {
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-1"),
-                cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
             },
@@ -177,7 +170,7 @@ async fn cache_hit_removes_metadata_and_returns_move_seed() {
         "2026-05-01T00:00:00.000Z",
     )
     .await;
-    let current = paths.session_workspace_cache_current_image(&key);
+    let current = paths.workspace_image_cache_current_image(&key);
     let image_size = fs::metadata(&current).await.unwrap().len();
 
     let lease = cache
@@ -187,7 +180,6 @@ async fn cache_hit_removes_metadata_and_returns_move_seed() {
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-move-hit"),
-                cli_agent_session_id: Some("sess-move-hit"),
                 working_dir: "/workspace",
                 image_size_bytes: image_size,
             },
@@ -205,7 +197,7 @@ async fn cache_hit_removes_metadata_and_returns_move_seed() {
     );
     assert!(current.exists());
     assert!(matches!(
-        fs::metadata(paths.session_workspace_cache_metadata(&key)).await,
+        fs::metadata(paths.workspace_image_cache_metadata(&key)).await,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound
     ));
 }
@@ -223,7 +215,7 @@ async fn consumed_cache_hit_invalidation_tolerates_missing_current() {
         "2026-05-01T00:00:00.000Z",
     )
     .await;
-    let current = paths.session_workspace_cache_current_image(&key);
+    let current = paths.workspace_image_cache_current_image(&key);
     let image_size = fs::metadata(&current).await.unwrap().len();
 
     let lease = cache
@@ -233,7 +225,6 @@ async fn consumed_cache_hit_invalidation_tolerates_missing_current() {
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-move-invalidate"),
-                cli_agent_session_id: Some("sess-move-invalidate"),
                 working_dir: "/workspace",
                 image_size_bytes: image_size,
             },
@@ -249,7 +240,7 @@ async fn consumed_cache_hit_invalidation_tolerates_missing_current() {
             .await
             .unwrap()
     );
-    assert!(!paths.session_workspace_cache_entry_dir(&key).exists());
+    assert!(!paths.workspace_image_cache_entry_dir(&key).exists());
 }
 
 #[tokio::test]
@@ -267,8 +258,8 @@ async fn shared_cache_same_key_lock_blocks_other_runner_without_deadlock() {
     tokio::fs::create_dir_all(runner_b.base_dir())
         .await
         .unwrap();
-    let cache_a = SessionWorkspaceCache::shared(runner_a, &home, "test-group");
-    let cache_b = SessionWorkspaceCache::shared(runner_b, &home, "test-group");
+    let cache_a = WorkspaceImageCache::shared(runner_a, &home, "test-group");
+    let cache_b = WorkspaceImageCache::shared(runner_b, &home, "test-group");
 
     let lease_a = cache_a
         .prepare(WorkspaceImagePrepareRequest {
@@ -277,7 +268,6 @@ async fn shared_cache_same_key_lock_blocks_other_runner_without_deadlock() {
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-1"),
-                cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
             },
@@ -293,7 +283,6 @@ async fn shared_cache_same_key_lock_blocks_other_runner_without_deadlock() {
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-1"),
-                cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
             },
@@ -320,7 +309,6 @@ async fn shared_cache_same_key_lock_blocks_other_runner_without_deadlock() {
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-1"),
-                cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
             },
@@ -349,8 +337,8 @@ async fn shared_cache_is_scoped_by_runner_group() {
     tokio::fs::create_dir_all(runner_b.base_dir())
         .await
         .unwrap();
-    let cache_a = SessionWorkspaceCache::shared(runner_a.clone(), &home, "group-a");
-    let cache_b = SessionWorkspaceCache::shared(runner_b.clone(), &home, "group-b");
+    let cache_a = WorkspaceImageCache::shared(runner_a.clone(), &home, "group-a");
+    let cache_b = WorkspaceImageCache::shared(runner_b.clone(), &home, "group-b");
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
 
@@ -361,7 +349,6 @@ async fn shared_cache_is_scoped_by_runner_group() {
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-1"),
-                cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
             },
@@ -378,7 +365,6 @@ async fn shared_cache_is_scoped_by_runner_group() {
         lease
             .promote(
                 run_id,
-                None,
                 WorkspaceCacheTerminalStatus::Success,
                 "2026-05-01T00:00:00.000Z".into(),
                 &StorageFingerprints::default(),
@@ -394,7 +380,6 @@ async fn shared_cache_is_scoped_by_runner_group() {
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-1"),
-                cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
             },
@@ -415,7 +400,7 @@ async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_he
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-    let setup_cache = SessionWorkspaceCache::new(paths.clone());
+    let setup_cache = WorkspaceImageCache::new(paths.clone());
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let image = vec![1_u8; 4096];
@@ -425,10 +410,10 @@ async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_he
         "/workspace",
         image.len() as u64,
     );
-    tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&cache_key))
+    tokio::fs::create_dir_all(paths.workspace_image_cache_entry_dir(&cache_key))
         .await
         .unwrap();
-    let current = paths.session_workspace_cache_current_image(&cache_key);
+    let current = paths.workspace_image_cache_current_image(&cache_key);
     tokio::fs::write(&current, &image).await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     let actual_allocated_bytes = allocated_bytes(&current_metadata);
@@ -442,11 +427,9 @@ async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_he
             run_id,
             WorkspaceCacheMetadata {
                 format_version: CACHE_FORMAT_VERSION,
-                key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "sess-1".into(),
-                cli_agent_session_id: Some("sess-1".into()),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
                 last_used_at: "2026-05-01T00:00:00.000Z".into(),
@@ -467,7 +450,7 @@ async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_he
         available_bytes: TEST_FS_TOTAL_BYTES,
     })
     .min_free_bytes;
-    let cache = SessionWorkspaceCache::new_with_fs_stats(
+    let cache = WorkspaceImageCache::new_with_fs_stats(
         paths.clone(),
         FsStats {
             total_bytes: TEST_FS_TOTAL_BYTES,
@@ -482,7 +465,6 @@ async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_he
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-1"),
-                cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: current_metadata.len(),
             },
@@ -502,7 +484,7 @@ async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_he
         "move checkout keeps the source in place until sandbox preparation consumes it"
     );
     assert!(
-        !tokio::fs::try_exists(paths.session_workspace_cache_metadata(&cache_key))
+        !tokio::fs::try_exists(paths.workspace_image_cache_metadata(&cache_key))
             .await
             .unwrap(),
         "move checkout removes metadata before handing the current image to sandbox preparation"
@@ -517,7 +499,6 @@ async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_he
         lease
             .promote(
                 run_id,
-                None,
                 WorkspaceCacheTerminalStatus::Success,
                 "2026-05-02T00:00:00.000Z".into(),
                 &StorageFingerprints::default(),
@@ -537,14 +518,14 @@ async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_he
 }
 
 #[tokio::test]
-async fn active_lease_hides_cached_session_until_dropped() {
+async fn active_lease_hides_cached_reuse_key_until_dropped() {
     let (_dir, paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
-    let cache_key = session_workspace_cache_key("sess-1", "/workspace");
-    tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&cache_key))
+    let cache_key = workspace_image_cache_key("sess-1", "/workspace");
+    tokio::fs::create_dir_all(paths.workspace_image_cache_entry_dir(&cache_key))
         .await
         .unwrap();
-    let current = paths.session_workspace_cache_current_image(&cache_key);
+    let current = paths.workspace_image_cache_current_image(&cache_key);
     tokio::fs::write(&current, b"image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -553,11 +534,9 @@ async fn active_lease_hides_cached_session_until_dropped() {
             run_id,
             WorkspaceCacheMetadata {
                 format_version: CACHE_FORMAT_VERSION,
-                key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "sess-1".into(),
-                cli_agent_session_id: Some("sess-1".into()),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
                 last_used_at: local_timestamp(),
@@ -583,7 +562,6 @@ async fn active_lease_hides_cached_session_until_dropped() {
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
                 reuse_key: Some("sess-1"),
-                cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
             },

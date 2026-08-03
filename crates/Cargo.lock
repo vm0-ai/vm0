@@ -4,12 +4,13 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "1.0.9"
+version = "1.0.10"
 dependencies = [
  "base64 0.23.0",
  "futures-util",
  "hmac",
  "httpmock",
+ "proptest",
  "reqwest",
  "rmp-serde",
  "rmpv",
@@ -786,9 +787,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.6.4"
+version = "4.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
+checksum = "301b56658598e48f3648647ac6fc887be7e7108eddfa4e9b63fcf3ec58c0cadf"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -796,9 +797,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.6.2"
+version = "4.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f09628afdcc538b57f3c6341e9c8e9970f18e4a481690a64974d7023bd33548b"
+checksum = "94a65403d1a1bd28f7dc68eb8506e8874808ee5eecb59298de588e2e1407a078"
 dependencies = [
  "anstream",
  "anstyle",
@@ -1252,7 +1253,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.61.4"
+version = "0.62.4"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1290,7 +1291,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.55"
+version = "0.2.57"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1302,7 +1303,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.5.0"
+version = "0.5.2"
 dependencies = [
  "libc",
  "serde",
@@ -1313,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.22.10"
+version = "0.22.12"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1329,7 +1330,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.135"
+version = "0.16.138"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1340,7 +1341,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.31"
+version = "0.21.32"
 dependencies = [
  "api-contracts",
  "libc",
@@ -1351,7 +1352,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.6.14"
+version = "0.6.15"
 dependencies = [
  "chrono",
  "clap",
@@ -1379,7 +1380,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.43"
+version = "0.1.45"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1834,9 +1835,9 @@ dependencies = [
 
 [[package]]
 name = "ipnet"
-version = "2.12.0"
+version = "2.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d98f6fed1fde3f8c21bc40a1abb88dd75e67924f9cffc3ef95607bad8017f8e2"
+checksum = "6a756c3fac73139e83f14c2d742155dd2b78d3ee56597b419a0579b7bdd6dd78"
 
 [[package]]
 name = "is_terminal_polyfill"
@@ -2301,6 +2302,7 @@ name = "process-control-ipc"
 version = "0.3.3"
 dependencies = [
  "libc",
+ "proptest",
 ]
 
 [[package]]
@@ -2600,7 +2602,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.151.4"
+version = "0.151.15"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2809,7 +2811,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.34"
+version = "0.19.35"
 dependencies = [
  "async-trait",
  "serde",
@@ -2821,7 +2823,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.167"
+version = "0.37.171"
 dependencies = [
  "async-trait",
  "base64 0.23.0",
@@ -2852,7 +2854,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.61"
+version = "0.8.64"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3348,9 +3350,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.54"
+version = "0.3.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e1d5e639ff6bab73cb6885cc7e7b1de96c3f32c68ec55f3952614bec1092244"
+checksum = "cdb87b95ec50ddfa440816d227a17b2ccbdda963a316a727fda0fc4334f7d134"
 dependencies = [
  "deranged",
  "num-conv",
@@ -3773,7 +3775,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.54"
+version = "0.19.57"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3785,7 +3787,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.68"
+version = "0.17.70"
 dependencies = [
  "nix",
  "shell-quote",
@@ -3806,7 +3808,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-test"
-version = "0.9.176"
+version = "0.9.180"
 dependencies = [
  "guest-write-file",
  "libc",

@@ -84,8 +84,8 @@ describe("lab page", () => {
       expect(screen.getByText("Other")).toBeInTheDocument();
       expect(screen.getAllByText("Connectors").length).toBeGreaterThan(0);
       expect(
-        screen.queryByText(FeatureSwitchKey.ComposerUploadPopover),
-      ).not.toBeInTheDocument();
+        screen.getByText(FeatureSwitchKey.ComposerUploadPopover),
+      ).toBeInTheDocument();
       expect(
         screen.getAllByText("Maintainer: liangyou@vm0.ai").length,
       ).toBeGreaterThan(0);

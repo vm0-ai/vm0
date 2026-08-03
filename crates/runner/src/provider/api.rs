@@ -215,6 +215,7 @@ enum DiscoveryWakeup {
 pub struct ApiProvider {
     api: ApiClient,
     runner_id: String,
+    heartbeat_generation: u64,
     group: String,
     /// Profile names this runner supports (e.g., ["vm0/default"]).
     /// Sent in poll requests so the server only returns jobs this runner can handle.
@@ -241,6 +242,7 @@ pub struct BuiltinFirewallCatalogCachePaths {
 
 pub struct ApiProviderConfig {
     pub runner_id: String,
+    pub heartbeat_generation: u64,
     pub group: String,
     pub supported_profiles: Vec<String>,
 }
@@ -257,6 +259,7 @@ impl ApiProvider {
     ) -> Arc<Self> {
         let ApiProviderConfig {
             runner_id,
+            heartbeat_generation,
             group,
             supported_profiles,
         } = config;
@@ -277,6 +280,7 @@ impl ApiProvider {
         Arc::new(Self {
             api,
             runner_id,
+            heartbeat_generation,
             group,
             supported_profiles,
             poll_wakeups,
@@ -630,7 +634,12 @@ impl JobProvider for ApiProvider {
                     }
                 };
                 self.claim_cooldowns.remove(run_id).await;
-                info!(run_id = %run_id, "job claimed");
+                info!(
+                    run_id = %run_id,
+                    runner_id = %self.runner_id,
+                    heartbeat_generation = self.heartbeat_generation,
+                    "job claimed"
+                );
                 Some(claimed)
             }
             Ok(None) => {
@@ -828,7 +837,8 @@ fn classify_claim_failure(error: &ClaimApiError) -> ClaimFailureDecision {
 }
 
 fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
-    let sessions = state.held_session_states.len();
+    let reusable_sandboxes = state.held_sandbox_states.len();
+    let workspace_states = state.held_workspace_states.len();
     if let RunnerError::ApiTransport(api_error) = error {
         let request = &api_error.request;
         warn!(
@@ -847,7 +857,8 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
             runner_group = %state.group,
             mode = %state.mode,
             running = state.running_count,
-            sessions,
+            reusable_sandboxes,
+            workspace_states,
             "heartbeat failed"
         );
         return;
@@ -860,7 +871,8 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
         runner_group = %state.group,
         mode = %state.mode,
         running = state.running_count,
-        sessions,
+        reusable_sandboxes,
+        workspace_states,
         "heartbeat failed"
     );
 }
@@ -1334,7 +1346,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "hash"
             | "historyRef"
             | "hostPolicy"
-            | "heldSessionStates"
+            | "heldSandboxStates"
             | "heldWorkspaceStates"
             | "instructionsTargetFilename"
             | "issued"
@@ -1701,6 +1713,7 @@ mod tests {
             builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,
             runner_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            heartbeat_generation: 7,
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,
@@ -1759,13 +1772,22 @@ mod tests {
             allocated_memory_mb: 4096,
             running_count: 1,
             admittable_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
-            held_session_states: vec![crate::types::HeldSessionState {
-                session_id: "held-session-test".to_string(),
-                reuse_key: "held-session-test".to_string(),
+            held_sandbox_states: vec![crate::types::HeldSandboxState {
+                reuse_key: "thread:heartbeat-test".to_string(),
                 last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
-                reusable_sandbox: None,
+                reusable_sandbox: crate::types::ReusableSandboxState {
+                    profile: crate::profile::DEFAULT_PROFILE.to_string(),
+                    history_generation_run_id: None,
+                },
             }],
-            held_workspace_states: Vec::new(),
+            held_workspace_states: vec![crate::types::HeldWorkspaceState {
+                reuse_key: "thread:heartbeat-test".to_string(),
+                last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
+                workspace_caches: vec![crate::types::WorkspaceCacheCapability {
+                    profile: crate::profile::DEFAULT_PROFILE.to_string(),
+                    workspace_affinity_version: crate::types::WORKSPACE_AFFINITY_VERSION,
+                }],
+            }],
             mode: "running".to_string(),
         }
     }
@@ -1904,7 +1926,8 @@ mod tests {
         assert_eq!(event_field(event, "runner_group"), "vm0/test");
         assert_eq!(event_field(event, "mode"), "running");
         assert_eq!(event_field(event, "running"), "1");
-        assert_eq!(event_field(event, "sessions"), "1");
+        assert_eq!(event_field(event, "reusable_sandboxes"), "1");
+        assert_eq!(event_field(event, "workspace_states"), "1");
         assert_eq!(event_field(event, "endpoint"), "heartbeat");
         assert_eq!(event_field(event, "method"), "POST");
         assert_eq!(
@@ -1933,8 +1956,38 @@ mod tests {
             "event should not include full URL: {event_debug}"
         );
         assert!(
-            !event_debug.contains("runner-token") && !event_debug.contains("held-session-test"),
+            !event_debug.contains("runner-token") && !event_debug.contains("thread:heartbeat-test"),
             "event should not include bearer token or heartbeat body: {event_debug}"
+        );
+    }
+
+    #[tokio::test]
+    async fn heartbeat_status_failure_logs_held_state_counts_without_body() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let server_task = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            read_http_request(&mut socket).await;
+            write_http_status_response(&mut socket, 500).await;
+        });
+        let provider = api_provider_for_test(
+            api_url,
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+        let state = heartbeat_state_for_test();
+
+        let (_, events) = capture_api_provider_events(provider.heartbeat(&state)).await;
+        server_task.await.unwrap();
+        let event = captured_event(&events, "heartbeat failed");
+
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(event_field(event, "reusable_sandboxes"), "1");
+        assert_eq!(event_field(event, "workspace_states"), "1");
+        let event_debug = format!("{event:#?}");
+        assert!(
+            !event_debug.contains("thread:heartbeat-test"),
+            "event should not include heartbeat body: {event_debug}"
         );
     }
 
@@ -1957,7 +2010,6 @@ mod tests {
             crate::profile::DEFAULT_PROFILE
         );
         assert_eq!(body["telemetry"]["pollReason"], "immediate");
-        assert!(body.get("heldSessionStates").is_none());
     }
 
     #[test]
@@ -3405,6 +3457,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn api_client_complete_serializes_no_reuse_key() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::webhooks::agent::complete::COMPLETE.path)
+                    .header("authorization", "Bearer sandbox-token")
+                    .json_body(serde_json::json!({
+                        "runId": run_id,
+                        "exitCode": 0,
+                        "sandboxReuseResult": "noReuseKey",
+                    }));
+                then.status(200);
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        api.complete(
+            "sandbox-token",
+            run_id,
+            0,
+            None,
+            None,
+            Some(SandboxReuseResult::NoReuseKey),
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
     async fn api_provider_claim_accepts_shared_current_response_fixture() {
         let server = MockServer::start_async().await;
         let run_id: RunId = RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID.parse().unwrap();
@@ -3719,13 +3804,18 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let claimed = provider
-            .claim(JobCandidate::new(
-                run_id,
-                crate::profile::DEFAULT_PROFILE.to_string(),
-            ))
-            .await
-            .expect("claim should succeed");
+        let (claimed, events) = capture_api_provider_events(provider.claim(JobCandidate::new(
+            run_id,
+            crate::profile::DEFAULT_PROFILE.to_string(),
+        )))
+        .await;
+        let claimed = claimed.expect("claim should succeed");
+        let event = captured_event(&events, "job claimed");
+        assert_eq!(
+            event_field(event, "runner_id"),
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
+        assert_eq!(event_field(event, "heartbeat_generation"), "7");
         let (context, completion_auth, active_input_source) = claimed.into_parts();
         assert_eq!(context.sandbox_token, "claim-sandbox-token");
         assert!(active_input_source.is_none());

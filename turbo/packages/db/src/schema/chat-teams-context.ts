@@ -1,4 +1,5 @@
-import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
+import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { chatThreads } from "./chat-thread";
 
@@ -18,5 +19,24 @@ export const chatTeamsContext = pgTable("chat_teams_context", {
   conversationId: text("conversation_id").notNull(),
   conversationType: text("conversation_type"),
   activityId: text("activity_id"),
+  /**
+   * Server-private Teams launch material retained with the trigger context.
+   * Raw third-party content is intentionally retained permanently; read paths
+   * must continue to project only the explicitly required columns.
+   */
+  threadContext: text("thread_context"),
+  messageText: text("message_text"),
+  messageFiles: jsonb("message_files").$type<ChatTeamsMessageFiles>(),
+  tenantName: text("tenant_name"),
+  teamName: text("team_name"),
+  threadId: text("thread_id"),
+  serviceUrl: text("service_url"),
+  teamsAppId: text("teams_app_id"),
+  botId: text("bot_id"),
+  botName: text("bot_name"),
+  senderUserId: text("sender_user_id"),
+  senderDisplayName: text("sender_display_name"),
+  senderPrincipalName: text("sender_principal_name"),
+  connectionId: uuid("connection_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

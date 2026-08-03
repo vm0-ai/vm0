@@ -4,7 +4,7 @@ use std::future::Future;
 
 use crate::idle_pool::ParkingState;
 use crate::run_cancellation::{RunCancellationHandle, RunCancellationRegistry};
-use crate::workspace_image_cache::SessionWorkspaceCache;
+use crate::workspace_image_cache::WorkspaceImageCache;
 
 const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
@@ -90,55 +90,23 @@ pub(in super::super) async fn wait_idle_pool_len(
     .await;
 }
 
-pub(in super::super) async fn wait_idle_pool_sessions(
+pub(in super::super) async fn wait_idle_pool_reuse_keys(
     pool: &SharedIdlePool,
     expected: &[&str],
     timeout: Duration,
 ) {
     let mut expected: Vec<String> = expected
         .iter()
-        .map(|session| (*session).to_string())
+        .map(|reuse_key| (*reuse_key).to_string())
         .collect();
     expected.sort_unstable();
     wait_for_probe(timeout, || async {
-        let actual = pool.lock().await.held_sessions();
+        let actual = pool.lock().await.held_reuse_keys();
         if actual == expected {
             WaitProbe::Ready(())
         } else {
             WaitProbe::Pending(format!(
-                "idle pool sessions did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
-            ))
-        }
-    })
-    .await;
-}
-
-pub(in super::super) async fn wait_idle_pool_session_states(
-    pool: &SharedIdlePool,
-    expected: &[&str],
-    timeout: Duration,
-) {
-    let mut expected: Vec<String> = expected
-        .iter()
-        .map(|session| (*session).to_string())
-        .collect();
-    expected.sort_unstable();
-    wait_for_probe(timeout, || async {
-        let states = pool.lock().await.held_session_states();
-        for state in &states {
-            if chrono::DateTime::parse_from_rfc3339(&state.last_completed_at).is_err() {
-                return WaitProbe::Pending(format!(
-                    "idle pool session state had invalid timestamp: {state:?}",
-                ));
-            }
-        }
-        let mut actual: Vec<String> = states.into_iter().map(|state| state.session_id).collect();
-        actual.sort_unstable();
-        if actual == expected {
-            WaitProbe::Ready(())
-        } else {
-            WaitProbe::Pending(format!(
-                "idle pool session states did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
+                "idle pool reuse keys did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
             ))
         }
     })
@@ -146,7 +114,7 @@ pub(in super::super) async fn wait_idle_pool_session_states(
 }
 
 pub(in super::super) async fn wait_workspace_cache_reuse_keys(
-    cache: &SessionWorkspaceCache,
+    cache: &WorkspaceImageCache,
     expected: &[&str],
     timeout: Duration,
 ) {

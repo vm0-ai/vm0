@@ -25,6 +25,7 @@ async fn submit_returns_failure_for_nonzero_job_response() {
             prompt: "hello".into(),
             cli_agent_type: "claude-code".into(),
             profile: None,
+            chat_thread_id: None,
             session_id: None,
             feature_flags: vec![],
             env: vec![],

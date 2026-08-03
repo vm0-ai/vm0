@@ -60,29 +60,31 @@ function AppearanceSettings() {
           return $.settings.preferences.appearance.description;
         })}
       </p>
-      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
-        <div className="shrink-0">
-          <div className="flex h-7 w-7 items-center justify-center">
-            <IconPalette
-              size={22}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
+      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex flex-1 items-center gap-4 min-w-0">
+          <div className="shrink-0">
+            <div className="flex h-7 w-7 items-center justify-center">
+              <IconPalette
+                size={22}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </div>
+          </div>
+          <div className="flex flex-1 flex-col gap-1 min-w-0">
+            <div className="text-sm font-medium text-foreground">
+              {t(($) => {
+                return $.settings.preferences.appearance.theme.title;
+              })}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {t(($) => {
+                return $.settings.preferences.appearance.theme.description;
+              })}
+            </div>
           </div>
         </div>
-        <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm font-medium text-foreground">
-            {t(($) => {
-              return $.settings.preferences.appearance.theme.title;
-            })}
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {t(($) => {
-              return $.settings.preferences.appearance.theme.description;
-            })}
-          </div>
-        </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex flex-wrap gap-2 shrink-0">
           {THEME_OPTIONS.map(({ value, icon: Icon }) => {
             const label =
               value === "light"
@@ -144,33 +146,35 @@ function SendModeSettings() {
           return $.settings.preferences.send.description;
         })}
       </p>
-      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
-        <div className="shrink-0">
-          <div className="flex h-7 w-7 items-center justify-center">
-            <IconKeyboard
-              size={22}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
+      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex flex-1 items-center gap-4 min-w-0">
+          <div className="shrink-0">
+            <div className="flex h-7 w-7 items-center justify-center">
+              <IconKeyboard
+                size={22}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </div>
+          </div>
+          <div className="flex flex-1 flex-col gap-1 min-w-0">
+            <div className="text-sm font-medium text-foreground">
+              {t(($) => {
+                return $.settings.preferences.send.title;
+              })}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {(saving ?? current) === "enter"
+                ? t(($) => {
+                    return $.settings.preferences.send.enterDescription;
+                  })
+                : t(($) => {
+                    return $.settings.preferences.send.cmdEnterDescription;
+                  })}
+            </div>
           </div>
         </div>
-        <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm font-medium text-foreground">
-            {t(($) => {
-              return $.settings.preferences.send.title;
-            })}
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {(saving ?? current) === "enter"
-              ? t(($) => {
-                  return $.settings.preferences.send.enterDescription;
-                })
-              : t(($) => {
-                  return $.settings.preferences.send.cmdEnterDescription;
-                })}
-          </div>
-        </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex flex-wrap gap-2 shrink-0">
           {SEND_OPTIONS.map((value) => {
             const isActive =
               saving === value ? true : saving === null && current === value;

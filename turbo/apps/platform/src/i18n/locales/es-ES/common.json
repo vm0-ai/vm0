@@ -117,7 +117,8 @@
       "runner": {
         "deviceLimitMismatch": "Existe una entrada en el pool inactivo, pero no coincide con el estado del límite de dispositivos.",
         "featureDisabled": "La reutilización del sandbox está desactivada para esta ejecución.",
-        "noSessionId": "No hay un ID de sesión disponible para compararlo con el pool inactivo.",
+        "noReuseKey": "No había una clave de reutilización disponible para buscar un sandbox inactivo.",
+        "noSessionId": "Resultado heredado: no se conoce el motivo exacto por el que no se reutilizó el sandbox.",
         "notReused": "No reutilizado",
         "poolMiss": "No se encontró un sandbox coincidente en el pool inactivo.",
         "profileMismatch": "Existe una entrada en el pool inactivo, pero su perfil no coincide.",
@@ -1253,7 +1254,6 @@
       "configureModel": "Configurar modelo",
       "createWorkflow": "Crear flujo de trabajo",
       "message": "Mensaje",
-      "modelConfigureAction": "Configurar modelos",
       "placeholder": "Pídeme que automatice flujos de trabajo, gestione tareas...",
       "selectedModelUnavailable": "El modelo seleccionado no está disponible. Configúralo antes de enviar.",
       "selectedModelUnavailableToast": "El modelo seleccionado no está disponible",
@@ -1393,6 +1393,7 @@
     },
     "newChat": "Nuevo chat",
     "origins": {
+      "agentphone": "AgentPhone",
       "feishu": "Feishu",
       "github": "GitHub",
       "openChat": "Abrir chat",

@@ -1,5 +1,4 @@
-import { command, computed, state } from "ccstate";
-import { onRef } from "../utils.ts";
+import { command } from "ccstate";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
@@ -222,23 +221,4 @@ export const renameChatThread$ = command(
     );
     signal.throwIfAborted();
   },
-);
-
-// ---------------------------------------------------------------------------
-// Composer local UI state
-// ---------------------------------------------------------------------------
-
-const internalComposerFileInput$ = state<HTMLElement | null>(null);
-
-export const composerFileInput$ = computed((get) => {
-  return get(internalComposerFileInput$);
-});
-
-export const setComposerFileInput$ = onRef(
-  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
-    signal.addEventListener("abort", () => {
-      set(internalComposerFileInput$, null);
-    });
-    set(internalComposerFileInput$, el);
-  }),
 );

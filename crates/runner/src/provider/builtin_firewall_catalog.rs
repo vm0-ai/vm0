@@ -1,4 +1,45 @@
-//! Runner-owned builtin firewall catalog cache refresh.
+//! Runner-owned builtin firewall catalog publication boundary.
+//!
+//! # Lifecycle
+//!
+//! The catalog returned by the API is untrusted. The API client validates its
+//! envelope and firewall payload before an initial or periodic refresh can
+//! reach `write_catalog_cache`. The writer validates the schema-tagged cache
+//! again, bounds its serialized size, and, on Unix runner hosts, publishes it
+//! through a private atomic target-path replacement. The Python addon then
+//! opens that file as a separate trust boundary and independently validates its
+//! ownership, permissions, schema, and firewall payload.
+//!
+//! Cache publication contains unresolved builtin definitions. For each VM, the
+//! Python registry path substitutes base URL variables, validates the resolved
+//! credentialed destination and host policy, assigns run-scoped API IDs, and
+//! compiles matchers before request enforcement.
+//!
+//! # Failure behavior
+//!
+//! A catalog that remains unavailable or invalid after the initial refresh
+//! retries prevents provider startup readiness. A rejected periodic refresh
+//! never replaces the published file, so any previously published valid cache
+//! remains available. If the Python consumer rejects a new file identity, it
+//! exposes no catalog for that identity and marks builtin-dependent VM entries
+//! invalid until a usable cache is loaded.
+//!
+//! # Cross-language compatibility
+//!
+//! Catalog changes must stay compatible with TypeScript artifact validation in
+//! `turbo/apps/api/src/signals/services/connector-catalog-artifacts/firewall.ts`
+//! and `turbo/packages/connectors/src/firewall-types.ts`, the runtime projection
+//! in
+//! `turbo/packages/connectors/src/firewall-metadata/runner-runtime-catalog.ts`,
+//! and the Python cache and resolver boundaries in
+//! `crates/runner/mitm-addon/src/builtin_firewall_cache.py` and
+//! `crates/runner/mitm-addon/src/registry_firewalls.py`. Changes to base URL,
+//! auth, `hostPolicy`, permission, or serialized firewall semantics must be
+//! reconciled across all three owners; cache-schema changes must be reconciled
+//! between Rust and Python. The shared base URL cases live in
+//! `turbo/packages/connectors/src/__tests__/firewall-base-url-validation-contract.json`
+//! and are exercised by TypeScript and Python. Keep individual parser rules in
+//! executable validation and tests rather than duplicating them here.
 
 use std::collections::BTreeMap;
 use std::future::Future;

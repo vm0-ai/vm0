@@ -16,20 +16,15 @@ const MIN_SECRET_LEN: usize = 5;
 
 /// Holds compiled secret matchers for efficient masking.
 ///
-/// Uses Aho-Corasick with leftmost-longest match semantics so that when one
-/// configured value is a substring of another, the longer match wins and no
-/// partial sensitive value survives. Source pattern vectors are dropped after
-/// the matchers are built. See issue #9778.
+/// Uses Aho-Corasick overlapping matches and redacts their full range union so
+/// that containing, partially overlapping, and self-overlapping configured
+/// values cannot leave sensitive fragments visible. Source pattern vectors are
+/// dropped after the matchers are built. See issues #9778 and #24621.
 pub struct SecretMasker {
-    matcher: Option<Matcher>,
-    diagnostic_matcher: Option<Matcher>,
-    url_encoded_matcher: Option<Matcher>,
-    diagnostic_url_encoded_matcher: Option<Matcher>,
-}
-
-struct Matcher {
-    ac: AhoCorasick,
-    replacements: Vec<&'static str>,
+    matcher: Option<AhoCorasick>,
+    diagnostic_matcher: Option<AhoCorasick>,
+    url_encoded_matcher: Option<AhoCorasick>,
+    diagnostic_url_encoded_matcher: Option<AhoCorasick>,
 }
 
 impl SecretMasker {
@@ -117,7 +112,7 @@ impl SecretMasker {
     /// that bound. A hard abort is preferred over silently degrading to a
     /// pass-through masker, which would leak every subsequent event payload.
     #[allow(clippy::expect_used)]
-    fn build_matcher(patterns: &[String]) -> Option<Matcher> {
+    fn build_matcher(patterns: &[String]) -> Option<AhoCorasick> {
         if patterns.is_empty() {
             return None;
         }
@@ -129,11 +124,10 @@ impl SecretMasker {
             }
         }
         let ac = AhoCorasick::builder()
-            .match_kind(MatchKind::LeftmostLongest)
+            .match_kind(MatchKind::Standard)
             .build(unique_patterns.iter().copied())
             .expect("AhoCorasick build failed for secret pattern set");
-        let replacements = vec!["***"; unique_patterns.len()];
-        Some(Matcher { ac, replacements })
+        Some(ac)
     }
 
     /// Recursively mask secrets in JSON object keys and string values (in-place).
@@ -159,9 +153,8 @@ impl SecretMasker {
 
     /// Replace all secret patterns in a string with `***`.
     ///
-    /// Uses leftmost-longest matching semantics: at each position, the
-    /// longest configured pattern wins, so a shorter secret that is a
-    /// substring of a longer one cannot strip a byte off the longer match.
+    /// Redacts the full union of all pattern matches so overlapping configured
+    /// values cannot leave any matched bytes visible.
     pub fn mask_string(&self, s: &str) -> String {
         self.masked_string(s).unwrap_or_else(|| s.to_string())
     }
@@ -196,7 +189,11 @@ impl SecretMasker {
             line_ends.push(joined.len());
         }
 
-        let joined_ranges = self.diagnostic_redaction_ranges(&joined);
+        let joined_ranges = redaction_ranges(
+            self.diagnostic_matcher.as_ref(),
+            self.diagnostic_url_encoded_matcher.as_ref(),
+            &joined,
+        );
         if joined_ranges.is_empty() {
             return lines;
         }
@@ -242,30 +239,7 @@ impl SecretMasker {
     }
 
     fn masked_string(&self, s: &str) -> Option<String> {
-        let canonicalized = self
-            .url_encoded_matcher
-            .as_ref()
-            .and_then(|_| canonicalize_lowercase_percent_escapes(s));
-        if canonicalized.is_none() {
-            return self.matcher.as_ref().and_then(|matcher| {
-                if matcher.ac.is_match(s) {
-                    Some(matcher.ac.replace_all(s, &matcher.replacements))
-                } else {
-                    None
-                }
-            });
-        }
-
-        let mut ranges = Vec::new();
-        if let Some(matcher) = self.matcher.as_ref() {
-            push_match_ranges(matcher, s, &mut ranges);
-        }
-        if let (Some(matcher), Some(canonicalized)) =
-            (self.url_encoded_matcher.as_ref(), canonicalized.as_deref())
-        {
-            push_match_ranges(matcher, canonicalized, &mut ranges);
-        }
-        let ranges = merge_overlapping_ranges(ranges);
+        let ranges = redaction_ranges(self.matcher.as_ref(), self.url_encoded_matcher.as_ref(), s);
         if ranges.is_empty() {
             None
         } else {
@@ -323,36 +297,6 @@ impl SecretMasker {
             }
             suffix += 1;
         }
-    }
-
-    fn diagnostic_redaction_ranges(&self, joined: &str) -> Vec<Range<usize>> {
-        let canonicalized = self
-            .diagnostic_url_encoded_matcher
-            .as_ref()
-            .and_then(|_| canonicalize_lowercase_percent_escapes(joined));
-        if canonicalized.is_none() {
-            let Some(matcher) = self.diagnostic_matcher.as_ref() else {
-                return Vec::new();
-            };
-            if !matcher.ac.is_match(joined) {
-                return Vec::new();
-            }
-            let mut ranges = Vec::new();
-            push_match_ranges(matcher, joined, &mut ranges);
-            return ranges;
-        }
-
-        let mut ranges = Vec::new();
-        if let Some(matcher) = self.diagnostic_matcher.as_ref() {
-            push_match_ranges(matcher, joined, &mut ranges);
-        }
-        if let (Some(matcher), Some(canonicalized)) = (
-            self.diagnostic_url_encoded_matcher.as_ref(),
-            canonicalized.as_deref(),
-        ) {
-            push_match_ranges(matcher, canonicalized, &mut ranges);
-        }
-        merge_overlapping_ranges(ranges)
     }
 }
 
@@ -474,8 +418,25 @@ fn is_ascii_lowercase_hex_digit(byte: u8) -> bool {
     matches!(byte, b'a'..=b'f')
 }
 
-fn push_match_ranges(matcher: &Matcher, haystack: &str, ranges: &mut Vec<Range<usize>>) {
-    for matched in matcher.ac.find_iter(haystack) {
+fn redaction_ranges(
+    matcher: Option<&AhoCorasick>,
+    url_encoded_matcher: Option<&AhoCorasick>,
+    haystack: &str,
+) -> Vec<Range<usize>> {
+    let canonicalized =
+        url_encoded_matcher.and_then(|_| canonicalize_lowercase_percent_escapes(haystack));
+    let mut ranges = Vec::new();
+    if let Some(matcher) = matcher {
+        push_match_ranges(matcher, haystack, &mut ranges);
+    }
+    if let (Some(matcher), Some(canonicalized)) = (url_encoded_matcher, canonicalized.as_deref()) {
+        push_match_ranges(matcher, canonicalized, &mut ranges);
+    }
+    merge_overlapping_ranges(ranges)
+}
+
+fn push_match_ranges(matcher: &AhoCorasick, haystack: &str, ranges: &mut Vec<Range<usize>>) {
+    for matched in matcher.find_overlapping_iter(haystack) {
         ranges.push(matched.start()..matched.end());
     }
 }
@@ -555,6 +516,16 @@ mod tests {
         SecretMasker::build(patterns.into_iter().map(String::from).collect())
     }
 
+    fn masker_from_secrets(secrets: &[&str]) -> SecretMasker {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let raw = secrets
+            .iter()
+            .map(|secret| engine.encode(*secret))
+            .collect::<Vec<_>>()
+            .join(",");
+        SecretMasker::from_raw(&raw)
+    }
+
     #[test]
     fn empty_masker_is_noop() {
         let masker = SecretMasker::empty();
@@ -568,6 +539,35 @@ mod tests {
         let masker = masker_with(vec!["my-secret-token"]);
         let result = masker.mask_string("Bearer my-secret-token here");
         assert_eq!(result, "Bearer *** here");
+    }
+
+    #[test]
+    fn overlapping_secrets_are_fully_masked_in_both_orders() {
+        let first = "abcdeX";
+        let second = "Xvery-sensitive-value";
+        let input = "abcdeXvery-sensitive-value";
+
+        for secrets in [[first, second], [second, first]] {
+            let masker = masker_from_secrets(&secrets);
+            assert_eq!(masker.mask_string(input), "***");
+        }
+    }
+
+    #[test]
+    fn self_overlapping_secret_is_fully_masked() {
+        let masker = masker_from_secrets(&["ababa"]);
+
+        assert_eq!(masker.mask_string("abababa"), "***");
+    }
+
+    #[test]
+    fn chained_overlapping_secrets_are_fully_masked() {
+        let masker = masker_from_secrets(&["abcdeX", "XmiddleY", "Yvery-sensitive-value"]);
+
+        assert_eq!(
+            masker.mask_string("abcdeXmiddleYvery-sensitive-value"),
+            "***"
+        );
     }
 
     #[test]
@@ -776,6 +776,21 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_lines_mask_overlapping_secrets_in_both_orders() {
+        let first = "abcdeX";
+        let second = "Xvery-sensitive-value";
+        let input = "abcdeXvery-sensitive-value";
+
+        for secrets in [[first, second], [second, first]] {
+            let masker = masker_from_secrets(&secrets);
+            assert_eq!(
+                masker.mask_diagnostic_lines(vec![input.to_string()]),
+                vec!["***".to_string()]
+            );
+        }
+    }
+
+    #[test]
     fn diagnostic_lines_mask_only_one_missing_terminal_newline() {
         let engine = base64::engine::general_purpose::STANDARD;
         let secret = "aa\nbb\ncc\n\n";
@@ -896,6 +911,18 @@ mod tests {
             masker.mask_string("url key%3dvalue%2Ftoken%2babc123"),
             "url ***"
         );
+    }
+
+    #[test]
+    fn lowercase_percent_encoded_overlapping_secrets_are_fully_masked_in_both_orders() {
+        let first = "abcde/";
+        let second = "/very-sensitive-value";
+        let input = "abcde%2fvery-sensitive-value";
+
+        for secrets in [[first, second], [second, first]] {
+            let masker = masker_from_secrets(&secrets);
+            assert_eq!(masker.mask_string(input), "***");
+        }
     }
 
     #[test]
@@ -1091,8 +1118,8 @@ mod tests {
         assert_eq!(masker.mask_string("北京-other"), "北京-other");
     }
 
-    /// Regression for #9778: when one secret is a substring of another,
-    /// the longer match must win so no portion of the longer secret leaks.
+    /// Regression for #9778: when one secret is a substring of another, the
+    /// full containing range must be redacted so no secret fragment leaks.
     #[test]
     fn substring_secret_is_fully_masked() {
         // Short secret registered BEFORE the long one — this is the ordering
@@ -1103,7 +1130,7 @@ mod tests {
         let raw = format!("{short},{long}");
         let masker = SecretMasker::from_raw(&raw);
 
-        // Longer pattern wins: no "my" or "-token-xyz" fragments escape.
+        // The union covers the containing pattern, so no fragments escape.
         assert_eq!(
             masker.mask_string("mysecret-token-xyz appeared in log"),
             "*** appeared in log"

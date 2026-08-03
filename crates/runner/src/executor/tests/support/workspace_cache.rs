@@ -4,15 +4,15 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use sandbox::SandboxId;
 
 use crate::ids::RunId;
-use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key};
+use crate::paths::{RunnerPaths, scoped_workspace_image_cache_key};
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::workspace_image_cache::{
-    SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
+    WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus, WorkspaceImageCache,
     WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
 };
 
 pub(in crate::executor::tests) async fn seed_workspace_image_cache(
-    cache: &SessionWorkspaceCache,
+    cache: &WorkspaceImageCache,
     runner_paths: &RunnerPaths,
     session_id: &str,
     workspace_disk_mb: u32,
@@ -28,7 +28,7 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache(
 }
 
 pub(in crate::executor::tests) async fn seed_workspace_image_cache_with_fingerprints(
-    cache: &SessionWorkspaceCache,
+    cache: &WorkspaceImageCache,
     runner_paths: &RunnerPaths,
     session_id: &str,
     workspace_disk_mb: u32,
@@ -36,7 +36,7 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache_with_fingerpr
 ) -> PathBuf {
     let sandbox_id = SandboxId::new_v4();
     let run_id = RunId::new_v4();
-    let reuse_key = format!("session:{session_id}");
+    let reuse_key = format!("thread:workspace-cache-{session_id}");
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
@@ -44,7 +44,6 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache_with_fingerpr
                 sandbox_id,
                 profile_name: "vm0/default",
                 reuse_key: Some(&reuse_key),
-                cli_agent_session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
             },
@@ -67,7 +66,6 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache_with_fingerpr
         lease
             .promote(
                 run_id,
-                None,
                 WorkspaceCacheTerminalStatus::Success,
                 "2026-06-01T00:00:00.000Z".into(),
                 storage_fingerprints,
@@ -76,12 +74,12 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache_with_fingerpr
             .unwrap()
     );
 
-    let cache_key = scoped_session_workspace_cache_key(
+    let cache_key = scoped_workspace_image_cache_key(
         "",
         "vm0/default",
         &reuse_key,
         CANONICAL_WORKING_DIR,
         u64::from(workspace_disk_mb) * 1024 * 1024,
     );
-    runner_paths.session_workspace_cache_current_image(&cache_key)
+    runner_paths.workspace_image_cache_current_image(&cache_key)
 }

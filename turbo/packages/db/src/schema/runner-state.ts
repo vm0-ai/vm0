@@ -10,9 +10,13 @@ import {
 } from "drizzle-orm/pg-core";
 import type {
   RunnerAdmittableProfiles,
-  RunnerHeldSessionStates,
+  RunnerHeldSandboxStates,
+  RunnerHeldWorkspaceStates,
 } from "@vm0/db/jsonb-contracts/runner-state";
-export type { RunnerHeldSessionState } from "@vm0/db/jsonb-contracts/runner-state";
+export type {
+  RunnerHeldSandboxState,
+  RunnerHeldWorkspaceState,
+} from "@vm0/db/jsonb-contracts/runner-state";
 
 export const runnerState = pgTable(
   "runner_state",
@@ -38,8 +42,12 @@ export const runnerState = pgTable(
       .$type<RunnerAdmittableProfiles>()
       .default([])
       .notNull(),
-    heldSessionStates: jsonb("held_session_states")
-      .$type<RunnerHeldSessionStates>()
+    heldSandboxStates: jsonb("held_sandbox_states")
+      .$type<RunnerHeldSandboxStates>()
+      .default([])
+      .notNull(),
+    heldWorkspaceStates: jsonb("held_workspace_states")
+      .$type<RunnerHeldWorkspaceStates>()
       .default([])
       .notNull(),
     mode: varchar("mode", { length: 20 }).notNull().default("running"),

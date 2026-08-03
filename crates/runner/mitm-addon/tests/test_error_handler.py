@@ -490,7 +490,7 @@ class TestErrorHandler:
         assert entry["action"] == "ALLOW"
         assert entry["host"] == "slack.com"
         assert entry["method"] == "POST"
-        assert entry["url"] == "https://slack.com/api/chat.postMessage"
+        assert entry["url"] == raw_url
         assert entry["status"] == 0
         assert entry["response_size"] == 0
         assert entry["error"] == "connection reset by peer"

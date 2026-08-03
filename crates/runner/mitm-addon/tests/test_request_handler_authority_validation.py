@@ -112,9 +112,7 @@ async def test_authority_validation_deny_response_logs_network_target(
     assert entry["action"] == "DENY"
     assert entry["host"] == "attacker.example.com"
     assert entry["port"] == 8443
-    assert entry["url"] == "https://attacker.example.com:8443/repos"
-    assert "code=secret" not in entry["url"]
-    assert "#frag" not in entry["url"]
+    assert entry["url"] == raw_url
     assert entry["status"] == 403
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
 

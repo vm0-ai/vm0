@@ -14,8 +14,8 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
-  findPendingChatEventInputParamsByPromptFixture,
-  readChatEventInputParamsFixture,
+  findPendingChatEventByPromptFixture,
+  readChatEventContextFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
@@ -443,6 +443,7 @@ async function postTeamsPersonalMessage(args: {
   readonly activityId: string;
   readonly threadId?: string;
   readonly text: string;
+  readonly omitRecipient?: boolean;
 }): Promise<void> {
   const response = await postTeamsActivityForTest({
     signal: context.signal,
@@ -462,6 +463,7 @@ async function postTeamsPersonalMessage(args: {
       text: args.text,
       entities: [],
       replyToId: args.threadId ?? null,
+      ...(args.omitRecipient ? { recipient: undefined } : {}),
     }),
   });
   expect(response.status).toBe(200);
@@ -621,7 +623,7 @@ afterEach(async () => {
 });
 
 describe("Teams chat callbacks", () => {
-  it("keeps queued Teams transport params until the input is claimed", async () => {
+  it("claims Teams launch material from context with a legacy fallback", async () => {
     const teams = await setupConnectedTeamsActor();
     teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
     const firstRunId = await dispatchTeamsPersonalRun({
@@ -634,37 +636,120 @@ describe("Teams chat callbacks", () => {
       runId: firstRunId,
     });
 
-    const queuedPrompt = "claim Teams queue transport params";
+    const queuedPrompt = "claim Teams launch context";
     await postTeamsPersonalMessage({
       fixture: teams.fixture,
       activityId: "activity-queue-params-second",
       text: queuedPrompt,
     });
     const queuedParams =
-      await findPendingChatEventInputParamsByPromptFixture(queuedPrompt);
+      await findPendingChatEventByPromptFixture(queuedPrompt);
     expect(queuedParams).toMatchObject({
       eventId: expect.any(String),
-      encryptedParams: expect.any(String),
     });
     if (!queuedParams) {
-      throw new Error("Expected queued Teams transport params");
+      throw new Error("Expected queued Teams event");
     }
+    await expect(
+      readChatEventContextFixture(queuedParams.eventId),
+    ).resolves.toMatchObject({
+      contextType: "teams",
+      teamsTenantId: teams.fixture.teamsTenantId,
+      teamsTeamId: null,
+      teamsChannelId: null,
+      teamsConversationId: `a:personal-${teams.fixture.teamsUserId}`,
+      teamsConversationType: "personal",
+      teamsActivityId: "activity-queue-params-second",
+      teamsThreadContext: "",
+      teamsMessageText: queuedPrompt,
+      teamsMessageFiles: [],
+      teamsTenantName: teams.fixture.teamsTenantName,
+      teamsTeamName: null,
+      teamsThreadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-4-6`,
+      teamsServiceUrl: teams.fixture.serviceUrl,
+      teamsAppId: BOT_APP_ID,
+      teamsBotId: "28:bot-1",
+      teamsBotName: "Zero",
+      teamsSenderUserId: teams.fixture.teamsUserId,
+      teamsSenderDisplayName: "Ada Lovelace",
+      teamsSenderPrincipalName: "ada@example.com",
+      teamsConnectionId: expect.any(String),
+    });
     await completeSandboxRun({
       runId: firstRunId,
       sandboxToken: firstClaim.sandboxToken,
       exitCode: 0,
     });
     const queuedRunId = await runIdForPrompt(teams.actor, queuedPrompt);
-    await expect(
-      readChatEventInputParamsFixture(queuedParams.eventId),
-    ).resolves.toBeNull();
     const queuedClaim = await claimTeamsRun({
       runnerGroup: teams.runnerGroup,
       runId: queuedRunId,
     });
+    const queuedRun = (
+      await runsApi.listAgentRuns(teams.actor, { limit: 20 })
+    ).runs.find((run) => {
+      return run.id === queuedRunId;
+    });
+    expect(queuedClaim.prompt).toBe(queuedRun?.prompt);
+    expect(queuedClaim.appendSystemPrompt).toBe(queuedRun?.appendSystemPrompt);
     expect(queuedClaim.appendSystemPrompt).toContain(
       "You are currently running inside: Microsoft Teams",
     );
+    expect(queuedClaim.appendSystemPrompt).toContain(
+      "Thread ID: activity-queue-params-second",
+    );
+
+    await completeSandboxRun({
+      runId: queuedRunId,
+      sandboxToken: queuedClaim.sandboxToken,
+      exitCode: 0,
+    });
+  });
+
+  it("falls back to installation bot identity when the activity omits it", async () => {
+    const teams = await setupConnectedTeamsActor();
+    teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    const firstRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: "activity-bot-fallback-first",
+      text: "hold the Teams bot fallback queue",
+    });
+    const firstClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: firstRunId,
+    });
+
+    const queuedPrompt = "claim without an activity recipient";
+    await postTeamsPersonalMessage({
+      fixture: teams.fixture,
+      activityId: "activity-bot-fallback-second",
+      text: queuedPrompt,
+      omitRecipient: true,
+    });
+    const queuedParams =
+      await findPendingChatEventByPromptFixture(queuedPrompt);
+    if (!queuedParams) {
+      throw new Error("Expected queued Teams bot fallback event");
+    }
+    await expect(
+      readChatEventContextFixture(queuedParams.eventId),
+    ).resolves.toMatchObject({
+      teamsBotId: null,
+      teamsBotName: null,
+    });
+    await completeSandboxRun({
+      runId: firstRunId,
+      sandboxToken: firstClaim.sandboxToken,
+      exitCode: 0,
+    });
+    const queuedRunId = await runIdForPrompt(teams.actor, queuedPrompt);
+    const queuedClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: queuedRunId,
+    });
+    expect(queuedClaim.prompt).toBe(queuedPrompt);
+    expect(queuedClaim.appendSystemPrompt).toContain("Bot ID: 28:bot-1");
+    expect(queuedClaim.appendSystemPrompt).toContain("Bot name: Zero");
     await runsApi.requestCancelRun(teams.actor, queuedRunId, [200]);
   });
 

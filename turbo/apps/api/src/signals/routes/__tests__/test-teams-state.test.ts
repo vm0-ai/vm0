@@ -467,6 +467,45 @@ describe("POST /api/test/teams-dispatch-probe", () => {
     });
   });
 
+  it("drains a persisted Teams message when realtime publishing fails", async () => {
+    const fixture = await seedTeamsFixture({
+      seedConnection: true,
+      seedDefaultAgent: true,
+    });
+    const publishError = new Error("Ably channel rate limit exceeded");
+    context.mocks.axiomLogging.warn.mockClear();
+    context.mocks.ably.publish.mockRejectedValue(publishError);
+
+    await dispatchTeamsMessage({
+      fixture,
+      text: "dispatch despite realtime failure",
+    });
+
+    expect((await readTeamsState(fixture.tenantId)).recent_runs).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "pending",
+          triggerSource: "teams",
+          promptPreview: "dispatch despite realtime failure",
+        }),
+      ]),
+    );
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Failed to publish thread list changed signal",
+      expect.objectContaining({
+        userId: fixture.userId,
+        error: publishError,
+      }),
+    );
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Failed to publish chat thread run created signal",
+      expect.objectContaining({
+        threadId: expect.any(String),
+        error: publishError,
+      }),
+    );
+  });
+
   it("does not enqueue runs for unlinked users or missing default agents", async () => {
     const unlinked = await seedTeamsFixture({
       seedConnection: false,

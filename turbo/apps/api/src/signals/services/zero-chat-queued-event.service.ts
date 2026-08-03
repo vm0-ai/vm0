@@ -3,7 +3,6 @@ import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import { command } from "ccstate";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
-import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   chatEvents,
   type ChatEventAttachFileMetadata,
@@ -58,23 +57,13 @@ import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
-import {
-  decryptPersistentSecretsMap,
-  encryptPersistentSecretsMap,
-} from "./crypto.utils";
 import { noGoalChangeAfterQueueEvent } from "./chat-goal-queue.service";
-import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
-import { agentphoneDeliveryTargetSchema } from "./agentphone-chat-callback-payload";
-import { githubDeliveryTargetSchema } from "./github-chat-callback-payload";
-import { teamsDeliveryTargetSchema } from "./teams-chat-callback-payload";
-import { telegramDeliveryTargetSchema } from "./telegram-chat-callback-payload";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
 import { attachCanonicalWebInputAssetsToEvent } from "./canonical-asset.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-const USER_MESSAGE_QUEUE_RUN_PARAMS_KEY = "__user_message_queue_run_params__";
 const queuedUserMessageTriggerSourceSchema = z.enum([
   "web",
   "slack",
@@ -86,66 +75,8 @@ const queuedUserMessageTriggerSourceSchema = z.enum([
   "workflow-schedule",
 ]);
 
-const queuedUserMessageRunParamsSchema = z.object({
-  version: z.literal(1),
-  prompt: z.string(),
-  appendSystemPrompt: z.string(),
-  slackDelivery: z
-    .object({
-      channelId: z.string(),
-      threadTs: z.string(),
-      routeThreadTs: z.string().optional(),
-    })
-    .optional(),
-  feishuDelivery: z
-    .object({
-      installationId: z.string(),
-      connectionId: z.string(),
-      chatId: z.string(),
-      messageId: z.string(),
-      threadId: z.string(),
-      replyInThread: z.boolean(),
-      reactionId: z.string().optional(),
-      files: z.array(feishuOrgCallbackFileSchema).optional(),
-    })
-    .optional(),
-  teamsDelivery: teamsDeliveryTargetSchema.optional(),
-  telegramDelivery: telegramDeliveryTargetSchema.optional(),
-  agentphoneDelivery: agentphoneDeliveryTargetSchema.optional(),
-  githubDelivery: githubDeliveryTargetSchema.optional(),
-  morningBriefDelivery: z
-    .object({
-      deliveryId: z.string(),
-      internalKind: z.literal("morning-brief:email"),
-      secret: z.string(),
-      payload: z.unknown(),
-    })
-    .optional(),
-  userInfoExtras: z
-    .object({
-      slackDisplayName: z.string().optional(),
-      slackUserId: z.string().optional(),
-      feishuDisplayName: z.string().optional(),
-      feishuOpenId: z.string().optional(),
-      teamsUserDisplayName: z.string().optional(),
-      teamsUserPrincipalName: z.string().optional(),
-      teamsUserId: z.string().optional(),
-      telegramDisplayName: z.string().optional(),
-      telegramUsername: z.string().optional(),
-      telegramUserId: z.string().optional(),
-      telegramLanguage: z.string().optional(),
-      agentphoneHandle: z.string().optional(),
-    })
-    .optional(),
-});
-
-type QueuedUserMessageRunParams = z.infer<
-  typeof queuedUserMessageRunParamsSchema
->;
-
 const queuedChatEvent = alias(chatEvents, "queued_chat_event");
 const queuedChatEventRevoker = alias(chatEvents, "queued_chat_event_revoker");
-const queuedEncryptedParams = chatEventInputParams.encryptedParams;
 const queueFirstReplacementTargetFields = {
   id: chatEvents.id,
   chatThreadId: chatEvents.chatThreadId,
@@ -153,7 +84,6 @@ const queueFirstReplacementTargetFields = {
   eventType: chatEvents.eventType,
   contextType: chatEvents.contextType,
   contextId: chatEvents.contextId,
-  encryptedParams: queuedEncryptedParams,
 } as const;
 
 export interface QueuedUserMessage {
@@ -175,7 +105,6 @@ export interface QueuedUserMessage {
     | "agentphone"
     | "github"
     | "workflow-schedule";
-  readonly encryptedParams: string | null;
 }
 
 export type QueueFirstRunAssociation =
@@ -235,35 +164,6 @@ export async function lockUserMessageQueueThread(
   threadId: string,
 ): Promise<boolean> {
   return await lockChatQueueThread(db, threadId);
-}
-
-export async function encryptQueuedUserMessageRunParams(
-  params: QueuedUserMessageRunParams,
-  ctx: { readonly orgId: string; readonly userId: string },
-): Promise<string> {
-  const encrypted = await encryptPersistentSecretsMap(
-    { [USER_MESSAGE_QUEUE_RUN_PARAMS_KEY]: JSON.stringify(params) },
-    ctx,
-  );
-  if (!encrypted) {
-    throw new Error("Failed to encrypt queued user message run params");
-  }
-  return encrypted;
-}
-
-export async function decryptQueuedUserMessageRunParams(
-  encryptedParams: string | null,
-  ctx: { readonly orgId: string; readonly userId: string },
-): Promise<QueuedUserMessageRunParams | null> {
-  if (!encryptedParams) {
-    return null;
-  }
-  const decrypted = await decryptPersistentSecretsMap(encryptedParams, ctx);
-  const raw = decrypted?.[USER_MESSAGE_QUEUE_RUN_PARAMS_KEY];
-  if (!raw) {
-    return null;
-  }
-  return queuedUserMessageRunParamsSchema.parse(JSON.parse(raw) as unknown);
 }
 
 export const resolveAttachFileMetadata$ = command(
@@ -366,14 +266,9 @@ export async function loadNextUnclaimedQueuedUserMessage(
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
       triggerSource: chatEvents.triggerSource,
-      encryptedParams: queuedEncryptedParams,
     })
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
-    .leftJoin(
-      chatEventInputParams,
-      eq(chatEventInputParams.eventId, chatEvents.id),
-    )
     .where(
       and(
         eq(chatEvents.id, head.id),
@@ -434,7 +329,6 @@ function replacementTargetFromQueueHead(
     eventType: head.eventType,
     contextType: head.contextType,
     contextId: head.contextId,
-    encryptedParams: head.encryptedParams,
   };
 }
 
@@ -451,10 +345,6 @@ async function resolveUserQueueFirstClaimSnapshot(
       triggerSource: chatEvents.triggerSource,
     })
     .from(chatEvents)
-    .leftJoin(
-      chatEventInputParams,
-      eq(chatEventInputParams.eventId, chatEvents.id),
-    )
     .where(
       and(
         eq(chatEvents.chatThreadId, args.threadId),
@@ -503,10 +393,6 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
       workflowName: zeroWorkflows.name,
     })
     .from(chatEvents)
-    .leftJoin(
-      chatEventInputParams,
-      eq(chatEventInputParams.eventId, chatEvents.id),
-    )
     .leftJoin(
       chatAutomationContext,
       and(
@@ -591,10 +477,6 @@ async function resolveGoalQueueFirstClaimSnapshot(
       goalBrief: chatGoalContext.objectiveBrief,
     })
     .from(chatEvents)
-    .leftJoin(
-      chatEventInputParams,
-      eq(chatEventInputParams.eventId, chatEvents.id),
-    )
     .leftJoin(
       threadGoals,
       and(
@@ -910,7 +792,7 @@ export async function recordQueueFirstFailedRun(
  * Discard a queue-first user message that never dispatched by appending a
  * tombstone. The revoke edge removes it from both queue and visible history.
  */
-export async function discardUnclaimedUserMessageInTransaction(
+async function discardUnclaimedUserMessageInTransaction(
   db: DbTransaction,
   args: {
     readonly threadId: string;
@@ -981,6 +863,7 @@ export async function failQueuedUserMessage(
         userMessage: chatEvents.userMessage,
         attachFiles: chatEvents.attachFiles,
         generationTemplate: chatEvents.generationTemplate,
+        createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
       .where(
@@ -999,6 +882,9 @@ export async function failQueuedUserMessage(
     if (!queued.userMessage) {
       throw new Error("Queued input event is missing userMessage");
     }
+    const terminalAt = new Date(
+      Math.max(args.currentTime.getTime(), queued.createdAt.getTime() + 1),
+    );
 
     const replacement = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.threadId,
@@ -1008,7 +894,7 @@ export async function failQueuedUserMessage(
       generationTemplate: queued.generationTemplate,
       runId: null,
       error: args.errorMarker,
-      createdAt: args.currentTime,
+      createdAt: terminalAt,
     });
     if (!replacement) {
       return null;
@@ -1020,7 +906,7 @@ export async function failQueuedUserMessage(
       content: args.assistantContent,
       runId: null,
       error: args.errorMarker,
-      createdAt: new Date(args.currentTime.getTime() + 1),
+      createdAt: new Date(terminalAt.getTime() + 1),
     });
     if (!assistant) {
       throw new Error("Failed to append integration admission error");

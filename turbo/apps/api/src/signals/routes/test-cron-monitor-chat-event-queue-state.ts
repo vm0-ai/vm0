@@ -7,7 +7,6 @@ import {
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -23,6 +22,7 @@ import {
   replaceChatEvent,
 } from "../services/zero-chat-event.service";
 import { createUserMessageDocument } from "../services/zero-chat-user-message.service";
+import { monitorChatEventQueueForEvents$ } from "../services/cron-monitor-chat-event-queue.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -31,11 +31,62 @@ import {
 const actionBody$ = bodyResultOf(
   testCronMonitorChatEventQueueStateContract.action,
 );
+const monitorBody$ = bodyResultOf(
+  testCronMonitorChatEventQueueStateContract.monitor,
+);
 
 type FixtureKind = Extract<
   TestCronMonitorChatEventQueueStateActionBody,
   { readonly action: "seed-fixture" }
 >["fixture_kind"];
+
+const STALE_CONTEXT_FIXTURES = [
+  {
+    contextType: "slack",
+    eventType: "input.prompt",
+    triggerSource: "slack",
+  },
+  {
+    contextType: "feishu",
+    eventType: "input.prompt",
+    triggerSource: "feishu",
+  },
+  {
+    contextType: "teams",
+    eventType: "input.prompt",
+    triggerSource: "teams",
+  },
+  {
+    contextType: "telegram",
+    eventType: "input.prompt",
+    triggerSource: "telegram",
+  },
+  {
+    contextType: "github",
+    eventType: "input.prompt",
+    triggerSource: "github",
+  },
+  {
+    contextType: "agentphone",
+    eventType: "input.prompt",
+    triggerSource: "agentphone",
+  },
+  {
+    contextType: "automation",
+    eventType: "input.automation",
+    triggerSource: "workflow-event",
+  },
+  {
+    contextType: "goal",
+    eventType: "input.goal",
+    triggerSource: null,
+  },
+  {
+    contextType: "morning_brief",
+    eventType: "input.prompt",
+    triggerSource: "workflow-schedule",
+  },
+] as const;
 
 function actionOk(extra: Record<string, unknown> = {}) {
   return {
@@ -119,7 +170,7 @@ async function seedFixture(
     throw new Error("Failed to seed orphan monitor thread");
   }
 
-  const event = await db.transaction(async (tx) => {
+  const events = await db.transaction(async (tx) => {
     const baseEvent = {
       chatThreadId: thread.id,
       userMessage: createUserMessageDocument({
@@ -127,48 +178,55 @@ async function seedFixture(
       }),
       runId: null,
     };
-    if (fixtureKind === "orphaned-automation") {
-      const [orphanedAutomation] = await tx
+    if (fixtureKind === "orphan") {
+      return await tx
         .insert(chatEvents)
-        .values({
-          chatThreadId: thread.id,
-          eventType: "input.automation",
-          runId: null,
-          triggerSource: "workflow-event",
-          seqId: 1,
-        })
+        .values(
+          STALE_CONTEXT_FIXTURES.map((fixture, index) => {
+            return {
+              ...baseEvent,
+              ...fixture,
+              contextId: randomUUID(),
+              createdAt: new Date(0),
+              seqId: index + 1,
+            };
+          }),
+        )
         .returning({ id: chatEvents.id });
-      return orphanedAutomation ?? null;
     }
-    return fixtureKind === "failed-message"
-      ? await insertChatEvent(tx, {
-          ...baseEvent,
-          eventType: "input.rejected",
-          error: "INSUFFICIENT_CREDITS",
-        })
-      : await insertChatEvent(tx, {
-          ...baseEvent,
-          eventType: "input.prompt",
-          triggerSource:
-            fixtureKind === "orphan" || fixtureKind === "queued-integration"
-              ? "slack"
-              : "web",
-        });
+    if (fixtureKind === "orphaned-automation") {
+      const automation = await insertChatEvent(tx, {
+        ...baseEvent,
+        eventType: "input.automation",
+        createdAt: new Date(0),
+        automationId: randomUUID(),
+        triggerSource: "workflow-event",
+        triggerBrief: null,
+      });
+      return [automation];
+    }
+    const event =
+      fixtureKind === "failed-message"
+        ? await insertChatEvent(tx, {
+            ...baseEvent,
+            eventType: "input.rejected",
+            error: "INSUFFICIENT_CREDITS",
+          })
+        : await insertChatEvent(tx, {
+            ...baseEvent,
+            eventType: "input.prompt",
+            triggerSource:
+              fixtureKind === "queued-integration" ? "slack" : "web",
+          });
+    return [event];
   });
   signal.throwIfAborted();
+  const event = events[0];
   if (!event) {
     throw new Error("Failed to seed orphan monitor message");
   }
 
-  if (
-    fixtureKind === "queued-integration" ||
-    fixtureKind === "orphaned-automation"
-  ) {
-    await db.insert(chatEventInputParams).values({
-      eventId: event.id,
-      encryptedParams: "encrypted-monitor-params",
-    });
-  } else if (fixtureKind === "revoked-message") {
+  if (fixtureKind === "revoked-message") {
     await db.transaction(async (tx) => {
       await replaceChatEvent(tx, event.id, {
         chatThreadId: thread.id,
@@ -188,7 +246,16 @@ async function seedFixture(
   }
   signal.throwIfAborted();
 
-  return actionOk({ compose_id: compose.id });
+  return actionOk({
+    compose_id: compose.id,
+    event_id: event.id,
+    event_ids: events.map((candidate) => {
+      if (!candidate) {
+        throw new Error("Failed to seed orphan monitor message");
+      }
+      return candidate.id;
+    }),
+  });
 }
 
 const mutateTestCronMonitorChatEventQueueState$ = command(
@@ -215,9 +282,34 @@ const mutateTestCronMonitorChatEventQueueState$ = command(
   },
 );
 
+const monitorTestCronMonitorChatEventQueueState$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (!isTestEndpointAllowed(get(request$))) {
+      return testEndpointNotFoundResponse();
+    }
+    const bodyResult = await get(monitorBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const body = await set(
+      monitorChatEventQueueForEvents$,
+      bodyResult.data.event_ids,
+      signal,
+    );
+    signal.throwIfAborted();
+    return { status: 200 as const, body };
+  },
+);
+
 export const testCronMonitorChatEventQueueStateRoutes: readonly RouteEntry[] = [
   {
     route: testCronMonitorChatEventQueueStateContract.action,
     handler: mutateTestCronMonitorChatEventQueueState$,
+  },
+  {
+    route: testCronMonitorChatEventQueueStateContract.monitor,
+    handler: monitorTestCronMonitorChatEventQueueState$,
   },
 ];

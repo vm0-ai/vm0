@@ -17,7 +17,7 @@ async fn execute_job_reuse_succeeds() {
         minimal_context(),
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -104,7 +104,7 @@ async fn execute_job_reuse_claude_tool_validation_failure_returns_sandbox() {
 #[tokio::test]
 async fn execute_job_reuse_invalid_resume_session_does_not_lease_workspace_image() {
     let dir = tempfile::tempdir().unwrap();
-    let cache = SessionWorkspaceCache::new(RunnerPaths::new(dir.path().join("runner")));
+    let cache = WorkspaceImageCache::new(RunnerPaths::new(dir.path().join("runner")));
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache);
     let params = JobParams {
@@ -188,7 +188,7 @@ async fn execute_job_reuse_with_session_context() {
         ctx,
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),

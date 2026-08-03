@@ -11,6 +11,7 @@ import type {
   CustomConnectorOAuthConfig,
   CustomConnectorOAuthConfigInput,
   CustomConnectorPermissionBundleRef,
+  CustomConnectorPermissionBundleResponse,
   CustomConnectorProposal,
   CustomConnectorQueryInjection,
   CustomConnectorResponse,
@@ -48,6 +49,7 @@ import { userFeatureSwitchContext } from "./feature-switches.service";
 import { addUserCustomConnector } from "./user-connectors.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
+import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
 
 const L = logger("CustomConnectorService");
@@ -437,6 +439,18 @@ function computeMissingRequiredFields(args: {
     });
 }
 
+function effectivePermissionBundleRef(
+  row: CustomConnectorRow,
+): CustomConnectorPermissionBundleRef | null {
+  return effectiveCustomConnectorPermissionBundleRef({
+    slug: row.slug,
+    authMode: row.authMode,
+    oauthProviderAdapter: row.oauthConfig?.providerAdapter ?? null,
+    prefixTemplates: row.prefixTemplates,
+    permissionBundleRef: row.permissionBundleRef,
+  });
+}
+
 export function serialiseCustomConnector(args: {
   readonly row: CustomConnectorRow;
   readonly valueMarkers: readonly ValueMarker[];
@@ -478,7 +492,7 @@ export function serialiseCustomConnector(args: {
     ...(args.row.oauthConfig
       ? { oauthConfig: serialiseOAuthConfig(args.row.oauthConfig) }
       : {}),
-    permissionBundleRef: args.row.permissionBundleRef,
+    permissionBundleRef: effectivePermissionBundleRef(args.row),
     skillMarkdown: args.row.skillMarkdown,
     revision: args.row.revision,
     connected,
@@ -1864,6 +1878,43 @@ export function getCustomConnectorResponse(args: {
       valueMarkers: markers,
       oauthConnected: oauthConnections.has(connector.id),
     });
+  });
+}
+
+export function getCustomConnectorPermissionBundle(args: {
+  readonly orgId: string;
+  readonly connectorId: string;
+}): Computed<Promise<CustomConnectorPermissionBundleResponse | null>> {
+  return computed(async (get) => {
+    const db = get(db$);
+    const connector = await get(getCustomConnectorById(args));
+    if (!connector) {
+      return null;
+    }
+    const permissionBundleRef = effectivePermissionBundleRef(connector);
+    if (!permissionBundleRef) {
+      return null;
+    }
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    const bundle = await loadCustomConnectorPermissionBundle({
+      snapshot,
+      ref: permissionBundleRef,
+    });
+    if (!bundle) {
+      return null;
+    }
+    return {
+      ref: bundle.ref,
+      permissions: bundle.permissions.map((permission) => {
+        return {
+          name: permission.name,
+          ...(permission.description
+            ? { description: permission.description }
+            : {}),
+        };
+      }),
+      defaultPolicies: { ...bundle.defaultPolicies },
+    };
   });
 }
 

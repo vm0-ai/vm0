@@ -19,8 +19,10 @@ import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
-  findPendingChatEventInputParamsByPromptFixture,
-  readChatEventInputParamsFixture,
+  findPendingChatEventByPromptFixture,
+  findTelegramChatEventByPromptFixture,
+  readChatEventContextFixture,
+  setTelegramThinkingMessageIdFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
@@ -73,6 +75,11 @@ interface TelegramSendMessageBody {
   };
 }
 
+interface TelegramDeleteMessageBody {
+  readonly chat_id: string | number;
+  readonly message_id: number;
+}
+
 function newTelegramBotId(): string {
   return String(Math.floor(Math.random() * 9_000_000_000) + 1_000_000_000);
 }
@@ -111,9 +118,11 @@ function configureOfficialBotEnv(): void {
 function telegramApiMocks(token = TEST_BOT_TOKEN): {
   readonly chatActions: unknown[];
   readonly sentMessages: TelegramSendMessageBody[];
+  readonly deletedMessages: TelegramDeleteMessageBody[];
 } {
   const chatActions: unknown[] = [];
   const sentMessages: TelegramSendMessageBody[] = [];
+  const deletedMessages: TelegramDeleteMessageBody[] = [];
   let nextMessageId = 700;
 
   server.use(
@@ -139,9 +148,18 @@ function telegramApiMocks(token = TEST_BOT_TOKEN): {
         });
       },
     ),
+    http.post(
+      `https://api.telegram.org/bot${token}/deleteMessage`,
+      async ({ request }) => {
+        deletedMessages.push(
+          (await request.json()) as TelegramDeleteMessageBody,
+        );
+        return HttpResponse.json({ ok: true, result: true });
+      },
+    ),
   );
 
-  return { chatActions, sentMessages };
+  return { chatActions, sentMessages, deletedMessages };
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -153,6 +171,16 @@ function expectOk(response: Response, operation: string): void {
     return;
   }
   throw new Error(`${operation} failed with ${response.status}`);
+}
+
+function expectExactSystemPromptFragment(
+  appendSystemPrompt: string | null | undefined,
+  expectedFragment: string,
+): void {
+  if (!appendSystemPrompt) {
+    throw new Error("Expected Telegram append system prompt");
+  }
+  expect(appendSystemPrompt.split(expectedFragment)).toHaveLength(2);
 }
 
 async function postTelegramStateAction(
@@ -1161,6 +1189,47 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(run?.prompt).toBe("hello from telegram");
     expect(run?.appendSystemPrompt).toContain("Telegram username: @alice");
     expect(run?.appendSystemPrompt).toContain("Bot ID:");
+    expectExactSystemPromptFragment(
+      run?.appendSystemPrompt,
+      [
+        "# Current Integration",
+        "You are currently running inside: Telegram",
+        `Bot ID: ${fixture.telegramBotId}`,
+        `Bot username: @bot_${fixture.telegramBotId}`,
+        "Chat ID: 77001",
+        "Chat type: private",
+        "Message ID: 42",
+        "Root message ID: dm",
+      ].join("\n"),
+    );
+    const admitted = await findTelegramChatEventByPromptFixture(
+      "hello from telegram",
+    );
+    expect(admitted).toMatchObject({ eventId: expect.any(String) });
+    if (!admitted) {
+      throw new Error("Expected admitted Telegram input event");
+    }
+    await expect(
+      readChatEventContextFixture(admitted.eventId),
+    ).resolves.toMatchObject({
+      contextType: "telegram",
+      contextId: expect.any(String),
+      telegramChatId: "77001",
+      telegramMessageId: "42",
+      telegramIsDm: true,
+      telegramMessageThreadId: null,
+      telegramMessageText: "hello from telegram",
+      telegramThreadContext: "",
+      telegramRootMessageId: "dm",
+      telegramThinkingMessageId: null,
+      telegramUserLinkId: expect.any(String),
+      telegramUserLinkKind: "custom",
+      telegramChatType: "private",
+      telegramSenderUserId: fixture.telegramUserId,
+      telegramSenderDisplayName: "Alice",
+      telegramSenderUsername: "@alice",
+      telegramSenderLanguage: "en",
+    });
     expect(telegramMocks.chatActions).toHaveLength(1);
     expect(telegramMocks.sentMessages).toHaveLength(0);
 
@@ -1272,9 +1341,8 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       runnerId,
       group: runnerGroup,
       admittableProfiles: [],
-      heldSessionStates: [
+      heldSandboxStates: [
         {
-          sessionId: "diagnostic-session-does-not-match",
           reuseKey,
           lastCompletedAt: nowDate().toISOString(),
           reusableSandbox: { profile: "vm0/default" },
@@ -1318,12 +1386,12 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await runsApi.requestCancelRun(actorForFixture(fixture), runId, [200]);
   });
 
-  it("keeps queued Telegram transport params until the input is claimed", async () => {
+  it("rebuilds queued Telegram launch material from context", async () => {
     const runnerGroup = configureCanonicalTelegramRunner();
     const fixture = await trackFixture(
       seedTelegramPostFixture({ linkTelegramUser: true }),
     );
-    telegramApiMocks();
+    const telegramMocks = telegramApiMocks();
     const chatId = 77_002;
     const firstPrompt = "hold the Telegram queue";
     expect(
@@ -1379,14 +1447,24 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     ).toBe(200);
     await flushWaitUntilForTest();
     const queuedParams =
-      await findPendingChatEventInputParamsByPromptFixture(queuedPrompt);
+      await findPendingChatEventByPromptFixture(queuedPrompt);
     expect(queuedParams).toMatchObject({
       eventId: expect.any(String),
-      encryptedParams: expect.any(String),
     });
     if (!queuedParams) {
-      throw new Error("Expected queued Telegram transport params");
+      throw new Error("Expected queued Telegram event");
     }
+    const queuedLaunchContext = await readChatEventContextFixture(
+      queuedParams.eventId,
+    );
+    expect(queuedLaunchContext).toMatchObject({
+      telegramMessageText: queuedPrompt,
+      telegramThreadContext: expect.stringContaining(firstPrompt),
+      telegramMessageId: "2202",
+      telegramRootMessageId: "dm",
+      telegramUserLinkKind: "custom",
+    });
+    await setTelegramThinkingMessageIdFixture(queuedParams.eventId, "701");
     await completeCanonicalChatRun({
       runId: firstRunId,
       sandboxToken: firstClaim.sandboxToken,
@@ -1402,19 +1480,35 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     if (!queuedRunId) {
       throw new Error("Expected the queued Telegram run");
     }
-    await expect(
-      readChatEventInputParamsFixture(queuedParams.eventId),
-    ).resolves.toBeNull();
     const queuedClaim = await claimTelegramRun(queuedRunId, runnerGroup);
     expect(queuedClaim.prompt).toBe(queuedPrompt);
-    expect(queuedClaim.appendSystemPrompt).toContain(
-      "You are currently running inside: Telegram",
+    const queuedThreadContext = queuedLaunchContext?.telegramThreadContext;
+    if (!queuedThreadContext) {
+      throw new Error("Expected frozen queued Telegram thread context");
+    }
+    expectExactSystemPromptFragment(
+      queuedClaim.appendSystemPrompt,
+      [
+        "# Current Integration",
+        "You are currently running inside: Telegram",
+        `Bot ID: ${fixture.telegramBotId}`,
+        `Bot username: @bot_${fixture.telegramBotId}`,
+        `Chat ID: ${chatId}`,
+        "Chat type: private",
+        "Message ID: 2202",
+        "Root message ID: dm",
+        "",
+        queuedThreadContext,
+      ].join("\n"),
     );
-    await runsApi.requestCancelRun(
-      actorForFixture(fixture),
-      queuedRunId,
-      [200],
-    );
+    await completeCanonicalChatRun({
+      runId: queuedRunId,
+      sandboxToken: queuedClaim.sandboxToken,
+    });
+    expect(telegramMocks.deletedMessages).toContainEqual({
+      chat_id: String(chatId),
+      message_id: 701,
+    });
   });
 
   it("shares one canonical DM session with web and keeps the legacy cursor monotonic", async () => {
@@ -1606,6 +1700,40 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
     const firstState = await telegramPostRunState(fixture, firstPrompt);
     expect(firstState.zeroRun?.chatThreadId).toStrictEqual(expect.any(String));
+    const admittedForum =
+      await findTelegramChatEventByPromptFixture(firstPrompt);
+    expect(admittedForum).toMatchObject({ eventId: expect.any(String) });
+    if (!admittedForum) {
+      throw new Error("Expected admitted Telegram forum input event");
+    }
+    const forumLaunchContext = await readChatEventContextFixture(
+      admittedForum.eventId,
+    );
+    expect(forumLaunchContext).toMatchObject({
+      contextType: "telegram",
+      telegramChatId: String(chatId),
+      telegramMessageId: "2201",
+      telegramIsDm: false,
+      telegramMessageThreadId: messageThreadId,
+      telegramMessageText: firstPrompt,
+      telegramThreadContext: "",
+      telegramRootMessageId: null,
+      telegramUserLinkKind: "custom",
+      telegramChatType: "supergroup",
+    });
+    expectExactSystemPromptFragment(
+      firstState.run?.appendSystemPrompt,
+      [
+        "# Current Integration",
+        "You are currently running inside: Telegram",
+        `Bot ID: ${fixture.telegramBotId}`,
+        `Bot username: @${botUsername}`,
+        `Chat ID: ${chatId}`,
+        "Chat type: supergroup",
+        "Message ID: 2201",
+        `Message thread ID: ${messageThreadId}`,
+      ].join("\n"),
+    );
     expect(
       stateRecords((await readTelegramState(fixture.telegramBotId)).routes),
     ).toHaveLength(0);
@@ -1677,7 +1805,53 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     ).toBe(200);
     await flushWaitUntilForTest();
 
+    const followUpAgentPrompt = [
+      `[Replying to @${botUsername}]`,
+      "> Task completed successfully.",
+      "",
+      followUpPrompt,
+    ].join("\n");
+    const admittedFollowUp =
+      await findTelegramChatEventByPromptFixture(followUpAgentPrompt);
+    expect(admittedFollowUp).toMatchObject({ eventId: expect.any(String) });
+    if (!admittedFollowUp) {
+      throw new Error("Expected admitted Telegram forum follow-up event");
+    }
+    const followUpLaunchContext = await readChatEventContextFixture(
+      admittedFollowUp.eventId,
+    );
+    expect(followUpLaunchContext).toMatchObject({
+      contextType: "telegram",
+      telegramMessageThreadId: messageThreadId,
+      telegramMessageText: followUpAgentPrompt,
+      telegramThreadContext: expect.stringContaining(firstPrompt),
+      telegramRootMessageId: "700",
+      telegramUserLinkKind: "custom",
+      telegramChatType: "supergroup",
+    });
+
     const followUpState = await telegramPostRunState(fixture);
+    expect(followUpState.run?.prompt).toBe(followUpAgentPrompt);
+    const followUpThreadContext = followUpLaunchContext?.telegramThreadContext;
+    if (!followUpThreadContext) {
+      throw new Error("Expected frozen Telegram forum thread context");
+    }
+    expectExactSystemPromptFragment(
+      followUpState.run?.appendSystemPrompt,
+      [
+        "# Current Integration",
+        "You are currently running inside: Telegram",
+        `Bot ID: ${fixture.telegramBotId}`,
+        `Bot username: @${botUsername}`,
+        `Chat ID: ${chatId}`,
+        "Chat type: supergroup",
+        "Message ID: 2202",
+        "Root message ID: 700",
+        `Message thread ID: ${messageThreadId}`,
+        "",
+        followUpThreadContext,
+      ].join("\n"),
+    );
     expect(followUpState.zeroRun?.chatThreadId).toBe(
       firstState.zeroRun?.chatThreadId,
     );
@@ -1849,7 +2023,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(messages[0]?.text).toBe("following up");
   });
 
-  it("creates a Zero run for a linked custom-bot group mention", async () => {
+  it("creates a Zero run for a linked custom-bot supergroup mention", async () => {
     const fixture = await trackFixture(
       seedTelegramPostFixture({ linkTelegramUser: true }),
     );
@@ -1863,7 +2037,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
         update_id: 3,
         message: {
           message_id: 101,
-          chat: { id: -10_099_002, type: "group" },
+          chat: { id: -10_099_002, type: "supergroup" },
           from: {
             id: Number(fixture.telegramUserId),
             username: "alice",
@@ -1880,7 +2054,41 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
     const run = await latestRunForFixture(fixture);
     expect(run?.prompt).toBe("summarize this thread");
-    expect(run?.appendSystemPrompt).toContain("Chat type: group");
+    expect(run?.appendSystemPrompt).toContain("Chat type: supergroup");
+    expectExactSystemPromptFragment(
+      run?.appendSystemPrompt,
+      [
+        "# Current Integration",
+        "You are currently running inside: Telegram",
+        `Bot ID: ${fixture.telegramBotId}`,
+        `Bot username: @${botUsername}`,
+        "Chat ID: -10099002",
+        "Chat type: supergroup",
+        "Message ID: 101",
+      ].join("\n"),
+    );
+    const admitted = await findTelegramChatEventByPromptFixture(
+      "summarize this thread",
+    );
+    expect(admitted).toMatchObject({ eventId: expect.any(String) });
+    if (!admitted) {
+      throw new Error("Expected admitted Telegram supergroup input event");
+    }
+    await expect(
+      readChatEventContextFixture(admitted.eventId),
+    ).resolves.toMatchObject({
+      contextType: "telegram",
+      telegramChatId: "-10099002",
+      telegramMessageId: "101",
+      telegramIsDm: false,
+      telegramMessageThreadId: null,
+      telegramMessageText: "summarize this thread",
+      telegramThreadContext: "",
+      telegramRootMessageId: null,
+      telegramUserLinkKind: "custom",
+      telegramChatType: "supergroup",
+      telegramSenderUsername: "@alice",
+    });
   });
 
   it("creates a Zero run for a linked official-bot private message", async () => {
@@ -1917,6 +2125,40 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(run?.appendSystemPrompt).toContain(
       "Bot username: @official_zero_bot",
     );
+    expectExactSystemPromptFragment(
+      run?.appendSystemPrompt,
+      [
+        "# Current Integration",
+        "You are currently running inside: Telegram",
+        `Bot ID: ${OFFICIAL_TELEGRAM_BOT_ID}`,
+        `Bot username: @${OFFICIAL_BOT_USERNAME}`,
+        "Chat ID: 88002",
+        "Chat type: private",
+        "Message ID: 51",
+        "Root message ID: dm",
+      ].join("\n"),
+    );
+    const admitted = await findTelegramChatEventByPromptFixture(
+      "run through official bot",
+    );
+    expect(admitted).toMatchObject({ eventId: expect.any(String) });
+    if (!admitted) {
+      throw new Error("Expected admitted official Telegram input event");
+    }
+    await expect(
+      readChatEventContextFixture(admitted.eventId),
+    ).resolves.toMatchObject({
+      contextType: "telegram",
+      telegramMessageText: "run through official bot",
+      telegramRootMessageId: "dm",
+      telegramUserLinkId: expect.any(String),
+      telegramUserLinkKind: "official",
+      telegramChatType: "private",
+      telegramSenderUserId: "99002",
+      telegramSenderDisplayName: "Bob",
+      telegramSenderUsername: "@bob",
+      telegramSenderLanguage: "en",
+    });
     await expect(latestZeroRunForFixture(fixture)).resolves.toMatchObject({
       triggerSource: "telegram",
     });

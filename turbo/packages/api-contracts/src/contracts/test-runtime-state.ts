@@ -55,6 +55,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("read-run-claim-owner"),
+    run_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("read-storage-persistence-state"),
     run_id: z.uuid(),
     session_id: z.uuid(),
@@ -164,6 +168,17 @@ export const testRuntimeStateActionResponseSchema = z.object({
       has_stored_storage_manifest: z.boolean(),
       canonical_mount_count: z.number().int().nonnegative(),
       has_run_context_storage: z.boolean(),
+    })
+    .optional(),
+  runner_claim_owner: z
+    .object({
+      runner_id: z.uuid().nullable(),
+      heartbeat_generation: z
+        .number()
+        .int()
+        .positive()
+        .max(Number.MAX_SAFE_INTEGER)
+        .nullable(),
     })
     .optional(),
 });

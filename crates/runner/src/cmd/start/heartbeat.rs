@@ -5,7 +5,7 @@ use std::time::Duration;
 use futures_util::future::BoxFuture;
 use tracing::{debug, info};
 
-use super::active_sessions::{ActiveReuseKeys, active_reuse_keys};
+use super::active_reuse_keys::{ActiveReuseKeys, active_reuse_keys};
 use crate::config::ProfileConfig;
 use crate::error::{RunnerError, RunnerResult};
 use crate::idle_pool::IdlePool;
@@ -13,10 +13,10 @@ use crate::lifecycle::RunnerMode;
 use crate::provider::JobProvider;
 use crate::resource_budget::ResourceBudget;
 use crate::types::{
-    HeartbeatState, HeldSessionState, HeldWorkspaceState, MAX_HELD_SESSION_STATES,
+    HeartbeatState, HeldSandboxState, HeldWorkspaceState, MAX_HELD_SANDBOX_STATES,
     MAX_WORKSPACE_CACHES_PER_REUSE_KEY,
 };
-use crate::workspace_image_cache::{SessionWorkspaceCache, cap_held_workspace_states};
+use crate::workspace_image_cache::{WorkspaceImageCache, cap_held_workspace_states};
 
 /// Period between routine heartbeat ticks sent to the server. First tick is
 /// deferred by one period via `interval_at`.
@@ -35,7 +35,7 @@ pub(super) struct HeartbeatContext<'a> {
     profiles: &'a BTreeMap<String, ProfileConfig>,
     budget: &'a ResourceBudget,
     provider: &'a dyn JobProvider,
-    workspace_cache: Option<SessionWorkspaceCache>,
+    workspace_cache: Option<WorkspaceImageCache>,
     active_reuse_keys: &'a ActiveReuseKeys,
     workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
 }
@@ -49,7 +49,7 @@ pub(super) struct HeartbeatContextInit<'a> {
     pub(super) profiles: &'a BTreeMap<String, ProfileConfig>,
     pub(super) budget: &'a ResourceBudget,
     pub(super) provider: &'a dyn JobProvider,
-    pub(super) workspace_cache: Option<SessionWorkspaceCache>,
+    pub(super) workspace_cache: Option<WorkspaceImageCache>,
     pub(super) active_reuse_keys: &'a ActiveReuseKeys,
     pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
 }
@@ -351,19 +351,19 @@ pub(super) async fn send_heartbeat(
         hb.profiles,
     )
     .await;
-    state.held_session_states =
-        filter_current_held_session_states(state.held_session_states, hb.active_reuse_keys, None);
+    state.held_sandbox_states =
+        filter_current_held_sandbox_states(state.held_sandbox_states, hb.active_reuse_keys, None);
     state.held_workspace_states =
         filter_current_held_workspace_states(workspace_cache_states, hb.active_reuse_keys, None);
     info!(
         mode = ?mode,
         running = state.running_count,
-        sessions = state.held_session_states.len(),
+        reusable_sandboxes = state.held_sandbox_states.len(),
         workspace_states = state.held_workspace_states.len(),
         "heartbeat"
     );
     debug!(
-        sessions = state.held_session_states.len(),
+        reusable_sandboxes = state.held_sandbox_states.len(),
         workspace_states = state.held_workspace_states.len(),
         "heartbeat held reusable states"
     );
@@ -377,7 +377,7 @@ pub(super) async fn send_heartbeat(
 /// snapshot, which may also contain updates merged from concurrent promotions.
 pub(super) async fn refresh_workspace_cache_snapshot(
     snapshot: &WorkspaceCacheStateSnapshot,
-    workspace_cache: Option<&SessionWorkspaceCache>,
+    workspace_cache: Option<&WorkspaceImageCache>,
     profiles: &BTreeMap<String, ProfileConfig>,
 ) -> Vec<HeldWorkspaceState> {
     let refresh = snapshot.begin_workspace_cache_refresh();
@@ -386,7 +386,7 @@ pub(super) async fn refresh_workspace_cache_snapshot(
 }
 
 async fn workspace_cache_states(
-    workspace_cache: Option<&SessionWorkspaceCache>,
+    workspace_cache: Option<&WorkspaceImageCache>,
     profiles: &BTreeMap<String, ProfileConfig>,
 ) -> Vec<HeldWorkspaceState> {
     let Some(cache) = workspace_cache else {
@@ -407,11 +407,11 @@ async fn workspace_cache_states(
         .await
 }
 
-fn filter_current_held_session_states(
-    states: Vec<HeldSessionState>,
+fn filter_current_held_sandbox_states(
+    states: Vec<HeldSandboxState>,
     active_reuse_key_registry: &ActiveReuseKeys,
     extra_active_reuse_key: Option<&str>,
-) -> Vec<HeldSessionState> {
+) -> Vec<HeldSandboxState> {
     let mut active_reuse_keys = active_reuse_keys(active_reuse_key_registry);
     if let Some(reuse_key) = extra_active_reuse_key {
         active_reuse_keys.insert(reuse_key.to_owned());
@@ -425,7 +425,7 @@ fn filter_current_held_session_states(
             .cmp(&a.last_completed_at)
             .then_with(|| a.reuse_key.cmp(&b.reuse_key))
     });
-    states.truncate(MAX_HELD_SESSION_STATES);
+    states.truncate(MAX_HELD_SANDBOX_STATES);
     states.sort_unstable_by(|a, b| a.reuse_key.cmp(&b.reuse_key));
     states
 }
@@ -603,7 +603,7 @@ pub(super) fn collect_heartbeat_state(
         allocated_memory_mb,
         running_count,
         admittable_profiles,
-        held_session_states: idle_pool.held_session_states(),
+        held_sandbox_states: idle_pool.held_sandbox_states(),
         held_workspace_states: Vec::new(),
         mode: match mode {
             RunnerMode::Starting => "starting".to_string(),
@@ -624,7 +624,7 @@ mod tests {
     };
     use crate::paths::RunnerPaths;
     use crate::provider::mock::MockJobProvider;
-    use crate::types::{MAX_HELD_WORKSPACE_STATES, WorkspaceCacheState};
+    use crate::types::{MAX_HELD_WORKSPACE_STATES, ReusableSandboxState, WorkspaceCacheCapability};
     use crate::workspace_image_cache::{
         WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
     };
@@ -659,10 +659,10 @@ mod tests {
         }
     }
 
-    fn make_synthetic_parked_candidate(session_id: &str) -> ParkedIdleCandidate {
+    fn make_synthetic_parked_candidate(reuse_key: &str) -> ParkedIdleCandidate {
         let budget = Arc::new(ResourceBudget::new(1, 1, 1.0, 0));
         ParkedIdleCandidateBuilder::new(
-            session_id,
+            reuse_key,
             ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
         )
         .with_mock_sandbox_name("test")
@@ -674,10 +674,10 @@ mod tests {
         snapshot.finish_workspace_cache_refresh(refresh, states);
     }
 
-    fn workspace_cache(profile: &str) -> WorkspaceCacheState {
-        WorkspaceCacheState {
+    fn workspace_cache(profile: &str) -> WorkspaceCacheCapability {
+        WorkspaceCacheCapability {
             profile: profile.to_owned(),
-            workspace_affinity_version: Some(crate::types::WORKSPACE_AFFINITY_VERSION),
+            workspace_affinity_version: crate::types::WORKSPACE_AFFINITY_VERSION,
         }
     }
 
@@ -697,7 +697,7 @@ mod tests {
     }
 
     async fn seed_workspace_cache_state(
-        cache: &SessionWorkspaceCache,
+        cache: &WorkspaceImageCache,
         paths: &RunnerPaths,
         reuse_key: &str,
         completed_at: &str,
@@ -711,7 +711,6 @@ mod tests {
                     sandbox_id,
                     profile_name: "vm0/default",
                     reuse_key: Some(reuse_key),
-                    cli_agent_session_id: None,
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: 1024 * 1024,
                 },
@@ -732,7 +731,6 @@ mod tests {
             lease
                 .promote(
                     run_id,
-                    None,
                     WorkspaceCacheTerminalStatus::Success,
                     completed_at.into(),
                     &crate::storage_fingerprints::StorageFingerprints::default(),
@@ -900,11 +898,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         seed_workspace_cache_state(&cache, &paths, reuse_key, "2026-06-01T00:00:00.000Z").await;
         let profiles = test_profiles();
         let budget = ResourceBudget::new(8, 32768, 1.0, 4);
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
         let (provider, _) = MockJobProvider::new(tokio_util::sync::CancellationToken::new());
         let workspace_cache_snapshot = WorkspaceCacheStateSnapshot::new();
         let hb = HeartbeatContext::new(HeartbeatContextInit {
@@ -926,7 +924,10 @@ mod tests {
 
         let debug_event = captured_event(&events, "heartbeat held reusable states");
         assert_eq!(
-            debug_event.fields.get("sessions").map(String::as_str),
+            debug_event
+                .fields
+                .get("reusable_sandboxes")
+                .map(String::as_str),
             Some("0")
         );
         assert_eq!(
@@ -959,11 +960,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let cache = WorkspaceImageCache::new(paths.clone());
         seed_workspace_cache_state(&cache, &paths, "sess-cache", "2026-06-01T00:00:00.000Z").await;
         seed_workspace_cache_state(&cache, &paths, "sess-claimed", "2026-06-01T00:00:01.000Z")
             .await;
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
         let profiles = test_profiles();
         let cache_states = workspace_cache_states(Some(&cache), &profiles).await;
         let states = filter_current_held_workspace_states(
@@ -993,8 +994,8 @@ mod tests {
                 held_workspace_state("sess-active", "2026-06-01T00:00:04.000Z", &["vm0/default"]),
             ],
         );
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
-        super::super::active_sessions::insert_active_reuse_key(&active_reuse_keys, "sess-active");
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
+        super::super::active_reuse_keys::insert_active_reuse_key(&active_reuse_keys, "sess-active");
         let states =
             snapshot.current_held_workspace_states(&active_reuse_keys, Some("sess-claimed"));
 
@@ -1056,7 +1057,7 @@ mod tests {
             });
         }
 
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
         let states = snapshot.current_held_workspace_states(&active_reuse_keys, None);
 
         assert_eq!(states.len(), MAX_HELD_WORKSPACE_STATES);
@@ -1091,7 +1092,7 @@ mod tests {
         );
         assert_eq!(refreshed, vec![merged.clone()]);
 
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
         let states = snapshot.current_held_workspace_states(&active_reuse_keys, None);
         assert_eq!(states, vec![merged]);
 
@@ -1107,36 +1108,42 @@ mod tests {
     }
 
     #[test]
-    fn held_session_states_filter_active_reuse_keys() {
-        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
-        super::super::active_sessions::insert_active_reuse_key(&active_reuse_keys, "thread-active");
+    fn held_sandbox_states_filter_active_reuse_keys() {
+        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
+        super::super::active_reuse_keys::insert_active_reuse_key(
+            &active_reuse_keys,
+            "thread-active",
+        );
         let states = vec![
-            HeldSessionState {
-                session_id: "provider-session-active".into(),
+            HeldSandboxState {
                 reuse_key: "thread-active".into(),
                 last_completed_at: "2026-06-01T00:00:01.000Z".into(),
-                reusable_sandbox: None,
+                reusable_sandbox: ReusableSandboxState {
+                    profile: "vm0/default".into(),
+                    history_generation_run_id: None,
+                },
             },
-            HeldSessionState {
-                session_id: "provider-session-held".into(),
+            HeldSandboxState {
                 reuse_key: "thread-held".into(),
                 last_completed_at: "2026-06-01T00:00:02.000Z".into(),
-                reusable_sandbox: None,
+                reusable_sandbox: ReusableSandboxState {
+                    profile: "vm0/default".into(),
+                    history_generation_run_id: None,
+                },
             },
         ];
 
         let filtered =
-            filter_current_held_session_states(states, &active_reuse_keys, Some("thread-claimed"));
+            filter_current_held_sandbox_states(states, &active_reuse_keys, Some("thread-claimed"));
 
         assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].session_id, "provider-session-held");
+        assert_eq!(filtered[0].reuse_key, "thread-held");
     }
 
     #[test]
-    fn merge_held_workspace_state_keeps_newest_timestamp_and_capability() {
+    fn merge_held_workspace_state_keeps_newest_timestamp_and_merges_profiles() {
         let mut existing =
             held_workspace_state("thread-1", "2026-06-01T00:00:02.000Z", &["vm0/default"]);
-        existing.workspace_caches[0].workspace_affinity_version = None;
         let incoming = held_workspace_state(
             "thread-1",
             "2026-06-01T00:00:01.000Z",
@@ -1178,7 +1185,7 @@ mod tests {
             RunnerMode::Running,
         );
         assert_eq!(state.running_count, 2);
-        assert!(state.held_session_states.is_empty());
+        assert!(state.held_sandbox_states.is_empty());
     }
 
     #[test]

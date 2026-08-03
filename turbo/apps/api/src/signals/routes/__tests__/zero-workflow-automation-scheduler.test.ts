@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   zeroAgentsByIdContract,
@@ -23,6 +24,7 @@ import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import { chatEventAutomationPart } from "./helpers/chat-event";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 
 const context = testContext();
 const store = createStore();
@@ -55,8 +57,11 @@ function automationsClient() {
   return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
-async function readJson<T>(response: Response): Promise<T> {
-  return (await response.json()) as T;
+function workflowAutomationExecutionClient() {
+  return setupApp({
+    context,
+    routes: testWorkflowAutomationExecutionRoutes,
+  })(testWorkflowAutomationExecutionContract);
 }
 
 function expectOk(response: Response, operation: string): void {
@@ -144,14 +149,15 @@ async function disableAutomation(automationId: string): Promise<void> {
 }
 
 async function executeDueWorkflowAutomations(
-  route = CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE,
+  automationId: string,
 ): Promise<void> {
-  const response = await createApp({ signal: context.signal }).request(route, {
-    headers: { authorization: `Bearer ${CRON_SECRET}` },
-  });
-  await expectOk(response, "execute workflow automations cron");
-  const body = await readJson<{ readonly success: boolean }>(response);
-  expect(body.success).toBeTruthy();
+  const response = await accept(
+    workflowAutomationExecutionClient().execute({
+      body: { automation_id: automationId },
+    }),
+    [200],
+  );
+  expect(response.body.success).toBeTruthy();
 }
 
 interface WorkflowRunMessage {
@@ -245,6 +251,51 @@ async function deleteWorkflowViaApi(scenario: Scenario): Promise<void> {
 }
 
 describe("zero workflow automation scheduler", () => {
+  it("rejects unauthenticated production cron requests", async () => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+
+    const response = await createApp({ signal: context.signal }).request(
+      CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE,
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("does not expose scoped workflow execution in production", async () => {
+    mockEnv("ENV", "production");
+
+    const response = await accept(
+      workflowAutomationExecutionClient().execute({
+        body: {
+          automation_id: "00000000-0000-4000-8000-000000000001",
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body).toBe("Not found");
+  });
+
+  it("executes only the selected due automation", async () => {
+    const scenario = await setup();
+    const selected = await createDueLoopAutomation(scenario, 3600);
+    const unselected = await createDueLoopAutomation(scenario, 3600);
+
+    await executeDueWorkflowAutomations(selected.automationId);
+
+    await expect(workflowRunMessages(selected.threadId)).resolves.toHaveLength(
+      1,
+    );
+    const untouched = await wf.readAutomation(unselected.automationId);
+    expect(untouched.lastRunAt).toBeNull();
+    expect(untouched.nextRunAt).toBe(unselected.nextRunAt);
+    await disableAutomation(selected.automationId);
+    await disableAutomation(unselected.automationId);
+  });
+
   it("inherits the chat thread computer-use grant for automation runs", async () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 3600);
@@ -257,7 +308,7 @@ describe("zero workflow automation scheduler", () => {
       host.hostId,
     );
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(automation.automationId);
 
     const run = await onlyWorkflowRunMessage(automation.threadId);
     await runsApi.heartbeatRunner(scenario.runnerGroup);
@@ -277,7 +328,7 @@ describe("zero workflow automation scheduler", () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 3600);
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(automation.automationId);
 
     const run = await onlyWorkflowRunMessage(automation.threadId);
     await runsApi.heartbeatRunner(scenario.runnerGroup);
@@ -320,7 +371,7 @@ describe("zero workflow automation scheduler", () => {
 
     const automation = await createDueLoopAutomation(scenario, 60);
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(automation.automationId);
 
     const run = await onlyWorkflowRunMessage(automation.threadId);
     await runsApi.heartbeatRunner(scenario.runnerGroup);
@@ -335,7 +386,7 @@ describe("zero workflow automation scheduler", () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 60);
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(automation.automationId);
 
     const run = await onlyWorkflowRunMessage(automation.threadId);
     await runsApi.heartbeatRunner(scenario.runnerGroup);
@@ -369,7 +420,7 @@ describe("zero workflow automation scheduler", () => {
     }
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
 
     const run = await onlyWorkflowRunMessage(threadId);
     expect(run.triggerSource).toBe("workflow-schedule");
@@ -409,7 +460,7 @@ describe("zero workflow automation scheduler", () => {
     }
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
 
     const onceRun = await onlyWorkflowRunMessage(threadId);
     const emittedCallbacks = await store.set(
@@ -452,7 +503,7 @@ describe("zero workflow automation scheduler", () => {
     const scenario = await setup({ timezone: "Asia/Shanghai" });
     const automation = await createDueLoopAutomation(scenario, 3600);
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(automation.automationId);
 
     const run = await onlyWorkflowRunMessage(automation.threadId);
     expect(run.triggerBrief).toMatch(
@@ -514,7 +565,7 @@ describe("zero workflow automation scheduler", () => {
       [200],
     );
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
 
     // Restore visibility so the member's product reads work again; the skip
     // already happened during the tick above.
@@ -562,7 +613,7 @@ describe("zero workflow automation scheduler", () => {
     }
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
     const run = await onlyWorkflowRunMessage(threadId);
     const emittedCallbacks = await store.set(
       readAgentRunCallbacks$,
@@ -602,7 +653,7 @@ describe("zero workflow automation scheduler", () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 300);
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(automation.automationId);
     const before = now();
     const run = await onlyWorkflowRunMessage(automation.threadId);
     const emittedCallbacks = await store.set(
@@ -647,13 +698,13 @@ describe("zero workflow automation scheduler", () => {
     const base = now();
     const seenRunIds = new Set<string>();
 
-    // Three fire + failed-completion cycles through the public cron, runner,
+    // Three fire + failed-completion cycles through scoped execution, runner,
     // and sandbox completion surfaces auto-disable the automation.
     for (let failure = 1; failure <= 3; failure += 1) {
       if (failure > 1) {
         mockNow(base + (failure - 1) * 320_000);
       }
-      await executeDueWorkflowAutomations();
+      await executeDueWorkflowAutomations(automation.automationId);
       const messages = await workflowRunMessages(automation.threadId);
       const nextRun = messages.find((message) => {
         return !seenRunIds.has(message.runId);
@@ -685,7 +736,7 @@ describe("zero workflow automation scheduler", () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 300);
 
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(automation.automationId);
     const run = await onlyWorkflowRunMessage(automation.threadId);
     expect(run).toMatchObject({
       workflowId: scenario.workflowId,

@@ -7,7 +7,7 @@ import {
   connectorCatalogCompatibilityEvaluation,
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import { mockOptionalEnv } from "../lib/env";
 import { writeDb$ } from "../signals/external/db";
@@ -417,45 +417,6 @@ export async function invalidateApiTestConnectorCatalogCompatibility(): Promise<
     .where(currentApiTestConnectorCatalogCompatibilityWhere(identity))
     .returning({ sourceId: connectorCatalogCompatibilityEvaluation.sourceId });
   requireSingleCatalogMutation(updated, "compatibility corruption");
-}
-
-export async function insertApiTestLegacyConnectorCatalogCompatibilityEvaluation(
-  capabilityDigest: string,
-): Promise<void> {
-  const identity = await currentApiTestConnectorCatalogIdentity();
-  const validator = currentConnectorCatalogValidatorIdentity();
-  const evaluatedAt = nowDate();
-  const legacyPayload = JSON.stringify([
-    {
-      connectorRef: "external-test",
-      authMethodId: "api-token",
-      reasons: ["missing-grant-provider"],
-    },
-  ]);
-  const db = store.set(writeDb$);
-  await db.execute(sql`
-    INSERT INTO ${connectorCatalogCompatibilityEvaluation} (
-      "source_id",
-      "schema_version",
-      "catalog_version",
-      "catalog_digest",
-      "executable_capability_digest",
-      "catalog_validation_backend_version",
-      "catalog_validation_build_commit_sha",
-      "evaluated_at",
-      "filtered_auth_methods"
-    ) VALUES (
-      ${identity.sourceId},
-      ${SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION},
-      ${identity.catalogVersion},
-      ${identity.catalogDigest},
-      ${capabilityDigest},
-      ${validator.backendVersion},
-      ${validator.buildCommitSha},
-      ${evaluatedAt},
-      ${legacyPayload}::jsonb
-    )
-  `);
 }
 
 export async function deleteApiTestConnectorCatalogCompatibility(): Promise<void> {

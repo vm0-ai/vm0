@@ -55,7 +55,7 @@ export const zeroConnectorsBySlugContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get connector by type (zero proxy)",
+    summary: "Get connector by slug (zero proxy)",
   },
   delete: {
     method: "DELETE",

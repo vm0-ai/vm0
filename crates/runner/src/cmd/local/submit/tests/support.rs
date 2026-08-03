@@ -65,6 +65,7 @@ pub(super) fn submit_args_for_test() -> SubmitArgs {
         prompt: "hello".into(),
         cli_agent_type: "claude-code".into(),
         profile: None,
+        chat_thread_id: None,
         session_id: None,
         feature_flags: vec![],
         env: vec![],

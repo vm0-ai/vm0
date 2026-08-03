@@ -88,7 +88,7 @@ const loadMermaid$ = command(
       securityLevel: "strict",
       // Without this mermaid injects its own error diagram into the document.
       suppressErrorRendering: true,
-      theme: theme === "dark" ? "dark" : "default",
+      theme: theme === "dark" ? "redux-dark" : "redux",
       // Resolved to a concrete stack rather than passed as `var(...)`: the same
       // SVG is also shown inside an <img> in the lightbox, where page-level CSS
       // custom properties do not resolve.

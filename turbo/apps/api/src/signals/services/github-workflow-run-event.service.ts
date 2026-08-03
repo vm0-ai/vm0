@@ -20,15 +20,10 @@ import { nowDate } from "../external/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 import {
   WorkflowEventSourceTiming,
@@ -304,6 +299,7 @@ function githubWorkflowRunTriggerContext(args: {
   const workflowName = run.name ?? run.path;
   return {
     workflowName: args.automation.workflowName,
+    eventType: "github-workflow-run-completed",
     trigger: `GitHub Actions workflow "${workflowName}" completed with conclusion "${run.conclusion}" (run ${run.id} attempt ${run.run_attempt}, GitHub webhook delivery ${args.deliveryId}).`,
     notes: [
       "Not included below: jobs, logs, artifacts, and pull request details. Connected GitHub tools and the GitHub API return them.",
@@ -361,20 +357,11 @@ const startGithubWorkflowRunAutomation$ = command(
         due: {
           automation: args.automation.automation,
           agentId: args.automation.agentId,
-          workflowName: args.automation.workflowName,
           chatThreadId: args.automation.chatThreadId,
         },
+        automationContext: context,
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
-        prompt: workflowAutomationPrompt(context),
-        appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
-        callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-          args.automation.chatThreadId,
-          args.automation.agentId,
-        ),
-        activePreviousRunPolicy: "allow",
-        recordLastRunId: false,
-        recordLastRunAt: true,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),
       },

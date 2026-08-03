@@ -3,8 +3,8 @@ use super::super::metadata::{
     WorkspaceCacheMetadata, WorkspaceCacheState, WorkspaceImageFileIdentity, WorkspaceTrust,
 };
 use super::super::{
-    CACHE_FORMAT_VERSION, CACHE_KEY_VERSION, SessionWorkspaceCache, WORKSPACE_DRIVE_LAYOUT,
-    WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
+    CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceCacheTerminalStatus,
+    WorkspaceImageCache, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
 };
 use crate::ids::RunId;
 use crate::paths::RunnerPaths;
@@ -16,18 +16,18 @@ pub(super) fn timestamp_for_index(index: usize) -> String {
     format!("2026-05-01T00:{:02}:{:02}.000Z", index / 60, index % 60)
 }
 
-pub(super) async fn local_cache() -> (tempfile::TempDir, RunnerPaths, SessionWorkspaceCache) {
+pub(super) async fn local_cache() -> (tempfile::TempDir, RunnerPaths, WorkspaceImageCache) {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-    let cache = SessionWorkspaceCache::new(paths.clone());
+    let cache = WorkspaceImageCache::new(paths.clone());
     (dir, paths, cache)
 }
 
 pub(super) async fn write_current_cache_entry(
-    cache: &SessionWorkspaceCache,
+    cache: &WorkspaceImageCache,
     run_id: RunId,
-    session_id: &str,
+    reuse_key: &str,
     working_dir: &str,
     last_completed_at: &str,
     last_used_at: &str,
@@ -36,7 +36,7 @@ pub(super) async fn write_current_cache_entry(
         cache,
         run_id,
         TEST_PROFILE_NAME,
-        session_id,
+        reuse_key,
         working_dir,
         last_completed_at,
         last_used_at,
@@ -45,20 +45,20 @@ pub(super) async fn write_current_cache_entry(
 }
 
 pub(super) async fn write_current_cache_entry_for_profile(
-    cache: &SessionWorkspaceCache,
+    cache: &WorkspaceImageCache,
     run_id: RunId,
     profile_name: &str,
-    session_id: &str,
+    reuse_key: &str,
     working_dir: &str,
     last_completed_at: &str,
     last_used_at: &str,
 ) -> String {
-    let image = format!("image-{session_id}");
-    let key = cache.scoped_cache_key(profile_name, session_id, working_dir, image.len() as u64);
-    tokio::fs::create_dir_all(cache.session_workspace_cache_entry_dir(&key))
+    let image = format!("image-{reuse_key}");
+    let key = cache.scoped_cache_key(profile_name, reuse_key, working_dir, image.len() as u64);
+    tokio::fs::create_dir_all(cache.workspace_image_cache_entry_dir(&key))
         .await
         .unwrap();
-    let current = cache.session_workspace_cache_current_image(&key);
+    let current = cache.workspace_image_cache_current_image(&key);
     tokio::fs::write(&current, image).await.unwrap();
     let current_metadata = tokio::fs::metadata(&current).await.unwrap();
     cache
@@ -67,11 +67,9 @@ pub(super) async fn write_current_cache_entry_for_profile(
             run_id,
             WorkspaceCacheMetadata {
                 format_version: CACHE_FORMAT_VERSION,
-                key_version: CACHE_KEY_VERSION,
                 cache_scope: cache.inner.cache_scope.clone(),
                 profile_name: profile_name.into(),
-                reuse_key: session_id.into(),
-                cli_agent_session_id: Some(session_id.into()),
+                reuse_key: reuse_key.into(),
                 working_dir: working_dir.into(),
                 last_completed_at: last_completed_at.into(),
                 last_used_at: last_used_at.into(),
@@ -91,9 +89,9 @@ pub(super) async fn write_current_cache_entry_for_profile(
 }
 
 pub(super) async fn promote_current_cache_entry(
-    cache: &SessionWorkspaceCache,
+    cache: &WorkspaceImageCache,
     paths: &RunnerPaths,
-    session_id: &str,
+    reuse_key: &str,
     image: &[u8],
     last_completed_at: &str,
 ) -> String {
@@ -105,8 +103,7 @@ pub(super) async fn promote_current_cache_entry(
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
-                reuse_key: Some(session_id),
-                cli_agent_session_id: Some(session_id),
+                reuse_key: Some(reuse_key),
                 working_dir: "/workspace",
                 image_size_bytes: image.len() as u64,
             },
@@ -122,7 +119,6 @@ pub(super) async fn promote_current_cache_entry(
         lease
             .promote(
                 run_id,
-                None,
                 WorkspaceCacheTerminalStatus::Success,
                 last_completed_at.into(),
                 &StorageFingerprints::default(),
@@ -132,7 +128,7 @@ pub(super) async fn promote_current_cache_entry(
     );
     cache.scoped_cache_key(
         TEST_PROFILE_NAME,
-        session_id,
+        reuse_key,
         "/workspace",
         image.len() as u64,
     )

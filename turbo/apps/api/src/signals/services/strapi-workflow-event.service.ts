@@ -27,18 +27,13 @@ import { safeJsonParse, settle } from "../utils";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import type { WorkflowQueueAdmissionTransaction } from "./workflow-chat-event-queue.service";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
   type AutomationRow,
   type RunFailure,
   type RunWorkflowAutomationNowArgs,
   type RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 
 const log = logger("api:strapi-workflow-event");
 
@@ -599,6 +594,7 @@ async function processPendingEvent(args: {
 
   const context: WorkflowAutomationContext = {
     workflowName: row.workflowName,
+    eventType: "strapi-entry-published",
     trigger: `Strapi published entry ${args.pending.uid} ${args.pending.documentId} on ${row.integrationName} (latest change ${args.pending.latestEventAt.toISOString()}).`,
     notes: [
       "Not included below: the Strapi entry content fields. The configured Strapi connector returns them for the document metadata below.",
@@ -624,22 +620,13 @@ async function processPendingEvent(args: {
       due: {
         automation: row.automation,
         agentId: row.agentId,
-        workflowName: row.workflowName,
         chatThreadId: row.chatThreadId,
       },
+      automationContext: context,
       apiStartTime: now(),
       triggerSource: "workflow-event",
-      prompt: workflowAutomationPrompt(context),
-      appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
       triggerBrief: `Strapi published ${args.pending.uid} ${args.pending.documentId} (${args.pending.locales.length} locale${args.pending.locales.length === 1 ? "" : "s"})`,
-      callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-        row.chatThreadId,
-        row.agentId,
-      ),
-      activePreviousRunPolicy: "allow",
       coalescePendingScheduleRun: false,
-      recordLastRunId: false,
-      recordLastRunAt: true,
       persistSourceTransition: async (tx) => {
         await persistPendingEventProcessed({
           tx,
@@ -663,66 +650,103 @@ async function processPendingEvent(args: {
   return "executed";
 }
 
-export const executeDueStrapiWorkflowEvents$ = command(
-  async (
-    { set },
-    signal: AbortSignal,
-  ): Promise<{ readonly executed: number; readonly skipped: number }> => {
-    const db = set(writeDb$);
-    const due = await db
-      .select(pendingColumns())
-      .from(strapiWorkflowPendingEvents)
-      .where(
-        and(
-          eq(strapiWorkflowPendingEvents.status, "pending"),
-          lte(strapiWorkflowPendingEvents.runAfter, nowDate()),
-        ),
-      )
-      .orderBy(asc(strapiWorkflowPendingEvents.runAfter))
-      .limit(STRAPI_PENDING_BATCH_SIZE);
-    signal.throwIfAborted();
+type ExecuteDueStrapiResult = {
+  readonly executed: number;
+  readonly skipped: number;
+};
 
-    let executed = 0;
-    let skipped = 0;
-    for (const pending of due) {
-      const result = await settle(
-        processPendingEvent({
-          db,
-          pending,
-          signal,
-          startRun: (input, childSignal) => {
-            return set(runWorkflowAutomationNow$, input, childSignal);
-          },
-        }),
-        signal,
-      );
-      if (!result.ok) {
-        if (result.error instanceof StrapiPendingEventChangedError) {
-          continue;
-        }
-        log.error("Failed to process Strapi workflow event", {
-          automationId: pending.automationId,
-          pendingEventId: pending.id,
-          error: result.error,
-        });
-        await retryPendingEvent({
-          db,
-          pending,
-          message:
-            result.error instanceof Error
-              ? result.error.message
-              : "Unknown error",
-          signal,
-        });
-        skipped += 1;
+async function executeDueStrapiWorkflowEvents(args: {
+  readonly db: Db;
+  readonly signal: AbortSignal;
+  readonly automationId?: string;
+  readonly startRun: (
+    input: RunWorkflowAutomationNowArgs,
+    signal: AbortSignal,
+  ) => Promise<RunWorkflowAutomationResult>;
+}): Promise<ExecuteDueStrapiResult> {
+  const due = await args.db
+    .select(pendingColumns())
+    .from(strapiWorkflowPendingEvents)
+    .where(
+      and(
+        args.automationId === undefined
+          ? undefined
+          : eq(strapiWorkflowPendingEvents.automationId, args.automationId),
+        eq(strapiWorkflowPendingEvents.status, "pending"),
+        lte(strapiWorkflowPendingEvents.runAfter, nowDate()),
+      ),
+    )
+    .orderBy(asc(strapiWorkflowPendingEvents.runAfter))
+    .limit(STRAPI_PENDING_BATCH_SIZE);
+  args.signal.throwIfAborted();
+
+  let executed = 0;
+  let skipped = 0;
+  for (const pending of due) {
+    const result = await settle(
+      processPendingEvent({
+        db: args.db,
+        pending,
+        signal: args.signal,
+        startRun: args.startRun,
+      }),
+      args.signal,
+    );
+    if (!result.ok) {
+      if (result.error instanceof StrapiPendingEventChangedError) {
         continue;
       }
-      if (result.value === "executed") {
-        executed += 1;
-      } else {
-        skipped += 1;
-      }
+      log.error("Failed to process Strapi workflow event", {
+        automationId: pending.automationId,
+        pendingEventId: pending.id,
+        error: result.error,
+      });
+      await retryPendingEvent({
+        db: args.db,
+        pending,
+        message:
+          result.error instanceof Error
+            ? result.error.message
+            : "Unknown error",
+        signal: args.signal,
+      });
+      skipped += 1;
+      continue;
     }
-    return { executed, skipped };
+    if (result.value === "executed") {
+      executed += 1;
+    } else {
+      skipped += 1;
+    }
+  }
+  return { executed, skipped };
+}
+
+export const executeDueStrapiWorkflowEvents$ = command(
+  async ({ set }, signal: AbortSignal): Promise<ExecuteDueStrapiResult> => {
+    return await executeDueStrapiWorkflowEvents({
+      db: set(writeDb$),
+      signal,
+      startRun: (input, childSignal) => {
+        return set(runWorkflowAutomationNow$, input, childSignal);
+      },
+    });
+  },
+);
+
+export const executeDueStrapiWorkflowEventsForAutomation$ = command(
+  async (
+    { set },
+    automationId: string,
+    signal: AbortSignal,
+  ): Promise<ExecuteDueStrapiResult> => {
+    return await executeDueStrapiWorkflowEvents({
+      db: set(writeDb$),
+      automationId,
+      signal,
+      startRun: (input, childSignal) => {
+        return set(runWorkflowAutomationNow$, input, childSignal);
+      },
+    });
   },
 );

@@ -276,6 +276,78 @@ def test_eviction_and_reset_release_retained_buffered_report(
     )
 
 
+def test_lru_hit_recency_preserves_recent_buffered_report(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+) -> None:
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+    delivery_available = False
+
+    def enqueue_timing_delivery(
+        _url: str,
+        _sandbox_token: str,
+        _payload: dict[str, object],
+        _proxy_log_path: str,
+        _log_type: str,
+    ) -> bool:
+        return delivery_available
+
+    def codex_flow(run_id: str) -> http.HTTPFlow:
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+        mitm_addon.responseheaders(flow)
+        return flow
+
+    with (
+        mitm_ctx(api_url="https://api.test"),
+        patch.object(
+            usage.webhook,
+            "enqueue_webhook_delivery",
+            side_effect=enqueue_timing_delivery,
+        ),
+        patch.object(codex_output_timing, "_MAX_TRACKED_RUNS", 2),
+    ):
+        first_flow = codex_flow("run-a")
+        _feed_generated_response(first_flow, include_text=False)
+
+        second_flow = codex_flow("run-b")
+        _feed_generated_response(second_flow, include_text=False)
+
+        feed_websocket_server_message(first_flow, _event("response.completed"))
+
+        overflow_flow = codex_flow("run-c")
+        _feed_generated_response(overflow_flow, include_text=False)
+
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=2,
+            reports=0,
+            flush_request_id="after-overflow",
+        )
+
+        delivery_available = True
+        feed_websocket_server_message(second_flow, _event("response.completed"))
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=2,
+            reports=0,
+            flush_request_id="after-cold-retry",
+        )
+
+        feed_websocket_server_message(first_flow, _event("response.completed"))
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=1,
+            reports=0,
+            flush_request_id="after-recent-retry",
+        )
+
+
 def test_repeated_runner_flush_retries_saturated_timing_after_websocket_end(
     tmp_path: Path,
     real_flow,

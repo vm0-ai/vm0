@@ -1,5 +1,192 @@
 # Changelog
 
+## [0.676.0](https://github.com/vm0-ai/vm0/compare/app-v0.675.13...app-v0.676.0) (2026-08-03)
+
+
+### Features
+
+* **feishu:** add managed connector permission controls ([#24344](https://github.com/vm0-ai/vm0/issues/24344)) ([49d167d](https://github.com/vm0-ai/vm0/commit/49d167da75e79c360fd4f7baf59032b49ba6776d))
+
+
+### Bug Fixes
+
+* allow overriding every feature switch ([#24632](https://github.com/vm0-ai/vm0/issues/24632)) ([d428036](https://github.com/vm0-ai/vm0/commit/d428036e06a2a2589129a3599d671f188b5a05c1))
+* use redux themes for mermaid diagrams ([#24628](https://github.com/vm0-ai/vm0/issues/24628)) ([a0c056e](https://github.com/vm0-ai/vm0/commit/a0c056edafe7d25e77f344b08f44a3b5d8ad8336))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.263.0
+    * @vm0/core bumped to 8.503.0
+
+## [0.675.13](https://github.com/vm0-ai/vm0/compare/app-v0.675.12...app-v0.675.13) (2026-08-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.262.0
+    * @vm0/core bumped to 8.502.9
+
+## [0.675.12](https://github.com/vm0-ai/vm0/compare/app-v0.675.11...app-v0.675.12) (2026-08-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.8
+    * @vm0/connectors bumped to 1.202.6
+    * @vm0/core bumped to 8.502.8
+
+## [0.675.11](https://github.com/vm0-ai/vm0/compare/app-v0.675.10...app-v0.675.11) (2026-08-02)
+
+
+### Refactoring
+
+* move chat composer state into signals ([#24441](https://github.com/vm0-ai/vm0/issues/24441)) ([d6647b7](https://github.com/vm0-ai/vm0/commit/d6647b76063b5897aa0901c0414f06d346f277c0))
+* **runner:** treat invalid resume sessions as pre-reuse failures ([#24568](https://github.com/vm0-ai/vm0/issues/24568)) ([a3e789f](https://github.com/vm0-ai/vm0/commit/a3e789f626155acb7f3fe280aa4fe60f4579f103))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.7
+    * @vm0/core bumped to 8.502.7
+
+## [0.675.10](https://github.com/vm0-ai/vm0/compare/app-v0.675.9...app-v0.675.10) (2026-08-02)
+
+
+### Bug Fixes
+
+* accept distinct sandbox reuse result reasons ([#24556](https://github.com/vm0-ai/vm0/issues/24556)) ([a1bfbf8](https://github.com/vm0-ai/vm0/commit/a1bfbf883e98fca8a557cb1cf45d4bee85d0a552))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.6
+    * @vm0/core bumped to 8.502.6
+
+## [0.675.9](https://github.com/vm0-ai/vm0/compare/app-v0.675.8...app-v0.675.9) (2026-08-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.5
+    * @vm0/core bumped to 8.502.5
+
+## [0.675.8](https://github.com/vm0-ai/vm0/compare/app-v0.675.7...app-v0.675.8) (2026-08-02)
+
+
+### Refactoring
+
+* dual-write agentphone launch context ([#24523](https://github.com/vm0-ai/vm0/issues/24523)) ([16e456c](https://github.com/vm0-ai/vm0/commit/16e456c19e73b6816297f64cb70ef3b1fa56d80b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.4
+    * @vm0/core bumped to 8.502.4
+
+## [0.675.7](https://github.com/vm0-ai/vm0/compare/app-v0.675.6...app-v0.675.7) (2026-08-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.3
+    * @vm0/connectors bumped to 1.202.5
+    * @vm0/core bumped to 8.502.3
+
+## [0.675.6](https://github.com/vm0-ai/vm0/compare/app-v0.675.5...app-v0.675.6) (2026-08-01)
+
+
+### Bug Fixes
+
+* **platform:** stack preference setting rows on narrow screens ([#24473](https://github.com/vm0-ai/vm0/issues/24473)) ([1e1657c](https://github.com/vm0-ai/vm0/commit/1e1657cb369ef4889c0fb68ae39a2cece4b40073))
+
+## [0.675.5](https://github.com/vm0-ai/vm0/compare/app-v0.675.4...app-v0.675.5) (2026-08-01)
+
+
+### Refactoring
+
+* **connectors:** finish local slug terminology cleanup ([#24472](https://github.com/vm0-ai/vm0/issues/24472)) ([c3000d8](https://github.com/vm0-ai/vm0/commit/c3000d888cf153dc57208c91e69097bdea400a56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.2
+    * @vm0/connectors bumped to 1.202.4
+    * @vm0/core bumped to 8.502.2
+
+## [0.675.4](https://github.com/vm0-ai/vm0/compare/app-v0.675.3...app-v0.675.4) (2026-08-01)
+
+
+### Refactoring
+
+* **connectors:** finish slug terminology cleanup ([#24437](https://github.com/vm0-ai/vm0/issues/24437)) ([52f9935](https://github.com/vm0-ai/vm0/commit/52f99350a1d1e171054d8751e8da8b20b6f0ee15))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.1
+    * @vm0/core bumped to 8.502.1
+
+## [0.675.3](https://github.com/vm0-ai/vm0/compare/app-v0.675.2...app-v0.675.3) (2026-08-01)
+
+
+### Bug Fixes
+
+* trigger api platform and runner releases ([#24389](https://github.com/vm0-ai/vm0/issues/24389)) ([5e32b07](https://github.com/vm0-ai/vm0/commit/5e32b07956572689916ff1348deab37be627ab0f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.0
+    * @vm0/core bumped to 8.502.0
+
+## [0.675.2](https://github.com/vm0-ai/vm0/compare/app-v0.675.1...app-v0.675.2) (2026-08-01)
+
+
+### Refactoring
+
+* remove DeepSeek V4 Flash feature switch ([#24411](https://github.com/vm0-ai/vm0/issues/24411)) ([e589e06](https://github.com/vm0-ai/vm0/commit/e589e0624d057086451eccac56d20302f6754a5d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.501.1
+
+## [0.675.1](https://github.com/vm0-ai/vm0/compare/app-v0.675.0...app-v0.675.1) (2026-07-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.260.2
+    * @vm0/connectors bumped to 1.202.3
+    * @vm0/core bumped to 8.501.0
+
 ## [0.675.0](https://github.com/vm0-ai/vm0/compare/app-v0.674.0...app-v0.675.0) (2026-07-31)
 
 

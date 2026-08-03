@@ -348,6 +348,24 @@ pub(in super::super) fn mock_run_config_with_overrides(
     max_concurrent: usize,
     overrides: Arc<sandbox_mock::MockSandboxOverrides>,
 ) -> (RunConfig, MockRunEnv) {
+    mock_run_config_with_overrides_and_api_url(
+        profiles,
+        budget_vcpu,
+        budget_memory_mb,
+        max_concurrent,
+        overrides,
+        "http://localhost:0",
+    )
+}
+
+pub(in super::super) fn mock_run_config_with_overrides_and_api_url(
+    profiles: BTreeMap<String, config::ProfileConfig>,
+    budget_vcpu: u32,
+    budget_memory_mb: u32,
+    max_concurrent: usize,
+    overrides: Arc<sandbox_mock::MockSandboxOverrides>,
+    api_url: &str,
+) -> (RunConfig, MockRunEnv) {
     crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
     build_mock_run_config_with_runtime(
         profiles,
@@ -356,6 +374,6 @@ pub(in super::super) fn mock_run_config_with_overrides(
         max_concurrent,
         MockJobProvider::new,
         Box::new(MockSandboxRuntime::with_overrides(overrides)),
-        "http://localhost:0",
+        api_url,
     )
 }

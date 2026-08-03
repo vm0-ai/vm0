@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.1...guest-contracts-v0.5.2) (2026-08-02)
+
+
+### Bug Fixes
+
+* **runner:** distinguish sandbox reuse result causes ([#24562](https://github.com/vm0-ai/vm0/issues/24562)) ([3988072](https://github.com/vm0-ai/vm0/commit/3988072cba1e7e821f976598b1de7da3a6a22ee1))
+
+
+### Refactoring
+
+* **runner:** treat invalid resume sessions as pre-reuse failures ([#24568](https://github.com/vm0-ai/vm0/issues/24568)) ([a3e789f](https://github.com/vm0-ai/vm0/commit/a3e789f626155acb7f3fe280aa4fe60f4579f103))
+
+## [0.5.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.0...guest-contracts-v0.5.1) (2026-08-01)
+
+
+### Documentation
+
+* **rust:** document storage manifest wire invariants ([#24434](https://github.com/vm0-ai/vm0/issues/24434)) ([6f8b85c](https://github.com/vm0-ai/vm0/commit/6f8b85c4390cc3238b0b59133cc2fd33126322f6))
+
 ## [0.5.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.7...guest-contracts-v0.5.0) (2026-07-30)
 
 

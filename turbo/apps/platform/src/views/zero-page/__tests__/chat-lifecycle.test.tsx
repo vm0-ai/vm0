@@ -252,7 +252,7 @@ describe("chat lifecycle", () => {
     expect(screen.getAllByText("Feishu")).toHaveLength(2);
   });
 
-  it("renders Teams, Telegram, and GitHub annotations through one source line", async () => {
+  it("renders generic source annotations with precise link behavior", async () => {
     const threadId = "thread-generic-message-annotations";
     const teamsHref =
       "https://teams.microsoft.com/l/message/19%3Achannel%40thread.tacv2/activity-1?tenantId=tenant-1";
@@ -303,6 +303,20 @@ describe("chat lifecycle", () => {
           },
           createdAt: "2026-07-23T01:02:00Z",
         },
+        {
+          id: "msg-agentphone-annotation",
+          role: "user",
+          content: "AgentPhone source",
+          runId: "run-agentphone-annotation",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "AgentPhone source" },
+              { type: "source", kind: "agentphone" },
+            ],
+          },
+          createdAt: "2026-07-23T01:03:00Z",
+        },
       ],
     });
 
@@ -338,6 +352,7 @@ describe("chat lifecycle", () => {
         );
       }),
     ).toBeUndefined();
+    expect(screen.getByText("AgentPhone").closest("a")).toBeNull();
   });
 
   it("keeps an existing thread composer in its footer while idle and working", async () => {

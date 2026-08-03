@@ -1,5 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 
+import { recordSandboxOperation } from "../external/sandbox-op-log";
 import { nowDate } from "../external/time";
 
 interface RunnerJobQueueTimestamps {
@@ -18,4 +19,18 @@ export function runnerJobQueueTimestamps(): RunnerJobQueueTimestamps {
     createdAt: nowDate(),
     expiresAt: sql`clock_timestamp() AT TIME ZONE 'UTC' + interval '2 hours'`,
   };
+}
+
+export function recordSameThreadRunnerJobPersisted(args: {
+  readonly runId: string;
+  readonly createdAt: Date;
+}): void {
+  recordSandboxOperation({
+    sandboxType: "runner",
+    actionType: "same_thread_runner_job_persisted",
+    durationMs: 0,
+    success: true,
+    runId: args.runId,
+    timestamp: args.createdAt.toISOString(),
+  });
 }

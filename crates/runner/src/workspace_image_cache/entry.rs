@@ -2,11 +2,11 @@ use std::path::{Path, PathBuf};
 
 use crate::ids::RunId;
 use crate::paths::{
-    scoped_session_workspace_cache_key, workspace_image_cache_capacity_lock_path,
+    scoped_workspace_image_cache_key, workspace_image_cache_capacity_lock_path,
     workspace_image_cache_lock_path,
 };
 
-use super::SessionWorkspaceCache;
+use super::WorkspaceImageCache;
 use super::metadata::WorkspaceCacheMetadata;
 
 #[derive(Clone, Debug)]
@@ -14,7 +14,6 @@ pub(super) struct CacheEntryPaths {
     entry_dir: PathBuf,
     metadata: PathBuf,
     current_image: PathBuf,
-    session_history_sidecar: PathBuf,
     session_history_sidecar_metadata: PathBuf,
 }
 
@@ -24,7 +23,6 @@ impl CacheEntryPaths {
         Self {
             metadata: entry_dir.join("metadata.json"),
             current_image: entry_dir.join("current.ext4"),
-            session_history_sidecar: entry_dir.join("session-history.blob"),
             session_history_sidecar_metadata: entry_dir.join("session-history.metadata.json"),
             entry_dir,
         }
@@ -46,10 +44,6 @@ impl CacheEntryPaths {
         &self.current_image
     }
 
-    pub(super) fn session_history_sidecar(&self) -> &Path {
-        &self.session_history_sidecar
-    }
-
     pub(super) fn session_history_sidecar_metadata(&self) -> &Path {
         &self.session_history_sidecar_metadata
     }
@@ -69,7 +63,7 @@ impl CacheEntryPaths {
     }
 }
 
-impl SessionWorkspaceCache {
+impl WorkspaceImageCache {
     pub(super) fn workspace_image_cache_dir(&self) -> &Path {
         &self.inner.cache_dir
     }
@@ -78,19 +72,19 @@ impl SessionWorkspaceCache {
         super::fs::existing_fs_stats_path(self.workspace_image_cache_dir())
     }
 
-    pub(super) fn session_workspace_cache_entry_dir(&self, cache_key: &str) -> PathBuf {
+    pub(super) fn workspace_image_cache_entry_dir(&self, cache_key: &str) -> PathBuf {
         self.entry_paths(cache_key).entry_dir().to_path_buf()
     }
 
-    pub(super) fn session_workspace_cache_metadata(&self, cache_key: &str) -> PathBuf {
+    pub(super) fn workspace_image_cache_metadata(&self, cache_key: &str) -> PathBuf {
         self.entry_paths(cache_key).metadata().to_path_buf()
     }
 
-    pub(super) fn session_workspace_cache_current_image(&self, cache_key: &str) -> PathBuf {
+    pub(super) fn workspace_image_cache_current_image(&self, cache_key: &str) -> PathBuf {
         self.entry_paths(cache_key).current_image().to_path_buf()
     }
 
-    pub(super) fn session_workspace_cache_tmp_image(
+    pub(super) fn workspace_image_cache_tmp_image(
         &self,
         cache_key: &str,
         run_id: RunId,
@@ -98,7 +92,7 @@ impl SessionWorkspaceCache {
         self.entry_paths(cache_key).tmp_image(run_id)
     }
 
-    pub(super) fn session_workspace_cache_tmp_sidecar(
+    pub(super) fn workspace_image_cache_tmp_sidecar(
         &self,
         cache_key: &str,
         run_id: RunId,
@@ -107,7 +101,7 @@ impl SessionWorkspaceCache {
             .tmp_session_history_sidecar(run_id)
     }
 
-    pub(super) fn session_workspace_cache_tmp_sidecar_metadata(
+    pub(super) fn workspace_image_cache_tmp_sidecar_metadata(
         &self,
         cache_key: &str,
         run_id: RunId,
@@ -123,7 +117,7 @@ impl SessionWorkspaceCache {
         working_dir: &str,
         image_size_bytes: u64,
     ) -> String {
-        scoped_session_workspace_cache_key(
+        scoped_workspace_image_cache_key(
             &self.inner.cache_scope,
             profile_name,
             reuse_key,
@@ -137,7 +131,7 @@ impl SessionWorkspaceCache {
         cache_key: &str,
         metadata: &WorkspaceCacheMetadata,
     ) -> bool {
-        scoped_session_workspace_cache_key(
+        scoped_workspace_image_cache_key(
             &metadata.cache_scope,
             &metadata.profile_name,
             &metadata.reuse_key,

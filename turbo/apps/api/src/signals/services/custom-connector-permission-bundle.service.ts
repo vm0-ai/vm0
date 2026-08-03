@@ -3,9 +3,17 @@ import {
   type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type { CustomConnectorPermissionBundleRef } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import type { ExpandedFirewallConfig } from "@vm0/connectors/firewall-types";
+import type {
+  ExpandedFirewallConfig,
+  FirewallPolicyValue,
+} from "@vm0/connectors/firewall-types";
 
 import type { ConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import {
+  FEISHU_CUSTOM_CONNECTOR_DEFAULT_POLICIES,
+  FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF,
+  FEISHU_CUSTOM_CONNECTOR_PERMISSIONS,
+} from "./feishu-custom-connector-permissions";
 
 const PERMISSION_BUNDLE_REF_PATTERN = /^builtin:([^@]+)@1$/u;
 
@@ -18,6 +26,7 @@ export interface CustomConnectorPermissionBundle {
   readonly connectorSlug: ConnectorSlug;
   readonly permissionNames: ReadonlySet<string>;
   readonly permissions: FirewallPermissions;
+  readonly defaultPolicies: Readonly<Record<string, FirewallPolicyValue>>;
 }
 
 function customConnectorPermissionBundleSlug(
@@ -32,6 +41,20 @@ export async function loadCustomConnectorPermissionBundle(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
   readonly ref: CustomConnectorPermissionBundleRef;
 }): Promise<CustomConnectorPermissionBundle | null> {
+  if (args.ref === FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF) {
+    return {
+      ref: args.ref,
+      connectorSlug: "feishu",
+      permissionNames: new Set(
+        FEISHU_CUSTOM_CONNECTOR_PERMISSIONS.map((permission) => {
+          return permission.name;
+        }),
+      ),
+      permissions: [...FEISHU_CUSTOM_CONNECTOR_PERMISSIONS],
+      defaultPolicies: FEISHU_CUSTOM_CONNECTOR_DEFAULT_POLICIES,
+    };
+  }
+
   const connectorSlug = customConnectorPermissionBundleSlug(args.ref);
   if (!connectorSlug || !args.snapshot.serverFirewalls.has(connectorSlug)) {
     return null;
@@ -76,5 +99,10 @@ export async function loadCustomConnectorPermissionBundle(args: {
     connectorSlug,
     permissionNames,
     permissions,
+    defaultPolicies: Object.fromEntries(
+      [...permissionNames].map((permissionName) => {
+        return [permissionName, "deny" as const];
+      }),
+    ),
   };
 }

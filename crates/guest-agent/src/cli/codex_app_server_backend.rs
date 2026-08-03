@@ -23,7 +23,7 @@ use super::codex_app_server::{
 };
 use super::codex_app_server_events::{
     CodexOutputItemKind, CodexOutputItemStart, IGNORED_NOTIFICATION_METHODS,
-    codex_output_item_start, notification_to_codex_event,
+    codex_output_item_start, notification_thread_id, notification_to_codex_event,
 };
 use super::event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use super::{
@@ -42,12 +42,16 @@ const API_TO_CODEX_AGENT_MESSAGE_ITEM_STARTED: &str = "api_to_codex_agent_messag
 
 struct NotificationIngestResult {
     emitted_thread_started: bool,
+    active_input_ready: bool,
+    terminal_exit_code: Option<i32>,
 }
 
+#[derive(Default)]
 struct PreparedNotificationIngest {
     event: Option<Value>,
     output_item_start: Option<CodexOutputItemStart>,
     emitted_thread_started: bool,
+    active_input_ready: bool,
     terminal_exit_code: Option<i32>,
 }
 
@@ -217,6 +221,7 @@ async fn run_codex_app_server(
         let thread_identity = thread_identity_from_response(&thread_response)?;
         validate_resumed_thread_id(&thread_identity.canonical_id, resume_thread_id.as_deref())?;
         let mut thread_started_emitted = false;
+        let mut secondary_thread_notification_logged = false;
 
         while let Some(notification) = client.pop_notification() {
             let mut sink = EventIngestSink {
@@ -234,6 +239,7 @@ async fn run_codex_app_server(
                 &thread_identity.canonical_id,
                 "",
                 None,
+                &mut secondary_thread_notification_logged,
             )
             .await?;
             thread_started_emitted = thread_started_emitted || ingest_result.emitted_thread_started;
@@ -295,19 +301,18 @@ async fn run_codex_app_server(
                         thread_id: &thread_identity.canonical_id,
                         turn_id: &turn_id,
                     };
-                    let notification_ready_for_active_input =
-                        is_active_input_ready_notification(&notification, &turn_id);
-                    let terminal_exit_code = ingest_run_notification(
+                    let ingest_result = ingest_run_notification(
                         notification,
                         &mut sink,
                         &active_input,
                         &mut thread_started_emitted,
                         &notification_scope,
+                        &mut secondary_thread_notification_logged,
                     )
                     .await?;
                     turn_started_observed =
-                        turn_started_observed || notification_ready_for_active_input;
-                    if let Some(exit_code) = terminal_exit_code {
+                        turn_started_observed || ingest_result.active_input_ready;
+                    if let Some(exit_code) = ingest_result.terminal_exit_code {
                         active_input.close_terminal();
                         break exit_code;
                     }
@@ -345,6 +350,7 @@ async fn run_codex_app_server(
                         &active_input,
                         &mut thread_started_emitted,
                         &notification_scope,
+                        &mut secondary_thread_notification_logged,
                     )
                     .await?
                     {
@@ -647,16 +653,6 @@ fn can_read_active_input(active_input_open: bool, active_input_ready: bool) -> b
     active_input_open && active_input_ready
 }
 
-fn is_active_input_ready_notification(notification: &ServerNotification, turn_id: &str) -> bool {
-    notification.method == "turn/started"
-        && notification
-            .params
-            .as_ref()
-            .and_then(|params| params.pointer("/turn/id"))
-            .and_then(Value::as_str)
-            == Some(turn_id)
-}
-
 async fn steer_active_input(
     client: &mut CodexAppServerClient,
     active_input: &ActiveInputWriter,
@@ -744,6 +740,7 @@ async fn drain_queued_notifications(
     active_input: &ActiveInputWriter,
     thread_started_emitted: &mut bool,
     scope: &CodexTurnScope<'_>,
+    secondary_thread_notification_logged: &mut bool,
 ) -> Result<Option<i32>, AgentError> {
     let mut prepared_notifications = Vec::new();
     let mut prepared_thread_started_emitted = *thread_started_emitted;
@@ -753,6 +750,7 @@ async fn drain_queued_notifications(
             prepared_thread_started_emitted,
             scope.thread_id,
             scope.turn_id,
+            secondary_thread_notification_logged,
         )?;
         prepared_thread_started_emitted =
             prepared_thread_started_emitted || prepared.emitted_thread_started;
@@ -782,12 +780,14 @@ async fn ingest_run_notification(
     active_input: &ActiveInputWriter,
     thread_started_emitted: &mut bool,
     scope: &CodexTurnScope<'_>,
-) -> Result<Option<i32>, AgentError> {
+    secondary_thread_notification_logged: &mut bool,
+) -> Result<NotificationIngestResult, AgentError> {
     let prepared = prepare_notification_ingest(
         notification,
         *thread_started_emitted,
         scope.thread_id,
         scope.turn_id,
+        secondary_thread_notification_logged,
     )?;
     record_output_item_start(prepared.output_item_start.as_ref(), sink);
     // Close before any ingest await so the control path cannot accept input
@@ -795,12 +795,16 @@ async fn ingest_run_notification(
     if prepared.terminal_exit_code.is_some() {
         active_input.close_terminal();
     }
-    let terminal_exit_code = prepared.terminal_exit_code;
+    let result = NotificationIngestResult {
+        emitted_thread_started: prepared.emitted_thread_started,
+        active_input_ready: prepared.active_input_ready,
+        terminal_exit_code: prepared.terminal_exit_code,
+    };
     if let Some(event) = prepared.event {
         ingest_event(event, sink).await?;
     }
     *thread_started_emitted = *thread_started_emitted || prepared.emitted_thread_started;
-    Ok(terminal_exit_code)
+    Ok(result)
 }
 
 fn app_server_error(masker: &SecretMasker, error: impl std::fmt::Display) -> AgentError {
@@ -838,12 +842,14 @@ async fn ingest_notification(
     expected_thread_id: &str,
     active_turn_id: &str,
     terminal_active_input: Option<&ActiveInputWriter>,
+    secondary_thread_notification_logged: &mut bool,
 ) -> Result<NotificationIngestResult, AgentError> {
     let prepared = prepare_notification_ingest(
         notification,
         thread_started_emitted,
         expected_thread_id,
         active_turn_id,
+        secondary_thread_notification_logged,
     )?;
     record_output_item_start(prepared.output_item_start.as_ref(), sink);
     if prepared.terminal_exit_code.is_some()
@@ -851,12 +857,15 @@ async fn ingest_notification(
     {
         active_input.close_terminal();
     }
+    let result = NotificationIngestResult {
+        emitted_thread_started: prepared.emitted_thread_started,
+        active_input_ready: prepared.active_input_ready,
+        terminal_exit_code: prepared.terminal_exit_code,
+    };
     if let Some(event) = prepared.event {
         ingest_event(event, sink).await?;
     }
-    Ok(NotificationIngestResult {
-        emitted_thread_started: prepared.emitted_thread_started,
-    })
+    Ok(result)
 }
 
 fn prepare_notification_ingest(
@@ -864,7 +873,22 @@ fn prepare_notification_ingest(
     thread_started_emitted: bool,
     expected_thread_id: &str,
     active_turn_id: &str,
+    secondary_thread_notification_logged: &mut bool,
 ) -> Result<PreparedNotificationIngest, AgentError> {
+    if let Some(secondary_thread_id) =
+        secondary_notification_thread_id(&notification, expected_thread_id)
+    {
+        if !*secondary_thread_notification_logged {
+            log_info!(
+                LOG_TAG,
+                "Ignoring codex app-server notification for secondary thread: method={} thread_id={secondary_thread_id}",
+                notification.method
+            );
+            *secondary_thread_notification_logged = true;
+        }
+        return Ok(PreparedNotificationIngest::default());
+    }
+
     let output_item_start = codex_output_item_start(&notification)
         .map_err(|error| AgentError::Execution(error.to_string()))?;
     if let Some(start) = &output_item_start {
@@ -879,29 +903,37 @@ fn prepare_notification_ingest(
         .map_err(|error| AgentError::Execution(error.to_string()))?
     else {
         return Ok(PreparedNotificationIngest {
-            event: None,
             output_item_start,
-            emitted_thread_started: false,
-            terminal_exit_code: None,
+            ..PreparedNotificationIngest::default()
         });
     };
     validate_event_scope(&event, expected_thread_id, active_turn_id)?;
     if is_duplicate_thread_started(&event, thread_started_emitted, expected_thread_id) {
         return Ok(PreparedNotificationIngest {
-            event: None,
             output_item_start,
-            emitted_thread_started: false,
-            terminal_exit_code: None,
+            ..PreparedNotificationIngest::default()
         });
     }
     let emitted_thread_started = is_thread_started_event(&event, expected_thread_id);
+    let active_input_ready = is_turn_started_event(&event);
     let terminal_exit_code = terminal_exit_code(&event, expected_thread_id, active_turn_id);
     Ok(PreparedNotificationIngest {
         event: Some(event),
         output_item_start,
         emitted_thread_started,
+        active_input_ready,
         terminal_exit_code,
     })
+}
+
+fn secondary_notification_thread_id(
+    notification: &ServerNotification,
+    expected_canonical_thread_id: &str,
+) -> Option<String> {
+    let canonical_thread_id = guest_contracts::codex_thread_id::canonical_codex_thread_id(
+        notification_thread_id(notification)?,
+    )?;
+    (canonical_thread_id != expected_canonical_thread_id).then_some(canonical_thread_id)
 }
 
 fn validate_event_scope(
@@ -1018,6 +1050,10 @@ fn is_thread_started_event(event: &Value, expected_canonical_thread_id: &str) ->
             .is_some_and(|thread_id| {
                 thread_id_matches_canonical(thread_id, expected_canonical_thread_id)
             })
+}
+
+fn is_turn_started_event(event: &Value) -> bool {
+    event.get("type").and_then(Value::as_str) == Some("turn.started")
 }
 
 fn terminal_exit_code(
@@ -1149,51 +1185,6 @@ mod tests {
         assert!(!can_read_active_input(false, true));
         assert!(!can_read_active_input(true, false));
         assert!(can_read_active_input(true, true));
-    }
-
-    #[test]
-    fn turn_started_notification_enables_active_input_for_matching_turn() {
-        let matching_notification = ServerNotification {
-            method: "turn/started".to_string(),
-            params: Some(json!({
-                "threadId": "thread-1",
-                "turn": {
-                    "id": "turn-1",
-                    "status": "inProgress"
-                }
-            })),
-        };
-        let wrong_turn_notification = ServerNotification {
-            method: "turn/started".to_string(),
-            params: Some(json!({
-                "threadId": "thread-1",
-                "turn": {
-                    "id": "turn-2",
-                    "status": "inProgress"
-                }
-            })),
-        };
-        let thread_started_notification = ServerNotification {
-            method: "thread/started".to_string(),
-            params: Some(json!({
-                "thread": {
-                    "id": "thread-1"
-                }
-            })),
-        };
-
-        assert!(is_active_input_ready_notification(
-            &matching_notification,
-            "turn-1"
-        ));
-        assert!(!is_active_input_ready_notification(
-            &wrong_turn_notification,
-            "turn-1"
-        ));
-        assert!(!is_active_input_ready_notification(
-            &thread_started_notification,
-            "turn-1"
-        ));
     }
 
     #[test]

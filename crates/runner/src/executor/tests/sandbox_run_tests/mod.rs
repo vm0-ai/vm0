@@ -39,11 +39,11 @@ use super::support::{
     test_executor_config, test_telemetry,
 };
 use crate::ids::RunId;
-use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key};
+use crate::paths::{RunnerPaths, scoped_workspace_image_cache_key};
 use crate::storage_manifest::StorageManifest;
 use crate::types::{FirewallEntry, ResumeSession, SandboxReuseResult};
 use crate::workspace_image_cache::{
-    SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
+    WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus, WorkspaceImageCache,
     WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
 };
 use tracing::Level;

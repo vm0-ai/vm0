@@ -132,7 +132,6 @@ type ChatEventRow = {
   readonly runEventId: string | null;
   readonly goalEvent: ChatEventGoalEvent | null;
   readonly error: string | null;
-  readonly runLifecycleEvent: string | null;
   readonly seqId: number;
   readonly sequenceNumber: number | null;
   readonly createdAt: Date;
@@ -270,7 +269,6 @@ const eventColumns = {
   runEventId: chatEvents.runEventId,
   goalEvent: chatEvents.goalEvent,
   error: chatEvents.error,
-  runLifecycleEvent: chatEvents.runLifecycleEvent,
   seqId: chatEvents.seqId,
   sequenceNumber: chatEvents.sequenceNumber,
   createdAt: chatEvents.createdAt,

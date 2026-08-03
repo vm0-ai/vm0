@@ -4,6 +4,17 @@ use crate::error::{RunnerError, RunnerResult};
 
 const UNIT_PREFIX: &str = "vm0-runner-";
 
+/// A validated identity for one runner systemd service.
+///
+/// The suffix `pr-123` maps to four forms belonging to the same identity:
+///
+/// - suffix: `pr-123`
+/// - unit name: `vm0-runner-pr-123`
+/// - service name: `vm0-runner-pr-123.service`
+/// - unit-file path: `/etc/systemd/system/vm0-runner-pr-123.service`
+///
+/// Construction validates the suffix before deriving the other forms, so an
+/// instance cannot contain names or a path for an invalid suffix.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RunnerServiceUnit {
     suffix: String,
@@ -39,6 +50,12 @@ impl RunnerServiceUnit {
         })
     }
 
+    /// Parse a runner service identity from a bare unit-file name.
+    ///
+    /// Accepts `vm0-runner-<suffix>.service` only when `<suffix>` passes the
+    /// same validation as [`Self::from_suffix`]. Returns `None` when the
+    /// expected prefix or `.service` suffix is absent, or when the extracted
+    /// suffix is invalid.
     pub(crate) fn from_file_name(file_name: &str) -> Option<Self> {
         let suffix = file_name
             .strip_prefix(UNIT_PREFIX)?
@@ -46,23 +63,33 @@ impl RunnerServiceUnit {
         Self::from_suffix(suffix).ok()
     }
 
+    /// Return the validated suffix before adding the `vm0-runner-` prefix or
+    /// final `.service` extension.
     pub(crate) fn suffix(&self) -> &str {
         &self.suffix
     }
 
+    /// Return the unit name `vm0-runner-<suffix>`, before adding the final
+    /// `.service` extension.
     pub(crate) fn unit_name(&self) -> &str {
         &self.unit_name
     }
 
+    /// Return the service name `vm0-runner-<suffix>.service`.
     pub(crate) fn service_name(&self) -> &str {
         &self.service_name
     }
 
+    /// Return the absolute `/etc/systemd/system/<service-name>` unit-file path.
     pub(crate) fn unit_file_path(&self) -> &std::path::Path {
         &self.unit_file_path
     }
 }
 
+/// Return the runner service-name pattern `vm0-runner-*.service`.
+///
+/// Validated service names use the same fixed prefix and `.service` suffix,
+/// but this pattern does not validate the suffix matched by `*`.
 pub(super) fn all_units_pattern() -> String {
     format!("{UNIT_PREFIX}*.service")
 }

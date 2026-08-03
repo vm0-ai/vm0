@@ -42,6 +42,14 @@ impl ActiveReuseKeyGuard {
             reuse_key,
         }
     }
+
+    pub(super) fn release(mut self) -> bool {
+        let Some(reuse_key) = self.reuse_key.take() else {
+            return false;
+        };
+        remove_active_reuse_key(&self.active_reuse_keys, &reuse_key);
+        true
+    }
 }
 
 impl Drop for ActiveReuseKeyGuard {
@@ -63,29 +71,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn active_sessions_are_ref_counted() {
-        let active_sessions = new_active_reuse_keys();
-        insert_active_reuse_key(&active_sessions, "session:sess-1");
-        insert_active_reuse_key(&active_sessions, "session:sess-1");
+    fn active_reuse_keys_are_ref_counted() {
+        let registry = new_active_reuse_keys();
+        insert_active_reuse_key(&registry, "thread:thread-1");
+        insert_active_reuse_key(&registry, "thread:thread-1");
 
-        assert!(active_reuse_keys(&active_sessions).contains("session:sess-1"));
+        assert!(active_reuse_keys(&registry).contains("thread:thread-1"));
 
-        remove_active_reuse_key(&active_sessions, "session:sess-1");
-        assert!(active_reuse_keys(&active_sessions).contains("session:sess-1"));
+        remove_active_reuse_key(&registry, "thread:thread-1");
+        assert!(active_reuse_keys(&registry).contains("thread:thread-1"));
 
-        remove_active_reuse_key(&active_sessions, "session:sess-1");
-        assert!(!active_reuse_keys(&active_sessions).contains("session:sess-1"));
+        remove_active_reuse_key(&registry, "thread:thread-1");
+        assert!(!active_reuse_keys(&registry).contains("thread:thread-1"));
     }
 
     #[test]
     fn active_reuse_key_guard_registers_and_unregisters_initial_key() {
-        let active_sessions = new_active_reuse_keys();
-        let guard =
-            ActiveReuseKeyGuard::new(Arc::clone(&active_sessions), Some("thread:thread-1".into()));
+        let registry = new_active_reuse_keys();
+        let guard = ActiveReuseKeyGuard::new(Arc::clone(&registry), Some("thread:thread-2".into()));
 
-        assert!(active_reuse_keys(&active_sessions).contains("thread:thread-1"));
+        assert!(active_reuse_keys(&registry).contains("thread:thread-2"));
 
         drop(guard);
-        assert!(!active_reuse_keys(&active_sessions).contains("thread:thread-1"));
+        assert!(!active_reuse_keys(&registry).contains("thread:thread-2"));
     }
 }

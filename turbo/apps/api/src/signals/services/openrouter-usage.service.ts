@@ -22,7 +22,7 @@ const OPENROUTER_USAGE_CATEGORIES = [
 ] as const;
 
 interface OpenRouterUsageEntry {
-  readonly category: string;
+  readonly category: (typeof OPENROUTER_USAGE_CATEGORIES)[number];
   readonly quantity: number;
 }
 
@@ -35,6 +35,11 @@ interface RecordOpenRouterUsageArgs {
   readonly operationId: string;
   readonly usage: OpenRouterUsage | undefined;
 }
+
+type OpenRouterUsageSettlement =
+  | { readonly kind: "no-usage" }
+  | { readonly kind: "settled"; readonly creditsCharged: number }
+  | { readonly kind: "unsettled" };
 
 function positiveInteger(value: number | undefined): number {
   if (value === undefined || !Number.isFinite(value) || value <= 0) {
@@ -58,11 +63,12 @@ function usageEntries(
   const inputTokens = promptTokens - cachedTokens;
   const outputTokens = positiveInteger(usage.completion_tokens);
 
-  return [
+  const entries: OpenRouterUsageEntry[] = [
     { category: INPUT_CATEGORY, quantity: inputTokens },
     { category: CACHE_READ_CATEGORY, quantity: cachedTokens },
     { category: OUTPUT_CATEGORY, quantity: outputTokens },
-  ].filter((entry) => {
+  ];
+  return entries.filter((entry) => {
     return entry.quantity > 0;
   });
 }
@@ -115,39 +121,66 @@ export const recordOpenRouterUsage$ = command(
     { set },
     args: RecordOpenRouterUsageArgs,
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<OpenRouterUsageSettlement> => {
     const entries = usageEntries(args.usage);
     if (entries.length === 0) {
-      return;
+      return { kind: "no-usage" };
     }
 
     const writeDb = set(writeDb$);
+    const eventRows = entries.map((entry) => {
+      return {
+        runId: args.runId ?? null,
+        idempotencyKey: usageIdempotencyKey({
+          orgId: args.orgId,
+          operation: args.operation,
+          operationId: args.operationId,
+          provider: args.provider,
+          category: entry.category,
+        }),
+        orgId: args.orgId,
+        userId: args.userId,
+        kind: USAGE_KIND,
+        provider: args.provider,
+        category: entry.category,
+        quantity: entry.quantity,
+      };
+    });
     await writeDb
       .insert(usageEvent)
-      .values(
-        entries.map((entry) => {
-          return {
-            runId: args.runId ?? null,
-            idempotencyKey: usageIdempotencyKey({
-              orgId: args.orgId,
-              operation: args.operation,
-              operationId: args.operationId,
-              provider: args.provider,
-              category: entry.category,
-            }),
-            orgId: args.orgId,
-            userId: args.userId,
-            kind: USAGE_KIND,
-            provider: args.provider,
-            category: entry.category,
-            quantity: entry.quantity,
-          };
-        }),
-      )
+      .values(eventRows)
       .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
     signal.throwIfAborted();
 
     await set(processOrgUsageEvents$, args.orgId, signal);
     signal.throwIfAborted();
+
+    const processed = await writeDb
+      .select({
+        billingError: usageEvent.billingError,
+        creditsCharged: usageEvent.creditsCharged,
+      })
+      .from(usageEvent)
+      .where(
+        inArray(
+          usageEvent.idempotencyKey,
+          eventRows.map((event) => {
+            return event.idempotencyKey;
+          }),
+        ),
+      );
+    signal.throwIfAborted();
+    if (processed.length !== eventRows.length) {
+      return { kind: "unsettled" };
+    }
+
+    let creditsCharged = 0;
+    for (const event of processed) {
+      if (event.billingError !== null || event.creditsCharged === null) {
+        return { kind: "unsettled" };
+      }
+      creditsCharged += event.creditsCharged;
+    }
+    return { kind: "settled", creditsCharged };
   },
 );
