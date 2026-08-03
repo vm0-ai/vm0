@@ -17439,8 +17439,10 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
         /\(run_id, sequence_number\)$/u,
       );
 
+      await client.query(`DROP INDEX "chat_events_run_event_seq_unique"`);
       await expectDatabaseError(client, {
         code: "23505",
+        messageIncludes: "chat_events_run_seq_unique",
         query: `
           INSERT INTO "chat_events" (
             "chat_thread_id",
@@ -17453,8 +17455,18 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
         `,
         values: [threadId, previousApiRunId],
       });
+      await client.query(`
+        CREATE UNIQUE INDEX "chat_events_run_event_seq_unique"
+        ON "chat_events" USING btree (
+          "run_id",
+          "run_event_sequence_number"
+        )
+      `);
+
+      await client.query(`DROP INDEX "chat_events_run_seq_unique"`);
       await expectDatabaseError(client, {
         code: "23505",
+        messageIncludes: "chat_events_run_event_seq_unique",
         query: `
           INSERT INTO "chat_events" (
             "chat_thread_id",
@@ -17467,6 +17479,10 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
         `,
         values: [threadId, nextApiRunId],
       });
+      await client.query(`
+        CREATE UNIQUE INDEX "chat_events_run_seq_unique"
+        ON "chat_events" USING btree ("run_id", "sequence_number")
+      `);
 
       await expectDatabaseError(client, {
         code: "P0001",
