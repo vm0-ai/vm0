@@ -65,9 +65,10 @@ export function chatEventTerminalPredicate(eventType: SQLWrapper): SQL {
  * leaves the queue. Event-backed rows are one row per assistant-visible agent
  * output event; result-only CLI output can be projected from a terminal
  * "result" event. Failed runs append an assistant row carrying the terminal
- * error message. Event-backed rows are keyed by `(run_id, sequence_number)` for
- * idempotent, lock-free inserts from both the event consumer and the callback's
- * final sweep.
+ * error message. `run_event_sequence_number` is the upstream run-event
+ * coordinate used for reconciliation and final-answer selection. The
+ * deterministic primary key derived from `run_event_id` is the first
+ * deduplication guard; `(run_id, run_event_sequence_number)` is a second guard.
  *
  * Terminal-state assistant rows use the `run.completed | run.failed |
  * run.cancelled` event types.
@@ -129,8 +130,14 @@ export const chatEvents = pgTable(
     userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),
     thinking: text("thinking"),
     error: text("error"),
-    sequenceNumber: integer("sequence_number"),
-    runEventId: text("run_event_id"), // Anthropic message ID from event.message.id (e.g. "msg_01abc...")
+    runEventSequenceNumber: integer("run_event_sequence_number"),
+    /**
+     * Upstream run-event ID or a deterministic seed for synthesized rows.
+     * `queue:queued`, `queue:dequeued`, and `thinking:initial` seed stable
+     * primary keys for non-agent rows. `thinking:initial` also distinguishes
+     * our placeholder from real agent thinking stored in the same leaf.
+     */
+    runEventId: text("run_event_id"),
     /** Strictly increasing position within the owning chat thread. */
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
     goalEvent: jsonb("goal_event").$type<ChatEventGoalEvent>(),
@@ -170,9 +177,9 @@ export const chatEvents = pgTable(
         .where(
           sql`${table.runId} IS NULL AND ${table.eventType} IN ('input.prompt', 'input.automation', 'input.goal')`,
         ),
-      uniqueIndex("chat_events_run_seq_unique").on(
+      uniqueIndex("chat_events_run_event_seq_unique").on(
         table.runId,
-        table.sequenceNumber,
+        table.runEventSequenceNumber,
       ),
       uniqueIndex("chat_events_thread_seq_unique").on(
         table.chatThreadId,

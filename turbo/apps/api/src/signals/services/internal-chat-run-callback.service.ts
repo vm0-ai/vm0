@@ -126,6 +126,7 @@ import {
   insertAssistantEvents$,
   runGroupIdForRun,
   touchChatThreadLastMessageAt,
+  type InsertAssistantEventsInput,
   visibleChatEventCondition,
 } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
@@ -379,6 +380,27 @@ interface AssistantEventItem {
   readonly content: string;
 }
 
+interface AssistantEventInsertArgs {
+  readonly runId: string;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly items: readonly AssistantEventItem[];
+}
+
+function assistantEventInsertInput(
+  args: AssistantEventInsertArgs,
+): InsertAssistantEventsInput {
+  return {
+    ...args,
+    items: args.items.map((item) => {
+      return {
+        runEventSequenceNumber: item.sequenceNumber,
+        content: item.content,
+      };
+    }),
+  };
+}
+
 function terminalCallbackErrorMessage(
   callbackError: string | null | undefined,
   runError: string | null | undefined,
@@ -448,12 +470,7 @@ interface ChatCallbackDependencies {
     signal: AbortSignal,
   ) => Promise<{ readonly released: number }>;
   readonly insertAssistantItems: (
-    args: {
-      readonly runId: string;
-      readonly threadId: string;
-      readonly userId: string;
-      readonly items: readonly AssistantEventItem[];
-    },
+    args: AssistantEventInsertArgs,
     signal: AbortSignal,
   ) => Promise<void>;
   readonly saveRunSummary: (
@@ -930,22 +947,24 @@ async function latestEventBackedAssistantEvent(
   const [event] = await db
     .select({
       content: chatEvents.content,
-      sequenceNumber: chatEvents.sequenceNumber,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
     })
     .from(chatEvents)
     .where(
       and(
         eq(chatEvents.runId, runId),
         chatEventTypeIn(["output.message"]),
-        isNotNull(chatEvents.sequenceNumber),
+        isNotNull(chatEvents.runEventSequenceNumber),
         isNotNull(chatEvents.content),
         not(sql`${chatEvents.content} ~ '^[[:space:]]*$'`),
         ...(options.maxSequenceNumber === undefined
           ? []
-          : [lte(chatEvents.sequenceNumber, options.maxSequenceNumber)]),
+          : [
+              lte(chatEvents.runEventSequenceNumber, options.maxSequenceNumber),
+            ]),
       ),
     )
-    .orderBy(desc(chatEvents.sequenceNumber))
+    .orderBy(desc(chatEvents.runEventSequenceNumber))
     .limit(1);
 
   if (!event || event.content === null || event.sequenceNumber === null) {
@@ -1079,7 +1098,7 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
       and(
         eq(chatEvents.runId, runId),
         chatEventTypeIn(["output.message"]),
-        isNotNull(chatEvents.sequenceNumber),
+        isNotNull(chatEvents.runEventSequenceNumber),
       ),
     );
   if (!event?.lastEventAt) {
@@ -1530,10 +1549,10 @@ async function loadCanonicalDeliveryEvent(
         eq(chatEvents.runId, runId),
         chatEventTypeIn(["output.message"]),
         isNotNull(chatEvents.content),
-        isNotNull(chatEvents.sequenceNumber),
+        isNotNull(chatEvents.runEventSequenceNumber),
       ),
     )
-    .orderBy(desc(chatEvents.sequenceNumber))
+    .orderBy(desc(chatEvents.runEventSequenceNumber))
     .limit(1);
   return event;
 }
@@ -2378,7 +2397,7 @@ async function getLatestRunsByThreadId(
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
       createdAt: chatEvents.createdAt,
-      sequenceNumber: chatEvents.sequenceNumber,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
       generationTemplate: chatEvents.generationTemplate,
     })
     .from(chatEvents)
@@ -4931,7 +4950,11 @@ export async function handleChatInternalCallbackWithoutCcstate(
         );
       },
       insertAssistantItems: async (args, inputSignal) => {
-        await insertAssistantEvents(db, args, inputSignal);
+        await insertAssistantEvents(
+          db,
+          assistantEventInsertInput(args),
+          inputSignal,
+        );
       },
       saveRunSummary: (runId, prompt, resultText, inputSignal) => {
         return saveRunSummary(
@@ -5004,7 +5027,11 @@ const buildChatCallbackDependencies$ = command(
         return set(releaseThreadBrowsersForRun$, args, inputSignal);
       },
       insertAssistantItems: async (args, inputSignal) => {
-        await set(insertAssistantEvents$, args, inputSignal);
+        await set(
+          insertAssistantEvents$,
+          assistantEventInsertInput(args),
+          inputSignal,
+        );
       },
       dispatchChatRunFinishedAutomations: async (event, inputSignal) => {
         // Imported lazily: the dispatcher reaches runWorkflowAutomationNow$,

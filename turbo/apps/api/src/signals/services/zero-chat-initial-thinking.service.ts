@@ -87,7 +87,7 @@ async function loadThinkingContextMessages(args: {
       content: chatEvents.content,
       userMessage: chatEvents.userMessage,
       createdAt: chatEvents.createdAt,
-      sequenceNumber: chatEvents.sequenceNumber,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
     })
     .from(chatEvents)
     .where(

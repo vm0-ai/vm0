@@ -860,7 +860,7 @@ async function getLatestRunsByThreadId(
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
       createdAt: chatEvents.createdAt,
-      sequenceNumber: chatEvents.sequenceNumber,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
       generationTemplate: chatEvents.generationTemplate,
     })
     .from(chatEvents)
@@ -2930,7 +2930,7 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
       userMessage: queuedMessage.userMessage,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
-      sequenceNumber: 0,
+      runEventSequenceNumber: 0,
       createdAt: rejectedCreatedAt,
       attachFiles: queuedMessage.attachFiles
         ? [...queuedMessage.attachFiles]
@@ -2943,7 +2943,7 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
         eventType: "output.error",
         content: params.assistantContent,
         error: INSUFFICIENT_CREDITS_MARKER,
-        sequenceNumber: 1,
+        runEventSequenceNumber: 1,
         createdAt: assistantCreatedAt,
         runId: null,
       });
@@ -3009,7 +3009,7 @@ async function appendInsufficientCreditsEvents(params: {
       userMessage: params.body.userMessage,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
-      sequenceNumber: 0,
+      runEventSequenceNumber: 0,
       createdAt: userCreatedAt,
       attachFiles: fileIds,
     };
@@ -3043,7 +3043,7 @@ async function appendInsufficientCreditsEvents(params: {
       eventType: "output.error",
       content: assistantContent,
       error: INSUFFICIENT_CREDITS_MARKER,
-      sequenceNumber: 1,
+      runEventSequenceNumber: 1,
       createdAt: assistantCreatedAt,
       runId: null,
     });

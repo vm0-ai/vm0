@@ -32,14 +32,14 @@ interface ConstraintInfo {
   constraint_def: string;
 }
 
-// PR 1 of the run-event sequence column rollout adds physical storage without
-// declaring it in Drizzle. Remove these allowlists in PR 2 when the runtime
-// schema switches to the canonical property.
+// PR 2 of the run-event sequence column rollout declares the canonical column
+// and index in Drizzle while the legacy objects remain for the draining
+// predecessor and rollback target. Remove these allowlists in PR 3.
 const TRANSITIONAL_RUN_EVENT_SEQUENCE_COLUMNS = new Set([
-  "chat_events.run_event_sequence_number",
+  "chat_events.sequence_number",
 ]);
 const TRANSITIONAL_RUN_EVENT_SEQUENCE_INDEXES = new Set([
-  "chat_events_run_event_seq_unique",
+  "chat_events_run_seq_unique",
 ]);
 
 // Get database URLs from command line args

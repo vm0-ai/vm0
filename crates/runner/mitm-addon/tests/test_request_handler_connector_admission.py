@@ -598,7 +598,11 @@ async def test_matching_sni_and_host_allows_test_connector_on_authenticated_api_
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(
+            registry_path=str(reg_path),
+            api_url="https://api.vm0.ai",
+            ssl_insecure=False,
+        ),
         fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
@@ -610,6 +614,51 @@ async def test_matching_sni_and_host_allows_test_connector_on_authenticated_api_
     assert binding.host == "api.vm0.ai"
     assert binding.kinds == frozenset(("connector_auth",))
     assert binding.original_address == ("203.0.113.10", 443)
+
+
+async def test_matching_sni_and_host_blocks_test_connector_with_insecure_upstream_tls(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+):
+    reg_path = _write_test_oauth_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        path="/api/test/oauth-provider/echo",
+        request_headers=headers(
+            ("Host", "api.vm0.ai"),
+            ("x-vm0-test-endpoint-bypass", "preview-secret"),
+        ),
+    )
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.vm0.ai",
+        server_address=("203.0.113.10", 443),
+        peername=("203.0.113.10", 443),
+    )
+    monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
+
+    with (
+        mitm_ctx(
+            registry_path=str(reg_path),
+            api_url="https://api.vm0.ai",
+            ssl_insecure=True,
+        ),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.server_conn.id not in upstream_destination_binding.binding_snapshot_for_tests()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "upstream_destination_unbound"
+    assert body["reason"] == "connector_auth"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert "Authorization" not in flow.request.headers
 
 
 async def test_test_connector_extends_existing_api_allow_binding(

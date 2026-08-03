@@ -218,7 +218,7 @@ type ChatEventInputPayload = Pick<
 
 type ChatEventOutputSequence = Pick<
   ChatEventInsert,
-  "sequenceNumber" | "runEventId"
+  "runEventSequenceNumber" | "runEventId"
 >;
 
 type InputPromptEvent = ChatEventIdentity &
@@ -252,7 +252,7 @@ type InputGoalEvent = ChatEventIdentity &
 type InputRejectedEvent = ChatEventIdentity &
   ChatEventDisplayContext &
   ChatEventInputPayload &
-  Pick<ChatEventInsert, "sequenceNumber"> & {
+  Pick<ChatEventInsert, "runEventSequenceNumber"> & {
     readonly eventType: "input.rejected";
     readonly content?: null;
     readonly error: string;
@@ -268,7 +268,7 @@ type OutputMessageEvent = ChatEventIdentity &
   };
 
 type OutputErrorEvent = ChatEventIdentity &
-  Pick<ChatEventInsert, "sequenceNumber"> & {
+  Pick<ChatEventInsert, "runEventSequenceNumber"> & {
     readonly eventType: "output.error";
     readonly content: string | null;
     readonly error: string;
@@ -1094,18 +1094,18 @@ export async function insertChatEvents(
       id: chatEvents.id,
       createdAt: chatEvents.createdAt,
       seqId: chatEvents.seqId,
-      sequenceNumber: chatEvents.sequenceNumber,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
     });
   }
   return await query
     .onConflictDoNothing({
-      target: [chatEvents.runId, chatEvents.sequenceNumber],
+      target: [chatEvents.runId, chatEvents.runEventSequenceNumber],
     })
     .returning({
       id: chatEvents.id,
       createdAt: chatEvents.createdAt,
       seqId: chatEvents.seqId,
-      sequenceNumber: chatEvents.sequenceNumber,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
     });
 }
 
