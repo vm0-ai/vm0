@@ -283,9 +283,8 @@ def test_https_deadline_connects_to_resolved_ip_and_aborts_owned_tls_socket(
     raw_socket_iterator = iter(raw_sockets)
     real_socket = socket.socket
     tls_sockets: list[MagicMock] = []
+    tls_contexts: list[ssl.SSLContext] = []
     server_hostnames: list[str] = []
-    tls_context = MagicMock(spec=ssl.SSLContext)
-    tls_context.post_handshake_auth = False
 
     class PublicResolver:
         async def lookup_ip(self, host: str) -> list[str]:
@@ -293,6 +292,7 @@ def test_https_deadline_connects_to_resolved_ip_and_aborts_owned_tls_socket(
             return ["203.0.113.10"]
 
     def wrap_socket(
+        context: ssl.SSLContext,
         raw_socket: MagicMock,
         *,
         server_hostname: str,
@@ -300,6 +300,7 @@ def test_https_deadline_connects_to_resolved_ip_and_aborts_owned_tls_socket(
     ) -> MagicMock:
         assert raw_socket in raw_sockets
         assert not do_handshake_on_connect
+        tls_contexts.append(context)
         server_hostnames.append(server_hostname)
         aborted = threading.Event()
         tls_socket = MagicMock()
@@ -313,8 +314,6 @@ def test_https_deadline_connects_to_resolved_ip_and_aborts_owned_tls_socket(
         tls_socket.close.side_effect = aborted.set
         tls_sockets.append(tls_socket)
         return tls_socket
-
-    tls_context.wrap_socket.side_effect = wrap_socket
 
     def create_socket(
         family: int = -1,
@@ -335,8 +334,7 @@ def test_https_deadline_connects_to_resolved_ip_and_aborts_owned_tls_socket(
 
     with (
         patch.object(webhook_transport, "ATTEMPT_DEADLINE_SECONDS", 0.05),
-        patch.object(webhook_transport, "_https_context", None),
-        patch.object(webhook_transport.ssl, "create_default_context", return_value=tls_context),
+        patch.object(ssl.SSLContext, "wrap_socket", autospec=True, side_effect=wrap_socket),
         patch.object(webhook_transport.mitmproxy_rs.dns, "DnsResolver", PublicResolver),
         patch.object(webhook_transport.socket, "socket", side_effect=create_socket),
         patch.object(webhook_transport.urllib.request, "getproxies", return_value={}),
@@ -365,8 +363,12 @@ def test_https_deadline_connects_to_resolved_ip_and_aborts_owned_tls_socket(
     for tls_socket in tls_sockets:
         tls_socket.shutdown.assert_called_with(socket.SHUT_RDWR)
         assert tls_socket.close.called
-    tls_context.set_alpn_protocols.assert_called_once_with(["http/1.1"])
-    assert tls_context.post_handshake_auth is True
+    assert len(tls_contexts) == 2
+    assert len({id(context) for context in tls_contexts}) == 1
+    for context in tls_contexts:
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert context.check_hostname is True
+        assert context.post_handshake_auth is True
     assert delivery_outcomes == ["retryable_failure"]
     mock_sleep.assert_called_once_with(0.5)
 
