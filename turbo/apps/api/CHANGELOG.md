@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.368.0](https://github.com/vm0-ai/vm0/compare/api-v1.367.1...api-v1.368.0) (2026-08-03)
+
+
+### Features
+
+* **chat:** steer queued messages into active runs ([#24768](https://github.com/vm0-ai/vm0/issues/24768)) ([20e5855](https://github.com/vm0-ai/vm0/commit/20e5855c729bea0db9f7f4a2e3914b2adf4c26dd))
+
+
+### Bug Fixes
+
+* restrict run group ids to goals ([#24697](https://github.com/vm0-ai/vm0/issues/24697)) ([d7ef99d](https://github.com/vm0-ai/vm0/commit/d7ef99d9514f71434bf0239e3e9cd855328cfbd7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.265.0
+    * @vm0/core bumped to 8.505.0
+    * @vm0/db bumped to 1.163.0
+
 ## [1.367.1](https://github.com/vm0-ai/vm0/compare/api-v1.367.0...api-v1.367.1) (2026-08-03)
 
 

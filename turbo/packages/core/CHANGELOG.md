@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.505.0](https://github.com/vm0-ai/vm0/compare/core-v8.504.1...core-v8.505.0) (2026-08-03)
+
+
+### Features
+
+* **chat:** steer queued messages into active runs ([#24768](https://github.com/vm0-ai/vm0/issues/24768)) ([20e5855](https://github.com/vm0-ai/vm0/commit/20e5855c729bea0db9f7f4a2e3914b2adf4c26dd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.265.0
+
 ## [8.504.1](https://github.com/vm0-ai/vm0/compare/core-v8.504.0...core-v8.504.1) (2026-08-03)
 
 

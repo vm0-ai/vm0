@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.678.0](https://github.com/vm0-ai/vm0/compare/app-v0.677.1...app-v0.678.0) (2026-08-03)
+
+
+### Features
+
+* **chat:** steer queued messages into active runs ([#24768](https://github.com/vm0-ai/vm0/issues/24768)) ([20e5855](https://github.com/vm0-ai/vm0/commit/20e5855c729bea0db9f7f4a2e3914b2adf4c26dd))
+
+
+### Bug Fixes
+
+* **platform:** scope browser cards to chat threads ([#24793](https://github.com/vm0-ai/vm0/issues/24793)) ([9d6583b](https://github.com/vm0-ai/vm0/commit/9d6583bb41e9aef9c9bf20f7d77a85873b6cbee3))
+* restrict run group ids to goals ([#24697](https://github.com/vm0-ai/vm0/issues/24697)) ([d7ef99d](https://github.com/vm0-ai/vm0/commit/d7ef99d9514f71434bf0239e3e9cd855328cfbd7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.265.0
+    * @vm0/core bumped to 8.505.0
+
 ## [0.677.1](https://github.com/vm0-ai/vm0/compare/app-v0.677.0...app-v0.677.1) (2026-08-03)
 
 
