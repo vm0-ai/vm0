@@ -39,6 +39,7 @@ const internalVoiceLevel$ = state(0);
 const internalVoiceDetectedDuringRecording$ = state(false);
 const internalVoiceActivityAvailable$ = state(false);
 const internalVoiceActivityCoversRecording$ = state(false);
+const internalRecordingStartedAt$ = state<number | null>(null);
 const internalStream$ = state<MediaStream | null>(null);
 const internalRecorder$ = state<MediaRecorder | null>(null);
 const internalRecordingSession$ = state<VoiceRecordingSession | null>(null);
@@ -425,6 +426,7 @@ const resetState$ = command(({ set }) => {
   set(internalVoiceDetectedDuringRecording$, false);
   set(internalVoiceActivityAvailable$, false);
   set(internalVoiceActivityCoversRecording$, false);
+  set(internalRecordingStartedAt$, null);
   set(internalRecorder$, null);
   set(internalRecordingSession$, null);
   set(internalAudioActivityMonitor$, null);
@@ -440,6 +442,16 @@ const prepareRecordingStart$ = command(({ set }) => {
   set(internalVoiceActivityCoversRecording$, false);
   set(internalRecordingSession$, null);
 });
+
+const startMediaRecorder$ = command(
+  ({ set }, recorder: MediaRecorder): number => {
+    recorder.start();
+    const recordingStartedAt = audioActivityNow();
+    set(internalRecordingStartedAt$, recordingStartedAt);
+    set(internalRecording$, true);
+    return recordingStartedAt;
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Public commands
@@ -477,6 +489,12 @@ interface SttApiFailure {
 type SttApiResult =
   | { readonly ok: true; readonly text: string }
   | ({ readonly ok: false } & SttApiFailure);
+
+interface TranscribeAudioBlobInput {
+  readonly blob: Blob;
+  readonly mimeType: string;
+  readonly captureReason: VoiceSegmentReason;
+}
 
 interface WindowWithWebkitAudioContext extends Window {
   readonly webkitAudioContext?: typeof AudioContext;
@@ -589,14 +607,34 @@ async function stopRecorderAndCaptureData(
 const transcribeAudioBlob$ = command(
   async (
     { get, set },
-    blob: Blob,
-    mimeType: string,
+    input: TranscribeAudioBlobInput,
     signal: AbortSignal,
   ): Promise<SttSegmentResult> => {
+    const { blob, mimeType, captureReason } = input;
     const fetchFn = get(fetch$);
     const formData = new FormData();
     const extension = mimeType.includes("mp4") ? "mp4" : "webm";
+    const recordingStartedAt = get(internalRecordingStartedAt$);
+    const sessionElapsedMs =
+      recordingStartedAt === null
+        ? null
+        : Math.max(0, Math.round(audioActivityNow() - recordingStartedAt));
+    const clientDiagnostics = {
+      captureReason,
+      sessionElapsedMs,
+      sessionVoiceDetected: get(internalVoiceDetectedDuringRecording$),
+      voiceActivityAvailable: get(internalVoiceActivityAvailable$),
+      voiceActivityCoversRecording: get(internalVoiceActivityCoversRecording$),
+    };
+
     formData.append("file", blob, `recording.${extension}`);
+    formData.append("clientDiagnostics", JSON.stringify(clientDiagnostics));
+
+    L.debug("Uploading voice input audio", {
+      blobSize: blob.size,
+      mimeType,
+      ...clientDiagnostics,
+    });
 
     const response = await tapError(
       fetchFn("/api/zero/voice-io/stt", {
@@ -640,8 +678,7 @@ interface VoiceSegmentSessionOptions {
   readonly autoSegment: boolean;
   readonly onSegmentTranscribed: VoiceSegmentTranscribedCallback;
   readonly transcribeBlob: (
-    blob: Blob,
-    mimeType: string,
+    input: TranscribeAudioBlobInput,
     signal: AbortSignal,
   ) => Promise<SttSegmentResult>;
   readonly isVoiceActivityReliable: () => boolean;
@@ -654,13 +691,17 @@ async function uploadCapturedBlob(
   options: VoiceSegmentSessionOptions,
   blob: Blob | null,
   mimeType: string,
+  captureReason: VoiceSegmentReason,
   upload: boolean,
 ): Promise<string> {
   if (!blob || !upload) {
     return "";
   }
 
-  const result = await options.transcribeBlob(blob, mimeType, options.signal);
+  const result = await options.transcribeBlob(
+    { blob, mimeType, captureReason },
+    options.signal,
+  );
   if (!result.ok) {
     if (result.quotaExceeded) {
       options.onQuotaExceeded();
@@ -714,17 +755,40 @@ function createVoiceSegmentTranscriber(
   clearCurrentSegmentVoice: () => void,
 ): VoiceSegmentTranscriber {
   const pendingTranscriptions: Promise<string>[] = [];
+  let uploadQueue: Promise<void> = Promise.resolve();
+
+  const uploadSegment = async (
+    segment: RecordedVoiceSegment,
+    reason: VoiceSegmentReason,
+    upload: boolean,
+  ): Promise<string> => {
+    const previousUpload = uploadQueue;
+    const nextUpload = createDeferredPromise<void>(options.signal);
+    uploadQueue = nextUpload.promise;
+
+    await previousUpload;
+    return await withCleanup(
+      uploadCapturedBlob(
+        options,
+        segment.blob,
+        segment.mimeType,
+        reason,
+        upload,
+      ),
+      () => {
+        if (!nextUpload.settled()) {
+          nextUpload.resolve(undefined);
+        }
+      },
+    );
+  };
+
   const captureAndUploadSegment = async (
     reason: VoiceSegmentReason,
     upload: boolean,
   ): Promise<string> => {
     const segment = await captureSegment(reason, upload);
-    return await uploadCapturedBlob(
-      options,
-      segment.blob,
-      segment.mimeType,
-      upload,
-    );
+    return await uploadSegment(segment, reason, upload);
   };
 
   const enqueueSegment = (
@@ -943,8 +1007,8 @@ export const startRecording$ = command(
       signal,
       autoSegment,
       onSegmentTranscribed,
-      transcribeBlob: async (blob, mimeType, uploadSignal) => {
-        return await set(transcribeAudioBlob$, blob, mimeType, uploadSignal);
+      transcribeBlob: (input, uploadSignal) => {
+        return set(transcribeAudioBlob$, input, uploadSignal);
       },
       isVoiceActivityReliable: () => {
         return voiceActivityReliable;
@@ -972,9 +1036,7 @@ export const startRecording$ = command(
     });
 
     set(internalStarting$, false);
-    recorder.start();
-    const recordingStartedAt = audioActivityNow();
-    set(internalRecording$, true);
+    const recordingStartedAt = set(startMediaRecorder$, recorder);
     set(internalStream$, stream);
     set(internalRecorder$, recorder);
     set(internalRecordingSession$, recordingSession);

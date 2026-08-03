@@ -609,6 +609,41 @@ describe("POST /api/zero/voice-io/*", () => {
     });
   });
 
+  it("retries a transient BytePlus gateway failure once", async () => {
+    const fixture = await seedVoiceFixture({});
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const requestIds: string[] = [];
+    let requestCount = 0;
+    server.use(
+      http.post(BYTEPLUS_ASR_FLASH_URL, ({ request }) => {
+        requestCount += 1;
+        const requestId = request.headers.get("x-api-request-id");
+        if (requestId) {
+          requestIds.push(requestId);
+        }
+        if (requestCount === 1) {
+          return HttpResponse.text("Gateway Timeout", { status: 504 });
+        }
+        return bytePlusSttResponse("hello after retry");
+      }),
+    );
+
+    const app = createVoiceIoTestApp();
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(wavBytes(1))),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      text: "hello after retry",
+    });
+    expect(requestCount).toBe(2);
+    expect(requestIds).toHaveLength(2);
+    expect(new Set(requestIds).size).toBe(2);
+  });
+
   it("accepts BytePlus no-speech responses as empty transcripts", async () => {
     const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -921,8 +956,10 @@ describe("POST /api/zero/voice-io/*", () => {
       sttDailyDurationKey(),
       FREE_DAILY_DURATION_LIMIT_SECONDS - 3,
     );
+    let requestCount = 0;
     server.use(
       http.post(BYTEPLUS_ASR_FLASH_URL, () => {
+        requestCount += 1;
         return HttpResponse.json(
           { error: { message: "rate limit exceeded" } },
           { status: 429 },
@@ -946,6 +983,7 @@ describe("POST /api/zero/voice-io/*", () => {
       count: 0,
       limit: AUDIO_INPUT_FREE_QUOTA,
     });
+    expect(requestCount).toBe(1);
   });
 
   it("blocks /stt before BytePlus when the daily request limit is exhausted", async () => {
