@@ -582,7 +582,10 @@ async fn defer_preference_candidate(
         retained = retain,
         "runner preference has no qualifying local resource, deferring claim"
     );
-    ctx.spawn_ctx.provider.defer_poll_after(delay).await;
+    ctx.spawn_ctx
+        .provider
+        .defer_poll_until(preference.deadline())
+        .await;
     if retain {
         PreferencePreparation::Pending(candidate)
     } else {

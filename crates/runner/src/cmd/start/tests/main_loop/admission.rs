@@ -494,7 +494,7 @@ async fn generation_protected_different_idle_sandbox_defers_before_claim() {
         env.handle.claim_candidates().is_empty(),
         "a different reusable generation must not reach claim during exact protection"
     );
-    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+    assert_eq!(env.handle.deferred_poll_deadlines().len(), 1);
     let pool = idle_pool.lock().await;
     assert_eq!(pool.held_reuse_keys(), vec![session_id.to_string()]);
     assert_eq!(
@@ -539,7 +539,7 @@ async fn matching_preference_without_local_resource_defers_before_claim() {
         "runner must not claim a protected same-reuse-key candidate without local reusable state"
     );
     assert_eq!(
-        env.handle.deferred_poll_delays().len(),
+        env.handle.deferred_poll_deadlines().len(),
         1,
         "runner should schedule a follow-up poll after the preference expires"
     );
@@ -605,7 +605,7 @@ async fn selected_finalizing_candidate_keeps_reactor_live_and_claims_after_key_r
             .is_some(),
         "active-key release without a reusable resource should wake ordinary admission"
     );
-    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+    assert_eq!(env.handle.deferred_poll_deadlines().len(), 1);
 
     shutdown(&env, run_handle).await;
 }
@@ -692,7 +692,7 @@ async fn non_selected_finalizing_candidate_is_not_retained() {
     drop(predecessor_guard);
     tokio::task::yield_now().await;
     assert!(env.handle.claim_candidates().is_empty());
-    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+    assert_eq!(env.handle.deferred_poll_deadlines().len(), 1);
 
     shutdown(&env, run_handle).await;
 }
@@ -740,6 +740,11 @@ async fn same_run_duplicate_does_not_renew_pending_finalizing_deadline() {
         .unwrap();
     wait_discover_entered(&env, Duration::from_secs(2)).await;
     assert!(env.handle.claim_candidates().is_empty());
+    assert_eq!(
+        env.handle.deferred_poll_deadlines(),
+        vec![original_deadline, original_deadline],
+        "duplicate rechecks must forward the original absolute deadline"
+    );
 
     tokio::time::advance(Duration::from_millis(101)).await;
     let completion = env
@@ -912,7 +917,7 @@ async fn preference_without_reuse_key_uses_ordinary_admission() {
         completion.is_some(),
         "incomplete preference metadata is advisory"
     );
-    assert!(env.handle.deferred_poll_delays().is_empty());
+    assert!(env.handle.deferred_poll_deadlines().is_empty());
     wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
 
     shutdown(&env, run_handle).await;
@@ -943,7 +948,7 @@ async fn matching_preference_uses_actual_local_sandbox_without_resource_class() 
         .await
         .expect("actual compatible sandbox should satisfy matching preference");
     assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
-    assert!(env.handle.deferred_poll_delays().is_empty());
+    assert!(env.handle.deferred_poll_deadlines().is_empty());
 
     shutdown(&env, run_handle).await;
 }
@@ -1023,7 +1028,7 @@ async fn ready_direct_drain_continues_after_preference_defer() {
         "protected ready candidate should be deferred before claim"
     );
     assert_eq!(
-        env.handle.deferred_poll_delays().len(),
+        env.handle.deferred_poll_deadlines().len(),
         1,
         "protected ready candidate should schedule one follow-up poll"
     );
@@ -1153,7 +1158,7 @@ async fn expired_generation_protection_preserves_local_session_claim() {
             .is_some()
     );
     assert!(
-        env.handle.deferred_poll_delays().is_empty(),
+        env.handle.deferred_poll_deadlines().is_empty(),
         "runner holding the protected session should not defer the claim"
     );
 
@@ -1207,7 +1212,7 @@ async fn exact_preference_defers_for_cache_then_matching_preference_claims_it() 
         env.handle.claim_candidates().is_empty(),
         "workspace-cache state must not impersonate an exact reusable generation"
     );
-    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+    assert_eq!(env.handle.deferred_poll_deadlines().len(), 1);
 
     let run_id = RunId::new_v4();
     let mut workspace_context = context_with_session(run_id, provider_session_id);
@@ -1229,7 +1234,7 @@ async fn exact_preference_defers_for_cache_then_matching_preference_claims_it() 
     );
 
     assert_eq!(
-        env.handle.deferred_poll_delays().len(),
+        env.handle.deferred_poll_deadlines().len(),
         1,
         "the workspace-selected candidate should not add another deferral"
     );
@@ -1292,7 +1297,7 @@ async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
         "a cache-only preference must not bypass exhausted fresh admission"
     );
     assert_eq!(
-        env.handle.deferred_poll_delays().len(),
+        env.handle.deferred_poll_deadlines().len(),
         1,
         "workspace-selected work should defer when fresh budget is unavailable"
     );

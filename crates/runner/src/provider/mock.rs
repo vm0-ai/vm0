@@ -19,7 +19,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use tokio::sync::{Mutex, Notify, mpsc};
@@ -63,7 +63,7 @@ pub struct MockJobProvider {
     claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
     completions: Arc<StdMutex<Vec<Completion>>>,
     heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
-    deferred_poll_delays: Arc<StdMutex<Vec<Duration>>>,
+    deferred_poll_deadlines: Arc<StdMutex<Vec<Instant>>>,
     cancel: CancellationToken,
     /// Fired each time `discover()` has reached its inner `select!` await
     /// point (lock + optional `poll_delay` complete, about to park on
@@ -100,7 +100,7 @@ pub struct MockProviderHandle {
     claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
     pub completions: Arc<StdMutex<Vec<Completion>>>,
     pub heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
-    deferred_poll_delays: Arc<StdMutex<Vec<Duration>>>,
+    deferred_poll_deadlines: Arc<StdMutex<Vec<Instant>>>,
     /// See [`Self::wait_discover_entered`].
     discover_entered: Arc<Notify>,
     /// See [`MockJobProvider::completion_notify`].
@@ -250,7 +250,7 @@ impl MockJobProvider {
         let claim_candidates = Arc::new(StdMutex::new(Vec::new()));
         let completions = Arc::new(StdMutex::new(Vec::new()));
         let heartbeats = Arc::new(StdMutex::new(Vec::new()));
-        let deferred_poll_delays = Arc::new(StdMutex::new(Vec::new()));
+        let deferred_poll_deadlines = Arc::new(StdMutex::new(Vec::new()));
         let startup_readiness = Arc::new(MockStartupReadiness::default());
         let discover_entered = Arc::new(Notify::new());
         let completion_notify = Arc::new(Notify::new());
@@ -267,7 +267,7 @@ impl MockJobProvider {
             claim_candidates: Arc::clone(&claim_candidates),
             completions: Arc::clone(&completions),
             heartbeats: Arc::clone(&heartbeats),
-            deferred_poll_delays: Arc::clone(&deferred_poll_delays),
+            deferred_poll_deadlines: Arc::clone(&deferred_poll_deadlines),
             cancel,
             discover_entered: Arc::clone(&discover_entered),
             completion_notify: Arc::clone(&completion_notify),
@@ -283,7 +283,7 @@ impl MockJobProvider {
             claim_candidates,
             completions,
             heartbeats,
-            deferred_poll_delays,
+            deferred_poll_deadlines,
             discover_entered,
             completion_notify,
             discover_poll_started,
@@ -446,8 +446,8 @@ impl MockProviderHandle {
             .clone()
     }
 
-    pub fn deferred_poll_delays(&self) -> Vec<Duration> {
-        self.deferred_poll_delays
+    pub fn deferred_poll_deadlines(&self) -> Vec<Instant> {
+        self.deferred_poll_deadlines
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
@@ -593,11 +593,11 @@ impl JobProvider for MockJobProvider {
         }
     }
 
-    async fn defer_poll_after(&self, delay: Duration) {
-        self.deferred_poll_delays
+    async fn defer_poll_until(&self, deadline: Instant) {
+        self.deferred_poll_deadlines
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .push(delay);
+            .push(deadline);
     }
 
     /// Acquire the discovery Mutex to preserve the shutdown deadlock regression shape.

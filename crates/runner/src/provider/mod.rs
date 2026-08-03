@@ -594,10 +594,10 @@ pub trait JobProvider: Send + Sync {
     /// the future to enforce single-flight and lifecycle ordering.
     async fn heartbeat(&self, state: &HeartbeatState);
 
-    /// Delay the next API-backed poll until a protected same-reuse-key job can
-    /// fall back to normal compatible-runner claiming.
+    /// Defer the next API-backed poll until the immutable preference deadline
+    /// allows normal compatible-runner claiming.
     /// Default no-op — only relevant for API-backed providers.
-    async fn defer_poll_after(&self, _delay: Duration) {}
+    async fn defer_poll_until(&self, _deadline: Instant) {}
 
     /// Release discovery resources (subscriptions, background tasks).
     ///

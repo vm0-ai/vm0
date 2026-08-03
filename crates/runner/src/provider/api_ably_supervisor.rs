@@ -174,6 +174,12 @@ impl PollWakeups {
             .await;
     }
 
+    pub(super) async fn request_deferred_poll_until(&self, deadline: StdInstant) {
+        let now = tokio::time::Instant::now();
+        self.request_deferred_poll_capped_at(deadline.into(), now + DEFERRED_POLL_MAX)
+            .await;
+    }
+
     async fn request_deferred_poll_capped_at(
         &self,
         at: tokio::time::Instant,
@@ -1491,6 +1497,19 @@ mod tests {
 
         tokio::time::sleep_until(extended_deadline).await;
         assert_eq!(poll_reason(wait.await.unwrap()), Some(PollReason::Deferred));
+    }
+
+    #[tokio::test]
+    async fn deferred_poll_until_preserves_absolute_deadline() {
+        let wakeups = PollWakeups::new(true);
+        let deadline = StdInstant::now() + Duration::from_secs(2);
+
+        wakeups.request_deferred_poll_until(deadline).await;
+
+        assert_eq!(
+            wakeups.snapshot().await.deferred_poll_at,
+            Some(deadline.into())
+        );
     }
 
     #[tokio::test(start_paused = true)]

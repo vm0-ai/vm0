@@ -717,8 +717,10 @@ impl JobProvider for ApiProvider {
         }
     }
 
-    async fn defer_poll_after(&self, delay: Duration) {
-        self.poll_wakeups.request_deferred_poll_after(delay).await;
+    async fn defer_poll_until(&self, deadline: Instant) {
+        self.poll_wakeups
+            .request_deferred_poll_until(deadline)
+            .await;
     }
 
     async fn shutdown(&self) {
