@@ -141,9 +141,6 @@ function workflowAutomationRunMetadata(
   return {
     workflowAutomationId: automation.id,
     triggerBrief,
-    // The automation id is the run group id: all runs fired by the same automation
-    // share a group for chat folding and carry the same row-level association.
-    runGroupId: automation.id,
   };
 }
 
@@ -458,7 +455,6 @@ async function recordWorkflowAutomationRunStart(input: {
     userId: automation.ownerUserId,
     runId,
     runStatus: input.runStatus,
-    runGroupId: automation.id,
     createdAt: input.claimedEventCreatedAt,
   });
   signal.throwIfAborted();
@@ -577,7 +573,7 @@ export const launchQueuedWorkflowAutomation$ = command(
           threadId: chatThreadId,
           eventId: args.queueEventId,
           prompt: runInput.prompt,
-          runGroupId: automation.id,
+          automationId: automation.id,
         },
         zeroRunModelPin: {
           modelProvider: effectiveModelProvider ?? null,

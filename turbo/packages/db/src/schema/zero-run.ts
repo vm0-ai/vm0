@@ -38,8 +38,7 @@ export const zeroRuns = pgTable(
       },
       { onDelete: "set null" },
     ),
-    // Stable grouping key copied from workflow automations/goals for chat
-    // rendering of repeated automated runs.
+    // Stable grouping key for autonomous goal continuations rendered in chat.
     runGroupId: uuid("run_group_id"),
     // Run provenance for autonomous thread-goal continuation.
     goalId: uuid("goal_id").references(

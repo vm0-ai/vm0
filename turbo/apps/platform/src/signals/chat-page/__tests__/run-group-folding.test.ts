@@ -12,6 +12,7 @@ function userMessage(params: {
   readonly id: string;
   readonly runId?: string;
   readonly runGroupId?: string;
+  readonly isGoalRun?: boolean;
   readonly content?: string;
 }): EnrichedChatEvent {
   const content = params.content ?? params.id;
@@ -26,6 +27,7 @@ function userMessage(params: {
     },
     runId: params.runId,
     runGroupId: params.runGroupId,
+    isGoalRun: params.isGoalRun ?? false,
     createdAt: "2026-06-24T00:00:00.000Z",
     blocks: [],
     isQueued: false,
@@ -37,6 +39,7 @@ function assistantEvent(params: {
   readonly id: string;
   readonly runId?: string;
   readonly runGroupId?: string;
+  readonly isGoalRun?: boolean;
   readonly content?: string;
 }): EnrichedChatEvent {
   return {
@@ -46,6 +49,7 @@ function assistantEvent(params: {
     content: params.content ?? params.id,
     runId: params.runId,
     runGroupId: params.runGroupId,
+    isGoalRun: params.isGoalRun ?? false,
     createdAt: "2026-06-24T00:00:00.000Z",
     blocks: [],
     isQueued: false,
@@ -146,6 +150,50 @@ describe("buildRunGroupFolding", () => {
       "u2",
       "a2",
     ]);
+  });
+
+  it("folds by run group id regardless of goal provenance", () => {
+    const groups: ChatEventGroup[] = [
+      group("user", [
+        userMessage({
+          id: "u1",
+          runId: "r1",
+          runGroupId: "g1",
+          isGoalRun: false,
+        }),
+      ]),
+      group("assistant", [
+        assistantEvent({
+          id: "a1",
+          runId: "r1",
+          runGroupId: "g1",
+          isGoalRun: false,
+        }),
+      ]),
+      group("user", [
+        userMessage({
+          id: "u2",
+          runId: "r2",
+          runGroupId: "g1",
+          isGoalRun: false,
+        }),
+      ]),
+      group("assistant", [
+        assistantEvent({
+          id: "a2",
+          runId: "r2",
+          runGroupId: "g1",
+          isGoalRun: false,
+        }),
+      ]),
+    ];
+
+    const folding = buildRunGroupFolding(groups);
+
+    expect(folding).not.toBeNull();
+    expect(eventIds(folding!.visibleGroups)).toStrictEqual(["u2", "a2"]);
+    const fold = folding!.foldsByNextGroupId.get("u2")?.[0];
+    expect(eventIds(fold?.hiddenGroups ?? [])).toStrictEqual(["u1", "a1"]);
   });
 
   it("rolls up usage from folded runs onto the latest assistant group", () => {
