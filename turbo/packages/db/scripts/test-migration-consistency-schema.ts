@@ -2610,6 +2610,553 @@ async function expectDatabaseError(
   throw new Error(`Expected database error ${args.code}`);
 }
 
+type PermanentTrigger = {
+  readonly schemaName: string;
+  readonly tableName: string;
+  readonly triggerName: string;
+};
+
+type PermanentFunction = {
+  readonly functionName: string;
+  readonly identityArguments: string;
+  readonly kind: string;
+  readonly schemaName: string;
+};
+
+// Exported from a database built by the existing migration chain. Extension-owned
+// pgcrypto and vector functions are deliberately absent from the function list.
+const EXPECTED_PERMANENT_TRIGGERS = [
+  {
+    schemaName: "public",
+    tableName: "chat_events",
+    triggerName: "bridge_chat_event_run_event_sequence_number_0807",
+  },
+  {
+    schemaName: "public",
+    tableName: "chat_events",
+    triggerName: "chat_events_reject_update",
+  },
+  {
+    schemaName: "public",
+    tableName: "chat_thread_events",
+    triggerName: "allocate_legacy_chat_thread_event_seq_id",
+  },
+  {
+    schemaName: "public",
+    tableName: "chat_thread_events",
+    triggerName: "chat_thread_events_reject_update",
+  },
+  {
+    schemaName: "public",
+    tableName: "chat_thread_snapshots",
+    triggerName: "fill_legacy_chat_thread_snapshot_event_seq_id",
+  },
+  {
+    schemaName: "public",
+    tableName: "chat_threads",
+    triggerName: "chat_threads_normalize_computer_access",
+  },
+  {
+    schemaName: "public",
+    tableName: "hosted_deployments",
+    triggerName: "enforce_hosted_deployment_scope_0753",
+  },
+  {
+    schemaName: "public",
+    tableName: "hosted_sites",
+    triggerName: "canonicalize_hosted_site_scope_0753",
+  },
+  {
+    schemaName: "public",
+    tableName: "hosted_sites",
+    triggerName: "hosted_sites_delete_artifact_registry",
+  },
+  {
+    schemaName: "public",
+    tableName: "image_artifacts",
+    triggerName: "image_artifacts_delete_artifact_registry",
+  },
+  {
+    schemaName: "public",
+    tableName: "org_custom_connector_oauth_configs",
+    triggerName: "trg_org_custom_connector_oauth_configs_mode",
+  },
+  {
+    schemaName: "public",
+    tableName: "org_custom_connectors",
+    triggerName: "trg_org_custom_connectors_oauth_mode",
+  },
+  {
+    schemaName: "public",
+    tableName: "org_metadata",
+    triggerName: "ensure_legacy_org_metadata_plan_entitlement",
+  },
+  {
+    schemaName: "public",
+    tableName: "org_plan_entitlements",
+    triggerName: "sync_legacy_org_plan_entitlement_can_buy_credits",
+  },
+  {
+    schemaName: "public",
+    tableName: "presentation_artifacts",
+    triggerName: "presentation_artifacts_delete_artifact_registry",
+  },
+  {
+    schemaName: "public",
+    tableName: "run_uploaded_files",
+    triggerName: "run_uploaded_files_delete_artifact_registry",
+  },
+  {
+    schemaName: "public",
+    tableName: "run_uploaded_files",
+    triggerName: "run_uploaded_files_queue_artifact_catalog",
+  },
+  {
+    schemaName: "public",
+    tableName: "video_artifacts",
+    triggerName: "video_artifacts_delete_artifact_registry",
+  },
+] as const satisfies readonly PermanentTrigger[];
+
+const EXPECTED_PERMANENT_FUNCTIONS = [
+  {
+    functionName: "allocate_legacy_chat_thread_event_seq_id",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    functionName: "assert_org_custom_connector_oauth_mode",
+    identityArguments: "target_connector_id uuid, target_org_id text",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    functionName: "bridge_chat_event_run_event_sequence_number_0807",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    functionName: "canonicalize_hosted_site_scope_0753",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    functionName: "chat_threads_normalize_computer_access",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    functionName: "delete_artifact_registry_entity",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    functionName: "enforce_hosted_deployment_scope_0753",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    functionName: "enforce_org_custom_connector_oauth_mode",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    functionName: "ensure_legacy_org_metadata_plan_entitlement",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    functionName: "fill_legacy_chat_thread_snapshot_event_seq_id",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    functionName: "queue_artifact_catalog_file",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    functionName: "reject_chat_event_source_update",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    functionName: "sync_legacy_org_plan_entitlement_can_buy_credits",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+] as const satisfies readonly PermanentFunction[];
+
+function assertPermanentInventory(args: {
+  readonly actual: readonly string[];
+  readonly expected: readonly string[];
+  readonly label: string;
+}): void {
+  const actual = new Set(args.actual);
+  const expected = new Set(args.expected);
+  const missing = args.expected.filter((object) => {
+    return !actual.has(object);
+  });
+  const unexpected = args.actual.filter((object) => {
+    return !expected.has(object);
+  });
+
+  if (missing.length > 0 || unexpected.length > 0) {
+    throw new Error(
+      [
+        `Permanent ${args.label} inventory mismatch`,
+        `Missing ${args.label}: ${missing.join(", ") || "none"}`,
+        `Unexpected ${args.label}: ${unexpected.join(", ") || "none"}`,
+      ].join("\n"),
+    );
+  }
+}
+
+async function validatePermanentTriggerAndFunctionInventory(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.5.1: Validate permanent trigger and function inventory ===\n",
+  );
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  try {
+    const triggers = await client.query<PermanentTrigger>(`
+      SELECT
+        namespace."nspname" AS "schemaName",
+        relation."relname" AS "tableName",
+        catalog_trigger."tgname" AS "triggerName"
+      FROM pg_catalog."pg_trigger" AS catalog_trigger
+      INNER JOIN pg_catalog."pg_class" AS relation
+        ON relation."oid" = catalog_trigger."tgrelid"
+      INNER JOIN pg_catalog."pg_namespace" AS namespace
+        ON namespace."oid" = relation."relnamespace"
+      WHERE namespace."nspname" = current_schema()
+        AND namespace."nspname" NOT LIKE 'pg_temp_%'
+        AND NOT catalog_trigger."tgisinternal"
+      ORDER BY
+        namespace."nspname",
+        relation."relname",
+        catalog_trigger."tgname"
+    `);
+    const functions = await client.query<PermanentFunction>(`
+      SELECT
+        namespace."nspname" AS "schemaName",
+        catalog_function."proname" AS "functionName",
+        pg_catalog.pg_get_function_identity_arguments(catalog_function."oid")
+          AS "identityArguments",
+        catalog_function."prokind"::text AS "kind"
+      FROM pg_catalog."pg_proc" AS catalog_function
+      INNER JOIN pg_catalog."pg_namespace" AS namespace
+        ON namespace."oid" = catalog_function."pronamespace"
+      WHERE namespace."nspname" = current_schema()
+        AND namespace."nspname" NOT LIKE 'pg_temp_%'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pg_catalog."pg_depend" AS dependency
+          WHERE dependency."classid" = 'pg_catalog.pg_proc'::regclass
+            AND dependency."objid" = catalog_function."oid"
+            AND dependency."refclassid" = 'pg_catalog.pg_extension'::regclass
+            AND dependency."deptype" = 'e'
+        )
+      ORDER BY
+        namespace."nspname",
+        catalog_function."proname",
+        pg_catalog.pg_get_function_identity_arguments(catalog_function."oid")
+    `);
+
+    const triggerKey = (trigger: PermanentTrigger): string => {
+      return `${trigger.schemaName}.${trigger.tableName}.${trigger.triggerName}`;
+    };
+    const functionKey = (catalogFunction: PermanentFunction): string => {
+      return `${catalogFunction.schemaName}.${catalogFunction.functionName}(${catalogFunction.identityArguments}) [${catalogFunction.kind}]`;
+    };
+
+    assertPermanentInventory({
+      actual: triggers.rows.map(triggerKey),
+      expected: EXPECTED_PERMANENT_TRIGGERS.map(triggerKey),
+      label: "triggers",
+    });
+    assertPermanentInventory({
+      actual: functions.rows.map(functionKey),
+      expected: EXPECTED_PERMANENT_FUNCTIONS.map(functionKey),
+      label: "functions",
+    });
+
+    console.log("   ✅ Permanent trigger and function inventories match\n");
+  } finally {
+    await client.end();
+  }
+}
+
+async function validatePermanentArtifactTriggerBehavior(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.5.2: Validate permanent artifact trigger behavior ===\n",
+  );
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  const fixture = {
+    composeId: "00000000-0000-4000-8000-000000246701",
+    sessionId: "00000000-0000-4000-8000-000000246702",
+    firstRunId: "00000000-0000-4000-8000-000000246703",
+    secondRunId: "00000000-0000-4000-8000-000000246704",
+    firstThreadId: "00000000-0000-4000-8000-000000246705",
+    secondThreadId: "00000000-0000-4000-8000-000000246706",
+    hostedSiteId: "00000000-0000-4000-8000-000000246707",
+    presentationSiteId: "00000000-0000-4000-8000-000000246708",
+    scopedSiteId: "00000000-0000-4000-8000-000000246709",
+    directFileId: "00000000-0000-4000-8000-000000246710",
+    queuedFileId: "00000000-0000-4000-8000-000000246711",
+    imageFileId: "00000000-0000-4000-8000-000000246712",
+    videoFileId: "00000000-0000-4000-8000-000000246713",
+    imageId: "00000000-0000-4000-8000-000000246714",
+    presentationId: "00000000-0000-4000-8000-000000246715",
+    videoId: "00000000-0000-4000-8000-000000246716",
+    orgId: "permanent-artifact-trigger-org",
+    userId: "permanent-artifact-trigger-user",
+  } as const;
+  const registryIds = [
+    "00000000-0000-4000-8000-000000246721",
+    "00000000-0000-4000-8000-000000246722",
+    "00000000-0000-4000-8000-000000246723",
+    "00000000-0000-4000-8000-000000246724",
+    "00000000-0000-4000-8000-000000246725",
+  ] as const;
+
+  try {
+    await client.query(
+      `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+       VALUES ($1, $2, 'permanent-artifact-trigger-test', $3)`,
+      [fixture.composeId, fixture.userId, fixture.orgId],
+    );
+    await client.query(
+      `INSERT INTO "agent_sessions" (
+         "id", "user_id", "org_id", "agent_compose_id"
+       )
+       VALUES ($1, $2, $3, $4)`,
+      [fixture.sessionId, fixture.userId, fixture.orgId, fixture.composeId],
+    );
+    await client.query(
+      `INSERT INTO "agent_runs" (
+         "id", "user_id", "session_id", "status", "prompt", "org_id"
+       )
+       VALUES
+         ($1, $3, $4, 'running', 'first scoped deployment', $5),
+         ($2, $3, $4, 'running', 'second scoped deployment', $5)`,
+      [
+        fixture.firstRunId,
+        fixture.secondRunId,
+        fixture.userId,
+        fixture.sessionId,
+        fixture.orgId,
+      ],
+    );
+    await client.query(
+      `INSERT INTO "chat_threads" (
+         "id", "user_id", "agent_compose_id", "title"
+       )
+       VALUES
+         ($1, $3, $4, 'First permanent artifact trigger chat'),
+         ($2, $3, $4, 'Second permanent artifact trigger chat')`,
+      [
+        fixture.firstThreadId,
+        fixture.secondThreadId,
+        fixture.userId,
+        fixture.composeId,
+      ],
+    );
+    await client.query(
+      `INSERT INTO "zero_runs" ("id", "trigger_source", "chat_thread_id")
+       VALUES
+         ($1, 'chat', $3),
+         ($2, 'chat', $4)`,
+      [
+        fixture.firstRunId,
+        fixture.secondRunId,
+        fixture.firstThreadId,
+        fixture.secondThreadId,
+      ],
+    );
+    await client.query(
+      `INSERT INTO "run_uploaded_files" (
+         "id", "source", "external_id", "user_id", "org_id", "url"
+       )
+       VALUES
+         ($1, 'web', 'direct-file', $5, NULL, NULL),
+         ($2, 'web', 'queued-file', $5, $6, 'https://example.invalid/queued-file'),
+         ($3, 'web', 'image-file', $5, NULL, NULL),
+         ($4, 'web', 'video-file', $5, NULL, NULL)`,
+      [
+        fixture.directFileId,
+        fixture.queuedFileId,
+        fixture.imageFileId,
+        fixture.videoFileId,
+        fixture.userId,
+        fixture.orgId,
+      ],
+    );
+    const queuedFile = await client.query<{
+      authorUserId: string;
+      orgId: string;
+    }>(
+      `SELECT
+         "author_user_id" AS "authorUserId",
+         "org_id" AS "orgId"
+       FROM "artifact_catalog_pending_files"
+       WHERE "file_id" = $1`,
+      [fixture.queuedFileId],
+    );
+    assert.deepEqual(queuedFile.rows, [
+      { authorUserId: fixture.userId, orgId: fixture.orgId },
+    ]);
+
+    await client.query(
+      `INSERT INTO "hosted_sites" (
+         "id", "org_id", "user_id", "slug", "public_slug",
+         "requested_slug", "chat_thread_id"
+       )
+       VALUES
+         ($1, $4, $5, 'permanent-hosted-site', 'permanent-hosted-site',
+          'permanent-hosted-site', NULL),
+         ($2, $4, $5, 'permanent-presentation', 'permanent-presentation',
+          'permanent-presentation', NULL),
+         ($3, $4, $5, 'permanent-scoped-site', 'permanent-scoped-site',
+          'permanent-scoped-site', $6)`,
+      [
+        fixture.hostedSiteId,
+        fixture.presentationSiteId,
+        fixture.scopedSiteId,
+        fixture.orgId,
+        fixture.userId,
+        fixture.firstThreadId,
+      ],
+    );
+    await client.query(
+      `INSERT INTO "image_artifacts" ("id", "file_id") VALUES ($1, $2)`,
+      [fixture.imageId, fixture.imageFileId],
+    );
+    await client.query(
+      `INSERT INTO "presentation_artifacts" ("id", "hosted_site_id")
+       VALUES ($1, $2)`,
+      [fixture.presentationId, fixture.presentationSiteId],
+    );
+    await client.query(
+      `INSERT INTO "video_artifacts" ("id", "file_id") VALUES ($1, $2)`,
+      [fixture.videoId, fixture.videoFileId],
+    );
+    await client.query(
+      `INSERT INTO "artifacts" (
+         "id", "org_id", "author_user_id", "kind", "entity_id",
+         "logical_key", "projection_file_id", "projection_created_at", "title"
+       )
+       VALUES
+         ($1, $6, $7, 'hosted-site', $8, 'permanent-hosted-site', $9, now(), 'Hosted site'),
+         ($2, $6, $7, 'image', $10, 'permanent-image', $11, now(), 'Image'),
+         ($3, $6, $7, 'presentation', $12, 'permanent-presentation', $13, now(), 'Presentation'),
+         ($4, $6, $7, 'video', $14, 'permanent-video', $15, now(), 'Video'),
+         ($5, $6, $7, 'file', $16, 'permanent-file', $16, now(), 'File')`,
+      [
+        ...registryIds,
+        fixture.orgId,
+        fixture.userId,
+        fixture.hostedSiteId,
+        fixture.directFileId,
+        fixture.imageId,
+        fixture.imageFileId,
+        fixture.presentationId,
+        fixture.queuedFileId,
+        fixture.videoId,
+        fixture.videoFileId,
+        fixture.directFileId,
+      ],
+    );
+
+    await client.query(`DELETE FROM "hosted_sites" WHERE "id" = $1`, [
+      fixture.hostedSiteId,
+    ]);
+    await client.query(`DELETE FROM "image_artifacts" WHERE "id" = $1`, [
+      fixture.imageId,
+    ]);
+    await client.query(`DELETE FROM "presentation_artifacts" WHERE "id" = $1`, [
+      fixture.presentationId,
+    ]);
+    await client.query(`DELETE FROM "video_artifacts" WHERE "id" = $1`, [
+      fixture.videoId,
+    ]);
+    await client.query(`DELETE FROM "run_uploaded_files" WHERE "id" = $1`, [
+      fixture.directFileId,
+    ]);
+
+    const remainingRegistryRows = await client.query<{ kind: string }>(
+      `SELECT "kind"
+       FROM "artifacts"
+       WHERE "id" = ANY($1::uuid[])
+       ORDER BY "kind"`,
+      [[...registryIds]],
+    );
+    assert.deepEqual(remainingRegistryRows.rows, []);
+
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "Hosted site belongs to a different chat",
+      query: `INSERT INTO "hosted_deployments" (
+        "site_id", "org_id", "user_id", "run_id", "status", "r2_prefix",
+        "manifest", "manifest_hash", "content_hash", "file_count",
+        "size_bytes", "url"
+      )
+      VALUES (
+        $1, $2, $3, $4, 'uploading', 'permanent-out-of-scope', '{}'::jsonb,
+        repeat('0', 64), repeat('0', 64), 0, 0,
+        'https://out-of-scope.invalid'
+      )`,
+      values: [
+        fixture.scopedSiteId,
+        fixture.orgId,
+        fixture.userId,
+        fixture.secondRunId,
+      ],
+    });
+
+    console.log(
+      "   ✅ Artifact registry cascades, catalog queueing, and hosted deployment scope enforcement work\n",
+    );
+  } finally {
+    await client.query(`DELETE FROM "artifacts" WHERE "org_id" = $1`, [
+      fixture.orgId,
+    ]);
+    await client.query(`DELETE FROM "hosted_deployments" WHERE "org_id" = $1`, [
+      fixture.orgId,
+    ]);
+    await client.query(`DELETE FROM "hosted_sites" WHERE "org_id" = $1`, [
+      fixture.orgId,
+    ]);
+    await client.query(
+      `DELETE FROM "run_uploaded_files" WHERE "user_id" = $1`,
+      [fixture.userId],
+    );
+    await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
+      fixture.composeId,
+    ]);
+    await client.end();
+  }
+}
+
 async function validateConnectorCatalogFinalConstraints(
   dbUrl: string,
 ): Promise<void> {
@@ -17854,6 +18401,8 @@ async function main(): Promise<void> {
     await runMigrations(dbUrl1);
     console.log("   ✅ Consecutive database resets completed successfully\n");
 
+    await validatePermanentTriggerAndFunctionInventory(dbUrl1);
+    await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validateThreadBrowserIdentityAfterMigration(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateChatEventContextPointerConstraints(dbUrl1);
@@ -17898,6 +18447,10 @@ async function main(): Promise<void> {
       );
       console.log(
         "   ✅ Custom connector OAuth mode constraints reject mismatched configuration",
+      );
+      console.log("   ✅ Permanent trigger and function inventories match");
+      console.log(
+        "   ✅ Permanent artifact triggers preserve cascade, queue, and scope behavior",
       );
       console.log("   ✅ Consecutive database resets replay all migrations");
       console.log("   ✅ Schemas are functionally equivalent");
