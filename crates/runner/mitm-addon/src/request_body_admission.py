@@ -107,10 +107,13 @@ class RequestBodyAdmissionBudget:
 
     def take_from_flow(self, flow: http.HTTPFlow) -> RequestBodyAdmissionLease | None:
         """Remove and return this budget's flow reservation, if present."""
-        admission = flow.metadata.pop(self._metadata_key, None)
-        if isinstance(admission, RequestBodyAdmissionLease) and admission._budget is self:
-            return admission
-        return None
+        admission = flow.metadata.get(self._metadata_key)
+        if not isinstance(admission, RequestBodyAdmissionLease):
+            flow.metadata.pop(self._metadata_key, None)
+            return None
+        self._require_owner(admission)
+        flow.metadata.pop(self._metadata_key)
+        return admission
 
     def release_from_flow(self, flow: http.HTTPFlow) -> None:
         """Release this budget's reservation attached to a flow."""

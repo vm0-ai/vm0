@@ -182,14 +182,23 @@ def test_budget_rejects_lease_from_another_instance(real_flow) -> None:
     with pytest.raises(RuntimeError, match="another budget"):
         second.attach_to_flow(flow, lease)
     with pytest.raises(RuntimeError, match="another budget"):
+        second.resize(
+            lease,
+            1,
+            max_admitted_body_bytes=4,
+            already_released_message="admission is already released",
+        )
+    with pytest.raises(RuntimeError, match="another budget"):
         second.release(lease)
 
     flow.metadata["second_admission"] = lease
-    assert second.take_from_flow(flow) is None
-    assert "second_admission" not in flow.metadata
+    with pytest.raises(RuntimeError, match="another budget"):
+        second.take_from_flow(flow)
+    assert flow.metadata["second_admission"] is lease
     assert first.state_for_tests() == (1, 4)
     assert second.state_for_tests() == (0, 0)
 
+    flow.metadata.pop("second_admission")
     first.release(lease)
 
 
