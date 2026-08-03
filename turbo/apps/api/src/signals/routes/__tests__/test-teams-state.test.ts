@@ -472,18 +472,15 @@ describe("POST /api/test/teams-dispatch-probe", () => {
       seedConnection: true,
       seedDefaultAgent: true,
     });
-    let failedPublishCount = 0;
-    context.mocks.ably.publish.mockImplementation(() => {
-      failedPublishCount++;
-      return Promise.reject(new Error("Ably channel rate limit exceeded"));
-    });
+    const publishError = new Error("Ably channel rate limit exceeded");
+    context.mocks.axiomLogging.warn.mockClear();
+    context.mocks.ably.publish.mockRejectedValue(publishError);
 
     await dispatchTeamsMessage({
       fixture,
       text: "dispatch despite realtime failure",
     });
 
-    expect(failedPublishCount).toBeGreaterThan(0);
     expect((await readTeamsState(fixture.tenantId)).recent_runs).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -492,6 +489,20 @@ describe("POST /api/test/teams-dispatch-probe", () => {
           promptPreview: "dispatch despite realtime failure",
         }),
       ]),
+    );
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Failed to publish thread list changed signal",
+      expect.objectContaining({
+        userId: fixture.userId,
+        error: publishError,
+      }),
+    );
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Failed to publish chat thread run created signal",
+      expect.objectContaining({
+        threadId: expect.any(String),
+        error: publishError,
+      }),
     );
   });
 

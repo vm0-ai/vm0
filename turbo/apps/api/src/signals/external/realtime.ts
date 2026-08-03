@@ -136,7 +136,7 @@ export async function publishThreadListChangedSafely(
   userId: string,
 ): Promise<void> {
   await tapError(publishThreadListChanged(userId), (error) => {
-    L.warn("Failed to publish thread list changed signal", { error });
+    L.warn("Failed to publish thread list changed signal", { userId, error });
   });
 }
 
