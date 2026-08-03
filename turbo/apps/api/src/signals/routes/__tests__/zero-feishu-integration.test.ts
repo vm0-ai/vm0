@@ -1372,14 +1372,14 @@ describe("Feishu integration", () => {
     expect(permissionBundle.body).toMatchObject({
       ref: "builtin:feishu@1",
       defaultPolicies: {
-        "standard:use": "ask",
+        "standard:use": "allow",
         "messages:send-as-user": "deny",
         "resources:delete": "deny",
-        "sharing:manage": "ask",
+        "sharing:manage": "allow",
         "chats:manage": "deny",
-        "comments:write": "ask",
-        "calendar:write": "ask",
-        "tasks:write": "ask",
+        "comments:write": "allow",
+        "calendar:write": "allow",
+        "tasks:write": "allow",
       },
     });
 
@@ -2249,15 +2249,15 @@ describe("Feishu integration", () => {
       },
     });
     expect(claim.networkPolicies?.[internalName]).toStrictEqual({
-      allow: [],
-      deny: ["messages:send-as-user", "resources:delete", "chats:manage"],
-      ask: [
+      allow: [
         "standard:use",
         "sharing:manage",
         "comments:write",
         "calendar:write",
         "tasks:write",
       ],
+      deny: ["messages:send-as-user", "resources:delete", "chats:manage"],
+      ask: [],
       unknownPolicy: "deny",
     });
     const permissionGrant = await accept(

@@ -50,8 +50,7 @@ function buildStandardApprovalRules(): string[] {
 export const FEISHU_CUSTOM_CONNECTOR_PERMISSIONS = [
   {
     name: "standard:use",
-    description:
-      "Use Feishu APIs that do not match a higher-risk action. Each request requires approval.",
+    description: "Use Feishu APIs that do not match a higher-risk action.",
     rules: buildStandardApprovalRules(),
   },
   {
@@ -192,7 +191,7 @@ export const FEISHU_CUSTOM_CONNECTOR_DEFAULT_POLICIES = Object.fromEntries(
       permission.name === "resources:delete" ||
       permission.name === "chats:manage"
         ? "deny"
-        : "ask";
+        : "allow";
     return [permission.name, policy];
   }),
 ) satisfies Readonly<Record<string, FirewallPolicyValue>>;
