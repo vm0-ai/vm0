@@ -399,12 +399,12 @@ class TestRunnerUsageFlushSignal:
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ):
         log_path = runner_usage_flush_files.write_jsonl_flush_request()
+        logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
 
         with (
             patch.object(logging_utils.ctx, "log", MagicMock(), create=True),
             running_jsonl_flush_worker(runner_usage_flush_files),
         ):
-            logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
             state = wait_for_jsonl_flush_state(runner_usage_flush_files)
 
         entry = json.loads(log_path.read_text().strip())
