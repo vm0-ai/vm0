@@ -113,6 +113,26 @@ class TestOpenAIResponsesSseUsageExtractor:
         assert usage["model"] == "gpt-5.4-mini"
         assert usage["tokens.input"] == 3
 
+    @pytest.mark.parametrize("prefix", [b"", b"\xef\xbb\xbf"])
+    def test_leading_bom_preserves_eventless_usage_and_diagnostics(self, prefix: bytes):
+        parse_errors: list[tuple[str, str]] = []
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_parse_error=lambda event, error: parse_errors.append((event, error))
+        )
+
+        parse(
+            prefix + b'data: {"type":"response.completed","response":{"id":"resp_bom",'
+            b'"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}\n\n'
+        )
+
+        assert usage == {
+            "message_id": "resp_bom",
+            "model": "gpt-5.6",
+            "tokens.input": 9,
+            "tokens.output": 4,
+        }
+        assert parse_errors == []
+
     def test_eventless_unknown_event_type_with_usage_extracts_usage(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(

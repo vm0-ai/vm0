@@ -225,6 +225,27 @@ class TestAnthropicSseUsageExtractor:
             ("content_block_start", "text"),
         ]
 
+    @pytest.mark.parametrize("prefix", [b"", b"\xef\xbb\xbf"])
+    def test_leading_bom_preserves_eventless_usage_and_diagnostics(self, prefix: bytes):
+        parse_errors: list[tuple[str, str]] = []
+        parse, usage = create_anthropic_messages_sse_usage_extractor(
+            on_parse_error=lambda event, error: parse_errors.append((event, error))
+        )
+
+        parse(
+            prefix + b'data: {"type":"message_start","message":{"id":"msg_bom",'
+            b'"model":"claude-sonnet-4-6","usage":{"input_tokens":9,'
+            b'"output_tokens":1}}}\n\n'
+        )
+
+        assert usage == {
+            "message_id": "msg_bom",
+            "model": "claude-sonnet-4-6",
+            "tokens.input": 9,
+            "tokens.output": 1,
+        }
+        assert parse_errors == []
+
     def test_lifecycle_event_type_mismatch_is_ignored_and_parser_recovers(self):
         parse, usage, lifecycle_events = _create_parser_with_lifecycle_events()
 
