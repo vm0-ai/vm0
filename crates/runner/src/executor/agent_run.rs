@@ -1523,6 +1523,26 @@ pub(super) async fn run_in_sandbox(
     .await
 }
 
+/// Runs the inner guest-agent lifecycle with configurable cancellation timeouts.
+///
+/// Guest runtime state may already be prepared, while storage delivery or
+/// session-history materialization may already be in flight. This function:
+///
+/// - completes cancellation-aware guest runtime and storage preparation while
+///   taking ownership of model-catalog prefetch supervision;
+/// - consumes the session-history restore plan, builds private guest inputs,
+///   and spawns guest-agent;
+/// - starts locally owned active-input and stdout-drain work, releases deferred
+///   cache fill, and supervises normal exit or cancellation;
+/// - stops or drains locally owned background work before classifying terminal
+///   status and collecting diagnostics; and
+/// - publishes a reusable session identity only after successful execution.
+///
+/// Pre-spawn cancellation returns without creating a process and drains any
+/// prepared storage delivery that still owns asynchronous work.
+///
+/// The caller retains the enclosing sandbox and network-log cleanup lifecycle
+/// after this function returns.
 pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
@@ -1544,6 +1564,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     } = controls;
     let has_active_input_source = active_input_source.is_some();
     let pre_spawn_started = Instant::now();
+
+    // Complete cancellation-aware guest runtime and storage preparation while
+    // taking ownership of model-catalog prefetch supervision.
     let prepared_guest_runtime = match prepared_guest_runtime {
         Some(prepared) => prepared,
         None => {
@@ -1643,6 +1666,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             let telemetry = pre_spawn_telemetry;
             let deferred_background_fill = deferred_background_fill;
 
+    // Consume the session-history restore plan and prepare the private guest
+    // inputs before crossing the process-spawn ownership boundary.
     let mut session_restore_diagnostics = None;
     let mut pre_run_restored_session_identity = None;
     let mut local_session_history_materializer = None;
@@ -1837,8 +1862,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     }
     if let Some(session_history_materializer) = session_history_materializer {
-        // 4. Restore session history. Hash-backed history downloads can start
-        // before sandbox preparation, then materialize here right before restore.
+        // Finish any remaining history materialization immediately before
+        // restoring it into the guest.
         let should_record_materialization_wait = session_history_materializer.is_downloading();
         let materializer_completed_before_restore =
             session_history_materializer.is_download_finished();
@@ -1936,9 +1961,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     }
 
-    // 5. Build env vars. The guest-agent bootstrap env is runner-owned only;
-    // user-provided env is passed through a private guest file and injected
-    // into the CLI child after guest-agent has started.
+    // Build the private run payload and environment used to bootstrap
+    // guest-agent. User-provided env is passed through a private guest file and
+    // injected into the CLI child after guest-agent has started.
     let user_env_started = Instant::now();
     let user_env_map = build_user_env_json(context);
     let user_env_file = match write_user_env_file(sandbox, context.run_id, &user_env_map).await {
@@ -2047,9 +2072,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     );
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
-    // 6. Spawn agent — stdout streamed to host via vsock. guest-agent stderr is
-    //    merged into stdout, while a small stderr capture keeps shell/wrapper
-    //    startup failures visible when the process exits before guest logging.
+    // Spawn guest-agent with stdout streamed to the host via vsock. Its stderr
+    // is merged into stdout, while a small capture keeps shell or wrapper
+    // startup failures visible when the process exits before guest logging.
     let agent_cmd = build_agent_start_command(guest::RUN_AGENT);
     validate_agent_bootstrap_exec_boundary(&agent_cmd, &env_pairs)?;
     info!(run_id = %context.run_id, "spawning agent");
@@ -2147,6 +2172,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // Claude Code process has a PID now — record end-to-end startup latency.
     record_api_latency("api_to_spawn", context, telemetry);
 
+    // Start locally owned input and output work, then release deferred cache
+    // fill now that process spawn has succeeded.
     let process_control = handle.control_handle();
     let active_input_forwarder = super::active_input::ActiveInputForwarder::start(
         context.run_id,
@@ -2165,9 +2192,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         background_fill.start(telemetry);
     }
 
-    // 6. Wait for exit or cancellation. A user request first asks guest-agent
-    // to checkpoint recovery state and exit; hard cancellation and bounded
-    // fallback use the existing supervised-process cancellation path.
+    // Supervise normal exit or cancellation. A user request first asks
+    // guest-agent to checkpoint recovery state and exit; hard cancellation and
+    // bounded fallback use the existing supervised-process cancellation path.
     let guest_process_pid = handle.guest_pid;
     let mut process_cancel = handle.take_cancel_handle();
     let wait_process = sandbox.wait_process(handle, job_terminal_wait_timeout());
@@ -2218,6 +2245,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let cancellation_observed = cancellation.observed();
     let used_hard_cancellation_fallback = cancellation.used_hard_fallback();
 
+    // Stop locally owned post-spawn work before interpreting terminal process
+    // state. Join active input and model prefetch; drain or abort stdout based
+    // on the wait outcome.
     if let Some(forwarder) = active_input_forwarder {
         forwarder.stop().await;
     }
@@ -2245,6 +2275,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     }
     model_catalog_prefetch.finish(telemetry).await;
+
+    // Classify terminal state and collect diagnostics justified by the outcome.
     let stdout_stream_diagnostics_on_wait_error = AgentStdoutStreamDiagnostics {
         bytes_written: stdout_drain_report.bytes_written,
         chunk_truncated: stdout_drain_report.chunk_truncated,
@@ -2463,9 +2495,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         None
     };
 
-    // A pre-run identity proves only what was restored. Once the agent starts,
-    // publish an identity only after a successful execution verifies the
-    // current history or confirms that the restored history stayed unchanged.
+    // Finalize reusable session identity only after successful execution. A
+    // pre-run identity proves only what was restored, so verify the current
+    // history or confirm that the restored history stayed unchanged.
     let reusable_session_identity = if failure.is_none() {
         match read_final_session_history_identity(sandbox, context).await {
             Ok(final_identity) => {
