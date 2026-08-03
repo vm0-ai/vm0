@@ -5,6 +5,8 @@ use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
+use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
+use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use sandbox::{
     Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
     SandboxFactory, SandboxGuestDnsReadinessReason, SandboxId, SandboxNbdCowCreateOutcome,
@@ -26,9 +28,7 @@ use super::diagnostics::{
     collect_agent_abnormal_exit_diagnostics, copy_guest_logs, explicit_enospc_evidence,
     read_guest_cli_agent_session_id,
 };
-use super::session_id::{
-    canonical_codex_thread_id, invalid_session_id_diagnostic_preview, is_valid_session_id,
-};
+use super::session_id::invalid_session_id_diagnostic_preview;
 use super::telemetry::record_workspace_cache_result;
 use super::workspace_session_history_materializer::WorkspaceSessionHistoryMaterializer;
 use super::{
@@ -1465,7 +1465,7 @@ fn normalize_guest_cli_agent_session_id(
             None
         }),
         EffectiveCliFramework::ClaudeCode => {
-            if is_valid_session_id(&session_id) {
+            if is_valid_cli_agent_session_id(&session_id) {
                 Some(session_id)
             } else {
                 warn!(
