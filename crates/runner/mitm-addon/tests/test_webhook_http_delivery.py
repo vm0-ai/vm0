@@ -1,5 +1,6 @@
 """Tests for usage webhook HTTP delivery behavior."""
 
+import io
 import json
 import socket
 import ssl
@@ -272,7 +273,7 @@ def test_response_header_deadline_aborts_both_attempts(
         release_headers.set()
 
 
-def test_https_deadline_connects_to_resolved_ip_and_aborts_owned_tls_socket(
+def test_https_proxy_deadline_preserves_target_tls_identity_and_aborts_tls_socket(
     tmp_path,
     sync_usage_executor,
 ):
@@ -285,6 +286,10 @@ def test_https_deadline_connects_to_resolved_ip_and_aborts_owned_tls_socket(
     tls_sockets: list[MagicMock] = []
     tls_contexts: list[ssl.SSLContext] = []
     server_hostnames: list[str] = []
+    for raw_socket in raw_sockets:
+        raw_socket.makefile.return_value = io.BytesIO(
+            b"HTTP/1.0 200 Connection established\r\n\r\n"
+        )
 
     class PublicResolver:
         async def lookup_ip(self, host: str) -> list[str]:
@@ -337,7 +342,12 @@ def test_https_deadline_connects_to_resolved_ip_and_aborts_owned_tls_socket(
         patch.object(ssl.SSLContext, "wrap_socket", autospec=True, side_effect=wrap_socket),
         patch.object(webhook_transport.mitmproxy_rs.dns, "DnsResolver", PublicResolver),
         patch.object(webhook_transport.socket, "socket", side_effect=create_socket),
-        patch.object(webhook_transport.urllib.request, "getproxies", return_value={}),
+        patch.object(
+            webhook_transport.urllib.request,
+            "getproxies",
+            return_value={"https": "http://proxy.example.test:8443"},
+        ),
+        patch.object(webhook_transport.urllib.request, "proxy_bypass", return_value=False),
         patch.object(usage.webhook.time, "sleep") as mock_sleep,
     ):
         assert usage.webhook.enqueue_webhook_delivery(
@@ -350,14 +360,18 @@ def test_https_deadline_connects_to_resolved_ip_and_aborts_owned_tls_socket(
         )
         sync_usage_executor.shutdown(wait=True)
 
-    assert resolver_calls == ["webhook.example.test", "webhook.example.test"]
+    assert resolver_calls == ["proxy.example.test", "proxy.example.test"]
     for raw_socket in raw_sockets:
-        raw_socket.connect.assert_called_once_with(("203.0.113.10", 443))
+        raw_socket.connect.assert_called_once_with(("203.0.113.10", 8443))
         raw_socket.setsockopt.assert_called_once_with(
             socket.IPPROTO_TCP,
             socket.TCP_NODELAY,
             1,
         )
+        request_bytes = b"".join(call.args[0] for call in raw_socket.sendall.call_args_list)
+        request_line = request_bytes.split(b"\r\n", 1)[0]
+        assert request_line.startswith(b"CONNECT webhook.example.test:443 HTTP/1.")
+        assert b"Host: webhook.example.test:443\r\n" in request_bytes
     assert server_hostnames == ["webhook.example.test", "webhook.example.test"]
     assert len(tls_sockets) == 2
     for tls_socket in tls_sockets:
