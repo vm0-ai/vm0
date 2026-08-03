@@ -73,8 +73,12 @@ export function isVisualAttachment({
 
 export function shouldExcludeVisualAttachmentsForModel(
   selectedModel: string | null | undefined,
+  imageRecognitionEnabled: boolean,
 ): boolean {
-  return getModelImageInputSupport(selectedModel) === "unsupported";
+  return (
+    !imageRecognitionEnabled &&
+    getModelImageInputSupport(selectedModel) === "unsupported"
+  );
 }
 
 export function collectSuccessfulAttachmentInfos(

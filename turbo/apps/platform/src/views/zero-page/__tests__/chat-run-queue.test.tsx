@@ -721,13 +721,20 @@ describe("chat run queue", () => {
     });
   });
 
-  it("queues an attachment-only follow-up during an active run", async () => {
+  it("queues a video-only follow-up for a fallback-enabled text-only model", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000902";
     let queuedBody: QueuedMessageCapture | null = null;
 
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        model: "glm-5.1",
+        modelLabel: "GLM-5.1",
+      }),
+    ]);
     mockChatLifecycle(context, {
       threadId,
+      selectedModel: "glm-5.1",
       chatEvents: [
         {
           id: "msg-active-attachment-user",
@@ -750,14 +757,20 @@ describe("chat run queue", () => {
       },
     });
     context.mocks.upload.success({
-      id: "upload-notes",
-      filename: "notes.txt",
-      contentType: "text/plain",
+      id: "upload-queued-video",
+      filename: "queued.mp4",
+      contentType: "video/mp4",
       size: 12,
-      url: "https://cdn.vm7.io/artifacts/test/upload-notes/notes.txt",
+      url: "https://cdn.vm7.io/artifacts/test/upload-queued-video/queued.mp4",
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroImageRecognition]: true,
+      },
+    });
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
@@ -770,30 +783,30 @@ describe("chat run queue", () => {
     }
     await user.upload(
       fileInput,
-      new File(["release note"], "notes.txt", { type: "text/plain" }),
+      new File([new Uint8Array(12)], "queued.mp4", { type: "video/mp4" }),
     );
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Remove notes.txt")).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove queued.mp4")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Send"));
+    await user.click(await screen.findByLabelText("Send"));
 
     await waitFor(() => {
       expect(screen.getByText("1 message waiting")).toBeInTheDocument();
       expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "[File: notes.txt]",
+        "[File: queued.mp4]",
       );
       expect(queuedBody).toMatchObject({
         content: "(see attached files)",
         hasTextContent: false,
         attachments: [
           {
-            id: "upload-notes",
-            filename: "notes.txt",
-            contentType: "text/plain",
+            id: "upload-queued-video",
+            filename: "queued.mp4",
+            contentType: "video/mp4",
             size: 12,
-            url: "https://cdn.vm7.io/artifacts/test/upload-notes/notes.txt",
+            url: "https://cdn.vm7.io/artifacts/test/upload-queued-video/queued.mp4",
           },
         ],
       });

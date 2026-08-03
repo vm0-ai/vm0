@@ -87,7 +87,10 @@ import {
 import { sendMode$ } from "../../signals/send-mode.ts";
 import type { ComposerTemplateAttachment } from "../../signals/zero-page/tiptap-workflow-composer.ts";
 import type { TemplatePreviewRuntime } from "../../signals/zero-page/template-preview-runtime.ts";
-import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
+import {
+  isVisualAttachment,
+  shouldExcludeVisualAttachmentsForModel,
+} from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
@@ -123,7 +126,6 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   ModelProviderPicker,
@@ -154,6 +156,7 @@ import {
   composerUploadPopoverEnabled$,
   composerConnectorPermissionsEnabled$,
   featureSwitch$,
+  zeroImageRecognitionEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   computerUseHosts$,
@@ -322,12 +325,16 @@ interface VisualAttachmentCandidate {
 
 function getVisualAttachmentUnsupportedState(
   modelPicker: ComposerModelPicker | undefined,
+  imageRecognitionEnabled: boolean,
   selection: ModelProviderSelection | null = modelPicker?.value ?? null,
 ): VisualAttachmentUnsupportedState | null {
   const currentModel = resolveComposerModelForSelection(modelPicker, selection);
   if (
-    getModelImageInputSupport(currentModel?.selectedModel) !== "unsupported" ||
-    !currentModel
+    !currentModel ||
+    !shouldExcludeVisualAttachmentsForModel(
+      currentModel.selectedModel,
+      imageRecognitionEnabled,
+    )
   ) {
     return null;
   }
@@ -6951,10 +6958,7 @@ function restoreChatClipboardPayload({
   }
   const allowedAttachments = visualAttachmentUnsupported
     ? persistedAttachments.filter((attachment) => {
-        return !isVisualAttachment({
-          contentType: attachment.contentType,
-          filename: attachment.filename,
-        });
+        return !isVisualAttachment(attachment);
       })
     : persistedAttachments;
   if (
@@ -7004,10 +7008,14 @@ function useComposerVisualAttachmentUnsupported(
   signals: ComposerSignals,
 ): VisualAttachmentUnsupportedState | null {
   const modelSelection = useLastResolved(signals.model.modelSelection$) ?? null;
-  return getVisualAttachmentUnsupportedState({
-    value: modelSelection,
-    onChange: () => {},
-  });
+  const imageRecognitionEnabled = useGet(zeroImageRecognitionEnabled$);
+  return getVisualAttachmentUnsupportedState(
+    {
+      value: modelSelection,
+      onChange: () => {},
+    },
+    imageRecognitionEnabled,
+  );
 }
 
 function useComposerTemplatePicker(
@@ -7301,6 +7309,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const setModelSelection = useSet(signals.model.setModelSelection$);
   const configureSelectedModel = useSet(signals.model.configureSelectedModel$);
   const attachments = useGet(signals.draft.attachments$);
+  const imageRecognitionEnabled = useGet(zeroImageRecognitionEnabled$);
   const pageSignal = useGet(pageSignal$);
   const value = modelSelection.state === "hasData" ? modelSelection.data : null;
   const modelPickerLoading = modelSelection.state === "loading";
@@ -7310,6 +7319,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
         value,
         onChange: onModelPickerChange,
       },
+      imageRecognitionEnabled,
       selection,
     );
     if (
