@@ -638,8 +638,8 @@ jobs:
           BASE_REF="${{ needs.prepare.outputs.base-ref }}"
           MIGRATION_BASELINE=808
           # The squashed baseline and its history may be removed. Migrations after
-          # the baseline remain immutable once they land on main.
-          CHANGED=$(git diff --diff-filter=MD --name-only "$BASE_REF" -- \
+          # the baseline must not be deleted once they land on main.
+          DELETED=$(git diff --diff-filter=D --name-only "$BASE_REF" -- \
             'turbo/packages/db/src/migrations/*.sql' \
             'turbo/packages/db/src/migrations/meta/*_snapshot.json' | \
             awk -v baseline="$MIGRATION_BASELINE" '
@@ -656,14 +656,25 @@ jobs:
               }
             ')
 
+          # Migration SQL and snapshots are append-only at every index, including
+          # the baseline.
+          MODIFIED=$(git diff --diff-filter=M --name-only "$BASE_REF" -- \
+            'turbo/packages/db/src/migrations/*.sql' \
+            'turbo/packages/db/src/migrations/meta/*_snapshot.json')
+
           # _journal.json is modified on every new migration, so only flag deletion
           DELETED_JOURNAL=$(git diff --diff-filter=D --name-only "$BASE_REF" -- \
             'turbo/packages/db/src/migrations/meta/_journal.json')
 
           FAILED=0
-          if [ -n "$CHANGED" ]; then
-            echo "::error::Migration files above baseline $MIGRATION_BASELINE must not be modified or deleted once on main:"
-            echo "$CHANGED"
+          if [ -n "$DELETED" ]; then
+            echo "::error::Migration files above baseline $MIGRATION_BASELINE must not be deleted once on main:"
+            echo "$DELETED"
+            FAILED=1
+          fi
+          if [ -n "$MODIFIED" ]; then
+            echo "::error::Migration files must never be modified once on main:"
+            echo "$MODIFIED"
             FAILED=1
           fi
           if [ -n "$DELETED_JOURNAL" ]; then
