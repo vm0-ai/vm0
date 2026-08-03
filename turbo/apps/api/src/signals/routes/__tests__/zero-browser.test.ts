@@ -1793,9 +1793,12 @@ describe("zero browser route", () => {
       }),
       [200],
     );
-    expect(afterSecondCapture.body.browser.screenshotUrl).not.toBe(
-      firstScreenshotUrl,
-    );
+    const finalScreenshotUrl = afterSecondCapture.body.browser.screenshotUrl;
+    expect(finalScreenshotUrl).not.toBe(firstScreenshotUrl);
+    if (!finalScreenshotUrl) {
+      throw new Error("Expected the second browser screenshot URL");
+    }
+    const finalScreenshotKey = new URL(finalScreenshotUrl).pathname.slice(1);
     expect(captureCount).toBe(2);
     expect(
       context.mocks.browserUseCdp.command.mock.calls
@@ -1846,6 +1849,27 @@ describe("zero browser route", () => {
 
     await chat.deleteThread(actor, current.threadId);
     await flushWaitUntilForTest();
+    expect(context.mocks.s3.send).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          Delete: { Objects: [{ Key: finalScreenshotKey }] },
+        }),
+      }),
+    );
+
+    const reconciled = await reconcileBrowsers();
+    expect(reconciled.body).toMatchObject({
+      checked: 1,
+      stopped: 1,
+      errors: 0,
+    });
+    expect(context.mocks.s3.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          Delete: { Objects: [{ Key: finalScreenshotKey }] },
+        }),
+      }),
+    );
   }, 120_000);
 
   it("reuses one thread browser and records start-stop lifecycle events", async () => {

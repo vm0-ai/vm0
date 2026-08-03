@@ -2902,6 +2902,66 @@ async function reconcileOrphanedBrowserProfiles(
   return { checked: profiles.length, cleaned, errors };
 }
 
+async function reconcileOrphanedBrowserScreenshots(
+  db: Db,
+  deleteObjects: (keys: readonly string[]) => Promise<void>,
+  limit: number,
+  signal: AbortSignal,
+): Promise<{
+  readonly checked: number;
+  readonly cleaned: number;
+  readonly errors: number;
+}> {
+  const screenshots = await db
+    .select({
+      chatThreadId: browserSessionScreenshots.chatThreadId,
+      objectKey: browserSessionScreenshots.objectKey,
+    })
+    .from(browserSessionScreenshots)
+    .leftJoin(
+      chatThreads,
+      eq(chatThreads.id, browserSessionScreenshots.chatThreadId),
+    )
+    .where(isNull(chatThreads.id))
+    .orderBy(browserSessionScreenshots.updatedAt)
+    .limit(limit);
+  signal.throwIfAborted();
+
+  let cleaned = 0;
+  let errors = 0;
+  for (const screenshot of screenshots) {
+    const result = await settleIncludingAbort(
+      (async () => {
+        await deleteObjects([screenshot.objectKey]);
+        signal.throwIfAborted();
+        await db
+          .delete(browserSessionScreenshots)
+          .where(
+            and(
+              eq(
+                browserSessionScreenshots.chatThreadId,
+                screenshot.chatThreadId,
+              ),
+              eq(browserSessionScreenshots.objectKey, screenshot.objectKey),
+            ),
+          );
+      })(),
+    );
+    signal.throwIfAborted();
+    if (result.ok) {
+      cleaned += 1;
+    } else {
+      errors += 1;
+      L.warn("Managed browser orphaned screenshot reconciliation failed", {
+        chatThreadId: screenshot.chatThreadId,
+        objectKey: screenshot.objectKey,
+        error: result.error,
+      });
+    }
+  }
+  return { checked: screenshots.length, cleaned, errors };
+}
+
 const reconcileBrowserInstance$ = command(
   async (
     { set },
@@ -2969,7 +3029,10 @@ const reconcileBrowserInstance$ = command(
 );
 
 export const reconcileZeroBrowsers$ = command(
-  async ({ set }, signal: AbortSignal): Promise<BrowserReconcileResult> => {
+  async (
+    { get, set },
+    signal: AbortSignal,
+  ): Promise<BrowserReconcileResult> => {
     const db = set(writeDb$);
     const rows = await db
       .select({
@@ -3011,11 +3074,23 @@ export const reconcileZeroBrowsers$ = command(
       RECONCILE_BATCH_SIZE,
       signal,
     );
+    const screenshotCleanup = await reconcileOrphanedBrowserScreenshots(
+      db,
+      async (keys) => {
+        await get(deleteS3Objects(env("R2_USER_ARTIFACTS_BUCKET_NAME"), keys));
+      },
+      RECONCILE_BATCH_SIZE,
+      signal,
+    );
 
     return {
-      checked: rows.length + releasedStarts + profileCleanup.checked,
-      stopped: stopped + profileCleanup.cleaned,
-      errors: errors + profileCleanup.errors,
+      checked:
+        rows.length +
+        releasedStarts +
+        profileCleanup.checked +
+        screenshotCleanup.checked,
+      stopped: stopped + profileCleanup.cleaned + screenshotCleanup.cleaned,
+      errors: errors + profileCleanup.errors + screenshotCleanup.errors,
       healthy,
     };
   },
