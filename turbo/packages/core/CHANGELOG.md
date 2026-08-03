@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.503.1](https://github.com/vm0-ai/vm0/compare/core-v8.503.0...core-v8.503.1) (2026-08-03)
+
+
+### Refactoring
+
+* remove graduated composer and slack switches ([#24692](https://github.com/vm0-ai/vm0/issues/24692)) ([6634fc0](https://github.com/vm0-ai/vm0/commit/6634fc03fc79cb0439b3242ffaaa1e4817774eb8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.263.1
+
 ## [8.503.0](https://github.com/vm0-ai/vm0/compare/core-v8.502.9...core-v8.503.0) (2026-08-03)
 
 

@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.366.1](https://github.com/vm0-ai/vm0/compare/api-v1.366.0...api-v1.366.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **api:** keep queued admission delivery independent of realtime ([#24694](https://github.com/vm0-ai/vm0/issues/24694)) ([04a37f4](https://github.com/vm0-ai/vm0/commit/04a37f4b1a9dca5b1f6ee8b819c43dfcab9fe1d7))
+* **cli:** bind connector permission requests to diagnostics ([#24719](https://github.com/vm0-ai/vm0/issues/24719)) ([d2f2bf9](https://github.com/vm0-ai/vm0/commit/d2f2bf95f6d480e8cdb9ee78a34b8bc685ebdc5a))
+* **platform:** allow feature-gated visual attachments ([#24642](https://github.com/vm0-ai/vm0/issues/24642)) ([cca8c69](https://github.com/vm0-ai/vm0/commit/cca8c692ecf4f074d9327064da6d1411c116cc59))
+* stabilize segmented voice transcription ([#24689](https://github.com/vm0-ai/vm0/issues/24689)) ([647e207](https://github.com/vm0-ai/vm0/commit/647e20737f71596b422653f5233396ba2043aea4))
+
+
+### Refactoring
+
+* **db:** switch to run event sequence number ([#24690](https://github.com/vm0-ai/vm0/issues/24690)) ([c344944](https://github.com/vm0-ai/vm0/commit/c3449445d7b4bdc63c8f048734790ac442f07077))
+* remove graduated composer and slack switches ([#24692](https://github.com/vm0-ai/vm0/issues/24692)) ([6634fc0](https://github.com/vm0-ai/vm0/commit/6634fc03fc79cb0439b3242ffaaa1e4817774eb8))
+
+
+### Performance Improvements
+
+* **api:** eliminate duplicate web session resolution ([#24700](https://github.com/vm0-ai/vm0/issues/24700)) ([c33d43b](https://github.com/vm0-ai/vm0/commit/c33d43bff5bd57635336c1256b1e68f228cdc679))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.263.1
+    * @vm0/core bumped to 8.503.1
+    * @vm0/db bumped to 1.161.2
+
 ## [1.366.0](https://github.com/vm0-ai/vm0/compare/api-v1.365.0...api-v1.366.0) (2026-08-03)
 
 
