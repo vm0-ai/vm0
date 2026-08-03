@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { cronCompactChatThreadSnapshotsContract } from "@vm0/api-contracts/contracts/cron";
+import {
+  cronCleanupSandboxesContract,
+  cronCompactChatThreadSnapshotsContract,
+} from "@vm0/api-contracts/contracts/cron";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
 import {
   chatThreadsContract,
   type ChatEvent,
@@ -10,7 +14,7 @@ import {
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, onTestFinished, test as vitestTest } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
@@ -31,6 +35,10 @@ import {
   insertChatThreadEventTransactionFixture,
 } from "../../../test-fixtures/chat-thread-events";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
+import {
+  setAgentRunCreatedAtFixture,
+  withThreadlessRunCleanupTestLockFixture,
+} from "../../../test-fixtures/run-deletion";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
@@ -92,7 +100,9 @@ const connectorsApi = createConnectorBddApi(context);
 const authOrg = createAuthOrgAgentsBddApi(context);
 const store = createStore();
 const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
+const SANDBOX_CLEANUP_CRON_SECRET = "sandbox-cleanup-cron-secret";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const FORWARD_CLEANUP_TEST_CREATED_AT = "2026-08-03T05:40:26.001Z";
 
 type UserMessage = Extract<
   ChatEvent,
@@ -107,6 +117,26 @@ type UserMessage = Extract<
 >;
 type AssistantMessage = Exclude<ChatEvent, UserMessage>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
+
+function it(name: string, test: () => Promise<void>, timeout?: number): void {
+  vitestTest(
+    name,
+    async () => {
+      if (
+        name ===
+        "cancels in-flight runs and cascades schedules when a thread is deleted"
+      ) {
+        await withThreadlessRunCleanupTestLockFixture({
+          signal: context.signal,
+          run: test,
+        });
+        return;
+      }
+      await test();
+    },
+    timeout,
+  );
+}
 
 async function compactChatThreadSnapshots() {
   const client = setupApp({ context })(cronCompactChatThreadSnapshotsContract);
@@ -1338,6 +1368,14 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const siblingClaim = await claimChatRun(runnerGroup, sibling.runId);
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(sibling.runId, siblingClaim.sandboxHeaders);
+    await setAgentRunCreatedAtFixture(
+      main.runId,
+      new Date(FORWARD_CLEANUP_TEST_CREATED_AT),
+    );
+    await setAgentRunCreatedAtFixture(
+      sibling.runId,
+      new Date(FORWARD_CLEANUP_TEST_CREATED_AT),
+    );
 
     await expect(chat.listActiveChatThreadIds(actor)).resolves.not.toContain(
       sibling.threadId,
@@ -1384,6 +1422,30 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         }),
       ]),
     );
+
+    // Terminal-only deletion does not have the active fast path. Both roots
+    // become durable cleanup work and are purged only after the quiet window.
+    await chat.deleteThread(actor, sibling.threadId);
+    const cleanupAt = now() + CANCELLATION_RECOVERY_STALE_AFTER_MS;
+    mockEnv("CRON_SECRET", SANDBOX_CLEANUP_CRON_SECRET);
+    mockNow(cleanupAt);
+    onTestFinished(clearMockNow);
+    const cleanup = await accept(
+      setupApp({ context })(cronCleanupSandboxesContract).cleanup({
+        headers: {
+          authorization: `Bearer ${SANDBOX_CLEANUP_CRON_SECRET}`,
+        },
+      }),
+      [200],
+    );
+    expect(cleanup.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(2);
+    expect(cleanup.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(2);
+    await expect(
+      api.requestReadRun(actor, main.runId, [404]),
+    ).resolves.toMatchObject({ status: 404 });
+    await expect(
+      api.requestReadRun(actor, sibling.runId, [404]),
+    ).resolves.toMatchObject({ status: 404 });
 
     await cancelChatRun(actor, other.runId);
   }, 120_000);

@@ -7,6 +7,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
+import { deleteAgentRunFixture } from "../../../test-fixtures/chat-events";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
   createBddApi,
@@ -264,6 +265,25 @@ describe("POST /api/zero/uploads/complete", () => {
     );
 
     expect(second.body).toStrictEqual(first.body);
+  });
+
+  it("acknowledges a late upload after its run root was deleted", async () => {
+    const fixture = await createRunUploadFixture();
+    const fileId = randomUUID();
+    addUploadObject(fixture, fileId, "late.txt", 11);
+    await deleteAgentRunFixture({ runId: fixture.runId });
+
+    const response = await chat.completeUploadWithBearer(
+      fixture.bearer,
+      { id: fileId },
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      id: fileId,
+      filename: "late.txt",
+      size: 11,
+    });
   });
 
   it("returns 404 when the uploaded object cannot be found", async () => {

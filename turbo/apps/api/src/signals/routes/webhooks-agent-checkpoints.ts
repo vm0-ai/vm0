@@ -5,6 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/webhooks";
 
 import { notFound } from "../../lib/error";
+import { isForeignKeyViolation } from "../../lib/pg-errors";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
@@ -17,21 +18,6 @@ import {
   getSandboxAuthForRun,
   unauthorizedRunMismatch,
 } from "./agent-webhook-auth";
-
-const PG_FOREIGN_KEY_VIOLATION = "23503";
-
-function isForeignKeyViolation(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const { cause } = error;
-  if (typeof cause !== "object" || cause === null || !("code" in cause)) {
-    return false;
-  }
-
-  return cause.code === PG_FOREIGN_KEY_VIOLATION;
-}
 
 const createBody$ = bodyResultOf(webhookCheckpointsContract.create);
 const createCheckpoint$ = command(async ({ get, set }, signal: AbortSignal) => {

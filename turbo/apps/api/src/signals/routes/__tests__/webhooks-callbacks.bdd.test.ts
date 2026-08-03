@@ -1268,7 +1268,7 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     expect(redirectTargetRequests).toBe(0);
   });
 
-  it("rejects an event batch when its required DB run is missing", async () => {
+  it("acknowledges an event batch when its required DB run is missing", async () => {
     const runId = randomUUID();
     const headers = api.sandboxWebhookHeaders({ runId });
     let requestCount = 0;
@@ -1287,12 +1287,12 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
         events: [{ type: "system", sequenceNumber: 0 }],
       },
       headers,
-      [503],
+      [200],
     );
-    expectApiError(response.body);
-    expect(response.body.error).toStrictEqual({
-      code: "EVENT_DELIVERY_UNAVAILABLE",
-      message: "Agent event delivery is temporarily unavailable",
+    expect(response.body).toStrictEqual({
+      received: 1,
+      firstSequence: 0,
+      lastSequence: 0,
     });
     await flushWaitUntilForTest();
     expect(requestCount).toBe(0);
@@ -1704,7 +1704,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
 });
 
 describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
-  it("rejects malformed, mismatched, and missing-run sandbox artifact reports", async () => {
+  it("handles malformed, mismatched, and missing-run sandbox artifact reports", async () => {
     const runId = randomUUID();
     const hash = "a".repeat(64);
     const headers = api.sandboxWebhookHeaders({ runId });
@@ -1738,10 +1738,13 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
         events: [{ type: "system", sequenceNumber: 0 }],
       },
       headers,
-      [503],
+      [200],
     );
-    expectApiError(missingEventsRun.body);
-    expect(missingEventsRun.body.error.code).toBe("EVENT_DELIVERY_UNAVAILABLE");
+    expect(missingEventsRun.body).toStrictEqual({
+      received: 1,
+      firstSequence: 0,
+      lastSequence: 0,
+    });
 
     const malformedComplete = await api.requestAgentCompleteUnchecked(
       { runId },

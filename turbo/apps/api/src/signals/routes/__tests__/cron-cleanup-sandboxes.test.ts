@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import { cronCleanupSandboxesContract } from "@vm0/api-contracts/contracts/cron";
 import {
+  triggerSourceSchema,
+  type TriggerSource,
+} from "@vm0/api-contracts/contracts/logs";
+import {
+  CANCELLATION_RECOVERY_STALE_AFTER_MS,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   runnersNetworkPolicyRefreshContract,
 } from "@vm0/api-contracts/contracts/runners";
@@ -9,24 +14,59 @@ import type {
   TestCronCleanupSandboxesStateActionBody,
   TestCronCleanupSandboxesStateActionResponse,
 } from "@vm0/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  onTestFinished,
+  test as vitestTest,
+} from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
+import { generateSandboxToken } from "../../auth/tokens";
+import {
+  holdAgentRunDeletionFixture,
+  holdOrgCreditLockFixture,
+  holdRunOutputProjectionLockFixture,
+  withThreadlessRunCleanupTestLockFixture,
+} from "../../../test-fixtures/run-deletion";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
+const webhooks = createWebhookCallbackApi(context);
 const CRON_SECRET = "test-cron-secret";
 const BUCKET = "test-user-storage-bucket";
 const FIXED_NOW_MS = Date.parse("2000-01-01T00:10:00.000Z");
+const THREADLESS_FORWARD_CUTOFF_MS = Date.parse("2026-08-03T05:40:26.000Z");
+const THREADLESS_TEST_NOW_MS = Date.parse("2026-08-03T06:00:00.000Z");
+const NON_TEST_TRIGGER_SOURCES: readonly TriggerSource[] =
+  triggerSourceSchema.options.filter((source) => {
+    return source !== "test";
+  });
 const CRON_CLEANUP_STATE_ROUTE =
   "/api/test/cron-cleanup-sandboxes-state/action";
 const OFFICIAL_RUNNER_AUTHORIZATION =
   "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+
+function it(name: string, test: () => Promise<void>, timeout?: number): void {
+  vitestTest(
+    name,
+    async () => {
+      await withThreadlessRunCleanupTestLockFixture({
+        signal: context.signal,
+        run: test,
+      });
+    },
+    timeout,
+  );
+}
 
 interface RunFixture {
   readonly runId: string;
@@ -34,6 +74,7 @@ interface RunFixture {
   readonly composeId: string;
   readonly versionId: string;
   readonly orgId: string;
+  readonly userId: string;
 }
 
 interface ExportJobFixture {
@@ -49,6 +90,21 @@ interface QueueMarkerRevoker {
   readonly id: string;
   readonly revokesEventId: string;
   readonly runEventId: string | null;
+}
+
+interface RunOwnershipFixture {
+  readonly usageEventId: string;
+  readonly uploadedFileId: string;
+  readonly fileArtifactId: string;
+  readonly browserSessionId: string;
+  readonly generationJobId: string;
+  readonly hostedSiteId: string;
+  readonly hostedDeploymentId: string;
+  readonly hostedArtifactId: string;
+}
+
+interface ChatThreadFixture {
+  readonly threadId: string;
 }
 
 function apiClient() {
@@ -130,7 +186,14 @@ function nullableString(value: unknown): string | null {
 }
 
 async function cleanupRunFixture(fixture: RunFixture): Promise<void> {
-  await postCronCleanupState({ action: "delete-run", run_id: fixture.runId });
+  await postCronCleanupState({
+    action: "delete-run",
+    run_id: fixture.runId,
+    session_id: fixture.sessionId,
+    compose_id: fixture.composeId,
+    version_id: fixture.versionId,
+    org_id: fixture.orgId,
+  });
 }
 
 async function cleanupExportJobFixture(
@@ -142,11 +205,50 @@ async function cleanupExportJobFixture(
   });
 }
 
+function ownershipActionFields(
+  fixture: RunOwnershipFixture,
+): Record<string, string> {
+  return {
+    usage_event_id: fixture.usageEventId,
+    uploaded_file_id: fixture.uploadedFileId,
+    file_artifact_id: fixture.fileArtifactId,
+    browser_session_id: fixture.browserSessionId,
+    generation_job_id: fixture.generationJobId,
+    hosted_site_id: fixture.hostedSiteId,
+    hosted_deployment_id: fixture.hostedDeploymentId,
+    hosted_artifact_id: fixture.hostedArtifactId,
+  };
+}
+
+async function cleanupRunOwnershipFixture(
+  fixture: RunOwnershipFixture,
+): Promise<void> {
+  await postCronCleanupState({
+    action: "delete-run-ownership",
+    ...ownershipActionFields(fixture),
+  });
+}
+
+async function cleanupChatThreadFixture(
+  fixture: ChatThreadFixture,
+): Promise<void> {
+  await postCronCleanupState({
+    action: "delete-run-thread",
+    thread_id: fixture.threadId,
+  });
+}
+
 async function insertRunFixture(args?: {
   readonly status?: string;
   readonly composeName?: string;
   readonly createdAt?: Date;
   readonly lastHeartbeatAt?: Date | null;
+  readonly completedAt?: Date | null;
+  readonly cancellationRecoveryCompleted?: boolean;
+  readonly threadless?: boolean;
+  readonly triggerSource?: TriggerSource;
+  readonly userId?: string;
+  readonly orgId?: string;
 }): Promise<RunFixture> {
   const response = await postCronCleanupState({
     action: "seed-run",
@@ -157,6 +259,15 @@ async function insertRunFixture(args?: {
       args?.lastHeartbeatAt === undefined
         ? undefined
         : (args.lastHeartbeatAt?.toISOString() ?? null),
+    completed_at:
+      args?.completedAt === undefined
+        ? undefined
+        : (args.completedAt?.toISOString() ?? null),
+    cancellation_recovery_completed: args?.cancellationRecoveryCompleted,
+    threadless: args?.threadless,
+    trigger_source: args?.triggerSource,
+    user_id: args?.userId,
+    org_id: args?.orgId,
   });
   return {
     runId: stringField(response, "run_id"),
@@ -164,6 +275,7 @@ async function insertRunFixture(args?: {
     composeId: stringField(response, "compose_id"),
     versionId: stringField(response, "version_id"),
     orgId: stringField(response, "org_id"),
+    userId: stringField(response, "user_id"),
   };
 }
 
@@ -179,6 +291,44 @@ async function insertQueueEntry(
     run_id: fixture.runId,
     expires_at: expiresAt.toISOString(),
     encrypted_params: options?.encryptedParams,
+  });
+}
+
+async function insertRunOwnership(
+  fixture: RunFixture,
+): Promise<RunOwnershipFixture> {
+  const response = await postCronCleanupState({
+    action: "seed-run-ownership",
+    run_id: fixture.runId,
+  });
+  return {
+    usageEventId: stringField(response, "usage_event_id"),
+    uploadedFileId: stringField(response, "uploaded_file_id"),
+    fileArtifactId: stringField(response, "file_artifact_id"),
+    browserSessionId: stringField(response, "browser_session_id"),
+    generationJobId: stringField(response, "generation_job_id"),
+    hostedSiteId: stringField(response, "hosted_site_id"),
+    hostedDeploymentId: stringField(response, "hosted_deployment_id"),
+    hostedArtifactId: stringField(response, "hosted_artifact_id"),
+  };
+}
+
+async function attachRunThread(
+  fixture: RunFixture,
+): Promise<ChatThreadFixture> {
+  const response = await postCronCleanupState({
+    action: "attach-run-thread",
+    run_id: fixture.runId,
+  });
+  return { threadId: stringField(response, "thread_id") };
+}
+
+async function findRunOwnership(
+  fixture: RunOwnershipFixture,
+): Promise<TestCronCleanupSandboxesStateActionResponse> {
+  return await postCronCleanupState({
+    action: "get-run-ownership",
+    ...ownershipActionFields(fixture),
   });
 }
 
@@ -328,6 +478,12 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
   const trackExportJob = createFixtureTracker<ExportJobFixture>(
     cleanupExportJobFixture,
   );
+  const trackRunOwnership = createFixtureTracker<RunOwnershipFixture>(
+    cleanupRunOwnershipFixture,
+  );
+  const trackChatThread = createFixtureTracker<ChatThreadFixture>(
+    cleanupChatThreadFixture,
+  );
 
   beforeEach(() => {
     mockEnv("CRON_SECRET", CRON_SECRET);
@@ -374,7 +530,435 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       results: [],
       exportJobsCleaned: 0,
       exportJobsStuck: 0,
+      threadlessRuns: {
+        discovered: expect.any(Number),
+        cancelled: expect.any(Number),
+        waiting: expect.any(Number),
+        deleted: expect.any(Number),
+        failed: expect.any(Number),
+        errors: expect.any(Array),
+      },
     });
+  });
+
+  it("leaves the audited pre-forward threadless cohort discoverable", async () => {
+    mockNow(THREADLESS_TEST_NOW_MS);
+    const fixture = await trackRun(
+      insertRunFixture({
+        status: "completed",
+        createdAt: new Date(THREADLESS_FORWARD_CUTOFF_MS - 1),
+        completedAt: new Date(
+          THREADLESS_TEST_NOW_MS - CANCELLATION_RECOVERY_STALE_AFTER_MS,
+        ),
+        threadless: true,
+      }),
+    );
+
+    await accept(apiClient().cleanup({ headers: cronHeaders() }), [200]);
+
+    await expect(findRun(fixture.runId)).resolves.toMatchObject({
+      status: "completed",
+    });
+  });
+
+  it("ignores preview-only test fixture runs without bypassing non-test runs", async () => {
+    mockNow(THREADLESS_TEST_NOW_MS);
+    const fixture = await trackRun(
+      insertRunFixture({
+        status: "completed",
+        createdAt: new Date(THREADLESS_FORWARD_CUTOFF_MS + 1),
+        completedAt: new Date(
+          THREADLESS_TEST_NOW_MS - CANCELLATION_RECOVERY_STALE_AFTER_MS,
+        ),
+        threadless: true,
+        triggerSource: "test",
+      }),
+    );
+
+    await accept(apiClient().cleanup({ headers: cronHeaders() }), [200]);
+
+    await expect(findRun(fixture.runId)).resolves.toMatchObject({
+      status: "completed",
+    });
+  });
+
+  it("processes every non-test trigger source when the run is threadless", async () => {
+    mockNow(THREADLESS_TEST_NOW_MS);
+    const fixtures: RunFixture[] = [];
+    for (const triggerSource of NON_TEST_TRIGGER_SOURCES) {
+      fixtures.push(
+        await trackRun(
+          insertRunFixture({
+            status: "completed",
+            createdAt: new Date(THREADLESS_FORWARD_CUTOFF_MS + 1),
+            completedAt: new Date(
+              THREADLESS_TEST_NOW_MS - CANCELLATION_RECOVERY_STALE_AFTER_MS,
+            ),
+            threadless: true,
+            triggerSource,
+          }),
+        ),
+      );
+    }
+
+    const response = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(
+      NON_TEST_TRIGGER_SOURCES.length,
+    );
+    expect(response.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(
+      NON_TEST_TRIGGER_SOURCES.length,
+    );
+    for (const fixture of fixtures) {
+      await expect(findRun(fixture.runId)).resolves.toBeNull();
+    }
+  });
+
+  it("waits through the quiet window and deletes at its exact boundary", async () => {
+    const completedAt = new Date(THREADLESS_TEST_NOW_MS);
+    mockNow(completedAt.getTime() + CANCELLATION_RECOVERY_STALE_AFTER_MS - 1);
+    const fixture = await trackRun(
+      insertRunFixture({
+        status: "completed",
+        createdAt: new Date(THREADLESS_FORWARD_CUTOFF_MS + 1),
+        completedAt,
+        threadless: true,
+      }),
+    );
+
+    const waitingResponse = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(
+      waitingResponse.body.threadlessRuns.discovered,
+    ).toBeGreaterThanOrEqual(1);
+    expect(waitingResponse.body.threadlessRuns.waiting).toBeGreaterThanOrEqual(
+      1,
+    );
+    await expect(findRun(fixture.runId)).resolves.not.toBeNull();
+
+    mockNow(completedAt.getTime() + CANCELLATION_RECOVERY_STALE_AFTER_MS);
+    const deletedResponse = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(
+      deletedResponse.body.threadlessRuns.discovered,
+    ).toBeGreaterThanOrEqual(1);
+    expect(deletedResponse.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(
+      1,
+    );
+    await expect(findRun(fixture.runId)).resolves.toBeNull();
+  });
+
+  it("hard-cancels an active threadless run without deleting it in the same pass", async () => {
+    mockNow(THREADLESS_TEST_NOW_MS);
+    const fixture = await trackRun(
+      insertRunFixture({
+        status: "running",
+        createdAt: new Date(THREADLESS_TEST_NOW_MS - 60_000),
+        lastHeartbeatAt: new Date(THREADLESS_TEST_NOW_MS - 60_000),
+        threadless: true,
+      }),
+    );
+
+    const cancelledResponse = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(
+      cancelledResponse.body.threadlessRuns.discovered,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      cancelledResponse.body.threadlessRuns.cancelled,
+    ).toBeGreaterThanOrEqual(1);
+    await expect(findRun(fixture.runId)).resolves.toMatchObject({
+      status: "cancelled",
+    });
+
+    mockNow(THREADLESS_TEST_NOW_MS + CANCELLATION_RECOVERY_STALE_AFTER_MS);
+    const deletedResponse = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(
+      deletedResponse.body.threadlessRuns.discovered,
+    ).toBeGreaterThanOrEqual(1);
+    expect(deletedResponse.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(
+      1,
+    );
+    await expect(findRun(fixture.runId)).resolves.toBeNull();
+  });
+
+  it("redrives expired unresolved cancellation recovery before deletion", async () => {
+    mockNow(THREADLESS_TEST_NOW_MS);
+    const fixture = await trackRun(
+      insertRunFixture({
+        status: "cancelled",
+        createdAt: new Date(THREADLESS_FORWARD_CUTOFF_MS + 1),
+        completedAt: new Date(
+          THREADLESS_TEST_NOW_MS - CANCELLATION_RECOVERY_STALE_AFTER_MS + 1,
+        ),
+        cancellationRecoveryCompleted: false,
+        threadless: true,
+      }),
+    );
+
+    const waiting = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(waiting.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
+    expect(waiting.body.threadlessRuns.waiting).toBeGreaterThanOrEqual(1);
+    await expect(findRun(fixture.runId)).resolves.not.toBeNull();
+
+    mockNow(THREADLESS_TEST_NOW_MS + 1);
+    const response = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(response.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
+    expect(response.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(1);
+    await expect(findRun(fixture.runId)).resolves.toBeNull();
+  });
+
+  it("cascades run-owned artifacts while preserving independent ownership", async () => {
+    mockNow(THREADLESS_TEST_NOW_MS);
+    const fixture = await trackRun(
+      insertRunFixture({
+        status: "completed",
+        createdAt: new Date(THREADLESS_FORWARD_CUTOFF_MS + 1),
+        completedAt: new Date(
+          THREADLESS_TEST_NOW_MS - CANCELLATION_RECOVERY_STALE_AFTER_MS,
+        ),
+        threadless: true,
+      }),
+    );
+    const ownership = await trackRunOwnership(insertRunOwnership(fixture));
+
+    const response = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
+    expect(response.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(1);
+    const state = await findRunOwnership(ownership);
+    expect(recordField(state, "uploaded_file")).toBeNull();
+    expect(recordField(state, "file_artifact")).toBeNull();
+    expect(recordField(state, "usage_event")).toMatchObject({
+      runId: null,
+      status: "processed",
+      creditsCharged: 9,
+    });
+    expect(recordField(state, "browser_session")).toMatchObject({
+      id: ownership.browserSessionId,
+      runId: null,
+    });
+    expect(recordField(state, "generation_job")).toMatchObject({
+      id: ownership.generationJobId,
+      runId: null,
+    });
+    expect(recordField(state, "hosted_site")).toMatchObject({
+      id: ownership.hostedSiteId,
+      createdFromRunId: fixture.runId,
+    });
+    expect(recordField(state, "hosted_deployment")).toMatchObject({
+      id: ownership.hostedDeploymentId,
+      runId: fixture.runId,
+    });
+    expect(recordField(state, "hosted_artifact")).toStrictEqual({
+      id: ownership.hostedArtifactId,
+    });
+  });
+
+  it("processes only the oldest bounded batch of threadless runs", async () => {
+    mockNow(THREADLESS_TEST_NOW_MS);
+    const userId = `user-${randomUUID()}`;
+    const orgId = `org-${randomUUID()}`;
+    const fixtures = await Promise.all(
+      Array.from({ length: 21 }, async (_, index) => {
+        return await trackRun(
+          insertRunFixture({
+            status: "completed",
+            createdAt: new Date(THREADLESS_FORWARD_CUTOFF_MS + index + 1),
+            completedAt: new Date(
+              THREADLESS_TEST_NOW_MS - CANCELLATION_RECOVERY_STALE_AFTER_MS,
+            ),
+            threadless: true,
+            userId,
+            orgId,
+          }),
+        );
+      }),
+    );
+
+    const firstResponse = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(firstResponse.body.threadlessRuns).toMatchObject({
+      discovered: 20,
+      deleted: 20,
+      failed: 0,
+    });
+    await expect(findRun(fixtures[20]!.runId)).resolves.not.toBeNull();
+
+    const secondResponse = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(
+      secondResponse.body.threadlessRuns.discovered,
+    ).toBeGreaterThanOrEqual(1);
+    expect(secondResponse.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(
+      1,
+    );
+    await expect(findRun(fixtures[20]!.runId)).resolves.toBeNull();
+  });
+
+  it("acknowledges an event projection that loses the root-delete race", async () => {
+    mockNow(THREADLESS_TEST_NOW_MS);
+    const fixture = await trackRun(
+      insertRunFixture({
+        status: "completed",
+        createdAt: new Date(THREADLESS_FORWARD_CUTOFF_MS + 1),
+        completedAt: new Date(
+          THREADLESS_TEST_NOW_MS - CANCELLATION_RECOVERY_STALE_AFTER_MS,
+        ),
+        threadless: true,
+      }),
+    );
+    const held = await holdRunOutputProjectionLockFixture({
+      runId: fixture.runId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      held.release();
+      await held.done;
+    });
+    const headers = {
+      authorization: `Bearer ${generateSandboxToken(
+        fixture.userId,
+        fixture.runId,
+        fixture.orgId,
+      )}`,
+    };
+    const eventRequest = webhooks.requestAgentEvents(
+      {
+        runId: fixture.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: `msg_${randomUUID()}`,
+              content: [{ type: "text", text: "late output" }],
+            },
+          },
+        ],
+      },
+      headers,
+      [200],
+    );
+    await expect.poll(held.blockedWaiterCount).toBeGreaterThan(0);
+
+    const cleanup = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(cleanup.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
+    expect(cleanup.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(1);
+    held.release();
+    await held.done;
+    const eventResponse = await eventRequest;
+    expect(eventResponse).toMatchObject({
+      status: 200,
+      body: { received: 1, firstSequence: 0, lastSequence: 0 },
+    });
+  });
+
+  it("skips deletion when the threadless state changes before the write transaction", async () => {
+    mockNow(THREADLESS_TEST_NOW_MS);
+    const fixture = await trackRun(
+      insertRunFixture({
+        status: "completed",
+        createdAt: new Date(THREADLESS_FORWARD_CUTOFF_MS + 1),
+        completedAt: new Date(
+          THREADLESS_TEST_NOW_MS - CANCELLATION_RECOVERY_STALE_AFTER_MS,
+        ),
+        threadless: true,
+      }),
+    );
+    const held = await holdOrgCreditLockFixture({
+      orgId: fixture.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      held.release();
+      await held.done;
+    });
+    const cleanupRequest = apiClient().cleanup({ headers: cronHeaders() });
+    await expect.poll(held.blockedWaiterCount).toBeGreaterThan(0);
+
+    await trackChatThread(attachRunThread(fixture));
+    held.release();
+    await held.done;
+    const cleanup = await accept(cleanupRequest, [200]);
+    expect(cleanup.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
+    expect(cleanup.body.threadlessRuns.waiting).toBeGreaterThanOrEqual(1);
+    await expect(findRun(fixture.runId)).resolves.toMatchObject({
+      status: "completed",
+    });
+  });
+
+  it("acknowledges completion when root deletion wins the row-lock race", async () => {
+    mockNow(THREADLESS_TEST_NOW_MS);
+    const fixture = await trackRun(
+      insertRunFixture({
+        status: "running",
+        createdAt: new Date(THREADLESS_FORWARD_CUTOFF_MS + 1),
+        threadless: true,
+      }),
+    );
+    const held = await holdAgentRunDeletionFixture({
+      runId: fixture.runId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      held.release();
+      await held.done;
+    });
+    const headers = {
+      authorization: `Bearer ${generateSandboxToken(
+        fixture.userId,
+        fixture.runId,
+        fixture.orgId,
+      )}`,
+    };
+    const completionRequest = webhooks.requestAgentComplete(
+      {
+        runId: fixture.runId,
+        exitCode: 1,
+        error: "late runner failure",
+      },
+      headers,
+      [200],
+    );
+    await expect.poll(held.blockedWaiterCount).toBeGreaterThan(0);
+
+    held.release();
+    await held.done;
+    const completion = await completionRequest;
+    expect(completion).toMatchObject({
+      status: 200,
+      body: { success: true, status: "failed" },
+    });
+    await expect(findRun(fixture.runId)).resolves.toBeNull();
   });
 
   it("does not cleanup a recent pending run", async () => {
