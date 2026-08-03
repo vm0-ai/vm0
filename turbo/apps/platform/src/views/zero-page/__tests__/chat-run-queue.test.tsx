@@ -114,6 +114,11 @@ function mockActiveRunThread(
     readonly selectedModel?: string;
     readonly codexServiceTier?: "fast";
     readonly onQueuedEventAppend?: (body: QueuedMessageCapture) => void;
+    readonly onSteerEventAppend?: (body: {
+      steersRunId: string;
+      steersEventId: string;
+      clientEventId: string;
+    }) => void;
   },
 ): void {
   mockChatLifecycle(context, {
@@ -141,6 +146,9 @@ function mockActiveRunThread(
     activeRunIds: ["run-active"],
     ...(options?.onQueuedEventAppend
       ? { onQueuedEventAppend: options.onQueuedEventAppend }
+      : {}),
+    ...(options?.onSteerEventAppend
+      ? { onSteerEventAppend: options.onSteerEventAppend }
       : {}),
   });
 }
@@ -206,6 +214,51 @@ function mockCancellationRecoveryQueue(options?: {
 }
 
 describe("chat run queue", () => {
+  it("gates sending a queued message into the active run", async () => {
+    mockActiveRunThread(THREAD_ID);
+    detachedSetupPage({ context, path: CHAT_PATH });
+    const user = userEvent.setup();
+
+    await sendQueuedMessage(user, "Keep this in the queue");
+    await expectQueuedMessages(["Keep this in the queue"]);
+    expect(
+      screen.queryByLabelText("Send queued message now"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("sends a queued text message into the active run", async () => {
+    const steered: {
+      steersRunId: string;
+      steersEventId: string;
+      clientEventId: string;
+    }[] = [];
+    mockActiveRunThread(THREAD_ID, {
+      onSteerEventAppend: (body) => {
+        steered.push(body);
+      },
+    });
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.ChatSteer]: true },
+    });
+    const user = userEvent.setup();
+
+    await sendQueuedMessage(user, "Use this instruction now");
+    await expectQueuedMessages(["Use this instruction now"]);
+    click(await screen.findByLabelText("Send queued message now"));
+
+    await waitFor(() => {
+      expect(steered).toHaveLength(1);
+    });
+    expect(steered[0]).toMatchObject({
+      steersRunId: "run-active",
+    });
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+    });
+  });
+
   it("falls back to generic queue guidance for a previous API response", async () => {
     mockCancellationRecoveryQueue();
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {

@@ -20,7 +20,7 @@ export const setupBrowserSessionPage$ = command(
     const descriptor = parseBrowserSessionUrl(`/browsers/${threadId}`);
     set(
       setBrowserSessionPageSignals$,
-      descriptor ? createBrowserSessionSignals(descriptor) : null,
+      descriptor ? createBrowserSessionSignals(descriptor.threadId) : null,
     );
     set(updatePage$, createElement(BrowserSessionPage), "minimal");
     set(

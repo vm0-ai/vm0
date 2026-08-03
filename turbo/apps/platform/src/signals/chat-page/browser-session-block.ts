@@ -22,10 +22,6 @@ import { zeroBrowserEnabled$ } from "../external/feature-switch.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import { setAblyPayloadLoop$ } from "../realtime.ts";
 import { onRef, settle, setLoop, withCleanup } from "../utils.ts";
-import {
-  getOrCreateCardSignals,
-  registeredCardSignals,
-} from "./card-signal-map.ts";
 import { parseTrustedPlatformActionUrl } from "./platform-action-url.ts";
 
 // One heartbeat per minute keeps a viewed browser comfortably inside its
@@ -34,9 +30,7 @@ const LEASE_HEARTBEAT_INTERVAL_MS = 60_000;
 
 export interface BrowserSessionDescriptor {
   readonly threadId: string;
-  readonly originalUrl: string;
   readonly href: string;
-  readonly fallbackMarkdown: string;
 }
 
 export interface BrowserSessionSignals extends BrowserSessionDescriptor {
@@ -50,6 +44,7 @@ export interface BrowserSessionSignals extends BrowserSessionDescriptor {
   readonly start$: Command<Promise<void>, [AbortSignal]>;
   readonly stop$: Command<Promise<void>, [AbortSignal]>;
   readonly fitWindow$: Command<Promise<void>, [number, AbortSignal]>;
+  readonly subscribe$: Command<Promise<void>, [AbortSignal]>;
   // Attach to the visible panel container: the lease heartbeat lives exactly as
   // long as that element is mounted.
   readonly keepAliveRef$: Command<
@@ -71,16 +66,8 @@ export interface BrowserLifecycleOptimisticEvents {
   >;
 }
 
-export interface BrowserSessionCardSignalsRegistry {
-  readonly browser: BrowserSessionSignals;
-  register(descriptor: BrowserSessionDescriptor): BrowserSessionSignals;
-  resolve(resourceKey: string): BrowserSessionSignals;
-  readonly subscribe$: Command<Promise<void>, [AbortSignal]>;
-}
-
 export function parseBrowserSessionUrl(
   value: string,
-  fallbackMarkdown: string = value,
 ): BrowserSessionDescriptor | null {
   const url = parseTrustedPlatformActionUrl(value);
   if (!url) {
@@ -95,9 +82,7 @@ export function parseBrowserSessionUrl(
   }
   return {
     threadId,
-    originalUrl: value,
     href: `/browsers/${threadId}`,
-    fallbackMarkdown,
   };
 }
 
@@ -298,10 +283,50 @@ function createStopBrowserSignals({
   };
 }
 
-export function createBrowserSessionSignals(
+function createBrowserSessionSubscriptionSignals(
   descriptor: BrowserSessionDescriptor,
+  reload$: BrowserSessionSignals["reload$"],
+): Pick<BrowserSessionSignals, "subscribe$"> {
+  const reloadBrowserSession$ = command(
+    ({ set }, _signal: AbortSignal): boolean => {
+      set(reload$);
+      return false;
+    },
+  );
+  const onBrowserSessionChanged$ = command(
+    ({ set }, payload: unknown, _signal: AbortSignal): boolean => {
+      const parsed = browserSessionChangedPayloadSchema.safeParse(payload);
+      if (parsed.success && parsed.data.threadId === descriptor.threadId) {
+        set(reload$);
+      }
+      return false;
+    },
+  );
+  const subscribe$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      await set(
+        setAblyPayloadLoop$,
+        {
+          topic: "browserSessionChanged",
+          loopCommand$: onBrowserSessionChanged$,
+          catchUpCommand$: reloadBrowserSession$,
+          options: { runOnSubscribe: true },
+        },
+        signal,
+      );
+    },
+  );
+  return { subscribe$ };
+}
+
+export function createBrowserSessionSignals(
+  threadId: string,
   optimisticEvents?: BrowserLifecycleOptimisticEvents,
 ): BrowserSessionSignals {
+  const descriptor: BrowserSessionDescriptor = {
+    threadId,
+    href: `/browsers/${threadId}`,
+  };
   const reloadVersion$ = state(0);
   const sessionOverride$ = state<ZeroBrowserSession | null | undefined>(
     undefined,
@@ -340,6 +365,10 @@ export function createBrowserSessionSignals(
   };
   const startSignals = createStartBrowserSignals(mutationContext);
   const stopSignals = createStopBrowserSignals(mutationContext);
+  const subscriptionSignals = createBrowserSessionSubscriptionSignals(
+    descriptor,
+    reload$,
+  );
 
   const keepAliveRef$ = onRef(
     command(
@@ -398,6 +427,7 @@ export function createBrowserSessionSignals(
     reload$,
     reloadPanel$: reload$,
     fitWindow$,
+    ...subscriptionSignals,
     keepAliveRef$,
   };
 }
@@ -416,78 +446,4 @@ export function browserSessionReclaimHint(
         },
       )
     : null;
-}
-
-export function createBrowserSessionCardSignalsRegistry(
-  threadId: string,
-  optimisticEvents?: BrowserLifecycleOptimisticEvents,
-): BrowserSessionCardSignalsRegistry {
-  const signalsByResourceKey = new Map<string, BrowserSessionSignals>();
-  const signalsByThreadId = new Map<string, BrowserSessionSignals>();
-  const browser = createBrowserSessionSignals(
-    {
-      threadId,
-      originalUrl: `/browsers/${threadId}`,
-      href: `/browsers/${threadId}`,
-      fallbackMarkdown: `/browsers/${threadId}`,
-    },
-    optimisticEvents,
-  );
-  signalsByThreadId.set(threadId, browser);
-  const reloadAll$ = command(({ set }, _signal: AbortSignal): boolean => {
-    for (const signals of signalsByThreadId.values()) {
-      set(signals.reload$);
-    }
-    return false;
-  });
-  const onBrowserSessionChanged$ = command(
-    ({ set }, payload: unknown, _signal: AbortSignal): boolean => {
-      const parsed = browserSessionChangedPayloadSchema.safeParse(payload);
-      if (!parsed.success) {
-        return false;
-      }
-      const signals = signalsByThreadId.get(parsed.data.threadId);
-      if (signals) {
-        set(signals.reload$);
-      }
-      return false;
-    },
-  );
-  const subscribe$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      await set(
-        setAblyPayloadLoop$,
-        {
-          topic: "browserSessionChanged",
-          loopCommand$: onBrowserSessionChanged$,
-          catchUpCommand$: reloadAll$,
-          options: { runOnSubscribe: true },
-        },
-        signal,
-      );
-    },
-  );
-  return {
-    browser,
-    register(descriptor) {
-      const shared = getOrCreateCardSignals(
-        signalsByThreadId,
-        descriptor.threadId,
-        () => {
-          return createBrowserSessionSignals(descriptor, optimisticEvents);
-        },
-      );
-      return getOrCreateCardSignals(
-        signalsByResourceKey,
-        descriptor.fallbackMarkdown,
-        () => {
-          return { ...shared, ...descriptor };
-        },
-      );
-    },
-    resolve(resourceKey) {
-      return registeredCardSignals(signalsByResourceKey, resourceKey);
-    },
-    subscribe$,
-  };
 }

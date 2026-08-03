@@ -179,9 +179,9 @@ import {
   type MailDraftSignals,
 } from "./mail-draft.ts";
 import {
-  createBrowserSessionCardSignalsRegistry,
+  createBrowserSessionSignals,
   type BrowserLifecycleOptimisticEvents,
-  type BrowserSessionCardSignalsRegistry,
+  type BrowserSessionSignals,
 } from "./browser-session-block.ts";
 import { createChatThreadContainerSignals } from "./chat-thread-container.ts";
 import { createAssistantErrorRecoverySignals } from "./assistant-error-recovery.ts";
@@ -1172,6 +1172,7 @@ function registerEventAgentReferences(
 }
 
 function registerChatEvent(
+  threadId: string,
   event: PersistedChatEvent,
   registerBodyBlocks: BodyBlocksRenderer,
   artifactCardSignals: ArtifactCardSignalsRegistry,
@@ -1181,17 +1182,19 @@ function registerChatEvent(
   registerEventAgentReferences(event, agentReferenceSignals);
   const blocks = skipsEventBodyRendering(event)
     ? []
-    : registerBodyBlocks(parseChatEventBodyBlocks(event));
+    : registerBodyBlocks(parseChatEventBodyBlocks(event, threadId));
   return { event, blocks };
 }
 
 function registerPersistentEvents({
+  threadId,
   persistentEvents,
   events,
   registerBodyBlocks,
   artifactCardSignals,
   agentReferenceSignals,
 }: {
+  threadId: string;
   persistentEvents: readonly RegisteredChatEvent[];
   events: readonly PersistedChatEvent[];
   registerBodyBlocks: BodyBlocksRenderer;
@@ -1215,6 +1218,7 @@ function registerPersistentEvents({
   }
   return events.map((event) => {
     return registerChatEvent(
+      threadId,
       event,
       registerBodyBlocks,
       artifactCardSignals,
@@ -1842,7 +1846,7 @@ interface BodyBlockRegistries {
   readonly mailDraftCardSignals: ReturnType<
     typeof createMailDraftCardSignalsRegistry
   >;
-  readonly browserSessionCardSignals: BrowserSessionCardSignalsRegistry;
+  readonly browserSessionSignals: BrowserSessionSignals;
 }
 
 function createBodyBlocksRenderer({
@@ -1853,7 +1857,7 @@ function createBodyBlocksRenderer({
   computerUseAuthorizationCardSignals,
   planUpgradeCardSignals,
   mailDraftCardSignals,
-  browserSessionCardSignals,
+  browserSessionSignals,
 }: BodyBlockRegistries): (
   resolution: "register" | "resolve",
 ) => BodyBlocksRenderer {
@@ -1942,10 +1946,7 @@ function createBodyBlocksRenderer({
             return {
               type: block.type,
               resourceKey: block.resourceKey,
-              signals:
-                resolution === "register"
-                  ? browserSessionCardSignals.register(block.descriptor)
-                  : browserSessionCardSignals.resolve(block.resourceKey),
+              signals: browserSessionSignals,
             };
           }
         }
@@ -1981,6 +1982,7 @@ function createIndexedDbEventCacheSignals({
       if (result.value.length > 0) {
         const registeredEvents = result.value.map((event) => {
           return registerChatEvent(
+            threadId,
             event,
             registerBodyBlocks,
             artifactCardSignals,
@@ -2024,7 +2026,7 @@ function createPagedEventResources(
   initialOptimisticEntries: readonly OptimisticChatEventEntry[],
 ) {
   const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
-  const browserSessionCardSignals = createBrowserSessionCardSignalsRegistry(
+  const browserSessionSignals = createBrowserSessionSignals(
     threadId,
     browserLifecycleOptimisticEvents,
   );
@@ -2041,7 +2043,7 @@ function createPagedEventResources(
       createComputerUseAuthorizationCardSignalsRegistry(),
     planUpgradeCardSignals: createPlanUpgradeCardSignalsRegistry(),
     mailDraftCardSignals,
-    browserSessionCardSignals,
+    browserSessionSignals,
   });
   const registerBodyBlocks = bodyBlocksRenderer("register");
   const registerOptimisticEventResources = (
@@ -2060,8 +2062,8 @@ function createPagedEventResources(
     mailDraftCardSignals,
     publicSignals: {
       reloadMailDrafts$: mailDraftCardSignals.reload$,
-      browserSessionSignals: browserSessionCardSignals.browser,
-      subscribeBrowserSessions$: browserSessionCardSignals.subscribe$,
+      browserSessionSignals,
+      subscribeBrowserSessions$: browserSessionSignals.subscribe$,
       artifactSignalsForUrl: (url: string): ArtifactSignals | undefined => {
         return artifactCardSignals.find(url);
       },
@@ -2369,6 +2371,7 @@ function createPagedEvents(
       }
       const scrollPosition = get(effects.scroll.threadScrollPosition$);
       const registeredEvents = registerPersistentEvents({
+        threadId,
         persistentEvents: get(persistentChatEvents$),
         events,
         registerBodyBlocks: resources.registerBodyBlocks,
@@ -3519,6 +3522,82 @@ function createRecallMessage(deps: RecallMessageDeps) {
   });
 }
 
+function createSteerQueuedMessage({
+  threadId,
+  agentId$,
+  chatEvents$,
+  appendOptimisticEvent$,
+  dataSource,
+}: RecallMessageDeps) {
+  return command(
+    async (
+      { get, set },
+      eventId: string,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const chatEvents = get(chatEvents$);
+      const event = queuedEventsFromChatEvents(chatEvents).find((candidate) => {
+        return candidate.id === eventId;
+      });
+      const runIds = liveRunIdsFromChatEvents(chatEvents);
+      const agentId = get(agentId$);
+      if (
+        !event ||
+        event.eventType !== "input.prompt" ||
+        (event.attachFiles?.length ?? 0) > 0 ||
+        event.generationTemplate !== undefined ||
+        !event.userMessage.parts.every((part) => {
+          return part.type === "text";
+        }) ||
+        runIds.length !== 1 ||
+        !agentId
+      ) {
+        return;
+      }
+
+      const runId = runIds[0]!;
+      const clientEventId = crypto.randomUUID();
+      const response = await set(
+        dataSource.steerQueuedEvent$,
+        {
+          threadId,
+          agentId,
+          runId,
+          eventId,
+          clientEventId,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (response.runId !== runId) {
+        throw new Error("Steered chat event was associated with another run");
+      }
+
+      await set(
+        appendOptimisticEvent$,
+        {
+          threadId,
+          optimisticUserMessageAssociation: "run",
+          event: {
+            id: clientEventId,
+            threadId,
+            eventType: "input.prompt",
+            content: null,
+            runId,
+            revokesEventId: event.id,
+            triggerSource: event.triggerSource,
+            userMessage: event.userMessage,
+            createdAt: response.createdAt ?? nowDate().toISOString(),
+          },
+        },
+        "preserve",
+        signal,
+      );
+      signal.throwIfAborted();
+    },
+  );
+}
+
 function createSkipAutomationEvent({
   threadId,
   agentId$,
@@ -3586,6 +3665,7 @@ function createMessageCommands(deps: MessageCommandsDeps) {
     sendMessage$: createSendMessage(deps),
     queueMessage$: createQueueMessage(deps),
     recallMessage$: createRecallMessage(deps),
+    steerQueuedMessage$: createSteerQueuedMessage(deps),
   };
 }
 
@@ -4241,6 +4321,11 @@ function createThreadPendingActionSignals(options: ThreadRootComposerOptions) {
       await set(options.messageActions.recallMessage$, eventId, signal);
     },
   );
+  const steerQueuedMessage$ = command(
+    async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
+      await set(options.messageActions.steerQueuedMessage$, eventId, signal);
+    },
+  );
   const removeWorkflowEvent$ = command(
     async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
       await set(options.messageActions.skipAutomationEvent$, eventId, signal);
@@ -4255,6 +4340,7 @@ function createThreadPendingActionSignals(options: ThreadRootComposerOptions) {
     set(openChatThreadGoalDialog$, options.threadId);
   });
   return {
+    steerQueuedMessage$,
     removeQueuedMessage$,
     removeWorkflowEvent$,
     cancelActiveGoal$,

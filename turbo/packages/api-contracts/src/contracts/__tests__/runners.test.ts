@@ -20,6 +20,7 @@ import {
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   resumeSessionSchema,
+  runnersActiveInputsContract,
   runnersBuiltinFirewallsResolveContract,
   runnersJobClaimContract,
   runnersNetworkPolicyRefreshContract,
@@ -106,6 +107,39 @@ describe("runner claim response contract", () => {
     });
 
     expect(context).not.toHaveProperty("connectorPermissionBaseline");
+  });
+
+  it("accepts the optional active input capability", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+
+    expect(
+      executionContextSchema.parse({
+        ...fixture,
+        activeInput: true,
+        activeInputAbly: true,
+      }).activeInput,
+    ).toBe(true);
+    expect(
+      executionContextSchema.parse({
+        ...fixture,
+        activeInput: true,
+        activeInputAbly: true,
+      }).activeInputAbly,
+    ).toBe(true);
+    expect(
+      executionContextSchema.safeParse({
+        ...fixture,
+        activeInput: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      executionContextSchema.safeParse({
+        ...fixture,
+        activeInputAbly: false,
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -952,6 +986,16 @@ describe("runner claim request contract", () => {
     });
   });
 
+  it("accepts only an affirmative active input capability", () => {
+    expect(
+      runnersJobClaimContract.claim.body.parse({ activeInput: true }),
+    ).toStrictEqual({ activeInput: true });
+    expect(
+      runnersJobClaimContract.claim.body.safeParse({ activeInput: false })
+        .success,
+    ).toBe(false);
+  });
+
   it("requires a strict all-or-nothing runner identity", () => {
     const runnerId = "11111111-1111-4111-8111-111111111111";
     for (const runnerIdentity of [
@@ -1009,6 +1053,25 @@ describe("runner claim request contract", () => {
     });
 
     expect(body.telemetry).toEqual({});
+  });
+});
+
+describe("runner active input contract", () => {
+  it("coerces the sequence cursor and validates entries", () => {
+    const runId = "11111111-1111-4111-8111-111111111111";
+    const messageId = "22222222-2222-4222-8222-222222222222";
+
+    expect(
+      runnersActiveInputsContract.list.pathParams.parse({
+        runId,
+        fromSequence: "3",
+      }),
+    ).toStrictEqual({ runId, fromSequence: 3 });
+    expect(
+      runnersActiveInputsContract.list.responses[200].safeParse({
+        entries: [{ sequence: 3, messageId, text: "steer this run" }],
+      }).success,
+    ).toBe(true);
   });
 });
 

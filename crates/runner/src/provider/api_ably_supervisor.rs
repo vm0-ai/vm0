@@ -27,6 +27,7 @@ use super::api_direct_candidates::{
     DirectJobCandidate,
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
+use crate::active_input::ActiveInputAblyNotifications;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
@@ -426,6 +427,7 @@ pub(super) struct AblySupervisorConfig {
     pub(super) profiles: Vec<String>,
     pub(super) poll_wakeups: Arc<PollWakeups>,
     pub(super) direct_candidates: Arc<DirectCandidateInbox>,
+    pub(super) active_input_ably_notifications: ActiveInputAblyNotifications,
     pub(super) cancel_tokens: RunCancellationRegistry,
     pub(super) network_policy_refresh: NetworkPolicyRefreshHandle,
     pub(super) provider_cancel: CancellationToken,
@@ -437,6 +439,7 @@ struct SupervisorTaskConfig {
     profiles: Vec<String>,
     poll_wakeups: Arc<PollWakeups>,
     direct_candidates: Arc<DirectCandidateInbox>,
+    active_input_ably_notifications: ActiveInputAblyNotifications,
     cancel_tokens: RunCancellationRegistry,
     network_policy_refresh: NetworkPolicyRefreshHandle,
     provider_cancel: CancellationToken,
@@ -453,6 +456,7 @@ impl AblySupervisor {
             profiles: config.profiles,
             poll_wakeups: config.poll_wakeups,
             direct_candidates: config.direct_candidates,
+            active_input_ably_notifications: config.active_input_ably_notifications,
             cancel_tokens: config.cancel_tokens,
             network_policy_refresh: config.network_policy_refresh,
             provider_cancel: config.provider_cancel,
@@ -535,12 +539,16 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                     Some(ably_subscriber::Event::Message(msg)) => {
                         handle_ably_message_with_network_policy_refresh(
                             &msg,
-                            &config.profiles,
-                            &config.poll_wakeups,
-                            &config.direct_candidates,
-                            &config.cancel_tokens,
-                            Some(&config.network_policy_refresh),
-                            Some(&config.shutdown),
+                            AblyMessageTargets {
+                                profiles: &config.profiles,
+                                poll_wakeups: &config.poll_wakeups,
+                                direct_candidates: &config.direct_candidates,
+                                active_input_ably_notifications: &config
+                                    .active_input_ably_notifications,
+                                cancel_tokens: &config.cancel_tokens,
+                                network_policy_refresh: Some(&config.network_policy_refresh),
+                                network_policy_refresh_cancel: Some(&config.shutdown),
+                            },
                         )
                         .await;
                     }
@@ -550,17 +558,20 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                         }
                         disconnect.mark_connected();
                         config.poll_wakeups.mark_ably_connected().await;
+                        config.active_input_ably_notifications.mark_connected();
                     }
                     Some(ably_subscriber::Event::Disconnected { reason }) => {
                         let reason = reason.unwrap_or_else(|| "unknown".to_string());
                         disconnect.record_disconnected(reason.clone());
                         config.poll_wakeups.mark_ably_disconnected().await;
+                        config.active_input_ably_notifications.mark_disconnected();
                         info!(reason = %reason, "ably disconnected, switching to fast poll");
                     }
                     Some(ably_subscriber::Event::Error { code, message }) => {
                         error!(code, message = %message, "ably fatal error, will reconnect");
                         disconnect.record_disconnected(message.clone());
                         config.poll_wakeups.mark_ably_disconnected().await;
+                        config.active_input_ably_notifications.mark_disconnected();
                         ably = None;
                         ably_retry.schedule();
                     }
@@ -568,6 +579,7 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                         warn!("ably subscription closed, will reconnect");
                         disconnect.record_disconnected("subscription closed".to_string());
                         config.poll_wakeups.mark_ably_disconnected().await;
+                        config.active_input_ably_notifications.mark_disconnected();
                         ably = None;
                         ably_retry.schedule();
                     }
@@ -578,10 +590,12 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                     Ok(()) => {
                         disconnect.mark_connected();
                         config.poll_wakeups.mark_ably_connected().await;
+                        config.active_input_ably_notifications.mark_connected();
                     }
                     Err(reason) => {
                         disconnect.record_disconnected(reason);
                         config.poll_wakeups.mark_ably_disconnected().await;
+                        config.active_input_ably_notifications.mark_disconnected();
                     }
                 }
             }
@@ -614,32 +628,41 @@ async fn handle_ably_message(
     direct_candidates: &DirectCandidateInbox,
     cancel_tokens: &RunCancellationRegistry,
 ) {
+    let active_input_ably_notifications = ActiveInputAblyNotifications::new();
     handle_ably_message_with_network_policy_refresh(
         msg,
-        profiles,
-        poll_wakeups,
-        direct_candidates,
-        cancel_tokens,
-        None,
-        None,
+        AblyMessageTargets {
+            profiles,
+            poll_wakeups,
+            direct_candidates,
+            active_input_ably_notifications: &active_input_ably_notifications,
+            cancel_tokens,
+            network_policy_refresh: None,
+            network_policy_refresh_cancel: None,
+        },
     )
     .await;
 }
 
+struct AblyMessageTargets<'a> {
+    profiles: &'a [String],
+    poll_wakeups: &'a PollWakeups,
+    direct_candidates: &'a DirectCandidateInbox,
+    active_input_ably_notifications: &'a ActiveInputAblyNotifications,
+    cancel_tokens: &'a RunCancellationRegistry,
+    network_policy_refresh: Option<&'a NetworkPolicyRefreshHandle>,
+    network_policy_refresh_cancel: Option<&'a CancellationToken>,
+}
+
 async fn handle_ably_message_with_network_policy_refresh(
     msg: &ably_subscriber::Message,
-    profiles: &[String],
-    poll_wakeups: &PollWakeups,
-    direct_candidates: &DirectCandidateInbox,
-    cancel_tokens: &RunCancellationRegistry,
-    network_policy_refresh: Option<&NetworkPolicyRefreshHandle>,
-    network_policy_refresh_cancel: Option<&CancellationToken>,
+    targets: AblyMessageTargets<'_>,
 ) {
     let notification_received_at = StdInstant::now();
 
     if let Some(notification) = parse_cancel_notification(msg) {
         let run_id = notification.run_id;
-        let handle = cancel_tokens.handle(run_id).await;
+        let handle = targets.cancel_tokens.handle(run_id).await;
         if let Some(handle) = handle {
             match notification.mode {
                 CancelNotificationMode::Cooperative => {
@@ -655,11 +678,16 @@ async fn handle_ably_message_with_network_policy_refresh(
         return;
     }
 
+    if let Some(run_id) = parse_active_input_notification(msg) {
+        targets.active_input_ably_notifications.notify_run(run_id);
+        return;
+    }
+
     if let Some(notification) = parse_network_policy_refresh_notification(msg) {
-        let Some(network_policy_refresh) = network_policy_refresh else {
+        let Some(network_policy_refresh) = targets.network_policy_refresh else {
             return;
         };
-        if let Some(cancel) = network_policy_refresh_cancel {
+        if let Some(cancel) = targets.network_policy_refresh_cancel {
             network_policy_refresh
                 .notify_network_policy_refresh_until_cancelled(
                     notification.run_id,
@@ -681,7 +709,7 @@ async fn handle_ably_message_with_network_policy_refresh(
         };
 
         if let Some(profile) = notif.profile {
-            if supports_profile(profiles, profile) {
+            if supports_profile(targets.profiles, profile) {
                 info!(
                     run_id = %notif.run_id,
                     profile = %profile,
@@ -723,10 +751,11 @@ async fn handle_ably_message_with_network_policy_refresh(
 
     match action {
         JobNotificationAction::WakeNow => {
-            poll_wakeups.request_immediate_poll().await;
+            targets.poll_wakeups.request_immediate_poll().await;
         }
         JobNotificationAction::Direct(candidate) => {
-            enqueue_direct_candidate(candidate, direct_candidates, poll_wakeups).await;
+            enqueue_direct_candidate(candidate, targets.direct_candidates, targets.poll_wakeups)
+                .await;
         }
         JobNotificationAction::Ignore => {}
     }
@@ -822,6 +851,20 @@ enum CancelNotificationMode {
 struct CancelNotification {
     run_id: RunId,
     mode: CancelNotificationMode,
+}
+
+fn parse_active_input_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
+    if msg.name.as_deref() != Some("active-input") {
+        return None;
+    }
+    let raw = msg.data.get("runId").and_then(|value| value.as_str())?;
+    match raw.parse() {
+        Ok(run_id) => Some(run_id),
+        Err(error) => {
+            warn!(value = %raw, error = %error, "ably: invalid active-input runId");
+            None
+        }
+    }
 }
 
 fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<CancelNotification> {
@@ -2267,6 +2310,34 @@ mod tests {
                 "{case}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn active_input_notification_wakes_the_matching_run() {
+        let run_id: RunId = "00000000-0000-0000-0000-000000000004".parse().unwrap();
+        let msg = make_message(Some("active-input"), serde_json::json!({ "runId": run_id }));
+        let notifications = ActiveInputAblyNotifications::new();
+        let mut subscription = notifications.subscribe(run_id);
+        let profiles = default_profiles();
+        let poll_wakeups = PollWakeups::new(false);
+        let direct_candidates = direct_candidate_inbox();
+        let cancel_tokens = RunCancellationRegistry::new();
+
+        handle_ably_message_with_network_policy_refresh(
+            &msg,
+            AblyMessageTargets {
+                profiles: &profiles,
+                poll_wakeups: &poll_wakeups,
+                direct_candidates: &direct_candidates,
+                active_input_ably_notifications: &notifications,
+                cancel_tokens: &cancel_tokens,
+                network_policy_refresh: None,
+                network_policy_refresh_cancel: None,
+            },
+        )
+        .await;
+
+        assert!(subscription.wait().await);
     }
 
     #[test]

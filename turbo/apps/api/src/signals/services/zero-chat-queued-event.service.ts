@@ -125,7 +125,7 @@ export type QueueFirstRunAssociation =
       readonly threadId: string;
       readonly eventId: string;
       readonly prompt: string;
-      readonly runGroupId: string;
+      readonly automationId: string;
     }
   | {
       readonly kind: "goal_event";
@@ -425,7 +425,7 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
     !head ||
     head.eventType !== "input.automation" ||
     head.id !== args.eventId ||
-    head.automationId !== args.runGroupId
+    head.automationId !== args.automationId
   ) {
     return null;
   }
@@ -456,7 +456,6 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
       eventType: "input.prompt",
       userMessage,
       runId: args.runId,
-      runGroupId: args.runGroupId,
       ...(head.triggerSource ? { triggerSource: head.triggerSource } : {}),
     },
   };
