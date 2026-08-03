@@ -12,6 +12,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use clap::Args;
+use tokio::signal::unix::{Signal, SignalKind, signal};
 use uuid::Uuid;
 
 use crate::active_input::{ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, active_input_payload_len};
@@ -650,7 +651,7 @@ impl SubmitPlan {
         ActiveInputProducer::start(self.queue.clone(), std::mem::take(&mut self.active_inputs))
     }
 
-    async fn wait_for_result(&self) -> RunnerResult<SubmitOutcome> {
+    async fn wait_for_result(&self, sigint: &mut Signal) -> RunnerResult<SubmitOutcome> {
         let started_at = tokio::time::Instant::now();
 
         loop {
@@ -672,16 +673,16 @@ impl SubmitPlan {
             let remaining = self.timeout.saturating_sub(elapsed);
             tokio::select! {
                 () = tokio::time::sleep(std::cmp::min(POLL_INTERVAL, remaining)) => {}
-                _ = tokio::signal::ctrl_c() => {
+                _ = sigint.recv() => {
                     eprintln!("interrupted — requesting cancel for {}", self.queue.job_id);
                     let _ = local_queue::write_private_marker(&self.queue.cancel, "local cancel marker");
-                    return Ok(self.wait_for_cancel_grace().await);
+                    return Ok(self.wait_for_cancel_grace(sigint).await);
                 }
             }
         }
     }
 
-    async fn wait_for_cancel_grace(&self) -> SubmitOutcome {
+    async fn wait_for_cancel_grace(&self, sigint: &mut Signal) -> SubmitOutcome {
         let grace = tokio::time::Instant::now() + CANCEL_GRACE;
         loop {
             if let Some(buf) = try_read_result(&self.queue.result) {
@@ -696,7 +697,7 @@ impl SubmitPlan {
             }
             tokio::select! {
                 () = tokio::time::sleep(POLL_INTERVAL) => {}
-                _ = tokio::signal::ctrl_c() => {
+                _ = sigint.recv() => {
                     eprintln!("second interrupt, exiting immediately");
                     self.abandon("local submit interrupted before job completed");
                     return SubmitOutcome::Cancelled;
@@ -732,9 +733,13 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
 
 async fn run_submit_with_home(args: SubmitArgs, home: HomePaths) -> RunnerResult<ExitCode> {
     let mut plan = SubmitPlan::from_args(args, home)?;
+    let mut sigint = signal(SignalKind::interrupt())
+        .map_err(|e| RunnerError::Internal(format!("register local submit SIGINT handler: {e}")))?;
     plan.write_job_file()?;
+    #[cfg(test)]
+    tests::post_publish_test_checkpoint();
     let producer = plan.start_active_input_producer();
-    let outcome = plan.wait_for_result().await;
+    let outcome = plan.wait_for_result(&mut sigint).await;
     if let Some(producer) = producer {
         producer.stop().await;
     }
