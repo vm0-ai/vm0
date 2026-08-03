@@ -3,7 +3,6 @@
 import asyncio
 import json
 import urllib.error
-from email.message import Message
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -42,24 +41,10 @@ def _fail_if_ordinary_upstream_credentials_are_revalidated() -> bool:
     raise AssertionError("ordinary upstream credential guard must not run")
 
 
-def _upstream_headers(*pairs: tuple[str, str]) -> Message:
-    headers = Message()
-    for name, value in pairs:
-        headers[name] = value
-    return headers
-
-
 def _json_response(body: object) -> MagicMock:
     mock_resp = MagicMock()
     mock_resp.__enter__.return_value = mock_resp
     mock_resp.read.return_value = json.dumps(body).encode()
-    return mock_resp
-
-
-def _raw_response(body: bytes) -> MagicMock:
-    mock_resp = MagicMock()
-    mock_resp.__enter__.return_value = mock_resp
-    mock_resp.read.return_value = body
     return mock_resp
 
 
@@ -1016,7 +1001,9 @@ class TestHandleFirewallRequest:
         vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
         response_body = json.dumps({"headers": {"Authorization": "Bearer tok"}}).encode()
-        mock_resp = _raw_response(response_body)
+        mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.read.return_value = response_body
 
         with (
             patch.object(
