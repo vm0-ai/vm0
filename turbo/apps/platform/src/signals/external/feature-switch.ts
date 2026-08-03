@@ -1,4 +1,4 @@
-import { command, computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -10,10 +10,11 @@ import { unauthorizedRedirectSuppressionUntil$ } from "../auth-retry.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { localStorageSignals } from "./local-storage.ts";
 
-export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v4";
+export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v3";
 
 const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
   localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
+const imageRecognitionApiSupported$ = state(false);
 
 // Pinned to the API backend: feature switches bootstrap before the platform API
 // client is available.
@@ -58,6 +59,13 @@ export const featureSwitch$ = computed((get) => {
   return JSON.parse(raw) as Record<FeatureSwitchKey, boolean>;
 });
 
+export const zeroImageRecognitionEnabled$ = computed((get): boolean => {
+  return (
+    get(imageRecognitionApiSupported$) &&
+    (get(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition] ?? false)
+  );
+});
+
 export const artifactSidebarInlineOpenEnabled$ = computed((get): boolean => {
   return (
     get(featureSwitch$)[FeatureSwitchKey.ArtifactSidebarInlineOpen] ?? false
@@ -98,6 +106,7 @@ export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
 
 export const reloadFeatureSwitch$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    set(imageRecognitionApiSupported$, false);
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     if (!clerk.user || !clerk.organization) {
@@ -130,11 +139,14 @@ export const reloadFeatureSwitch$ = command(
     if (result.body.supportsCustomModelGateways !== true) {
       combined[FeatureSwitchKey.CustomModelGateways] = false;
     }
-    if (result.body.supportsImageRecognition !== true) {
+    const supportsImageRecognition =
+      result.body.supportsImageRecognition === true;
+    if (!supportsImageRecognition) {
       combined[FeatureSwitchKey.ZeroImageRecognition] = false;
     }
 
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
+    set(imageRecognitionApiSupported$, supportsImageRecognition);
   },
 );
 

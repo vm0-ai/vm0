@@ -155,6 +155,7 @@ import {
   composerUploadPopoverEnabled$,
   composerConnectorPermissionsEnabled$,
   featureSwitch$,
+  zeroImageRecognitionEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   computerUseHosts$,
@@ -7031,8 +7032,7 @@ function useComposerVisualAttachmentUnsupported(
   signals: ComposerSignals,
 ): VisualAttachmentUnsupportedState | null {
   const modelSelection = useLastResolved(signals.model.modelSelection$) ?? null;
-  const imageRecognitionEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition] ?? false;
+  const imageRecognitionEnabled = useGet(zeroImageRecognitionEnabled$);
   return getVisualAttachmentUnsupportedState(
     {
       value: modelSelection,
@@ -7339,8 +7339,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const setModelSelection = useSet(signals.model.setModelSelection$);
   const configureSelectedModel = useSet(signals.model.configureSelectedModel$);
   const attachments = useGet(signals.draft.attachments$);
-  const imageRecognitionEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition] ?? false;
+  const imageRecognitionEnabled = useGet(zeroImageRecognitionEnabled$);
   const pageSignal = useGet(pageSignal$);
   const value = modelSelection.state === "hasData" ? modelSelection.data : null;
   const modelPickerLoading = modelSelection.state === "loading";

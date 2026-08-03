@@ -1,9 +1,13 @@
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { setupPage } from "../../__tests__/page-helper.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
+import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
+import {
+  featureSwitch$,
+  zeroImageRecognitionEnabled$,
+} from "../external/feature-switch.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
@@ -92,12 +96,10 @@ describe("bootstrap feature switch hydration", () => {
       withoutRender: true,
     });
 
-    expect(
-      context.store.get(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition],
-    ).toBeFalsy();
+    expect(context.store.get(zeroImageRecognitionEnabled$)).toBeFalsy();
   });
 
-  it("hydrates image recognition when the API confirms support", async () => {
+  it("waits for current API support before trusting cached image recognition", async () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
         switches: { [FeatureSwitchKey.ZeroImageRecognition]: true },
@@ -111,15 +113,19 @@ describe("bootstrap feature switch hydration", () => {
       });
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/error",
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroImageRecognition]: true,
+      },
       withoutRender: true,
     });
 
-    expect(
-      context.store.get(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition],
-    ).toBeTruthy();
+    expect(context.store.get(zeroImageRecognitionEnabled$)).toBeFalsy();
+    await waitFor(() => {
+      expect(context.store.get(zeroImageRecognitionEnabled$)).toBeTruthy();
+    });
   });
 
   it("skips feature switch hydration without an authenticated organization", async () => {

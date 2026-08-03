@@ -4,11 +4,10 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { foldActiveChatGoalObjective } from "@vm0/api-contracts/contracts/chat-events";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef, withCleanup } from "../utils.ts";
 import { shouldExcludeAttachmentForModel } from "../chat-page/resolve-draft-attachments.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
+import { zeroImageRecognitionEnabled$ } from "../external/feature-switch.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ZeroChatAttachment } from "./chat-draft.ts";
 import type { ComposerFeedbackModel } from "./chat-feedback.ts";
@@ -614,8 +613,7 @@ function createComposerSubmissionSignals(
       let hasContent = get(workflowComposer.hasInput$);
       if (!hasContent && attachments.length > 0) {
         const modelSelection = await get(options.modelSelection$);
-        const imageRecognitionEnabled =
-          get(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition] ?? false;
+        const imageRecognitionEnabled = get(zeroImageRecognitionEnabled$);
         hasContent = hasVisibleAttachment(
           modelSelection,
           attachments,
@@ -669,9 +667,7 @@ function createComposerSubmissionSignals(
             }
             const modelSelection = await get(options.modelSelection$);
             signal.throwIfAborted();
-            const imageRecognitionEnabled =
-              get(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition] ??
-              false;
+            const imageRecognitionEnabled = get(zeroImageRecognitionEnabled$);
             if (
               !hasVisibleAttachment(
                 modelSelection,

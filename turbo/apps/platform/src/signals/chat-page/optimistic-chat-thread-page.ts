@@ -33,7 +33,10 @@ import {
 } from "../zero-page/model-default-selection.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
+import {
+  featureSwitch$,
+  zeroImageRecognitionEnabled$,
+} from "../external/feature-switch.ts";
 import { codexFastModeLocalDefault$ } from "../zero-page/codex-fast-local-default.ts";
 import { logger } from "../log.ts";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
@@ -494,21 +497,20 @@ const sendNewThreadMessage$ = command(
     if (!resolvedModelSelection) {
       return null;
     }
-    const features = get(featureSwitch$);
     const prepared = await set(
       prepareUserMessageFromDraft$,
       draft,
       prompt,
       {
         selectedModel: resolvedModelSelection.selectedModel,
-        imageRecognitionEnabled:
-          features[FeatureSwitchKey.ZeroImageRecognition] ?? false,
+        imageRecognitionEnabled: get(zeroImageRecognitionEnabled$),
       },
       signal,
     );
     if (!prepared) {
       return null;
     }
+    const features = get(featureSwitch$);
     const userMessage = userMessageForNewThread(request, prepared);
     const threadId = crypto.randomUUID();
     const clientEventId = crypto.randomUUID();

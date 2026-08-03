@@ -72,6 +72,7 @@ import {
   codexFastModeEnabled$,
   featureSwitch$,
   zeroBrowserEnabled$,
+  zeroImageRecognitionEnabled$,
 } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
@@ -3183,9 +3184,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
               request.prompt,
               {
                 selectedModel: request.modelSelection?.selectedModel,
-                imageRecognitionEnabled:
-                  get(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition] ??
-                  false,
+                imageRecognitionEnabled: get(zeroImageRecognitionEnabled$),
               },
               signal,
             );
@@ -3344,8 +3343,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         prompt,
         {
           selectedModel: modelSelection?.selectedModel,
-          imageRecognitionEnabled:
-            features[FeatureSwitchKey.ZeroImageRecognition] ?? false,
+          imageRecognitionEnabled: get(zeroImageRecognitionEnabled$),
         },
         signal,
       );

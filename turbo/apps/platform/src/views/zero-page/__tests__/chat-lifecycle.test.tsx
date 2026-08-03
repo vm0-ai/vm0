@@ -578,8 +578,8 @@ describe("chat lifecycle", () => {
       },
     });
 
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
     });
     const fileInput =
       document.querySelector<HTMLInputElement>('input[type="file"]');
@@ -593,9 +593,14 @@ describe("chat lifecycle", () => {
     );
 
     await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "GLM-5.1" }),
+      ).toBeInTheDocument();
       expect(screen.getByLabelText("Remove brief.png")).toBeInTheDocument();
     });
+    await screen.findByLabelText("Send");
 
+    const textarea = screen.getByPlaceholderText(PLACEHOLDER);
     await sendMessageInUI(user, textarea, "Summarize this visual brief");
 
     await waitFor(() => {
