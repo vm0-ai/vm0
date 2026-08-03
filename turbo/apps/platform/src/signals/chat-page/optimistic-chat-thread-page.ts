@@ -19,10 +19,7 @@ import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
 import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
-import {
-  prepareUserMessageFromDraft$,
-  shouldExcludeVisualAttachmentsForModel,
-} from "./resolve-draft-attachments.ts";
+import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
 import {
   appendOptimisticChatEvent$,
   createOptimisticChatEventEntry,
@@ -497,21 +494,21 @@ const sendNewThreadMessage$ = command(
     if (!resolvedModelSelection) {
       return null;
     }
+    const features = get(featureSwitch$);
     const prepared = await set(
       prepareUserMessageFromDraft$,
       draft,
       prompt,
       {
-        excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
-          resolvedModelSelection.selectedModel,
-        ),
+        selectedModel: resolvedModelSelection.selectedModel,
+        imageRecognitionEnabled:
+          features[FeatureSwitchKey.ZeroImageRecognition] ?? false,
       },
       signal,
     );
     if (!prepared) {
       return null;
     }
-    const features = get(featureSwitch$);
     const userMessage = userMessageForNewThread(request, prepared);
     const threadId = crypto.randomUUID();
     const clientEventId = crypto.randomUUID();

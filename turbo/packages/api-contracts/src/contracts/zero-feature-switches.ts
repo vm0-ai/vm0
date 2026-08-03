@@ -22,6 +22,11 @@ export const featureSwitchesResponseSchema = z.object({
    * Older API deployments omit this field.
    */
   supportsCustomModelGateways: z.boolean().optional(),
+  /**
+   * Optional capability handshake for managed image recognition.
+   * Older API deployments omit this field.
+   */
+  supportsImageRecognition: z.boolean().optional(),
 });
 
 export type FeatureSwitchesResponse = z.infer<

@@ -73,6 +73,55 @@ describe("bootstrap feature switch hydration", () => {
     ).toBeFalsy();
   });
 
+  it("keeps image recognition disabled when the API lacks support", async () => {
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, {
+        switches: { [FeatureSwitchKey.ZeroImageRecognition]: true },
+        effectiveSwitches: {
+          [FeatureSwitchKey.ZeroImageRecognition]: true,
+        },
+        supportsStructuredInlineTemplates: true,
+        supportsCustomConnectorOAuth2: true,
+        supportsCustomModelGateways: true,
+      });
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+    });
+
+    expect(
+      context.store.get(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition],
+    ).toBeFalsy();
+  });
+
+  it("hydrates image recognition when the API confirms support", async () => {
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, {
+        switches: { [FeatureSwitchKey.ZeroImageRecognition]: true },
+        effectiveSwitches: {
+          [FeatureSwitchKey.ZeroImageRecognition]: true,
+        },
+        supportsStructuredInlineTemplates: true,
+        supportsCustomConnectorOAuth2: true,
+        supportsCustomModelGateways: true,
+        supportsImageRecognition: true,
+      });
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+    });
+
+    expect(
+      context.store.get(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition],
+    ).toBeTruthy();
+  });
+
   it("skips feature switch hydration without an authenticated organization", async () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(500, {

@@ -27,6 +27,7 @@ export function setMockFeatureSwitches(
         supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
         supportsCustomModelGateways: true,
+        supportsImageRecognition: true,
       });
     }),
   );

@@ -3,11 +3,12 @@ import type {
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
-import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import { foldActiveChatGoalObjective } from "@vm0/api-contracts/contracts/chat-events";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef, withCleanup } from "../utils.ts";
-import { isVisualAttachment } from "../chat-page/resolve-draft-attachments.ts";
+import { shouldExcludeAttachmentForModel } from "../chat-page/resolve-draft-attachments.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ZeroChatAttachment } from "./chat-draft.ts";
 import type { ComposerFeedbackModel } from "./chat-feedback.ts";
@@ -321,12 +322,14 @@ function composerTemplateSignals(
 function hasVisibleAttachment(
   selection: ModelProviderSelection | null,
   attachments: readonly ZeroChatAttachment[],
+  imageRecognitionEnabled: boolean,
 ): boolean {
-  if (getModelImageInputSupport(selection?.selectedModel) !== "unsupported") {
-    return attachments.length > 0;
-  }
   return attachments.some((attachment) => {
-    return !isVisualAttachment(attachment);
+    return !shouldExcludeAttachmentForModel(
+      attachment,
+      selection?.selectedModel,
+      imageRecognitionEnabled,
+    );
   });
 }
 
@@ -611,7 +614,13 @@ function createComposerSubmissionSignals(
       let hasContent = get(workflowComposer.hasInput$);
       if (!hasContent && attachments.length > 0) {
         const modelSelection = await get(options.modelSelection$);
-        hasContent = hasVisibleAttachment(modelSelection, attachments);
+        const imageRecognitionEnabled =
+          get(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition] ?? false;
+        hasContent = hasVisibleAttachment(
+          modelSelection,
+          attachments,
+          imageRecognitionEnabled,
+        );
       }
       const canSend = uploadsReady && hasContent;
       const sending = await get(eventSignals.sending$);
@@ -660,7 +669,16 @@ function createComposerSubmissionSignals(
             }
             const modelSelection = await get(options.modelSelection$);
             signal.throwIfAborted();
-            if (!hasVisibleAttachment(modelSelection, attachments)) {
+            const imageRecognitionEnabled =
+              get(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition] ??
+              false;
+            if (
+              !hasVisibleAttachment(
+                modelSelection,
+                attachments,
+                imageRecognitionEnabled,
+              )
+            ) {
               return false;
             }
           }

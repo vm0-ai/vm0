@@ -87,7 +87,8 @@ import {
 import { sendMode$ } from "../../signals/send-mode.ts";
 import type { ComposerTemplateAttachment } from "../../signals/zero-page/tiptap-workflow-composer.ts";
 import type { TemplatePreviewRuntime } from "../../signals/zero-page/template-preview-runtime.ts";
-import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
+import { shouldExcludeAttachmentForModel } from "../../signals/chat-page/resolve-draft-attachments.ts";
+import { inferUploadContentType } from "../../signals/zero-page/chat-draft.ts";
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
@@ -313,15 +314,19 @@ function resolveComposerModelForSelection(
 
 interface VisualAttachmentUnsupportedState {
   currentModelName: string;
+  selectedModel: string;
+  imageRecognitionEnabled: boolean;
 }
 
 interface VisualAttachmentCandidate {
   contentType: string;
   filename: string;
+  size: number;
 }
 
 function getVisualAttachmentUnsupportedState(
   modelPicker: ComposerModelPicker | undefined,
+  imageRecognitionEnabled: boolean,
   selection: ModelProviderSelection | null = modelPicker?.value ?? null,
 ): VisualAttachmentUnsupportedState | null {
   const currentModel = resolveComposerModelForSelection(modelPicker, selection);
@@ -333,14 +338,33 @@ function getVisualAttachmentUnsupportedState(
   }
   return {
     currentModelName: getModelDisplayName(currentModel.selectedModel),
+    selectedModel: currentModel.selectedModel,
+    imageRecognitionEnabled,
   };
 }
 
-function isVisualAttachmentFile(file: File): boolean {
-  return isVisualAttachment({
-    contentType: file.type,
+function visualAttachmentCandidateFromFile(
+  file: File,
+): VisualAttachmentCandidate {
+  return {
+    contentType: inferUploadContentType(file),
     filename: file.name,
-  });
+    size: file.size,
+  };
+}
+
+function shouldExcludeVisualAttachment(
+  state: VisualAttachmentUnsupportedState | null,
+  attachment: VisualAttachmentCandidate,
+): boolean {
+  return (
+    state !== null &&
+    shouldExcludeAttachmentForModel(
+      attachment,
+      state.selectedModel,
+      state.imageRecognitionEnabled,
+    )
+  );
 }
 
 function showVisualAttachmentUnsupportedToast(
@@ -367,7 +391,10 @@ function resolveVisibleAttachments<T extends VisualAttachmentCandidate>(
     return attachments;
   }
   return attachments.filter((attachment) => {
-    return !isVisualAttachment(attachment);
+    return !shouldExcludeVisualAttachment(
+      visualAttachmentUnsupported,
+      attachment,
+    );
   });
 }
 
@@ -6951,10 +6978,10 @@ function restoreChatClipboardPayload({
   }
   const allowedAttachments = visualAttachmentUnsupported
     ? persistedAttachments.filter((attachment) => {
-        return !isVisualAttachment({
-          contentType: attachment.contentType,
-          filename: attachment.filename,
-        });
+        return !shouldExcludeVisualAttachment(
+          visualAttachmentUnsupported,
+          attachment,
+        );
       })
     : persistedAttachments;
   if (
@@ -7004,10 +7031,15 @@ function useComposerVisualAttachmentUnsupported(
   signals: ComposerSignals,
 ): VisualAttachmentUnsupportedState | null {
   const modelSelection = useLastResolved(signals.model.modelSelection$) ?? null;
-  return getVisualAttachmentUnsupportedState({
-    value: modelSelection,
-    onChange: () => {},
-  });
+  const imageRecognitionEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition] ?? false;
+  return getVisualAttachmentUnsupportedState(
+    {
+      value: modelSelection,
+      onChange: () => {},
+    },
+    imageRecognitionEnabled,
+  );
 }
 
 function useComposerTemplatePicker(
@@ -7067,7 +7099,13 @@ function useComposerFileUpload(
   const rootSignal = useGet(rootSignal$);
   const { t } = useTranslation();
   return (file) => {
-    if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
+    if (
+      visualAttachmentUnsupported &&
+      shouldExcludeVisualAttachment(
+        visualAttachmentUnsupported,
+        visualAttachmentCandidateFromFile(file),
+      )
+    ) {
       showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
       return false;
     }
@@ -7301,6 +7339,8 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const setModelSelection = useSet(signals.model.setModelSelection$);
   const configureSelectedModel = useSet(signals.model.configureSelectedModel$);
   const attachments = useGet(signals.draft.attachments$);
+  const imageRecognitionEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition] ?? false;
   const pageSignal = useGet(pageSignal$);
   const value = modelSelection.state === "hasData" ? modelSelection.data : null;
   const modelPickerLoading = modelSelection.state === "loading";
@@ -7310,12 +7350,13 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
         value,
         onChange: onModelPickerChange,
       },
+      imageRecognitionEnabled,
       selection,
     );
     if (
       nextUnsupported &&
       attachments.some((attachment) => {
-        return isVisualAttachment(attachment);
+        return shouldExcludeVisualAttachment(nextUnsupported, attachment);
       })
     ) {
       showVisualAttachmentUnsupportedToast(nextUnsupported);

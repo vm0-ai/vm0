@@ -32,7 +32,6 @@ import { buildDraftPersistencePayload } from "../zero-page/draft-persistence.ts"
 import {
   collectSuccessfulAttachmentInfos,
   prepareUserMessageFromDraft$,
-  shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
 import {
   appendOptimisticChatEvent$,
@@ -3183,10 +3182,10 @@ function createPerformSendMessage(deps: SendMessageDeps) {
               draft,
               request.prompt,
               {
-                excludeVisualAttachments:
-                  shouldExcludeVisualAttachmentsForModel(
-                    request.modelSelection?.selectedModel,
-                  ),
+                selectedModel: request.modelSelection?.selectedModel,
+                imageRecognitionEnabled:
+                  get(featureSwitch$)[FeatureSwitchKey.ZeroImageRecognition] ??
+                  false,
               },
               signal,
             );
@@ -3338,14 +3337,15 @@ function createQueueMessage(deps: QueueMessageDeps) {
       const generationTemplate = options.generationTemplate;
       const modelSelection = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
+      const features = get(featureSwitch$);
       const result = await set(
         prepareUserMessageFromDraft$,
         draft,
         prompt,
         {
-          excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
-            modelSelection?.selectedModel,
-          ),
+          selectedModel: modelSelection?.selectedModel,
+          imageRecognitionEnabled:
+            features[FeatureSwitchKey.ZeroImageRecognition] ?? false,
         },
         signal,
       );
@@ -3353,8 +3353,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
         return false;
       }
       signal.throwIfAborted();
-
-      const features = get(featureSwitch$);
       const userMessage = queueUserMessage(options, result);
 
       set(cancelDraftSync$);

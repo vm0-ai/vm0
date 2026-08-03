@@ -528,17 +528,25 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("starts a new chat with a visual attachment", async () => {
+  it("starts a new fallback-enabled text-only chat with an image attachment", async () => {
     const user = userEvent.setup({ delay: null });
+    let sentAttachFiles:
+      | {
+          id: string;
+          filename: string;
+          contentType: string;
+          size: number;
+        }[]
+      | undefined;
     context.mocks.data.userModelPreference({
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "glm-5.1",
       updatedAt: "2026-03-10T00:00:00Z",
     });
     context.mocks.data.orgModelPolicies([
       {
         id: "00000000-0000-4000-a000-000000000719",
-        model: "claude-sonnet-4-6",
-        modelLabel: "Claude Sonnet 4.6",
+        model: "glm-5.1",
+        modelLabel: "GLM-5.1",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -549,7 +557,11 @@ describe("chat lifecycle", () => {
         updatedAt: "2026-07-14T00:00:00.000Z",
       },
     ]);
-    mockChatLifecycle(context);
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        sentAttachFiles = body.attachFiles;
+      },
+    });
     context.mocks.upload.success({
       id: "upload-visual-brief",
       filename: "brief.png",
@@ -558,7 +570,13 @@ describe("chat lifecycle", () => {
       url: "https://cdn.vm7.io/artifacts/test/upload-visual-brief/brief.png",
     });
 
-    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+    detachedSetupPage({
+      context,
+      path: AGENT_CHAT_PATH,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroImageRecognition]: true,
+      },
+    });
 
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
@@ -571,7 +589,7 @@ describe("chat lifecycle", () => {
 
     await user.upload(
       fileInput,
-      new File(["image-bytes"], "brief.png", { type: "image/png" }),
+      new File([new Uint8Array(128)], "brief.png", { type: "image/png" }),
     );
 
     await waitFor(() => {
@@ -585,6 +603,100 @@ describe("chat lifecycle", () => {
         screen.getByText("Summarize this visual brief"),
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(sentAttachFiles).toStrictEqual([
+        {
+          id: "upload-visual-brief",
+          filename: "brief.png",
+          contentType: "image/png",
+          size: 128,
+        },
+      ]);
+    });
+  });
+
+  it("sends an image attachment in an existing fallback-enabled text-only chat", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000994";
+    let sentAttachFiles:
+      | {
+          id: string;
+          filename: string;
+          contentType: string;
+          size: number;
+        }[]
+      | undefined;
+    context.mocks.data.userModelPreference({
+      selectedModel: "glm-5.1",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    context.mocks.data.orgModelPolicies([
+      {
+        id: "00000000-0000-4000-a000-000000000720",
+        model: "glm-5.1",
+        modelLabel: "GLM-5.1",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: "2026-07-14T00:00:00.000Z",
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel: "glm-5.1",
+      onRunCreate: (body) => {
+        sentAttachFiles = body.attachFiles;
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload-existing-visual",
+      filename: "existing.jpg",
+      contentType: "image/jpeg",
+      size: 64,
+      url: "https://cdn.vm7.io/artifacts/test/upload-existing-visual/existing.jpg",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroImageRecognition]: true,
+      },
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
+    await user.upload(
+      fileInput,
+      new File([new Uint8Array(64)], "existing.jpg", {
+        type: "image/jpeg",
+      }),
+    );
+
+    await expect(
+      screen.findByLabelText("Open image preview for existing.jpg"),
+    ).resolves.toBeInTheDocument();
+
+    await sendMessageInUI(user, textarea, "Inspect this existing image");
+
+    await waitFor(() => {
+      expect(sentAttachFiles).toStrictEqual([
+        {
+          id: "upload-existing-visual",
+          filename: "existing.jpg",
+          contentType: "image/jpeg",
+          size: 64,
+        },
+      ]);
     });
   });
 

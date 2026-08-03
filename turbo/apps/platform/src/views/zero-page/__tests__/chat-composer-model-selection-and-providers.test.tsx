@@ -21,6 +21,7 @@ import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { emitMockedClerkEvent } from "../../../__tests__/mock-auth.ts";
@@ -2060,6 +2061,164 @@ describe("chat composer models", () => {
     });
   });
 
+  it("accepts recognition-compatible images for fallback-enabled text-only models", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("glm-5.1");
+    mockAgent();
+    context.mocks.upload.success({
+      id: "recognition-compatible-upload",
+      filename: "uploaded.png",
+      contentType: "image/png",
+      size: 3,
+      url: "https://example.com/uploaded.png",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroImageRecognition]: true,
+      },
+    });
+
+    await expectComposerModel("GLM-5.1");
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+
+    await user.upload(
+      fileInput,
+      new File(["png"], "uploaded.png", { type: "image/png" }),
+    );
+    await expect(
+      screen.findByLabelText("Open image preview for uploaded.png"),
+    ).resolves.toBeInTheDocument();
+
+    const editor = await findComposerEditor();
+    fireEvent.paste(editor, {
+      clipboardData: {
+        getData: () => {
+          return "";
+        },
+        items: [
+          {
+            kind: "file",
+            getAsFile: () => {
+              return new File(["jpeg"], "pasted.jpg", {
+                type: "image/jpeg",
+              });
+            },
+          },
+        ],
+      },
+    });
+
+    await expect(
+      screen.findByLabelText("Open image preview for pasted.jpg"),
+    ).resolves.toBeInTheDocument();
+
+    fireEvent.paste(editor, {
+      clipboardData: {
+        getData: (type: string) => {
+          if (type === "text/html") {
+            return chatClipboardHtml({
+              text: "Compare the restored image",
+              attachments: [
+                {
+                  id: "restored-recognition-image",
+                  url: "https://example.com/restored.png",
+                  filename: "restored.png",
+                  contentType: "image/png",
+                  size: 42,
+                },
+              ],
+            });
+          }
+          return "";
+        },
+        items: [],
+      },
+    });
+
+    await expect(
+      screen.findByLabelText("Open image preview for restored.png"),
+    ).resolves.toBeInTheDocument();
+
+    const composer = composerElementFrom(editor);
+    fireEvent.drop(composer, {
+      dataTransfer: {
+        files: [new File(["webp"], "dropped.webp", { type: "image/webp" })],
+      },
+    });
+
+    await expect(
+      screen.findByLabelText("Open image preview for dropped.webp"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("rejects media outside the recognition contract for fallback-enabled text-only models", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("glm-5.1");
+    mockAgent();
+    context.mocks.upload.success({
+      id: "recognition-boundary-text",
+      filename: "notes.txt",
+      contentType: "text/plain",
+      size: 5,
+      url: "https://example.com/notes.txt",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroImageRecognition]: true,
+      },
+    });
+
+    await expectComposerModel("GLM-5.1");
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const oversizedImage = new File(["png"], "oversized.png", {
+      type: "image/png",
+    });
+    Object.defineProperty(oversizedImage, "size", {
+      configurable: true,
+      value: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+    });
+
+    await user.upload(fileInput, [
+      new File(["gif"], "animated.gif", { type: "image/gif" }),
+      new File([], "empty.png", { type: "image/png" }),
+      oversizedImage,
+      new File(["video"], "clip.mp4", { type: "video/mp4" }),
+    ]);
+
+    await expect(
+      screen.findAllByText(/GLM-5\.1 cannot recognize images or videos/i),
+    ).resolves.not.toHaveLength(0);
+    expect(
+      screen.queryByLabelText("Open image preview for animated.gif"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Open image preview for empty.png"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Open image preview for oversized.png"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Remove clip.mp4")).not.toBeInTheDocument();
+
+    await user.upload(
+      fileInput,
+      new File(["notes"], "notes.txt", { type: "text/plain" }),
+    );
+    await expect(
+      screen.findByLabelText("Remove notes.txt"),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("hides an accepted visual attachment after switching to a text-only model", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-sonnet-4-6");
@@ -2098,6 +2257,53 @@ describe("chat composer models", () => {
       ).toBeGreaterThan(0);
       expect(
         screen.queryByLabelText("Open image preview for storyboard.png"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps a compatible image after switching to a fallback-enabled text-only model", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("claude-sonnet-4-6");
+    mockAgent();
+    context.mocks.upload.success({
+      id: "recognition-model-switch",
+      filename: "storyboard.png",
+      contentType: "image/png",
+      size: 128,
+      url: "https://example.com/storyboard.png",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroImageRecognition]: true,
+      },
+    });
+
+    await expectComposerModel("Claude Sonnet 4.6");
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(["image"], "storyboard.png", { type: "image/png" }),
+    );
+
+    await expect(
+      screen.findByLabelText("Open image preview for storyboard.png"),
+    ).resolves.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+    );
+    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Open image preview for storyboard.png"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
       ).not.toBeInTheDocument();
     });
   });
