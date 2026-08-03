@@ -1312,6 +1312,12 @@ describe("chat lifecycle", () => {
           screen.getByText("Upgrade or downgrade anytime."),
         ).toBeInTheDocument();
       });
+      await waitFor(() => {
+        expect(screen.queryByLabelText("Stop recording")).toBeNull();
+      });
+      expect(toastError).not.toHaveBeenCalledWith(
+        "Voice transcription failed. Try again.",
+      );
     } finally {
       toastError.mockRestore();
     }

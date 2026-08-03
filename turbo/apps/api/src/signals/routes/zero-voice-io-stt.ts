@@ -19,6 +19,7 @@ import {
 } from "../services/zero-voice-io-post.service";
 
 const L = logger("ZeroVoiceIoStt");
+const MAX_CLIENT_DIAGNOSTICS_LOG_LENGTH = 1000;
 
 function logSttUploadInspection(
   file: File,
@@ -32,7 +33,9 @@ function logSttUploadInspection(
     fileName: file.name,
     parsedDurationSeconds,
     clientDiagnostics:
-      typeof clientDiagnostics === "string" ? clientDiagnostics : null,
+      typeof clientDiagnostics === "string"
+        ? clientDiagnostics.slice(0, MAX_CLIENT_DIAGNOSTICS_LOG_LENGTH)
+        : null,
   });
 }
 

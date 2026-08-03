@@ -776,7 +776,9 @@ function createVoiceSegmentTranscriber(
         upload,
       ),
       () => {
-        nextUpload.resolve(undefined);
+        if (!nextUpload.settled()) {
+          nextUpload.resolve(undefined);
+        }
       },
     );
   };
