@@ -32,9 +32,11 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def build_api_opener() -> urllib.request.OpenerDirector:
-    """Build an opener that returns redirects as HTTP errors."""
-    return urllib.request.build_opener(_NoRedirect)
+def build_api_opener(
+    *handlers: urllib.request.BaseHandler,
+) -> urllib.request.OpenerDirector:
+    """Build an opener with caller transports that returns redirects as HTTP errors."""
+    return urllib.request.build_opener(*handlers, _NoRedirect())
 
 
 def configure_client_headers(*, client_session_id: str, client_version: str) -> None:

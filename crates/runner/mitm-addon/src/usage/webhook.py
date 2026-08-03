@@ -18,9 +18,10 @@ from typing import Literal
 
 import network_log_sanitization
 from logging_utils import log_proxy_entry
-from platform_api import build_api_opener, make_api_request
+from platform_api import make_api_request
 
 from .counters import PendingReportLease, admit_pending_report
+from .webhook_transport import open_request
 
 WebhookDeliveryOutcome = Literal["success", "retryable_failure", "permanent_failure"]
 _DeliveryOutcomeCallback = Callable[[WebhookDeliveryOutcome], None]
@@ -30,9 +31,6 @@ _PERMANENT_FAILURE: WebhookDeliveryOutcome = "permanent_failure"
 _MIN_RETRYABLE_HTTP_STATUS_CODE = 500
 _RETRYABLE_HTTP_STATUS_CODES = {408, 429}
 _WEBHOOK_RETRY_DELAY_SECONDS = 0.5
-
-
-_opener = build_api_opener()
 
 
 def _payload_log_summary(payload: dict) -> dict:
@@ -104,7 +102,7 @@ def _post_webhook(url: str, sandbox_token: str, data: bytes) -> None:
     """POST JSON data to a platform webhook.  Raises on failure."""
     req = make_api_request(url, data, sandbox_token)
     try:
-        with _opener.open(req, timeout=10):
+        with open_request(req):
             pass
     except urllib.error.HTTPError as exc:
         # HTTPError wraps an open socket; context-manage it so the fd is

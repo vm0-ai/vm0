@@ -1,24 +1,29 @@
 """Tests for usage webhook HTTP delivery behavior."""
 
 import json
+import socket
+import ssl
+import threading
 import time
 import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import flow_metadata_keys as metadata_keys
 import platform_api
 import usage
+import usage.webhook_transport as webhook_transport
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
     read_jsonl_text_after_flush,
 )
 from tests.pending_helpers import assert_current_pending
+from tests.thread_helpers import ThreadUnderTest
 from tests.webhook_test_helpers import (
     SANITIZED_WEBHOOK_URL,
     SENSITIVE_WEBHOOK_URL,
@@ -211,6 +216,158 @@ def test_retries_on_failure(tmp_path, real_flow, sync_usage_executor, usage_webh
         _report_and_flush_model_usage(flow)
 
     assert webhook.request_count == 2
+    mock_sleep.assert_called_once_with(0.5)
+
+
+def test_response_header_deadline_aborts_both_attempts(
+    tmp_path,
+    sync_usage_executor,
+    usage_webhook_server,
+):
+    pending_path = tmp_path / "usage-pending"
+    proxy_log = tmp_path / "proxy.jsonl"
+    release_headers = threading.Event()
+    delivery_outcomes: list[str] = []
+    usage.set_pending_path(str(pending_path))
+    usage_webhook_server.queue_response(204, release_event=release_headers)
+    usage_webhook_server.queue_response(204, release_event=release_headers)
+
+    def deliver() -> None:
+        assert usage.webhook.enqueue_webhook_delivery(
+            usage_webhook_server.url("/usage"),
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(proxy_log),
+            "usage_event",
+            delivery_outcome_callback=delivery_outcomes.append,
+        )
+
+    try:
+        with (
+            patch.object(webhook_transport, "ATTEMPT_DEADLINE_SECONDS", 0.05),
+            patch.object(usage.webhook.time, "sleep") as mock_sleep,
+        ):
+            delivery_thread = ThreadUnderTest(target=deliver, name="blocked-usage-webhook")
+            delivery_thread.start()
+            assert usage_webhook_server.wait_for_request_count(2, timeout=1.0)
+            delivery_thread.join_and_raise(timeout=1.0)
+
+        assert not release_headers.is_set()
+        assert usage_webhook_server.request_count == 2
+        assert delivery_outcomes == ["retryable_failure"]
+        assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+        assert not any(
+            thread.name == "usage-webhook-deadline" and thread.is_alive()
+            for thread in threading.enumerate()
+        )
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="response-deadline",
+        )
+        mock_sleep.assert_called_once_with(0.5)
+    finally:
+        release_headers.set()
+
+
+def test_https_deadline_connects_to_resolved_ip_and_aborts_owned_tls_socket(
+    tmp_path,
+    sync_usage_executor,
+):
+    proxy_log = tmp_path / "proxy.jsonl"
+    delivery_outcomes: list[str] = []
+    resolver_calls: list[str] = []
+    raw_sockets = [MagicMock(), MagicMock()]
+    raw_socket_iterator = iter(raw_sockets)
+    real_socket = socket.socket
+    tls_sockets: list[MagicMock] = []
+    server_hostnames: list[str] = []
+    tls_context = MagicMock(spec=ssl.SSLContext)
+    tls_context.post_handshake_auth = False
+
+    class PublicResolver:
+        async def lookup_ip(self, host: str) -> list[str]:
+            resolver_calls.append(host)
+            return ["203.0.113.10"]
+
+    def wrap_socket(
+        raw_socket: MagicMock,
+        *,
+        server_hostname: str,
+        do_handshake_on_connect: bool,
+    ) -> MagicMock:
+        assert raw_socket in raw_sockets
+        assert not do_handshake_on_connect
+        server_hostnames.append(server_hostname)
+        aborted = threading.Event()
+        tls_socket = MagicMock()
+
+        def block_handshake() -> None:
+            assert aborted.wait(timeout=1.0)
+            raise OSError("TLS handshake aborted")
+
+        tls_socket.do_handshake.side_effect = block_handshake
+        tls_socket.shutdown.side_effect = lambda _how: aborted.set()
+        tls_socket.close.side_effect = aborted.set
+        tls_sockets.append(tls_socket)
+        return tls_socket
+
+    tls_context.wrap_socket.side_effect = wrap_socket
+
+    def create_socket(
+        family: int = -1,
+        socket_type: int = -1,
+        protocol: int = -1,
+        file_descriptor: int | None = None,
+    ) -> socket.socket | MagicMock:
+        if (
+            family == socket.AF_INET
+            and socket_type == socket.SOCK_STREAM
+            and protocol == -1
+            and file_descriptor is None
+        ):
+            return next(raw_socket_iterator)
+        if file_descriptor is None:
+            return real_socket(family, socket_type, protocol)
+        return real_socket(family, socket_type, protocol, file_descriptor)
+
+    with (
+        patch.object(webhook_transport, "ATTEMPT_DEADLINE_SECONDS", 0.05),
+        patch.object(webhook_transport, "_https_context", None),
+        patch.object(webhook_transport.ssl, "create_default_context", return_value=tls_context),
+        patch.object(webhook_transport.mitmproxy_rs.dns, "DnsResolver", PublicResolver),
+        patch.object(webhook_transport.socket, "socket", side_effect=create_socket),
+        patch.object(webhook_transport.urllib.request, "getproxies", return_value={}),
+        patch.object(usage.webhook.time, "sleep") as mock_sleep,
+    ):
+        assert usage.webhook.enqueue_webhook_delivery(
+            "https://webhook.example.test/usage",
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(proxy_log),
+            "usage_event",
+            delivery_outcome_callback=delivery_outcomes.append,
+        )
+        sync_usage_executor.shutdown(wait=True)
+
+    assert resolver_calls == ["webhook.example.test", "webhook.example.test"]
+    for raw_socket in raw_sockets:
+        raw_socket.connect.assert_called_once_with(("203.0.113.10", 443))
+        raw_socket.setsockopt.assert_called_once_with(
+            socket.IPPROTO_TCP,
+            socket.TCP_NODELAY,
+            1,
+        )
+    assert server_hostnames == ["webhook.example.test", "webhook.example.test"]
+    assert len(tls_sockets) == 2
+    for tls_socket in tls_sockets:
+        tls_socket.shutdown.assert_called_with(socket.SHUT_RDWR)
+        assert tls_socket.close.called
+    tls_context.set_alpn_protocols.assert_called_once_with(["http/1.1"])
+    assert tls_context.post_handshake_auth is True
+    assert delivery_outcomes == ["retryable_failure"]
     mock_sleep.assert_called_once_with(0.5)
 
 
@@ -537,4 +694,37 @@ def test_falls_back_to_sync_after_shutdown(
     assert body["events"][0]["category"] == "tokens.input"
     assert_current_pending(
         pending_path, flows=0, buffered=0, reports=0, flush_request_id="sync-fallback"
+    )
+
+
+@pytest.mark.asyncio
+async def test_sync_fallback_resolves_hostname_from_active_event_loop(
+    tmp_path,
+    fresh_usage_executor,
+    usage_webhook_server,
+):
+    proxy_log = tmp_path / "proxy.jsonl"
+    resolver_threads: list[str] = []
+
+    class LocalResolver:
+        async def lookup_ip(self, host: str) -> list[str]:
+            assert host == "usage-webhook.invalid"
+            resolver_threads.append(threading.current_thread().name)
+            return ["127.0.0.1"]
+
+    fresh_usage_executor.shutdown(wait=True)
+    webhook_url = usage_webhook_server.url("/usage").replace("127.0.0.1", "usage-webhook.invalid")
+    with patch.object(webhook_transport.mitmproxy_rs.dns, "DnsResolver", LocalResolver):
+        assert usage.webhook.enqueue_webhook_delivery(
+            webhook_url,
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(proxy_log),
+            "usage_event",
+        )
+
+    assert usage_webhook_server.request_count == 1
+    assert resolver_threads == ["usage-webhook-dns"]
+    assert not any(
+        thread.name == "usage-webhook-dns" and thread.is_alive() for thread in threading.enumerate()
     )

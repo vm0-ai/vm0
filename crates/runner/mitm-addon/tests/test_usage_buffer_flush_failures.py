@@ -1,7 +1,9 @@
 """Tests for usage-buffer retry and overlapping flush behavior."""
 
+import asyncio
 import contextlib
 import json
+import time
 import urllib.request
 from unittest.mock import patch
 
@@ -9,6 +11,7 @@ import pytest
 
 import usage
 import usage.buffer as usage_buffer
+import usage.webhook_transport as webhook_transport
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 from tests.pending_helpers import assert_current_pending, assert_pending
 from tests.usage_buffer_helpers import (
@@ -654,6 +657,80 @@ def test_timeout_delivery_failure_retains_batch_and_retries_with_same_key(
         assert usage.flush_usage_events(trigger="test") == 0
         assert mock_open.call_count == 3
         mock_sleep.assert_called_once_with(0.5)
+
+
+def test_dns_deadline_retains_batch_and_releases_delivery_ownership(
+    tmp_path,
+    sync_usage_executor,
+    usage_webhook_server,
+):
+    pending_path = tmp_path / "usage-pending"
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    webhook_url = usage_webhook_server.url("/usage").replace("127.0.0.1", "usage-webhook.invalid")
+
+    class BlockingResolver:
+        blocked = True
+        calls = 0
+        cancellations = 0
+
+        async def lookup_ip(self, host: str) -> list[str]:
+            assert host == "usage-webhook.invalid"
+            type(self).calls += 1
+            if not type(self).blocked:
+                return ["127.0.0.1"]
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                type(self).cancellations += 1
+                raise
+            raise AssertionError("blocked resolver unexpectedly completed")
+
+    usage.set_pending_path(str(pending_path))
+    usage.buffer_usage_events(
+        webhook_url,
+        "token-a",
+        "run-1",
+        [event(source_key="source-1", quantity=10)],
+        str(proxy_log_path),
+    )
+
+    with (
+        patch.object(webhook_transport, "ATTEMPT_DEADLINE_SECONDS", 0.05),
+        patch.object(webhook_transport.mitmproxy_rs.dns, "DnsResolver", BlockingResolver),
+        patch.object(usage.webhook.time, "sleep") as mock_sleep,
+    ):
+        started_at = time.monotonic()
+        assert usage.flush_usage_events(trigger="test") == 1
+        assert time.monotonic() - started_at < 1.0
+
+        assert BlockingResolver.calls == 2
+        assert BlockingResolver.cancellations == 2
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=1,
+            reports=0,
+            flush_request_id="dns-deadline-retained",
+        )
+        assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+
+        BlockingResolver.blocked = False
+        assert usage.flush_usage_events(trigger="test") == 1
+
+    assert usage_webhook_server.request_count == 1
+    body = usage_webhook_server.requests[0].json_body()
+    assert body["runId"] == "run-1"
+    assert body["events"][0]["quantity"] == 10
+    assert BlockingResolver.calls == 3
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="dns-deadline-drained",
+    )
+    assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+    mock_sleep.assert_called_once_with(0.5)
 
 
 def test_partial_delivery_failure_retains_only_failed_batch_with_same_key(
