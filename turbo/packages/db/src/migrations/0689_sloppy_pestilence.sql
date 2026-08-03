@@ -1,1 +1,0 @@
-DROP TABLE "html_artifact_edit_drafts" CASCADE;

@@ -1,1 +1,0 @@
-ALTER TABLE "zero_agents" ADD COLUMN "allow_unknown_endpoints" jsonb;

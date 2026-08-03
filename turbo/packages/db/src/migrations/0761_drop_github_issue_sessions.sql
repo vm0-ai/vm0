@@ -1,1 +1,0 @@
-DROP TABLE "github_issue_sessions" CASCADE;

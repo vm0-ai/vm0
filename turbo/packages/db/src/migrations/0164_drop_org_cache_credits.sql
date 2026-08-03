@@ -1,1 +1,0 @@
-ALTER TABLE "org_cache" DROP COLUMN "credits";

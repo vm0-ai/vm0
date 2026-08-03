@@ -636,10 +636,25 @@ jobs:
         if: vars.CI_CHECK_IMMUTABLE_MIGRATE != '0'
         run: |
           BASE_REF="${{ needs.prepare.outputs.base-ref }}"
-          # Check that migration SQL files and snapshots are only added, never modified or deleted
+          MIGRATION_BASELINE=808
+          # The squashed baseline and its history may be removed. Migrations after
+          # the baseline remain immutable once they land on main.
           CHANGED=$(git diff --diff-filter=MD --name-only "$BASE_REF" -- \
             'turbo/packages/db/src/migrations/*.sql' \
-            'turbo/packages/db/src/migrations/meta/*_snapshot.json')
+            'turbo/packages/db/src/migrations/meta/*_snapshot.json' | \
+            awk -v baseline="$MIGRATION_BASELINE" '
+              {
+                name = $0
+                sub(/^.*\//, "", name)
+                if (name !~ /^[0-9][0-9][0-9][0-9]_/) {
+                  print
+                  next
+                }
+                if ((substr(name, 1, 4) + 0) > baseline) {
+                  print
+                }
+              }
+            ')
 
           # _journal.json is modified on every new migration, so only flag deletion
           DELETED_JOURNAL=$(git diff --diff-filter=D --name-only "$BASE_REF" -- \
@@ -647,7 +662,7 @@ jobs:
 
           FAILED=0
           if [ -n "$CHANGED" ]; then
-            echo "::error::Migration files must not be modified or deleted once on main:"
+            echo "::error::Migration files above baseline $MIGRATION_BASELINE must not be modified or deleted once on main:"
             echo "$CHANGED"
             FAILED=1
           fi

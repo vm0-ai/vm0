@@ -1,1 +1,0 @@
-ALTER TABLE "agent_runtime_events" ALTER COLUMN "sequence_number" SET DATA TYPE integer USING sequence_number::integer;

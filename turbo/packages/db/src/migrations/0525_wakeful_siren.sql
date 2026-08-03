@@ -1,1 +1,0 @@
-ALTER TABLE "zero_workflows" DROP COLUMN "request_to_publish";
