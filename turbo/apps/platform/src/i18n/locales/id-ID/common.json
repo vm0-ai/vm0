@@ -1426,6 +1426,7 @@
       "queuedMessage": "Pesan dalam antrean",
       "queuedMessageDescription": "Menunggu giliran dan dikirim setelah eksekusi saat ini selesai.",
       "removeQueuedMessage": "Hapus pesan dalam antrean",
+      "sendQueuedMessageNow": "Kirim pesan antrean sekarang",
       "skipAutomationEvent": "Lewati peristiwa otomatisasi"
     },
     "replaceDraft": {

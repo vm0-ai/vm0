@@ -370,6 +370,15 @@ export async function publishNetworkPolicyRefreshToRunnerGroup(
   );
 }
 
+export async function publishActiveInputToRunnerGroup(
+  group: string,
+  runId: string,
+): Promise<void> {
+  const channel = ablyClient().channels.get(`runner-group:${group}`);
+  await channel.publish("active-input", { runId });
+  L.debug(`Published active input ${runId} to runner-group:${group}`);
+}
+
 export async function publishRunnerJobNotification(
   group: string,
   runId: string,

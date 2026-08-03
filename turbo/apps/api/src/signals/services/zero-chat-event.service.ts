@@ -227,6 +227,7 @@ type InputPromptEvent = ChatEventIdentity &
     readonly eventType: "input.prompt";
     readonly content?: null;
     readonly triggerSource?: TriggerSource;
+    readonly activeInputSequence?: number;
   };
 
 type InputAutomationEvent = ChatEventIdentity &

@@ -11,6 +11,10 @@ import {
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  runStatusSchema,
+  type RunStatus,
+} from "@vm0/api-contracts/contracts/runs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatEvents,
@@ -21,7 +25,7 @@ import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, max } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
@@ -31,6 +35,7 @@ import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishActiveInputToRunnerGroup,
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
@@ -161,6 +166,23 @@ interface InterruptSendBody {
   readonly threadId: string;
   readonly interruptsRunId: string;
   readonly clientEventId?: string;
+}
+
+interface SteerSendBody {
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly steersRunId: string;
+  readonly steersEventId: string;
+  readonly clientEventId?: string;
+}
+
+type ChatEventTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+interface LockedActiveInputRun {
+  readonly id: string;
+  readonly status: RunStatus;
+  readonly activeInputEnabled: boolean;
+  readonly runnerGroup: string | null;
 }
 
 interface AgentForChatSend {
@@ -508,6 +530,10 @@ function isRecallSendBody(body: SendBody): body is RecallSendBody {
     body.revokesEventId !== undefined &&
     !("prompt" in body && body.prompt !== undefined)
   );
+}
+
+function isSteerSendBody(body: SendBody): body is SteerSendBody {
+  return "steersRunId" in body && body.steersRunId !== undefined;
 }
 
 function isInterruptSendBody(body: SendBody): body is InterruptSendBody {
@@ -1891,6 +1917,241 @@ const handleInterruptSend$ = command(
   },
 );
 
+interface AppendActiveInputParams {
+  readonly db: Db;
+  readonly body: SteerSendBody;
+  readonly userId: string;
+  readonly orgId: string;
+}
+
+async function lockActiveInputRun(
+  tx: ChatEventTransaction,
+  params: AppendActiveInputParams,
+): Promise<LockedActiveInputRun | undefined> {
+  if (!(await lockUserMessageQueueThread(tx, params.body.threadId))) {
+    return undefined;
+  }
+
+  const [thread] = await tx
+    .select({ id: chatThreads.id })
+    .from(chatThreads)
+    .where(
+      and(
+        eq(chatThreads.id, params.body.threadId),
+        eq(chatThreads.userId, params.userId),
+        eq(chatThreads.agentComposeId, params.body.agentId),
+      ),
+    )
+    .limit(1);
+  if (!thread) {
+    return undefined;
+  }
+
+  const [run] = await tx
+    .select({
+      id: agentRuns.id,
+      status: agentRuns.status,
+      activeInputEnabled: agentRuns.activeInputEnabled,
+      runnerGroup: agentRuns.runnerGroup,
+    })
+    .from(agentRuns)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(
+      and(
+        eq(agentRuns.id, params.body.steersRunId),
+        eq(agentRuns.userId, params.userId),
+        eq(agentRuns.orgId, params.orgId),
+        eq(zeroRuns.chatThreadId, params.body.threadId),
+      ),
+    )
+    .for("update", { of: agentRuns });
+  if (!run) {
+    return undefined;
+  }
+  return { ...run, status: runStatusSchema.parse(run.status) };
+}
+
+async function activeInputRetryResponse(
+  tx: ChatEventTransaction,
+  body: SteerSendBody,
+  run: LockedActiveInputRun,
+) {
+  if (!body.clientEventId) {
+    return undefined;
+  }
+  const [existing] = await tx
+    .select({
+      chatThreadId: chatEvents.chatThreadId,
+      eventType: chatEvents.eventType,
+      runId: chatEvents.runId,
+      revokesEventId: chatEvents.revokesEventId,
+      activeInputSequence: chatEvents.activeInputSequence,
+      createdAt: chatEvents.createdAt,
+    })
+    .from(chatEvents)
+    .where(eq(chatEvents.id, body.clientEventId))
+    .limit(1);
+  if (!existing) {
+    return undefined;
+  }
+  if (
+    existing.chatThreadId !== body.threadId ||
+    existing.eventType !== "input.prompt" ||
+    existing.runId !== body.steersRunId ||
+    existing.revokesEventId !== body.steersEventId ||
+    existing.activeInputSequence === null
+  ) {
+    return duplicateClientEventIdResponse();
+  }
+  return {
+    status: 201 as const,
+    body: {
+      runId: run.id,
+      threadId: body.threadId,
+      status: run.status,
+      createdAt: existing.createdAt.toISOString(),
+    },
+    runnerGroup: activeInputRunnerGroup(run),
+  };
+}
+
+function activeInputRunnerGroup(run: LockedActiveInputRun): string {
+  if (!run.runnerGroup) {
+    throw new Error("Active input run is missing its runner group");
+  }
+  return run.runnerGroup;
+}
+
+function appendActiveInput(params: AppendActiveInputParams) {
+  return params.db.transaction(async (tx) => {
+    const run = await lockActiveInputRun(tx, params);
+    if (!run) {
+      return notFound("Run not found");
+    }
+
+    const retryResponse = await activeInputRetryResponse(tx, params.body, run);
+    if (retryResponse) {
+      return retryResponse;
+    }
+
+    if (run.status !== "running" || !run.activeInputEnabled) {
+      return conflict("The active run does not support steering");
+    }
+
+    const pendingEvent = await loadPendingChatQueueEvent(tx, {
+      chatThreadId: params.body.threadId,
+      eventId: params.body.steersEventId,
+    });
+    if (pendingEvent?.eventType !== "input.prompt") {
+      return conflict("Queued message is no longer available");
+    }
+
+    const [target] = await tx
+      .select({
+        userMessage: chatEvents.userMessage,
+        attachFiles: chatEvents.attachFiles,
+        generationTemplate: chatEvents.generationTemplate,
+        triggerSource: chatEvents.triggerSource,
+      })
+      .from(chatEvents)
+      .where(eq(chatEvents.id, pendingEvent.id))
+      .limit(1);
+    if (
+      !target?.userMessage ||
+      (target.attachFiles !== null && target.attachFiles.length > 0) ||
+      target.generationTemplate !== null ||
+      !target.userMessage.parts.every((part) => {
+        return part.type === "text";
+      }) ||
+      projectUserMessage(target.userMessage).agentPrompt.length === 0
+    ) {
+      return badRequestMessage(
+        "Only plain text queued messages can be sent to an active run",
+      );
+    }
+
+    const [lastInput] = await tx
+      .select({ sequence: max(chatEvents.activeInputSequence) })
+      .from(chatEvents)
+      .where(eq(chatEvents.runId, run.id));
+    const activeInputSequence = (lastInput?.sequence ?? 0) + 1;
+    const inserted = await replaceChatEvent(
+      tx,
+      pendingEvent.id,
+      {
+        ...(params.body.clientEventId ? { id: params.body.clientEventId } : {}),
+        chatThreadId: params.body.threadId,
+        eventType: "input.prompt",
+        userMessage: target.userMessage,
+        runId: run.id,
+        triggerSource: target.triggerSource ?? undefined,
+        attachFiles: null,
+        generationTemplate: null,
+        activeInputSequence,
+      },
+      { preserveAssetRefs: false },
+    );
+    if (!inserted) {
+      return conflict("Queued message is no longer available");
+    }
+
+    return {
+      status: 201 as const,
+      body: {
+        runId: run.id,
+        threadId: params.body.threadId,
+        status: "running" as const,
+        createdAt: inserted.createdAt.toISOString(),
+      },
+      runnerGroup: activeInputRunnerGroup(run),
+    };
+  });
+}
+
+const handleSteerSend$ = command(
+  async (
+    { set },
+    args: {
+      readonly body: SteerSendBody;
+      readonly userId: string;
+      readonly orgId: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    const db = set(writeDb$);
+    const featureSwitchContext = await loadUserFeatureSwitchContext(
+      db,
+      args.orgId,
+      args.userId,
+    );
+    signal.throwIfAborted();
+    if (!isFeatureEnabled(FeatureSwitchKey.ChatSteer, featureSwitchContext)) {
+      return forbidden("Chat steer is not enabled");
+    }
+
+    const result = await appendActiveInput({
+      db,
+      body: args.body,
+      userId: args.userId,
+      orgId: args.orgId,
+    });
+    signal.throwIfAborted();
+    if (result.status !== 201) {
+      return result;
+    }
+    await Promise.all([
+      publishChatEventCreated(args.userId, args.body.threadId),
+      publishActiveInputToRunnerGroup(
+        result.runnerGroup,
+        args.body.steersRunId,
+      ),
+    ]);
+    signal.throwIfAborted();
+    const { runnerGroup: _runnerGroup, ...response } = result;
+    return response;
+  },
+);
+
 function loadTimedAuthorizedAgent(
   args: NormalSendArgs,
   db: Db,
@@ -3201,6 +3462,13 @@ const sendQueueFirstNormalEvent$ = command(
 const handleSendChatEvent$ = command(
   async ({ get, set }, body: SendBody, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    if (isSteerSendBody(body)) {
+      return await set(
+        handleSteerSend$,
+        { body, userId: auth.userId, orgId: auth.orgId },
+        signal,
+      );
+    }
     if (isRecallSendBody(body)) {
       return await set(
         handleRecallSend$,

@@ -1426,6 +1426,7 @@
       "queuedMessage": "대기 중인 메시지",
       "queuedMessageDescription": "대기열에서 대기하며 현재 실행이 끝나면 전송됩니다.",
       "removeQueuedMessage": "대기 중인 메시지 제거",
+      "sendQueuedMessageNow": "대기 중인 메시지 지금 보내기",
       "skipAutomationEvent": "자동화 이벤트 건너뛰기"
     },
     "replaceDraft": {
