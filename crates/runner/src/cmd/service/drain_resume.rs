@@ -1177,6 +1177,101 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn drain_signal_failure_reports_rollback_failures() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            remove_error: true,
+            reload_errors: VecDeque::from([false, true]),
+            signal_error: true,
+            restore_enablement_error: true,
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains(
+            "drain failed for vm0-runner-test: internal error: signal failed; additionally rollback failed"
+        ));
+        assert!(
+            message.contains(
+                "failed to roll back drain transition for vm0-runner-test (signal_drain)"
+            )
+        );
+        assert!(message.contains("remove drain restart override: internal error: remove failed"));
+        assert!(
+            message.contains("restore boot enablement: internal error: restore enablement failed")
+        );
+        assert!(message.contains("reload restored systemd state: internal error: reload failed"));
+        assert_eq!(
+            ops.events,
+            [
+                "is_active",
+                "is_enabled",
+                "write_restart_override",
+                "disable",
+                "daemon_reload",
+                "restart_policy",
+                "signal_drain",
+                "remove_restart_override",
+                "restore_enabled",
+                "daemon_reload",
+            ]
+        );
+        assert_eq!(
+            ops.reload_requirements,
+            [
+                SystemdReloadRequirement::dirty().with_drain_override(true),
+                SystemdReloadRequirement::dirty().with_drain_override(false),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_signal_failure_reports_unavailable_prior_enablement() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            enablement_results: VecDeque::from([Err(fake_error("enablement read failed"))]),
+            signal_error: true,
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains(
+            "drain failed for vm0-runner-test: internal error: signal failed; additionally rollback failed"
+        ));
+        assert!(
+            message.contains(
+                "failed to roll back drain transition for vm0-runner-test (signal_drain)"
+            )
+        );
+        assert!(message.contains("prior boot enablement is unavailable"));
+        assert_eq!(
+            ops.events,
+            [
+                "is_active",
+                "is_enabled",
+                "write_restart_override",
+                "disable",
+                "daemon_reload",
+                "restart_policy",
+                "signal_drain",
+                "remove_restart_override",
+                "daemon_reload",
+            ]
+        );
+        assert_eq!(
+            ops.reload_requirements,
+            [
+                SystemdReloadRequirement::dirty().with_drain_override(true),
+                SystemdReloadRequirement::dirty().with_drain_override(false),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn drain_already_gone_still_disables_unit() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
