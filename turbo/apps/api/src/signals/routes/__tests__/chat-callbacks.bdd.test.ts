@@ -72,6 +72,17 @@ function goalsClient() {
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
 const CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX =
   "api_dispatch_pre_create_zero_chat_callback_";
+const GOAL_DRAIN_PRE_CREATE_TIMING_PREFIX =
+  "api_dispatch_pre_create_zero_goal_drain_";
+const GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
+  "api_dispatch_pre_create_zero_goal_drain_event_queue_age",
+  "api_dispatch_pre_create_zero_goal_drain_load_event",
+  "api_dispatch_pre_create_zero_goal_drain_load_target",
+  "api_dispatch_pre_create_zero_goal_drain_resolve_model_context",
+  "api_dispatch_pre_create_zero_goal_drain_build_run_input",
+  "api_dispatch_pre_create_zero_goal_drain_handoff_run",
+] as const;
 const CANCELLATION_RECOVERY_CRON_SECRET =
   "bdd-cancellation-recovery-cron-secret";
 const GOAL_CAPABILITIES = [
@@ -121,6 +132,22 @@ const FORBIDDEN_CHAT_CALLBACK_PRE_CREATE_TIMING_KEYS = [
   "presignedUrl",
   "archive_url",
   "archiveUrl",
+] as const;
+const FORBIDDEN_GOAL_DRAIN_PRE_CREATE_TIMING_KEYS = [
+  ...FORBIDDEN_CHAT_CALLBACK_PRE_CREATE_TIMING_KEYS,
+  "event_id",
+  "eventId",
+  "provider_id",
+  "providerId",
+  "model_provider_id",
+  "modelProviderId",
+  "run_group_id",
+  "runGroupId",
+  "callback",
+  "callback_payload",
+  "callbackPayload",
+  "token",
+  "authorization",
 ] as const;
 
 type UserMessage = Extract<
@@ -758,6 +785,144 @@ function chatCallbackPreCreateTimingEventsForRun(
       event.op_type.startsWith(CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX)
     );
   });
+}
+
+function goalDrainPreCreateTimingEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return (
+      typeof event.op_type === "string" &&
+      event.op_type.startsWith(GOAL_DRAIN_PRE_CREATE_TIMING_PREFIX)
+    );
+  });
+}
+
+function timingEventsForAction(
+  events: readonly Record<string, unknown>[],
+  actionType: string,
+): readonly Record<string, unknown>[] {
+  return events.filter((event) => {
+    return event.op_type === actionType;
+  });
+}
+
+function isGoalDrainWaitingTimingAction(actionType: string): boolean {
+  return (
+    actionType ===
+      "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap" ||
+    actionType === "api_dispatch_pre_create_zero_goal_drain_event_queue_age"
+  );
+}
+
+async function expectGoalDrainPreCreateTiming(args: {
+  readonly runId: string;
+  readonly forbiddenValues: readonly string[];
+}): Promise<void> {
+  await expect
+    .poll(() => {
+      const observed = new Set(
+        goalDrainPreCreateTimingEventsForRun(args.runId).map((event) => {
+          return event.op_type;
+        }),
+      );
+      return GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES.filter((actionType) => {
+        return !observed.has(actionType);
+      });
+    })
+    .toStrictEqual([]);
+
+  const allEvents = sandboxOperationEventsForRun(args.runId);
+  const goalDrainEvents = goalDrainPreCreateTimingEventsForRun(args.runId);
+  expect(goalDrainEvents).toHaveLength(
+    GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES.length,
+  );
+  for (const actionType of GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES) {
+    const matchingEvents = timingEventsForAction(goalDrainEvents, actionType);
+    expect(matchingEvents).toHaveLength(1);
+    const event = matchingEvents[0];
+    if (!event) {
+      throw new Error(`Expected goal drain timing for ${actionType}`);
+    }
+    expect(event).toStrictEqual(
+      expect.objectContaining({
+        source: "api",
+        op_type: actionType,
+        sandbox_type: "runner",
+        success: true,
+        run_id: args.runId,
+        span_kind: "nested",
+        trigger_source: "workflow-event",
+        zero_run_origin: "goal_continuation",
+        goal_drain_timing_role: isGoalDrainWaitingTimingAction(actionType)
+          ? "waiting"
+          : "phase",
+      }),
+    );
+    expect(event?.duration_ms).toStrictEqual(expect.any(Number));
+    expect(Number(event?.duration_ms)).toBeGreaterThanOrEqual(0);
+    expect(event.goal_drain_attempt).toBe(
+      actionType ===
+        "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap"
+        ? undefined
+        : "initial",
+    );
+  }
+
+  const entrypointGapEvents = timingEventsForAction(
+    allEvents,
+    "api_dispatch_pre_create_zero_entrypoint_gap",
+  );
+  expect(entrypointGapEvents).toHaveLength(1);
+  const entrypointGap = entrypointGapEvents[0];
+  if (!entrypointGap) {
+    throw new Error("Expected goal drain entrypoint timing");
+  }
+  expect(entrypointGap).toStrictEqual(
+    expect.objectContaining({
+      source: "api",
+      sandbox_type: "runner",
+      success: true,
+      run_id: args.runId,
+      span_kind: "nested",
+      trigger_source: "workflow-event",
+      zero_run_origin: "goal_continuation",
+      goal_drain_attempt: "initial",
+      goal_drain_timing_role: "aggregate",
+    }),
+  );
+  expect(
+    timingEventsForAction(
+      allEvents,
+      "api_dispatch_pre_create_zero_resolve_agent_id",
+    ),
+  ).toHaveLength(1);
+  const preCreateEvents = timingEventsForAction(
+    allEvents,
+    "api_dispatch_pre_create_agent_run",
+  );
+  expect(preCreateEvents).toHaveLength(1);
+  const preCreate = preCreateEvents[0];
+  if (!preCreate) {
+    throw new Error("Expected goal continuation pre-create timing");
+  }
+  expect(preCreate).toStrictEqual(
+    expect.objectContaining({
+      span_kind: "top_level",
+      trigger_source: "workflow-event",
+      zero_run_origin: "goal_continuation",
+    }),
+  );
+
+  for (const event of [...goalDrainEvents, entrypointGap]) {
+    for (const key of FORBIDDEN_GOAL_DRAIN_PRE_CREATE_TIMING_KEYS) {
+      expect(event).not.toHaveProperty(key);
+    }
+    const serialized = JSON.stringify(event);
+    for (const forbiddenValue of args.forbiddenValues) {
+      expect(serialized).not.toContain(forbiddenValue);
+    }
+  }
 }
 
 function expectNoForbiddenChatCallbackPreCreateTimingKeys(
@@ -1568,7 +1733,8 @@ describe("CHAT-02: completed chat callback", () => {
   }, 90_000);
 
   it("continues an active goal with the full objective in the run prompt and the brief in the user message snapshot", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
     await enableGoalWorkflows(actor);
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1620,6 +1786,21 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     if (!goalContinuation.runId) {
       throw new Error("Expected goal continuation run id");
     }
+    await expectGoalDrainPreCreateTiming({
+      runId: goalContinuation.runId,
+      forbiddenValues: [
+        goalBrief,
+        goalObjective,
+        noisySeparator,
+        "https://acme.example.com/treasury",
+        actor.userId,
+        ...(actor.orgId ? [actor.orgId] : []),
+        agentId,
+        providerId,
+        first.threadId,
+        goalContinuation.id,
+      ],
+    });
     const goalContext = await waitForRunContext(actor, goalContinuation.runId);
     expect(goalContext.body.prompt).toContain("# Active thread goal");
     expect(goalContext.body.prompt).toContain(goalObjective);
