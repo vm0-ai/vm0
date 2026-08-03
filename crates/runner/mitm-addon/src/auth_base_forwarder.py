@@ -710,6 +710,9 @@ def _read_response_body(resp) -> bytes:
     body = resp.read(MAX_AUTH_BASE_RESPONSE_BODY_BYTES + 1)
     if len(body) > MAX_AUTH_BASE_RESPONSE_BODY_BYTES:
         raise ForwardedResponseTooLargeError("Forwarded auth.base response body too large")
+    remaining = resp.length
+    if remaining is not None and remaining > 0:
+        raise http_client.IncompleteRead(body, remaining)
     return body
 
 
