@@ -98,6 +98,7 @@ import {
   readFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
   readRunApiStart,
+  readRunClaimOwner,
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
@@ -3049,19 +3050,42 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       modelProvider: "anthropic-api-key",
     });
 
-    const claims = await Promise.all([
-      api.requestClaimRunnerJob(true, run.runId, [200, 404]),
-      api.requestClaimRunnerJob(true, run.runId, [200, 404]),
-    ]);
+    const identities = [
+      { runnerId: randomUUID(), heartbeatGeneration: 11 },
+      { runnerId: randomUUID(), heartbeatGeneration: 12 },
+    ];
+    const claims = await Promise.all(
+      identities.map(async (runnerIdentity) => {
+        return {
+          runnerIdentity,
+          response: await api.requestClaimRunnerJob(
+            true,
+            run.runId,
+            [200, 404],
+            { runnerIdentity },
+          ),
+        };
+      }),
+    );
     expect(
       claims
         .map((claim) => {
-          return claim.status;
+          return claim.response.status;
         })
         .sort((left, right) => {
           return left - right;
         }),
     ).toStrictEqual([200, 404]);
+    const winningClaim = claims.find((claim) => {
+      return claim.response.status === 200;
+    });
+    if (!winningClaim) {
+      throw new Error("Expected one winning runner claim");
+    }
+    await expect(readRunClaimOwner(context, run.runId)).resolves.toStrictEqual({
+      runner_id: winningClaim.runnerIdentity.runnerId,
+      heartbeat_generation: winningClaim.runnerIdentity.heartbeatGeneration,
+    });
     const running = await api.readRun(actor, run.runId);
     expect(running.status).toBe("running");
     expect(running.startedAt).toBeDefined();
@@ -3069,6 +3093,54 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const laterClaim = await api.requestClaimRunnerJob(true, run.runId, [404]);
     expectApiError(laterClaim.body);
 
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("leaves claim ownership null when an official runner omits rollout identity", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "claim without rollout identity",
+      modelProvider: "anthropic-api-key",
+    });
+
+    await api.claimRunnerJob(run.runId);
+
+    await expect(readRunClaimOwner(context, run.runId)).resolves.toStrictEqual({
+      runner_id: null,
+      heartbeat_generation: null,
+    });
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("does not trust claim identity from a PAT-authenticated runner", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const apiKey = await api.createCliToken(actor);
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "claim with untrusted identity",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const claim = await api.requestClaimRunnerJobAs(
+      `Bearer ${apiKey.token}`,
+      run.runId,
+      [200],
+      {
+        runnerIdentity: {
+          runnerId: randomUUID(),
+          heartbeatGeneration: 13,
+        },
+      },
+    );
+
+    expect(claim.status).toBe(200);
+    await expect(readRunClaimOwner(context, run.runId)).resolves.toStrictEqual({
+      runner_id: null,
+      heartbeat_generation: null,
+    });
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
