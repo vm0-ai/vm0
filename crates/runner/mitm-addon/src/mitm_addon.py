@@ -1085,7 +1085,16 @@ async def _prepare_codex_catalog_request_with_upstream_revalidation(
     require_connected: bool,
     request_end_stream: bool,
 ) -> None:
-    """Prepare a local catalog response or revalidate provider continuation."""
+    """Coordinate catalog preparation with post-wait provider revalidation.
+
+    A successful local cache response never continues to the provider. When
+    ``prepare_request()`` reports that this flow waited and no local response exists,
+    the suspension may have invalidated its connector binding, public destination,
+    or host-policy assumptions, so ordinary credential-bearing continuation is
+    revalidated before proceeding. See
+    ``test_catalog_wait_revalidates_only_provider_continuation`` for owner failure,
+    timeout, and local-response coverage across both request hooks.
+    """
     waited_for_in_flight = await codex_model_catalog_cache.prepare_request(
         flow,
         request_end_stream=request_end_stream,
