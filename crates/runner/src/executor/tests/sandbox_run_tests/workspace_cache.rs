@@ -897,34 +897,80 @@ async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_f
     let cache = WorkspaceImageCache::new(runner_paths.clone());
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
+    let materialization_gate = SessionHistoryCpuTestGate::at_entry(1);
+    config.session_history_cpu =
+        SessionHistoryCpuPool::with_test_gates(1, Some(materialization_gate.clone()), None);
     tokio::fs::remove_file(dir.path().join("proxy-registry.json"))
         .await
         .unwrap();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let factory = MaterializationObservedFactory {
+        inner: MockSandboxFactory::with_overrides(Arc::clone(&overrides)),
+        materialization_gate: materialization_gate.clone(),
+        release_after_create: false,
+    };
+    let server = MockServer::start_async().await;
+    let history = br#"{"type":"init"}"#;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
     let mut ctx = minimal_context();
-    set_reuse_and_session_identity(&mut ctx, "sess-register-fail", r#"{"type":"init"}"#);
+    set_reuse_and_session_history_ref(
+        &mut ctx,
+        "sess-register-fail",
+        history,
+        server.url("/history.blob?token=secret"),
+    );
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
     };
-    let expected_seed =
-        seed_workspace_image_cache(&cache, &runner_paths, "sess-register-fail", 16).await;
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let result = execute_new_sandbox(
-        &factory,
+    let expected_seed = seed_workspace_image_cache_with_sidecar(
+        &cache,
+        &runner_paths,
         &ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &params,
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
+        params.workspace_disk_mb,
+        history,
+        WorkspaceSessionHistorySidecarRepresentation::Raw,
     )
     .await;
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        execute_new_sandbox_with_prepared_notifier(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &params,
+            &mut telemetry,
+            NewSandboxHooks {
+                controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+                    .with_session_history_restore_plan(
+                        SessionHistoryRestorePlan::DeferredHashBacked {
+                            fallback: Some(SessionHistoryRestoreFallback::NonReuse),
+                        },
+                    ),
+                sandbox_prepared: None,
+            },
+        ),
+    )
+    .await
+    .expect("proxy registration failure should drop the local materializer");
+
+    tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        materialization_gate.wait_completed(),
+    )
+    .await
+    .expect("restore-plan drop should cancel blocked sidecar CPU work");
 
     assert!(
         result.is_err(),
@@ -949,6 +995,7 @@ async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_f
         expected_seed.exists(),
         "proxy registration failure must not invalidate the unrelated workspace cache hit"
     );
+    history_mock.assert_calls_async(0).await;
     assert_telemetry_action(
         &telemetry,
         "runner_fresh_sandbox_factory_create",
