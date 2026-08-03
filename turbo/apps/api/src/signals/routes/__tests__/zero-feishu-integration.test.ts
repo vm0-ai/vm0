@@ -3104,7 +3104,7 @@ describe("Feishu integration", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const firstClaim = await runsApi.claimRunnerJob(firstRun.id);
 
-    const queuedPrompt = "reject this queued Feishu message after credit loss";
+    const queuedPrompt = `reject this queued Feishu message after credit loss ${randomUUID()}`;
     const queuedMessageId = `om_${randomUUID()}`;
     const queuedPayload = directMessage(appId, queuedPrompt, "ou_feishu_user", {
       messageId: queuedMessageId,
@@ -3133,6 +3133,9 @@ describe("Feishu integration", () => {
     });
     outboundMessages = [];
     context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValue(
+      new Error("Injected queued Feishu admission realtime failure"),
+    );
     await completeRunSession({
       runId: firstRun.id,
       sandboxToken: firstClaim.sandboxToken,
@@ -3140,6 +3143,7 @@ describe("Feishu integration", () => {
       history: `bdd Feishu admission history ${firstRun.id}`,
       assistantText: "First Feishu task completed",
     });
+    context.mocks.ably.publish.mockResolvedValue(undefined);
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
@@ -3282,8 +3286,7 @@ describe("Feishu integration", () => {
       failedDeliveryAnchor.id,
     );
 
-    const failedDeliveryPrompt =
-      "persist this queued Feishu failure before delivery fails";
+    const failedDeliveryPrompt = `persist this queued Feishu failure before delivery fails ${randomUUID()}`;
     const failedDeliveryMessageId = `om_${randomUUID()}`;
     await postEvent(
       callbackUrl,
