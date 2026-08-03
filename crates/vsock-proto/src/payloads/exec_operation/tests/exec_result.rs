@@ -1,5 +1,6 @@
 use super::super::*;
 use super::shared::{ExecResultLayout, set_byte_at};
+use crate::{MSG_EXEC_RESULT, encode};
 
 #[test]
 fn exec_result_roundtrip_exited_with_captured_outputs() {
@@ -36,6 +37,59 @@ fn exec_result_roundtrip_exited_with_captured_outputs() {
         }
     );
 }
+
+#[test]
+fn exec_result_frame_into_matches_composed_encoding() {
+    let termination = ExecTermination::Exited { exit_code: -9 };
+    let stdout = ExecCapturedOutput::Captured {
+        bytes: b"stdout",
+        truncated: false,
+    };
+    let stderr = ExecCapturedOutput::Captured {
+        bytes: b"stderr",
+        truncated: true,
+    };
+    let payload = encode_exec_result(termination, 1234, stdout, stderr, "diagnostic").unwrap();
+    let expected = encode(MSG_EXEC_RESULT, 42, &payload).unwrap();
+    let mut frame = b"stale frame bytes".to_vec();
+
+    encode_exec_result_frame_into(
+        &mut frame,
+        42,
+        termination,
+        1234,
+        stdout,
+        stderr,
+        "diagnostic",
+    )
+    .unwrap();
+
+    assert_eq!(frame, expected);
+}
+
+#[test]
+fn exec_result_frame_into_rejects_too_long_diagnostic() {
+    let diagnostic = "x".repeat(u16::MAX as usize + 1);
+    let mut frame = b"stale frame bytes".to_vec();
+
+    let err = encode_exec_result_frame_into(
+        &mut frame,
+        42,
+        ExecTermination::WaitFailed,
+        1234,
+        ExecCapturedOutput::Discarded,
+        ExecCapturedOutput::Discarded,
+        &diagnostic,
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        err,
+        ProtocolError::PayloadTooLarge("diagnostic", size) if size == diagnostic.len()
+    ));
+    assert!(frame.is_empty());
+}
+
 #[test]
 fn exec_result_roundtrip_timed_out_with_diagnostic() {
     let payload = encode_exec_result(
