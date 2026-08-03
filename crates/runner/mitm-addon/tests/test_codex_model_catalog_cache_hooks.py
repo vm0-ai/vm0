@@ -61,6 +61,27 @@ async def test_unbounded_request_content_length_is_rejected_without_parsing(real
     assert flow.request.headers["Accept-Encoding"] == "identity"
 
 
+@pytest.mark.parametrize("content_length", ["\v0", "\f0"], ids=["vertical-tab", "form-feed"])
+async def test_non_ows_request_content_length_bypasses_catalog_cache(
+    real_flow,
+    content_length: str,
+):
+    flow = catalog_flow(
+        real_flow,
+        extra_headers={"Content-Length": content_length},
+    )
+
+    await catalog_cache.prepare_request(flow, request_end_stream=True)
+
+    telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(flow, telemetry)
+    assert telemetry == {
+        "model_catalog_cache_status": "model_catalog_bypass",
+        "model_catalog_cache_bypass_reason": "request_framing",
+    }
+    assert flow.request.headers["Accept-Encoding"] == "identity"
+
+
 @pytest.mark.parametrize(
     ("method", "request_end_stream", "body", "remove_account", "original_url", "reason"),
     [
