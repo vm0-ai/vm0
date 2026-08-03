@@ -10,8 +10,8 @@ use super::super::super::diagnostics::{
 };
 use super::super::super::sandbox_run::post_job_cleanup;
 use super::super::super::{
-    GUEST_LOG_COPY_MAX_BYTES, STDOUT_STREAM_LIMIT_MARKER, STDOUT_STREAM_OVERFLOW_MARKER,
-    guest_runtime_path,
+    GUEST_LOG_COPY_MAX_BYTES, STDOUT_STREAM_INCOMPLETE_MARKER, STDOUT_STREAM_LIMIT_MARKER,
+    STDOUT_STREAM_OVERFLOW_MARKER, guest_runtime_path,
 };
 use super::super::support::{minimal_context, sandbox_copy_file_error, test_executor_config};
 use crate::paths::LogPaths;
@@ -259,6 +259,7 @@ async fn post_job_cleanup_appends_stream_markers_after_guest_log_copy() {
             bytes_written: 0,
             chunk_truncated: true,
             stream_overflowed: true,
+            stream_incomplete: true,
         },
     )
     .await
@@ -270,5 +271,6 @@ async fn post_job_cleanup_appends_stream_markers_after_guest_log_copy() {
     let mut expected_stream_log = b"transient host-streamed stdout\n".to_vec();
     expected_stream_log.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
     expected_stream_log.extend_from_slice(STDOUT_STREAM_OVERFLOW_MARKER);
+    expected_stream_log.extend_from_slice(STDOUT_STREAM_INCOMPLETE_MARKER);
     assert_eq!(system_stream_log, expected_stream_log);
 }

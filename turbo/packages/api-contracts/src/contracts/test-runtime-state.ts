@@ -29,6 +29,12 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("read-fake-kms-state"),
   }),
   z.object({
+    action: z.literal("read-browser-screenshot-schema-state"),
+  }),
+  z.object({
+    action: z.literal("reset-database-pool"),
+  }),
+  z.object({
     action: z.literal("mutate-runner-job-secret-value-environment-keys"),
     run_id: z.uuid(),
     mode: z.enum(["remove", "invalid"]),
@@ -142,6 +148,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
   ok: z.literal(true),
   selected_model: z.string().optional(),
   decrypt_call_count: z.number().optional(),
+  browser_screenshot_schema_available: z.boolean().optional(),
   admission_lock_held: z.boolean().optional(),
   admission_lock_waiting: z.boolean().optional(),
   uploaded_file_sources: z.array(z.string()).optional(),

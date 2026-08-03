@@ -501,22 +501,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@vm0.ai",
     description:
       "Allow Zero CLI agents to create and configure custom connectors directly.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.CustomConnectorOAuth2]: {
     maintainer: "liangyou@vm0.ai",
     description:
       "Allow org admins to add OAuth 2.0 authentication to custom connectors.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.CustomConnectorPermissions]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Allow users to manage agent permission grants for custom connectors.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
 };
 
