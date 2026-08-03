@@ -2611,12 +2611,14 @@ async function expectDatabaseError(
 }
 
 type PermanentTrigger = {
+  readonly definition: string;
   readonly schemaName: string;
   readonly tableName: string;
   readonly triggerName: string;
 };
 
 type PermanentFunction = {
+  readonly bodyHash: string;
   readonly functionName: string;
   readonly identityArguments: string;
   readonly kind: string;
@@ -2627,91 +2629,127 @@ type PermanentFunction = {
 // pgcrypto and vector functions are deliberately absent from the function list.
 const EXPECTED_PERMANENT_TRIGGERS = [
   {
+    definition:
+      "CREATE TRIGGER bridge_chat_event_run_event_sequence_number_0807 BEFORE INSERT ON public.chat_events FOR EACH ROW EXECUTE FUNCTION bridge_chat_event_run_event_sequence_number_0807()",
     schemaName: "public",
     tableName: "chat_events",
     triggerName: "bridge_chat_event_run_event_sequence_number_0807",
   },
   {
+    definition:
+      "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
     schemaName: "public",
     tableName: "chat_events",
     triggerName: "chat_events_reject_update",
   },
   {
+    definition:
+      "CREATE TRIGGER allocate_legacy_chat_thread_event_seq_id BEFORE INSERT ON public.chat_thread_events FOR EACH ROW EXECUTE FUNCTION allocate_legacy_chat_thread_event_seq_id()",
     schemaName: "public",
     tableName: "chat_thread_events",
     triggerName: "allocate_legacy_chat_thread_event_seq_id",
   },
   {
+    definition:
+      "CREATE TRIGGER chat_thread_events_reject_update BEFORE UPDATE ON public.chat_thread_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
     schemaName: "public",
     tableName: "chat_thread_events",
     triggerName: "chat_thread_events_reject_update",
   },
   {
+    definition:
+      "CREATE TRIGGER fill_legacy_chat_thread_snapshot_event_seq_id BEFORE INSERT OR UPDATE ON public.chat_thread_snapshots FOR EACH ROW EXECUTE FUNCTION fill_legacy_chat_thread_snapshot_event_seq_id()",
     schemaName: "public",
     tableName: "chat_thread_snapshots",
     triggerName: "fill_legacy_chat_thread_snapshot_event_seq_id",
   },
   {
+    definition:
+      "CREATE TRIGGER chat_threads_normalize_computer_access BEFORE INSERT OR UPDATE OF computer_use_host_id, cloud_browser_enabled ON public.chat_threads FOR EACH ROW EXECUTE FUNCTION chat_threads_normalize_computer_access()",
     schemaName: "public",
     tableName: "chat_threads",
     triggerName: "chat_threads_normalize_computer_access",
   },
   {
+    definition:
+      "CREATE TRIGGER enforce_hosted_deployment_scope_0753 BEFORE INSERT ON public.hosted_deployments FOR EACH ROW EXECUTE FUNCTION enforce_hosted_deployment_scope_0753()",
     schemaName: "public",
     tableName: "hosted_deployments",
     triggerName: "enforce_hosted_deployment_scope_0753",
   },
   {
+    definition:
+      "CREATE TRIGGER canonicalize_hosted_site_scope_0753 BEFORE INSERT OR UPDATE OF created_from_run_id, requested_slug, chat_thread_id ON public.hosted_sites FOR EACH ROW EXECUTE FUNCTION canonicalize_hosted_site_scope_0753()",
     schemaName: "public",
     tableName: "hosted_sites",
     triggerName: "canonicalize_hosted_site_scope_0753",
   },
   {
+    definition:
+      "CREATE TRIGGER hosted_sites_delete_artifact_registry AFTER DELETE ON public.hosted_sites FOR EACH ROW EXECUTE FUNCTION delete_artifact_registry_entity('hosted-site')",
     schemaName: "public",
     tableName: "hosted_sites",
     triggerName: "hosted_sites_delete_artifact_registry",
   },
   {
+    definition:
+      "CREATE TRIGGER image_artifacts_delete_artifact_registry AFTER DELETE ON public.image_artifacts FOR EACH ROW EXECUTE FUNCTION delete_artifact_registry_entity('image')",
     schemaName: "public",
     tableName: "image_artifacts",
     triggerName: "image_artifacts_delete_artifact_registry",
   },
   {
+    definition:
+      "CREATE CONSTRAINT TRIGGER trg_org_custom_connector_oauth_configs_mode AFTER INSERT OR DELETE OR UPDATE ON public.org_custom_connector_oauth_configs DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_org_custom_connector_oauth_mode()",
     schemaName: "public",
     tableName: "org_custom_connector_oauth_configs",
     triggerName: "trg_org_custom_connector_oauth_configs_mode",
   },
   {
+    definition:
+      "CREATE CONSTRAINT TRIGGER trg_org_custom_connectors_oauth_mode AFTER INSERT OR UPDATE ON public.org_custom_connectors DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_org_custom_connector_oauth_mode()",
     schemaName: "public",
     tableName: "org_custom_connectors",
     triggerName: "trg_org_custom_connectors_oauth_mode",
   },
   {
+    definition:
+      "CREATE TRIGGER ensure_legacy_org_metadata_plan_entitlement AFTER INSERT ON public.org_metadata FOR EACH ROW EXECUTE FUNCTION ensure_legacy_org_metadata_plan_entitlement()",
     schemaName: "public",
     tableName: "org_metadata",
     triggerName: "ensure_legacy_org_metadata_plan_entitlement",
   },
   {
+    definition:
+      "CREATE TRIGGER sync_legacy_org_plan_entitlement_can_buy_credits BEFORE INSERT OR UPDATE OF plan_key ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_can_buy_credits()",
     schemaName: "public",
     tableName: "org_plan_entitlements",
     triggerName: "sync_legacy_org_plan_entitlement_can_buy_credits",
   },
   {
+    definition:
+      "CREATE TRIGGER presentation_artifacts_delete_artifact_registry AFTER DELETE ON public.presentation_artifacts FOR EACH ROW EXECUTE FUNCTION delete_artifact_registry_entity('presentation')",
     schemaName: "public",
     tableName: "presentation_artifacts",
     triggerName: "presentation_artifacts_delete_artifact_registry",
   },
   {
+    definition:
+      "CREATE TRIGGER run_uploaded_files_delete_artifact_registry AFTER DELETE ON public.run_uploaded_files FOR EACH ROW EXECUTE FUNCTION delete_artifact_registry_entity('file')",
     schemaName: "public",
     tableName: "run_uploaded_files",
     triggerName: "run_uploaded_files_delete_artifact_registry",
   },
   {
+    definition:
+      "CREATE TRIGGER run_uploaded_files_queue_artifact_catalog AFTER INSERT OR UPDATE OF run_id, chat_thread_id, user_id, org_id, external_id, filename, content_type, url, preview_image_url, metadata ON public.run_uploaded_files FOR EACH ROW EXECUTE FUNCTION queue_artifact_catalog_file()",
     schemaName: "public",
     tableName: "run_uploaded_files",
     triggerName: "run_uploaded_files_queue_artifact_catalog",
   },
   {
+    definition:
+      "CREATE TRIGGER video_artifacts_delete_artifact_registry AFTER DELETE ON public.video_artifacts FOR EACH ROW EXECUTE FUNCTION delete_artifact_registry_entity('video')",
     schemaName: "public",
     tableName: "video_artifacts",
     triggerName: "video_artifacts_delete_artifact_registry",
@@ -2720,78 +2758,91 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
   {
+    bodyHash: "6b1b5ad47ec35bcbaad3fa95d86ef027",
     functionName: "allocate_legacy_chat_thread_event_seq_id",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "4886a7314cbaa815a4f8290a16a2f528",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "8a0560fcbbb11914a72bb7c9a6b86cb8",
     functionName: "bridge_chat_event_run_event_sequence_number_0807",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "28abc81d6fe2975374d21c68ee6ac1a7",
     functionName: "canonicalize_hosted_site_scope_0753",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "7f12cb6026b4e6d6638aaa22e0a93514",
     functionName: "chat_threads_normalize_computer_access",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "3879e0228971b9f64e4bf8439ec5df4b",
     functionName: "delete_artifact_registry_entity",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "8531b56175d6c695da79c88e7b5c34cf",
     functionName: "enforce_hosted_deployment_scope_0753",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "15e3309d90f7237e3b5c28fbf23a439d",
     functionName: "enforce_org_custom_connector_oauth_mode",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "903925177de13d29257fec494957b1cd",
     functionName: "ensure_legacy_org_metadata_plan_entitlement",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "7740cf65befb5e06a73e1f21bcfdd5cc",
     functionName: "fill_legacy_chat_thread_snapshot_event_seq_id",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "bcc84b560ab4bb6a1d2ebcc8090ceab1",
     functionName: "queue_artifact_catalog_file",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "519c7504c787a49c4c6bea8a588711fc",
     functionName: "reject_chat_event_source_update",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "daf97695043bdbafd864f7ff7a8f8d5d",
     functionName: "sync_legacy_org_plan_entitlement_can_buy_credits",
     identityArguments: "",
     kind: "f",
@@ -2834,11 +2885,14 @@ async function validatePermanentTriggerAndFunctionInventory(
   await client.connect();
 
   try {
+    // pg_get_triggerdef output depends on search_path.
+    await client.query(`SET search_path TO public, pg_catalog`);
     const triggers = await client.query<PermanentTrigger>(`
       SELECT
         namespace."nspname" AS "schemaName",
         relation."relname" AS "tableName",
-        catalog_trigger."tgname" AS "triggerName"
+        catalog_trigger."tgname" AS "triggerName",
+        pg_catalog.pg_get_triggerdef(catalog_trigger."oid") AS "definition"
       FROM pg_catalog."pg_trigger" AS catalog_trigger
       INNER JOIN pg_catalog."pg_class" AS relation
         ON relation."oid" = catalog_trigger."tgrelid"
@@ -2858,7 +2912,8 @@ async function validatePermanentTriggerAndFunctionInventory(
         catalog_function."proname" AS "functionName",
         pg_catalog.pg_get_function_identity_arguments(catalog_function."oid")
           AS "identityArguments",
-        catalog_function."prokind"::text AS "kind"
+        catalog_function."prokind"::text AS "kind",
+        pg_catalog.md5(catalog_function."prosrc") AS "bodyHash"
       FROM pg_catalog."pg_proc" AS catalog_function
       INNER JOIN pg_catalog."pg_namespace" AS namespace
         ON namespace."oid" = catalog_function."pronamespace"
@@ -2879,10 +2934,10 @@ async function validatePermanentTriggerAndFunctionInventory(
     `);
 
     const triggerKey = (trigger: PermanentTrigger): string => {
-      return `${trigger.schemaName}.${trigger.tableName}.${trigger.triggerName}`;
+      return `${trigger.schemaName}.${trigger.tableName}.${trigger.triggerName} [${trigger.definition}]`;
     };
     const functionKey = (catalogFunction: PermanentFunction): string => {
-      return `${catalogFunction.schemaName}.${catalogFunction.functionName}(${catalogFunction.identityArguments}) [${catalogFunction.kind}]`;
+      return `${catalogFunction.schemaName}.${catalogFunction.functionName}(${catalogFunction.identityArguments}) [${catalogFunction.kind}] [body md5=${catalogFunction.bodyHash}]`;
     };
 
     assertPermanentInventory({
