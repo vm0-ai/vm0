@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.502.9](https://github.com/vm0-ai/vm0/compare/core-v8.502.8...core-v8.502.9) (2026-08-03)
+
+
+### Bug Fixes
+
+* **mail:** restrict reply follow-up switch to staff ([#24619](https://github.com/vm0-ai/vm0/issues/24619)) ([025fa7d](https://github.com/vm0-ai/vm0/commit/025fa7d7ad8d95572518ca237fc0537448eb184b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.262.0
+
 ## [8.502.8](https://github.com/vm0-ai/vm0/compare/core-v8.502.7...core-v8.502.8) (2026-08-02)
 
 

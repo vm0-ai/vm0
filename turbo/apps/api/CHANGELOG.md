@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.365.0](https://github.com/vm0-ai/vm0/compare/api-v1.364.11...api-v1.365.0) (2026-08-03)
+
+
+### Features
+
+* **api:** record runner claim ownership ([#24612](https://github.com/vm0-ai/vm0/issues/24612)) ([227fb9c](https://github.com/vm0-ai/vm0/commit/227fb9c0fabf1a68c3d3d42c607ac3676cdac3cf))
+
+
+### Bug Fixes
+
+* **mail:** restrict reply follow-up switch to staff ([#24619](https://github.com/vm0-ai/vm0/issues/24619)) ([025fa7d](https://github.com/vm0-ai/vm0/commit/025fa7d7ad8d95572518ca237fc0537448eb184b))
+
+
+### Refactoring
+
+* remove queued chat event param readers ([#24615](https://github.com/vm0-ai/vm0/issues/24615)) ([b1385f3](https://github.com/vm0-ai/vm0/commit/b1385f31b7f53e043b3df660c8b446c54da54320))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.262.0
+    * @vm0/core bumped to 8.502.9
+    * @vm0/db bumped to 1.161.0
+
 ## [1.364.11](https://github.com/vm0-ai/vm0/compare/api-v1.364.10...api-v1.364.11) (2026-08-02)
 
 
