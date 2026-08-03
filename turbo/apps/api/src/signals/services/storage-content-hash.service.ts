@@ -40,7 +40,7 @@ function encodeUint32(value: number): Buffer {
   return encoded;
 }
 
-function encodeUtf16Be(value: string): Buffer {
+function encodeCountedUtf16Be(value: string): Buffer {
   const encoded = Buffer.allocUnsafe(4 + value.length * 2);
   encoded.writeUInt32BE(value.length);
   for (let index = 0; index < value.length; index += 1) {
@@ -62,6 +62,8 @@ function compareUtf16(left: string, right: string): number {
 /**
  * Canonical v2 artifact content identity. The guest-agent peer lands in #24803.
  *
+ * The frame contains the fixed domain and version, a counted storage ID, the
+ * file count, then counted path/hash pairs sorted by those two fields.
  * Strings are counted and encoded as UTF-16BE code units so every JavaScript
  * string, including lone surrogates, has a distinct representation.
  */
@@ -71,7 +73,7 @@ export function computeContentHashV2FromHashes(
 ): string {
   const contentHash = createHash("sha256");
   contentHash.update(CONTENT_HASH_V2_DOMAIN);
-  contentHash.update(encodeUtf16Be(storageId));
+  contentHash.update(encodeCountedUtf16Be(storageId));
   contentHash.update(encodeUint32(files.length));
 
   const sortedFiles = [...files].sort((left, right) => {
@@ -80,8 +82,8 @@ export function computeContentHashV2FromHashes(
     );
   });
   for (const file of sortedFiles) {
-    contentHash.update(encodeUtf16Be(file.path));
-    contentHash.update(encodeUtf16Be(file.hash));
+    contentHash.update(encodeCountedUtf16Be(file.path));
+    contentHash.update(encodeCountedUtf16Be(file.hash));
   }
 
   return contentHash.digest("hex");
