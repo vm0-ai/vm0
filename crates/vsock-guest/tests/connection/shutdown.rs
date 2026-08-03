@@ -7,8 +7,9 @@ use vsock_guest::run;
 use vsock_proto::{self, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE};
 
 use super::support::{
-    finish_guest_connection, join_guest_connection, read_and_discard_message, read_error_response,
-    read_message, start_guest_connection, unique_socket_path, unique_tmp_path,
+    accept_guest_connection, finish_guest_connection, join_guest_connection, read_error_response,
+    read_guest_ready, read_message, start_guest_connection, unique_socket_path, unique_tmp_path,
+    wait_for_guest_connection,
 };
 
 #[test]
@@ -22,9 +23,9 @@ fn run_exits_after_shutdown_even_when_ack_write_fails() {
     let guest_socket_path = socket_path.as_str().to_owned();
     let handle = thread::spawn(move || run(Some(&guest_socket_path)));
 
-    let (mut host_stream, _) = listener.accept().unwrap();
+    let mut host_stream = accept_guest_connection(&listener);
     drop(listener);
-    read_and_discard_message(&mut host_stream);
+    read_guest_ready(&mut host_stream);
 
     host_stream.shutdown(Shutdown::Read).unwrap();
     let msg = vsock_proto::encode(MSG_SHUTDOWN, 1, &[]).unwrap();
@@ -35,7 +36,7 @@ fn run_exits_after_shutdown_even_when_ack_write_fails() {
     // ACK write fails with EPIPE/BrokenPipe.
     drop(host_stream);
 
-    let result = handle.join().unwrap();
+    let result = wait_for_guest_connection(handle);
     assert!(
         result.is_ok(),
         "shutdown should stop run() cleanly even if ACK write fails: {result:?}",
@@ -58,9 +59,9 @@ fn run_sends_shutdown_ack_and_waits_for_disconnect() {
         result
     });
 
-    let (mut host_stream, _) = listener.accept().unwrap();
+    let mut host_stream = accept_guest_connection(&listener);
     drop(listener);
-    read_and_discard_message(&mut host_stream);
+    read_guest_ready(&mut host_stream);
 
     let msg = vsock_proto::encode(MSG_SHUTDOWN, 42, &[]).unwrap();
     host_stream.write_all(&msg).unwrap();
@@ -79,7 +80,7 @@ fn run_sends_shutdown_ack_and_waits_for_disconnect() {
     done_rx
         .recv_timeout(Duration::from_secs(1))
         .expect("run() should exit after host disconnect");
-    let result = handle.join().unwrap();
+    let result = wait_for_guest_connection(handle);
     assert!(
         result.is_ok(),
         "shutdown should stop run() cleanly: {result:?}"

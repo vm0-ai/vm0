@@ -5,24 +5,34 @@ use vsock_proto::{
 };
 
 pub(crate) fn read_message(stream: &mut impl Read) -> vsock_proto::RawMessage {
+    read_message_with_context(stream, "read message")
+}
+
+pub(super) fn read_message_with_context(
+    stream: &mut impl Read,
+    context: &str,
+) -> vsock_proto::RawMessage {
     let mut hdr = [0u8; 4];
-    stream.read_exact(&mut hdr).unwrap();
+    stream
+        .read_exact(&mut hdr)
+        .unwrap_or_else(|error| panic!("{context}: failed to read frame header: {error}"));
     let body_len = u32::from_be_bytes(hdr) as usize;
     let mut body = vec![0u8; body_len];
-    stream.read_exact(&mut body).unwrap();
+    stream
+        .read_exact(&mut body)
+        .unwrap_or_else(|error| panic!("{context}: failed to read frame body: {error}"));
 
     let mut full = Vec::with_capacity(4 + body_len);
     full.extend_from_slice(&hdr);
     full.extend_from_slice(&body);
     let mut decoder = vsock_proto::Decoder::new();
-    let msgs = decoder.decode(&full).unwrap();
-    assert_eq!(msgs.len(), 1);
-    msgs.into_iter().next().unwrap()
-}
-
-/// Read one framed message from the stream and discard it.
-pub(crate) fn read_and_discard_message(stream: &mut impl Read) {
-    let _ = read_message(stream);
+    let msgs = decoder
+        .decode(&full)
+        .unwrap_or_else(|error| panic!("{context}: failed to decode frame: {error}"));
+    assert_eq!(msgs.len(), 1, "{context}: expected one decoded frame");
+    msgs.into_iter()
+        .next()
+        .unwrap_or_else(|| panic!("{context}: decoded frame is missing"))
 }
 
 pub(crate) fn read_error_response(stream: &mut impl Read, seq: u32) -> String {
