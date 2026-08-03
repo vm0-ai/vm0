@@ -1273,6 +1273,7 @@ dependencies = [
  "pin-project-lite",
  "process-control-ipc",
  "reqwest",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",
