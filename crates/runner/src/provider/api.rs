@@ -2203,13 +2203,6 @@ mod tests {
         assert_eq!(body["telemetry"]["pollDueToJobDiscoveredMs"], 19);
         assert_eq!(body["telemetry"]["pollHttpRequestMs"], 11);
         assert_eq!(body["telemetry"]["pollReason"], "deferred");
-        assert!(body["telemetry"].get("sessionAffinityResource").is_none());
-        assert!(
-            body["telemetry"]
-                .get("sessionAffinityLocalResource")
-                .is_none()
-        );
-        assert!(body["telemetry"].get("localAdmissionResource").is_none());
         assert!(body.get("runnerPreference").is_none());
         assert!(!body.to_string().contains("rawSizeBytes"));
         assert!(!body.to_string().contains("sessionId"));
@@ -2336,7 +2329,6 @@ mod tests {
         assert!(body["telemetry"].get("pollDueToJobDiscoveredMs").is_none());
         assert!(body["telemetry"].get("pollHttpRequestMs").is_none());
         assert!(body["telemetry"].get("pollReason").is_none());
-        assert!(body["telemetry"].get("sessionAffinityResource").is_none());
         assert!(
             body["telemetry"]
                 .get("directCandidateNotificationToEnqueueMs")
@@ -2441,10 +2433,6 @@ mod tests {
                         "experimentalProfile": "vm0/large",
                         "cliAgentSessionId": "sess-poll",
                         "historyGenerationRunId": history_generation_run_id,
-                        "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                        "affinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                        "sessionAffinityResource": "reusableSandbox",
-                        // Old runners must ignore the additive preference during rollout.
                         "runnerPreference": {
                             "runnerIdentity": {
                                 "runnerId": "00000000-0000-0000-0000-000000000005",

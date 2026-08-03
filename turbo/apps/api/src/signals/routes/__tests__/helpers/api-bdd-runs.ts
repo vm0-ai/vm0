@@ -269,6 +269,10 @@ function runnerHeartbeatBody(
 }
 
 export function createRunsApi(context: TestContext) {
+  const defaultRunnerIdentity = {
+    runnerId: randomUUID(),
+    heartbeatGeneration: 1,
+  };
   const applyUserPermissionGrantRequestBody = (
     body: {
       readonly agentId: string;
@@ -488,7 +492,7 @@ export function createRunsApi(context: TestContext) {
         runApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(true),
           params: { id: runId },
-          body,
+          body: { runnerIdentity: defaultRunnerIdentity, ...body },
         }),
         [200],
       );
@@ -1184,7 +1188,7 @@ export function createRunsApi(context: TestContext) {
         runApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(validAuth),
           params: { id: runId },
-          body,
+          body: { runnerIdentity: defaultRunnerIdentity, ...body },
         }),
         statuses,
       );

@@ -4,10 +4,7 @@ import type {
   BrowserSessionChangedPayload,
   ConnectorChangedPayload,
 } from "@vm0/api-contracts/contracts/realtime";
-import type {
-  RunnerPreference,
-  SessionAffinityResource,
-} from "@vm0/api-contracts/contracts/runners";
+import type { RunnerPreference } from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
 import { env } from "../../lib/env";
@@ -387,9 +384,6 @@ export async function publishRunnerJobNotification(
     /** Raw key required for runner-local affinity matching; it stays on the internal runner-group channel. */
     readonly reuseKey: string | null;
     readonly cliAgentSessionId: string | null;
-    readonly historyGenerationAffinityProtectedUntil: string | null;
-    readonly affinityProtectedUntil: string | null;
-    readonly sessionAffinityResource: SessionAffinityResource | null;
     readonly historyGenerationRunId: string | undefined;
     readonly runnerPreference: RunnerPreference | null;
   },
@@ -403,18 +397,6 @@ export async function publishRunnerJobNotification(
         ...(metadata?.reuseKey ? { reuseKey: metadata.reuseKey } : {}),
         ...(metadata?.cliAgentSessionId
           ? { cliAgentSessionId: metadata.cliAgentSessionId }
-          : {}),
-        ...(metadata?.affinityProtectedUntil
-          ? { affinityProtectedUntil: metadata.affinityProtectedUntil }
-          : {}),
-        ...(metadata?.sessionAffinityResource
-          ? { sessionAffinityResource: metadata.sessionAffinityResource }
-          : {}),
-        ...(metadata?.historyGenerationAffinityProtectedUntil
-          ? {
-              historyGenerationAffinityProtectedUntil:
-                metadata.historyGenerationAffinityProtectedUntil,
-            }
           : {}),
         ...(metadata?.historyGenerationRunId
           ? { historyGenerationRunId: metadata.historyGenerationRunId }

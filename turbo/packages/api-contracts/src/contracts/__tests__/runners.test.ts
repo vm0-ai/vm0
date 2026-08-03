@@ -471,7 +471,6 @@ describe("runner resume session contract", () => {
   });
 
   it("keeps generation metadata in stable discovery and reusable shapes", () => {
-    const historyGenerationAffinityProtectedUntil = "2026-07-15T00:00:00.500Z";
     const storedResumeSession = {
       sessionId: "sess-123",
       historyGenerationRunId,
@@ -501,14 +500,8 @@ describe("runner resume session contract", () => {
       vars: null,
       experimentalProfile: "vm0/default",
       historyGenerationRunId,
-      historyGenerationAffinityProtectedUntil,
-      sessionAffinityResource: "reusableSandbox",
     });
     expect(job.historyGenerationRunId).toBe(historyGenerationRunId);
-    expect(job.historyGenerationAffinityProtectedUntil).toBe(
-      historyGenerationAffinityProtectedUntil,
-    );
-    expect(job.sessionAffinityResource).toBe("reusableSandbox");
 
     const heldSandboxState = heldSandboxStateSchema.parse({
       reuseKey: "thread:22222222-2222-4222-8222-222222222223",
@@ -537,7 +530,7 @@ describe("runner resume session contract", () => {
     ]);
   });
 
-  it("keeps job generation-affinity additions optional", () => {
+  it("keeps the canonical runner preference optional", () => {
     const job = jobSchema.parse({
       runId: "22222222-2222-4222-8222-222222222222",
       prompt: "continue",
@@ -545,10 +538,7 @@ describe("runner resume session contract", () => {
       agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
-      historyGenerationAffinityProtectedUntil: null,
     });
-    expect(job.historyGenerationAffinityProtectedUntil).toBeNull();
-    expect(job.sessionAffinityResource).toBeUndefined();
     expect(job.runnerPreference).toBeUndefined();
   });
 
@@ -1029,19 +1019,6 @@ describe("runner claim request contract", () => {
     });
 
     expect(result.success).toBe(true);
-  });
-
-  it("accepts and strips previous runner telemetry", () => {
-    const body = runnersJobClaimContract.claim.body.parse({
-      telemetry: {
-        sessionAffinityResource: "workspaceCache",
-        sessionAffinityLocalResource: "workspaceCache",
-        localAdmissionResource: "fresh",
-        sessionHistoryGenerationRelationship: "fresh",
-      },
-    });
-
-    expect(body.telemetry).toEqual({});
   });
 
   it("discards malformed diagnostic telemetry", () => {

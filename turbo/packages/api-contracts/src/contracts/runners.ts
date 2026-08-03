@@ -83,11 +83,6 @@ export const runnerClaimPollReasonSchema = z.enum([
   "fast",
 ]);
 
-export const sessionAffinityResourceSchema = z.enum([
-  "reusableSandbox",
-  "workspaceCache",
-]);
-
 const runnerHeartbeatGenerationSchema = z
   .number()
   .int()
@@ -299,17 +294,6 @@ export const jobSchema = z.object({
   cliAgentSessionId: z.string().nullable().optional(),
   reuseKey: z.string().nullable().optional(),
   historyGenerationRunId: z.uuid().optional(),
-  historyGenerationAffinityProtectedUntil: z
-    .string()
-    .datetime({ offset: true })
-    .nullable()
-    .optional(),
-  affinityProtectedUntil: z
-    .string()
-    .datetime({ offset: true })
-    .nullable()
-    .optional(),
-  sessionAffinityResource: sessionAffinityResourceSchema.optional(),
   runnerPreference: runnerPreferenceSchema.optional(),
 });
 
@@ -925,7 +909,4 @@ export type SessionHistoryDownloadSource = z.infer<
 >;
 export type SessionHistorySizeBucket = z.infer<
   typeof sessionHistorySizeBucketSchema
->;
-export type SessionAffinityResource = z.infer<
-  typeof sessionAffinityResourceSchema
 >;

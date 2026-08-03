@@ -1366,8 +1366,14 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       runId,
       cliAgentSessionId: null,
       reuseKey,
-      sessionAffinityResource: "reusableSandbox",
-      affinityProtectedUntil: expect.any(String),
+      runnerPreference: {
+        runnerIdentity: {
+          runnerId,
+          heartbeatGeneration: 1,
+        },
+        reason: "matchingReuseKey",
+        expiresAt: expect.any(String),
+      },
     });
     for (const actionType of [
       "runner_notification_queue_to_entry",
