@@ -14,7 +14,6 @@ use guest_common::{log_error, log_info, log_warn};
 use std::borrow::Cow;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-const CLAUDE_SESSION_PRUNING_FEATURE_FLAG: &str = "claudeSessionPruning";
 
 #[derive(Clone, Copy)]
 enum CheckpointMode {
@@ -71,7 +70,6 @@ fn record_failure(mode: CheckpointMode, op: &str, start: std::time::Instant, msg
 struct CheckpointInputs<'a> {
     run_id: &'a str,
     framework: env::Framework,
-    claude_session_pruning_enabled: bool,
     session_history_limits: session_history::CheckpointSessionHistoryLimits,
     home_dir: &'a str,
     artifact_entries: &'a [env::ArtifactEnv],
@@ -85,12 +83,6 @@ impl<'a> CheckpointInputs<'a> {
         Self {
             run_id: &runtime.config.run_id,
             framework: runtime.config.framework,
-            claude_session_pruning_enabled: runtime
-                .config
-                .feature_flags
-                .get(CLAUDE_SESSION_PRUNING_FEATURE_FLAG)
-                .copied()
-                .unwrap_or(false),
             session_history_limits: session_history::CheckpointSessionHistoryLimits::Production,
             home_dir: &runtime.config.home_dir,
             artifact_entries: &runtime.config.artifacts,
@@ -379,7 +371,6 @@ mod tests {
         let inputs = CheckpointInputs {
             run_id: "checkpoint-missing-mount",
             framework: env::Framework::ClaudeCode,
-            claude_session_pruning_enabled: false,
             session_history_limits: session_history::CheckpointSessionHistoryLimits::Production,
             home_dir: &home_dir,
             artifact_entries: &entries,
@@ -474,7 +465,6 @@ mod tests {
         let inputs = CheckpointInputs {
             run_id: "checkpoint-codex-zstd-reuse",
             framework: env::Framework::Codex,
-            claude_session_pruning_enabled: false,
             session_history_limits: session_history::CheckpointSessionHistoryLimits::Production,
             home_dir: &home_dir,
             artifact_entries: &[],

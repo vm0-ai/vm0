@@ -5678,6 +5678,13 @@
       "when": 1785750870456,
       "tag": "0810_small_sway",
       "breakpoints": true
+    },
+    {
+      "idx": 811,
+      "version": "7",
+      "when": 1785759787040,
+      "tag": "0811_remove_claude_session_pruning_feature_switch",
+      "breakpoints": true
     }
   ]
 }
