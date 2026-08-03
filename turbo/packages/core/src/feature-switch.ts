@@ -394,12 +394,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ComposerSkillSubstringSearch]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Match chat composer slash skill suggestions by any slug substring instead of only prefixes.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ThreeColumnNav]: {
     maintainer: "ming@vm0.ai",
     description:
@@ -414,12 +408,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show Codex and Claude Code personal subscription usage in the Zero sidebar footer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SlackDmSessionRouting]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Reuse agent/model-scoped sessions for top-level Slack direct messages.",
-    enabled: true,
   },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",

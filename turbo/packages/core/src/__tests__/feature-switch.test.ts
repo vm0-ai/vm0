@@ -14,12 +14,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
       true,
     );
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ComposerSkillSubstringSearch, {}),
-    ).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.SlackDmSessionRouting, {})).toBe(
-      true,
-    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -138,10 +132,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
-      true,
-    );
-    expect(staffOrgStates[FeatureSwitchKey.SlackDmSessionRouting]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(true);
@@ -176,10 +166,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
-      true,
-    );
-    expect(otherOrgStates[FeatureSwitchKey.SlackDmSessionRouting]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
