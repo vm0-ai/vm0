@@ -22,7 +22,7 @@ export function createOptimisticChatEventEntry(
 ): OptimisticChatEventEntry {
   return {
     ...input,
-    parsedBodyBlocks: parseChatEventBodyBlocks(input.event),
+    parsedBodyBlocks: parseChatEventBodyBlocks(input.event, input.threadId),
   };
 }
 

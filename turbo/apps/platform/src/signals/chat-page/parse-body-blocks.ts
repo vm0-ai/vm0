@@ -158,6 +158,11 @@ type OpenMarkdownFence = {
   lines: string[];
 };
 
+interface ParseBodyBlocksOptions {
+  readonly previews?: boolean;
+  readonly browserThreadId?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -752,7 +757,10 @@ function extractActionUrlFromLine(line: string): string | null {
   return urls.length === 1 ? urls[0]! : null;
 }
 
-function createActionBlockFromLine(line: string): Extract<
+function createActionBlockFromLine(
+  line: string,
+  browserThreadId: string | undefined,
+): Extract<
   ParsedBodyBlock,
   {
     type:
@@ -824,11 +832,11 @@ function createActionBlockFromLine(line: string): Extract<
     };
   }
 
-  const browserSession = parseBrowserSessionUrl(url, line);
-  if (browserSession) {
+  const browserSession = parseBrowserSessionUrl(url);
+  if (browserSession && browserSession.threadId === browserThreadId) {
     return {
       type: "browser-session",
-      resourceKey: browserSession.fallbackMarkdown,
+      resourceKey: browserSession.href,
       descriptor: browserSession,
     };
   }
@@ -946,7 +954,7 @@ function markdownTableRowIndexes(lines: string[]): Set<number> {
 
 export function parseBodyBlocks(
   content: string,
-  options: { previews?: boolean } = {},
+  options: ParseBodyBlocksOptions = {},
 ): {
   cleanContent: string;
   blocks: ParsedBodyBlock[];
@@ -1016,7 +1024,9 @@ export function parseBodyBlocks(
       continue;
     }
 
-    const actionBlock = previews ? createActionBlockFromLine(line) : null;
+    const actionBlock = previews
+      ? createActionBlockFromLine(line, options.browserThreadId)
+      : null;
     if (actionBlock) {
       if (actionBlock.type === "connector-action") {
         const retainedMarkdown = retainedConnectorActionMarkdown(

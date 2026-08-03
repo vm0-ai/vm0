@@ -3874,9 +3874,10 @@ describe("chat event action cards", () => {
     });
   });
 
-  it("renders trusted browser links as preview cards and reuses the screenshot when paused", async () => {
+  it("renders current-thread browser links as cards and keeps other browser links", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000080";
+    const otherThreadId = "c0000000-0000-4000-a000-000000000079";
     const liveUrl =
       "https://live.browser-use.com/?wss=test-browser-session-token";
     const screenshotUrl =
@@ -3909,6 +3910,7 @@ describe("chat event action cards", () => {
     });
 
     const untrustedUrl = `https://evil.example.test/browsers/${threadId}`;
+    const otherThreadUrl = `https://app.vm0.ai/browsers/${otherThreadId}`;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Managed browser card",
@@ -3919,6 +3921,7 @@ describe("chat event action cards", () => {
           content: [
             `https://app.vm0.ai/browsers/${threadId}`,
             `[Open browser](/browsers/${threadId})`,
+            `[Other thread browser](${otherThreadUrl})`,
             `[Untrusted browser](${untrustedUrl})`,
           ].join("\n"),
           runId: "c0000000-0000-4000-a000-000000000085",
@@ -4030,6 +4033,11 @@ describe("chat event action cards", () => {
         resumedLiveUrl,
       );
     });
+    expect(
+      queryAllByRoleFast("link").find((link) => {
+        return link.textContent === "Other thread browser";
+      }),
+    ).toHaveAttribute("href", otherThreadUrl);
     expect(
       queryAllByRoleFast("link").find((link) => {
         return link.textContent === "Untrusted browser";
