@@ -982,7 +982,7 @@ tc_owned_counters() {
         .[]
         | select(
             .pref == $priority
-            and .handle == $handle
+            and .options.handle == $handle
             and .kind == "flower"
           )
       ] as $owned

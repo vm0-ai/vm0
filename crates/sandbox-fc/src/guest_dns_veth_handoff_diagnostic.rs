@@ -713,13 +713,13 @@ struct TcFilterEntry {
     protocol: Option<String>,
     pref: Option<u16>,
     kind: Option<String>,
-    handle: Option<u32>,
     #[serde(default)]
     options: serde_json::Value,
 }
 
 #[derive(Deserialize)]
 struct TcFilterOptions {
+    handle: u32,
     actions: Vec<TcAction>,
 }
 
@@ -746,7 +746,12 @@ fn parse_owned_filter(output: &str, identity: FilterIdentity) -> Result<TcCounte
     let entries = serde_json::from_str::<Vec<TcFilterEntry>>(output)
         .map_err(|error| format!("invalid filter JSON: {error}"))?;
     let mut matching = entries.into_iter().filter(|entry| {
-        entry.pref == Some(identity.priority) && entry.handle == Some(identity.handle)
+        entry.pref == Some(identity.priority)
+            && entry
+                .options
+                .get("handle")
+                .and_then(serde_json::Value::as_u64)
+                == Some(u64::from(identity.handle))
     });
     let entry = matching
         .next()
@@ -759,6 +764,9 @@ fn parse_owned_filter(output: &str, identity: FilterIdentity) -> Result<TcCounte
     }
     let options = serde_json::from_value::<TcFilterOptions>(entry.options)
         .map_err(|error| format!("invalid diagnostic filter options: {error}"))?;
+    if options.handle != identity.handle {
+        return Err("diagnostic filter handle changed".to_string());
+    }
     let [action] = <[TcAction; 1]>::try_from(options.actions).map_err(|actions| {
         format!(
             "expected one diagnostic filter action, found {}",
