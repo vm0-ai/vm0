@@ -77,7 +77,11 @@ pub fn create_socketpair() -> Result<(OwnedFd, OwnedFd)> {
 /// Falls back to 256 when the sysfs parameter is unreadable (module not loaded).
 /// The actual limit is set by ansible (`modprobe nbd nbds_max=4096`).
 pub fn nbds_max() -> u32 {
-    std::fs::read_to_string("/sys/module/nbd/parameters/nbds_max")
+    nbds_max_from_path(Path::new("/sys/module/nbd/parameters/nbds_max"))
+}
+
+fn nbds_max_from_path(path: &Path) -> u32 {
+    std::fs::read_to_string(path)
         .ok()
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(256)
@@ -474,6 +478,26 @@ mod tests {
                 assert!(random_offset(max) < max, "offset >= max for max={max}");
             }
         }
+    }
+
+    #[test]
+    fn nbds_max_reads_configured_value() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("nbds_max");
+        std::fs::write(&path, "4096\n").expect("write nbds_max");
+
+        assert_eq!(nbds_max_from_path(&path), 4096);
+    }
+
+    #[test]
+    fn nbds_max_returns_exact_default_for_missing_or_invalid_value() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("nbds_max");
+
+        assert_eq!(nbds_max_from_path(&path), 256);
+
+        std::fs::write(&path, "invalid\n").expect("write invalid nbds_max");
+        assert_eq!(nbds_max_from_path(&path), 256);
     }
 
     #[test]
