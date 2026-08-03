@@ -363,6 +363,14 @@ async def test_payload_dependent_sigv4_holds_admission_until_websocket_end(
             auth.AWS_SIGV4_REQUEST_BODY_TOO_LARGE_ERROR,
         ),
         (
+            [("Content-Length", "not-a-number")],
+            auth.AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR,
+        ),
+        (
+            [("Content-Length", "4"), ("Content-Length", "5")],
+            auth.AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR,
+        ),
+        (
             [("Transfer-Encoding", "chunked")],
             auth.AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR,
         ),
@@ -371,7 +379,7 @@ async def test_payload_dependent_sigv4_holds_admission_until_websocket_end(
             auth.AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR,
         ),
     ],
-    ids=["oversized", "chunked", "indeterminate"],
+    ids=["oversized", "invalid", "conflicting", "chunked", "indeterminate"],
 )
 def test_payload_dependent_sigv4_rejects_unbounded_framing_before_auth(
     tmp_path,

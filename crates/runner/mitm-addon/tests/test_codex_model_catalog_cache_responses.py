@@ -377,6 +377,23 @@ async def test_catalog_responses_with_trailers_are_never_cached(
     catalog_cache.handle_error(retry)
 
 
+async def test_catalog_response_accepts_long_leading_zero_content_length(real_flow):
+    flow = catalog_flow(real_flow, version="leading-zero-content-length")
+    await prepare_miss(flow)
+    flow.response = catalog_response(
+        headers={"Content-Length": "0" * 64 + str(len(CATALOG_BODY))},
+    )
+
+    telemetry = finish_response(flow)
+
+    assert telemetry["model_catalog_cache_status"] == "model_catalog_cold_stored"
+
+    hit = catalog_flow(real_flow, version="leading-zero-content-length")
+    await catalog_cache.prepare_request(hit, request_end_stream=True)
+    assert hit.response is not None
+    assert hit.response.content == CATALOG_BODY
+
+
 @pytest.mark.parametrize(
     ("encoding", "headers", "reason", "expected_encoding"),
     [
@@ -400,6 +417,13 @@ async def test_catalog_responses_with_trailers_are_never_cached(
             "response_size",
             "br",
             id="unbounded-length-integer",
+        ),
+        pytest.param(
+            "br",
+            {"Content-Length": "\v0"},
+            "response_size",
+            "br",
+            id="non-ows-content-length",
         ),
         pytest.param(
             "br",

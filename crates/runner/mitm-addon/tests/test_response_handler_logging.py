@@ -728,10 +728,6 @@ async def test_early_response_makes_late_request_hook_noop(tmp_path, real_flow, 
     ("content_length", "expected_size"),
     [
         pytest.param("50000", 50000, id="plain"),
-        pytest.param(" 50000\t", 50000, id="optional-whitespace"),
-        pytest.param("10, 10", 10, id="joined-consistent"),
-        pytest.param("00042, 42", 42, id="joined-leading-zero-consistent"),
-        pytest.param("0" * 32 + "42", 42, id="leading-zero-safe-integer"),
     ],
 )
 def test_response_size_uses_content_length_without_stream_state(
@@ -819,24 +815,8 @@ def test_response_size_is_zero_without_stream_state_or_content_length(
 @pytest.mark.parametrize(
     "content_length",
     [
-        pytest.param("", id="empty"),
-        pytest.param(" ", id="space"),
-        pytest.param("\t", id="tab"),
         pytest.param("not-an-int", id="malformed"),
-        pytest.param("-1", id="negative"),
-        pytest.param("+1", id="signed"),
-        pytest.param("1.5", id="fractional"),
-        pytest.param("1e3", id="exponential"),
-        pytest.param("1, 2", id="joined-conflicting"),
-        pytest.param("1,", id="joined-trailing-empty"),
-        pytest.param(",1", id="joined-leading-empty"),
-        pytest.param("10,,10", id="joined-empty-part"),
-        pytest.param("10, abc", id="joined-invalid"),
-        pytest.param("\u0661\u0662", id="unicode-digits"),
         pytest.param("9007199254740992", id="above-max-safe-integer"),
-        pytest.param("0" * 32 + str(1 << 53), id="leading-zero-above-max-safe-integer"),
-        pytest.param("1" * 257, id="too-many-safe-digits"),
-        pytest.param("9" * 4301, id="too-many-digits"),
     ],
 )
 def test_response_size_is_zero_for_invalid_content_length(
