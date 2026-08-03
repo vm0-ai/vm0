@@ -659,7 +659,7 @@ def test_timeout_delivery_failure_retains_batch_and_retries_with_same_key(
         mock_sleep.assert_called_once_with(0.5)
 
 
-def test_dns_deadline_retains_batch_and_releases_delivery_ownership(
+def test_dns_timeout_retains_batch_and_releases_delivery_ownership(
     tmp_path,
     sync_usage_executor,
     usage_webhook_server,
@@ -695,7 +695,7 @@ def test_dns_deadline_retains_batch_and_releases_delivery_ownership(
     )
 
     with (
-        patch.object(webhook_transport, "ATTEMPT_DEADLINE_SECONDS", 0.05),
+        patch.object(webhook_transport, "WEBHOOK_OPERATION_TIMEOUT_SECONDS", 0.05),
         patch.object(webhook_transport.mitmproxy_rs.dns, "DnsResolver", BlockingResolver),
         patch.object(usage.webhook.time, "sleep") as mock_sleep,
     ):
@@ -710,7 +710,7 @@ def test_dns_deadline_retains_batch_and_releases_delivery_ownership(
             flows=0,
             buffered=1,
             reports=0,
-            flush_request_id="dns-deadline-retained",
+            flush_request_id="dns-timeout-retained",
         )
         assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
 
@@ -727,7 +727,7 @@ def test_dns_deadline_retains_batch_and_releases_delivery_ownership(
         flows=0,
         buffered=0,
         reports=0,
-        flush_request_id="dns-deadline-drained",
+        flush_request_id="dns-timeout-drained",
     )
     assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
     mock_sleep.assert_called_once_with(0.5)

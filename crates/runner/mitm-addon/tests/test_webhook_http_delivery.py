@@ -24,7 +24,6 @@ from tests.jsonl_log_helpers import (
     read_jsonl_text_after_flush,
 )
 from tests.pending_helpers import assert_current_pending
-from tests.thread_helpers import ThreadUnderTest
 from tests.webhook_test_helpers import (
     SANITIZED_WEBHOOK_URL,
     SENSITIVE_WEBHOOK_URL,
@@ -220,76 +219,38 @@ def test_retries_on_failure(tmp_path, real_flow, sync_usage_executor, usage_webh
     mock_sleep.assert_called_once_with(0.5)
 
 
-def test_response_header_deadline_aborts_both_attempts(
+@pytest.mark.parametrize(
+    ("proxies", "connection_host", "connection_port", "uses_connect"),
+    [
+        ({}, "webhook.example.test", 443, False),
+        (
+            {"https": "http://proxy.example.test:8443"},
+            "proxy.example.test",
+            8443,
+            True,
+        ),
+    ],
+)
+def test_https_preserves_connection_and_target_identity(
     tmp_path,
     sync_usage_executor,
-    usage_webhook_server,
-):
-    pending_path = tmp_path / "usage-pending"
-    proxy_log = tmp_path / "proxy.jsonl"
-    release_headers = threading.Event()
-    delivery_outcomes: list[str] = []
-    usage.set_pending_path(str(pending_path))
-    usage_webhook_server.queue_response(204, release_event=release_headers)
-    usage_webhook_server.queue_response(204, release_event=release_headers)
-
-    def deliver() -> None:
-        assert usage.webhook.enqueue_webhook_delivery(
-            usage_webhook_server.url("/usage"),
-            "tok",
-            {"runId": "run-1", "events": []},
-            str(proxy_log),
-            "usage_event",
-            delivery_outcome_callback=delivery_outcomes.append,
-        )
-
-    try:
-        with (
-            patch.object(webhook_transport, "ATTEMPT_DEADLINE_SECONDS", 0.05),
-            patch.object(usage.webhook.time, "sleep") as mock_sleep,
-        ):
-            delivery_thread = ThreadUnderTest(target=deliver, name="blocked-usage-webhook")
-            delivery_thread.start()
-            assert usage_webhook_server.wait_for_request_count(2, timeout=1.0)
-            delivery_thread.join_and_raise(timeout=1.0)
-
-        assert not release_headers.is_set()
-        assert usage_webhook_server.request_count == 2
-        assert delivery_outcomes == ["retryable_failure"]
-        assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
-        assert not any(
-            thread.name == "usage-webhook-deadline" and thread.is_alive()
-            for thread in threading.enumerate()
-        )
-        assert_current_pending(
-            pending_path,
-            flows=0,
-            buffered=0,
-            reports=0,
-            flush_request_id="response-deadline",
-        )
-        mock_sleep.assert_called_once_with(0.5)
-    finally:
-        release_headers.set()
-
-
-def test_https_proxy_deadline_preserves_target_tls_identity_and_aborts_tls_socket(
-    tmp_path,
-    sync_usage_executor,
+    proxies: dict[str, str],
+    connection_host: str,
+    connection_port: int,
+    uses_connect: bool,
 ):
     proxy_log = tmp_path / "proxy.jsonl"
     delivery_outcomes: list[str] = []
     resolver_calls: list[str] = []
-    raw_sockets = [MagicMock(), MagicMock()]
-    raw_socket_iterator = iter(raw_sockets)
+    raw_socket = MagicMock()
     real_socket = socket.socket
-    tls_sockets: list[MagicMock] = []
+    tls_socket = MagicMock()
     tls_contexts: list[ssl.SSLContext] = []
     server_hostnames: list[str] = []
-    for raw_socket in raw_sockets:
-        raw_socket.makefile.return_value = io.BytesIO(
-            b"HTTP/1.0 200 Connection established\r\n\r\n"
-        )
+    raw_socket.makefile.return_value = io.BytesIO(b"HTTP/1.0 200 Connection established\r\n\r\n")
+    tls_socket.makefile.return_value = io.BytesIO(
+        b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n"
+    )
 
     class PublicResolver:
         async def lookup_ip(self, host: str) -> list[str]:
@@ -298,26 +259,13 @@ def test_https_proxy_deadline_preserves_target_tls_identity_and_aborts_tls_socke
 
     def wrap_socket(
         context: ssl.SSLContext,
-        raw_socket: MagicMock,
+        socket_to_wrap: MagicMock,
         *,
         server_hostname: str,
-        do_handshake_on_connect: bool,
     ) -> MagicMock:
-        assert raw_socket in raw_sockets
-        assert not do_handshake_on_connect
+        assert socket_to_wrap is raw_socket
         tls_contexts.append(context)
         server_hostnames.append(server_hostname)
-        aborted = threading.Event()
-        tls_socket = MagicMock()
-
-        def block_handshake() -> None:
-            assert aborted.wait(timeout=1.0)
-            raise OSError("TLS handshake aborted")
-
-        tls_socket.do_handshake.side_effect = block_handshake
-        tls_socket.shutdown.side_effect = lambda _how: aborted.set()
-        tls_socket.close.side_effect = aborted.set
-        tls_sockets.append(tls_socket)
         return tls_socket
 
     def create_socket(
@@ -332,23 +280,21 @@ def test_https_proxy_deadline_preserves_target_tls_identity_and_aborts_tls_socke
             and protocol == -1
             and file_descriptor is None
         ):
-            return next(raw_socket_iterator)
+            return raw_socket
         if file_descriptor is None:
             return real_socket(family, socket_type, protocol)
         return real_socket(family, socket_type, protocol, file_descriptor)
 
     with (
-        patch.object(webhook_transport, "ATTEMPT_DEADLINE_SECONDS", 0.05),
         patch.object(ssl.SSLContext, "wrap_socket", autospec=True, side_effect=wrap_socket),
         patch.object(webhook_transport.mitmproxy_rs.dns, "DnsResolver", PublicResolver),
         patch.object(webhook_transport.socket, "socket", side_effect=create_socket),
         patch.object(
             webhook_transport.urllib.request,
             "getproxies",
-            return_value={"https": "http://proxy.example.test:8443"},
+            return_value=proxies,
         ),
         patch.object(webhook_transport.urllib.request, "proxy_bypass", return_value=False),
-        patch.object(usage.webhook.time, "sleep") as mock_sleep,
     ):
         assert usage.webhook.enqueue_webhook_delivery(
             "https://webhook.example.test/usage",
@@ -360,31 +306,32 @@ def test_https_proxy_deadline_preserves_target_tls_identity_and_aborts_tls_socke
         )
         sync_usage_executor.shutdown(wait=True)
 
-    assert resolver_calls == ["proxy.example.test", "proxy.example.test"]
-    for raw_socket in raw_sockets:
-        raw_socket.connect.assert_called_once_with(("203.0.113.10", 8443))
-        raw_socket.setsockopt.assert_called_once_with(
-            socket.IPPROTO_TCP,
-            socket.TCP_NODELAY,
-            1,
-        )
-        request_bytes = b"".join(call.args[0] for call in raw_socket.sendall.call_args_list)
-        request_line = request_bytes.split(b"\r\n", 1)[0]
-        assert request_line.startswith(b"CONNECT webhook.example.test:443 HTTP/1.")
-        assert b"Host: webhook.example.test:443\r\n" in request_bytes
-    assert server_hostnames == ["webhook.example.test", "webhook.example.test"]
-    assert len(tls_sockets) == 2
-    for tls_socket in tls_sockets:
-        tls_socket.shutdown.assert_called_with(socket.SHUT_RDWR)
-        assert tls_socket.close.called
-    assert len(tls_contexts) == 2
-    assert len({id(context) for context in tls_contexts}) == 1
+    assert resolver_calls == [connection_host]
+    raw_socket.connect.assert_called_once_with(("203.0.113.10", connection_port))
+    raw_socket.settimeout.assert_called_once_with(10.0)
+    raw_socket.setsockopt.assert_called_once_with(
+        socket.IPPROTO_TCP,
+        socket.TCP_NODELAY,
+        1,
+    )
+    connect_bytes = b"".join(call.args[0] for call in raw_socket.sendall.call_args_list)
+    if uses_connect:
+        connect_line = connect_bytes.split(b"\r\n", 1)[0]
+        assert connect_line.startswith(b"CONNECT webhook.example.test:443 HTTP/1.")
+        assert b"Host: webhook.example.test:443\r\n" in connect_bytes
+    else:
+        assert connect_bytes == b""
+    assert server_hostnames == ["webhook.example.test"]
+    request_bytes = b"".join(call.args[0] for call in tls_socket.sendall.call_args_list)
+    assert request_bytes.startswith(b"POST /usage HTTP/1.1\r\n")
+    assert b"Host: webhook.example.test\r\n" in request_bytes
+    assert len(tls_contexts) == 1
     for context in tls_contexts:
         assert context.verify_mode == ssl.CERT_REQUIRED
         assert context.check_hostname is True
         assert context.post_handshake_auth is True
-    assert delivery_outcomes == ["retryable_failure"]
-    mock_sleep.assert_called_once_with(0.5)
+    assert tls_socket.close.called
+    assert delivery_outcomes == ["success"]
 
 
 def test_gives_up_after_retry_budget(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
@@ -740,7 +687,9 @@ async def test_sync_fallback_resolves_hostname_from_active_event_loop(
         )
 
     assert usage_webhook_server.request_count == 1
-    assert resolver_threads == ["usage-webhook-dns"]
+    assert len(resolver_threads) == 1
+    assert resolver_threads[0].startswith("usage-webhook-dns")
     assert not any(
-        thread.name == "usage-webhook-dns" and thread.is_alive() for thread in threading.enumerate()
+        thread.name.startswith("usage-webhook-dns") and thread.is_alive()
+        for thread in threading.enumerate()
     )
