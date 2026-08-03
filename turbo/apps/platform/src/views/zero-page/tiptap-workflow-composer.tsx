@@ -7,14 +7,12 @@ import {
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { useTranslation } from "react-i18next";
 
 import { i18n } from "../../i18n/index.ts";
 import type { ComposerAgentSuggestion } from "../../signals/zero-page/composer-agent-suggestion-domain.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/zero-page/chat-thread-suggestion-domain.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
 import { ComposerMentionSuggestionMenu } from "./chat-thread-suggestion.tsx";
 import {
@@ -300,9 +298,6 @@ function useComposerSuggestionMenu({
   const chatThreadResult = useLastResolved(
     composer.suggestion.chatThreadSuggestions$,
   );
-  const skillSubstringSearchEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ComposerSkillSubstringSearch] ??
-    false;
   const selectedIndex = useGet(composer.suggestion.selectedSuggestionIndex$);
   const setSelectedIndex = useSet(
     composer.suggestion.setSelectedSuggestionIndex$,
@@ -319,11 +314,7 @@ function useComposerSuggestionMenu({
       workflowsLoadable.state === "hasData" ? workflowsLoadable.data : [],
   });
   const workflowSuggestions = slashRange
-    ? findWorkflowQueryMatches(
-        workflows,
-        slashRange.query,
-        skillSubstringSearchEnabled,
-      )
+    ? findWorkflowQueryMatches(workflows, slashRange.query)
     : [];
   const showWorkflows = slashRange !== null;
   const mentionResult =

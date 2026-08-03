@@ -1,10 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import type { Block, KnownBlock } from "@slack/web-api";
-import {
-  isFeatureEnabled,
-  type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
   getVm0VisibleModels,
   isSupportedRunModel,
@@ -758,7 +754,7 @@ const resolveSlackRouteCompose$ = command(
 
 const resolveConnectedSlackAgentRouteAdmission$ = command(
   async (
-    { get, set },
+    { set },
     args: SlackAgentRouteArgs & {
       readonly installation: SlackInstallation;
       readonly connection: SlackConnection;
@@ -766,18 +762,8 @@ const resolveConnectedSlackAgentRouteAdmission$ = command(
     },
     signal: AbortSignal,
   ): Promise<SlackAgentRouteAdmission> => {
-    const overrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.connection.vm0UserId),
-    );
-    signal.throwIfAborted();
     const reuseMainDirectMessageSession =
-      args.channelType === "dm" &&
-      args.threadTs === undefined &&
-      isFeatureEnabled(FeatureSwitchKey.SlackDmSessionRouting, {
-        orgId: args.orgId,
-        userId: args.connection.vm0UserId,
-        overrides,
-      });
+      args.channelType === "dm" && args.threadTs === undefined;
     let effectiveCompose = reuseMainDirectMessageSession
       ? await set(
           resolveSlackRouteCompose$,
