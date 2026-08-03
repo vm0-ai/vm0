@@ -515,6 +515,47 @@ describe("runner resume session contract", () => {
     });
     expect(job.historyGenerationAffinityProtectedUntil).toBeNull();
     expect(job.sessionAffinityResource).toBeUndefined();
+    expect(job.predecessorRunnerAffinity).toBeUndefined();
+  });
+
+  it("accepts a complete dormant predecessor runner affinity", () => {
+    const predecessorRunnerAffinity = {
+      sourceRunId: "11111111-1111-4111-8111-111111111111",
+      runnerId: "22222222-2222-4222-8222-222222222222",
+      heartbeatGeneration: 7,
+      expiresAt: "2026-08-03T00:00:01.000Z",
+    };
+    const job = jobSchema.parse({
+      runId: "33333333-3333-4333-8333-333333333333",
+      prompt: "continue",
+      appendSystemPrompt: null,
+      agentComposeVersionId: null,
+      vars: null,
+      experimentalProfile: "vm0/default",
+      predecessorRunnerAffinity,
+    });
+
+    expect(job.predecessorRunnerAffinity).toStrictEqual(
+      predecessorRunnerAffinity,
+    );
+    expect(
+      jobSchema.safeParse({
+        ...job,
+        predecessorRunnerAffinity: {
+          ...predecessorRunnerAffinity,
+          expiresAt: undefined,
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobSchema.safeParse({
+        ...job,
+        predecessorRunnerAffinity: {
+          ...predecessorRunnerAffinity,
+          resource: "reusableSandbox",
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts ordered heartbeat snapshots", () => {
@@ -868,6 +909,42 @@ describe("runner resume session contract", () => {
 });
 
 describe("runner claim request contract", () => {
+  it("accepts omitted or complete runner identity", () => {
+    expect(runnersJobClaimContract.claim.body.parse({})).toEqual({});
+    expect(
+      runnersJobClaimContract.claim.body.parse({
+        runnerIdentity: {
+          runnerId: "11111111-1111-4111-8111-111111111111",
+          heartbeatGeneration: Number.MAX_SAFE_INTEGER,
+        },
+      }),
+    ).toStrictEqual({
+      runnerIdentity: {
+        runnerId: "11111111-1111-4111-8111-111111111111",
+        heartbeatGeneration: Number.MAX_SAFE_INTEGER,
+      },
+    });
+  });
+
+  it("requires a strict all-or-nothing runner identity", () => {
+    const runnerId = "11111111-1111-4111-8111-111111111111";
+    for (const runnerIdentity of [
+      { runnerId },
+      { heartbeatGeneration: 1 },
+      { runnerId: "not-a-uuid", heartbeatGeneration: 1 },
+      { runnerId, heartbeatGeneration: 0 },
+      { runnerId, heartbeatGeneration: -1 },
+      { runnerId, heartbeatGeneration: 1.5 },
+      { runnerId, heartbeatGeneration: Number.MAX_SAFE_INTEGER + 1 },
+      { runnerId, heartbeatGeneration: 1, unexpected: true },
+    ]) {
+      expect(
+        runnersJobClaimContract.claim.body.safeParse({ runnerIdentity })
+          .success,
+      ).toBe(false);
+    }
+  });
+
   it("accepts optional direct candidate timing telemetry", () => {
     const result = runnersJobClaimContract.claim.body.safeParse({
       telemetry: {

@@ -108,6 +108,9 @@ const L = logger("Runners");
 type SandboxOperationAttrs = Parameters<
   typeof recordSandboxOperations
 >[0][number];
+type RunnerClaimIdentity = NonNullable<
+  z.infer<(typeof runnersJobClaimContract.claim)["body"]>["runnerIdentity"]
+>;
 
 const STALE_RUNNER_THRESHOLD_MS = 5 * 60 * 1000;
 const INVALID_EXECUTION_CONTEXT_ERROR =
@@ -916,6 +919,22 @@ const claimTransitionSqlRowSchema = z.object({
   claimedAtMs: z.number().nullable(),
 });
 
+function decodeClaimTransitionResult(
+  rows: readonly z.infer<typeof claimTransitionSqlRowSchema>[],
+): ClaimTransitionResult {
+  const row = rows[0];
+  if (!row || row.status === "invariant-error") {
+    throw new Error("Runner job claim transition violated its invariant");
+  }
+  if (row.status === "claimed") {
+    if (row.claimedAtMs === null) {
+      throw new Error("Claimed runner job is missing its transition time");
+    }
+    return { status: "claimed", claimedAt: new Date(row.claimedAtMs) };
+  }
+  return { status: row.status };
+}
+
 async function lockClaimRun(
   db: Pick<Db, "select">,
   runId: string,
@@ -953,9 +972,12 @@ async function lockRunnerJob(
 async function transitionClaimedJobToRunning(
   db: Db,
   runId: string,
+  runnerIdentity: RunnerClaimIdentity | undefined,
   signal: AbortSignal,
   timing: ClaimRouteTimingCollector,
 ): Promise<ClaimTransitionResult> {
+  const runnerId = runnerIdentity?.runnerId ?? null;
+  const runnerHeartbeatGeneration = runnerIdentity?.heartbeatGeneration ?? null;
   return await db.transaction(async (tx) => {
     const result = await timing.measure(
       "claim_route_transition_execute",
@@ -1001,7 +1023,9 @@ async function transitionClaimedJobToRunning(
               status = 'running',
               started_at = claim_clock."claimedAt",
               last_heartbeat_at = claim_clock."claimedAt",
-              cancellation_recovery_completed = false
+              cancellation_recovery_completed = false,
+              runner_id = ${runnerId},
+              runner_heartbeat_generation = ${runnerHeartbeatGeneration}
             FROM locked_run
             INNER JOIN locked_job
               ON locked_job."runId" = locked_run."id"
@@ -1064,17 +1088,7 @@ async function transitionClaimedJobToRunning(
       },
     );
     signal.throwIfAborted();
-    const row = result[0];
-    if (!row || row.status === "invariant-error") {
-      throw new Error("Runner job claim transition violated its invariant");
-    }
-    if (row.status === "claimed") {
-      if (row.claimedAtMs === null) {
-        throw new Error("Claimed runner job is missing its transition time");
-      }
-      return { status: "claimed", claimedAt: new Date(row.claimedAtMs) };
-    }
-    return { status: row.status };
+    return decodeClaimTransitionResult(result);
   });
 }
 
@@ -2204,6 +2218,7 @@ const claimAuthorizedJob$ = command(
       readonly db: Db;
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
+      readonly runnerIdentity: RunnerClaimIdentity | undefined;
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
@@ -2277,6 +2292,7 @@ const claimAuthorizedJob$ = command(
         return await transitionClaimedJobToRunning(
           db,
           runId,
+          args.runnerIdentity,
           signal,
           claimRouteTiming,
         );
@@ -2343,6 +2359,8 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     db,
     runId,
     authType: auth.type,
+    runnerIdentity:
+      auth.type === "official-runner" ? body.data.runnerIdentity : undefined,
     jobWithRun,
     telemetry: body.data.telemetry,
     claimRequestStartedAtMs,

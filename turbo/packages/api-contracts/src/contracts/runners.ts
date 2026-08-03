@@ -88,6 +88,26 @@ export const sessionAffinityResourceSchema = z.enum([
   "workspaceCache",
 ]);
 
+const runnerHeartbeatGenerationSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(Number.MAX_SAFE_INTEGER);
+
+const runnerProcessIdentitySchema = z
+  .object({
+    runnerId: z.uuid(),
+    heartbeatGeneration: runnerHeartbeatGenerationSchema,
+  })
+  .strict();
+
+export const predecessorRunnerAffinitySchema = runnerProcessIdentitySchema
+  .extend({
+    sourceRunId: z.uuid(),
+    expiresAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
+
 const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
 const runnerClaimTelemetrySchema = z
   .object({
@@ -281,6 +301,7 @@ export const jobSchema = z.object({
     .nullable()
     .optional(),
   sessionAffinityResource: sessionAffinityResourceSchema.optional(),
+  predecessorRunnerAffinity: predecessorRunnerAffinitySchema.optional(),
 });
 
 const heldWorkspaceCacheSchema = z.object({
@@ -688,6 +709,7 @@ export const runnersJobClaimContract = c.router({
       id: z.uuid(),
     }),
     body: z.object({
+      runnerIdentity: runnerProcessIdentitySchema.optional(),
       telemetry: runnerClaimTelemetrySchema.optional(),
     }),
     responses: {
@@ -768,11 +790,7 @@ export const heartbeatBodySchema = z
     runnerId: z.uuid(),
     runnerName: z.string(),
     group: runnerGroupSchema,
-    snapshotGeneration: z
-      .number()
-      .int()
-      .positive()
-      .max(Number.MAX_SAFE_INTEGER),
+    snapshotGeneration: runnerHeartbeatGenerationSchema,
     snapshotSequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     totalVcpu: z.number().int().nonnegative(),
     totalMemoryMb: z.number().int().nonnegative(),

@@ -7,6 +7,7 @@ import {
   timestamp,
   integer,
   boolean,
+  bigint,
   index,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
@@ -74,6 +75,12 @@ export const agentRuns = pgTable(
     startedAt: timestamp("started_at"),
     completedAt: timestamp("completed_at"),
     lastHeartbeatAt: timestamp("last_heartbeat_at"),
+    // Immutable winning official claim identity. Null covers historical,
+    // rollout-omitting, and non-official claims.
+    runnerId: uuid("runner_id"),
+    runnerHeartbeatGeneration: bigint("runner_heartbeat_generation", {
+      mode: "number",
+    }),
     runnerGroup: varchar("runner_group", { length: 255 }),
   },
   (table) => {
