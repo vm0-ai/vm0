@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.153.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.152.0...runner-rs-v0.153.0) (2026-08-03)
+
+
+### Features
+
+* **chat:** steer queued messages into active runs ([#24768](https://github.com/vm0-ai/vm0/issues/24768)) ([20e5855](https://github.com/vm0-ai/vm0/commit/20e5855c729bea0db9f7f4a2e3914b2adf4c26dd))
+
 ## [0.152.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.18...runner-rs-v0.152.0) (2026-08-03)
 
 
