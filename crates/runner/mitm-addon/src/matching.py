@@ -9,7 +9,6 @@ parameterized hosts are meaningful only for firewall config bases.
 """
 
 import json
-import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -17,6 +16,7 @@ from typing import Literal, NamedTuple
 from urllib.parse import urlsplit
 
 import connector_intent
+import connector_template_syntax
 from firewall_auth_config import auth_config_injects_ordinary_upstream_credentials
 from firewall_matching import base_url as _firewall_base_url
 from firewall_matching import patterns as _firewall_patterns
@@ -74,10 +74,6 @@ _VALID_RULE_METHODS = frozenset(
 )
 _VALID_AUTH_BASE_SCHEME = "https"
 _AUTH_TEMPLATE_START = "${{"
-_AUTH_REFERENCE_PATTERN = re.compile(r"\$\{\{\s*(?:secrets|vars)\.[a-zA-Z_][a-zA-Z0-9_]*\s*\}\}")
-_AUTH_REFERENCE_PREFIX_PATTERN = re.compile(
-    r"^\$\{\{\s*(?:secrets|vars)\.[a-zA-Z_][a-zA-Z0-9_]*\s*\}\}"
-)
 _AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder"
 _PathSpecificity = tuple[int, int, int, int, int, int, int]
 
@@ -314,18 +310,35 @@ class _AuthBaseStaticValidationTarget(NamedTuple):
     dynamic_prefix_suffix: str
 
 
+def _auth_base_with_reference_placeholders(
+    auth_base: str,
+    references: tuple[connector_template_syntax.SimpleTemplateReference, ...],
+    *,
+    start: int,
+) -> str:
+    parts: list[str] = []
+    last_index = start
+    for reference in references:
+        parts.append(auth_base[last_index : reference.start])
+        parts.append(_AUTH_TEMPLATE_URL_PLACEHOLDER)
+        last_index = reference.end
+    parts.append(auth_base[last_index:])
+    return "".join(parts)
+
+
 def _auth_base_for_static_url_validation(auth_base: str) -> _AuthBaseStaticValidationTarget:
     if _AUTH_TEMPLATE_START not in auth_base:
         return _AuthBaseStaticValidationTarget(auth_base, "")
 
-    replaced = _AUTH_REFERENCE_PATTERN.sub(_AUTH_TEMPLATE_URL_PLACEHOLDER, auth_base)
+    references = tuple(connector_template_syntax.iter_simple_references(auth_base))
+    replaced = _auth_base_with_reference_placeholders(auth_base, references, start=0)
     if _AUTH_TEMPLATE_START in replaced:
         return _AuthBaseStaticValidationTarget(auth_base, "")
-    prefix_match = _AUTH_REFERENCE_PREFIX_PATTERN.match(auth_base)
-    if prefix_match is not None:
-        suffix = _AUTH_REFERENCE_PATTERN.sub(
-            _AUTH_TEMPLATE_URL_PLACEHOLDER,
-            auth_base[prefix_match.end() :],
+    if references and references[0].start == 0:
+        suffix = _auth_base_with_reference_placeholders(
+            auth_base,
+            references[1:],
+            start=references[0].end,
         )
         return _AuthBaseStaticValidationTarget(None, suffix)
     return _AuthBaseStaticValidationTarget(replaced, "")
