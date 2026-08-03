@@ -84,7 +84,7 @@ async fn recovery_checkpoint_does_not_prune_eligible_claude_history() {
         then.status(200);
     });
 
-    let error = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&runtime)
+    let error = create_bounded_recovery_checkpoint(&runtime)
         .await
         .unwrap_err();
 
@@ -123,7 +123,7 @@ async fn recovery_checkpoint_does_not_prune_eligible_codex_history() {
         then.status(200);
     });
 
-    let error = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&runtime)
+    let error = create_bounded_recovery_checkpoint(&runtime)
         .await
         .unwrap_err();
 

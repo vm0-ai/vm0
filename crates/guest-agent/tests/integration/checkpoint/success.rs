@@ -145,9 +145,7 @@ async fn success_checkpoint_preserves_oversized_claude_history_when_pruning_disa
             .json_body(json!({"checkpointId": "checkpoint-unpruned-claude"}));
     });
 
-    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
-        .await
-        .unwrap();
+    create_bounded_checkpoint(&runtime).await.unwrap();
 
     prepare_mock.assert_calls_async(1).await;
     checkpoint_mock.assert_calls_async(1).await;
@@ -271,9 +269,7 @@ async fn success_checkpoint_reconciles_claude_compact_generation_after_commit() 
         });
     });
 
-    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
-        .await
-        .unwrap();
+    create_bounded_checkpoint(&runtime).await.unwrap();
 
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(1).await;
@@ -362,9 +358,7 @@ async fn success_checkpoint_reconciles_codex_compact_generation_after_commit() {
         });
     });
 
-    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
-        .await
-        .unwrap();
+    create_bounded_checkpoint(&runtime).await.unwrap();
 
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(1).await;
@@ -432,9 +426,7 @@ async fn success_checkpoint_omits_identity_when_live_history_replacement_fails()
         });
     });
 
-    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
-        .await
-        .unwrap();
+    create_bounded_checkpoint(&runtime).await.unwrap();
 
     prepare_mock.assert_calls_async(1).await;
     checkpoint_mock.assert_calls_async(1).await;
@@ -476,9 +468,7 @@ async fn success_checkpoint_keeps_live_history_when_compact_commit_fails() {
             .json_body(json!({}));
     });
 
-    let error = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
-        .await
-        .unwrap_err();
+    let error = create_bounded_checkpoint(&runtime).await.unwrap_err();
 
     assert!(
         error
