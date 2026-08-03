@@ -65,7 +65,6 @@ interface UsageStorageCounts {
 interface UsageCompactionStorageCounts {
   readonly raw: number;
   readonly processedRaw: number;
-  readonly compactedRaw: number;
   readonly hourly: number;
 }
 
@@ -490,7 +489,6 @@ export const readUsageCompactionStorageCounts$ = command(
     if (
       response.raw_count === undefined ||
       response.processed_raw_count === undefined ||
-      response.compacted_raw_count === undefined ||
       response.hourly_count === undefined
     ) {
       throw new Error(
@@ -500,7 +498,6 @@ export const readUsageCompactionStorageCounts$ = command(
     return {
       raw: response.raw_count,
       processedRaw: response.processed_raw_count,
-      compactedRaw: response.compacted_raw_count,
       hourly: response.hourly_count,
     };
   },
