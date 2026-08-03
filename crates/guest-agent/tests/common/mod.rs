@@ -642,63 +642,55 @@ fn build_and_locate_mock_package(package: &str, binary: &str) -> Result<PathBuf,
     let fingerprint = mock_fingerprint(&package_dir, profile_dir_name)?;
     let marker = target_dir.join(format!(".vm0-{package}-{profile_dir_name}.fingerprint"));
     let lock = target_dir.join(format!(".vm0-{package}-{profile_dir_name}.lock"));
+    let _lock = acquire_mock_build_lock(&lock)?;
 
-    while std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&lock)
-        .is_err()
-    {
-        if std::fs::metadata(&lock)
-            .and_then(|metadata| metadata.modified())
-            .ok()
-            .and_then(|modified| modified.elapsed().ok())
-            .is_some_and(|age| age > Duration::from_secs(600))
-        {
-            let _ = std::fs::remove_file(&lock);
-            continue;
-        }
-        std::thread::sleep(Duration::from_millis(25));
+    if mock.exists() && std::fs::read_to_string(&marker).ok().as_deref() == Some(&fingerprint) {
+        return Ok(mock);
     }
 
-    let result = (|| {
-        if mock.exists() && std::fs::read_to_string(&marker).ok().as_deref() == Some(&fingerprint) {
-            return Ok(mock.clone());
+    let mut cmd = std::process::Command::new("cargo");
+    cmd.args(["build", "-p", package, "--quiet"])
+        .arg("--target-dir")
+        .arg(target_dir);
+    // Cargo profile → output dir mapping:
+    //   --release            → target_dir/release
+    //   --profile <name>     → target_dir/<name>
+    //   (default / dev)      → target_dir/debug
+    // So pick the flag that lands the artifact beside our test binary.
+    match profile_dir_name {
+        "debug" => {}
+        "release" => {
+            cmd.arg("--release");
         }
+        other => {
+            cmd.args(["--profile", other]);
+        }
+    }
 
-        let mut cmd = std::process::Command::new("cargo");
-        cmd.args(["build", "-p", package, "--quiet"])
-            .arg("--target-dir")
-            .arg(target_dir);
-        // Cargo profile → output dir mapping:
-        //   --release            → target_dir/release
-        //   --profile <name>     → target_dir/<name>
-        //   (default / dev)      → target_dir/debug
-        // So pick the flag that lands the artifact beside our test binary.
-        match profile_dir_name {
-            "debug" => {}
-            "release" => {
-                cmd.arg("--release");
-            }
-            other => {
-                cmd.args(["--profile", other]);
-            }
-        }
+    let status = cmd
+        .status()
+        .map_err(|e| format!("invoke cargo build: {e}"))?;
+    if !status.success() {
+        return Err(format!("cargo build -p {package} failed"));
+    }
+    if !mock.exists() {
+        return Err(format!("mock binary not found at {}", mock.display()));
+    }
+    std::fs::write(&marker, fingerprint).map_err(|e| format!("write mock fingerprint: {e}"))?;
+    Ok(mock)
+}
 
-        let status = cmd
-            .status()
-            .map_err(|e| format!("invoke cargo build: {e}"))?;
-        if !status.success() {
-            return Err(format!("cargo build -p {package} failed"));
-        }
-        if !mock.exists() {
-            return Err(format!("mock binary not found at {}", mock.display()));
-        }
-        std::fs::write(&marker, fingerprint).map_err(|e| format!("write mock fingerprint: {e}"))?;
-        Ok(mock.clone())
-    })();
-    let _ = std::fs::remove_file(lock);
-    result
+pub fn acquire_mock_build_lock(lock: &Path) -> Result<std::fs::File, String> {
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(lock)
+        .map_err(|e| format!("open mock build lock {}: {e}", lock.display()))?;
+    file.lock()
+        .map_err(|e| format!("lock mock build file {}: {e}", lock.display()))?;
+    Ok(file)
 }
 
 fn mock_fingerprint(package_dir: &Path, profile: &str) -> Result<String, String> {
