@@ -467,6 +467,34 @@ describe("POST /api/test/teams-dispatch-probe", () => {
     });
   });
 
+  it("drains a persisted Teams message when realtime publishing fails", async () => {
+    const fixture = await seedTeamsFixture({
+      seedConnection: true,
+      seedDefaultAgent: true,
+    });
+    let failedPublishCount = 0;
+    context.mocks.ably.publish.mockImplementation(() => {
+      failedPublishCount++;
+      return Promise.reject(new Error("Ably channel rate limit exceeded"));
+    });
+
+    await dispatchTeamsMessage({
+      fixture,
+      text: "dispatch despite realtime failure",
+    });
+
+    expect(failedPublishCount).toBeGreaterThan(0);
+    expect((await readTeamsState(fixture.tenantId)).recent_runs).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "pending",
+          triggerSource: "teams",
+          promptPreview: "dispatch despite realtime failure",
+        }),
+      ]),
+    );
+  });
+
   it("does not enqueue runs for unlinked users or missing default agents", async () => {
     const unlinked = await seedTeamsFixture({
       seedConnection: false,

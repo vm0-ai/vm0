@@ -192,6 +192,26 @@ export async function publishChatThreadMessageCreatedSafely(
 }
 
 /**
+ * Notify an open chat thread that a persisted run was created.
+ *
+ * Best-effort: a failed publish must not fail the committed run creation.
+ */
+export async function publishChatThreadRunCreatedSafely(
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], `chatThreadRunCreated:${threadId}`),
+    (error) => {
+      L.warn("Failed to publish chat thread run created signal", {
+        threadId,
+        error,
+      });
+    },
+  );
+}
+
+/**
  * Notify a chat thread's UI that its linked automation set changed (created,
  * deleted, enabled, or disabled). The chat-thread header automation menu
  * subscribes to this topic and refetches its thread-scoped list.
