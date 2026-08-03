@@ -25,9 +25,13 @@ function chatEventBodyContent(event: ChatEvent): string {
   return event.content?.trim() ?? "";
 }
 
-export function parseChatEventBodyBlocks(event: ChatEvent): ParsedBodyBlock[] {
+export function parseChatEventBodyBlocks(
+  event: ChatEvent,
+  threadId: string,
+): ParsedBodyBlock[] {
   const content = chatEventBodyContent(event);
   return parseBodyBlocks(content, {
     previews: chatEventCompatibilityRole(event.eventType) === "assistant",
+    browserThreadId: threadId,
   }).blocks;
 }
