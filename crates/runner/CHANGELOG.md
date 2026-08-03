@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.151.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.17...runner-rs-v0.151.18) (2026-08-03)
+
+
+### Bug Fixes
+
+* **mitm-addon:** support leading bom in sse usage streams ([#24716](https://github.com/vm0-ai/vm0/issues/24716)) ([216d0d8](https://github.com/vm0-ai/vm0/commit/216d0d87a87853a0c346b922465f97b0cd0ba337))
+* **python:** preserve x fallback counts across empty repeated selectors ([#24680](https://github.com/vm0-ai/vm0/issues/24680)) ([b173f42](https://github.com/vm0-ai/vm0/commit/b173f42450a676ac2dd28622dd3c94e4ce4cf67c))
+* **runner:** arm sigint before publishing local jobs ([#24678](https://github.com/vm0-ai/vm0/issues/24678)) ([994df9a](https://github.com/vm0-ai/vm0/commit/994df9a6c61f421f11490f38f7836f5d65d4c518))
+
+
+### Documentation
+
+* **python:** document tls clienthello admission states ([#24702](https://github.com/vm0-ai/vm0/issues/24702)) ([b200a6f](https://github.com/vm0-ai/vm0/commit/b200a6f1697f2e305a70e973431b94fd679d2ec6))
+* **runner:** document agent execution lifecycle ([#24695](https://github.com/vm0-ai/vm0/issues/24695)) ([a8c9f76](https://github.com/vm0-ai/vm0/commit/a8c9f7647bae8d9b1585ee46bfa869efa2e92abe))
+
+
+### Refactoring
+
+* **runner:** extract session history telemetry ([#24679](https://github.com/vm0-ai/vm0/issues/24679)) ([8a5b1fd](https://github.com/vm0-ai/vm0/commit/8a5b1fd555e62ad5cb58033f18853f37488826d9))
+* **runner:** separate kill command responsibilities ([#24699](https://github.com/vm0-ai/vm0/issues/24699)) ([cdf33ec](https://github.com/vm0-ai/vm0/commit/cdf33ecf2b9b4f1dd28601a2ae24547c70803793))
+
+
+### Performance Improvements
+
+* **python:** skip no-op auth.base query tokenization ([#24715](https://github.com/vm0-ai/vm0/issues/24715)) ([222eee8](https://github.com/vm0-ai/vm0/commit/222eee8e735629a4c837f2dc575958951703c547))
+* **runner:** reuse ca test identities ([#24698](https://github.com/vm0-ai/vm0/issues/24698)) ([4db9e50](https://github.com/vm0-ai/vm0/commit/4db9e50000865885588106bdb794968d58b4fd3d))
+
 ## [0.151.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.16...runner-rs-v0.151.17) (2026-08-03)
 
 

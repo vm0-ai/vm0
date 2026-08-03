@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.2...guest-contracts-v0.5.3) (2026-08-03)
+
+
+### Documentation
+
+* **rust:** clarify session history diagnostic semantics ([#24671](https://github.com/vm0-ai/vm0/issues/24671)) ([ecf6630](https://github.com/vm0-ai/vm0/commit/ecf6630d6185b03b6de7bc606259a730dff462b4))
+
 ## [0.5.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.1...guest-contracts-v0.5.2) (2026-08-02)
 
 
