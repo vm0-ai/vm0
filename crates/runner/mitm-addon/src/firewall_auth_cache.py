@@ -81,6 +81,10 @@ def _get_auth_state(cache_key: FirewallAuthCacheKey) -> _FirewallAuthState:
 def request_force_refresh(cache_key: FirewallAuthCacheKey) -> None:
     """Request a forced token refresh on the next /firewall/auth fetch.
 
+    No-op if registry lifecycle handling has already evicted the key. Response
+    hooks may update auth state owned by an active run, but must not recreate
+    ownership for a completed flow.
+
     No-op if a force-refresh marker was consumed within
     ``_FORCE_REFRESH_COOLDOWN_SECS``. The cooldown starts when the marker is
     consumed, before the forced fetch completes, so the same window covers
@@ -104,7 +108,9 @@ def request_force_refresh(cache_key: FirewallAuthCacheKey) -> None:
       Absolute webhook ``expiresAt`` checks remain wall-clock based elsewhere
       in this module.
     """
-    state = _get_auth_state(cache_key)
+    state = _auth_state.get(cache_key)
+    if state is None:
+        return
     now = time.monotonic()
     last_force_refresh_monotonic_at = state.last_force_refresh_monotonic_at
     if (
