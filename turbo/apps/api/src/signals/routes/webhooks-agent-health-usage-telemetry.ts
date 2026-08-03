@@ -17,6 +17,7 @@ import {
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
+import { isForeignKeyViolation } from "../../lib/pg-errors";
 import { nowDate } from "../../lib/time";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
@@ -37,7 +38,6 @@ import { usageUnderbillingFields } from "../usage-underbilling";
 const SANDBOX_TELEMETRY_SYSTEM_DATASET = "sandbox-telemetry-system";
 const SANDBOX_TELEMETRY_METRICS_DATASET = "sandbox-telemetry-metrics";
 const SANDBOX_TELEMETRY_NETWORK_DATASET = "sandbox-telemetry-network";
-const PG_FOREIGN_KEY_VIOLATION = "23503";
 const MODEL_USAGE_KIND = "model";
 const TELEMETRY_INGEST_TIMEOUT_MS = 10_000;
 
@@ -115,19 +115,6 @@ function sandboxOperationDimensions(
       ? { session_history_download_source: op.session_history_download_source }
       : {}),
   };
-}
-
-function isForeignKeyViolation(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const { cause } = error;
-  if (typeof cause !== "object" || cause === null || !("code" in cause)) {
-    return false;
-  }
-
-  return cause.code === PG_FOREIGN_KEY_VIOLATION;
 }
 
 const heartbeatBody$ = bodyResultOf(webhookHeartbeatContract.send);

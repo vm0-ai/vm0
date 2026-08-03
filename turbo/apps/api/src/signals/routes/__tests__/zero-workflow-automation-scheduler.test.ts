@@ -13,6 +13,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
+import { deleteAgentRunRootFixture } from "../../../test-fixtures/run-deletion";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { mockGmailConnectorOAuth } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -689,6 +690,50 @@ describe("zero workflow automation scheduler", () => {
       throw new Error("Expected the loop automation to be rescheduled");
     }
     expect(Date.parse(read.nextRunAt)).toBeGreaterThanOrEqual(before + 290_000);
+    await disableAutomation(automation.automationId);
+  });
+
+  it("recreates workflow thread and run after cleanup leaves lastRunId dangling", async () => {
+    const scenario = await setup();
+    const automation = await createDueLoopAutomation(scenario, 60);
+
+    await executeDueWorkflowAutomations(automation.automationId);
+    const firstRun = await onlyWorkflowRunMessage(automation.threadId);
+    await completeRunThroughSandbox(scenario, firstRun.runId, 0);
+    await expect
+      .poll(async () => {
+        return (await wf.readAutomation(automation.automationId)).nextRunAt;
+      })
+      .not.toBeNull();
+
+    await chatFilesApi.deleteThread(scenario.actor, automation.threadId);
+    await expect(
+      wf.readAutomation(automation.automationId),
+    ).resolves.toMatchObject({ chatThreadId: null });
+
+    // The cleanup route's global sweep is covered separately. Delete exactly
+    // this root so the regression stays focused on the deliberately dangling
+    // lastRunId reader and replacement-thread behavior.
+    await deleteAgentRunRootFixture(firstRun.runId);
+    await expect(
+      runsApi.requestReadRun(scenario.actor, firstRun.runId, [404]),
+    ).resolves.toMatchObject({ status: 404 });
+
+    const dangling = await wf.readAutomation(automation.automationId);
+    if (!dangling.nextRunAt) {
+      throw new Error("Expected the loop automation to remain scheduled");
+    }
+    mockNow(Date.parse(dangling.nextRunAt));
+    await executeDueWorkflowAutomations(automation.automationId);
+    const continued = await wf.readAutomation(automation.automationId);
+    if (!continued.chatThreadId) {
+      throw new Error("Expected the next firing to recreate its chat thread");
+    }
+    expect(continued.chatThreadId).not.toBe(automation.threadId);
+    const secondRun = await onlyWorkflowRunMessage(continued.chatThreadId);
+    expect(secondRun.runId).not.toBe(firstRun.runId);
+
+    await completeRunThroughSandbox(scenario, secondRun.runId, 1);
     await disableAutomation(automation.automationId);
   });
 

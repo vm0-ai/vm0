@@ -21,6 +21,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { mockNow, withMockNowForTest } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { deleteAgentRunRootFixture } from "../../../test-fixtures/run-deletion";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -821,6 +822,7 @@ describe("zero browser route", () => {
 
     // Thread deletion releases both local slots and requests provider cleanup
     // without waiting for Browser Use.
+    mockNow(Date.parse("2026-08-03T06:00:00.000Z"));
     await chat.deleteThread(actor, first.threadId);
     await chat.deleteThread(actor, other.threadId);
     await flushWaitUntilForTest();
@@ -835,6 +837,13 @@ describe("zero browser route", () => {
         return profileId === profileIds[1];
       }),
     ).toHaveLength(1);
+
+    // Root deletion preserves browser ownership, so the existing
+    // missing-thread reconciler remains the sole durable provider teardown
+    // path. Delete only this test's roots: the production sweep is global and
+    // is covered by the cleanup route integration tests.
+    await deleteAgentRunRootFixture(first.runId);
+    await deleteAgentRunRootFixture(other.runId);
     const reconciled = await reconcileBrowsers();
     expect(reconciled.body).toMatchObject({
       checked: 1,
