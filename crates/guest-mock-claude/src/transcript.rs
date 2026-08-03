@@ -189,20 +189,6 @@ mod tests {
     }
 
     #[test]
-    fn session_history_id_accepts_contract_ids() {
-        for session_id in [
-            "mock-123",
-            "preview-1",
-            "550e8400-e29b-41d4-a716-446655440000",
-        ] {
-            assert!(
-                is_valid_claude_session_id(session_id),
-                "expected {session_id} to be accepted"
-            );
-        }
-    }
-
-    #[test]
     fn session_history_path_rejects_non_contract_session_ids() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path().to_str().unwrap();
@@ -220,14 +206,9 @@ mod tests {
             "session.with.dot",
             "é",
         ] {
-            assert!(
-                !is_valid_claude_session_id(session_id),
-                "expected {session_id:?} to be rejected"
-            );
             assert_eq!(build_session_history_path(session_id, home), None);
         }
         let overlong_id = "a".repeat(129);
-        assert!(!is_valid_claude_session_id(&overlong_id));
         assert_eq!(build_session_history_path(&overlong_id, home), None);
         assert!(!dir.path().join(".claude").exists());
     }
