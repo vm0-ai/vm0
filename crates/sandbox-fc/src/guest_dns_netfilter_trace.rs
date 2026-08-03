@@ -125,11 +125,14 @@ static NEXT_MONITOR_ID: AtomicU64 = AtomicU64::new(1);
 ///
 /// `sequence` is the last packet assigned before readiness capture starts. Reports include only
 /// packets with a greater sequence, and reading through this cursor never advances shared state.
-/// `monitor_id` prevents the sequence from being interpreted after the monitor is replaced.
+/// The line counters let capture distinguish a clean absence from parser loss after the cursor.
+/// `monitor_id` prevents any cursor state from being interpreted after the monitor is replaced.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct GuestDnsNetfilterTraceCursor {
     monitor_id: u64,
     sequence: u64,
+    malformed_lines: u64,
+    truncated_lines: u64,
 }
 
 /// A cloneable observation handle for the runtime-wide trace state.
@@ -1005,8 +1008,9 @@ impl TraceMonitorSnapshot {
 ///
 /// `matched_packets` counts all matching packets still present in the cursor window before the
 /// serialized packet cap is applied. Reader-produced eviction and line counters are cumulative for
-/// the monitor generation, while synthetic attachment/baseline reports use zero counters. Each
-/// packet separately reports whether its retained detail was truncated.
+/// the monitor generation, while the post-cursor counters identify parser loss in this capture
+/// window. Synthetic attachment/baseline reports use zero counters. Each packet separately reports
+/// whether its retained detail was truncated.
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct GuestDnsNetfilterTraceReport {
     status: TraceReportStatus,
@@ -1015,6 +1019,8 @@ pub(crate) struct GuestDnsNetfilterTraceReport {
     evicted_packets: u64,
     malformed_lines: u64,
     truncated_lines: u64,
+    post_cursor_malformed_lines: u64,
+    post_cursor_truncated_lines: u64,
     packets: Vec<TracePacketReport>,
 }
 
@@ -1022,7 +1028,12 @@ impl GuestDnsNetfilterTraceReport {
     pub(crate) fn exact_single_packet_observed(&self) -> Option<bool> {
         match self.status {
             TraceReportStatus::Captured if self.matched_packets == 1 => Some(true),
-            TraceReportStatus::NoMatchingPacket => Some(false),
+            TraceReportStatus::NoMatchingPacket
+                if self.post_cursor_malformed_lines == 0
+                    && self.post_cursor_truncated_lines == 0 =>
+            {
+                Some(false)
+            }
             _ => None,
         }
     }
@@ -1038,6 +1049,8 @@ impl GuestDnsNetfilterTraceReport {
             evicted_packets: 0,
             malformed_lines: 0,
             truncated_lines: 0,
+            post_cursor_malformed_lines: 0,
+            post_cursor_truncated_lines: 0,
             packets: Vec::new(),
         }
     }
@@ -1053,6 +1066,8 @@ impl GuestDnsNetfilterTraceReport {
             evicted_packets: 0,
             malformed_lines: 0,
             truncated_lines: 0,
+            post_cursor_malformed_lines: 0,
+            post_cursor_truncated_lines: 0,
             packets: Vec::new(),
         }
     }
@@ -1073,6 +1088,8 @@ impl GuestDnsNetfilterTraceReader {
         GuestDnsNetfilterTraceCursor {
             monitor_id: state.monitor_id,
             sequence: state.next_sequence.saturating_sub(1),
+            malformed_lines: state.malformed_lines,
+            truncated_lines: state.truncated_lines,
         }
     }
 
@@ -1121,6 +1138,8 @@ impl GuestDnsNetfilterTraceReader {
                 evicted_packets: state.evicted_packets,
                 malformed_lines: state.malformed_lines,
                 truncated_lines: state.truncated_lines,
+                post_cursor_malformed_lines: 0,
+                post_cursor_truncated_lines: 0,
                 packets: Vec::new(),
             };
         }
@@ -1162,6 +1181,12 @@ impl GuestDnsNetfilterTraceReader {
             evicted_packets: state.evicted_packets,
             malformed_lines: state.malformed_lines,
             truncated_lines: state.truncated_lines,
+            post_cursor_malformed_lines: state
+                .malformed_lines
+                .saturating_sub(cursor.malformed_lines),
+            post_cursor_truncated_lines: state
+                .truncated_lines
+                .saturating_sub(cursor.truncated_lines),
             packets,
         }
     }
@@ -1221,6 +1246,7 @@ mod tests {
         ingest_verified_fixture(&state);
 
         let report = reader.capture_now(cursor, capture_target());
+        assert_eq!(report.exact_single_packet_observed(), Some(true));
         let value = serde_json::to_value(report).unwrap();
 
         assert_eq!(value["status"], "captured");
@@ -1261,6 +1287,7 @@ mod tests {
         let report = reader.capture_now(cursor, capture_target());
 
         assert!(matches!(report.status, TraceReportStatus::NoMatchingPacket));
+        assert_eq!(report.exact_single_packet_observed(), Some(false));
     }
 
     #[test]
@@ -1373,6 +1400,39 @@ mod tests {
         assert_eq!(observed.len(), 2);
         assert!(observed.first().is_some_and(|(_, truncated)| *truncated));
         assert_eq!(observed.get(1), Some(&(ORIGINAL_PACKET.to_string(), false)));
+    }
+
+    #[tokio::test]
+    async fn post_cursor_parser_loss_prevents_negative_trace_evidence() {
+        let (reader, state) = reader_and_state();
+        let lost_lines = format!(
+            "not an xtables monitor line\n{}\n",
+            "x".repeat(MAX_TRACE_LINE_BYTES + 1)
+        );
+        read_trace_stream(
+            lost_lines.as_bytes(),
+            Arc::clone(&state),
+            Arc::clone(&reader.changed),
+        )
+        .await
+        .unwrap();
+        let cursor = reader.cursor();
+        read_trace_stream(
+            lost_lines.as_bytes(),
+            Arc::clone(&state),
+            Arc::clone(&reader.changed),
+        )
+        .await
+        .unwrap();
+
+        let report = reader.capture_now(cursor, capture_target());
+
+        assert!(matches!(report.status, TraceReportStatus::NoMatchingPacket));
+        assert_eq!(report.exact_single_packet_observed(), None);
+        assert_eq!(report.malformed_lines, 2);
+        assert_eq!(report.truncated_lines, 2);
+        assert_eq!(report.post_cursor_malformed_lines, 1);
+        assert_eq!(report.post_cursor_truncated_lines, 1);
     }
 
     #[test]
