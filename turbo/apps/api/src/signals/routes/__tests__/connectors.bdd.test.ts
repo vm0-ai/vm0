@@ -1554,6 +1554,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       },
     };
 
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: false,
+    });
     const disabled = await connectorsApi.requestCreateCustomConnector(
       admin,
       connectorBody,
@@ -1597,6 +1600,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     });
     expectNoVisibleSecret(created, clientSecret);
 
+    await connectorsApi.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.CustomConnectorCliCreate]: false,
+    });
     const disabledAgentAuthorization =
       await connectorsApi.requestStartCustomConnectorOAuth2(
         member,
@@ -1937,6 +1943,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       queryInjections: created.queryInjections,
       authMode: created.authMode,
     };
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: false,
+    });
     const disabledUpdate = await connectorsApi.requestUpdateCustomConnector(
       admin,
       created.id,
@@ -2050,7 +2059,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     }
     mockClerkMembership(context, admin, "org:admin");
     const runId = randomUUID();
-    const readonlyToken = generateZeroToken(admin.userId, runId, admin.orgId);
+    const readonlyToken = generateZeroToken(admin.userId, runId, admin.orgId, {
+      [FeatureSwitchKey.CustomConnectorCliCreate]: false,
+    });
     const connectorsClient = setupApp({ context })(
       zeroCustomConnectorsContract,
     );
@@ -2089,6 +2100,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
 
     const writeToken = generateZeroToken(admin.userId, runId, admin.orgId, {
       [FeatureSwitchKey.CustomConnectorCliCreate]: true,
+    });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorCliCreate]: false,
     });
     const gated = await accept(
       connectorsClient.create({
@@ -2174,6 +2188,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       authMode: "manual",
     });
 
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorCliCreate]: false,
+    });
     const disabled = await connectorsApi.requestSetCustomConnectorValues(
       admin,
       created.id,

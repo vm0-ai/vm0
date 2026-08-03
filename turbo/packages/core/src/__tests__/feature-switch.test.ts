@@ -14,6 +14,15 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
       true,
     );
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.CustomConnectorCliCreate, {}),
+    ).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.CustomConnectorOAuth2, {})).toBe(
+      true,
+    );
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.CustomConnectorPermissions, {}),
+    ).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
