@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.62.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.3...guest-agent-v0.62.4) (2026-08-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** redact overlapping secret matches ([#24639](https://github.com/vm0-ai/vm0/issues/24639)) ([dc20d30](https://github.com/vm0-ai/vm0/commit/dc20d300941918f11f98738142bca5fabfff6301))
+
+
+### Refactoring
+
+* **guest-agent:** split checkpoint integration tests ([#24626](https://github.com/vm0-ai/vm0/issues/24626)) ([40a7e1f](https://github.com/vm0-ai/vm0/commit/40a7e1f137751a8aeab2e9d1def2fefd49940572))
+
 ## [0.62.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.2...guest-agent-v0.62.3) (2026-08-03)
 
 ## [0.62.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.1...guest-agent-v0.62.2) (2026-08-02)

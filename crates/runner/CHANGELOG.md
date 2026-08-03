@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.151.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.14...runner-rs-v0.151.15) (2026-08-03)
+
+
+### Documentation
+
+* **runner:** document firewall catalog boundary ([#24630](https://github.com/vm0-ai/vm0/issues/24630)) ([de5c053](https://github.com/vm0-ai/vm0/commit/de5c0533fbd09d0314f81ad424a4de5ba2faf5c5))
+
 ## [0.151.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.13...runner-rs-v0.151.14) (2026-08-03)
 
 

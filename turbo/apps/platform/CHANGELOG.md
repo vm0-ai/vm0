@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.676.0](https://github.com/vm0-ai/vm0/compare/app-v0.675.13...app-v0.676.0) (2026-08-03)
+
+
+### Features
+
+* **feishu:** add managed connector permission controls ([#24344](https://github.com/vm0-ai/vm0/issues/24344)) ([49d167d](https://github.com/vm0-ai/vm0/commit/49d167da75e79c360fd4f7baf59032b49ba6776d))
+
+
+### Bug Fixes
+
+* allow overriding every feature switch ([#24632](https://github.com/vm0-ai/vm0/issues/24632)) ([d428036](https://github.com/vm0-ai/vm0/commit/d428036e06a2a2589129a3599d671f188b5a05c1))
+* use redux themes for mermaid diagrams ([#24628](https://github.com/vm0-ai/vm0/issues/24628)) ([a0c056e](https://github.com/vm0-ai/vm0/commit/a0c056edafe7d25e77f344b08f44a3b5d8ad8336))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.263.0
+    * @vm0/core bumped to 8.503.0
+
 ## [0.675.13](https://github.com/vm0-ai/vm0/compare/app-v0.675.12...app-v0.675.13) (2026-08-03)
 
 
