@@ -844,6 +844,55 @@ describe("chat scroll position", () => {
     );
   });
 
+  it("follows the tail when the anchored event stops being rendered", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000816";
+    const { growContent } = mockLateGrowingThread({
+      threadId,
+      prefix: "anchor-gone",
+    });
+    const resizeObserver = installResizeObserver();
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const container = await waitFor(() => {
+      expect(screen.getByText("anchor-gone message 7")).toBeInTheDocument();
+      const current = chatScrollContainer();
+      expect(current.scrollTop).toBe(700);
+      return current;
+    });
+    const messageContainer = container.querySelector(
+      "[data-message-container]",
+    );
+    if (!messageContainer) {
+      throw new Error("Chat message container not found");
+    }
+
+    container.scrollTop = 300;
+    fireEvent.scroll(container);
+    await waitFor(() => {
+      expect(document.querySelector("[data-scroll-to-bottom]")).not.toBeNull();
+    });
+
+    // Sending while a run is active queues the message, and a queued message
+    // moves into the thinking indicator, which renders no anchor. The position
+    // the thread is holding then points at nothing.
+    for (const anchor of Array.from(
+      container.querySelectorAll("[data-chat-scroll-anchor-event-id]"),
+    )) {
+      anchor.remove();
+    }
+
+    growContent(400);
+    resizeObserver.trigger(messageContainer);
+
+    expect(container.scrollTop).toBe(
+      container.scrollHeight - container.clientHeight,
+    );
+    await waitFor(() => {
+      expect(document.querySelector("[data-scroll-to-bottom]")).toBeNull();
+    });
+  });
+
   it("keeps the visible anchor when content above the reader grows", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000812";
     const { growContentAbove } = mockLateGrowingThread({

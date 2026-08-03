@@ -76,16 +76,15 @@ function applyScrollTop(
   runtime.programmaticScrollTop = container.scrollTop;
 }
 
+/** Returns false when the anchored event is not in the DOM. */
 function scrollToPosition(
   runtime: ScrollRuntime,
   container: HTMLElement,
   position: ThreadScrollPosition,
-): void {
+): boolean {
   const target = scrollAnchorForEvent(container, position.targetEventId);
   if (!target) {
-    throw new Error(
-      `Chat scroll target is not rendered: ${position.targetEventId}`,
-    );
+    return false;
   }
   const currentViewportOffsetTop =
     target.getBoundingClientRect().top - container.getBoundingClientRect().top;
@@ -94,6 +93,7 @@ function scrollToPosition(
     container,
     container.scrollTop + currentViewportOffsetTop - position.viewportOffsetTop,
   );
+  return true;
 }
 
 function firstVisibleScrollAnchor(container: HTMLElement): HTMLElement | null {
@@ -243,7 +243,11 @@ function createScrollNavigationSignals(
     if (!container) {
       throw new Error("Chat scroll container is not mounted");
     }
-    scrollToPosition(runtime, container, position);
+    if (!scrollToPosition(runtime, container, position)) {
+      throw new Error(
+        `Chat scroll target is not rendered: ${position.targetEventId}`,
+      );
+    }
     runtime.initialized = true;
   });
 
@@ -269,15 +273,24 @@ function createScrollNavigationSignals(
 
   const restoreAfterResize$ = command(({ get, set }) => {
     const position = get(scroll.threadScrollPosition$);
+    const container = get(scroll.scrollContainer$);
     L.debug("resize scroll restore", {
       threadId,
       targetEventId: position?.targetEventId ?? null,
       viewportOffsetTop: position?.viewportOffsetTop ?? null,
     });
-    if (position) {
-      set(scrollTo$, position);
+    if (!container) {
+      throw new Error("Chat scroll container is not mounted");
+    }
+    if (position && scrollToPosition(runtime, container, position)) {
+      runtime.initialized = true;
       return;
     }
+    // Either the thread is following the tail, or the event it anchors to has
+    // left the DOM — a queued message moves into the thinking indicator, which
+    // renders no anchor. Holding a position nothing renders would freeze the
+    // thread where it stands and every later resize would try again, so the
+    // thread goes back to following the tail.
     set(scrollToBottom$);
   });
 
@@ -339,7 +352,7 @@ function createRenderScrollSignals(
   runtime: ScrollRuntime,
 ) {
   const commitScrollAfterRender$ = command(
-    ({ get }, request: ScrollAfterRenderRequest): void => {
+    ({ get, set }, request: ScrollAfterRenderRequest): void => {
       if (request.revision !== runtime.latestRenderRequestRevision) {
         L.debug("stale render scroll ignored", {
           revision: request.revision,
@@ -362,9 +375,16 @@ function createRenderScrollSignals(
         });
         return;
       }
-      if (request.position) {
-        scrollToPosition(runtime, container, request.position);
-      } else {
+      if (
+        !request.position ||
+        !scrollToPosition(runtime, container, request.position)
+      ) {
+        // The batch either follows the tail, or it carries a position whose
+        // event this render does not show: sending while a run is active
+        // queues the message, and a queued message moves into the thinking
+        // indicator, which renders no anchor. Nothing can hold that position,
+        // so the thread follows the tail rather than staying put.
+        set(scroll.clearThreadScrollPosition$);
         applyScrollTop(runtime, container, container.scrollHeight);
       }
       runtime.initialized = true;
