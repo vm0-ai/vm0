@@ -634,3 +634,109 @@ fn parent_child_mount_paths_are_serialized_for_overlapping_archives() {
         "child skill"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn symlink_aliased_mount_paths_are_serialized_without_blocking_independent_download() {
+    let physical_server = MockServer::start();
+    let alias_server = MockServer::start();
+    let independent_server = MockServer::start();
+    let dir = tempfile::tempdir().unwrap();
+    let physical_mount = dir.path().join("physical");
+    let alias_mount = dir.path().join("alias");
+    let independent_mount = dir.path().join("independent");
+    std::fs::create_dir_all(&physical_mount).unwrap();
+    std::os::unix::fs::symlink(&physical_mount, &alias_mount).unwrap();
+
+    let physical_tar = create_tar_gz(&[("state.json", b"physical")]).unwrap();
+    let alias_tar = create_tar_gz(&[("state.json", b"alias")]).unwrap();
+    let independent_tar = create_tar_gz(&[("data.txt", b"independent")]).unwrap();
+    let (physical_started_tx, physical_started_rx) = mpsc::channel();
+    let (alias_started_tx, alias_started_rx) = mpsc::channel();
+    let (independent_started_tx, independent_started_rx) = mpsc::channel();
+    let physical_release = ReleaseGate::new();
+
+    let physical_mock = serve_blocked_archive(
+        &physical_server,
+        "/physical.tar.gz",
+        physical_tar,
+        move || {
+            physical_started_tx
+                .send(())
+                .map_err(|e| format!("failed to send physical start event: {e}"))
+        },
+        physical_release.waiter(),
+        "physical request".to_owned(),
+        None,
+    );
+    let alias_mock = serve_archive(
+        &alias_server,
+        "/alias.tar.gz",
+        alias_tar,
+        move || {
+            alias_started_tx
+                .send(())
+                .map_err(|e| format!("failed to send alias start event: {e}"))
+        },
+        None,
+    );
+    let independent_mock = serve_archive(
+        &independent_server,
+        "/independent.tar.gz",
+        independent_tar,
+        move || {
+            independent_started_tx
+                .send(())
+                .map_err(|e| format!("failed to send independent start event: {e}"))
+        },
+        None,
+    );
+
+    let storages = vec![
+        (
+            path_to_string(&physical_mount).unwrap(),
+            physical_server.url("/physical.tar.gz"),
+        ),
+        (
+            path_to_string(&alias_mount).unwrap(),
+            alias_server.url("/alias.tar.gz"),
+        ),
+        (
+            path_to_string(&independent_mount).unwrap(),
+            independent_server.url("/independent.tar.gz"),
+        ),
+    ];
+    let handle = spawn_guest_download(&dir, &storages).unwrap();
+
+    let physical_started = physical_started_rx.recv_timeout(REQUEST_START_TIMEOUT);
+    let independent_started = independent_started_rx.recv_timeout(REQUEST_START_TIMEOUT);
+    let alias_before_release = alias_started_rx.recv_timeout(NEGATIVE_START_TIMEOUT);
+    physical_release.release_one();
+    let alias_after_release =
+        if matches!(alias_before_release, Err(mpsc::RecvTimeoutError::Timeout)) {
+            alias_started_rx.recv_timeout(REQUEST_START_TIMEOUT)
+        } else {
+            Ok(())
+        };
+    let result = handle.join().unwrap();
+
+    physical_started.unwrap();
+    independent_started.unwrap();
+    assert!(matches!(
+        alias_before_release,
+        Err(mpsc::RecvTimeoutError::Timeout)
+    ));
+    alias_after_release.unwrap();
+    assert!(result);
+    physical_mock.assert();
+    alias_mock.assert();
+    independent_mock.assert();
+    assert_eq!(
+        std::fs::read_to_string(physical_mount.join("state.json")).unwrap(),
+        "alias"
+    );
+    assert_eq!(
+        std::fs::read_to_string(independent_mount.join("data.txt")).unwrap(),
+        "independent"
+    );
+}

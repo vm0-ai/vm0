@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 const MAX_RETRIES: u32 = 3;
 const RETRY_DELAY: Duration = Duration::from_secs(1);
 const MAX_CONCURRENT: usize = 4;
-type TaskRunner = fn(DownloadTask) -> bool;
+type TaskRunner = fn(PreparedDownloadTask) -> bool;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct DownloadTask {
@@ -57,29 +57,61 @@ impl DownloadTask {
         }
     }
 
-    pub(crate) fn mount_path(&self) -> &str {
-        &self.mount_path
+    fn prepare(self) -> Result<PreparedDownloadTask, String> {
+        fs::create_dir_all(&self.mount_path).map_err(|e| {
+            format!(
+                "{} target preparation failed: failed to create directory {}: {e}",
+                self.label, self.mount_path
+            )
+        })?;
+        let effective_mount_path = Path::new(&self.mount_path).canonicalize().map_err(|e| {
+            format!(
+                "{} target preparation failed: failed to resolve directory {}: {e}",
+                self.label, self.mount_path
+            )
+        })?;
+
+        Ok(PreparedDownloadTask {
+            task: self,
+            effective_mount_path,
+        })
+    }
+}
+
+pub(crate) struct PreparedDownloadTask {
+    task: DownloadTask,
+    effective_mount_path: PathBuf,
+}
+
+impl PreparedDownloadTask {
+    fn logical_mount_path(&self) -> &Path {
+        &self.task.normalized_mount_path
+    }
+
+    fn effective_mount_path(&self) -> &Path {
+        &self.effective_mount_path
     }
 
     fn failure_detail(&self, error: &DownloadError) -> String {
-        format!("{} download failed: {}", self.label, error)
+        format!("{} download failed: {}", self.task.label, error)
     }
 }
 
 struct PendingDownload {
     id: usize,
-    task: DownloadTask,
+    task: PreparedDownloadTask,
 }
 
 impl PendingDownload {
-    fn new(id: usize, task: DownloadTask) -> Self {
+    fn new(id: usize, task: PreparedDownloadTask) -> Self {
         Self { id, task }
     }
 }
 
 struct ActiveDownload {
     id: usize,
-    mount_path: PathBuf,
+    logical_mount_path: PathBuf,
+    effective_mount_path: PathBuf,
 }
 
 struct DownloadCompletion {
@@ -92,14 +124,25 @@ enum DownloadOutcome {
     Panicked(String),
 }
 
-/// Download all tasks in parallel using std::thread.
-/// Limits concurrency to MAX_CONCURRENT and serializes overlapping mount paths.
+/// Prepare download targets before any archive worker can start.
+pub(crate) fn prepare_download_tasks(
+    tasks: Vec<DownloadTask>,
+) -> Result<Vec<PreparedDownloadTask>, String> {
+    tasks.into_iter().map(DownloadTask::prepare).collect()
+}
+
+/// Download all prepared tasks in parallel using std::thread.
+/// Limits concurrency to MAX_CONCURRENT and serializes logically or physically
+/// overlapping mount paths.
 /// Returns true if all downloads succeeded, false if any failed.
-pub(crate) fn download_all_parallel(tasks: Vec<DownloadTask>) -> bool {
+pub(crate) fn download_all_parallel(tasks: Vec<PreparedDownloadTask>) -> bool {
     download_all_parallel_with_runner(tasks, run_download_task)
 }
 
-fn download_all_parallel_with_runner(tasks: Vec<DownloadTask>, task_runner: TaskRunner) -> bool {
+fn download_all_parallel_with_runner(
+    tasks: Vec<PreparedDownloadTask>,
+    task_runner: TaskRunner,
+) -> bool {
     let mut pending = tasks
         .into_iter()
         .enumerate()
@@ -107,8 +150,8 @@ fn download_all_parallel_with_runner(tasks: Vec<DownloadTask>, task_runner: Task
         .collect::<VecDeque<_>>();
     let mut telemetry = DownloadRunTelemetry::start(pending.iter().map(|download| {
         (
-            download.task.telemetry,
-            download.task.normalized_mount_path.as_path(),
+            download.task.task.telemetry,
+            download.task.logical_mount_path(),
         )
     }));
     if pending.is_empty() {
@@ -189,8 +232,7 @@ fn start_ready_downloads<'scope, 'env: 'scope>(
     on_conflict: &mut impl FnMut(usize, &Path, usize, &Path),
 ) {
     while active.len() < MAX_CONCURRENT {
-        let Some((index, mount_path)) = find_startable_download(pending, active, on_conflict)
-        else {
+        let Some(index) = find_startable_download(pending, active, on_conflict) else {
             break;
         };
         let Some(download) = pending.remove(index) else {
@@ -198,7 +240,11 @@ fn start_ready_downloads<'scope, 'env: 'scope>(
             break;
         };
         let id = download.id;
-        active.push(ActiveDownload { id, mount_path });
+        active.push(ActiveDownload {
+            id,
+            logical_mount_path: download.task.logical_mount_path().to_path_buf(),
+            effective_mount_path: download.task.effective_mount_path().to_path_buf(),
+        });
 
         let completion_tx = completion_tx.clone();
         scope.spawn(move || {
@@ -215,24 +261,37 @@ fn find_startable_download(
     pending: &VecDeque<PendingDownload>,
     active: &[ActiveDownload],
     on_conflict: &mut impl FnMut(usize, &Path, usize, &Path),
-) -> Option<(usize, PathBuf)> {
+) -> Option<usize> {
     // Scan the pending queue instead of using strict FIFO so an active
     // parent/child mount-path conflict does not leave a slot idle when a later
     // independent task can start.
     for (index, download) in pending.iter().enumerate() {
-        let mount_path = &download.task.normalized_mount_path;
-
-        if let Some(blocking) = active
-            .iter()
-            .find(|active_download| mount_paths_conflict(mount_path, &active_download.mount_path))
+        if let Some((blocking, pending_path, active_path)) =
+            active.iter().find_map(|active_download| {
+                conflicting_mount_paths(&download.task, active_download)
+                    .map(|(pending_path, active_path)| (active_download, pending_path, active_path))
+            })
         {
-            on_conflict(download.id, mount_path, blocking.id, &blocking.mount_path);
+            on_conflict(download.id, pending_path, blocking.id, active_path);
             continue;
         }
 
-        return Some((index, mount_path.clone()));
+        return Some(index);
     }
 
+    None
+}
+
+fn conflicting_mount_paths<'pending, 'active>(
+    pending: &'pending PreparedDownloadTask,
+    active: &'active ActiveDownload,
+) -> Option<(&'pending Path, &'active Path)> {
+    if mount_paths_conflict(pending.logical_mount_path(), &active.logical_mount_path) {
+        return Some((pending.logical_mount_path(), &active.logical_mount_path));
+    }
+    if mount_paths_conflict(pending.effective_mount_path(), &active.effective_mount_path) {
+        return Some((pending.effective_mount_path(), &active.effective_mount_path));
+    }
     None
 }
 
@@ -272,27 +331,37 @@ fn panic_message(payload: &(dyn Any + Send)) -> String {
         .unwrap_or_else(|| "unknown".to_owned())
 }
 
-fn run_download_task(task: DownloadTask) -> bool {
+fn run_download_task(task: PreparedDownloadTask) -> bool {
     let start = Instant::now();
-    log_info!(LOG_TAG, "Downloading {} to {}", task.label, task.mount_path);
-    let mut remote_metrics = task.telemetry.remote_metrics();
+    log_info!(
+        LOG_TAG,
+        "Downloading {} to {}",
+        task.task.label,
+        task.task.mount_path
+    );
+    let mut remote_metrics = task.task.telemetry.remote_metrics();
 
-    match download_with_retry(&task.url, &task.mount_path, remote_metrics.as_mut()) {
+    match download_with_retry(
+        &task.task.url,
+        task.effective_mount_path(),
+        remote_metrics.as_mut(),
+    ) {
         Ok(()) => {
             let elapsed = start.elapsed();
-            task.telemetry
+            task.task
+                .telemetry
                 .record_result(elapsed, true, None, remote_metrics.as_ref());
             log_info!(
                 LOG_TAG,
                 "{} downloaded in {}ms",
-                task.label,
+                task.task.label,
                 elapsed.as_millis()
             );
             true
         }
         Err(e) => {
             let failure_detail = task.failure_detail(&e);
-            task.telemetry.record_result(
+            task.task.telemetry.record_result(
                 start.elapsed(),
                 false,
                 Some(&failure_detail),
@@ -311,7 +380,7 @@ fn run_download_task(task: DownloadTask) -> bool {
 /// attempts run against any filesystem state left by earlier ones.
 fn download_with_retry(
     url: &str,
-    target_path: &str,
+    target_path: &Path,
     mut remote_metrics: Option<&mut RemoteArchiveTaskMetrics>,
 ) -> Result<(), DownloadError> {
     let mut last_error = None;
@@ -346,11 +415,14 @@ fn download_with_retry(
 
 fn download_and_extract(
     url: &str,
-    target_path: &str,
+    target_path: &Path,
     remote_metrics: Option<&mut RemoteArchiveTaskMetrics>,
 ) -> Result<(), DownloadError> {
     fs::create_dir_all(target_path).map_err(|e| {
-        DownloadError::fatal(format!("Failed to create directory {target_path}: {e}"))
+        DownloadError::fatal(format!(
+            "Failed to create directory {}: {e}",
+            target_path.display()
+        ))
     })?;
 
     let attempt_metrics = remote_metrics
@@ -387,8 +459,15 @@ mod tests {
         )
     }
 
+    fn prepared_task_at(path: &str) -> PreparedDownloadTask {
+        PreparedDownloadTask {
+            task: task_at(path),
+            effective_mount_path: normalize_mount_path(path),
+        }
+    }
+
     fn pending_at(id: usize, path: &str) -> PendingDownload {
-        PendingDownload::new(id, task_at(path))
+        PendingDownload::new(id, prepared_task_at(path))
     }
 
     #[test]
@@ -435,8 +514,8 @@ mod tests {
     fn task_panic_returns_false_without_unwinding() {
         guest_common::log::clear_system_log_file();
 
-        fn runner(task: DownloadTask) -> bool {
-            if task.url == "panic" {
+        fn runner(task: PreparedDownloadTask) -> bool {
+            if task.task.url == "panic" {
                 panic!("expected panic");
             }
             true
@@ -445,18 +524,24 @@ mod tests {
         let result = std::panic::catch_unwind(|| {
             download_all_parallel_with_runner(
                 vec![
-                    DownloadTask::storage(
-                        "panic".to_owned(),
-                        "panic".to_owned(),
-                        "/tmp/panic".to_owned(),
-                        false,
-                    ),
-                    DownloadTask::storage(
-                        "success".to_owned(),
-                        "success".to_owned(),
-                        "/tmp/success".to_owned(),
-                        false,
-                    ),
+                    PreparedDownloadTask {
+                        task: DownloadTask::storage(
+                            "panic".to_owned(),
+                            "panic".to_owned(),
+                            "/tmp/panic".to_owned(),
+                            false,
+                        ),
+                        effective_mount_path: PathBuf::from("/tmp/panic"),
+                    },
+                    PreparedDownloadTask {
+                        task: DownloadTask::storage(
+                            "success".to_owned(),
+                            "success".to_owned(),
+                            "/tmp/success".to_owned(),
+                            false,
+                        ),
+                        effective_mount_path: PathBuf::from("/tmp/success"),
+                    },
                 ],
                 runner,
             )
@@ -473,7 +558,8 @@ mod tests {
         ]);
         let active = vec![ActiveDownload {
             id: 2,
-            mount_path: normalize_mount_path("/tmp/mount"),
+            logical_mount_path: normalize_mount_path("/tmp/mount"),
+            effective_mount_path: normalize_mount_path("/tmp/mount"),
         }];
         let mut conflicts = Vec::new();
 
@@ -483,7 +569,7 @@ mod tests {
             });
 
         assert_eq!(conflicts, [(3, 2)]);
-        assert_eq!(selected.map(|(index, _)| index), Some(1));
+        assert_eq!(selected, Some(1));
     }
 
     #[test]
@@ -492,11 +578,13 @@ mod tests {
         let active = vec![
             ActiveDownload {
                 id: 2,
-                mount_path: normalize_mount_path("/tmp/mount"),
+                logical_mount_path: normalize_mount_path("/tmp/mount"),
+                effective_mount_path: normalize_mount_path("/tmp/mount"),
             },
             ActiveDownload {
                 id: 3,
-                mount_path: normalize_mount_path("/tmp/mount/child"),
+                logical_mount_path: normalize_mount_path("/tmp/mount/child"),
+                effective_mount_path: normalize_mount_path("/tmp/mount/child"),
             },
         ];
         let mut conflicts = Vec::new();
@@ -523,7 +611,11 @@ mod tests {
         );
         let error = DownloadError::fatal("Failed to read archive entries: invalid gzip header");
 
-        let detail = task.failure_detail(&error);
+        let detail = PreparedDownloadTask {
+            task,
+            effective_mount_path: PathBuf::from("/workspace"),
+        }
+        .failure_detail(&error);
 
         assert!(detail.contains("storage 1"));
         assert!(detail.contains("mountPath=/workspace"));
