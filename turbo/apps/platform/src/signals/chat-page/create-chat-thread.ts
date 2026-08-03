@@ -3340,7 +3340,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
       const generationTemplate = options.generationTemplate;
       const modelSelection = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
-      const features = get(featureSwitch$);
       const result = await set(
         prepareUserMessageFromDraft$,
         draft,
@@ -3357,6 +3356,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         return false;
       }
       signal.throwIfAborted();
+      const features = get(featureSwitch$);
       const userMessage = queueUserMessage(options, result);
 
       set(cancelDraftSync$);
