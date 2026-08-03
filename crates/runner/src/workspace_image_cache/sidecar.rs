@@ -1,3 +1,47 @@
+//! Opportunistic session-history storage attached to workspace image cache entries.
+//!
+//! A sidecar keeps the history bytes needed to resume the session associated
+//! with a cached workspace image. It is a local optimization, not an
+//! authoritative history store: a probe miss, or a non-cancellation failure to
+//! materialize or restore a probed body, falls back to the authoritative
+//! session-history materializer.
+//!
+//! ## Probe contract
+//!
+//! A probe accepts only supported metadata whose framework, hashed session ID,
+//! history reference kind, history hash, and raw history size exactly match the
+//! requested restored-session identity. A raw body is accepted only when its
+//! encoded length equals the raw history size; a `CodexZstd` body is accepted
+//! only for Codex. The encoded size must also be nonzero and within the
+//! resume-history limit. The referenced body must still be a regular file with
+//! the recorded file identity and encoded length. Probe failures are classified
+//! by `WorkspaceSessionHistorySidecarMiss`, whose stable values let callers
+//! record why remote materialization was used instead.
+//!
+//! ## Publication contract
+//!
+//! Publication runs while the workspace cache entry is guarded. Promotion can
+//! preserve the committed sidecar after consuming a cache hit, replace it from
+//! a staged source, or prune it when a non-hit workspace has no replacement. A
+//! replacement source must be a regular file whose actual length matches its
+//! declared nonzero encoded size, must fit the resume-history limit, and must
+//! carry complete restored-session cache identity fields. An invalid source is
+//! discarded without changing the committed metadata/body pair.
+//!
+//! Replacement alternates between two body slots. It writes new metadata to a
+//! temporary file, moves the staged body into the inactive slot, and atomically
+//! renames the metadata into place as the commit point. Before that rename, the
+//! previous metadata still selects the previous body, so a failed replacement
+//! leaves the last committed sidecar usable. Only after the metadata commit does
+//! publication attempt to remove the old body slot.
+//!
+//! Sidecar publication is best-effort relative to workspace image promotion. A
+//! sidecar failure does not reject an otherwise valid image promotion, but a
+//! failure to publish the enclosing workspace cache metadata removes the image
+//! and prunes the sidecar. The sidecar metadata and both body slots belong to
+//! the cache entry and participate in its inspection, allocated-byte accounting,
+//! garbage collection, and cleanup.
+
 use std::path::Path;
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
