@@ -524,6 +524,32 @@ async function expectAppendOnlyUpdateRejected(
   throw new Error(`${args.tableName} accepted an UPDATE`);
 }
 
+async function assertChatEventsAppendOnlyProtection(
+  client: Client,
+  rowId: string,
+): Promise<void> {
+  const triggers = await client.query<{
+    enabled: string;
+    triggerName: string;
+  }>(`
+    SELECT
+      "tgname" AS "triggerName",
+      "tgenabled"::text AS "enabled"
+    FROM "pg_trigger"
+    WHERE "tgrelid" = 'public.chat_events'::regclass
+      AND "tgname" = 'chat_events_reject_update'
+      AND NOT "tgisinternal"
+  `);
+  assert.deepEqual(triggers.rows, [
+    { enabled: "O", triggerName: "chat_events_reject_update" },
+  ]);
+  await expectAppendOnlyUpdateRejected(client, {
+    tableName: "chat_events",
+    query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
+    rowId,
+  });
+}
+
 async function validateCanonicalChatMessageStorage(
   client: Client,
   threadId: string,
@@ -2844,8 +2870,6 @@ async function validateRunEventSequenceNumberRollout(): Promise<void> {
       );
       const strictRejectFunctionDefinition = rejectFunction.rows[0]?.definition;
       assert.ok(strictRejectFunctionDefinition);
-
-
 
       await applyMigrationsUpTo(
         client,
