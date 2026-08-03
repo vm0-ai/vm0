@@ -238,7 +238,7 @@ class TestFirewallHeaderCache:
                 expires_at=time.time() + 3600,
             )
         )
-        auth_request = _firewall_auth_request(auth_headers={"Authorization": "template"})
+        auth_request = firewall_auth_request(auth_headers={"Authorization": "template"})
         first_key = auth_cache_key(api_id="api-1")
         second_key = auth_cache_key(api_id="api-2")
         third_key = auth_cache_key(api_id="api-3")
@@ -256,14 +256,19 @@ class TestFirewallHeaderCache:
             try:
                 assert await asyncio.to_thread(endpoint.wait_for_request_count, 1)
 
-                follower = asyncio.create_task(
-                    auth_cache.get_firewall_headers(first_key, auth_request)
-                )
-                second = asyncio.create_task(
-                    auth_cache.get_firewall_headers(second_key, auth_request)
-                )
+                follower_started = asyncio.Event()
+                second_started = asyncio.Event()
+
+                async def fetch_after_start(
+                    started: asyncio.Event, cache_key: auth_cache.FirewallAuthCacheKey
+                ) -> dict:
+                    started.set()
+                    return await auth_cache.get_firewall_headers(cache_key, auth_request)
+
+                follower = asyncio.create_task(fetch_after_start(follower_started, first_key))
+                second = asyncio.create_task(fetch_after_start(second_started, second_key))
                 tasks.extend((follower, second))
-                await asyncio.sleep(0)
+                await asyncio.gather(follower_started.wait(), second_started.wait())
 
                 assert auth_cache.admitted_firewall_auth_fetches_for_tests() == 2
                 assert endpoint.request_count == 1
@@ -307,7 +312,7 @@ class TestFirewallHeaderCache:
                 expires_at=time.time() + 3600,
             )
         )
-        auth_request = _firewall_auth_request(auth_headers={"Authorization": "template"})
+        auth_request = firewall_auth_request(auth_headers={"Authorization": "template"})
         first_key = auth_cache_key(api_id="api-1")
         second_key = auth_cache_key(api_id="api-2")
 
@@ -325,10 +330,14 @@ class TestFirewallHeaderCache:
                 with pytest.raises(asyncio.CancelledError):
                     await leader
 
-                follower = asyncio.create_task(
-                    auth_cache.get_firewall_headers(first_key, auth_request)
-                )
-                await asyncio.sleep(0)
+                follower_started = asyncio.Event()
+
+                async def follow_shared_fetch() -> dict:
+                    follower_started.set()
+                    return await auth_cache.get_firewall_headers(first_key, auth_request)
+
+                follower = asyncio.create_task(follow_shared_fetch())
+                await follower_started.wait()
                 assert auth_cache.admitted_firewall_auth_fetches_for_tests() == 1
                 with pytest.raises(auth_cache.FirewallAuthFetchSaturatedError):
                     await auth_cache.get_firewall_headers(second_key, auth_request)
