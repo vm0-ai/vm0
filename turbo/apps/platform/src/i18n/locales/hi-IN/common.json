@@ -1426,6 +1426,7 @@
       "queuedMessage": "पंक्तिबद्ध संदेश",
       "queuedMessageDescription": "लाइन में प्रतीक्षा करता है और वर्तमान रन समाप्त होने पर भेजता है।",
       "removeQueuedMessage": "पंक्तिबद्ध संदेश हटाएँ",
+      "sendQueuedMessageNow": "पंक्तिबद्ध संदेश अभी भेजें",
       "skipAutomationEvent": "ऑटोमेशन ईवेंट छोड़ें"
     },
     "replaceDraft": {

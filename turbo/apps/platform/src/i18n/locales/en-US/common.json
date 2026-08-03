@@ -1426,6 +1426,7 @@
       "queuedMessage": "Queued message",
       "queuedMessageDescription": "Waits in line and sends once the current run finishes.",
       "removeQueuedMessage": "Remove queued message",
+      "sendQueuedMessageNow": "Send queued message now",
       "skipAutomationEvent": "Skip automation event"
     },
     "replaceDraft": {

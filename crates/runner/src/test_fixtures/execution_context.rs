@@ -9,6 +9,7 @@ pub(crate) fn execution_context_for_test(run_id: RunId) -> ExecutionContext {
         append_system_prompt: None,
         vars: None,
         sandbox_token: "tok".into(),
+        active_input: None,
         storage_manifest: None,
         environment: None,
         resume_session: None,

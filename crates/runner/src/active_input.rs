@@ -1,7 +1,10 @@
 use std::io::{self, Write};
+use std::time::Duration;
 
+use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
+use crate::provider::ApiClient;
 
 /// Exec-control payloads are bounded by the guest-side process-control IPC
 /// frame limit.
@@ -61,6 +64,7 @@ pub(crate) fn active_input_payload_len(text: &str) -> Result<usize, serde_json::
 #[derive(Clone)]
 pub(crate) enum ActiveInputSource {
     LocalQueue(LocalQueueActiveInputSource),
+    Api(ApiActiveInputSource),
 }
 
 #[derive(Clone)]
@@ -69,19 +73,54 @@ pub(crate) struct LocalQueueActiveInputSource {
     pub(crate) run_id: RunId,
 }
 
+#[derive(Clone)]
+pub(crate) struct ApiActiveInputSource {
+    api: ApiClient,
+    run_id: RunId,
+    sandbox_token: String,
+}
+
 impl ActiveInputSource {
     pub(crate) fn local_queue(queue: LocalQueue, run_id: RunId) -> Self {
         Self::LocalQueue(LocalQueueActiveInputSource { queue, run_id })
     }
 
-    pub(crate) fn read_entries_from_sequence_sync(
+    pub(crate) fn api(api: ApiClient, run_id: RunId, sandbox_token: String) -> Self {
+        Self::Api(ApiActiveInputSource {
+            api,
+            run_id,
+            sandbox_token,
+        })
+    }
+
+    pub(crate) fn idle_max_interval(&self) -> Duration {
+        match self {
+            Self::LocalQueue(_) => Duration::from_millis(250),
+            Self::Api(_) => Duration::from_secs(1),
+        }
+    }
+
+    pub(crate) async fn read_entries_from_sequence(
         &self,
         min_sequence: u64,
-    ) -> Vec<ActiveInputEntry> {
+    ) -> RunnerResult<Vec<ActiveInputEntry>> {
         match self {
-            Self::LocalQueue(source) => source
-                .queue
-                .read_active_input_entries_from_sequence_sync(source.run_id, min_sequence),
+            Self::LocalQueue(source) => {
+                let source = source.clone();
+                tokio::task::spawn_blocking(move || {
+                    source
+                        .queue
+                        .read_active_input_entries_from_sequence_sync(source.run_id, min_sequence)
+                })
+                .await
+                .map_err(|error| RunnerError::Internal(error.to_string()))
+            }
+            Self::Api(source) => {
+                source
+                    .api
+                    .active_inputs(&source.sandbox_token, source.run_id, min_sequence)
+                    .await
+            }
         }
     }
 }

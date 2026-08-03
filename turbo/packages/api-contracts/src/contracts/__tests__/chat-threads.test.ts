@@ -31,6 +31,18 @@ const legacyProviderPinnedModelSelection = {
 describe("chat message response contract", () => {
   const workflowId = "11111111-1111-4111-8111-111111111111";
 
+  it("accepts a request to steer a queued event into a running turn", () => {
+    const body = {
+      agentId: "agent-1",
+      threadId: "11111111-1111-4111-8111-111111111111",
+      steersRunId: "22222222-2222-4222-8222-222222222222",
+      steersEventId: "33333333-3333-4333-8333-333333333333",
+      clientEventId: "44444444-4444-4444-8444-444444444444",
+    };
+
+    expect(chatEventsContract.send.body.parse(body)).toStrictEqual(body);
+  });
+
   it("rejects legacy automation metadata", () => {
     const parsed = chatEventSchema.safeParse({
       id: "message-1",

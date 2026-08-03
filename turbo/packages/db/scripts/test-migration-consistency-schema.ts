@@ -2630,13 +2630,6 @@ type PermanentFunction = {
 const EXPECTED_PERMANENT_TRIGGERS = [
   {
     definition:
-      "CREATE TRIGGER bridge_chat_event_run_event_sequence_number_0807 BEFORE INSERT ON public.chat_events FOR EACH ROW EXECUTE FUNCTION bridge_chat_event_run_event_sequence_number_0807()",
-    schemaName: "public",
-    tableName: "chat_events",
-    triggerName: "bridge_chat_event_run_event_sequence_number_0807",
-  },
-  {
-    definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
     schemaName: "public",
     tableName: "chat_events",
@@ -2768,13 +2761,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     bodyHash: "4886a7314cbaa815a4f8290a16a2f528",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "8a0560fcbbb11914a72bb7c9a6b86cb8",
-    functionName: "bridge_chat_event_run_event_sequence_number_0807",
-    identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
@@ -8406,6 +8392,7 @@ async function validateChatEventPropertyColumnRollout(): Promise<void> {
       for (const statement of runEventSequenceMigrationStatements) {
         await client.query(statement);
       }
+      await addCurrentChatEventAdditiveStorage(client);
       await validateChatEventPropertyColumnRuntimeCutover(client);
       await validateChatEventPropertyColumnContraction(client);
       await validateLegacyChatEventSeqIdAllocatorDrop(client);
@@ -17832,6 +17819,15 @@ async function validateRunnerSandboxStatePersistence(): Promise<void> {
 const RUN_EVENT_SEQUENCE_NUMBER_PREVIOUS_MIGRATION = 806;
 const RUN_EVENT_SEQUENCE_NUMBER_EXPANSION_MIGRATION = 807;
 
+async function addCurrentChatEventAdditiveStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    ADD COLUMN "active_input_sequence" integer
+  `);
+}
+
 async function validateRunEventSequenceNumberExpansion(): Promise<void> {
   console.log(
     "=== Validate populated run event sequence expansion and runtime cutover ===\n",
@@ -17942,6 +17938,7 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
         client,
         RUN_EVENT_SEQUENCE_NUMBER_EXPANSION_MIGRATION,
       );
+      await addCurrentChatEventAdditiveStorage(client);
       const database = drizzle(client);
 
       const historicalRows = await client.query<{

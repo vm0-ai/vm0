@@ -3519,6 +3519,82 @@ function createRecallMessage(deps: RecallMessageDeps) {
   });
 }
 
+function createSteerQueuedMessage({
+  threadId,
+  agentId$,
+  chatEvents$,
+  appendOptimisticEvent$,
+  dataSource,
+}: RecallMessageDeps) {
+  return command(
+    async (
+      { get, set },
+      eventId: string,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const chatEvents = get(chatEvents$);
+      const event = queuedEventsFromChatEvents(chatEvents).find((candidate) => {
+        return candidate.id === eventId;
+      });
+      const runIds = liveRunIdsFromChatEvents(chatEvents);
+      const agentId = get(agentId$);
+      if (
+        !event ||
+        event.eventType !== "input.prompt" ||
+        (event.attachFiles?.length ?? 0) > 0 ||
+        event.generationTemplate !== undefined ||
+        !event.userMessage.parts.every((part) => {
+          return part.type === "text";
+        }) ||
+        runIds.length !== 1 ||
+        !agentId
+      ) {
+        return;
+      }
+
+      const runId = runIds[0]!;
+      const clientEventId = crypto.randomUUID();
+      const response = await set(
+        dataSource.steerQueuedEvent$,
+        {
+          threadId,
+          agentId,
+          runId,
+          eventId,
+          clientEventId,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (response.runId !== runId) {
+        throw new Error("Steered chat event was associated with another run");
+      }
+
+      await set(
+        appendOptimisticEvent$,
+        {
+          threadId,
+          optimisticUserMessageAssociation: "run",
+          event: {
+            id: clientEventId,
+            threadId,
+            eventType: "input.prompt",
+            content: null,
+            runId,
+            revokesEventId: event.id,
+            triggerSource: event.triggerSource,
+            userMessage: event.userMessage,
+            createdAt: response.createdAt ?? nowDate().toISOString(),
+          },
+        },
+        "preserve",
+        signal,
+      );
+      signal.throwIfAborted();
+    },
+  );
+}
+
 function createSkipAutomationEvent({
   threadId,
   agentId$,
@@ -3586,6 +3662,7 @@ function createMessageCommands(deps: MessageCommandsDeps) {
     sendMessage$: createSendMessage(deps),
     queueMessage$: createQueueMessage(deps),
     recallMessage$: createRecallMessage(deps),
+    steerQueuedMessage$: createSteerQueuedMessage(deps),
   };
 }
 
@@ -4241,6 +4318,11 @@ function createThreadPendingActionSignals(options: ThreadRootComposerOptions) {
       await set(options.messageActions.recallMessage$, eventId, signal);
     },
   );
+  const steerQueuedMessage$ = command(
+    async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
+      await set(options.messageActions.steerQueuedMessage$, eventId, signal);
+    },
+  );
   const removeWorkflowEvent$ = command(
     async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
       await set(options.messageActions.skipAutomationEvent$, eventId, signal);
@@ -4255,6 +4337,7 @@ function createThreadPendingActionSignals(options: ThreadRootComposerOptions) {
     set(openChatThreadGoalDialog$, options.threadId);
   });
   return {
+    steerQueuedMessage$,
     removeQueuedMessage$,
     removeWorkflowEvent$,
     cancelActiveGoal$,

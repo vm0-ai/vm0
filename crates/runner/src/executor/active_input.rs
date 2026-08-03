@@ -60,17 +60,26 @@ enum ForwardOutcome {
 /// Adaptive poll delay that backs off only after idle or gap-only passes.
 struct PollCadence {
     next_idle_interval: Duration,
+    idle_max_interval: Duration,
 }
 
 impl Default for PollCadence {
     fn default() -> Self {
         Self {
             next_idle_interval: ACTIVE_INPUT_POLL_FAST_INTERVAL,
+            idle_max_interval: ACTIVE_INPUT_POLL_IDLE_MAX_INTERVAL,
         }
     }
 }
 
 impl PollCadence {
+    fn new(idle_max_interval: Duration) -> Self {
+        Self {
+            next_idle_interval: ACTIVE_INPUT_POLL_FAST_INTERVAL,
+            idle_max_interval,
+        }
+    }
+
     /// Returns the next delay and updates the backoff state for `outcome`.
     fn next_interval_after(&mut self, outcome: ForwardOutcome) -> Duration {
         match outcome {
@@ -83,8 +92,8 @@ impl PollCadence {
                 self.next_idle_interval = std::cmp::min(
                     self.next_idle_interval
                         .checked_mul(2)
-                        .unwrap_or(ACTIVE_INPUT_POLL_IDLE_MAX_INTERVAL),
-                    ACTIVE_INPUT_POLL_IDLE_MAX_INTERVAL,
+                        .unwrap_or(self.idle_max_interval),
+                    self.idle_max_interval,
                 );
                 interval
             }
@@ -182,7 +191,7 @@ async fn run_forwarder(
     stop: CancellationToken,
 ) {
     let mut state = ForwardState::default();
-    let mut cadence = PollCadence::default();
+    let mut cadence = PollCadence::new(source.idle_max_interval());
     loop {
         let next_sequence = state.next_sequence;
         let poll_interval = tokio::select! {
@@ -209,9 +218,7 @@ async fn read_entries(
     source: ActiveInputSource,
     min_sequence: u64,
 ) -> Vec<ActiveInputEntry> {
-    match tokio::task::spawn_blocking(move || source.read_entries_from_sequence_sync(min_sequence))
-        .await
-    {
+    match source.read_entries_from_sequence(min_sequence).await {
         Ok(entries) => entries,
         Err(error) => {
             warn!(run_id = %run_id, error = %error, "active-input reader task failed");

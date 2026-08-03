@@ -1396,6 +1396,102 @@ describe("CHAT-02: interrupting active chat runs", () => {
 });
 
 describe("CHAT-02: queueing and recalling messages", () => {
+  it("sends a queued text message into a capable running chat run", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatSteer]: true },
+    );
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor active input run",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(active.runId, {
+      activeInput: true,
+    });
+    expect(claim.activeInput).toBeTruthy();
+
+    const queuedEventId = randomUUID();
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "steer this queued message",
+        clientEventId: queuedEventId,
+      },
+      [201],
+    );
+    if (queued.status !== 201) {
+      throw new Error("Expected the queued send to be accepted");
+    }
+    expect(queued.body.runId).toBeNull();
+
+    const activeInputEventId = randomUUID();
+    const steered = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        steersRunId: active.runId,
+        steersEventId: queuedEventId,
+        clientEventId: activeInputEventId,
+      },
+      [201],
+    );
+    if (steered.status !== 201) {
+      throw new Error("Expected the queued message to be steered");
+    }
+    expect(steered.body).toMatchObject({
+      runId: active.runId,
+      threadId: active.threadId,
+      status: "running",
+    });
+
+    const retry = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        steersRunId: active.runId,
+        steersEventId: queuedEventId,
+        clientEventId: activeInputEventId,
+      },
+      [201],
+    );
+    if (retry.status !== 201) {
+      throw new Error("Expected the steer retry to be accepted");
+    }
+    expect(retry.body).toStrictEqual(steered.body);
+
+    await expect(
+      api.readRunnerActiveInputs(claim.sandboxToken, active.runId, 1),
+    ).resolves.toStrictEqual([
+      {
+        sequence: 1,
+        messageId: activeInputEventId,
+        text: "steer this queued message",
+      },
+    ]);
+    const events = await chat.listThreadEvents(actor, active.threadId);
+    expect(userMessages(events.events)).toContainEqual(
+      expect.objectContaining({
+        id: activeInputEventId,
+        runId: active.runId,
+        revokesEventId: queuedEventId,
+      }),
+    );
+
+    await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
   it("queues, retries, and recalls messages behind an active run", async () => {
     const { actor, agentId, providerId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
