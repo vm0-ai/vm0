@@ -883,9 +883,9 @@ describe("POST /api/zero/mail/drafts/link", () => {
       featureSwitchesClient().get({ headers: authHeaders() }),
       [200],
     );
-    expect(featureSwitches.body.switches).not.toHaveProperty(
-      FeatureSwitchKey.ZeroMailReplyFollowUp,
-    );
+    expect(
+      featureSwitches.body.switches[FeatureSwitchKey.ZeroMailReplyFollowUp],
+    ).toBeTruthy();
     expect(
       featureSwitches.body.effectiveSwitches[
         FeatureSwitchKey.ZeroMailReplyFollowUp
