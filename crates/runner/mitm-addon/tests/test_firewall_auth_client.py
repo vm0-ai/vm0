@@ -125,14 +125,13 @@ async def _trickle_until_peer_disconnect(
 ) -> None:
     peer_eof = asyncio.create_task(reader.read())
     try:
-        while not peer_eof.done():
-            writer.write(b" ")
-            await writer.drain()
-            await asyncio.sleep(0.02)
-        remaining_request_body = await peer_eof
-        assert remaining_request_body == b""
-    except ConnectionResetError:
-        pass
+        with suppress(ConnectionResetError):
+            while not peer_eof.done():
+                writer.write(b" ")
+                await writer.drain()
+                await asyncio.sleep(0.02)
+            remaining_request_body = await peer_eof
+            assert remaining_request_body == b""
     finally:
         if not peer_eof.done():
             peer_eof.cancel()
@@ -1144,11 +1143,9 @@ class TestFirewallAuthAsyncTransport:
         ) -> None:
             await reader.readexactly(1)
             handshake_started.set()
-            try:
+            with suppress(ConnectionResetError):
                 while await reader.read(64 * 1024):
                     pass
-            except ConnectionResetError:
-                pass
             peer_closed.set()
             await _close_test_writer(writer)
 
