@@ -5,7 +5,7 @@ mod codex;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use guest_contracts::claude_session_id::is_valid_claude_session_id;
+use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use sandbox::Sandbox;
 use tracing::{info, warn};
@@ -146,7 +146,7 @@ pub(super) async fn restore_session(
     // Only allow alnum, dash, and underscore.
     // Applied up-front so unknown frameworks still reject malformed IDs in case the
     // skip branch is ever upgraded to a write.
-    if !is_valid_claude_session_id(session.cli_agent_session_id()) {
+    if !is_valid_cli_agent_session_id(session.cli_agent_session_id()) {
         return Err(RunnerError::Internal("invalid session_id".into()));
     }
 

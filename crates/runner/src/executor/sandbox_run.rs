@@ -5,7 +5,7 @@ use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
-use guest_contracts::claude_session_id::is_valid_claude_session_id;
+use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use sandbox::{
     Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
@@ -1465,7 +1465,7 @@ fn normalize_guest_cli_agent_session_id(
             None
         }),
         EffectiveCliFramework::ClaudeCode => {
-            if is_valid_claude_session_id(&session_id) {
+            if is_valid_cli_agent_session_id(&session_id) {
                 Some(session_id)
             } else {
                 warn!(

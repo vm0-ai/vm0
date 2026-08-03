@@ -1,16 +1,17 @@
-//! Shared Claude Code session ID validation contract.
+//! Shared base CLI agent session ID lexical contract.
 //!
-//! Claude session IDs become guest filenames and cross the guest/runner
-//! boundary. The contract therefore keeps them short and restricts them to
-//! ASCII characters that are safe in a single filename component.
+//! Session IDs cross the guest/runner boundary and can become guest filenames.
+//! This base contract therefore keeps them short and restricts them to a
+//! conservative ASCII set. Frameworks may impose stricter rules; for example,
+//! Codex additionally requires a UUID through [`crate::codex_thread_id`].
 
-/// Maximum accepted Claude session ID length in bytes.
-pub const MAX_CLAUDE_SESSION_ID_BYTES: usize = 128;
+/// Maximum accepted base CLI agent session ID length in bytes.
+pub const MAX_CLI_AGENT_SESSION_ID_BYTES: usize = 128;
 
-/// Returns whether a Claude session ID satisfies the shared guest/runner contract.
-pub fn is_valid_claude_session_id(id: &str) -> bool {
+/// Returns whether a CLI agent session ID satisfies the shared base lexical contract.
+pub fn is_valid_cli_agent_session_id(id: &str) -> bool {
     !id.is_empty()
-        && id.len() <= MAX_CLAUDE_SESSION_ID_BYTES
+        && id.len() <= MAX_CLI_AGENT_SESSION_ID_BYTES
         && id
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
@@ -29,13 +30,13 @@ mod tests {
             "mock-019c279d-ff8e-7000-8000-000000000001",
         ] {
             assert!(
-                is_valid_claude_session_id(id),
+                is_valid_cli_agent_session_id(id),
                 "expected acceptance for {id:?}"
             );
         }
 
-        assert!(is_valid_claude_session_id(
-            &"a".repeat(MAX_CLAUDE_SESSION_ID_BYTES)
+        assert!(is_valid_cli_agent_session_id(
+            &"a".repeat(MAX_CLI_AGENT_SESSION_ID_BYTES)
         ));
     }
 
@@ -57,13 +58,13 @@ mod tests {
             "é",
         ] {
             assert!(
-                !is_valid_claude_session_id(id),
+                !is_valid_cli_agent_session_id(id),
                 "expected rejection for {id:?}"
             );
         }
 
-        assert!(!is_valid_claude_session_id(
-            &"a".repeat(MAX_CLAUDE_SESSION_ID_BYTES + 1)
+        assert!(!is_valid_cli_agent_session_id(
+            &"a".repeat(MAX_CLI_AGENT_SESSION_ID_BYTES + 1)
         ));
     }
 }

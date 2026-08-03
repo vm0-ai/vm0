@@ -8,7 +8,7 @@ use crate::error::AgentError;
 use crate::paths;
 use crate::session_history;
 use guest_common::{log_error, log_info};
-use guest_contracts::claude_session_id::is_valid_claude_session_id;
+use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -33,7 +33,7 @@ pub(crate) fn history_marker_payload_for_session_id_with_home(
 }
 
 fn claude_history_path_payload_for_home(home: &str, session_id: &str) -> Option<String> {
-    if !is_valid_claude_session_id(session_id) {
+    if !is_valid_cli_agent_session_id(session_id) {
         return None;
     }
 

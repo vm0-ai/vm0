@@ -1,7 +1,7 @@
-use guest_contracts::claude_session_id::MAX_CLAUDE_SESSION_ID_BYTES;
+use guest_contracts::cli_agent_session_id::MAX_CLI_AGENT_SESSION_ID_BYTES;
 
 pub(super) fn invalid_session_id_diagnostic_preview(id: &str) -> String {
-    let mut end = id.len().min(MAX_CLAUDE_SESSION_ID_BYTES);
+    let mut end = id.len().min(MAX_CLI_AGENT_SESSION_ID_BYTES);
     while !id.is_char_boundary(end) {
         end -= 1;
     }
@@ -35,13 +35,13 @@ mod tests {
 
     #[test]
     fn invalid_session_id_preview_truncates_overlong_values() {
-        let id = "a".repeat(MAX_CLAUDE_SESSION_ID_BYTES + 2);
+        let id = "a".repeat(MAX_CLI_AGENT_SESSION_ID_BYTES + 2);
 
         assert_eq!(
             invalid_session_id_diagnostic_preview(&id),
             format!(
                 "{}...[truncated 2 bytes]",
-                "a".repeat(MAX_CLAUDE_SESSION_ID_BYTES)
+                "a".repeat(MAX_CLI_AGENT_SESSION_ID_BYTES)
             )
         );
     }

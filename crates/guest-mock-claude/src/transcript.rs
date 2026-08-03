@@ -1,5 +1,5 @@
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
-use guest_contracts::claude_session_id::is_valid_claude_session_id;
+use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use serde_json::{Value, json};
 use std::io::Write;
 use std::path::PathBuf;
@@ -14,7 +14,7 @@ pub(crate) fn generate_session_id() -> String {
 ///
 /// Claude Code stores session history at: `{home}/.claude/projects/-{path}/{session_id}.jsonl`
 fn build_session_history_path(session_id: &str, home: &str) -> Option<String> {
-    if !is_valid_claude_session_id(session_id) {
+    if !is_valid_cli_agent_session_id(session_id) {
         return None;
     }
 
