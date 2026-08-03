@@ -580,6 +580,7 @@ def test_non_refinement_flow_does_not_decode_request_body(x_usage, tmp_path, rea
         "(vm0.ai)",
         "Visit go.dev",
         "Read example.museum",
+        "Visit example.web",
         "Label:example.com",
         "Param url=example.com",
         "Pipe|example.com",
