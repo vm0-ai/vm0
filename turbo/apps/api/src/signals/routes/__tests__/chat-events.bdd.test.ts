@@ -1417,6 +1417,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
       activeInput: true,
     });
     expect(claim.activeInput).toBeTruthy();
+    expect(claim.activeInputAbly).toBeTruthy();
 
     const queuedEventId = randomUUID();
     const queued = await chat.requestSendEvent(
@@ -1435,6 +1436,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
     expect(queued.body.runId).toBeNull();
 
     const activeInputEventId = randomUUID();
+    context.mocks.ably.publish.mockClear();
     const steered = await chat.requestSendEvent(
       actor,
       {
@@ -1453,6 +1455,9 @@ describe("CHAT-02: queueing and recalling messages", () => {
       runId: active.runId,
       threadId: active.threadId,
       status: "running",
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("active-input", {
+      runId: active.runId,
     });
 
     const retry = await chat.requestSendEvent(

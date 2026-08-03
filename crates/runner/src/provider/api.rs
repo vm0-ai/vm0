@@ -32,7 +32,7 @@ use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
 };
-use crate::active_input::ActiveInputSource;
+use crate::active_input::{ActiveInputAblyNotifications, ActiveInputSource};
 use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
@@ -241,6 +241,7 @@ pub struct ApiProvider {
     poll_wakeups: Arc<PollWakeups>,
     /// Supported direct job candidates delivered by Ably notifications.
     direct_candidates: Arc<DirectCandidateInbox>,
+    active_input_ably_notifications: ActiveInputAblyNotifications,
     /// Runs temporarily ineligible for this runner after a failed claim.
     claim_cooldowns: ClaimCooldowns,
     /// Background Ably control-plane task.
@@ -293,6 +294,7 @@ impl ApiProvider {
             DIRECT_CANDIDATE_INBOX_CAPACITY,
             DIRECT_CANDIDATE_STALE_AFTER,
         );
+        let active_input_ably_notifications = ActiveInputAblyNotifications::new();
 
         Arc::new(Self {
             api,
@@ -302,6 +304,7 @@ impl ApiProvider {
             supported_profiles,
             poll_wakeups,
             direct_candidates,
+            active_input_ably_notifications,
             claim_cooldowns: ClaimCooldowns::new(CLAIM_COOLDOWN_CAPACITY),
             ably_supervisor: Mutex::new(None),
             cancel_tokens,
@@ -464,6 +467,7 @@ impl ApiProvider {
             profiles: self.supported_profiles.clone(),
             poll_wakeups: Arc::clone(&self.poll_wakeups),
             direct_candidates: Arc::clone(&self.direct_candidates),
+            active_input_ably_notifications: self.active_input_ably_notifications.clone(),
             cancel_tokens: self.cancel_tokens.clone(),
             network_policy_refresh: self.network_policy_refresh.clone(),
             provider_cancel: self.cancel.clone(),
@@ -633,9 +637,24 @@ impl JobProvider for ApiProvider {
         let run_id = candidate.run_id();
         match self.api.claim(&candidate).await {
             Ok(Some(ctx)) => {
-                let active_input_source = (ctx.active_input == Some(true)).then(|| {
-                    ActiveInputSource::api(self.api.clone(), run_id, ctx.sandbox_token.clone())
-                });
+                let active_input_source = if ctx.active_input == Some(true) {
+                    if ctx.active_input_ably == Some(true) {
+                        Some(ActiveInputSource::api_ably(
+                            self.api.clone(),
+                            run_id,
+                            ctx.sandbox_token.clone(),
+                            self.active_input_ably_notifications.subscribe(run_id),
+                        ))
+                    } else {
+                        Some(ActiveInputSource::api_polling(
+                            self.api.clone(),
+                            run_id,
+                            ctx.sandbox_token.clone(),
+                        ))
+                    }
+                } else {
+                    None
+                };
                 let claimed = match ClaimedJob::api_with_active_input_source(
                     run_id,
                     ctx,
@@ -1817,6 +1836,7 @@ mod tests {
                 DIRECT_CANDIDATE_INBOX_CAPACITY,
                 DIRECT_CANDIDATE_STALE_AFTER,
             ),
+            active_input_ably_notifications: ActiveInputAblyNotifications::new(),
             claim_cooldowns: ClaimCooldowns::new(claim_cooldown_capacity),
             ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
             cancel_tokens: RunCancellationRegistry::new(),
@@ -3791,7 +3811,46 @@ mod tests {
             .expect("active input claim response should decode");
 
         assert_eq!(claimed.context().active_input, Some(true));
-        assert!(claimed.active_input_source().is_some());
+        let source = claimed.active_input_source().expect("active input source");
+        assert!(!source.uses_ably_notifications());
+        claim_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_uses_ably_active_input_when_advertised() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "ably active input response",
+                    "sandboxToken": "active-input-ably-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "activeInput": true,
+                    "activeInputAbly": true
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("Ably active input claim response should decode");
+
+        assert_eq!(claimed.context().active_input_ably, Some(true));
+        let source = claimed.active_input_source().expect("active input source");
+        assert!(source.uses_ably_notifications());
         claim_mock.assert_calls_async(1).await;
     }
 

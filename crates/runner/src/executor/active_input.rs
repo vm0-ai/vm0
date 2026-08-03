@@ -2,7 +2,7 @@
 //!
 //! # Ordering and consumption
 //!
-//! Polling begins at the first sequence, and `ForwardState::next_sequence` always
+//! Reading begins at the first sequence, and `ForwardState::next_sequence` always
 //! identifies the first unconsumed entry. Entries below it are stale; an entry above
 //! it exposes a gap, so later entries cannot pass it. A duplicate recent message ID,
 //! payload serialization failure, successful control delivery, or non-retryable
@@ -17,14 +17,16 @@
 //! window is bounded and a timed-out control call may have reached the guest, this is
 //! recent-ID deduplication, not a global at-most-once or exactly-once guarantee.
 //!
-//! # Polling and cancellation
+//! # Scheduling and cancellation
 //!
-//! Progress and retry-pending outcomes use the fast poll interval. Idle and gap-only
-//! passes back off to the configured cap; a pass that progresses before reaching a
-//! gap still counts as progress. Stop and job cancellation take priority at the read
-//! and sleep selection boundaries, but are not selected during a forwarding pass.
-//! Each control call has a deadline, and explicit stop bounds task join time before
-//! aborting the task.
+//! Ably-capable API sources read once after process startup and then wait for a
+//! runner-group notification before reading the durable mailbox again while Ably is
+//! connected. They temporarily fall back to adaptive polling during an Ably outage;
+//! legacy API responses and local queue sources retain adaptive polling throughout.
+//! Retryable guest-control errors always use the fast retry interval. Stop and job
+//! cancellation take priority at read and wait boundaries, but are not selected during
+//! a forwarding pass. Each control call has a deadline, and explicit stop bounds task
+//! join time before aborting the task.
 
 use std::collections::{HashSet, VecDeque};
 use std::time::Duration;
@@ -185,7 +187,7 @@ impl ActiveInputForwarder {
 
 async fn run_forwarder(
     run_id: RunId,
-    source: ActiveInputSource,
+    mut source: ActiveInputSource,
     control: GuestProcessControlHandle,
     job_cancel: CancellationToken,
     stop: CancellationToken,
@@ -194,15 +196,35 @@ async fn run_forwarder(
     let mut cadence = PollCadence::new(source.idle_max_interval());
     loop {
         let next_sequence = state.next_sequence;
-        let poll_interval = tokio::select! {
+        let (outcome, poll_interval) = tokio::select! {
             biased;
             () = stop.cancelled() => return,
             () = job_cancel.cancelled() => return,
-            entries = read_entries(run_id, source.clone(), next_sequence) => {
+            entries = read_entries(run_id, &source, next_sequence) => {
                 let outcome = forward_entries(run_id, &control, entries, &mut state).await;
-                cadence.next_interval_after(outcome)
+                (outcome, cadence.next_interval_after(outcome))
             }
         };
+
+        if source.uses_ably_notifications() && outcome != ForwardOutcome::RetryPending {
+            if source.ably_notifications_connected() {
+                tokio::select! {
+                    biased;
+                    () = stop.cancelled() => return,
+                    () = job_cancel.cancelled() => return,
+                    () = source.wait_for_ably_notification() => {}
+                }
+            } else {
+                tokio::select! {
+                    biased;
+                    () = stop.cancelled() => return,
+                    () = job_cancel.cancelled() => return,
+                    () = source.wait_for_ably_notification() => {}
+                    () = tokio::time::sleep(poll_interval) => {}
+                }
+            }
+            continue;
+        }
 
         tokio::select! {
             biased;
@@ -215,7 +237,7 @@ async fn run_forwarder(
 
 async fn read_entries(
     run_id: RunId,
-    source: ActiveInputSource,
+    source: &ActiveInputSource,
     min_sequence: u64,
 ) -> Vec<ActiveInputEntry> {
     match source.read_entries_from_sequence(min_sequence).await {

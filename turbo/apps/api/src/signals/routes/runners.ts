@@ -1802,7 +1802,7 @@ async function buildClaimResponseBody(args: {
         sandboxToken,
         ...(args.activeInputSupported &&
         args.storedContext.featureFlags?.[FeatureSwitchKey.ChatSteer] === true
-          ? { activeInput: true as const }
+          ? { activeInput: true as const, activeInputAbly: true as const }
           : {}),
         secretValues,
         networkPolicies: refreshedPolicies.networkPolicies,

@@ -96,6 +96,8 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub active_input: Option<bool>,
     #[serde(default)]
+    pub active_input_ably: Option<bool>,
+    #[serde(default)]
     pub(crate) storage_manifest: Option<StorageManifest>,
     #[serde(default)]
     pub environment: Option<HashMap<String, String>>,

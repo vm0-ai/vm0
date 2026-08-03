@@ -35,6 +35,7 @@ import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishActiveInputToRunnerGroup,
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
@@ -181,6 +182,7 @@ interface LockedActiveInputRun {
   readonly id: string;
   readonly status: RunStatus;
   readonly activeInputEnabled: boolean;
+  readonly runnerGroup: string | null;
 }
 
 interface AgentForChatSend {
@@ -1950,6 +1952,7 @@ async function lockActiveInputRun(
       id: agentRuns.id,
       status: agentRuns.status,
       activeInputEnabled: agentRuns.activeInputEnabled,
+      runnerGroup: agentRuns.runnerGroup,
     })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
@@ -2008,7 +2011,15 @@ async function activeInputRetryResponse(
       status: run.status,
       createdAt: existing.createdAt.toISOString(),
     },
+    runnerGroup: activeInputRunnerGroup(run),
   };
+}
+
+function activeInputRunnerGroup(run: LockedActiveInputRun): string {
+  if (!run.runnerGroup) {
+    throw new Error("Active input run is missing its runner group");
+  }
+  return run.runnerGroup;
 }
 
 function appendActiveInput(params: AppendActiveInputParams) {
@@ -2092,6 +2103,7 @@ function appendActiveInput(params: AppendActiveInputParams) {
         status: "running" as const,
         createdAt: inserted.createdAt.toISOString(),
       },
+      runnerGroup: activeInputRunnerGroup(run),
     };
   });
 }
@@ -2124,11 +2136,19 @@ const handleSteerSend$ = command(
       orgId: args.orgId,
     });
     signal.throwIfAborted();
-    if (result.status === 201) {
-      await publishChatEventCreated(args.userId, args.body.threadId);
-      signal.throwIfAborted();
+    if (result.status !== 201) {
+      return result;
     }
-    return result;
+    await Promise.all([
+      publishChatEventCreated(args.userId, args.body.threadId),
+      publishActiveInputToRunnerGroup(
+        result.runnerGroup,
+        args.body.steersRunId,
+      ),
+    ]);
+    signal.throwIfAborted();
+    const { runnerGroup: _runnerGroup, ...response } = result;
+    return response;
   },
 );
 

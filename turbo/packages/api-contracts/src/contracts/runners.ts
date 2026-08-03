@@ -639,6 +639,7 @@ export const executionContextSchema = z.object({
   vars: z.record(z.string(), z.string()).nullable(),
   sandboxToken: z.string(),
   activeInput: z.literal(true).optional(),
+  activeInputAbly: z.literal(true).optional(),
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),

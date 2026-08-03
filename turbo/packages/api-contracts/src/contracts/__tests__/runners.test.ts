@@ -118,12 +118,26 @@ describe("runner claim response contract", () => {
       executionContextSchema.parse({
         ...fixture,
         activeInput: true,
+        activeInputAbly: true,
       }).activeInput,
+    ).toBe(true);
+    expect(
+      executionContextSchema.parse({
+        ...fixture,
+        activeInput: true,
+        activeInputAbly: true,
+      }).activeInputAbly,
     ).toBe(true);
     expect(
       executionContextSchema.safeParse({
         ...fixture,
         activeInput: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      executionContextSchema.safeParse({
+        ...fixture,
+        activeInputAbly: false,
       }).success,
     ).toBe(false);
   });

@@ -1,5 +1,9 @@
 use std::io::{self, Write};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+
+use tokio::sync::broadcast;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
@@ -61,7 +65,6 @@ pub(crate) fn active_input_payload_len(text: &str) -> Result<usize, serde_json::
     Ok(counter.len())
 }
 
-#[derive(Clone)]
 pub(crate) enum ActiveInputSource {
     LocalQueue(LocalQueueActiveInputSource),
     Api(ApiActiveInputSource),
@@ -73,11 +76,88 @@ pub(crate) struct LocalQueueActiveInputSource {
     pub(crate) run_id: RunId,
 }
 
-#[derive(Clone)]
 pub(crate) struct ApiActiveInputSource {
     api: ApiClient,
     run_id: RunId,
     sandbox_token: String,
+    ably_subscription: Option<ActiveInputAblySubscription>,
+}
+
+const ACTIVE_INPUT_ABLY_NOTIFICATION_CAPACITY: usize = 256;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ActiveInputAblyNotification {
+    Run(RunId),
+    Resync,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ActiveInputAblyNotifications {
+    sender: broadcast::Sender<ActiveInputAblyNotification>,
+    connected: Arc<AtomicBool>,
+}
+
+pub(crate) struct ActiveInputAblySubscription {
+    run_id: RunId,
+    receiver: broadcast::Receiver<ActiveInputAblyNotification>,
+    connected: Arc<AtomicBool>,
+}
+
+impl ActiveInputAblyNotifications {
+    pub(crate) fn new() -> Self {
+        let (sender, receiver) = broadcast::channel(ACTIVE_INPUT_ABLY_NOTIFICATION_CAPACITY);
+        drop(receiver);
+        Self {
+            sender,
+            connected: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub(crate) fn subscribe(&self, run_id: RunId) -> ActiveInputAblySubscription {
+        ActiveInputAblySubscription {
+            run_id,
+            receiver: self.sender.subscribe(),
+            connected: Arc::clone(&self.connected),
+        }
+    }
+
+    pub(crate) fn notify_run(&self, run_id: RunId) {
+        let _ = self.sender.send(ActiveInputAblyNotification::Run(run_id));
+    }
+
+    pub(crate) fn mark_connected(&self) {
+        self.connected.store(true, Ordering::Release);
+        self.notify_resync();
+    }
+
+    pub(crate) fn mark_disconnected(&self) {
+        self.connected.store(false, Ordering::Release);
+        self.notify_resync();
+    }
+
+    fn notify_resync(&self) {
+        let _ = self.sender.send(ActiveInputAblyNotification::Resync);
+    }
+}
+
+impl ActiveInputAblySubscription {
+    fn is_connected(&self) -> bool {
+        self.connected.load(Ordering::Acquire)
+    }
+
+    pub(crate) async fn wait(&mut self) -> bool {
+        loop {
+            match self.receiver.recv().await {
+                Ok(ActiveInputAblyNotification::Run(run_id)) if run_id == self.run_id => {
+                    return true;
+                }
+                Ok(ActiveInputAblyNotification::Run(_)) => {}
+                Ok(ActiveInputAblyNotification::Resync)
+                | Err(broadcast::error::RecvError::Lagged(_)) => return true,
+                Err(broadcast::error::RecvError::Closed) => return false,
+            }
+        }
+    }
 }
 
 impl ActiveInputSource {
@@ -85,11 +165,26 @@ impl ActiveInputSource {
         Self::LocalQueue(LocalQueueActiveInputSource { queue, run_id })
     }
 
-    pub(crate) fn api(api: ApiClient, run_id: RunId, sandbox_token: String) -> Self {
+    pub(crate) fn api_polling(api: ApiClient, run_id: RunId, sandbox_token: String) -> Self {
         Self::Api(ApiActiveInputSource {
             api,
             run_id,
             sandbox_token,
+            ably_subscription: None,
+        })
+    }
+
+    pub(crate) fn api_ably(
+        api: ApiClient,
+        run_id: RunId,
+        sandbox_token: String,
+        ably_subscription: ActiveInputAblySubscription,
+    ) -> Self {
+        Self::Api(ApiActiveInputSource {
+            api,
+            run_id,
+            sandbox_token,
+            ably_subscription: Some(ably_subscription),
         })
     }
 
@@ -97,6 +192,30 @@ impl ActiveInputSource {
         match self {
             Self::LocalQueue(_) => Duration::from_millis(250),
             Self::Api(_) => Duration::from_secs(1),
+        }
+    }
+
+    pub(crate) fn uses_ably_notifications(&self) -> bool {
+        matches!(self, Self::Api(source) if source.ably_subscription.is_some())
+    }
+
+    pub(crate) fn ably_notifications_connected(&self) -> bool {
+        matches!(self, Self::Api(source) if source
+            .ably_subscription
+            .as_ref()
+            .is_some_and(ActiveInputAblySubscription::is_connected))
+    }
+
+    pub(crate) async fn wait_for_ably_notification(&mut self) {
+        let closed = match self {
+            Self::Api(source) => match source.ably_subscription.as_mut() {
+                Some(subscription) => !subscription.wait().await,
+                None => false,
+            },
+            Self::LocalQueue(_) => false,
+        };
+        if closed && let Self::Api(source) = self {
+            source.ably_subscription = None;
         }
     }
 
@@ -143,5 +262,38 @@ mod tests {
             let serialized = ActiveInputPayload::new(&text).to_vec().unwrap();
             assert_eq!(counted, serialized.len(), "text len={}", text.len());
         }
+    }
+
+    #[tokio::test]
+    async fn ably_subscription_filters_other_runs_and_wakes_for_its_run() {
+        let notifications = ActiveInputAblyNotifications::new();
+        let run_id = RunId::new_v4();
+        let mut subscription = notifications.subscribe(run_id);
+
+        notifications.notify_run(RunId::new_v4());
+        notifications.notify_run(run_id);
+
+        assert!(subscription.wait().await);
+    }
+
+    #[tokio::test]
+    async fn ably_resync_wakes_every_active_input_subscription() {
+        let notifications = ActiveInputAblyNotifications::new();
+        let mut first = notifications.subscribe(RunId::new_v4());
+        let mut second = notifications.subscribe(RunId::new_v4());
+
+        notifications.mark_connected();
+
+        assert!(first.is_connected());
+        assert!(second.is_connected());
+        assert!(first.wait().await);
+        assert!(second.wait().await);
+
+        notifications.mark_disconnected();
+
+        assert!(!first.is_connected());
+        assert!(!second.is_connected());
+        assert!(first.wait().await);
+        assert!(second.wait().await);
     }
 }
