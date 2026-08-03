@@ -18,6 +18,7 @@ import {
 } from "../../signals/chat-page/browser-session-block.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 
 interface BrowserSessionPanelProps {
   readonly signals: BrowserSessionSignals;
@@ -47,14 +48,21 @@ function PanelMessage({
   title,
   description,
   action,
+  className,
 }: {
   readonly icon: React.ReactNode;
   readonly title: string;
   readonly description: string;
   readonly action?: React.ReactNode;
+  readonly className?: string;
 }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-muted/20 px-6 text-center">
+    <div
+      className={cn(
+        "flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center",
+        className ?? "bg-muted/20",
+      )}
+    >
       {icon}
       <p className="text-sm font-medium text-foreground">{title}</p>
       <p className="max-w-md text-xs leading-5 text-muted-foreground">
@@ -97,6 +105,77 @@ function LiveBrowserFrame({
           : "w-full min-h-0 flex-1",
       )}
     />
+  );
+}
+
+function PausedBrowserSession({
+  screenshotUrl,
+  containLiveFrame,
+  starting,
+  onStart,
+}: {
+  readonly screenshotUrl?: string | null;
+  readonly containLiveFrame: boolean;
+  readonly starting: boolean;
+  readonly onStart: () => void;
+}) {
+  const { t } = useTranslation();
+  const showScreenshot = containLiveFrame && screenshotUrl;
+  const pausedMessage = (
+    <PanelMessage
+      icon={<IconBrowser size={26} className="text-muted-foreground" />}
+      title={t(($) => {
+        return $.browserSession.panel.notLive;
+      })}
+      description={t(($) => {
+        return $.browserSession.panel.startDescription;
+      })}
+      action={
+        <button
+          type="button"
+          disabled={starting}
+          data-browser-session-start
+          onClick={onStart}
+          className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70"
+        >
+          {starting ? (
+            <IconLoader2 className="animate-spin" size={14} />
+          ) : (
+            <IconPlayerPlay size={14} />
+          )}
+          {starting
+            ? t(($) => {
+                return $.browserSession.panel.starting;
+              })
+            : t(($) => {
+                return $.browserSession.panel.start;
+              })}
+        </button>
+      }
+      className={
+        showScreenshot
+          ? "absolute inset-0 z-10 bg-background/50 backdrop-blur-md"
+          : undefined
+      }
+    />
+  );
+  if (!showScreenshot) {
+    return <PanelFrame>{pausedMessage}</PanelFrame>;
+  }
+  return (
+    <PanelFrame>
+      <div className="relative min-h-0 flex-1 overflow-hidden bg-muted/20">
+        <ArtifactThumbnailImage
+          src={screenshotUrl}
+          testId="browser-session-panel-screenshot"
+          className="absolute inset-x-0 top-0 h-auto w-full object-contain object-top"
+          fallback={
+            <span className="absolute inset-0 bg-muted/20" aria-hidden />
+          }
+        />
+        <div data-browser-session-screenshot-mask>{pausedMessage}</div>
+      </div>
+    </PanelFrame>
   );
 }
 
@@ -148,41 +227,14 @@ export function BrowserSessionPanel({
   const liveUrl = session?.status === "active" ? session.liveUrl : null;
   if (liveUrl === null) {
     return (
-      <PanelFrame>
-        <PanelMessage
-          icon={<IconBrowser size={26} className="text-muted-foreground" />}
-          title={t(($) => {
-            return $.browserSession.panel.notLive;
-          })}
-          description={t(($) => {
-            return $.browserSession.panel.startDescription;
-          })}
-          action={
-            <button
-              type="button"
-              disabled={starting}
-              data-browser-session-start
-              onClick={() => {
-                detach(start(pageSignal), Reason.DomCallback);
-              }}
-              className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70"
-            >
-              {starting ? (
-                <IconLoader2 className="animate-spin" size={14} />
-              ) : (
-                <IconPlayerPlay size={14} />
-              )}
-              {starting
-                ? t(($) => {
-                    return $.browserSession.panel.starting;
-                  })
-                : t(($) => {
-                    return $.browserSession.panel.start;
-                  })}
-            </button>
-          }
-        />
-      </PanelFrame>
+      <PausedBrowserSession
+        screenshotUrl={session?.screenshotUrl}
+        containLiveFrame={containLiveFrame}
+        starting={starting}
+        onStart={() => {
+          detach(start(pageSignal), Reason.DomCallback);
+        }}
+      />
     );
   }
 

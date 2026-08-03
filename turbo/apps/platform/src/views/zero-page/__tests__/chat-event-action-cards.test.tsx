@@ -3874,17 +3874,20 @@ describe("chat event action cards", () => {
     });
   });
 
-  it("renders trusted browser universal links as compact cards with an open action", async () => {
+  it("renders trusted browser links as preview cards and reuses the screenshot when paused", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000080";
     const liveUrl =
       "https://live.browser-use.com/?wss=test-browser-session-token";
+    const screenshotUrl =
+      "https://cdn.vm7.io/artifacts/test/browser-screenshot.webp";
     let browser: ZeroBrowserSession = {
       threadId,
       name: "booking",
       status: "active",
       viewerUrl: `https://app.vm0.ai/browsers/${threadId}`,
       liveUrl,
+      screenshotUrl,
       proxyCountryCode: null,
       timeoutMinutes: 240,
       idleExpiresAt: "2026-07-24T10:10:00.000Z",
@@ -3933,8 +3936,8 @@ describe("chat event action cards", () => {
     await waitFor(() => {
       expect(browserRequests).toBeGreaterThan(0);
     });
-    // The message stream shows fixed-height entry points only; the live view is
-    // heavy and would resize the transcript as pages load.
+    // The message stream shows a static preview; the live view stays in the
+    // sidebar so loading pages cannot resize the transcript.
     const cards = await waitFor(() => {
       const found = Array.from(
         document.querySelectorAll<HTMLElement>("[data-browser-session-card]"),
@@ -3944,10 +3947,10 @@ describe("chat event action cards", () => {
         expect(card).toHaveTextContent("Cloud browser");
         expect(card).toHaveTextContent("Live");
         expect(card).not.toHaveTextContent("credits charged");
-        expect(buttonByText("Open", card)).toHaveAttribute(
-          "aria-label",
-          "Open booking browser",
-        );
+        expect(card).toHaveAttribute("aria-label", "Open booking browser");
+        expect(
+          within(card).getByTestId("browser-session-thumbnail"),
+        ).toHaveAttribute("src", screenshotUrl);
       }
       return found;
     });
@@ -3959,7 +3962,7 @@ describe("chat event action cards", () => {
     if (!firstCard) {
       throw new Error("Expected a browser session card");
     }
-    await user.click(buttonByText("Open", firstCard));
+    await user.click(firstCard);
 
     const frame = await screen.findByTitle("Live browser: booking");
     expect(frame).toHaveAttribute("src", liveUrl);
@@ -3993,6 +3996,12 @@ describe("chat event action cards", () => {
         expect(card).not.toHaveTextContent("credits charged");
       }
       expect(screen.getByText("Browser not live")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("browser-session-panel-screenshot"),
+      ).toHaveAttribute("src", screenshotUrl);
+      expect(
+        document.querySelector("[data-browser-session-screenshot-mask]"),
+      ).not.toBeNull();
       expect(
         document.querySelector('iframe[title="Live browser: booking"]'),
       ).toBeNull();

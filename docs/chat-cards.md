@@ -278,12 +278,15 @@ its thread-scoped computed reads the browser through
 `/api/zero/chat-threads/:threadId/browser`. A copied card therefore cannot
 resolve a browser owned by a different thread.
 
-The compact `268px × 48px` card shows `Cloud browser` and a simplified `Live`
-or `Stopped` status without browser-specific metadata or charged credits. Its
-explicit `Open` button opens the shared right sidebar surface. The live view
-lives in that sidebar and in the full-page route rather than in the message
-stream, because a live page resizes as it loads and would otherwise shift the
-transcript.
+The message card follows the presentation and website preview treatment. It
+shows a `Cloud browser` header with a simplified `Live` or `Stopped` status,
+then a `16:10` static preview of the latest foreground tab at up to `400px`
+wide. The preview fills its frame and stays aligned to the top, with a
+placeholder until the first screenshot is available. The whole card opens the
+shared right sidebar surface; it does not show browser-specific metadata or
+charged credits. The live page remains in that sidebar and in the full-page
+route rather than in the message stream, because it resizes as it loads and
+would otherwise shift the transcript.
 
 A provider instance outlives the run that opened it. Every terminal run callback
 only extends the instance's idle lease, so the user can keep working in the same
@@ -293,7 +296,10 @@ its hard timeout is reached, or the provider ends it. Deleting a chat thread
 also reclaims its browser. While the sidebar or full-page viewer is open
 and its page is visible, it refreshes the lease on a timer; the CLI can do the
 same with `zero browser lease`. Each lease is a fixed window from now and cannot
-be stacked.
+be stacked. After each successful viewer lease heartbeat, the API
+asynchronously captures the foreground tab as a `640px`-wide WebP, preserves
+its aspect ratio, and replaces the thread's previous immutable preview object.
+Screenshot failure does not invalidate the lease.
 
 Starting or resuming appends a payload-free `browser.started` chat event;
 stopping or automatic reclamation appends a payload-free `browser.stopped`
@@ -306,7 +312,10 @@ IndexedDB events cannot override a later server stop. A `browser.started`
 projection opens the sidebar only when no other utility sidebar is already open;
 a terminal `browser.stopped` projection does not auto-open it. The browser icon
 in the thread header remains available in either state, and both a never-created
-browser and a non-live browser use the same empty/start presentation.
+browser and a non-live browser keep the Start action. When a screenshot exists,
+the suspended sidebar reuses it at full width and top-aligns it beneath a
+half-transparent blurred mask, so the small preview fills the available surface
+without being presented as a live browser.
 
 Once an instance is reclaimed, the viewer keeps the stable
 `/browsers/:threadId` link. Its Start action, and `zero browser use` in a later

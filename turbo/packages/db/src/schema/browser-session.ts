@@ -256,3 +256,35 @@ export const browserSessionTabSnapshots = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
 );
+
+/**
+ * Latest foreground-tab screenshot for a chat thread. Screenshot objects use
+ * immutable artifact URLs, so the object key is retained to remove the
+ * previously published object after each successful replacement. This row
+ * intentionally outlives chat-thread deletion so the browser reconciler can
+ * remove the final external object before retiring its durable key.
+ */
+export const browserSessionScreenshots = pgTable(
+  "browser_session_screenshots",
+  {
+    chatThreadId: uuid("chat_thread_id").primaryKey(),
+    objectKey: text("object_key").notNull(),
+    url: text("url").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+);
+
+/**
+ * Durable deletion intent for immutable screenshot objects superseded by a
+ * later capture. The row deliberately has no thread foreign key: cleanup must
+ * remain retryable after the owning thread is deleted.
+ */
+export const browserSessionScreenshotDeletions = pgTable(
+  "browser_session_screenshot_deletions",
+  {
+    objectKey: text("object_key").primaryKey(),
+    chatThreadId: uuid("chat_thread_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+);
