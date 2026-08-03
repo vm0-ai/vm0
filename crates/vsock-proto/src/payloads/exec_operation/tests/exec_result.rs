@@ -68,6 +68,29 @@ fn exec_result_frame_into_matches_composed_encoding() {
 }
 
 #[test]
+fn exec_result_frame_into_rejects_too_long_diagnostic() {
+    let diagnostic = "x".repeat(u16::MAX as usize + 1);
+    let mut frame = b"stale frame bytes".to_vec();
+
+    let err = encode_exec_result_frame_into(
+        &mut frame,
+        42,
+        ExecTermination::WaitFailed,
+        1234,
+        ExecCapturedOutput::Discarded,
+        ExecCapturedOutput::Discarded,
+        &diagnostic,
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        err,
+        ProtocolError::PayloadTooLarge("diagnostic", size) if size == diagnostic.len()
+    ));
+    assert!(frame.is_empty());
+}
+
+#[test]
 fn exec_result_roundtrip_timed_out_with_diagnostic() {
     let payload = encode_exec_result(
         ExecTermination::TimedOut,
