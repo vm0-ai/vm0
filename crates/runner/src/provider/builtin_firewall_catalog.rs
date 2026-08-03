@@ -1594,6 +1594,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn invalid_shared_contract_bases_do_not_publish_or_replace_cache() {
+        let invalid_cases =
+            crate::test_fixtures::firewall_base_url_contract::firewall_base_url_validation_cases()
+                .into_iter()
+                .filter(|test_case| !test_case.expected_valid);
+
+        for test_case in invalid_cases {
+            let dir = tempfile::tempdir().unwrap();
+            let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+            let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+
+            let initial_error =
+                write_catalog_cache(&cache_path, &lock_path, catalog_with_base(&test_case.base))
+                    .await
+                    .unwrap_err();
+            assert!(
+                !cache_path.exists(),
+                "shared case {:?} unexpectedly published an initial cache after {initial_error}",
+                test_case.name
+            );
+
+            write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+                .await
+                .unwrap();
+            let before = tokio::fs::read(&cache_path).await.unwrap();
+
+            let refresh_error =
+                write_catalog_cache(&cache_path, &lock_path, catalog_with_base(&test_case.base))
+                    .await
+                    .unwrap_err();
+            let after = tokio::fs::read(&cache_path).await.unwrap();
+            assert_eq!(
+                after, before,
+                "shared case {:?} replaced the valid cache after {refresh_error}",
+                test_case.name
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn malformed_template_base_catalog_does_not_overwrite_existing_cache() {
         let dir = tempfile::tempdir().unwrap();
         let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
