@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.506.0](https://github.com/vm0-ai/vm0/compare/core-v8.505.0...core-v8.506.0) (2026-08-03)
+
+
+### Features
+
+* enable claude session pruning globally ([#24790](https://github.com/vm0-ai/vm0/issues/24790)) ([4798ff0](https://github.com/vm0-ai/vm0/commit/4798ff006f50e684214197f62e3ac3c29e66178a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.265.1
+
 ## [8.505.0](https://github.com/vm0-ai/vm0/compare/core-v8.504.1...core-v8.505.0) (2026-08-03)
 
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.369.0](https://github.com/vm0-ai/vm0/compare/api-v1.368.0...api-v1.369.0) (2026-08-03)
+
+
+### Features
+
+* enable claude session pruning globally ([#24790](https://github.com/vm0-ai/vm0/issues/24790)) ([4798ff0](https://github.com/vm0-ai/vm0/commit/4798ff006f50e684214197f62e3ac3c29e66178a))
+
+
+### Refactoring
+
+* **api:** remove legacy compacted usage lifecycle ([#24789](https://github.com/vm0-ai/vm0/issues/24789)) ([da34aba](https://github.com/vm0-ai/vm0/commit/da34aba75ec241e33a0f80d774c96b2472d98e41))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.265.1
+    * @vm0/core bumped to 8.506.0
+    * @vm0/db bumped to 1.163.1
+
 ## [1.368.0](https://github.com/vm0-ai/vm0/compare/api-v1.367.1...api-v1.368.0) (2026-08-03)
 
 

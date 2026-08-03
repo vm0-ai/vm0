@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.63.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.7...guest-agent-v0.63.0) (2026-08-03)
+
+
+### Features
+
+* enable claude session pruning globally ([#24790](https://github.com/vm0-ai/vm0/issues/24790)) ([4798ff0](https://github.com/vm0-ai/vm0/commit/4798ff006f50e684214197f62e3ac3c29e66178a))
+
 ## [0.62.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.6...guest-agent-v0.62.7) (2026-08-03)
 
 ## [0.62.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.5...guest-agent-v0.62.6) (2026-08-03)
