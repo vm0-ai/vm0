@@ -3,11 +3,13 @@ use super::*;
 use std::sync::Arc;
 
 use crate::paths::RunnerPaths;
-use crate::resource_budget::ResourceBudget;
+use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::workspace_image_cache::{WorkspaceCacheCheckoutResult, WorkspaceImagePromotionContext};
 use crate::workspace_promotion::test_support::WorkspacePromotionFixture;
-use sandbox::{ResourceLimits, SandboxConfig};
+use sandbox::{ResourceLimits, SandboxConfig, SandboxFactory, SandboxId};
 use sandbox_mock::{MockSandboxFactory, MockSandboxOverrides};
+
+use super::entry::{IdleSandboxResources, WorkspacePromotionPolicy};
 
 fn reserved_budget_lease() -> (Arc<ResourceBudget>, BudgetLease) {
     let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
