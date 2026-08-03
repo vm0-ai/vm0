@@ -13,7 +13,7 @@ import http_network_log
 import matching
 import registry
 from logging_utils import log_proxy_entry
-from runtime_url_parsing import split_runtime_url
+from runtime_url_parsing import split_runtime_url, strip_url_query_and_fragment
 from url_utils import AuthorityValidationError
 
 _BUILTIN_HOST_POLICY_DENIED_ERROR: Final = "builtin_host_policy_denied"
@@ -21,6 +21,12 @@ _AMBIGUOUS_CONNECTOR_ROUTE_ERROR: Final = "ambiguous_connector_route"
 _STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
 _UPSTREAM_DESTINATION_UNBOUND_ERROR: Final = "upstream_destination_unbound"
 _HTTP_STATUS_CONFLICT = 409
+
+
+def _diagnostic_url_without_query_or_fragment(original_url: str) -> str:
+    retained_url = strip_url_query_and_fragment(original_url)
+    parts = split_runtime_url(retained_url)
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
 
 
 def block_authority_validation_error(
@@ -239,10 +245,7 @@ def set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBl
         result.permissions[0] if len(result.permissions) == 1 else ""
     )
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
-    diagnostic_parts = split_runtime_url(original_url)
-    diagnostic_url = urllib.parse.urlunsplit(
-        (diagnostic_parts.scheme, diagnostic_parts.netloc, diagnostic_parts.path, "", "")
-    )
+    diagnostic_url = _diagnostic_url_without_query_or_fragment(original_url)
     error_body = json.dumps(
         {
             "error": "permission_denied",
@@ -286,10 +289,7 @@ def set_firewall_ambiguous_response(
     flow.metadata[metadata_keys.CONNECTOR_ROUTE_REASON] = result.reason
     flow.metadata[metadata_keys.CONNECTOR_ROUTE_CANDIDATES] = candidates
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
-    diagnostic_parts = split_runtime_url(original_url)
-    diagnostic_url = urllib.parse.urlunsplit(
-        (diagnostic_parts.scheme, diagnostic_parts.netloc, diagnostic_parts.path, "", "")
-    )
+    diagnostic_url = _diagnostic_url_without_query_or_fragment(original_url)
     flow.response = http.Response.make(
         _HTTP_STATUS_CONFLICT,
         json.dumps(
