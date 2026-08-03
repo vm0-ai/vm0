@@ -194,8 +194,14 @@ pub enum FirewallEntry {
     Inline { firewall: Firewall },
 }
 
-/// A single firewall config with its name and API entries.
-/// `name` is the canonical identifier (also used as the networkPolicies map key).
+/// A firewall definition shared by inline execution entries and builtin catalogs.
+///
+/// `name` is the canonical identifier and is also used as the `networkPolicies`
+/// map key. For builtin catalogs, changes to base URL, auth, `hostPolicy`,
+/// permission, or serialized-shape semantics must remain compatible with the
+/// TypeScript catalog producer and projection and the Python cache and runtime
+/// validators. Detailed validity rules belong in executable validators and
+/// shared behavioral contracts.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Firewall {
     pub name: String,
@@ -203,6 +209,16 @@ pub struct Firewall {
 }
 
 impl Firewall {
+    /// Validates an unresolved builtin firewall before cache publication.
+    ///
+    /// This gate checks the structural and syntax invariants available before
+    /// per-VM resolution. Catalog API IDs must be empty because the Python
+    /// registry resolver assigns run-scoped IDs after resolving the entries.
+    ///
+    /// The Python consumer still independently validates the cache file,
+    /// schema, and payload, then owns base-variable resolution, final
+    /// credentialed-destination and host-policy checks, matcher compilation,
+    /// and request-time enforcement.
     pub(crate) fn validate_for_cache(&self) -> Result<(), String> {
         if self.name.is_empty() {
             return Err("firewall name must be non-empty".to_string());
