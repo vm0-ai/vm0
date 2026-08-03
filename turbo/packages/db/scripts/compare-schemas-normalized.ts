@@ -32,6 +32,16 @@ interface ConstraintInfo {
   constraint_def: string;
 }
 
+// PR 1 of the run-event sequence column rollout adds physical storage without
+// declaring it in Drizzle. Remove these allowlists in PR 2 when the runtime
+// schema switches to the canonical property.
+const TRANSITIONAL_RUN_EVENT_SEQUENCE_COLUMNS = new Set([
+  "chat_events.run_event_sequence_number",
+]);
+const TRANSITIONAL_RUN_EVENT_SEQUENCE_INDEXES = new Set([
+  "chat_events_run_event_seq_unique",
+]);
+
 // Get database URLs from command line args
 const db1Url = process.argv[2];
 const db2Url = process.argv[3];
@@ -60,7 +70,11 @@ async function getTableColumns(client: Client): Promise<TableColumn[]> {
       AND t.table_type = 'BASE TABLE'
     ORDER BY c.table_name, c.column_name
   `);
-  return result.rows;
+  return result.rows.filter((column) => {
+    return !TRANSITIONAL_RUN_EVENT_SEQUENCE_COLUMNS.has(
+      `${column.table_name}.${column.column_name}`,
+    );
+  });
 }
 
 async function getIndexes(client: Client): Promise<IndexInfo[]> {
@@ -73,7 +87,9 @@ async function getIndexes(client: Client): Promise<IndexInfo[]> {
     WHERE schemaname = 'public'
     ORDER BY tablename, indexname
   `);
-  return result.rows;
+  return result.rows.filter((index) => {
+    return !TRANSITIONAL_RUN_EVENT_SEQUENCE_INDEXES.has(index.index_name);
+  });
 }
 
 async function getConstraints(client: Client): Promise<ConstraintInfo[]> {
