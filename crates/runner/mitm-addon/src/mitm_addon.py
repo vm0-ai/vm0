@@ -1033,14 +1033,19 @@ async def _try_firewall_request_stream_from_headers(
         is_billable_firewall(allow.name, vm_info),
         _is_model_provider_usage_observable(allow.name, vm_info),
     )
-    request_classification.cache_classification(flow, classification)
-    flow.metadata[_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS] = True
-    await codex_model_catalog_cache.prepare_request(
-        flow,
-        request_end_stream=request_end_stream is True,
-    )
-    if flow.response is None:
-        request_streaming.configure_request_stream(flow, capture_body=capture_body)
+    try:
+        request_classification.cache_classification(flow, classification)
+        flow.metadata[_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS] = True
+        await codex_model_catalog_cache.prepare_request(
+            flow,
+            request_end_stream=request_end_stream is True,
+        )
+        if flow.response is None:
+            request_streaming.configure_request_stream(flow, capture_body=capture_body)
+    except (asyncio.CancelledError, Exception):
+        _release_terminal_flow_state(flow, release_tracking=True)
+        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+        raise
 
 
 def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBlock) -> None:

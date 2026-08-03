@@ -1,5 +1,6 @@
 """Integration coverage for Codex model catalog cache request and hook lifecycle."""
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -8,6 +9,8 @@ import pytest
 import codex_model_catalog_cache as catalog_cache
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import request_classification
+import usage
 from tests.codex_model_catalog_cache_helpers import (
     CATALOG_BODY,
     catalog_flow,
@@ -18,6 +21,7 @@ from tests.codex_model_catalog_cache_helpers import (
 )
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
+from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 from tests.requestheaders_helpers import await_requestheaders_result
 
@@ -109,7 +113,7 @@ async def test_unsafe_catalog_requests_never_enter_cache(
     }
 
 
-def _write_codex_registry(tmp_path: Path, *, capture: bool) -> Path:
+def _write_codex_registry(tmp_path: Path, *, capture: bool, billable: bool = False) -> Path:
     firewall_name = "model-provider:codex-oauth-token"
     return _write_registry(
         tmp_path,
@@ -138,6 +142,7 @@ def _write_codex_registry(tmp_path: Path, *, capture: bool) -> Path:
                 "ask": [],
                 "unknownPolicy": "deny",
             },
+            billable_firewalls=[firewall_name] if billable else None,
             vm_fields={
                 "captureNetworkBodies": capture,
                 "cliAgentType": "codex",
@@ -212,6 +217,78 @@ async def test_both_firewall_auth_paths_prepare_catalog_cache(
     assert header_flow.response.content == CATALOG_BODY
     assert header_flow.response.stream is False
     assert "X-VM0-Codex-Model-Catalog-Prefetch" not in header_flow.request.headers
+
+
+async def test_cancelled_requestheaders_catalog_follower_releases_usage_tracking(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
+    resolved_headers = {
+        "Authorization": "Bearer resolved-token",
+        "ChatGPT-Account-ID": "resolved-account",
+    }
+    owner = catalog_flow(
+        real_flow,
+        auth_value="resolved-token",
+        account="resolved-account",
+    )
+    await prepare_miss(owner)
+
+    registry_path = _write_codex_registry(tmp_path, capture=True, billable=True)
+    follower = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="chatgpt.com",
+        method="GET",
+        path="/backend-api/codex/models?client_version=0.145.0",
+        request_headers=header_map(
+            {
+                "Host": "chatgpt.com",
+                "Accept-Encoding": "identity",
+            }
+        ),
+    )
+    follower.metadata["_vm0_request_end_stream"] = True
+    follower_task: asyncio.Task[None] | None = None
+    try:
+        with (
+            mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(headers=resolved_headers),
+        ):
+            follower_task = asyncio.create_task(
+                await_requestheaders_result(mitm_addon.requestheaders(follower))
+            )
+            await asyncio.sleep(0)
+            assert not follower_task.done()
+
+            follower_task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await follower_task
+    finally:
+        if follower_task is not None:
+            if not follower_task.done():
+                follower_task.cancel()
+            await asyncio.gather(follower_task, return_exceptions=True)
+        catalog_cache.handle_error(owner)
+
+    usage.write_pending_snapshot(flush_request_id="after-cancel")
+    assert_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-cancel",
+    )
+    assert "_usage_flow_tracked" not in follower.metadata
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in follower.metadata
+    assert mitm_addon._FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS not in follower.metadata
+    assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in follower.metadata
+    assert metadata_keys.REQUEST_STREAM_BUFFER not in follower.metadata
+    assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in follower.metadata
 
 
 async def test_network_log_contains_bounded_encoding_telemetry_and_cleanup(
