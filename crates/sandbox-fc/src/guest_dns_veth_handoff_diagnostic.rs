@@ -62,8 +62,12 @@ pub(crate) async fn capture_guest_dns_veth_handoff_diagnostic(
                 cleanup_optional_observer(namespace_observer),
                 cleanup_optional_observer(root_observer),
             );
-            namespace_setup.report.apply_cleanup(namespace_cleanup);
-            root_setup.report.apply_cleanup(root_cleanup);
+            if let Some(cleanup) = namespace_cleanup {
+                namespace_setup.report.apply_cleanup(cleanup);
+            }
+            if let Some(cleanup) = root_cleanup {
+                root_setup.report.apply_cleanup(cleanup);
+            }
             return render_report(VethHandoffDiagnosticReport {
                 outcome: VethHandoffOutcome::ProbeUnavailable,
                 probe: ProbeExecution::NotRun,
@@ -406,10 +410,10 @@ async fn setup_surface(
     }
 }
 
-async fn cleanup_optional_observer(observer: Option<InstalledObserver>) -> TcCleanupReport {
+async fn cleanup_optional_observer(observer: Option<InstalledObserver>) -> Option<TcCleanupReport> {
     match observer {
-        Some(observer) => observer.cleanup().await,
-        None => TcCleanupReport::default(),
+        Some(observer) => Some(observer.cleanup().await),
+        None => None,
     }
 }
 
