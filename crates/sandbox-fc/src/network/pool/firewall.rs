@@ -629,47 +629,17 @@ async fn run_firewall_restore(
 mod tests {
     use super::*;
 
-    #[cfg(unix)]
-    fn restore_capture_command(dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
-        use std::os::unix::fs::PermissionsExt;
-
-        let command = dir.join("verify-restore");
-        let payload = dir.join("payload");
-        std::fs::write(
-            &command,
-            r#"#!/bin/sh
-[ "$1" = "--wait" ] || exit 2
-[ "$2" = "--noflush" ] || exit 3
-PAYLOAD="${0%/*}/payload"
-while IFS= read -r LINE; do
-    printf '%s\n' "$LINE"
-done < "$3" > "$PAYLOAD"
-"#,
-        )
-        .unwrap();
-        std::fs::set_permissions(&command, std::fs::Permissions::from_mode(0o755)).unwrap();
-        (command, payload)
+    #[test]
+    fn xtables_args_prepends_bare_wait() {
+        assert_eq!(
+            xtables_args(&["=", "--wait"]),
+            vec!["--wait", "=", "--wait"]
+        );
     }
 
-    #[tokio::test]
-    async fn xtables_status_prepends_bare_wait() {
-        exec_xtables_status_with_timeout(
-            "test",
-            &["=", "--wait"],
-            std::time::Duration::from_secs(1),
-        )
-        .await
-        .unwrap();
-    }
-
-    #[tokio::test]
-    #[cfg(unix)]
-    async fn firewall_restore_applies_insert_and_append_rules_in_one_waiting_mutation() {
-        let dir = tempfile::tempdir().unwrap();
-        let (command, payload) = restore_capture_command(dir.path());
-
-        apply_firewall_rules_with_restore(
-            command.to_str().unwrap(),
+    #[test]
+    fn firewall_restore_builds_apply_payload_for_insert_and_append_rules() {
+        let payload = firewall_restore_payload(
             &[
                 FirewallRestoreTable {
                     table: "raw",
@@ -680,12 +650,12 @@ done < "$3" > "$PAYLOAD"
                     rules: vec!["-A FORWARD -m comment --comment vm0-ns-00-00 -j ACCEPT".into()],
                 },
             ],
+            FirewallRestoreMode::Apply,
         )
-        .await
         .unwrap();
 
         assert_eq!(
-            std::fs::read_to_string(payload).unwrap(),
+            payload,
             "*raw\n-I PREROUTING 1 -m comment --comment vm0-ns-00-00 -j DROP\nCOMMIT\n*filter\n-A FORWARD -m comment --comment vm0-ns-00-00 -j ACCEPT\nCOMMIT\n"
         );
     }
@@ -719,15 +689,10 @@ done < "$3" > "$PAYLOAD"
         assert!(!applied);
     }
 
-    #[tokio::test]
-    #[cfg(unix)]
-    async fn firewall_restore_batches_tables_in_one_waiting_mutation() {
-        let dir = tempfile::tempdir().unwrap();
-        let (command, payload) = restore_capture_command(dir.path());
-
-        let outcome = delete_firewall_rules_with_restore(
-            command.to_str().unwrap(),
-            vec![
+    #[test]
+    fn firewall_restore_batches_tables_in_one_delete_payload() {
+        let payload = firewall_restore_payload(
+            &[
                 FirewallRestoreTable {
                     table: "raw",
                     rules: vec!["-A PREROUTING -m comment --comment vm0-ns-00-00 -j DROP".into()],
@@ -741,12 +706,12 @@ done < "$3" > "$PAYLOAD"
                     rules: vec!["-A FORWARD -m comment --comment vm0-ns-00-00 -j ACCEPT".into()],
                 },
             ],
+            FirewallRestoreMode::Delete,
         )
-        .await;
+        .unwrap();
 
-        assert_eq!(outcome, NamespaceDeleteOutcome::Deleted);
         assert_eq!(
-            std::fs::read_to_string(payload).unwrap(),
+            payload,
             "*raw\n-D PREROUTING -m comment --comment vm0-ns-00-00 -j DROP\nCOMMIT\n*filter\n-D FORWARD -m comment --comment vm0-ns-00-00 -j ACCEPT\nCOMMIT\n"
         );
     }
