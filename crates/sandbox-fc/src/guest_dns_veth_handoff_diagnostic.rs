@@ -18,6 +18,11 @@ use crate::network::{
 
 const PEER_DEVICE: &str = "veth0";
 const DNS_PORT: u16 = 53;
+// TC egress accounts the Ethernet header still present before veth transmit;
+// TC ingress runs after eth_type_trans has removed that header.
+const ETHERNET_HEADER_BYTES: u64 = 14;
+const NAMESPACE_EGRESS_PACKET_BYTES: u64 = GUEST_DNS_READINESS_PACKET_BYTES + ETHERNET_HEADER_BYTES;
+const ROOT_INGRESS_PACKET_BYTES: u64 = GUEST_DNS_READINESS_PACKET_BYTES;
 const TC_COMMAND_TIMEOUT: Duration = Duration::from_millis(500);
 const PROBE_TIMEOUT: Duration = Duration::from_millis(500);
 const FILTER_PRIORITY_BASE: u16 = 49_152;
@@ -133,10 +138,8 @@ fn classify(
         (root_ingress.packets, root_ingress.bytes),
     ) {
         ((0, 0), (0, 0)) => VethHandoffOutcome::NamespaceEgressNotObserved,
-        ((1, GUEST_DNS_READINESS_PACKET_BYTES), (0, 0)) => {
-            VethHandoffOutcome::RootIngressNotObserved
-        }
-        ((1, GUEST_DNS_READINESS_PACKET_BYTES), (1, GUEST_DNS_READINESS_PACKET_BYTES)) => {
+        ((1, NAMESPACE_EGRESS_PACKET_BYTES), (0, 0)) => VethHandoffOutcome::RootIngressNotObserved,
+        ((1, NAMESPACE_EGRESS_PACKET_BYTES), (1, ROOT_INGRESS_PACKET_BYTES)) => {
             match root_netfilter_trace
                 .and_then(GuestDnsNetfilterTraceReport::exact_single_packet_observed)
             {

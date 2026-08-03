@@ -1022,10 +1022,10 @@ read -r TC_NAMESPACE_PACKETS TC_NAMESPACE_BYTES \
   <<< "$(tc_owned_counters namespace)"
 read -r TC_ROOT_PACKETS TC_ROOT_BYTES \
   <<< "$(tc_owned_counters root)"
-[ "$TC_NAMESPACE_PACKETS" -eq 1 ] && [ "$TC_NAMESPACE_BYTES" -eq 67 ] \
-  || fail "namespace diagnostic filter did not observe one 67-byte packet"
+[ "$TC_NAMESPACE_PACKETS" -eq 1 ] && [ "$TC_NAMESPACE_BYTES" -eq 81 ] \
+  || fail "namespace diagnostic filter expected 1/81, got ${TC_NAMESPACE_PACKETS}/${TC_NAMESPACE_BYTES}"
 [ "$TC_ROOT_PACKETS" -eq 1 ] && [ "$TC_ROOT_BYTES" -eq 67 ] \
-  || fail "root diagnostic filter did not observe one 67-byte packet"
+  || fail "root diagnostic filter expected 1/67, got ${TC_ROOT_PACKETS}/${TC_ROOT_BYTES}"
 
 sudo ip netns exec "$TC_DIAGNOSTIC_NAMESPACE" tc filter delete \
   dev veth0 egress protocol ip pref "$TC_DIAGNOSTIC_PRIORITY" \
@@ -1157,7 +1157,8 @@ for report in reports:
         surface = report[surface_name]
         if surface["setup"] != "installed" or surface["qdisc"] != "created":
             raise SystemExit(f"{surface_name} observer setup was incomplete: {report}")
-        if surface["counters"] != {"packets": 1, "bytes": 67}:
+        expected_bytes = 81 if surface_name == "namespace_egress" else 67
+        if surface["counters"] != {"packets": 1, "bytes": expected_bytes}:
             raise SystemExit(f"{surface_name} counters were not exact: {report}")
         if surface["cleanup"] != {"filter": "removed", "qdisc": "removed"}:
             raise SystemExit(f"{surface_name} cleanup was incomplete: {report}")
