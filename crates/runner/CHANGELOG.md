@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.151.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.13...runner-rs-v0.151.14) (2026-08-03)
+
+
+### Bug Fixes
+
+* **python:** reject superseded catalog owners ([#24603](https://github.com/vm0-ai/vm0/issues/24603)) ([d54cab8](https://github.com/vm0-ai/vm0/commit/d54cab803fa7d4d034a3a6672f859dcc98a5d74a))
+
+
+### Documentation
+
+* **runner:** document session-history sidecar contract ([#24605](https://github.com/vm0-ai/vm0/issues/24605)) ([65df99a](https://github.com/vm0-ai/vm0/commit/65df99aa6e733d5aa665da960bd7a023f97afa56))
+
+
+### Refactoring
+
+* **runner:** split idle pool lifecycle modules ([#24609](https://github.com/vm0-ai/vm0/issues/24609)) ([d2328f2](https://github.com/vm0-ai/vm0/commit/d2328f28d2c15fc61330ee5ff81bee32c2272305))
+
+
+### Performance Improvements
+
+* **python:** avoid duplicate connector auth query parsing ([#24582](https://github.com/vm0-ai/vm0/issues/24582)) ([62da4e5](https://github.com/vm0-ai/vm0/commit/62da4e54f6f74bc21352dde436d0b461f98f7f95))
+* **python:** avoid parsing discarded local-response queries ([#24604](https://github.com/vm0-ai/vm0/issues/24604)) ([a69e16e](https://github.com/vm0-ai/vm0/commit/a69e16ee44ac8e235e55299b766c7172769235f7))
+
 ## [0.151.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.12...runner-rs-v0.151.13) (2026-08-02)
 
 ## [0.151.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.11...runner-rs-v0.151.12) (2026-08-02)

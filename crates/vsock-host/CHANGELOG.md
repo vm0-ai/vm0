@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.70](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.69...vsock-host-v0.17.70) (2026-08-03)
+
+
+### Documentation
+
+* **rust:** clarify read_file non-regular path semantics ([#24600](https://github.com/vm0-ai/vm0/issues/24600)) ([47d9046](https://github.com/vm0-ai/vm0/commit/47d90465e1ed8403d5855e514182b855a4204517))
+
 ## [0.17.69](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.68...vsock-host-v0.17.69) (2026-08-02)
 
 
