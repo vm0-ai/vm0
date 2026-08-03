@@ -74,9 +74,9 @@ impl Default for DevicePoolConfig {
 
 #[cfg(test)]
 #[derive(Debug)]
-pub(super) struct DevicePoolSnapshot {
-    pub(super) cooldown: Vec<u32>,
-    pub(super) in_flight: HashSet<u32>,
+pub(crate) struct DevicePoolSnapshot {
+    pub(crate) cooldown: Vec<u32>,
+    pub(crate) in_flight: HashSet<u32>,
     pub(super) waiting_acquires: usize,
 }
 
