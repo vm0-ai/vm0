@@ -231,7 +231,7 @@ const setupPaneThread$ = command(
     );
     const composer = createChatThreadComposerSignals({
       thread: threadSignals,
-      chatEvents,
+      chatEvents: chatEvents.signals,
       feedbackModel: feedback.composer,
       inlineTemplatesEnabled,
       cancellationRecoveryPending$: dataSource.cancellationRecoveryPending$,

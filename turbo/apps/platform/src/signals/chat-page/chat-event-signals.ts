@@ -9,7 +9,6 @@ import {
 import {
   chatThreadArtifactsContract,
   type AttachFile,
-  type ChatFollowupsEvent,
   type ChatPromptEvent,
   type ChatRunOptionsRequest,
   type ChatThreadArtifactRun,
@@ -18,14 +17,7 @@ import {
   type ChatEvent as PersistedChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ChatEvent } from "./chat-event-types.ts";
-import type { ChatEventGroup } from "./chat-event.ts";
-import type { BodyRenderBlock } from "./parse-body-blocks.ts";
-import type { ArtifactSignals } from "./artifact-card-signals.ts";
-import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
-import type { MailDraftSignals } from "./mail-draft.ts";
-import type { BrowserSessionSignals } from "./browser-session-block.ts";
-import type { ThreadSidebarSignals } from "./thread-sidebar.ts";
-import type { createChatThreadScrollSignals } from "./chat-thread-scroll.ts";
+import type { ChatThreadMessageSignals } from "./chat-thread-signals.ts";
 import {
   listEventsAfter$,
   listEventsBefore$,
@@ -446,32 +438,7 @@ function createChatEventSetup({
   });
 }
 
-type RecommendedFollowup = NonNullable<
-  ChatFollowupsEvent["recommendedFollowups"]
->[number];
-
-export interface RecommendedFollowupSource {
-  readonly eventId: string;
-  readonly followups: readonly RecommendedFollowup[];
-}
-
-export type ThinkingIndicatorMode =
-  | "waiting"
-  | "waiting-queued"
-  | "running"
-  | "running-queued"
-  | "finished"
-  | null;
-
-export interface EventImageGroupProjection {
-  readonly role: ChatEventGroup["role"];
-  readonly events: readonly {
-    readonly attachFiles?: ChatPromptEvent["attachFiles"];
-    readonly blocks: readonly BodyRenderBlock[];
-  }[];
-}
-
-export interface ChatEventDataSignals {
+export interface ChatEventSignals {
   readonly chatEvents$: Computed<ChatEvent[]>;
   readonly setup$: Command<Promise<void>, [AbortSignal]>;
   readonly sendEvent$: Command<
@@ -480,47 +447,14 @@ export interface ChatEventDataSignals {
   >;
 }
 
-interface ChatEventPresentationSignals {
-  readonly scroll: ReturnType<typeof createChatThreadScrollSignals>;
-  readonly sidebar: ThreadSidebarSignals;
-  readonly latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
-  readonly latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
-  readonly visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
-  readonly visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
-  readonly chatSkeletonVisible$: Computed<boolean>;
-  readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
-  readonly artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
-  readonly agentReferenceSignalsForId: (
-    agentId: string,
-  ) => AgentReferenceSignals;
-  readonly mailDraftCardSignalsById$: Computed<
-    ReadonlyMap<string, MailDraftSignals>
-  >;
-  readonly reloadMailDrafts$: Command<void, []>;
-  readonly browserSessionSignals: BrowserSessionSignals;
-  readonly subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
-  readonly hasEvents$: Computed<Promise<boolean>>;
-  readonly thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;
-  readonly thinkingEventId$: Computed<Promise<string | null>>;
-  readonly thinkingText$: Computed<Promise<string | null>>;
-  readonly recommendedFollowupSource$: Computed<
-    Promise<RecommendedFollowupSource | null>
-  >;
-  readonly historyBackfillPending$: Computed<boolean>;
-  readonly donePhrase$: Computed<Promise<string>>;
-  readonly loadMoreRenderedChatGroups$: Command<
-    Promise<boolean>,
-    [AbortSignal]
-  >;
-  readonly resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
-  readonly artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
-  readonly reloadArtifacts$: Command<void, []>;
+export interface CreatedChatEventSignals {
+  readonly signals: ChatEventSignals;
+  readonly threadMessages: ChatThreadMessageSignals;
 }
 
-export interface ChatEventSignals
-  extends ChatEventDataSignals, ChatEventPresentationSignals {}
-
-export function createChatEventSignals(threadId: string): ChatEventSignals {
+export function createChatEventSignals(
+  threadId: string,
+): CreatedChatEventSignals {
   const dataSource: ChatEventDataSource = {
     listEventsAfter$,
     listEventsBefore$,
@@ -548,33 +482,37 @@ export function createChatEventSignals(threadId: string): ChatEventSignals {
     syncRemoteEvents$: events.syncRemoteEvents$,
   });
   return {
-    scroll: events.scroll,
-    sidebar: events.sidebar,
-    chatEvents$: events.chatEvents$,
-    latestRunFinishCreatedAt$: events.latestRunFinishCreatedAt$,
-    latestAssistantTextCreatedAt$: events.latestAssistantTextCreatedAt$,
-    visibleRenderedChatGroups$: events.visibleRenderedChatGroups$,
-    visibleRenderedChatGroupsReady$: events.visibleRenderedChatGroupsReady$,
-    chatSkeletonVisible$: events.chatSkeletonVisible$,
-    eventImageGroups$: events.eventImageGroups$,
-    artifactSignalsForUrl: events.artifactSignalsForUrl,
-    agentReferenceSignalsForId: events.agentReferenceSignalsForId,
-    mailDraftCardSignalsById$: events.mailDraftCardSignalsById$,
-    reloadMailDrafts$: events.reloadMailDrafts$,
-    browserSessionSignals: events.browserSessionSignals,
-    subscribeBrowserSessions$: events.subscribeBrowserSessions$,
-    hasEvents$: events.hasEvents$,
-    thinkingIndicatorMode$: events.thinkingIndicatorMode$,
-    thinkingEventId$: events.thinkingEventId$,
-    thinkingText$: events.thinkingText$,
-    recommendedFollowupSource$: events.recommendedFollowupSource$,
-    historyBackfillPending$: events.historyBackfillPending$,
-    donePhrase$: events.donePhrase$,
-    loadMoreRenderedChatGroups$: events.loadMoreRenderedChatGroups$,
-    resetRenderedChatGroupsIfAtBottom$:
-      events.resetRenderedChatGroupsIfAtBottom$,
-    ...artifact,
-    setup$,
-    sendEvent$,
+    signals: {
+      chatEvents$: events.chatEvents$,
+      setup$,
+      sendEvent$,
+    },
+    threadMessages: {
+      scroll: events.scroll,
+      sidebar: events.sidebar,
+      latestRunFinishCreatedAt$: events.latestRunFinishCreatedAt$,
+      latestAssistantTextCreatedAt$: events.latestAssistantTextCreatedAt$,
+      visibleRenderedChatGroups$: events.visibleRenderedChatGroups$,
+      visibleRenderedChatGroupsReady$: events.visibleRenderedChatGroupsReady$,
+      chatSkeletonVisible$: events.chatSkeletonVisible$,
+      eventImageGroups$: events.eventImageGroups$,
+      artifactSignalsForUrl: events.artifactSignalsForUrl,
+      agentReferenceSignalsForId: events.agentReferenceSignalsForId,
+      mailDraftCardSignalsById$: events.mailDraftCardSignalsById$,
+      reloadMailDrafts$: events.reloadMailDrafts$,
+      browserSessionSignals: events.browserSessionSignals,
+      subscribeBrowserSessions$: events.subscribeBrowserSessions$,
+      hasEvents$: events.hasEvents$,
+      thinkingIndicatorMode$: events.thinkingIndicatorMode$,
+      thinkingEventId$: events.thinkingEventId$,
+      thinkingText$: events.thinkingText$,
+      recommendedFollowupSource$: events.recommendedFollowupSource$,
+      historyBackfillPending$: events.historyBackfillPending$,
+      donePhrase$: events.donePhrase$,
+      loadMoreRenderedChatGroups$: events.loadMoreRenderedChatGroups$,
+      resetRenderedChatGroupsIfAtBottom$:
+        events.resetRenderedChatGroupsIfAtBottom$,
+      ...artifact,
+    },
   };
 }

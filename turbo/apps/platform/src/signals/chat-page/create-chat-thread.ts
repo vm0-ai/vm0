@@ -157,9 +157,13 @@ import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../zero-page/settings/c
 import { openCodexDeviceAuthDialogPersonal$ } from "../zero-page/settings/codex-device-auth.ts";
 import type {
   ChatThreadCoreSignals,
+  ChatThreadMessageSignals,
   ChatThreadSignals,
+  EventImageGroupProjection,
   QueueMessageOptions,
+  RecommendedFollowupSource,
   SendMessageOptions,
+  ThinkingIndicatorMode,
 } from "./chat-thread-signals.ts";
 import { reloadMountedComposerWorkflows$ } from "../zero-page/tiptap-workflow-composer.ts";
 import {
@@ -192,15 +196,12 @@ import {
 import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import type {
   AppendOptimisticEventCommand,
-  ChatEventDataSignals,
   ChatEventDataSource,
   ChatEventSignals,
-  EventImageGroupProjection,
+  CreatedChatEventSignals,
   OptimisticScrollBehavior,
-  RecommendedFollowupSource,
   SendChatEventInput,
   SendChatEventResult,
-  ThinkingIndicatorMode,
 } from "./chat-event-signals.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
@@ -2318,7 +2319,6 @@ function createPagedEvents(
     previewImageUrlsByUrl$,
     browserLifecycleOptimisticEvents,
   );
-
   const projections = createPagedEventProjections({
     persistentEvents$: persistentChatEvents$,
     optimisticEvents$,
@@ -3782,7 +3782,7 @@ function createThinkingIndicatorSignals(
 // Factory: createChatThreadSignals
 // ---------------------------------------------------------------------------
 
-function publicChatThreadEventSignals(events: ChatEventSignals) {
+function publicChatThreadEventSignals(events: ChatThreadMessageSignals) {
   return {
     latestRunFinishCreatedAt$: events.latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$: events.latestAssistantTextCreatedAt$,
@@ -3809,7 +3809,7 @@ function publicChatThreadEventSignals(events: ChatEventSignals) {
 
 interface CreateChatThreadComposerSignalsOptions {
   readonly thread: ChatThreadCoreSignals;
-  readonly chatEvents: Pick<ChatEventDataSignals, "chatEvents$">;
+  readonly chatEvents: ChatEventSignals;
   readonly feedbackModel: ComposerFeedbackModel;
   readonly inlineTemplatesEnabled: boolean;
   readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
@@ -3949,9 +3949,11 @@ export function createChatThreadSignals(
   threadId: string,
   draft: DraftSignals,
   dataSource: ChatThreadRemote,
-  events: ChatEventSignals,
+  chatEvents: CreatedChatEventSignals,
   options: CreateChatThreadSignalsOptions,
 ): ChatThreadCoreSignals {
+  const events = chatEvents.signals;
+  const messages = chatEvents.threadMessages;
   const threadDraft$ = createRemoteThreadDraft(dataSource);
   const threadMeta$ = createThreadMeta(threadId);
   const threadTitle = createThreadTitleParts(threadMeta$);
@@ -3974,9 +3976,9 @@ export function createChatThreadSignals(
   const runTracking = createRunTracking({
     threadId,
     setupChatEvents$: events.setup$,
-    reloadArtifacts$: events.reloadArtifacts$,
-    reloadMailDrafts$: events.reloadMailDrafts$,
-    subscribeBrowserSessions$: events.subscribeBrowserSessions$,
+    reloadArtifacts$: messages.reloadArtifacts$,
+    reloadMailDrafts$: messages.reloadMailDrafts$,
+    subscribeBrowserSessions$: messages.subscribeBrowserSessions$,
     automationSignals: threadOwned,
     dataSource,
   });
@@ -3992,7 +3994,7 @@ export function createChatThreadSignals(
     sendEvent$: events.sendEvent$,
   });
   const assistantErrorRecovery = createAssistantErrorRecoverySignals({
-    visibleRenderedChatGroups$: events.visibleRenderedChatGroups$,
+    visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
     selectedModel$: modelSelection.selectedModel$,
     sendMessage$: messageActions.sendMessage$,
   });
@@ -4006,26 +4008,26 @@ export function createChatThreadSignals(
     ...computerUseHostSelection,
     ...messageActions,
     ...assistantErrorRecovery,
-    scrollContainerOnRef$: events.scroll.scrollContainerOnRef$,
-    scrollContentOnRef$: events.scroll.scrollContentOnRef$,
-    threadScrollPosition$: events.scroll.threadScrollPosition$,
-    awayFromBottom$: events.scroll.awayFromBottom$,
-    scrollTo$: events.scroll.scrollTo$,
-    scrollToTop$: events.scroll.scrollToTop$,
-    scrollToBottom$: events.scroll.scrollToBottom$,
+    scrollContainerOnRef$: messages.scroll.scrollContainerOnRef$,
+    scrollContentOnRef$: messages.scroll.scrollContentOnRef$,
+    threadScrollPosition$: messages.scroll.threadScrollPosition$,
+    awayFromBottom$: messages.scroll.awayFromBottom$,
+    scrollTo$: messages.scroll.scrollTo$,
+    scrollToTop$: messages.scroll.scrollToTop$,
+    scrollToBottom$: messages.scroll.scrollToBottom$,
     ...container,
     draft,
     feedback: options.feedback,
     ...threadOwned,
-    sidebar: events.sidebar,
+    sidebar: messages.sidebar,
     queueDraftSync$,
-    ...publicChatThreadEventSignals(events),
+    ...publicChatThreadEventSignals(messages),
     subscribeChatThread$: runTracking.subscribeChatThread$,
     ...createThinkingIndicatorSignals(
-      events.thinkingText$,
-      events.thinkingEventId$,
+      messages.thinkingText$,
+      messages.thinkingEventId$,
     ),
-    artifacts$: events.artifacts$,
-    reloadArtifacts$: events.reloadArtifacts$,
+    artifacts$: messages.artifacts$,
+    reloadArtifacts$: messages.reloadArtifacts$,
   };
 }
