@@ -219,6 +219,7 @@ jobs:
           )
           bash -n "${script_files[@]}"
           shellcheck \
+            e2e/helpers/http.bash \
             e2e/helpers/storage-fixtures.bash \
             .github/scripts/check-release-please-component-releases.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
