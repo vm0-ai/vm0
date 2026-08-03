@@ -23,13 +23,17 @@ comments. The parser accepts only the keys listed below. An unreadable file, a
 line without `=`, an unsupported key, or a duplicate key is a configuration
 error that prevents the runner from starting.
 
-| Key                                     | Unit                   | Valid values                   | Behavior                                                                                             |
-| --------------------------------------- | ---------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `VM0_RUNNER_CONCURRENCY_FACTOR`         | Dimensionless multiple | Positive finite number         | Optional; overrides `sandbox.concurrency_factor` from `runner.yaml`. An invalid value fails startup. |
-| `VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC` | MiB/s                  | Positive finite decimal number | Required with the other three I/O keys.                                                              |
-| `VM0_RUNNER_DISK_IOPS`                  | Operations/s           | Positive integer               | Required with the other three I/O keys.                                                              |
-| `VM0_RUNNER_NET_RX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal number | Required with the other three I/O keys.                                                              |
-| `VM0_RUNNER_NET_TX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal number | Required with the other three I/O keys.                                                              |
+| Key                                     | Unit                   | Valid values                               | Behavior                                                                                             |
+| --------------------------------------- | ---------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `VM0_RUNNER_CONCURRENCY_FACTOR`         | Dimensionless multiple | Positive finite number                     | Optional; overrides `sandbox.concurrency_factor` from `runner.yaml`. An invalid value fails startup. |
+| `VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC` | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
+| `VM0_RUNNER_DISK_IOPS`                  | Operations/s           | Integer in `1..=u64::MAX`                  | Required with the other three I/O keys.                                                              |
+| `VM0_RUNNER_NET_RX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
+| `VM0_RUNNER_NET_TX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
+
+Bandwidth values may be fractional. After conversion from MiB/s, the byte/s
+value must be at least `1`, must fit in a `u64`, and is rounded down to an
+integer. Disk IOPS must parse directly as a nonzero `u64`.
 
 The concurrency override is independent of the I/O group, but it changes the
 resource budget used to calculate the I/O limits.
