@@ -43,15 +43,13 @@ import {
   type OptimisticChatEventInput,
 } from "./optimistic-chat-events.ts";
 import type { ChatEvent } from "./chat-event-types.ts";
-import {
-  chatThreadArtifactsContract,
-  type AttachFile,
-  type GenerationTemplateRequest,
-  type ChatThreadArtifactRun,
-  type ChatEvent as PersistedChatEvent,
-  type ChatPromptEvent,
-  type ChatUserMessageEvent,
-  type UserMessageDocument,
+import type {
+  AttachFile,
+  GenerationTemplateRequest,
+  ChatEvent as PersistedChatEvent,
+  ChatPromptEvent,
+  ChatUserMessageEvent,
+  UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import {
@@ -63,10 +61,8 @@ import {
 
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
-import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
-import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import {
   chatThreadSidebarAutoOpenEnabled$,
@@ -101,15 +97,12 @@ import {
   type SemanticChatGroups as GenericSemanticChatGroups,
 } from "./chat-event-state.ts";
 import { logger } from "../log.ts";
-import {
-  CHAT_EVENTS_PAGE_LIMIT,
-  createRemoteChatThreadDataSource,
-} from "./remote-chat-thread-data-source.ts";
+import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
+import { CHAT_EVENTS_PAGE_LIMIT } from "./remote-chat-event-data-source.ts";
 import {
   loadIndexedDbChatEvents$,
   writeIndexedDbChatEvents$,
 } from "./chat-event-indexed-db.ts";
-import { sendChatEvent } from "./chat-event-api.ts";
 import {
   classifyChatAttachment,
   type BodyRenderBlock,
@@ -147,14 +140,12 @@ import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
   optimisticChatThreadCreateUnsettled,
   threadMeta,
-  touchOptimisticChatThreadSort$,
   type ThreadMeta,
 } from "./chat-thread-event-sourcing.ts";
 import {
   previousRunGroupVisualWindowStartIndex,
   runGroupVisualWindowStartIndex,
 } from "./run-group-folding.ts";
-import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 import {
   computerUseHosts$,
   selectedComputerUseHostId,
@@ -165,12 +156,10 @@ import { personalModelProvider$ } from "../zero-page/model-first-personal-oauth.
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialogPersonal$ } from "../zero-page/settings/codex-device-auth.ts";
 import type {
+  ChatThreadCoreSignals,
   ChatThreadSignals,
-  EventImageGroupProjection,
   QueueMessageOptions,
-  RecommendedFollowupSource,
   SendMessageOptions,
-  ThinkingIndicatorMode,
 } from "./chat-thread-signals.ts";
 import { reloadMountedComposerWorkflows$ } from "../zero-page/tiptap-workflow-composer.ts";
 import {
@@ -192,6 +181,7 @@ import {
 import { locale$ } from "../locale.ts";
 import {
   createComposerSignals,
+  type ComposerSignals,
   type ComposerSubmission,
 } from "../zero-page/composer-signals.ts";
 import type { ComposerFeedbackModel } from "../zero-page/chat-feedback.ts";
@@ -199,7 +189,19 @@ import {
   openChatThreadGoalDialog$,
   pauseChatThreadGoal$,
 } from "./chat-goal.ts";
-import { createChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
+import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
+import type {
+  AppendOptimisticEventCommand,
+  ChatEventDataSignals,
+  ChatEventDataSource,
+  ChatEventSignals,
+  EventImageGroupProjection,
+  OptimisticScrollBehavior,
+  RecommendedFollowupSource,
+  SendChatEventInput,
+  SendChatEventResult,
+  ThinkingIndicatorMode,
+} from "./chat-event-signals.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
@@ -1715,7 +1717,7 @@ function createSyncRemoteEventsCommand({
     Promise<void>,
     [PersistedChatEvent[], AbortSignal]
   >;
-  dataSource: ChatThreadRemote;
+  dataSource: ChatEventDataSource;
 }): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const mergeEvents = async (events: PersistedChatEvent[]): Promise<void> => {
@@ -2023,7 +2025,6 @@ function createPagedEventResources(
   threadId: string,
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
   browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents,
-  initialOptimisticEntries: readonly OptimisticChatEventEntry[],
 ) {
   const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
   const browserSessionSignals = createBrowserSessionSignals(
@@ -2053,9 +2054,6 @@ function createPagedEventResources(
     registerEventAttachments(entry.event, artifactCardSignals);
     registerEventAgentReferences(entry.event, agentReferenceSignals);
   };
-  for (const entry of initialOptimisticEntries) {
-    registerOptimisticEventResources(entry);
-  }
   return {
     agentReferenceSignals,
     artifactCardSignals,
@@ -2076,12 +2074,6 @@ function createPagedEventResources(
     resolveBodyBlocks: bodyBlocksRenderer("resolve"),
   };
 }
-
-type OptimisticScrollBehavior = "preserve" | "bottom";
-type AppendOptimisticEventCommand = Command<
-  Promise<void>,
-  [OptimisticChatEventInput, OptimisticScrollBehavior, AbortSignal]
->;
 
 interface BrowserLifecycleOptimisticEvent {
   readonly eventId: string;
@@ -2163,7 +2155,7 @@ function createRemoteEventSyncSignals({
     Promise<void>,
     [PersistedChatEvent[], AbortSignal]
   >;
-  dataSource: ChatThreadRemote;
+  dataSource: ChatEventDataSource;
 }) {
   const initialRemoteEventsResolved$ = state(false);
   const chatSkeletonVisible$ = computed((get): boolean => {
@@ -2191,7 +2183,7 @@ interface MarkThreadReadDeps {
   threadId: string;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   locallyMarkedReadAt$: State<string | undefined>;
-  dataSource: ChatThreadRemote;
+  dataSource: ChatEventDataSource;
 }
 
 function createMarkThreadReadIfNeeded({
@@ -2241,7 +2233,7 @@ function createEventChangeEffects(
     ReturnType<typeof createPagedEventProjections>,
     "rawEvents$" | "latestRunFinishCreatedAt$"
   >,
-  dataSource: ChatThreadRemote,
+  dataSource: ChatEventDataSource,
 ) {
   const scroll = createChatThreadScrollSignals(threadId);
   const sidebar = createThreadSidebarSignals(threadId);
@@ -2300,8 +2292,7 @@ function createEventChangeEffects(
 
 function createPagedEvents(
   threadId: string,
-  dataSource: ChatThreadRemote,
-  initialOptimisticEntries: readonly OptimisticChatEventEntry[],
+  dataSource: ChatEventDataSource,
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
 ) {
   const persistentChatEvents$ = state<RegisteredChatEvent[]>([]);
@@ -2326,7 +2317,6 @@ function createPagedEvents(
     threadId,
     previewImageUrlsByUrl$,
     browserLifecycleOptimisticEvents,
-    initialOptimisticEntries,
   );
 
   const projections = createPagedEventProjections({
@@ -2395,6 +2385,9 @@ function createPagedEvents(
   });
   const initializeIndexedDbEvents$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      for (const entry of get(optimisticEvents$)) {
+        resources.registerOptimisticEventResources(entry);
+      }
       const scrollPosition = get(effects.scroll.threadScrollPosition$);
       const result = await settle(
         set(
@@ -2429,21 +2422,18 @@ function createPagedEvents(
   };
 }
 
-function createChatThreadEventPipeline({
+export function createChatEventPipeline({
   threadId,
   dataSource,
-  initialOptimisticEntries,
   previewImageUrlsByUrl$,
 }: {
   threadId: string;
-  dataSource: ChatThreadRemote;
-  initialOptimisticEntries: readonly OptimisticChatEventEntry[];
+  dataSource: ChatEventDataSource;
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
 }) {
   const pagedEvents = createPagedEvents(
     threadId,
     dataSource,
-    initialOptimisticEntries,
     previewImageUrlsByUrl$,
   );
   const renderWindow = createChatRenderWindow({
@@ -2473,45 +2463,6 @@ function createChatThreadEventPipeline({
     ...renderWindow,
     loadMoreRenderedChatGroups$,
   };
-}
-
-function createArtifacts(threadId: string) {
-  const internalArtifactsReload$ = state(0);
-  const artifacts$ = computed(async (get): Promise<ChatThreadArtifactRun[]> => {
-    get(internalArtifactsReload$);
-    const client = get(zeroClient$)(chatThreadArtifactsContract);
-    const result = await accept(client.list({ params: { threadId } }), [200]);
-    return result.body.runs;
-  });
-
-  const reloadArtifacts$ = command(({ set }) => {
-    set(internalArtifactsReload$, (version) => {
-      return version + 1;
-    });
-  });
-
-  return { artifacts$, reloadArtifacts$ };
-}
-
-function createArtifactPreviewImageUrls(
-  artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>,
-): Computed<Promise<ReadonlyMap<string, string>>> {
-  return computed(async (get) => {
-    const runs = await get(artifacts$);
-    const previewImageUrlsByUrl = new Map<string, string>();
-    for (const run of runs) {
-      for (const file of run.files) {
-        if (!file.previewImageUrl) {
-          continue;
-        }
-        previewImageUrlsByUrl.set(file.url, file.previewImageUrl);
-        if (file.aliasUrl) {
-          previewImageUrlsByUrl.set(file.aliasUrl, file.previewImageUrl);
-        }
-      }
-    }
-    return previewImageUrlsByUrl;
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2549,13 +2500,7 @@ function createEventRunIndicatorState(chatEvents$: Computed<ChatEvent[]>) {
 
 interface RunTrackingDeps {
   threadId: string;
-  initialRemoteEventsResolved$: State<boolean>;
-  initializeIndexedDbEvents$: Command<Promise<void>, [AbortSignal]>;
-  mergePersistentEvents$: Command<
-    Promise<void>,
-    [PersistedChatEvent[], AbortSignal]
-  >;
-  syncRemoteEvents$: Command<Promise<void>, [AbortSignal]>;
+  setupChatEvents$: Command<Promise<void>, [AbortSignal]>;
   reloadArtifacts$: Command<void, []>;
   reloadMailDrafts$: Command<void, []>;
   subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
@@ -2745,22 +2690,18 @@ function createChatRenderWindow({
 
 function createOnSubscribedCommand({
   threadId,
-  initialRemoteEventsResolved$,
-  syncRemoteEvents$,
+  setupChatEvents$,
   reloadArtifacts$,
   reloadMailDrafts$,
   dataSource,
 }: Pick<
   RunTrackingDeps,
   | "threadId"
-  | "initialRemoteEventsResolved$"
-  | "syncRemoteEvents$"
+  | "setupChatEvents$"
   | "reloadArtifacts$"
   | "reloadMailDrafts$"
   | "dataSource"
 >): Command<Promise<void>, [AbortSignal]> {
-  const optimisticCreateUnsettled$ =
-    optimisticChatThreadCreateUnsettled(threadId);
   const hasSubscribed$ = state(false);
   return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
@@ -2771,66 +2712,28 @@ function createOnSubscribedCommand({
     } else {
       set(hasSubscribed$, true);
     }
-    const catchUpPromises = [
+    await Promise.all([
       get(dataSource.cancellationRecoveryPending$),
       set(reloadMountedComposerWorkflows$, signal),
-    ];
-    if (get(optimisticCreateUnsettled$)) {
-      set(initialRemoteEventsResolved$, true);
-    } else {
-      catchUpPromises.push(set(syncRemoteEvents$, signal));
-    }
-    await Promise.all(catchUpPromises);
+      set(setupChatEvents$, signal),
+    ]);
     signal.throwIfAborted();
     L.debug("subscribeChatThread$ catchup done", { threadId });
   });
 }
 
-function createReceiveSyncedEventsCommand({
-  threadId,
-  mergePersistentEvents$,
-}: Pick<RunTrackingDeps, "threadId" | "mergePersistentEvents$">): Command<
-  Promise<void>,
-  [PersistedChatEvent[], AbortSignal]
-> {
-  return command(
-    async (
-      { set },
-      events: PersistedChatEvent[],
-      signal: AbortSignal,
-    ): Promise<void> => {
-      signal.throwIfAborted();
-      L.debug("receiveSyncedEvents$ fired", {
-        threadId,
-        count: events.length,
-      });
-      await set(mergePersistentEvents$, events, signal);
-      signal.throwIfAborted();
-    },
-  );
-}
-
 function createRunTracking({
   threadId,
-  initialRemoteEventsResolved$,
-  initializeIndexedDbEvents$,
-  mergePersistentEvents$,
-  syncRemoteEvents$,
+  setupChatEvents$,
   reloadArtifacts$,
   reloadMailDrafts$,
   subscribeBrowserSessions$,
   automationSignals,
   dataSource,
 }: RunTrackingDeps) {
-  const receiveSyncedEvents$ = createReceiveSyncedEventsCommand({
-    threadId,
-    mergePersistentEvents$,
-  });
-
   const onSubscribed$ = createOnSubscribedCommand({
     threadId,
-    initialRemoteEventsResolved$,
-    syncRemoteEvents$,
+    setupChatEvents$,
     reloadArtifacts$,
     reloadMailDrafts$,
     dataSource,
@@ -2838,9 +2741,6 @@ function createRunTracking({
 
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ start", { threadId });
-    await set(initializeIndexedDbEvents$, signal);
-    signal.throwIfAborted();
-
     const onThreadDetailChanged$ = command(({ set }) => {
       L.debug("onThreadDetailChanged$ fired", { threadId });
       set(dataSource.reloadCancellationRecoveryPending$);
@@ -2887,7 +2787,7 @@ function createRunTracking({
     ]);
   });
 
-  return { receiveSyncedEvents$, subscribeChatThread$ };
+  return { subscribeChatThread$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -2951,7 +2851,7 @@ function queueUserMessage(
   });
 }
 
-function queueRuntimeOptions(
+function sendRuntimeOptions(
   features: Partial<Record<FeatureSwitchKey, boolean>>,
   modelSelection: ModelProviderSelection | null,
 ) {
@@ -2965,131 +2865,6 @@ function queueRuntimeOptions(
   };
 }
 
-function createSendOptimisticEventEntry({
-  threadId,
-  clientEventId,
-  createdAt,
-  result,
-  generationTemplate,
-  userMessage,
-  options,
-}: {
-  threadId: string;
-  clientEventId: string;
-  createdAt: string;
-  result: PreparedSendMessageResult;
-  generationTemplate: GenerationTemplateRequest | undefined;
-  userMessage: UserMessageDocument;
-  options: SendMessageOptions | undefined;
-}): OptimisticChatEventInput {
-  return {
-    threadId,
-    optimisticUserMessageAssociation: "run",
-    event: {
-      id: clientEventId,
-      threadId,
-      eventType: "input.prompt",
-      content: null,
-      attachFiles: result.attachments,
-      generationTemplate,
-      userMessage,
-      ...sendMessageRevocationPatch(options),
-      createdAt,
-    },
-  };
-}
-
-function sendMessageRevocationPatch(options: SendMessageOptions | undefined): {
-  readonly revokesEventId?: string;
-} {
-  return options?.revokesEventId
-    ? { revokesEventId: options.revokesEventId }
-    : {};
-}
-
-function sendMessageRequestBody(params: {
-  readonly agentId: string;
-  readonly threadId: string;
-  readonly clientEventId: string;
-  readonly chatThreadSortEventId: string;
-  readonly result: PreparedSendMessageResult;
-  readonly modelSelection: ModelProviderSelection | null;
-  readonly codexFastModeEnabled: boolean;
-  readonly realAgentInPreviewEnabled: boolean;
-  readonly generationTemplate: GenerationTemplateRequest | undefined;
-  readonly userMessage: UserMessageDocument;
-  readonly options: SendMessageOptions | undefined;
-}) {
-  const runOptions = runOptionsFromModelProviderSelection(
-    params.modelSelection,
-    params.codexFastModeEnabled,
-  );
-  return {
-    agentId: params.agentId,
-    prompt: params.result.prompt,
-    threadId: params.threadId,
-    hasTextContent: params.result.hasTextContent,
-    clientEventId: params.clientEventId,
-    chatThreadSortEventId: params.chatThreadSortEventId,
-    ...(runOptions ? { runOptions } : {}),
-    ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
-    generationTemplate: params.generationTemplate,
-    userMessage: params.userMessage,
-    ...(params.options && "computerUseHostId" in params.options
-      ? { computerUseHostId: params.options.computerUseHostId ?? null }
-      : {}),
-    ...(params.options && "cloudBrowserEnabled" in params.options
-      ? { cloudBrowserEnabled: params.options.cloudBrowserEnabled ?? false }
-      : {}),
-    attachFiles: params.result.attachFiles,
-    ...sendMessageRevocationPatch(params.options),
-  };
-}
-
-function createAppendOptimisticSendEvent(
-  appendOptimisticEvent$: AppendOptimisticEventCommand,
-) {
-  return command(
-    async (
-      { set },
-      args: {
-        readonly threadId: string;
-        readonly agentId: string;
-        readonly clientEventId: string;
-        readonly chatThreadSortEventId: string;
-        readonly createdAt: string;
-        readonly result: PreparedSendMessageResult;
-        readonly generationTemplate: GenerationTemplateRequest | undefined;
-        readonly userMessage: UserMessageDocument;
-        readonly options: SendMessageOptions | undefined;
-      },
-      signal: AbortSignal,
-    ): Promise<void> => {
-      set(touchOptimisticChatThreadSort$, {
-        id: args.chatThreadSortEventId,
-        threadId: args.threadId,
-        agentId: args.agentId,
-        createdAt: args.createdAt,
-      });
-      await set(
-        appendOptimisticEvent$,
-        createSendOptimisticEventEntry({
-          threadId: args.threadId,
-          clientEventId: args.clientEventId,
-          createdAt: args.createdAt,
-          result: args.result,
-          generationTemplate: args.generationTemplate,
-          userMessage: args.userMessage,
-          options: args.options,
-        }),
-        "bottom",
-        signal,
-      );
-      signal.throwIfAborted();
-    },
-  );
-}
-
 interface SendMessageDeps {
   threadId: string;
   agentId$: Computed<string | null>;
@@ -3100,8 +2875,10 @@ interface SendMessageDeps {
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
-  syncRemoteEvents$: Command<Promise<void>, [AbortSignal]>;
-  appendOptimisticEvent$: AppendOptimisticEventCommand;
+  sendEvent$: Command<
+    Promise<SendChatEventResult>,
+    [SendChatEventInput, AbortSignal]
+  >;
 }
 
 interface ValidatedSendMessageRequest {
@@ -3111,65 +2888,9 @@ interface ValidatedSendMessageRequest {
   readonly modelSelection: ModelProviderSelection | null;
 }
 
-const postSendMessage$ = command(
-  async (
-    { get, set },
-    args: {
-      readonly agentId: string;
-      readonly threadId: string;
-      readonly clientEventId: string;
-      readonly chatThreadSortEventId: string;
-      readonly result: PreparedSendMessageResult;
-      readonly modelSelection: ModelProviderSelection | null;
-      readonly generationTemplate: GenerationTemplateRequest | undefined;
-      readonly userMessage: UserMessageDocument;
-      readonly options: SendMessageOptions | undefined;
-      readonly flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
-    },
-    signal: AbortSignal,
-  ): Promise<string | null> => {
-    const features = get(featureSwitch$);
-    const codexFastModeEnabled =
-      features[FeatureSwitchKey.CodexFastMode] ?? false;
-    const realAgentInPreviewEnabled =
-      features[FeatureSwitchKey.RealAgentInPreview] ?? false;
-    const [, sendResult] = await Promise.all([
-      set(args.flushDraftClear$, signal),
-      sendChatEvent(
-        get(zeroClient$),
-        sendMessageRequestBody({
-          agentId: args.agentId,
-          clientEventId: args.clientEventId,
-          chatThreadSortEventId: args.chatThreadSortEventId,
-          threadId: args.threadId,
-          result: args.result,
-          modelSelection: args.modelSelection,
-          codexFastModeEnabled,
-          realAgentInPreviewEnabled,
-          generationTemplate: args.generationTemplate,
-          userMessage: args.userMessage,
-          options: args.options,
-        }),
-        signal,
-      ),
-    ]);
-    signal.throwIfAborted();
-    return sendResult.runId;
-  },
-);
-
 function createPerformSendMessage(deps: SendMessageDeps) {
-  const {
-    threadId,
-    draft,
-    cancelDraftSync$,
-    flushDraftClear$,
-    syncRemoteEvents$,
-    appendOptimisticEvent$,
-  } = deps;
-  const appendOptimisticSendEvent$ = createAppendOptimisticSendEvent(
-    appendOptimisticEvent$,
-  );
+  const { threadId, draft, cancelDraftSync$, flushDraftClear$, sendEvent$ } =
+    deps;
   return command(
     async (
       { get, set },
@@ -3208,50 +2929,47 @@ function createPerformSendMessage(deps: SendMessageDeps) {
       });
       set(cancelDraftSync$);
       set(draft.clear$);
-      const clientEventId = crypto.randomUUID();
-      const chatThreadSortEventId = crypto.randomUUID();
-      const createdAt = nowDate().toISOString();
-      await set(
-        appendOptimisticSendEvent$,
-        {
-          threadId,
-          agentId: request.agentId,
-          clientEventId,
-          chatThreadSortEventId,
-          createdAt,
-          result,
-          generationTemplate,
-          userMessage,
-          options: request.options,
-        },
-        signal,
+      const { runOptions, realAgentInPreviewEnabled } = sendRuntimeOptions(
+        get(featureSwitch$),
+        request.modelSelection,
       );
+      const [, sendResult] = await Promise.all([
+        set(flushDraftClear$, signal),
+        set(
+          sendEvent$,
+          {
+            kind: "input",
+            delivery: "run",
+            agentId: request.agentId,
+            prompt: result.prompt,
+            hasTextContent: result.hasTextContent,
+            attachFiles: result.attachFiles,
+            attachments: result.attachments,
+            generationTemplate,
+            userMessage,
+            ...(runOptions === undefined ? {} : { runOptions }),
+            ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
+            ...(request.options && "computerUseHostId" in request.options
+              ? { computerUseHostId: request.options.computerUseHostId ?? null }
+              : {}),
+            ...(request.options && "cloudBrowserEnabled" in request.options
+              ? {
+                  cloudBrowserEnabled:
+                    request.options.cloudBrowserEnabled ?? false,
+                }
+              : {}),
+            ...(request.options?.revokesEventId === undefined
+              ? {}
+              : { revokesEventId: request.options.revokesEventId }),
+          },
+          signal,
+        ),
+      ]);
       signal.throwIfAborted();
-      const runId = await set(
-        postSendMessage$,
-        {
-          agentId: request.agentId,
-          threadId,
-          clientEventId,
-          chatThreadSortEventId,
-          result,
-          modelSelection: request.modelSelection,
-          generationTemplate,
-          userMessage,
-          options: request.options,
-          flushDraftClear$,
-        },
-        signal,
-      );
       L.debug("sendMessage$ POST accepted", {
         threadId,
-        runId,
+        runId: sendResult.runId,
       });
-      if (runId === null) {
-        set(reloadBillingStatus$);
-        await set(syncRemoteEvents$, signal);
-        signal.throwIfAborted();
-      }
       return true;
     },
   );
@@ -3304,8 +3022,10 @@ interface QueueMessageDeps {
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
-  appendOptimisticEvent$: AppendOptimisticEventCommand;
-  dataSource: ChatThreadRemote;
+  sendEvent$: Command<
+    Promise<SendChatEventResult>,
+    [SendChatEventInput, AbortSignal]
+  >;
 }
 
 function createQueueMessage(deps: QueueMessageDeps) {
@@ -3316,8 +3036,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
     draft,
     cancelDraftSync$,
     flushDraftClear$,
-    appendOptimisticEvent$,
-    dataSource,
+    sendEvent$,
   } = deps;
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
@@ -3365,56 +3084,26 @@ function createQueueMessage(deps: QueueMessageDeps) {
       set(cancelDraftSync$);
       set(draft.clear$);
 
-      const clientEventId = crypto.randomUUID();
-      const chatThreadSortEventId = crypto.randomUUID();
-      const nowIso = nowDate().toISOString();
-      set(touchOptimisticChatThreadSort$, {
-        id: chatThreadSortEventId,
-        threadId,
-        agentId,
-        createdAt: nowIso,
-      });
-      await set(
-        appendOptimisticEvent$,
-        {
-          threadId,
-          optimisticUserMessageAssociation: "queue",
-          event: {
-            id: clientEventId,
-            threadId,
-            eventType: "input.prompt",
-            content: null,
-            attachFiles: result.attachments,
-            generationTemplate,
-            userMessage,
-            createdAt: nowIso,
-          },
-        },
-        "bottom",
-        signal,
-      );
-      signal.throwIfAborted();
-
-      const { runOptions, realAgentInPreviewEnabled } = queueRuntimeOptions(
+      const { runOptions, realAgentInPreviewEnabled } = sendRuntimeOptions(
         features,
         modelSelection,
       );
       await Promise.all([
         set(flushDraftClear$, signal),
         set(
-          dataSource.appendQueuedEvent$,
+          sendEvent$,
           {
-            threadId,
+            kind: "input",
+            delivery: "queue",
             agentId,
-            content: result.prompt,
-            attachments: result.attachments ?? null,
-            clientEventId,
-            chatThreadSortEventId,
+            prompt: result.prompt,
             hasTextContent: result.hasTextContent,
-            ...(runOptions ? { runOptions } : {}),
-            ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
+            attachFiles: result.attachments,
+            attachments: result.attachments,
             generationTemplate,
             userMessage,
+            ...(runOptions === undefined ? {} : { runOptions }),
+            ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
             ...(options.computerUseHostId === undefined
               ? {}
               : { computerUseHostId: options.computerUseHostId }),
@@ -3438,20 +3127,14 @@ interface RecallMessageDeps {
   chatEvents$: Computed<ChatEvent[]>;
   draft: DraftSignals;
   queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
-  appendOptimisticEvent$: AppendOptimisticEventCommand;
-  dataSource: ChatThreadRemote;
+  sendEvent$: Command<
+    Promise<SendChatEventResult>,
+    [SendChatEventInput, AbortSignal]
+  >;
 }
 
 function createRecallMessage(deps: RecallMessageDeps) {
-  const {
-    threadId,
-    agentId$,
-    chatEvents$,
-    draft,
-    queueDraftSync$,
-    appendOptimisticEvent$,
-    dataSource,
-  } = deps;
+  const { agentId$, chatEvents$, draft, queueDraftSync$, sendEvent$ } = deps;
 
   return command(async ({ get, set }, eventId: string, signal: AbortSignal) => {
     const event = queuedEventsFromChatEvents(get(chatEvents$)).find(
@@ -3467,24 +3150,6 @@ function createRecallMessage(deps: RecallMessageDeps) {
       return;
     }
 
-    const clientEventId = crypto.randomUUID();
-    await set(
-      appendOptimisticEvent$,
-      {
-        threadId,
-        event: {
-          id: clientEventId,
-          threadId,
-          eventType: "control.revoke",
-          content: null,
-          revokesEventId: event.id,
-          createdAt: nowDate().toISOString(),
-        },
-      },
-      "preserve",
-      signal,
-    );
-    signal.throwIfAborted();
     const userMessage = event.userMessage;
     const templatePart = userMessage.parts.find((part) => {
       return part.type === "template";
@@ -3507,12 +3172,11 @@ function createRecallMessage(deps: RecallMessageDeps) {
     });
 
     await set(
-      dataSource.recallEvent$,
+      sendEvent$,
       {
-        threadId,
+        kind: "revoke",
         agentId,
         revokesEventId: event.id,
-        clientEventId,
       },
       signal,
     );
@@ -3523,11 +3187,9 @@ function createRecallMessage(deps: RecallMessageDeps) {
 }
 
 function createSteerQueuedMessage({
-  threadId,
   agentId$,
   chatEvents$,
-  appendOptimisticEvent$,
-  dataSource,
+  sendEvent$,
 }: RecallMessageDeps) {
   return command(
     async (
@@ -3556,41 +3218,16 @@ function createSteerQueuedMessage({
       }
 
       const runId = runIds[0]!;
-      const clientEventId = crypto.randomUUID();
-      const response = await set(
-        dataSource.steerQueuedEvent$,
+      await set(
+        sendEvent$,
         {
-          threadId,
+          kind: "steer",
           agentId,
           runId,
           eventId,
-          clientEventId,
+          triggerSource: event.triggerSource,
+          userMessage: event.userMessage,
         },
-        signal,
-      );
-      signal.throwIfAborted();
-      if (response.runId !== runId) {
-        throw new Error("Steered chat event was associated with another run");
-      }
-
-      await set(
-        appendOptimisticEvent$,
-        {
-          threadId,
-          optimisticUserMessageAssociation: "run",
-          event: {
-            id: clientEventId,
-            threadId,
-            eventType: "input.prompt",
-            content: null,
-            runId,
-            revokesEventId: event.id,
-            triggerSource: event.triggerSource,
-            userMessage: event.userMessage,
-            createdAt: response.createdAt ?? nowDate().toISOString(),
-          },
-        },
-        "preserve",
         signal,
       );
       signal.throwIfAborted();
@@ -3599,11 +3236,9 @@ function createSteerQueuedMessage({
 }
 
 function createSkipAutomationEvent({
-  threadId,
   agentId$,
   chatEvents$,
-  appendOptimisticEvent$,
-  dataSource,
+  sendEvent$,
 }: RecallMessageDeps) {
   return command(
     async (
@@ -3624,31 +3259,12 @@ function createSkipAutomationEvent({
         return;
       }
 
-      const clientEventId = crypto.randomUUID();
       await set(
-        appendOptimisticEvent$,
+        sendEvent$,
         {
-          threadId,
-          event: {
-            id: clientEventId,
-            threadId,
-            eventType: "control.revoke",
-            content: null,
-            revokesEventId: event.id,
-            createdAt: nowDate().toISOString(),
-          },
-        },
-        "preserve",
-        signal,
-      );
-      signal.throwIfAborted();
-      await set(
-        dataSource.recallEvent$,
-        {
-          threadId,
+          kind: "revoke",
           agentId,
           revokesEventId: event.id,
-          clientEventId,
         },
         signal,
       );
@@ -3681,14 +3297,15 @@ function createCancelRunWithQueuedRecall({
   threadId,
   agentId$,
   chatEvents$,
-  appendOptimisticEvent$,
-  dataSource,
+  sendEvent$,
 }: {
   threadId: string;
   agentId$: Computed<string | null>;
   chatEvents$: Computed<ChatEvent[]>;
-  appendOptimisticEvent$: AppendOptimisticEventCommand;
-  dataSource: ChatThreadRemote;
+  sendEvent$: Command<
+    Promise<SendChatEventResult>,
+    [SendChatEventInput, AbortSignal]
+  >;
 }) {
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
@@ -3710,77 +3327,29 @@ function createCancelRunWithQueuedRecall({
         return event.eventType === "input.prompt";
       },
     );
-    const optimisticAppendPromises: Promise<void>[] = [];
-
-    const interruptRequests = liveRunIdsFromChatEvents(chatEvents).map(
-      (runId) => {
-        const clientEventId = crypto.randomUUID();
-        optimisticAppendPromises.push(
-          set(
-            appendOptimisticEvent$,
-            {
-              threadId,
-              event: {
-                id: clientEventId,
-                threadId,
-                eventType: "control.interrupt",
-                content: null,
-                interruptsRunId: runId,
-                createdAt: nowDate().toISOString(),
-              },
-            },
-            "preserve",
-            signal,
-          ),
-        );
-        return { runId, clientEventId };
-      },
-    );
-
-    const recallRequests = queuedEvents.map((event) => {
-      const clientEventId = crypto.randomUUID();
-      optimisticAppendPromises.push(
-        set(
-          appendOptimisticEvent$,
-          {
-            threadId,
-            event: {
-              id: clientEventId,
-              threadId,
-              eventType: "control.revoke",
-              content: null,
-              revokesEventId: event.id,
-              createdAt: nowDate().toISOString(),
-            },
-          },
-          "preserve",
-          signal,
-        ),
-      );
-      return {
-        threadId,
-        agentId,
-        revokesEventId: event.id,
-        clientEventId,
-      };
-    });
-
     await Promise.all([
-      Promise.all(optimisticAppendPromises),
-      set(
-        dataSource.cancelRuns$,
-        {
-          threadId,
-          agentId,
-          interrupts: interruptRequests,
-        },
-        signal,
-      ),
-      Promise.all(
-        recallRequests.map((request) => {
-          return set(dataSource.recallEvent$, request, signal);
-        }),
-      ),
+      ...liveRunIdsFromChatEvents(chatEvents).map((runId) => {
+        return set(
+          sendEvent$,
+          {
+            kind: "interrupt",
+            agentId,
+            interruptsRunId: runId,
+          },
+          signal,
+        );
+      }),
+      ...queuedEvents.map((event) => {
+        return set(
+          sendEvent$,
+          {
+            kind: "revoke",
+            agentId,
+            revokesEventId: event.id,
+          },
+          signal,
+        );
+      }),
     ]);
     signal.throwIfAborted();
   });
@@ -4213,9 +3782,7 @@ function createThinkingIndicatorSignals(
 // Factory: createChatThreadSignals
 // ---------------------------------------------------------------------------
 
-function publicChatThreadEventSignals(
-  events: ReturnType<typeof createChatThreadEventPipeline>,
-) {
+function publicChatThreadEventSignals(events: ChatEventSignals) {
   return {
     latestRunFinishCreatedAt$: events.latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$: events.latestAssistantTextCreatedAt$,
@@ -4240,30 +3807,22 @@ function publicChatThreadEventSignals(
   };
 }
 
-interface ThreadRootComposerOptions {
-  readonly threadId: string;
-  readonly draft: DraftSignals;
-  readonly chatEvents$: Computed<ChatEvent[]>;
+interface CreateChatThreadComposerSignalsOptions {
+  readonly thread: ChatThreadCoreSignals;
+  readonly chatEvents: Pick<ChatEventDataSignals, "chatEvents$">;
   readonly feedbackModel: ComposerFeedbackModel;
   readonly inlineTemplatesEnabled: boolean;
-  readonly dataSource: ChatThreadRemote;
-  readonly threadOwned: ReturnType<typeof createThreadOwnedSignals>;
-  readonly modelSelection: ReturnType<typeof createModelSelection>;
-  readonly computerUseHostSelection: ReturnType<
-    typeof createComputerUseHostSelection
-  >;
-  readonly messageActions: ReturnType<typeof createThreadMessageActions>;
-  readonly queueDraftSync$: ReturnType<
-    typeof createDraftSync
-  >["queueDraftSync$"];
+  readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
 }
 
 interface CreateChatThreadSignalsOptions {
-  readonly initialOptimisticEntries?: readonly OptimisticChatEventEntry[];
-  readonly inlineTemplatesEnabled?: boolean;
+  readonly feedback: ChatThreadFeedbackSignals;
 }
 
-function createThreadSubmitMessageSignal(options: ThreadRootComposerOptions) {
+function createThreadSubmitMessageSignal(
+  options: CreateChatThreadComposerSignalsOptions,
+) {
+  const { thread } = options;
   return command(
     async (
       { get, set },
@@ -4271,22 +3830,16 @@ function createThreadSubmitMessageSignal(options: ThreadRootComposerOptions) {
       submission: ComposerSubmission,
       signal: AbortSignal,
     ): Promise<boolean> => {
-      const explicit = get(
-        options.computerUseHostSelection.computerUseHostIdExplicit$,
-      );
-      const storedHostId = get(
-        options.computerUseHostSelection.computerUseHostId$,
-      );
+      const explicit = get(thread.computerUseHostIdExplicit$);
+      const storedHostId = get(thread.computerUseHostId$);
       const hosts = await get(computerUseHosts$);
       signal.throwIfAborted();
       const computerUseHostId = selectedComputerUseHostId(hosts, storedHostId);
-      const cloudBrowserEnabled = get(
-        options.computerUseHostSelection.cloudBrowserEnabled$,
-      );
+      const cloudBrowserEnabled = get(thread.cloudBrowserEnabled$);
       const submitted =
         action === "queue"
           ? await set(
-              options.messageActions.queueMessage$,
+              thread.queueMessage$,
               submission.prompt,
               {
                 computerUseHostId: explicit ? computerUseHostId : undefined,
@@ -4297,7 +3850,7 @@ function createThreadSubmitMessageSignal(options: ThreadRootComposerOptions) {
               signal,
             )
           : await set(
-              options.messageActions.sendMessage$,
+              thread.sendMessage$,
               submission.prompt,
               {
                 ...(explicit ? { computerUseHostId } : {}),
@@ -4308,36 +3861,39 @@ function createThreadSubmitMessageSignal(options: ThreadRootComposerOptions) {
               signal,
             );
       if (submitted) {
-        set(options.computerUseHostSelection.clearComputerUseHostIdOverride$);
+        set(thread.clearComputerUseHostIdOverride$);
       }
       return submitted;
     },
   );
 }
 
-function createThreadPendingActionSignals(options: ThreadRootComposerOptions) {
+function createThreadPendingActionSignals(
+  options: CreateChatThreadComposerSignalsOptions,
+) {
+  const { thread } = options;
   const removeQueuedMessage$ = command(
     async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
-      await set(options.messageActions.recallMessage$, eventId, signal);
+      await set(thread.recallMessage$, eventId, signal);
     },
   );
   const steerQueuedMessage$ = command(
     async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
-      await set(options.messageActions.steerQueuedMessage$, eventId, signal);
+      await set(thread.steerQueuedMessage$, eventId, signal);
     },
   );
   const removeWorkflowEvent$ = command(
     async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
-      await set(options.messageActions.skipAutomationEvent$, eventId, signal);
+      await set(thread.skipAutomationEvent$, eventId, signal);
     },
   );
   const cancelActiveGoal$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
-      await set(pauseChatThreadGoal$, options.threadId, signal);
+      await set(pauseChatThreadGoal$, thread.threadId, signal);
     },
   );
   const openActiveGoal$ = command(({ set }): void => {
-    set(openChatThreadGoalDialog$, options.threadId);
+    set(openChatThreadGoalDialog$, thread.threadId);
   });
   return {
     steerQueuedMessage$,
@@ -4348,44 +3904,43 @@ function createThreadPendingActionSignals(options: ThreadRootComposerOptions) {
   };
 }
 
-function createThreadRootComposer(options: ThreadRootComposerOptions) {
+export function createChatThreadComposerSignals(
+  options: CreateChatThreadComposerSignalsOptions,
+): ComposerSignals {
+  const { thread } = options;
   const composerModelSelection$ = computed(
     async (get): Promise<ModelProviderSelection | null> => {
-      const selectedModel = get(options.modelSelection.selectedModel$);
+      const selectedModel = get(thread.selectedModel$);
       if (!selectedModel) {
         return null;
       }
-      return (await get(options.modelSelection.codexFastModeActive$))
+      return (await get(thread.codexFastModeActive$))
         ? { selectedModel, codexServiceTier: "fast" }
         : { selectedModel };
     },
   );
   return createComposerSignals({
-    agent$: options.threadOwned.agent$,
+    agent$: thread.agent$,
     draft: {
-      signals: options.draft,
-      save$: options.queueDraftSync$,
+      signals: thread.draft,
+      save$: thread.queueDraftSync$,
     },
-    chatEvents$: options.chatEvents$,
-    threadId: options.threadId,
+    chatEvents$: options.chatEvents.chatEvents$,
+    threadId: thread.threadId,
     feedbackModel: options.feedbackModel,
     inlineTemplatesEnabled: options.inlineTemplatesEnabled,
     singleLineOnMobile: true,
     modelSelection$: composerModelSelection$,
-    selectedModelOauthAvailable$:
-      options.modelSelection.selectedModelOauthAvailable$,
-    setModelSelection$: options.modelSelection.setModelSelection$,
-    configureSelectedModel$: options.modelSelection.configureSelectedModel$,
-    computerUseHostId$: options.computerUseHostSelection.computerUseHostId$,
-    cloudBrowserEnabled$: options.computerUseHostSelection.cloudBrowserEnabled$,
-    setComputerUseHostId$:
-      options.computerUseHostSelection.setComputerUseHostId$,
-    setCloudBrowserEnabled$:
-      options.computerUseHostSelection.setCloudBrowserEnabled$,
+    selectedModelOauthAvailable$: thread.selectedModelOauthAvailable$,
+    setModelSelection$: thread.setModelSelection$,
+    configureSelectedModel$: thread.configureSelectedModel$,
+    computerUseHostId$: thread.computerUseHostId$,
+    cloudBrowserEnabled$: thread.cloudBrowserEnabled$,
+    setComputerUseHostId$: thread.setComputerUseHostId$,
+    setCloudBrowserEnabled$: thread.setCloudBrowserEnabled$,
     submitMessage$: createThreadSubmitMessageSignal(options),
-    cancelRun$: options.messageActions.cancelRun$,
-    cancellationRecoveryPending$:
-      options.dataSource.cancellationRecoveryPending$,
+    cancelRun$: thread.cancelRun$,
+    cancellationRecoveryPending$: options.cancellationRecoveryPending$,
     ...createThreadPendingActionSignals(options),
   });
 }
@@ -4393,9 +3948,10 @@ function createThreadRootComposer(options: ThreadRootComposerOptions) {
 export function createChatThreadSignals(
   threadId: string,
   draft: DraftSignals,
-  dataSource: ChatThreadRemote = createRemoteChatThreadDataSource(threadId),
-  options: CreateChatThreadSignalsOptions = {},
-): ChatThreadSignals {
+  dataSource: ChatThreadRemote,
+  events: ChatEventSignals,
+  options: CreateChatThreadSignalsOptions,
+): ChatThreadCoreSignals {
   const threadDraft$ = createRemoteThreadDraft(dataSource);
   const threadMeta$ = createThreadMeta(threadId);
   const threadTitle = createThreadTitleParts(threadMeta$);
@@ -4413,25 +3969,12 @@ export function createChatThreadSignals(
   );
   const container = createChatThreadContainerSignals();
   const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
-  const artifact = createArtifacts(threadId);
-  const previewImageUrlsByUrl$ = createArtifactPreviewImageUrls(
-    artifact.artifacts$,
-  );
-  const events = createChatThreadEventPipeline({
-    threadId,
-    dataSource,
-    initialOptimisticEntries: options.initialOptimisticEntries ?? [],
-    previewImageUrlsByUrl$,
-  });
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft, dataSource);
   const runTracking = createRunTracking({
     threadId,
-    initialRemoteEventsResolved$: events.initialRemoteEventsResolved$,
-    initializeIndexedDbEvents$: events.initializeIndexedDbEvents$,
-    mergePersistentEvents$: events.mergePersistentEvents$,
-    syncRemoteEvents$: events.syncRemoteEvents$,
-    reloadArtifacts$: artifact.reloadArtifacts$,
+    setupChatEvents$: events.setup$,
+    reloadArtifacts$: events.reloadArtifacts$,
     reloadMailDrafts$: events.reloadMailDrafts$,
     subscribeBrowserSessions$: events.subscribeBrowserSessions$,
     automationSignals: threadOwned,
@@ -4446,28 +3989,12 @@ export function createChatThreadSignals(
     queueDraftSync$,
     cancelDraftSync$,
     flushDraftClear$,
-    syncRemoteEvents$: events.syncRemoteEvents$,
-    appendOptimisticEvent$: events.appendOptimisticEvent$,
-    dataSource,
+    sendEvent$: events.sendEvent$,
   });
   const assistantErrorRecovery = createAssistantErrorRecoverySignals({
     visibleRenderedChatGroups$: events.visibleRenderedChatGroups$,
     selectedModel$: modelSelection.selectedModel$,
     sendMessage$: messageActions.sendMessage$,
-  });
-  const feedback = createChatThreadFeedbackSignals(threadId);
-  const rootComposer = createThreadRootComposer({
-    threadId,
-    draft,
-    chatEvents$: events.chatEvents$,
-    feedbackModel: feedback.composer,
-    inlineTemplatesEnabled: options.inlineTemplatesEnabled ?? false,
-    dataSource,
-    threadOwned,
-    modelSelection,
-    computerUseHostSelection,
-    messageActions,
-    queueDraftSync$,
   });
   return {
     threadId,
@@ -4488,18 +4015,17 @@ export function createChatThreadSignals(
     scrollToBottom$: events.scroll.scrollToBottom$,
     ...container,
     draft,
-    composer: rootComposer,
-    feedback: feedback.signals,
+    feedback: options.feedback,
     ...threadOwned,
     sidebar: events.sidebar,
     queueDraftSync$,
     ...publicChatThreadEventSignals(events),
-    receiveSyncedEvents$: runTracking.receiveSyncedEvents$,
     subscribeChatThread$: runTracking.subscribeChatThread$,
     ...createThinkingIndicatorSignals(
       events.thinkingText$,
       events.thinkingEventId$,
     ),
-    ...artifact,
+    artifacts$: events.artifacts$,
+    reloadArtifacts$: events.reloadArtifacts$,
   };
 }

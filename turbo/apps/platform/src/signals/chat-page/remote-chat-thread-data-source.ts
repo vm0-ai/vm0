@@ -3,7 +3,6 @@ import {
   chatThreadByIdContract,
   chatThreadDraftContract,
   chatThreadDraftSchema,
-  chatThreadMarkReadContract,
   chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -13,35 +12,19 @@ import { zeroClient$ } from "../api-client.ts";
 import { threadCodexServiceTierFromSelection } from "./model-selection-request.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { createDeferredPromise } from "../utils.ts";
-import { logger } from "../log.ts";
 import { reloadSidebarDraftThreads$ } from "./sidebar-draft-threads.ts";
-import {
-  applyUnreadSnapshot$,
-  recordOptimisticReadMark$,
-} from "./sidebar-unread-threads.ts";
-import { listChatEvents, sendChatEvent } from "./chat-event-api.ts";
 import {
   chatThreadMetaMap$,
   optimisticChatThreadCreateUnsettled,
   registerOptimisticChatThreadEvent$,
 } from "./chat-thread-event-sourcing.ts";
 import type {
-  CancelRunsArgs,
-  AppendQueuedEventArgs,
-  ListEventsAfterArgs,
-  ListEventsBeforeArgs,
-  MarkReadArgs,
   PatchComputerUseHostArgs,
   PatchModelSelectionArgs,
   PatchDraftArgs,
-  RecallEventArgs,
-  SteerQueuedEventArgs,
   SubscribeRealtimeArgs,
 } from "./chat-thread-data-source.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
-
-const L = logger("ChatThread");
-export const CHAT_EVENTS_PAGE_LIMIT = 50;
 
 type ChatRealtimeSubscription = {
   readonly topic: string;
@@ -164,190 +147,6 @@ const patchComputerUseHost$ = command(
   },
 );
 
-const appendQueuedEvent$ = command(
-  async (
-    { get },
-    {
-      threadId,
-      agentId,
-      content,
-      attachments,
-      clientEventId,
-      chatThreadSortEventId,
-      hasTextContent,
-      generationTemplate,
-      userMessage,
-      computerUseHostId,
-      cloudBrowserEnabled,
-      runOptions,
-      realAgentInPreview,
-    }: AppendQueuedEventArgs,
-    signal: AbortSignal,
-  ) => {
-    await sendChatEvent(
-      get(zeroClient$),
-      {
-        agentId,
-        prompt: content ?? "",
-        threadId,
-        hasTextContent,
-        clientEventId: clientEventId,
-        chatThreadSortEventId,
-        generationTemplate,
-        userMessage,
-        ...(runOptions ? { runOptions } : {}),
-        ...(realAgentInPreview ? { realAgentInPreview: true } : {}),
-        ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
-        ...(cloudBrowserEnabled === undefined ? {} : { cloudBrowserEnabled }),
-        attachFiles: attachments ?? undefined,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-  },
-);
-
-const recallEvent$ = command(
-  async (
-    { get },
-    { threadId, agentId, revokesEventId, clientEventId }: RecallEventArgs,
-    signal: AbortSignal,
-  ) => {
-    await sendChatEvent(
-      get(zeroClient$),
-      {
-        agentId,
-        threadId,
-        revokesEventId: revokesEventId,
-        clientEventId: clientEventId,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-  },
-);
-
-const steerQueuedEvent$ = command(
-  async (
-    { get },
-    { threadId, agentId, runId, eventId, clientEventId }: SteerQueuedEventArgs,
-    signal: AbortSignal,
-  ) => {
-    const result = await sendChatEvent(
-      get(zeroClient$),
-      {
-        agentId,
-        threadId,
-        steersRunId: runId,
-        steersEventId: eventId,
-        clientEventId,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    return result;
-  },
-);
-
-export const listEventsAfter$ = command(
-  async (
-    { get },
-    { threadId, sinceSeqId }: ListEventsAfterArgs,
-    signal: AbortSignal,
-  ) => {
-    const events = await listChatEvents(
-      get(zeroClient$),
-      threadId,
-      { sinceSeqId, limit: CHAT_EVENTS_PAGE_LIMIT },
-      signal,
-    );
-    signal.throwIfAborted();
-    L.debug("listEventsAfter$", {
-      threadId,
-      sinceSeqId,
-      count: events.length,
-      runEvents: events.flatMap((event) => {
-        if (!event.runId) {
-          return [];
-        }
-        return [
-          {
-            id: event.id,
-            runId: event.runId,
-          },
-        ];
-      }),
-    });
-    return events;
-  },
-);
-
-const listEventsBefore$ = command(
-  async (
-    { get },
-    { threadId, beforeSeqId }: ListEventsBeforeArgs,
-    signal: AbortSignal,
-  ) => {
-    return await listChatEvents(
-      get(zeroClient$),
-      threadId,
-      { beforeSeqId, limit: CHAT_EVENTS_PAGE_LIMIT },
-      signal,
-    );
-  },
-);
-
-const cancelRuns$ = command(
-  async (
-    { get },
-    { threadId, agentId, interrupts }: CancelRunsArgs,
-    signal: AbortSignal,
-  ) => {
-    L.debug("cancelRun$ start", {
-      threadId,
-      pendingRunIds: interrupts.map((interrupt) => {
-        return interrupt.runId;
-      }),
-    });
-    await Promise.all(
-      interrupts.map(async ({ runId, clientEventId }) => {
-        await sendChatEvent(
-          get(zeroClient$),
-          {
-            agentId,
-            threadId,
-            interruptsRunId: runId,
-            clientEventId: clientEventId,
-          },
-          signal,
-        );
-        L.debug("cancelRun$ server accepted cancel", { threadId, runId });
-      }),
-    );
-  },
-);
-
-const markRead$ = command(
-  async (
-    { get, set },
-    { threadId }: MarkReadArgs,
-    signal: AbortSignal,
-  ): Promise<string | null> => {
-    set(recordOptimisticReadMark$, threadId);
-    const client = get(zeroClient$)(chatThreadMarkReadContract);
-    const result = await accept(
-      client.markRead({
-        params: { id: threadId },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(applyUnreadSnapshot$, result.body.unreads);
-    return result.body.lastReadAt;
-  },
-);
-
 function createSubscribeRealtime() {
   return command(
     async (
@@ -458,13 +257,6 @@ export function createRemoteChatThreadDataSource(threadId: string) {
     patchDraft$,
     patchModelSelection$,
     patchComputerUseHost$,
-    appendQueuedEvent$,
-    recallEvent$,
-    steerQueuedEvent$,
-    listEventsAfter$,
-    listEventsBefore$,
-    cancelRuns$,
-    markRead$,
     subscribeRealtime$,
   };
 }

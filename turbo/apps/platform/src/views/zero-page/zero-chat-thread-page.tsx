@@ -246,11 +246,11 @@ import type {
 } from "../../signals/chat-page/chat-event-types.ts";
 import type { AgentReferenceSignals } from "../../signals/chat-page/agent-reference-signals.ts";
 import type { AssistantErrorRecovery } from "../../signals/chat-page/assistant-error-recovery.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import type {
-  ChatThreadSignals,
   RecommendedFollowupSource,
   ThinkingIndicatorMode,
-} from "../../signals/chat-page/chat-thread-signals.ts";
+} from "../../signals/chat-page/chat-event-signals.ts";
 import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
 import {
   applyChatThreadEmoji,

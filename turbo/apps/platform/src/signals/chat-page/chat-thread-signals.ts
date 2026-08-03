@@ -1,9 +1,6 @@
 import type { Command, Computed } from "ccstate";
 import type {
-  ChatEvent,
   GenerationTemplateRequest,
-  ChatFollowupsEvent,
-  ChatPromptEvent,
   ChatThreadArtifactRun,
   ChatThreadDraft,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -11,8 +8,12 @@ import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
-import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import type { ChatEventGroup } from "./chat-event.ts";
+import type {
+  EventImageGroupProjection,
+  RecommendedFollowupSource,
+  ThinkingIndicatorMode,
+} from "./chat-event-signals.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { ThreadSidebarSignals } from "./thread-sidebar.ts";
@@ -25,31 +26,6 @@ import type { ThreadScrollPosition } from "./chat-thread-scroll.ts";
 import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
 import type { ComposerSignals } from "../zero-page/composer-signals.ts";
 import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
-
-type RecommendedFollowup = NonNullable<
-  ChatFollowupsEvent["recommendedFollowups"]
->[number];
-
-export interface RecommendedFollowupSource {
-  readonly eventId: string;
-  readonly followups: readonly RecommendedFollowup[];
-}
-
-export type ThinkingIndicatorMode =
-  | "waiting"
-  | "waiting-queued"
-  | "running"
-  | "running-queued"
-  | "finished"
-  | null;
-
-export interface EventImageGroupProjection {
-  readonly role: ChatEventGroup["role"];
-  readonly events: readonly {
-    readonly attachFiles?: ChatPromptEvent["attachFiles"];
-    readonly blocks: readonly BodyRenderBlock[];
-  }[];
-}
 
 export interface SendMessageOptions {
   readonly revokesEventId?: string;
@@ -105,6 +81,7 @@ export interface ChatThreadSignals {
     [string, QueueMessageOptions, AbortSignal]
   >;
   recallMessage$: Command<Promise<void>, [string, AbortSignal]>;
+  steerQueuedMessage$: Command<Promise<void>, [string, AbortSignal]>;
   skipAutomationEvent$: Command<Promise<void>, [string, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   scrollContainerOnRef$: Command<
@@ -165,7 +142,6 @@ export interface ChatThreadSignals {
   historyBackfillPending$: Computed<boolean>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;
   resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
-  receiveSyncedEvents$: Command<Promise<void>, [ChatEvent[], AbortSignal]>;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
   // -- Thinking indicator ---------------------------------------------------
   blockColors$: Computed<[string, string, string]>;
@@ -180,3 +156,5 @@ export interface ChatThreadSignals {
   artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
   reloadArtifacts$: Command<void, []>;
 }
+
+export type ChatThreadCoreSignals = Omit<ChatThreadSignals, "composer">;
