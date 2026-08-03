@@ -174,7 +174,10 @@ tests must not resolve a different mitmproxy version from production.
 | `test_compiled_firewall_malformed_rules.py`             | Compiled firewall malformed rule and rule-shape behavior                                                             |
 | `test_compiled_firewall_permission_aggregation.py`      | Compiled firewall denied-permission aggregation and deduplication                                                    |
 | `test_compiled_firewall_rule_specificity_precedence.py` | Compiled firewall rule ordering and rule specificity precedence                                                      |
-| `test_firewall_auth.py`                                 | Firewall auth header resolution, fetching, forwarding, and cleanup                                                   |
+| `test_auth_cache.py`                                    | Firewall auth cache expiry, refresh, coalescing, cancellation, identity, and eviction                                |
+| `test_firewall_auth_handling.py`                        | Direct firewall auth request mutation, identity, error mapping, metadata, admission, and cancellation                |
+| `test_firewall_auth_client.py`                          | Firewall auth webhook serialization, transport, parsing, body limits, structured errors, and resource cleanup        |
+| `test_platform_api.py`                                  | Shared platform API request headers, credential redirect policy, and URL validation                                  |
 | `test_auth_base_forwarder_security.py`                  | Auth-base destination validation, SSRF rejection, and validated TCP/TLS construction                                 |
 | `test_auth_base_forwarder_protocol.py`                  | Auth-base HTTP framing, header filtering, body bounds, and synchronous cleanup                                       |
 | `test_auth_base_forwarder_lifecycle.py`                 | Auth-base abort, admission, deadlines, cancellation, concurrency, worker, and shutdown behavior                      |
@@ -186,7 +189,6 @@ tests must not resolve a different mitmproxy version from production.
 | `test_url_utils.py`                                     | Rewrite URL, path, query, and auth-base URL utility cases                                                            |
 | `test_url_utils_trusted_authority.py`                   | Trusted request authority success and URL reconstruction                                                             |
 | `test_url_utils_trusted_authority_rejection.py`         | Trusted request authority rejection matrices                                                                         |
-| `test_auth_cache.py`                                    | Firewall auth cache behavior                                                                                         |
 | `test_body_capture_decompression.py`                    | Capture-level body decompression integration                                                                         |
 | `test_body_capture_encoding.py`                         | Body capture text detection, encoding, and UTF-8 truncation helpers                                                  |
 | `test_body_capture_fields.py`                           | Ordinary request/response body capture fields                                                                        |
