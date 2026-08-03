@@ -999,8 +999,11 @@ async def _try_firewall_request_stream_from_headers(
     try:
         request_classification.cache_classification(flow, classification)
         flow.metadata[_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS] = True
-        await codex_model_catalog_cache.prepare_request(
+        await _prepare_codex_catalog_request_with_upstream_revalidation(
             flow,
+            allow,
+            admitted_server=admitted_server,
+            require_connected=require_connected,
             request_end_stream=request_end_stream is True,
         )
         if flow.response is None:
@@ -1072,6 +1075,32 @@ def _revalidate_ordinary_upstream_credentials_for_request(
         return False
 
     return True
+
+
+async def _prepare_codex_catalog_request_with_upstream_revalidation(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    *,
+    admitted_server: connection.Server,
+    require_connected: bool,
+    request_end_stream: bool,
+) -> None:
+    """Prepare a local catalog response or revalidate provider continuation."""
+    waited_for_in_flight = await codex_model_catalog_cache.prepare_request(
+        flow,
+        request_end_stream=request_end_stream,
+    )
+    if (
+        waited_for_in_flight
+        and flow.response is None
+        and _firewall_allow_injects_ordinary_upstream_credentials(allow)
+    ):
+        _revalidate_ordinary_upstream_credentials_for_request(
+            flow,
+            allow,
+            admitted_server=admitted_server,
+            require_connected=require_connected,
+        )
 
 
 def _unhandled_request_classification(classification: NoReturn) -> NoReturn:
@@ -1230,8 +1259,11 @@ async def request(flow: http.HTTPFlow) -> None:
                 auth_base_forwarder.release_forward_request_admission_from_flow(flow)
                 terminal_usage.release_tracked_flow(flow)
             elif auth_result is FirewallAuthHandlingResult.CONTINUE_UPSTREAM:
-                await codex_model_catalog_cache.prepare_request(
+                await _prepare_codex_catalog_request_with_upstream_revalidation(
                     flow,
+                    allow,
+                    admitted_server=admitted_server,
+                    require_connected=require_connected,
                     request_end_stream=True,
                 )
             return
