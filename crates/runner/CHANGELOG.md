@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.152.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.18...runner-rs-v0.152.0) (2026-08-03)
+
+
+### Features
+
+* **api:** publish canonical runner reuse preference ([#24738](https://github.com/vm0-ai/vm0/issues/24738)) ([8c2db7b](https://github.com/vm0-ai/vm0/commit/8c2db7b17d97d01de5beef22823935bb86af2f06))
+
+
+### Bug Fixes
+
+* **mitm-addon:** recognize .web in x billing ([#24725](https://github.com/vm0-ai/vm0/issues/24725)) ([004c376](https://github.com/vm0-ai/vm0/commit/004c3769521e0af70d991c31484e597a2281d849))
+* **mitm-addon:** reject truncated auth.base responses ([#24766](https://github.com/vm0-ai/vm0/issues/24766)) ([3b09261](https://github.com/vm0-ai/vm0/commit/3b092614efd7179a99b430ceb8a55ffa766fbce7))
+* **mitm-addon:** release usage tracking when requestheaders is cancelled ([#24734](https://github.com/vm0-ai/vm0/issues/24734)) ([844488e](https://github.com/vm0-ai/vm0/commit/844488edff02b853a7c3b50cc04958d532d3971f))
+* **mitm-addon:** revalidate admission after catalog waits ([#24769](https://github.com/vm0-ai/vm0/issues/24769)) ([3a4acb8](https://github.com/vm0-ai/vm0/commit/3a4acb8640124c0809355c992fdfe08f75e76bdf))
+* **runner:** mark incomplete stdout drains ([#24722](https://github.com/vm0-ai/vm0/issues/24722)) ([d3e6572](https://github.com/vm0-ai/vm0/commit/d3e65723899591d311de1d9dd572c6096346b1fa))
+
+
+### Refactoring
+
+* **python:** centralize content-length parsing ([#24758](https://github.com/vm0-ai/vm0/issues/24758)) ([abf84cf](https://github.com/vm0-ai/vm0/commit/abf84cf13f925948e593cd367bb12c511d7fcc5f))
+* **python:** share firewall prefix trie primitives ([#24723](https://github.com/vm0-ai/vm0/issues/24723)) ([6122d17](https://github.com/vm0-ai/vm0/commit/6122d17d67564c7796edf67a90da8e1e45babbc0))
+* **python:** share provider timing delivery state ([#24724](https://github.com/vm0-ai/vm0/issues/24724)) ([9eb5262](https://github.com/vm0-ai/vm0/commit/9eb5262c57dc1343ec11ec0482d3c838cb362866))
+* **python:** share request-body admission leases ([#24756](https://github.com/vm0-ai/vm0/issues/24756)) ([f12f850](https://github.com/vm0-ai/vm0/commit/f12f8503edd9927b29481bbadd40998bfd251413))
+* **python:** split firewall auth tests by production owner ([#24705](https://github.com/vm0-ai/vm0/issues/24705)) ([bbdddd6](https://github.com/vm0-ai/vm0/commit/bbdddd6d19a3d1a5fa79a7a410245090fdad88ec))
+* **rust:** centralize base cli agent session id validation ([#24759](https://github.com/vm0-ai/vm0/issues/24759)) ([da34435](https://github.com/vm0-ai/vm0/commit/da34435c6747be672914e4651c29d0abd2b47936))
+
+
+### Performance Improvements
+
+* **python:** bound firewall auth fetch admission ([#24732](https://github.com/vm0-ai/vm0/issues/24732)) ([bc37894](https://github.com/vm0-ai/vm0/commit/bc378943ee88b58f95803cf3c957e3be207f6923))
+
 ## [0.151.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.17...runner-rs-v0.151.18) (2026-08-03)
 
 
