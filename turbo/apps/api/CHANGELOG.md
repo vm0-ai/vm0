@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.367.1](https://github.com/vm0-ai/vm0/compare/api-v1.367.0...api-v1.367.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **api:** purge quiescent threadless agent runs ([#24721](https://github.com/vm0-ai/vm0/issues/24721)) ([8068b63](https://github.com/vm0-ai/vm0/commit/8068b6330d77c8d6436d424efcb5da003c86ee96))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.264.1
+    * @vm0/core bumped to 8.504.1
+    * @vm0/db bumped to 1.162.1
+
 ## [1.367.0](https://github.com/vm0-ai/vm0/compare/api-v1.366.1...api-v1.367.0) (2026-08-03)
 
 
