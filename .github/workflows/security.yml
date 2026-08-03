@@ -94,7 +94,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: ${{ github.event_name == 'push' && 1 || 2 }}
 
       - name: Trust checked out repository
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -231,6 +231,7 @@ jobs:
             .github/scripts/tests/ansible-ssh-control-path-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \
             .github/scripts/tests/check-workflow-shell-compatibility-test.sh \
+            .github/scripts/tests/checkout-depth-test.sh \
             .github/scripts/tests/cloudflare-ssh-command-test.sh \
             .github/scripts/tests/cloudflare-ssh-preconnect-test.sh \
             .github/scripts/tests/cloudflare-ssh-proxy-test.sh \
@@ -259,7 +260,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: ${{ github.event_name != 'pull_request' && 2 || 0 }}
 
       - name: Install Gitleaks
         run: |
