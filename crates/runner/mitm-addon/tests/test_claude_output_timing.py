@@ -355,7 +355,7 @@ def test_eviction_and_reset_release_retained_buffered_report(
             "enqueue_webhook_delivery",
             return_value=False,
         ),
-        patch.object(claude_output_timing, "_MAX_TRACKED_RUNS", 1),
+        patch.object(claude_output_timing._store, "_max_tracked_runs", 1),
     ):
         first_flow = _claude_sse_flow(real_flow, tmp_path)
         first_flow.metadata[metadata_keys.VM_RUN_ID] = "run-first"
@@ -417,7 +417,7 @@ def test_lru_hit_recency_preserves_recent_buffered_report(
             "enqueue_webhook_delivery",
             side_effect=enqueue_timing_delivery,
         ),
-        patch.object(claude_output_timing, "_MAX_TRACKED_RUNS", 2),
+        patch.object(claude_output_timing._store, "_max_tracked_runs", 2),
     ):
         first_flow = claude_flow("run-a")
         _feed(first_flow, _message_start(include_usage=False))

@@ -113,7 +113,7 @@ tests must not resolve a different mitmproxy version from production.
 | `test_request_handler_authority_validation.py`          | Request-hook Host/SNI/`:authority` validation and denial effects                                                     |
 | `test_request_handler_builtin_host_policy.py`           | Request-hook runtime built-in host-policy enforcement and compiled-policy reuse                                      |
 | `test_request_handler_connector_admission.py`           | Request-hook connector destination admission, TLS evidence, test-endpoint bypass, and API binding interaction        |
-| `test_request_handler_api_admission.py`                 | Request-hook platform API auto-allow, port scoping, registry gate, and destination binding                            |
+| `test_request_handler_api_admission.py`                 | Request-hook platform API auto-allow, port scoping, registry gate, and destination binding                           |
 | `test_request_handler_tls_admission.py`                 | Request-hook connection-scoped TLS admission revalidation and cleanup                                                |
 | `test_request_handler_registry_admission.py`            | Request-hook proxy-registry availability and VM entry admission                                                      |
 | `test_request_handler_firewall_dispatch.py`             | Core firewall dispatch, permission blocks, malformed config/policy handling, block responses, and unsafe-path blocks |
@@ -209,6 +209,7 @@ tests must not resolve a different mitmproxy version from production.
 | `test_model_provider_websocket_lifecycle.py`            | Model provider WebSocket HTTP upgrade and terminal usage lifecycle                                                   |
 | `test_codex_output_timing.py`                           | Default Codex provider-output timing observations over WebSocket                                                     |
 | `test_claude_output_timing.py`                          | Claude Code provider-output lifecycle timing over Anthropic SSE                                                      |
+| `test_provider_output_timing.py`                        | Cross-provider output-timing store capacity and lifecycle independence                                               |
 | `test_websocket_retention.py`                           | Registered WebSocket message retention and cleanup                                                                   |
 | `test_model_provider_websocket_metadata.py`             | Model provider WebSocket usage metadata parsing                                                                      |
 | `test_model_provider_usage.py`                          | Model provider usage reporter                                                                                        |
