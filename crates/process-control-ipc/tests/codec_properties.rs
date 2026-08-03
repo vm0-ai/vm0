@@ -299,6 +299,10 @@ fn request_invalid_mutations(
             with_byte(frame, KIND_OFFSET, FRAME_RESPONSE)?,
         ),
         (
+            "unknown frame kind",
+            with_byte(frame, KIND_OFFSET, u8::MAX)?,
+        ),
+        (
             "message id length beyond remaining body",
             with_u16(frame, MESSAGE_ID_LENGTH_OFFSET, message_id_past_body)?,
         ),
@@ -342,6 +346,10 @@ fn response_invalid_mutations(
         (
             "wrong frame kind",
             with_byte(frame, KIND_OFFSET, FRAME_REQUEST)?,
+        ),
+        (
+            "unknown frame kind",
+            with_byte(frame, KIND_OFFSET, u8::MAX)?,
         ),
         (
             "message id length beyond remaining body",
