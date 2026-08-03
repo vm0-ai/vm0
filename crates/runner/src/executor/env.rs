@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
+use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
+use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use sandbox::Sandbox;
 
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
-use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
 use super::{JOB_TIMEOUT, RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path};
 use crate::ids::RunId;
 use crate::types::{CodexRuntimeConfig, ExecutionContext, SandboxReuseResult};
@@ -252,7 +253,7 @@ pub(crate) fn validate_resume_session_id(context: &ExecutionContext) -> Result<(
             .map(|_| ())
             .ok_or_else(|| "invalid codex session_id".to_string()),
         EffectiveCliFramework::ClaudeCode => {
-            if is_valid_session_id(&session.cli_agent_session_id) {
+            if is_valid_cli_agent_session_id(&session.cli_agent_session_id) {
                 Ok(())
             } else {
                 Err("invalid session_id".to_string())

@@ -40,6 +40,7 @@ from aws_sigv4 import (
 from aws_sigv4_body_admission import MAX_AWS_SIGV4_REQUEST_BODY_BYTES
 from firewall_auth_cache import (
     FirewallAuthCacheKey,
+    FirewallAuthFetchSaturatedError,
     InvalidBillableAuthExpiryError,
     get_firewall_headers,
 )
@@ -80,6 +81,7 @@ type OrdinaryUpstreamCredentialsGuard = Callable[[], bool]
 _HTTP_STATUS_CLIENT_ERROR_MIN = 400
 _HTTP_STATUS_SERVER_ERROR_MIN = 500
 AUTH_BASE_FORWARDING_SATURATED_ERROR = "auth_base_forwarding_saturated"
+FIREWALL_AUTH_FETCH_SATURATED_ERROR = "firewall_auth_fetch_saturated"
 AWS_SIGV4_REQUEST_BODY_ADMISSION_SATURATED_ERROR = "aws_sigv4_request_body_admission_saturated"
 AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR = "aws_sigv4_request_body_length_required"
 AWS_SIGV4_REQUEST_BODY_TOO_LARGE_ERROR = "aws_sigv4_request_body_too_large"
@@ -843,6 +845,25 @@ def _set_firewall_auth_resolution_failure(
     exc: Exception,
 ) -> FirewallAuthHandlingResult:
     """Map auth-resolution exceptions to local responses and metadata."""
+    if isinstance(exc, FirewallAuthFetchSaturatedError):
+        flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
+        log_proxy_entry(
+            context.proxy_log_path,
+            "warn",
+            "Firewall auth fetch admission saturated",
+            type="firewall",
+            firewall_base=context.firewall_base,
+        )
+        _set_matched_firewall_failure_response(
+            flow,
+            status=503,
+            action="ALLOW",
+            error_code=FIREWALL_AUTH_FETCH_SATURATED_ERROR,
+            message="Firewall auth is temporarily saturated",
+            permission=context.allow.name,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
     if isinstance(exc, ConnectorNotConfiguredError):
         log_proxy_entry(
             context.proxy_log_path,

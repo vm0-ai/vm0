@@ -53,6 +53,138 @@ async fn execute_inner_appends_stream_limit_marker() {
 }
 
 #[tokio::test]
+async fn execute_prepared_marks_stdout_incomplete_when_process_cancel_send_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    overrides.set_keep_stdout_sender_open(true);
+    overrides.push_start_process_stdout_chunks(vec![ProcessOutputChunk {
+        bytes: b"partial stdout".to_vec(),
+        truncated: true,
+    }]);
+    overrides.push_process_cancel_error("cancel write failed");
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let source_ip = sandbox.source_ip().to_string();
+    let network_log_session = register_proxy(&config, &ctx, &source_ip).await.unwrap();
+    let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let run_cancel = cancel.clone();
+    let run_task = tokio::spawn(async move {
+        let mut telemetry = test_telemetry(&config, &ctx);
+        execute_prepared_sandbox_run_with_process_cancel_timeouts(
+            PreparedSandboxRun {
+                sandbox,
+                source_ip,
+                network_log_session,
+                prepared_guest_runtime: None,
+            },
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(run_cancel, None),
+            ProcessCancelTimeouts {
+                write: Duration::from_secs(1),
+                terminal_grace: Duration::ZERO,
+                cooperative_grace: Duration::ZERO,
+            },
+        )
+        .await
+    });
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("run should enter process wait before cancellation");
+    cancel.cancel();
+
+    let outcome = tokio::time::timeout(Duration::from_secs(5), run_task)
+        .await
+        .expect("cancel-send failure must not wait for stdout sender drop")
+        .unwrap();
+
+    assert_eq!(outcome.exit_code(), EXIT_SIGKILL);
+    assert_eq!(overrides.process_cancel_calls().len(), 1);
+    let stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
+    let mut expected = b"partial stdout\n".to_vec();
+    expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
+    expected.extend_from_slice(STDOUT_STREAM_INCOMPLETE_MARKER);
+    assert_eq!(stream_log, expected);
+}
+
+#[tokio::test]
+async fn execute_prepared_marks_stdout_incomplete_when_terminal_grace_expires() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    overrides.set_process_cancel_releases_wait_gate(false);
+    overrides.set_keep_stdout_sender_open(true);
+    overrides.push_start_process_stdout_chunks(vec![ProcessOutputChunk {
+        bytes: b"partial stdout".to_vec(),
+        truncated: true,
+    }]);
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let source_ip = sandbox.source_ip().to_string();
+    let network_log_session = register_proxy(&config, &ctx, &source_ip).await.unwrap();
+    let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let run_cancel = cancel.clone();
+    let run_task = tokio::spawn(async move {
+        let mut telemetry = test_telemetry(&config, &ctx);
+        execute_prepared_sandbox_run_with_process_cancel_timeouts(
+            PreparedSandboxRun {
+                sandbox,
+                source_ip,
+                network_log_session,
+                prepared_guest_runtime: None,
+            },
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(run_cancel, None),
+            ProcessCancelTimeouts {
+                write: Duration::from_secs(1),
+                terminal_grace: Duration::ZERO,
+                cooperative_grace: Duration::ZERO,
+            },
+        )
+        .await
+    });
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("run should enter process wait before cancellation");
+    cancel.cancel();
+
+    let outcome = tokio::time::timeout(Duration::from_secs(5), run_task)
+        .await
+        .expect("terminal-grace expiry must not wait for stdout sender drop")
+        .unwrap();
+
+    assert_eq!(outcome.exit_code(), EXIT_SIGKILL);
+    assert_eq!(overrides.process_cancel_calls().len(), 1);
+    let stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
+    let mut expected = b"partial stdout\n".to_vec();
+    expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
+    expected.extend_from_slice(STDOUT_STREAM_INCOMPLETE_MARKER);
+    assert_eq!(stream_log, expected);
+}
+
+#[tokio::test]
 async fn execute_inner_appends_stream_limit_marker_after_oom_rewrite() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -371,18 +503,21 @@ async fn execute_prepared_sandbox_run_ignores_non_uuid_codex_discovered_cli_agen
 }
 
 #[tokio::test]
-async fn execute_inner_aborts_drain_task_on_wait_process_error() {
+async fn execute_inner_marks_stdout_incomplete_on_wait_process_error() {
     // Simulate wait_process timeout: stdout channel stays open (sender held
     // alive by MockSandbox), wait_process returns error.
-    // Without the fix, task.await blocks forever → test times out.
-    // With the fix, task is aborted immediately → test completes.
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_error(
         "wait timeout",
     ));
+    overrides.push_start_process_stdout_chunks(vec![ProcessOutputChunk {
+        bytes: b"wait error stdout".to_vec(),
+        truncated: false,
+    }]);
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
     let ctx = minimal_context();
+    let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
     let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
         .await
         .unwrap();
@@ -410,6 +545,45 @@ async fn execute_inner_aborts_drain_task_on_wait_process_error() {
         outcome.network_log_session.is_some(),
         "network log session must be returned on post-start execution failure"
     );
+    let stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
+    let mut expected = b"wait error stdout\n".to_vec();
+    expected.extend_from_slice(STDOUT_STREAM_INCOMPLETE_MARKER);
+    assert_eq!(stream_log, expected);
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
+async fn execute_inner_preserves_incomplete_stdout_on_backend_crash() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(
+        sandbox_mock::MockSandboxOverrides::with_wait_process_error_reason(
+            SandboxOperationReason::BackendCrashed,
+            "firecracker process crashed",
+        ),
+    );
+    overrides.push_start_process_stdout_chunks(vec![ProcessOutputChunk {
+        bytes: b"crash stdout".to_vec(),
+        truncated: false,
+    }]);
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+    let ctx = minimal_context();
+    let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
+
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.exit_code(), 1);
+    assert!(
+        outcome
+            .error()
+            .is_some_and(|error| error.contains("firecracker process crashed"))
+    );
+    let stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
+    let mut expected = b"crash stdout\n".to_vec();
+    expected.extend_from_slice(STDOUT_STREAM_INCOMPLETE_MARKER);
+    assert_eq!(stream_log, expected);
     assert_proxy_registry_empty(dir.path()).await;
 }
 

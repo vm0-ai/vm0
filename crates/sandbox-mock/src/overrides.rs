@@ -86,9 +86,10 @@ pub(crate) struct ProcessOverrideState {
     /// entry until released.
     pub(crate) wait_process_lifecycle_gate: Mutex<Option<MockLifecycleGate>>,
     /// When `Some`, `wait_process` returns a wait-process operation error to
-    /// simulate timeout or crash. The stdout channel sender is also kept alive
-    /// in `MockSandbox` so the drain task would block without the fix.
+    /// simulate timeout or crash.
     pub(crate) wait_process_error: Option<String>,
+    /// Structured reason used for a configured `wait_process` error.
+    pub(crate) wait_process_error_reason: SandboxOperationReason,
     /// FIFO queue of full wait_process exits consumed by factory-created
     /// sandboxes. Empty queue follows the existing default/override behavior.
     pub(crate) wait_process_exits: Mutex<VecDeque<ProcessExit>>,
@@ -101,6 +102,9 @@ pub(crate) struct ProcessOverrideState {
     /// FIFO queue of stdout chunk batches emitted by factory-created
     /// sandboxes during streaming start_process calls.
     pub(crate) start_process_stdout_chunks: Mutex<VecDeque<Vec<ProcessOutputChunk>>>,
+    /// Whether factory-created sandboxes retain the stdout sender after
+    /// `start_process` returns.
+    pub(crate) keep_stdout_sender_open: Mutex<bool>,
     /// Whether factory-created sandboxes expose a process cancel handle.
     pub(crate) process_cancel_supported: Mutex<bool>,
     /// Whether factory-created sandboxes expose a process-control handle.
@@ -132,10 +136,12 @@ impl Default for ProcessOverrideState {
             wait_process_gate: None,
             wait_process_lifecycle_gate: Mutex::new(None),
             wait_process_error: None,
+            wait_process_error_reason: SandboxOperationReason::Timeout,
             wait_process_exits: Mutex::new(VecDeque::new()),
             wait_process_calls: Mutex::new(Vec::new()),
             start_process_calls: Mutex::new(Vec::new()),
             start_process_stdout_chunks: Mutex::new(VecDeque::new()),
+            keep_stdout_sender_open: Mutex::new(false),
             process_cancel_supported: Mutex::new(true),
             process_control_supported: Mutex::new(true),
             process_cancel_calls: Mutex::new(Vec::new()),
@@ -236,6 +242,20 @@ impl MockSandboxOverrides {
     pub fn with_wait_process_error(msg: impl Into<String>) -> Self {
         let mut overrides = Self::new();
         overrides.process.wait_process_error = Some(msg.into());
+        *overrides
+            .process
+            .keep_stdout_sender_open
+            .lock_ignoring_poison() = true;
+        overrides
+    }
+
+    /// Create overrides that make `wait_process` return an error with the supplied reason.
+    pub fn with_wait_process_error_reason(
+        reason: SandboxOperationReason,
+        msg: impl Into<String>,
+    ) -> Self {
+        let mut overrides = Self::with_wait_process_error(msg);
+        overrides.process.wait_process_error_reason = reason;
         overrides
     }
 
@@ -491,6 +511,12 @@ impl MockSandboxOverrides {
     /// overrides already set on this instance.
     pub fn set_wait_process_error(&mut self, msg: impl Into<String>) {
         self.process.wait_process_error = Some(msg.into());
+        *self.process.keep_stdout_sender_open.lock_ignoring_poison() = true;
+    }
+
+    /// Configure whether future streaming process handles retain their stdout sender.
+    pub fn set_keep_stdout_sender_open(&self, keep_open: bool) {
+        *self.process.keep_stdout_sender_open.lock_ignoring_poison() = keep_open;
     }
 
     /// Configure whether future `start_process` handles include a cancel handle.

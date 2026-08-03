@@ -40,7 +40,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;--> statement-breakpoint
 
-CREATE OR REPLACE PROCEDURE "clear_non_goal_zero_run_groups_0809"()
+CREATE OR REPLACE PROCEDURE "clear_non_goal_zero_run_groups_0810"()
 LANGUAGE plpgsql AS $$
 DECLARE
   batch_last_id uuid;
@@ -78,10 +78,10 @@ BEGIN
 END;
 $$;--> statement-breakpoint
 
-CALL "clear_non_goal_zero_run_groups_0809"();--> statement-breakpoint
-DROP PROCEDURE IF EXISTS "clear_non_goal_zero_run_groups_0809"();--> statement-breakpoint
+CALL "clear_non_goal_zero_run_groups_0810"();--> statement-breakpoint
+DROP PROCEDURE IF EXISTS "clear_non_goal_zero_run_groups_0810"();--> statement-breakpoint
 
-CREATE OR REPLACE PROCEDURE "clear_non_goal_chat_event_run_groups_0809"()
+CREATE OR REPLACE PROCEDURE "clear_non_goal_chat_event_run_groups_0810"()
 LANGUAGE plpgsql AS $$
 DECLARE
   batch_last_id uuid;
@@ -124,8 +124,8 @@ BEGIN
 END;
 $$;--> statement-breakpoint
 
-CALL "clear_non_goal_chat_event_run_groups_0809"();--> statement-breakpoint
-DROP PROCEDURE IF EXISTS "clear_non_goal_chat_event_run_groups_0809"();--> statement-breakpoint
+CALL "clear_non_goal_chat_event_run_groups_0810"();--> statement-breakpoint
+DROP PROCEDURE IF EXISTS "clear_non_goal_chat_event_run_groups_0810"();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION "reject_chat_event_source_update"() RETURNS trigger AS $$
 BEGIN

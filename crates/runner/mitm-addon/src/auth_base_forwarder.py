@@ -27,6 +27,7 @@ from mitmproxy import http
 
 import flow_metadata_keys as metadata_keys
 import public_destination
+import request_body_admission
 from authority_utils import (
     IPV6_VERSION,
     authority_has_empty_port,
@@ -58,6 +59,7 @@ MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
 MAX_ADMITTED_AUTH_BASE_FORWARDS = 16
 MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES = 128 * 1024 * 1024
 AUTH_BASE_FORWARD_DEADLINE_SECONDS = 30.0
+_NEGATIVE_FORWARD_REQUEST_BODY_SIZE_ERROR = "auth.base forwarding body size cannot be negative"
 _FORWARD_REQUEST_CLEANUP_EXCEPTIONS: tuple[type[BaseException], ...] = (
     Exception,
     asyncio.CancelledError,
@@ -73,9 +75,11 @@ _forward_request_workers: set[threading.Thread] = set()
 _forward_request_workers_lock = threading.Lock()
 _forward_request_pending_futures: set[Future[tuple[int, bytes, http.Headers]]] = set()
 _forward_request_pending_futures_lock = threading.Lock()
-_forward_request_budget_lock = threading.Lock()
-_forward_request_admitted_count = 0
-_forward_request_admitted_body_bytes = 0
+_forward_request_budget = request_body_admission.RequestBodyAdmissionBudget(
+    metadata_key=metadata_keys.AUTH_BASE_FORWARD_ADMISSION,
+    negative_size_message=_NEGATIVE_FORWARD_REQUEST_BODY_SIZE_ERROR,
+    already_attached_message="auth.base forwarding admission is already attached to flow",
+)
 _forward_request_active_handles: set["_ForwardRequestAbortHandle"] = set()
 _forward_request_active_handles_lock = threading.Lock()
 _https_context: ssl.SSLContext | None = None
@@ -168,14 +172,10 @@ def reset_forward_request_state_for_tests() -> None:
     """Reset forwarder worker state between tests."""
     global _dns_resolver
     global _forward_request_accepting
-    global _forward_request_admitted_body_bytes
-    global _forward_request_admitted_count
     global _https_context
 
     shutdown_forward_request_workers(wait=True)
-    with _forward_request_budget_lock:
-        _forward_request_admitted_count = 0
-        _forward_request_admitted_body_bytes = 0
+    _forward_request_budget.reset_for_tests()
     with _https_context_lock:
         _https_context = None
     _dns_resolver = None
@@ -353,16 +353,6 @@ class _ForwardRequestAbortHandle:
         if terminal_state is _ForwardRequestTerminalState.SHUTDOWN_ABORTED:
             raise RuntimeError("auth.base forwarding workers are shut down")
         raise RuntimeError("auth.base forwarding attempt is already completed")
-
-
-class AuthBaseForwardingAdmission:
-    """Opaque reservation for one admitted auth.base forward."""
-
-    __slots__ = ("_body_bytes", "_released")
-
-    def __init__(self, body_bytes: int) -> None:
-        self._body_bytes = body_bytes
-        self._released = False
 
 
 class _ValidatedAddress(NamedTuple):
@@ -720,6 +710,9 @@ def _read_response_body(resp) -> bytes:
     body = resp.read(MAX_AUTH_BASE_RESPONSE_BODY_BYTES + 1)
     if len(body) > MAX_AUTH_BASE_RESPONSE_BODY_BYTES:
         raise ForwardedResponseTooLargeError("Forwarded auth.base response body too large")
+    remaining = resp.length
+    if remaining is not None and remaining > 0:
+        raise http_client.IncompleteRead(body, remaining)
     return body
 
 
@@ -732,94 +725,79 @@ def _request_body_size(body: bytes | None) -> int:
     return len(body) if body is not None else 0
 
 
-def reserve_forward_request_admission(body_bytes: int) -> AuthBaseForwardingAdmission:
+def reserve_forward_request_admission(
+    body_bytes: int,
+) -> request_body_admission.RequestBodyAdmissionLease:
     """Reserve aggregate auth.base forwarding capacity before body buffering."""
-    global _forward_request_admitted_body_bytes
-    global _forward_request_admitted_count
-
     if body_bytes < 0:
-        raise ValueError("auth.base forwarding body size cannot be negative")
+        raise ValueError(_NEGATIVE_FORWARD_REQUEST_BODY_SIZE_ERROR)
 
     with _forward_request_lifecycle_lock:
         if not _forward_request_accepting:
             raise RuntimeError("auth.base forwarding workers are shut down")
 
-        with _forward_request_budget_lock:
-            if _forward_request_admitted_count + 1 > MAX_ADMITTED_AUTH_BASE_FORWARDS:
-                raise AuthBaseForwardingSaturatedError("auth.base forwarding admission is full")
-            if (
-                _forward_request_admitted_body_bytes + body_bytes
-                > MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES
-            ):
-                raise AuthBaseForwardingSaturatedError("auth.base forwarding body budget is full")
-
-            _forward_request_admitted_count += 1
-            _forward_request_admitted_body_bytes += body_bytes
-            return AuthBaseForwardingAdmission(body_bytes)
+        try:
+            return _forward_request_budget.reserve(
+                body_bytes,
+                max_admitted_count=MAX_ADMITTED_AUTH_BASE_FORWARDS,
+                max_admitted_body_bytes=MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES,
+            )
+        except request_body_admission.RequestBodyAdmissionCountSaturatedError:
+            raise AuthBaseForwardingSaturatedError(
+                "auth.base forwarding admission is full"
+            ) from None
+        except request_body_admission.RequestBodyAdmissionByteSaturatedError:
+            raise AuthBaseForwardingSaturatedError(
+                "auth.base forwarding body budget is full"
+            ) from None
 
 
 def adjust_forward_request_admission(
-    admission: AuthBaseForwardingAdmission, body_bytes: int
+    admission: request_body_admission.RequestBodyAdmissionLease,
+    body_bytes: int,
 ) -> None:
     """Resize an existing reservation when actual body size differs."""
-    global _forward_request_admitted_body_bytes
-
-    if body_bytes < 0:
-        raise ValueError("auth.base forwarding body size cannot be negative")
-
-    with _forward_request_budget_lock:
-        if admission._released:
-            raise RuntimeError("auth.base forwarding admission is already released")
-        delta = body_bytes - admission._body_bytes
-        if delta > 0 and (
-            _forward_request_admitted_body_bytes + delta > MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES
-        ):
-            raise AuthBaseForwardingSaturatedError("auth.base forwarding body budget is full")
-        _forward_request_admitted_body_bytes += delta
-        admission._body_bytes = body_bytes
+    try:
+        _forward_request_budget.resize(
+            admission,
+            body_bytes,
+            max_admitted_body_bytes=MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES,
+            already_released_message="auth.base forwarding admission is already released",
+        )
+    except request_body_admission.RequestBodyAdmissionByteSaturatedError:
+        raise AuthBaseForwardingSaturatedError("auth.base forwarding body budget is full") from None
 
 
-def release_forward_request_admission(admission: AuthBaseForwardingAdmission) -> None:
+def release_forward_request_admission(
+    admission: request_body_admission.RequestBodyAdmissionLease,
+) -> None:
     """Release aggregate auth.base forwarding capacity exactly once."""
-    global _forward_request_admitted_body_bytes
-    global _forward_request_admitted_count
-
-    with _forward_request_budget_lock:
-        if admission._released:
-            return
-        admission._released = True
-        _forward_request_admitted_count -= 1
-        _forward_request_admitted_body_bytes -= admission._body_bytes
+    _forward_request_budget.release(admission)
 
 
 def attach_forward_request_admission_to_flow(
-    flow: http.HTTPFlow, admission: AuthBaseForwardingAdmission
+    flow: http.HTTPFlow,
+    admission: request_body_admission.RequestBodyAdmissionLease,
 ) -> None:
     """Attach an auth.base forward admission to a flow until ownership is transferred."""
-    if metadata_keys.AUTH_BASE_FORWARD_ADMISSION in flow.metadata:
-        raise RuntimeError("auth.base forwarding admission is already attached to flow")
-    flow.metadata[metadata_keys.AUTH_BASE_FORWARD_ADMISSION] = admission
+    _forward_request_budget.attach_to_flow(flow, admission)
 
 
 def take_forward_request_admission_from_flow(
     flow: http.HTTPFlow,
-) -> AuthBaseForwardingAdmission | None:
+) -> request_body_admission.RequestBodyAdmissionLease | None:
     """Remove an attached auth.base forward admission and transfer ownership."""
-    admission = flow.metadata.pop(metadata_keys.AUTH_BASE_FORWARD_ADMISSION, None)
-    return admission if isinstance(admission, AuthBaseForwardingAdmission) else None
+    return _forward_request_budget.take_from_flow(flow)
 
 
 def release_forward_request_admission_from_flow(flow: http.HTTPFlow) -> None:
     """Release any auth.base forward admission still attached to a flow."""
-    admission = take_forward_request_admission_from_flow(flow)
-    if admission is not None:
-        release_forward_request_admission(admission)
+    _forward_request_budget.release_from_flow(flow)
 
 
 def forward_request_admission_state_for_tests() -> tuple[int, int]:
     """Return current admitted count and body bytes for tests."""
-    with _forward_request_budget_lock:
-        return _forward_request_admitted_count, _forward_request_admitted_body_bytes
+    return _forward_request_budget.state_for_tests()
 
 
 def _is_public_unicast_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -989,7 +967,7 @@ def _can_submit_forward_request(semaphore: asyncio.Semaphore) -> bool:
 def _release_forward_request_resources(
     loop: asyncio.AbstractEventLoop,
     semaphore: asyncio.Semaphore,
-    admission: AuthBaseForwardingAdmission,
+    admission: request_body_admission.RequestBodyAdmissionLease,
     abort_handle: _ForwardRequestAbortHandle,
     deadline_timer: asyncio.TimerHandle,
     _future: Future[tuple[int, bytes, http.Headers]],
@@ -1159,7 +1137,7 @@ async def forward_request(
     headers: list[tuple[str, str]],
     body: bytes | None,
     *,
-    admission: AuthBaseForwardingAdmission | None = None,
+    admission: request_body_admission.RequestBodyAdmissionLease | None = None,
 ) -> tuple[int, bytes, http.Headers]:
     """Forward an auth.base request within one absolute worker lifetime.
 

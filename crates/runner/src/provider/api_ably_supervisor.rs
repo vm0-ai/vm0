@@ -1896,7 +1896,16 @@ mod tests {
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
                 "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
                 "affinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                "sessionAffinityResource": "workspaceCache"
+                "sessionAffinityResource": "workspaceCache",
+                // Old runners must ignore the additive preference during rollout.
+                "runnerPreference": {
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000005",
+                        "heartbeatGeneration": 7
+                    },
+                    "reason": "matchingReuseKey",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                }
             }),
         );
 

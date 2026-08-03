@@ -15,6 +15,7 @@ pub use output::{
 };
 pub use result::{
     DecodedExecResult, ExecCapturedOutput, ExecTermination, decode_exec_result, encode_exec_result,
+    encode_exec_result_frame_into,
 };
 pub use start::{
     DecodedExecStart, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy,

@@ -178,8 +178,7 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
         read_response(&mut stream)
     });
 
-    let output = tokio::time::timeout(
-        Duration::from_secs(20),
+    let output = common::command_output_with_timeout(
         Command::new(env!("CARGO_BIN_EXE_guest-agent"))
             .env_clear()
             .env(
@@ -216,16 +215,11 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
                 guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
                 &runtime_dir,
             )
-            .env(process_control_ipc::BOOTSTRAP_ENV, &endpoint)
-            .output(),
+            .env(process_control_ipc::BOOTSTRAP_ENV, &endpoint),
+        Duration::from_secs(20),
+        "guest-agent did not finish within its finalization budget",
     )
-    .await
-    .map_err(|_| {
-        std::io::Error::new(
-            std::io::ErrorKind::TimedOut,
-            "guest-agent did not finish within its finalization budget",
-        )
-    })??;
+    .await?;
     let response = control.await??;
 
     assert_eq!(response.message_id, "cancel-running-cli");

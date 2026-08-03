@@ -2291,7 +2291,16 @@ mod tests {
                         "historyGenerationRunId": history_generation_run_id,
                         "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
                         "affinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                        "sessionAffinityResource": "reusableSandbox"
+                        "sessionAffinityResource": "reusableSandbox",
+                        // Old runners must ignore the additive preference during rollout.
+                        "runnerPreference": {
+                            "runnerIdentity": {
+                                "runnerId": "00000000-0000-0000-0000-000000000005",
+                                "heartbeatGeneration": 7
+                            },
+                            "reason": "exactHistoryGeneration",
+                            "expiresAt": "2999-01-01T00:00:00.000Z"
+                        }
                     }
                 }));
             })

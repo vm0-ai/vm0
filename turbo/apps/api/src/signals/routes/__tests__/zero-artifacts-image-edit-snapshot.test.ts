@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { artifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 
-import { buildFileUrl } from "../../../lib/file-url";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -36,7 +35,7 @@ async function seedVisibleImage(): Promise<{
     agentId: agent.agentId,
     title: "Image editing",
   });
-  await chat.requestSendEvent(
+  const sent = await chat.requestSendEvent(
     actor,
     {
       agentId: agent.agentId,
@@ -53,12 +52,22 @@ async function seedVisibleImage(): Promise<{
     },
     [201],
   );
+  if (sent.status !== 201) {
+    throw new Error("Expected image attachment message to be created");
+  }
+  const events = await chat.listThreadEvents(actor, sent.body.threadId);
+  const attachment = events.events.find((event) => {
+    return event.eventType === "input.prompt";
+  })?.attachFiles?.[0];
+  if (!attachment) {
+    throw new Error("Expected image attachment to be visible in thread events");
+  }
   if (!actor.orgId) {
     throw new Error("Expected the seeded actor to belong to an org");
   }
 
   return {
-    artifactUrl: buildFileUrl(actor.userId, IMAGE_FILE_ID, IMAGE_FILENAME),
+    artifactUrl: attachment.url,
     orgId: actor.orgId,
     userId: actor.userId,
   };

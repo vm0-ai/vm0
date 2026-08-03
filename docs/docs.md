@@ -25,4 +25,8 @@ surface; the index does not replace their detailed rules.
   commits.
 - [Chat cards](./chat-cards.md): recognizing links in chat messages, creating
   thread-scoped card signals, and rendering rich interactive cards.
+- [Runner host configuration](./runner-host-configuration.md): configure and
+  verify host-local concurrency and I/O capacity overrides.
+- [Runner multi-architecture rollout](./runner-multi-architecture.md): build,
+  deploy, and validate runner artifacts for supported host architectures.
 - [Testing catalog](./testing/anti-patterns.md): detailed testing anti-patterns.

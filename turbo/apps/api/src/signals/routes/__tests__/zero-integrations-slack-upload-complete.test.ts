@@ -1123,7 +1123,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       objectStore.puts.some((put) => {
         return (
           put.bucket === "test-user-artifacts" &&
-          put.key.endsWith("/poster-v2.jpg") &&
+          /^artifacts\/[0-9a-z]{10}\.jpg$/u.test(put.key) &&
           put.contentType === "image/jpeg"
         );
       }),
@@ -1132,7 +1132,9 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     const videoArtifact = artifacts.artifacts.find((artifact) => {
       return artifact.fileId === fileId;
     });
-    expect(videoArtifact?.previewImageUrl).toMatch(/\/poster-v2\.jpg$/);
+    expect(videoArtifact?.previewImageUrl).toMatch(
+      /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
+    );
   });
 
   it("does not record a run association for ordinary clerk session auth", async () => {

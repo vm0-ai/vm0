@@ -8,9 +8,10 @@ use crate::error::AgentError;
 use crate::paths;
 use crate::session_history;
 use guest_common::{log_error, log_info};
+use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use std::io;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
@@ -32,7 +33,7 @@ pub(crate) fn history_marker_payload_for_session_id_with_home(
 }
 
 fn claude_history_path_payload_for_home(home: &str, session_id: &str) -> Option<String> {
-    if !is_valid_session_history_id(session_id) {
+    if !is_valid_cli_agent_session_id(session_id) {
         return None;
     }
 
@@ -58,21 +59,6 @@ fn codex_history_marker_payload_for_home(home_dir: &Path, thread_id: &str) -> St
 
 fn codex_sessions_dir(home_dir: &Path) -> PathBuf {
     crate::codex_auth::codex_home_path(home_dir).join("sessions")
-}
-
-pub(crate) fn is_valid_session_history_id(session_id: &str) -> bool {
-    if session_id.is_empty()
-        || session_id == "."
-        || session_id == ".."
-        || session_id.contains('/')
-        || session_id.contains('\\')
-        || session_id.chars().any(char::is_control)
-    {
-        return false;
-    }
-
-    let mut components = Path::new(session_id).components();
-    matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none()
 }
 
 pub(crate) fn session_history_marker_kind(history_path_payload: &str) -> &'static str {

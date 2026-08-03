@@ -1112,15 +1112,7 @@ describe("thread-owned utility sidebar", () => {
         "Reconnect Gmail to access email: Reconnect draft",
       ),
     ).resolves.toBeInTheDocument();
-    const openBrowser = queryAllByRoleFast("button", browserCard).find(
-      (button) => {
-        return button.textContent === "Open";
-      },
-    );
-    if (!openBrowser) {
-      throw new Error("Expected browser card open button");
-    }
-    click(openBrowser);
+    click(browserCard);
     const browserSidebar = await screen.findByLabelText("Live browser");
     expect(browserSidebar).toHaveAttribute("data-browser-session-sidebar");
     await expect(

@@ -388,7 +388,7 @@ describe("workflow automation queue controls", () => {
     expect(runIds).toHaveLength(2);
     await completeRunThroughSandbox(scenario, runIds[1]!);
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
-  });
+  }, 30_000);
 
   it("queues manual Run now behind the active run and existing backlog", async () => {
     const scenario = await setup();

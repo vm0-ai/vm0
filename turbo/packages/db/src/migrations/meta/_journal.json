@@ -5668,8 +5668,15 @@
     {
       "idx": 809,
       "version": "7",
-      "when": 1785738806925,
-      "tag": "0809_clear_non_goal_run_groups",
+      "when": 1785741568921,
+      "tag": "0809_clean_kronos",
+      "breakpoints": true
+    },
+    {
+      "idx": 810,
+      "version": "7",
+      "when": 1785755009685,
+      "tag": "0810_clear_non_goal_run_groups",
       "breakpoints": true
     }
   ]

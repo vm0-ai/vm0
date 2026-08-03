@@ -245,7 +245,7 @@ def test_eviction_and_reset_release_retained_buffered_report(
             "enqueue_webhook_delivery",
             return_value=False,
         ),
-        patch.object(codex_output_timing, "_MAX_TRACKED_RUNS", 1),
+        patch.object(codex_output_timing._store, "_max_tracked_runs", 1),
     ):
         first_flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         first_flow.metadata[metadata_keys.VM_RUN_ID] = "run-first"
@@ -307,7 +307,7 @@ def test_lru_hit_recency_preserves_recent_buffered_report(
             "enqueue_webhook_delivery",
             side_effect=enqueue_timing_delivery,
         ),
-        patch.object(codex_output_timing, "_MAX_TRACKED_RUNS", 2),
+        patch.object(codex_output_timing._store, "_max_tracked_runs", 2),
     ):
         first_flow = codex_flow("run-a")
         _feed_generated_response(first_flow, include_text=False)

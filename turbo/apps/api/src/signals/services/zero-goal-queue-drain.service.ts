@@ -9,6 +9,10 @@ import {
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
 import {
+  ApiDispatchTimingCollector,
+  type ApiDispatchTimingDimensions,
+} from "./api-dispatch-timing.service";
+import {
   loadGoalQueueTarget,
   loadNextGoalQueueEvent,
   rejectGoalQueueEvent,
@@ -26,6 +30,26 @@ const log = logger("api:zero-goal-queue-drain");
 const MAX_DRAIN_ATTEMPTS = 5;
 const GOAL_INVALIDATED_REASON =
   "Goal continuation no longer matches the active goal";
+
+type GoalDrainAttempt = "initial" | "retry";
+type GoalDrainTimingRole = "waiting" | "phase" | "aggregate";
+type QueueFirstZeroRunInput = Parameters<
+  (typeof createQueueFirstZeroRun$)["write"]
+>[1];
+
+function goalDrainAttempt(attempt: number): GoalDrainAttempt {
+  return attempt === 0 ? "initial" : "retry";
+}
+
+function goalDrainTimingDimensions(args: {
+  readonly attempt?: GoalDrainAttempt;
+  readonly role: GoalDrainTimingRole;
+}): ApiDispatchTimingDimensions {
+  return {
+    ...(args.attempt ? { goal_drain_attempt: args.attempt } : {}),
+    goal_drain_timing_role: args.role,
+  };
+}
 
 interface InternalRunCallbackInput {
   readonly internalKind: InternalRunCallbackKind;
@@ -105,6 +129,79 @@ function buildGoalChatCallbacks(args: {
   ];
 }
 
+function buildQueueFirstGoalRunInput(args: {
+  readonly event: PendingGoalQueueEvent;
+  readonly goal: GoalQueueTarget;
+  readonly modelContext: Extract<ModelContext, { readonly ok: true }>;
+  readonly apiStartTime: number;
+  readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+  readonly timing: ApiDispatchTimingCollector;
+}): QueueFirstZeroRunInput {
+  const normalizedGoal = {
+    ...args.goal,
+    objectiveBrief: normalizeGoalObjectiveBrief({
+      objective: args.goal.objective,
+      objectiveBrief: args.goal.objectiveBrief,
+    }),
+  };
+  const prompt = buildGoalContinuationPrompt(normalizedGoal);
+  const { modelPin, effectiveModelProvider, cliAgentType, codexServiceTier } =
+    args.modelContext;
+  return {
+    auth: {
+      orgId: normalizedGoal.orgId,
+      orgRole: "member",
+      userId: normalizedGoal.userId,
+      tokenType: "session",
+    },
+    body: {
+      prompt,
+      agentId: normalizedGoal.agentId,
+      ...(effectiveModelProvider
+        ? { modelProvider: effectiveModelProvider }
+        : {}),
+    },
+    apiStartTime: args.apiStartTime,
+    triggerSource: "workflow-event",
+    chatThreadId: normalizedGoal.threadId,
+    modelProviderId: modelPin.modelProviderId ?? undefined,
+    modelProviderCredentialScope:
+      modelPin.modelProviderCredentialScope ?? undefined,
+    selectedModelOverride: modelPin.selectedModel ?? undefined,
+    threadSessionRoute: {
+      selectedModel: modelPin.selectedModel,
+      modelProvider: effectiveModelProvider ?? null,
+      modelProviderId: modelPin.modelProviderId,
+      cliAgentType,
+    },
+    codexServiceTier,
+    callbacks: buildGoalChatCallbacks({
+      threadId: normalizedGoal.threadId,
+      agentId: normalizedGoal.agentId,
+    }),
+    zeroRunMetadata: {
+      goalId: normalizedGoal.goalId,
+    },
+    queueFirstAssociation: {
+      kind: "goal_event",
+      threadId: normalizedGoal.threadId,
+      eventId: args.event.id,
+      prompt,
+      goalId: normalizedGoal.goalId,
+      orgId: normalizedGoal.orgId,
+      userId: normalizedGoal.userId,
+    },
+    zeroRunModelPin: {
+      modelProvider: effectiveModelProvider ?? null,
+      modelProviderId: modelPin.modelProviderId,
+      modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
+      selectedModel: modelPin.selectedModel,
+    },
+    dispatchFailedCallbacks: args.dispatchFailedCallbacks,
+    timing: args.timing,
+  };
+}
+
 async function resolveModelContext(args: {
   readonly db: Db;
   readonly goal: GoalQueueTarget;
@@ -182,87 +279,68 @@ const launchQueuedGoal$ = command(
     args: {
       readonly event: PendingGoalQueueEvent;
       readonly goal: GoalQueueTarget;
-      readonly apiStartTime?: number;
+      readonly apiStartTime: number;
+      readonly attempt: GoalDrainAttempt;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+      readonly timing: ApiDispatchTimingCollector;
     },
     signal: AbortSignal,
   ): Promise<RunGoalResult> => {
     const db = set(writeDb$);
-    const modelContext = await resolveModelContext({
-      db,
-      goal: args.goal,
-      signal,
+    const phaseDimensions = goalDrainTimingDimensions({
+      attempt: args.attempt,
+      role: "phase",
     });
+    const modelContext = await args.timing.measure(
+      "api_dispatch_pre_create_zero_goal_drain_resolve_model_context",
+      "nested",
+      async () => {
+        return await resolveModelContext({
+          db,
+          goal: args.goal,
+          signal,
+        });
+      },
+      phaseDimensions,
+    );
+    signal.throwIfAborted();
     if (!modelContext.ok) {
       return modelContext.failure;
     }
-    const { modelPin, effectiveModelProvider, cliAgentType, codexServiceTier } =
-      modelContext;
-
-    const normalizedGoal = {
-      ...args.goal,
-      objectiveBrief: normalizeGoalObjectiveBrief({
-        objective: args.goal.objective,
-        objectiveBrief: args.goal.objectiveBrief,
-      }),
-    };
-    const prompt = buildGoalContinuationPrompt(normalizedGoal);
-    const result = await set(
-      createQueueFirstZeroRun$,
-      {
-        auth: {
-          orgId: normalizedGoal.orgId,
-          orgRole: "member",
-          userId: normalizedGoal.userId,
-          tokenType: "session",
-        },
-        body: {
-          prompt,
-          agentId: normalizedGoal.agentId,
-          ...(effectiveModelProvider
-            ? { modelProvider: effectiveModelProvider }
-            : {}),
-        },
-        apiStartTime: args.apiStartTime ?? now(),
-        triggerSource: "workflow-event",
-        chatThreadId: normalizedGoal.threadId,
-        modelProviderId: modelPin.modelProviderId ?? undefined,
-        modelProviderCredentialScope:
-          modelPin.modelProviderCredentialScope ?? undefined,
-        selectedModelOverride: modelPin.selectedModel ?? undefined,
-        threadSessionRoute: {
-          selectedModel: modelPin.selectedModel,
-          modelProvider: effectiveModelProvider ?? null,
-          modelProviderId: modelPin.modelProviderId,
-          cliAgentType,
-        },
-        codexServiceTier,
-        callbacks: buildGoalChatCallbacks({
-          threadId: normalizedGoal.threadId,
-          agentId: normalizedGoal.agentId,
-        }),
-        zeroRunMetadata: {
-          goalId: normalizedGoal.goalId,
-        },
-        queueFirstAssociation: {
-          kind: "goal_event",
-          threadId: normalizedGoal.threadId,
-          eventId: args.event.id,
-          prompt,
-          goalId: normalizedGoal.goalId,
-          orgId: normalizedGoal.orgId,
-          userId: normalizedGoal.userId,
-        },
-        zeroRunModelPin: {
-          modelProvider: effectiveModelProvider ?? null,
-          modelProviderId: modelPin.modelProviderId,
-          modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
-          selectedModel: modelPin.selectedModel,
-        },
-        dispatchFailedCallbacks: args.dispatchFailedCallbacks,
+    const runInput = args.timing.measureSync<QueueFirstZeroRunInput>(
+      "api_dispatch_pre_create_zero_goal_drain_build_run_input",
+      "nested",
+      () => {
+        return buildQueueFirstGoalRunInput({
+          event: args.event,
+          goal: args.goal,
+          modelContext,
+          apiStartTime: args.apiStartTime,
+          dispatchFailedCallbacks: args.dispatchFailedCallbacks,
+          timing: args.timing,
+        });
       },
-      signal,
+      phaseDimensions,
     );
+    const handoffAt = now();
+    args.timing.recordElapsed(
+      "api_dispatch_pre_create_zero_entrypoint_gap",
+      "nested",
+      args.apiStartTime,
+      handoffAt,
+      goalDrainTimingDimensions({
+        attempt: args.attempt,
+        role: "aggregate",
+      }),
+    );
+    args.timing.recordElapsed(
+      "api_dispatch_pre_create_zero_goal_drain_handoff_run",
+      "nested",
+      handoffAt,
+      handoffAt,
+      phaseDimensions,
+    );
+    const result = await set(createQueueFirstZeroRun$, runInput, signal);
     signal.throwIfAborted();
 
     if (isQueueFirstRunClaimLost(result)) {
@@ -286,23 +364,75 @@ export const drainGoalQueueForThread$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
+    const drainStartedAt = now();
+    const apiStartTime = args.apiStartTime ?? drainStartedAt;
+    const timing = new ApiDispatchTimingCollector();
+    timing.recordElapsed(
+      "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
+      "nested",
+      apiStartTime,
+      drainStartedAt,
+      goalDrainTimingDimensions({ role: "waiting" }),
+    );
     const db = set(writeDb$);
 
     for (let attempt = 0; attempt < MAX_DRAIN_ATTEMPTS; attempt++) {
-      const event = await loadNextGoalQueueEvent(
-        db,
-        args.chatThreadId,
-        args.queueItemCreatedBefore,
+      const attemptCategory = goalDrainAttempt(attempt);
+      const phaseDimensions = goalDrainTimingDimensions({
+        attempt: attemptCategory,
+        role: "phase",
+      });
+      const event = await timing.measure(
+        "api_dispatch_pre_create_zero_goal_drain_load_event",
+        "nested",
+        async () => {
+          return await loadNextGoalQueueEvent(
+            db,
+            args.chatThreadId,
+            args.queueItemCreatedBefore,
+          );
+        },
+        phaseDimensions,
       );
       signal.throwIfAborted();
       if (!event) {
         return;
       }
+      timing.recordElapsed(
+        "api_dispatch_pre_create_zero_goal_drain_event_queue_age",
+        "nested",
+        event.createdAt.getTime(),
+        drainStartedAt,
+        goalDrainTimingDimensions({
+          attempt: attemptCategory,
+          role: "waiting",
+        }),
+      );
 
-      const goal = await loadGoalQueueTarget(db, event);
+      const goal = await timing.measure(
+        "api_dispatch_pre_create_zero_goal_drain_load_target",
+        "nested",
+        async () => {
+          return await loadGoalQueueTarget(db, event);
+        },
+        phaseDimensions,
+      );
       signal.throwIfAborted();
       if (!goal) {
-        await rejectGoalEvent(db, event, GOAL_INVALIDATED_REASON, signal);
+        await timing.measure(
+          "api_dispatch_pre_create_zero_goal_drain_reject_invalid_event",
+          "nested",
+          async () => {
+            return await rejectGoalEvent(
+              db,
+              event,
+              GOAL_INVALIDATED_REASON,
+              signal,
+            );
+          },
+          phaseDimensions,
+        );
+        signal.throwIfAborted();
         continue;
       }
 
@@ -311,8 +441,10 @@ export const drainGoalQueueForThread$ = command(
         {
           event,
           goal,
-          apiStartTime: args.apiStartTime,
+          apiStartTime,
+          attempt: attemptCategory,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,
+          timing,
         },
         signal,
       );

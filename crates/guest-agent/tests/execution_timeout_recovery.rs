@@ -85,8 +85,7 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
             .json_body(json!({"checkpointId": "execution-timeout-recovery-checkpoint"}));
     });
 
-    let output = tokio::time::timeout(
-        Duration::from_secs(20),
+    let output = common::command_output_with_timeout(
         Command::new(env!("CARGO_BIN_EXE_guest-agent"))
             .env_clear()
             .env(
@@ -119,11 +118,11 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
             .env(
                 guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
                 &runtime_dir,
-            )
-            .output(),
+            ),
+        Duration::from_secs(20),
+        "guest-agent did not finish within its finalization budget",
     )
-    .await
-    .expect("guest-agent did not finish within its finalization budget")?;
+    .await?;
 
     assert_eq!(
         output.status.code(),

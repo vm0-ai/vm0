@@ -26,13 +26,14 @@ from mitmproxy.addonmanager import Loader
 
 # --- Sub-module imports ---
 #
-# auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/matching/registry/
-# response_encoding_negotiation/response_streaming/runner_flush_lifecycle/terminal_usage/
-# upstream_admission/usage/websocket_retention are imported by module (not selective
+# auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/content_length/
+# matching/registry/response_encoding_negotiation/response_streaming/runner_flush_lifecycle/
+# terminal_usage/upstream_admission/usage/websocket_retention are imported by module (not selective
 # `from X import ...`) so that:
 #   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
 #      ``body_capture.X(...)`` / ``connector_diagnostics.X(...)`` /
 #      ``connector_intent.X(...)`` /
+#      ``content_length.X(...)`` /
 #      ``matching.X(...)`` / ``registry.X(...)`` / ``response_streaming.X(...)`` /
 #      ``runner_flush_lifecycle.X(...)`` / ``terminal_usage.X(...)`` /
 #      ``upstream_admission.X(...)`` / ``usage.X(...)`` /
@@ -47,6 +48,7 @@ import codex_model_catalog_cache
 import codex_output_timing
 import connector_diagnostics
 import connector_intent
+import content_length
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import http_local_responses
@@ -91,7 +93,6 @@ from firewall_auth_cache import (
 from firewall_auth_config import auth_config_injects_ordinary_upstream_credentials
 from logging_utils import (
     NETWORK_LOG_MAX_SAFE_SIZE,
-    NETWORK_LOG_MAX_SAFE_SIZE_DIGITS,
     add_firewall_metadata,
     elapsed_ms,
     log_network_entry,
@@ -452,8 +453,11 @@ def _auth_base_body_header_check(
             reason="transfer_encoding",
         )
 
-    raw_content_lengths = flow.request.headers.get_all("Content-Length")
-    if not raw_content_lengths:
+    parsed_content_length = content_length.parse(
+        flow.request.headers.get_all("Content-Length"),
+        max_value=auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES,
+    )
+    if parsed_content_length.kind == "missing":
         if flow.request.method.upper() not in _AUTH_BASE_BODYLESS_METHODS:
             return _BufferedRequestBodyCheck(
                 kind="length_required",
@@ -468,27 +472,22 @@ def _auth_base_body_header_check(
             return _BufferedRequestBodyCheck(kind="length_required", reason=reason)
         return _BufferedRequestBodyCheck(kind="ok")
 
-    parsed_length: int | None = None
-    for raw_content_length in raw_content_lengths:
-        for part in raw_content_length.split(","):
-            candidate = _parse_auth_base_content_length_part(part)
-            if candidate is None:
-                return _BufferedRequestBodyCheck(
-                    kind="length_required",
-                    reason="invalid_content_length",
-                )
-            if parsed_length is None:
-                parsed_length = candidate
-            elif parsed_length != candidate:
-                return _BufferedRequestBodyCheck(
-                    kind="length_required",
-                    reason="conflicting_content_length",
-                )
-
-    observed_size = parsed_length if parsed_length is not None else 0
-    if observed_size > auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES:
-        return _BufferedRequestBodyCheck(kind="too_large", observed_size=observed_size)
-    return _BufferedRequestBodyCheck(kind="ok", observed_size=observed_size)
+    if parsed_content_length.kind == "invalid":
+        return _BufferedRequestBodyCheck(
+            kind="length_required",
+            reason="invalid_content_length",
+        )
+    if parsed_content_length.kind == "conflicting":
+        return _BufferedRequestBodyCheck(
+            kind="length_required",
+            reason="conflicting_content_length",
+        )
+    if parsed_content_length.kind == "over_limit":
+        return _BufferedRequestBodyCheck(
+            kind="too_large",
+            observed_size=parsed_content_length.value,
+        )
+    return _BufferedRequestBodyCheck(kind="ok", observed_size=parsed_content_length.value)
 
 
 def _aws_sigv4_body_header_check(
@@ -502,8 +501,11 @@ def _aws_sigv4_body_header_check(
             reason="transfer_encoding",
         )
 
-    raw_content_lengths = flow.request.headers.get_all("Content-Length")
-    if not raw_content_lengths:
+    parsed_content_length = content_length.parse(
+        flow.request.headers.get_all("Content-Length"),
+        max_value=aws_sigv4_body_admission.MAX_AWS_SIGV4_REQUEST_BODY_BYTES,
+    )
+    if parsed_content_length.kind == "missing":
         if request_end_stream is True:
             return _BufferedRequestBodyCheck(kind="ok")
         reason = (
@@ -513,75 +515,36 @@ def _aws_sigv4_body_header_check(
         )
         return _BufferedRequestBodyCheck(kind="length_required", reason=reason)
 
-    parsed_length: int | None = None
-    for raw_content_length in raw_content_lengths:
-        for part in raw_content_length.split(","):
-            candidate = _parse_limited_content_length_part(
-                part,
-                max_value=aws_sigv4_body_admission.MAX_AWS_SIGV4_REQUEST_BODY_BYTES,
-            )
-            if candidate is None:
-                return _BufferedRequestBodyCheck(
-                    kind="length_required",
-                    reason="invalid_content_length",
-                )
-            if parsed_length is None:
-                parsed_length = candidate
-            elif parsed_length != candidate:
-                return _BufferedRequestBodyCheck(
-                    kind="length_required",
-                    reason="conflicting_content_length",
-                )
-
-    observed_size = parsed_length if parsed_length is not None else 0
-    if observed_size > aws_sigv4_body_admission.MAX_AWS_SIGV4_REQUEST_BODY_BYTES:
-        return _BufferedRequestBodyCheck(kind="too_large", observed_size=observed_size)
-    return _BufferedRequestBodyCheck(kind="ok", observed_size=observed_size)
-
-
-def _parse_auth_base_content_length_part(value: str) -> int | None:
-    return _parse_limited_content_length_part(
-        value,
-        max_value=auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES,
-    )
-
-
-def _parse_limited_content_length_part(value: str, *, max_value: int) -> int | None:
-    value = value.strip(" \t")
-    if not value:
-        return None
-    if not value.isascii() or not value.isdecimal():
-        return None
-    normalized = value.lstrip("0") or "0"
-    limit_text = str(max_value)
-    if len(normalized) > len(limit_text):
-        return max_value + 1
-    return int(normalized)
+    if parsed_content_length.kind == "invalid":
+        return _BufferedRequestBodyCheck(
+            kind="length_required",
+            reason="invalid_content_length",
+        )
+    if parsed_content_length.kind == "conflicting":
+        return _BufferedRequestBodyCheck(
+            kind="length_required",
+            reason="conflicting_content_length",
+        )
+    if parsed_content_length.kind == "over_limit":
+        return _BufferedRequestBodyCheck(
+            kind="too_large",
+            observed_size=parsed_content_length.value,
+        )
+    return _BufferedRequestBodyCheck(kind="ok", observed_size=parsed_content_length.value)
 
 
 def _request_body_fits_stream_buffer(flow: http.HTTPFlow) -> bool:
     if flow.request.headers.get_all("Transfer-Encoding"):
         return False
 
-    raw_content_lengths = flow.request.headers.get_all("Content-Length")
-    if not raw_content_lengths:
-        # requestheaders() does not expose mitmproxy's end_stream flag. Treat
-        # missing Content-Length as unknown length even for GET/HEAD because
-        # HTTP/2 can carry DATA frames after headers without a length header.
-        return False
-
-    parsed_length: int | None = None
-    for raw_content_length in raw_content_lengths:
-        for part in raw_content_length.split(","):
-            candidate = _parse_limited_content_length_part(part, max_value=STREAM_BUFFER_LIMIT)
-            if candidate is None:
-                return False
-            if parsed_length is None:
-                parsed_length = candidate
-            elif parsed_length != candidate:
-                return False
-
-    return (parsed_length or 0) <= STREAM_BUFFER_LIMIT
+    parsed_content_length = content_length.parse(
+        flow.request.headers.get_all("Content-Length"),
+        max_value=STREAM_BUFFER_LIMIT,
+    )
+    # requestheaders() does not expose mitmproxy's end_stream flag. Treat
+    # missing Content-Length as unknown length even for GET/HEAD because
+    # HTTP/2 can carry DATA frames after headers without a length header.
+    return parsed_content_length.kind == "valid"
 
 
 def _restore_request_headers_probe_metadata(
@@ -1033,14 +996,22 @@ async def _try_firewall_request_stream_from_headers(
         is_billable_firewall(allow.name, vm_info),
         _is_model_provider_usage_observable(allow.name, vm_info),
     )
-    request_classification.cache_classification(flow, classification)
-    flow.metadata[_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS] = True
-    await codex_model_catalog_cache.prepare_request(
-        flow,
-        request_end_stream=request_end_stream is True,
-    )
-    if flow.response is None:
-        request_streaming.configure_request_stream(flow, capture_body=capture_body)
+    try:
+        request_classification.cache_classification(flow, classification)
+        flow.metadata[_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS] = True
+        await _prepare_codex_catalog_request_with_upstream_revalidation(
+            flow,
+            allow,
+            admitted_server=admitted_server,
+            require_connected=require_connected,
+            request_end_stream=request_end_stream is True,
+        )
+        if flow.response is None:
+            request_streaming.configure_request_stream(flow, capture_body=capture_body)
+    except (asyncio.CancelledError, Exception):
+        _release_terminal_flow_state(flow, release_tracking=True)
+        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+        raise
 
 
 def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBlock) -> None:
@@ -1104,6 +1075,32 @@ def _revalidate_ordinary_upstream_credentials_for_request(
         return False
 
     return True
+
+
+async def _prepare_codex_catalog_request_with_upstream_revalidation(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    *,
+    admitted_server: connection.Server,
+    require_connected: bool,
+    request_end_stream: bool,
+) -> None:
+    """Prepare a local catalog response or revalidate provider continuation."""
+    waited_for_in_flight = await codex_model_catalog_cache.prepare_request(
+        flow,
+        request_end_stream=request_end_stream,
+    )
+    if (
+        waited_for_in_flight
+        and flow.response is None
+        and _firewall_allow_injects_ordinary_upstream_credentials(allow)
+    ):
+        _revalidate_ordinary_upstream_credentials_for_request(
+            flow,
+            allow,
+            admitted_server=admitted_server,
+            require_connected=require_connected,
+        )
 
 
 def _unhandled_request_classification(classification: NoReturn) -> NoReturn:
@@ -1262,8 +1259,11 @@ async def request(flow: http.HTTPFlow) -> None:
                 auth_base_forwarder.release_forward_request_admission_from_flow(flow)
                 terminal_usage.release_tracked_flow(flow)
             elif auth_result is FirewallAuthHandlingResult.CONTINUE_UPSTREAM:
-                await codex_model_catalog_cache.prepare_request(
+                await _prepare_codex_catalog_request_with_upstream_revalidation(
                     flow,
+                    allow,
+                    admitted_server=admitted_server,
+                    require_connected=require_connected,
                     request_end_stream=True,
                 )
             return
@@ -1416,7 +1416,13 @@ def _response_size(flow: http.HTTPFlow) -> int:
     if streamed_size is not None:
         return streamed_size
 
-    return _content_length_response_size(flow.response.headers.get("content-length"))
+    parsed_content_length = content_length.parse(
+        flow.response.headers.get_all("Content-Length"),
+        max_value=NETWORK_LOG_MAX_SAFE_SIZE,
+    )
+    if parsed_content_length.kind != "valid":
+        return 0
+    return parsed_content_length.value
 
 
 def _request_size(flow: http.HTTPFlow) -> int:
@@ -1424,56 +1430,6 @@ def _request_size(flow: http.HTTPFlow) -> int:
     if streamed_size is not None:
         return streamed_size
     return len(flow.request.raw_content or b"")
-
-
-def _content_length_response_size(content_length: str | None) -> int:
-    if content_length is None:
-        return 0
-
-    response_size: int | None = None
-    start = 0
-    while True:
-        comma = content_length.find(",", start)
-        end = len(content_length) if comma == -1 else comma
-        parsed_size = _single_content_length_response_size(content_length, start, end)
-        if parsed_size is None:
-            return 0
-        if response_size is None:
-            response_size = parsed_size
-        elif response_size != parsed_size:
-            return 0
-        if comma == -1:
-            break
-        start = comma + 1
-
-    return response_size if response_size is not None else 0
-
-
-def _single_content_length_response_size(content_length: str, start: int, end: int) -> int | None:
-    while start < end and content_length[start] in (" ", "\t"):
-        start += 1
-    while end > start and content_length[end - 1] in (" ", "\t"):
-        end -= 1
-    if start == end:
-        return None
-
-    while start < end and content_length[start] == "0":
-        start += 1
-    if start == end:
-        return 0
-
-    significant_start = start
-    if end - significant_start > NETWORK_LOG_MAX_SAFE_SIZE_DIGITS:
-        return None
-    for index in range(significant_start, end):
-        char = content_length[index]
-        if char < "0" or char > "9":
-            return None
-
-    response_size = int(content_length[significant_start:end])
-    if response_size > NETWORK_LOG_MAX_SAFE_SIZE:
-        return None
-    return response_size
 
 
 def _release_terminal_flow_state(

@@ -19,9 +19,12 @@ const BROWSER_USE_REQUEST_TIMEOUT_MS = 30_000;
 const BROWSER_USE_CDP_REQUEST_TIMEOUT_MS = 15_000;
 const MAX_BROWSER_USE_RESPONSE_BYTES = 512 * 1024;
 const MAX_BROWSER_USE_CDP_RESPONSE_BYTES = 64 * 1024;
+const MAX_BROWSER_USE_SCREENSHOT_RESPONSE_BYTES = 4 * 1024 * 1024;
 const MAX_BROWSER_USE_ERROR_MESSAGE_CHARS = 2048;
 const MAX_BROWSER_USE_TAB_URLS = 50;
 const MAX_BROWSER_USE_TAB_URL_CHARS = 8192;
+const BROWSER_USE_SCREENSHOT_WIDTH = 640;
+const BROWSER_USE_SCREENSHOT_QUALITY = 80;
 const browserUseLiveUrlSchema = z.url().refine((value) => {
   return new URL(value).origin === "https://live.browser-use.com";
 });
@@ -64,10 +67,35 @@ const browserUseCdpTargetsSchema = z.object({
 const browserUseCdpWindowSchema = z.object({
   windowId: z.number().int().nonnegative(),
 });
+const browserUseCdpAttachedTargetSchema = z.object({
+  sessionId: z.string().min(1),
+});
+const browserUseCdpFocusSchema = z.object({
+  result: z.object({
+    value: z.boolean().optional(),
+  }),
+});
+const browserUseCdpLayoutMetricsSchema = z.object({
+  cssVisualViewport: z.object({
+    pageX: z.number().finite(),
+    pageY: z.number().finite(),
+    clientWidth: z.number().positive().finite(),
+    clientHeight: z.number().positive().finite(),
+  }),
+});
+const browserUseCdpScreenshotSchema = z.object({
+  data: z.string().min(1),
+});
 type BrowserUseCdpSocketEventName = "open" | "message" | "error" | "close";
 interface BrowserUseCdpSocketEvent {
   readonly name: BrowserUseCdpSocketEventName;
   readonly event: unknown;
+}
+
+interface BrowserUseCdpCommandOptions {
+  readonly signal: AbortSignal;
+  readonly sessionId?: string;
+  readonly maxResponseBytes?: number;
 }
 
 const browserUseProfileSchema = z.object({
@@ -193,11 +221,19 @@ async function sendBrowserUseCdpCommand(
   id: number,
   method: string,
   params: Readonly<Record<string, unknown>>,
-  signal: AbortSignal,
+  options: BrowserUseCdpCommandOptions,
 ): Promise<unknown> {
+  const { signal } = options;
   signal.throwIfAborted();
   const sent = safeSync(() => {
-    socket.send(JSON.stringify({ id, method, params }));
+    socket.send(
+      JSON.stringify({
+        id,
+        method,
+        params,
+        ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+      }),
+    );
   });
   if ("error" in sent) {
     throw sent.error;
@@ -216,7 +252,8 @@ async function sendBrowserUseCdpCommand(
     }
     if (
       typeof received.event.data !== "string" ||
-      received.event.data.length > MAX_BROWSER_USE_CDP_RESPONSE_BYTES
+      received.event.data.length >
+        (options.maxResponseBytes ?? MAX_BROWSER_USE_CDP_RESPONSE_BYTES)
     ) {
       continue;
     }
@@ -273,7 +310,7 @@ async function resizeBrowserUseCdp(
         1,
         "Target.getTargets",
         {},
-        signal,
+        { signal },
       ),
       { reportInput: true },
     );
@@ -289,7 +326,7 @@ async function resizeBrowserUseCdp(
         2,
         "Browser.getWindowForTarget",
         { targetId: target.targetId },
-        signal,
+        { signal },
       ),
       { reportInput: true },
     );
@@ -298,7 +335,7 @@ async function resizeBrowserUseCdp(
       3,
       "Browser.setContentsSize",
       { windowId: window.windowId, width, height },
-      signal,
+      { signal },
     );
   });
 }
@@ -348,7 +385,7 @@ export async function listBrowserUseTabUrls(
         1,
         "Target.getTargets",
         {},
-        cdpSignal,
+        { signal: cdpSignal },
       ),
       { reportInput: true },
     );
@@ -361,6 +398,108 @@ export async function listBrowserUseTabUrls(
           return target.url;
         }),
     );
+  });
+}
+
+export async function captureBrowserUseScreenshot(
+  cdpUrl: string,
+  signal: AbortSignal,
+): Promise<Buffer> {
+  const cdpSignal = browserUseCdpSignal(signal);
+  return await withBrowserUseCdpSocket(cdpUrl, cdpSignal, async (socket) => {
+    const targets = browserUseCdpTargetsSchema.parse(
+      await sendBrowserUseCdpCommand(
+        socket,
+        1,
+        "Target.getTargets",
+        {},
+        { signal: cdpSignal },
+      ),
+      { reportInput: true },
+    );
+    const pageTargets = targets.targetInfos.filter((target) => {
+      return target.type === "page";
+    });
+    if (pageTargets.length === 0) {
+      throw new Error("Browser Use CDP returned no page target");
+    }
+
+    let commandId = 2;
+    let focusedSessionId: string | null = null;
+    let fallbackSessionId: string | null = null;
+    for (const target of pageTargets) {
+      const attached = browserUseCdpAttachedTargetSchema.parse(
+        await sendBrowserUseCdpCommand(
+          socket,
+          commandId,
+          "Target.attachToTarget",
+          { targetId: target.targetId, flatten: true },
+          { signal: cdpSignal },
+        ),
+        { reportInput: true },
+      );
+      commandId += 1;
+      fallbackSessionId = attached.sessionId;
+      const focus = browserUseCdpFocusSchema.parse(
+        await sendBrowserUseCdpCommand(
+          socket,
+          commandId,
+          "Runtime.evaluate",
+          { expression: "document.hasFocus()", returnByValue: true },
+          { signal: cdpSignal, sessionId: attached.sessionId },
+        ),
+        { reportInput: true },
+      );
+      commandId += 1;
+      if (focus.result.value === true) {
+        focusedSessionId = attached.sessionId;
+        break;
+      }
+    }
+
+    const sessionId = focusedSessionId ?? fallbackSessionId;
+    if (!sessionId) {
+      throw new Error("Browser Use CDP could not attach to a page target");
+    }
+    const layout = browserUseCdpLayoutMetricsSchema.parse(
+      await sendBrowserUseCdpCommand(
+        socket,
+        commandId,
+        "Page.getLayoutMetrics",
+        {},
+        { signal: cdpSignal, sessionId },
+      ),
+      { reportInput: true },
+    );
+    commandId += 1;
+    const viewport = layout.cssVisualViewport;
+    const screenshot = browserUseCdpScreenshotSchema.parse(
+      await sendBrowserUseCdpCommand(
+        socket,
+        commandId,
+        "Page.captureScreenshot",
+        {
+          format: "webp",
+          quality: BROWSER_USE_SCREENSHOT_QUALITY,
+          fromSurface: true,
+          captureBeyondViewport: false,
+          clip: {
+            x: viewport.pageX,
+            y: viewport.pageY,
+            width: viewport.clientWidth,
+            height: viewport.clientHeight,
+            scale: BROWSER_USE_SCREENSHOT_WIDTH / viewport.clientWidth,
+          },
+        },
+        {
+          signal: cdpSignal,
+          sessionId,
+          maxResponseBytes: MAX_BROWSER_USE_SCREENSHOT_RESPONSE_BYTES,
+        },
+      ),
+      { reportInput: true },
+    );
+    return Buffer.from(screenshot.data, "base64");
   });
 }
 
@@ -388,7 +527,7 @@ export async function restoreBrowserUseTabUrls(
         1,
         "Target.getTargets",
         {},
-        cdpSignal,
+        { signal: cdpSignal },
       ),
       { reportInput: true },
     );
@@ -401,7 +540,7 @@ export async function restoreBrowserUseTabUrls(
           commandId,
           "Target.createTarget",
           { url },
-          cdpSignal,
+          { signal: cdpSignal },
         ),
       );
       commandId += 1;
@@ -423,7 +562,7 @@ export async function restoreBrowserUseTabUrls(
           commandId,
           "Target.closeTarget",
           { targetId: target.targetId },
-          cdpSignal,
+          { signal: cdpSignal },
         ),
       );
       commandId += 1;

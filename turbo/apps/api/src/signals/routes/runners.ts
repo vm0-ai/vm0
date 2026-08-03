@@ -95,11 +95,11 @@ import {
 } from "../services/session-history-blobs";
 import {
   runnerReuseKeyTelemetryKind,
-  runnerSessionAffinityPollPriority,
-  runnerSessionAffinityLookupError,
-  runnerSessionAffinityProtection,
-  runnerSessionAffinityTelemetryResource,
-} from "../services/runner-session-affinity";
+  runnerReusePreferenceLookupError,
+  runnerReusePreferencePollPriority,
+  runnerReusePreferenceTelemetryResource,
+  resolveRunnerReusePreference,
+} from "../services/runner-reuse-preference";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
 
@@ -160,7 +160,7 @@ function isResumeSessionHistoryLoadError(
   return error instanceof ResumeSessionHistoryLoadError;
 }
 
-type ClaimRouteTimingSpanKind = "top_level" | "nested";
+type ClaimRouteTimingSpanKind = "parent" | "top_level" | "nested";
 type ClaimNetworkPolicyRefreshPath =
   | "baseline"
   | "baseline_empty"
@@ -168,6 +168,8 @@ type ClaimNetworkPolicyRefreshPath =
   | "full_invalid_baseline"
   | "full_incompatible_baseline";
 type ClaimRouteTimingActionType =
+  | "claim_route_request_to_transition_start"
+  | "claim_route_request_to_response_ready"
   | "claim_route_request_prepare"
   | "claim_route_lookup_authorization"
   | "claim_route_context_parse"
@@ -595,7 +597,7 @@ function runnerPollPriorityOrder(
   }
   return [
     desc(
-      runnerSessionAffinityPollPriority({
+      runnerReusePreferencePollPriority({
         db,
         runnerId: args.runnerId,
         runnerGroup: args.runnerGroup,
@@ -603,6 +605,32 @@ function runnerPollPriorityOrder(
       }),
     ),
   ];
+}
+
+async function resolvePollRunnerReusePreference(
+  db: Pick<Db, "select">,
+  args: {
+    readonly runId: string;
+    readonly runnerGroup: string;
+    readonly profile: string;
+    readonly reuseKey: string | null;
+    readonly historyGenerationRunId: string | undefined;
+    readonly createdAt: Date;
+    readonly currentDate: Date;
+  },
+) {
+  const resolution = await tapError(
+    resolveRunnerReusePreference({ db, ...args }),
+    (error) => {
+      L.warn("Failed to resolve runner reuse preference for poll response", {
+        runId: args.runId,
+        runnerGroup: args.runnerGroup,
+        profile: args.profile,
+        error,
+      });
+    },
+  );
+  return resolution ?? runnerReusePreferenceLookupError();
 }
 
 const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -644,7 +672,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const db = set(writeDb$);
   const pendingJobLookupStartedAtMs = now();
   const currentDate = nowDate();
-  const sessionAffinityPriorityOrder = runnerPollPriorityOrder(db, {
+  const reusePreferencePriorityOrder = runnerPollPriorityOrder(db, {
     runnerId: body.data.runnerId,
     runnerGroup: group,
     currentDate,
@@ -669,7 +697,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
     .where(and(...whereConditions))
     .orderBy(
-      ...sessionAffinityPriorityOrder,
+      ...reusePreferencePriorityOrder,
       runnerJobQueue.createdAt,
       runnerJobQueue.runId,
     )
@@ -680,26 +708,15 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!pendingJob) {
     return { status: 200 as const, body: { job: null } };
   }
-  const affinity =
-    (await tapError(
-      runnerSessionAffinityProtection({
-        db,
-        runnerGroup: group,
-        profile: pendingJob.profile,
-        reuseKey: pendingJob.reuseKey,
-        historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
-        createdAt: pendingJob.createdAt,
-        currentDate,
-      }),
-      (error) => {
-        L.warn("Failed to resolve runner session affinity for poll response", {
-          runId: pendingJob.runId,
-          runnerGroup: group,
-          profile: pendingJob.profile,
-          error,
-        });
-      },
-    )) ?? runnerSessionAffinityLookupError();
+  const reusePreference = await resolvePollRunnerReusePreference(db, {
+    runId: pendingJob.runId,
+    runnerGroup: group,
+    profile: pendingJob.profile,
+    reuseKey: pendingJob.reuseKey,
+    historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
+    createdAt: pendingJob.createdAt,
+    currentDate,
+  });
   signal.throwIfAborted();
   recordPollTimingMetrics({
     runId: pendingJob.runId,
@@ -707,9 +724,10 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     profile: pendingJob.profile,
     authType: auth.type,
     pollReason: body.data.telemetry?.pollReason,
-    sessionAffinity: affinity.status,
-    sessionAffinityResource: runnerSessionAffinityTelemetryResource(affinity),
-    historyGenerationAffinity: affinity.historyGenerationStatus,
+    sessionAffinity: reusePreference.status,
+    sessionAffinityResource:
+      runnerReusePreferenceTelemetryResource(reusePreference),
+    historyGenerationAffinity: reusePreference.historyGenerationStatus,
     reuseKeyKind: runnerReuseKeyTelemetryKind(pendingJob.reuseKey),
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
     pollRequestStartedAtMs,
@@ -732,9 +750,12 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         reuseKey: pendingJob.reuseKey,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
         historyGenerationAffinityProtectedUntil:
-          affinity.historyGenerationProtectedUntil?.toISOString() ?? null,
-        affinityProtectedUntil: affinity.protectedUntil?.toISOString() ?? null,
-        sessionAffinityResource: affinity.resource ?? undefined,
+          reusePreference.historyGenerationProtectedUntil?.toISOString() ??
+          null,
+        affinityProtectedUntil:
+          reusePreference.protectedUntil?.toISOString() ?? null,
+        sessionAffinityResource: reusePreference.resource ?? undefined,
+        runnerPreference: reusePreference.runnerPreference ?? undefined,
       },
     },
   };
@@ -1886,6 +1907,8 @@ function scheduleSuccessfulClaimSideEffects(args: {
     ),
     claimRequestToRunningMs: Math.max(
       0,
+      // This historical state boundary ends at PostgreSQL's in-transaction
+      // claimedAt, not at an application-clock route parent.
       args.claimResult.claimedAt.getTime() - args.claimRequestStartedAtMs,
     ),
     jobDiscoveredToClaimRequestMs:
@@ -2285,6 +2308,11 @@ const claimAuthorizedJob$ = command(
     }
     signal.throwIfAborted();
 
+    claimRouteTiming.recordElapsed(
+      "claim_route_request_to_transition_start",
+      "parent",
+      args.claimRequestStartedAtMs,
+    );
     const claimResult = await claimRouteTiming.measure(
       "claim_route_transition_running",
       "top_level",
@@ -2303,6 +2331,12 @@ const claimAuthorizedJob$ = command(
       return claimTransitionErrorResponse(claimResult);
     }
 
+    const response = { status: 200 as const, body: responseBodyResult.value };
+    claimRouteTiming.recordElapsed(
+      "claim_route_request_to_response_ready",
+      "parent",
+      args.claimRequestStartedAtMs,
+    );
     scheduleSuccessfulClaimSideEffects({
       jobWithRun,
       authType: args.authType,
@@ -2313,7 +2347,7 @@ const claimAuthorizedJob$ = command(
       claimRouteTiming,
     });
 
-    return { status: 200 as const, body: responseBodyResult.value };
+    return response;
   },
 );
 

@@ -22,6 +22,7 @@ interface BrowserUseCdpCommand {
   readonly id: number;
   readonly method: string;
   readonly params: Record<string, unknown>;
+  readonly sessionId?: string;
 }
 type BrowserUseCdpCommandMock = Mock<
   (command: BrowserUseCdpCommand) => unknown
@@ -463,6 +464,7 @@ const browserUseCdpCommandSchema = z.object({
   id: z.number().int(),
   method: z.string(),
   params: z.record(z.string(), z.unknown()),
+  sessionId: z.string().optional(),
 });
 
 function defaultBrowserUseCdpResult(command: BrowserUseCdpCommand): unknown {

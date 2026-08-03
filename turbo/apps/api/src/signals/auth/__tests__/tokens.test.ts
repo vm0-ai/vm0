@@ -179,19 +179,19 @@ describe("auth tokens", () => {
     );
   });
 
-  it("gates custom connector writes behind the CLI create feature switch", () => {
+  it("grants custom connector writes by default and honors a disabled override", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
-    const enabledToken = generateZeroToken(
+    const disabledToken = generateZeroToken(
       "user_zero",
       "run_zero",
       "org_zero",
-      { [FeatureSwitchKey.CustomConnectorCliCreate]: true },
+      { [FeatureSwitchKey.CustomConnectorCliCreate]: false },
     );
 
-    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+    expect(verifyZeroToken(defaultToken)?.capabilities).toContain(
       "connector:write",
     );
-    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
       "connector:write",
     );
   });
