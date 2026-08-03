@@ -59,7 +59,6 @@ import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import {
   updateUserModelPreference$,
   userModelPreference,
@@ -1480,15 +1479,6 @@ async function persistAgentPhoneChatMessage(args: {
   });
   args.signal.throwIfAborted();
 
-  const encryptedParams = await encryptQueuedUserMessageRunParams(
-    { version: 1 },
-    {
-      orgId: args.userLink.orgId,
-      userId: args.userLink.vm0UserId,
-    },
-  );
-  args.signal.throwIfAborted();
-
   const chatEventId = agentPhoneChatMessageId({
     event: args.event,
     userLinkId: args.userLink.id,
@@ -1521,7 +1511,6 @@ async function persistAgentPhoneChatMessage(args: {
           userLinkId: args.userLink.id,
           agentphoneAgentId: args.event.agentphoneAgentId,
         },
-        encryptedParams,
         createdAt: currentTime,
       },
       "id",

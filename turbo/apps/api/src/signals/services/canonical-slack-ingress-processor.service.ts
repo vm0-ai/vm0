@@ -46,7 +46,6 @@ import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 
 const L = logger("CanonicalSlackIngressProcessor");
 const PROCESSING_STALE_AFTER_MS = 5 * 60 * 1000;
@@ -333,9 +332,6 @@ async function persistCanonicalSlackMessage(
     readonly displayContent: string;
     readonly slackContext: CanonicalSlackLaunchContext;
     readonly canonicalAssets: readonly CanonicalSlackInputAsset[];
-    readonly encryptedParams: Awaited<
-      ReturnType<typeof encryptQueuedUserMessageRunParams>
-    >;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -362,7 +358,6 @@ async function persistCanonicalSlackMessage(
         }),
         runId: null,
         triggerSource: "slack",
-        encryptedParams: args.encryptedParams,
         slackContext: args.slackContext,
         createdAt: args.ingress.createdAt,
       },
@@ -475,14 +470,6 @@ const persistClaimedCanonicalSlackIngress$ = command(
         error: permalinkResult.error,
       });
     }
-    const encryptedParams = await encryptQueuedUserMessageRunParams(
-      {
-        version: 1,
-      },
-      { orgId, userId: ingress.userId },
-    );
-    signal.throwIfAborted();
-
     await persistCanonicalSlackMessage(
       db,
       {
@@ -499,7 +486,6 @@ const persistClaimedCanonicalSlackIngress$ = command(
           userInfoExtras: enriched.userInfoExtras,
         }),
         canonicalAssets,
-        encryptedParams,
       },
       signal,
     );

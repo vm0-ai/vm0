@@ -71,7 +71,6 @@ import { insertChatEvent } from "./zero-chat-event.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 
 const L = logger("TeamsDispatch");
 const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
@@ -1586,15 +1585,6 @@ async function persistTeamsChatMessage(args: {
     threadContext: args.promptContext.text,
     messageFiles: [...args.promptFiles, ...args.promptContext.files],
   });
-  const encryptedParams = await encryptQueuedUserMessageRunParams(
-    { version: 1 },
-    {
-      orgId: args.installation.orgId,
-      userId: args.connection.vm0UserId,
-    },
-  );
-  args.signal.throwIfAborted();
-
   const chatEventId = teamsChatMessageId(args.activity, args.connection.id);
   const inserted = await args.db.transaction(async (tx) => {
     const event = await insertChatEvent(
@@ -1621,7 +1611,6 @@ async function persistTeamsChatMessage(args: {
         }),
         runId: null,
         triggerSource: "teams",
-        encryptedParams,
         teamsContext: launchContext,
         createdAt: currentTime,
       },

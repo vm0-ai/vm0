@@ -44,7 +44,6 @@ import { insertChatEvent } from "./zero-chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import { dispatchGithubLabelWorkflowAutomations$ } from "./github-workflow-event.service";
 import {
   dispatchGithubWebhookAutomations$,
@@ -1199,11 +1198,6 @@ async function insertGitHubChatInput(args: {
   readonly currentTime: Date;
 }): Promise<{ readonly chatEventId: string; readonly inserted: boolean }> {
   const issueNumber = args.params.issue.number;
-  const encryptedParams = await encryptQueuedUserMessageRunParams(
-    { version: 1 },
-    { orgId: args.target.orgId, userId: args.params.vm0UserId },
-  );
-
   const chatEventId = uuidv5(
     [
       args.route.installationId,
@@ -1233,7 +1227,6 @@ async function insertGitHubChatInput(args: {
         }),
         runId: null,
         triggerSource: "github",
-        encryptedParams,
         githubContext: {
           repo: args.params.repo,
           subjectNumber: issueNumber,

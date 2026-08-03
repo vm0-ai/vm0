@@ -51,7 +51,6 @@ import {
   readMorningBriefDeliveryFixture,
   setMorningBriefTriggeredAtFixture,
 } from "../../../test-fixtures/morning-brief";
-import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 
 /**
@@ -1123,49 +1122,6 @@ describe("cron execute morning briefs", () => {
         );
       }),
     ).toHaveLength(1);
-    clearMockNow();
-  });
-
-  it("marks a failed queued launch failed and dispatches its failure callback", async () => {
-    const scenario = await setupMorningBriefActor();
-    await updateFeatureSwitchesForUser(context, scenario.actor, {
-      [FeatureSwitchKey.ManualMorningBrief]: true,
-    });
-    useSecretKmsProbe((_command, callNumber) => {
-      return callNumber === 2
-        ? Promise.reject(new Error("Morning Brief launch encryption failed"))
-        : undefined;
-    });
-
-    mockNow(AFTER_SEVEN_LOCAL);
-    routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
-    await accept(
-      morningBriefTriggerClient().trigger({
-        headers: actorHeaders(),
-        body: {},
-      }),
-      [400],
-    );
-    await flushWaitUntilForTest();
-
-    const delivery = await readMorningBriefDeliveryFixture({
-      orgId: scenario.actor.orgId,
-      userId: scenario.actor.userId,
-      briefDate: BRIEF_DATE,
-    });
-    expect(delivery).toStrictEqual(
-      expect.objectContaining({
-        status: "failed",
-        runId: expect.any(String),
-        error: expect.stringContaining("launch encryption failed"),
-      }),
-    );
-    if (!delivery?.runId) {
-      throw new Error("Expected the failed Morning Brief run");
-    }
-    const run = await api.readRun(scenario.actor, delivery.runId);
-    expect(run.status).toBe("failed");
-    expect(sentMorningBriefEmails()).toHaveLength(0);
     clearMockNow();
   });
 

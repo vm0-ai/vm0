@@ -35,7 +35,6 @@ import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import {
   addFeishuThinkingReaction,
   dispatchConnectedFeishuCommand$,
@@ -348,17 +347,6 @@ async function persistCanonicalFeishuIngress(args: {
   });
   args.signal.throwIfAborted();
 
-  const encryptedParams = await encryptQueuedUserMessageRunParams(
-    {
-      version: 1,
-    },
-    {
-      orgId: args.installation.orgId,
-      userId: args.connection.vm0UserId,
-    },
-  );
-  args.signal.throwIfAborted();
-
   await args.db.transaction(async (tx) => {
     const chatOpenUrl = buildFeishuChatOpenUrl(args.message.chatId);
     const inserted = await insertChatEvent(
@@ -370,7 +358,6 @@ async function persistCanonicalFeishuIngress(args: {
         userMessage: feishuInboundUserMessage(args.message, chatOpenUrl),
         runId: null,
         triggerSource: "feishu",
-        encryptedParams,
         feishuContext: {
           chatOpenUrl,
           ...args.launchContext,
