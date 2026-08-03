@@ -37,10 +37,12 @@ function permissionSelectionsEqual(
 }
 
 function LoadedCustomConnectorPermissions({
+  agentId,
   connectorId,
   bundle,
   onClose,
 }: {
+  readonly agentId: string;
   readonly connectorId: string;
   readonly bundle: CustomConnectorPermissionBundleResponse;
   readonly onClose: () => void;
@@ -55,17 +57,22 @@ function LoadedCustomConnectorPermissions({
   const permissions = bundle.permissions.filter((permission) => {
     return bundle.defaultPolicies[permission.name] === "deny";
   });
-  const selected = new Set(
-    draft?.connectorId === connectorId ? draft.permissionNames : [],
-  );
+  const draftMatches =
+    draft?.agentId === agentId && draft.connectorId === connectorId;
+  const selected = new Set(draftMatches ? draft.permissionNames : []);
   const initialSelections = new Set(
-    draft?.connectorId === connectorId ? draft.initialPermissionNames : [],
+    draftMatches ? draft.initialPermissionNames : [],
   );
   const saving = saveLoadable.state === "loading";
   const changed = !permissionSelectionsEqual(selected, initialSelections);
 
   const setPermission = (permissionName: string, allow: boolean) => {
-    setDraftPermission({ permissionName, allow });
+    setDraftPermission({
+      agentId,
+      connectorId,
+      permissionName,
+      allow,
+    });
   };
 
   const handleApply = () => {
@@ -76,6 +83,7 @@ function LoadedCustomConnectorPermissions({
       (async () => {
         await save(
           {
+            agentId,
             connectorId,
             permissionNames: permissions
               .map((permission) => {
@@ -153,6 +161,7 @@ function LoadedCustomConnectorPermissions({
 }
 
 export function CustomConnectorPermissionsDrawer({
+  agentId,
   connectorId,
   connectorName,
   agentName,
@@ -161,6 +170,7 @@ export function CustomConnectorPermissionsDrawer({
   loadError,
   onClose,
 }: {
+  readonly agentId: string;
   readonly connectorId: string;
   readonly connectorName: string;
   readonly agentName: string;
@@ -214,6 +224,7 @@ export function CustomConnectorPermissionsDrawer({
         {bundle ? (
           <LoadedCustomConnectorPermissions
             key={connectorId}
+            agentId={agentId}
             connectorId={connectorId}
             bundle={bundle}
             onClose={onClose}

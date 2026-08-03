@@ -2213,6 +2213,7 @@ describe("Feishu integration", () => {
                 rules: expect.arrayContaining([
                   "DELETE /drive/{path*}",
                   "DELETE /docx/{path*}",
+                  "POST /bitable/v1/apps/{app_token}/tables/batch_delete",
                 ]),
               }),
               expect.objectContaining({
@@ -2225,6 +2226,8 @@ describe("Feishu integration", () => {
                 name: "chats:manage",
                 rules: expect.arrayContaining([
                   "POST /im/v1/chats/{chat_id}/members",
+                  "POST /im/v1/chats/{chat_id}/{path*}",
+                  "PATCH /im/v1/chats/{chat_id}/{path*}",
                 ]),
               }),
               expect.objectContaining({

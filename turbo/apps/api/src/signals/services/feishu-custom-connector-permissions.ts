@@ -4,6 +4,10 @@ import type {
   FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
 
+const FEISHU_API_PREFIX = "https://open.feishu.cn/open-apis/";
+const FEISHU_MANAGED_CONNECTOR_SLUG_PATTERN =
+  /^_feishu-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+
 export const FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF =
   "builtin:feishu@1" satisfies CustomConnectorPermissionBundleRef;
 
@@ -77,7 +81,7 @@ export const FEISHU_CUSTOM_CONNECTOR_PERMISSIONS = [
   {
     name: "resources:delete",
     description:
-      "Delete Feishu files, documents, sheets, Base records, Wiki nodes, or slides.",
+      "Delete Feishu files, documents, sheets, Base tables or records, Wiki nodes, or slides.",
     rules: [
       "DELETE /drive/{path*}",
       "DELETE /docx/{path*}",
@@ -86,6 +90,7 @@ export const FEISHU_CUSTOM_CONNECTOR_PERMISSIONS = [
       "DELETE /bitable/{path*}",
       "DELETE /wiki/{path*}",
       "DELETE /slides/{path*}",
+      "POST /bitable/v1/apps/{app_token}/tables/batch_delete",
       "POST /bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_delete",
     ],
   },
@@ -130,6 +135,10 @@ export const FEISHU_CUSTOM_CONNECTOR_PERMISSIONS = [
       "POST /im/v1/chats/{chat_id}/managers/{path*}",
       "DELETE /im/v1/chats/{chat_id}/managers/{path*}",
       "POST /im/v1/chats/{chat_id}/link",
+      "POST /im/v1/chats/{chat_id}/{path*}",
+      "PUT /im/v1/chats/{chat_id}/{path*}",
+      "PATCH /im/v1/chats/{chat_id}/{path*}",
+      "DELETE /im/v1/chats/{chat_id}/{path*}",
     ],
   },
   {
@@ -195,3 +204,30 @@ export const FEISHU_CUSTOM_CONNECTOR_DEFAULT_POLICIES = Object.fromEntries(
     return [permission.name, policy];
   }),
 ) satisfies Readonly<Record<string, FirewallPolicyValue>>;
+
+function isManagedFeishuCustomConnector(args: {
+  readonly slug: string;
+  readonly authMode: string;
+  readonly oauthProviderAdapter: string | null;
+  readonly prefixTemplates: readonly string[];
+}): boolean {
+  return (
+    FEISHU_MANAGED_CONNECTOR_SLUG_PATTERN.test(args.slug) &&
+    args.authMode === "oauth" &&
+    args.oauthProviderAdapter === "feishu" &&
+    args.prefixTemplates.length === 1 &&
+    args.prefixTemplates[0] === FEISHU_API_PREFIX
+  );
+}
+
+export function effectiveCustomConnectorPermissionBundleRef(args: {
+  readonly slug: string;
+  readonly authMode: string;
+  readonly oauthProviderAdapter: string | null;
+  readonly prefixTemplates: readonly string[];
+  readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
+}): CustomConnectorPermissionBundleRef | null {
+  return isManagedFeishuCustomConnector(args)
+    ? FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF
+    : args.permissionBundleRef;
+}

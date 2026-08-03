@@ -54,13 +54,17 @@ export const agentCustomConnectorGrants$ = computed(
   },
 );
 
-const internalPermissionTargetId$ = state<string | null>(null);
+interface CustomConnectorPermissionTarget {
+  readonly agentId: string;
+  readonly connectorId: string;
+}
 
-export const customConnectorPermissionTargetId$ = computed((get) => {
-  return get(internalPermissionTargetId$);
-});
+const internalPermissionTarget$ = state<CustomConnectorPermissionTarget | null>(
+  null,
+);
 
 interface CustomConnectorPermissionDraft {
+  readonly agentId: string;
   readonly connectorId: string;
   readonly initialPermissionNames: readonly string[];
   readonly permissionNames: readonly string[];
@@ -78,12 +82,17 @@ export const openCustomConnectorPermissions$ = command(
   (
     { set },
     args: {
+      readonly agentId: string;
       readonly connectorId: string;
       readonly permissionNames: readonly string[];
     },
   ): void => {
-    set(internalPermissionTargetId$, args.connectorId);
+    set(internalPermissionTarget$, {
+      agentId: args.agentId,
+      connectorId: args.connectorId,
+    });
     set(internalPermissionDraft$, {
+      agentId: args.agentId,
       connectorId: args.connectorId,
       initialPermissionNames: [...args.permissionNames],
       permissionNames: [...args.permissionNames],
@@ -91,19 +100,42 @@ export const openCustomConnectorPermissions$ = command(
   },
 );
 
-export const closeCustomConnectorPermissions$ = command(({ set }): void => {
-  set(internalPermissionTargetId$, null);
-  set(internalPermissionDraft$, null);
-});
+export const closeCustomConnectorPermissions$ = command(
+  (
+    { set },
+    args: { readonly agentId: string; readonly connectorId: string },
+  ): void => {
+    set(internalPermissionTarget$, (current) => {
+      return current?.agentId === args.agentId &&
+        current.connectorId === args.connectorId
+        ? null
+        : current;
+    });
+    set(internalPermissionDraft$, (current) => {
+      return current?.agentId === args.agentId &&
+        current.connectorId === args.connectorId
+        ? null
+        : current;
+    });
+  },
+);
 
 export const setCustomConnectorPermissionDraftValue$ = command(
   (
     { set },
-    args: { readonly permissionName: string; readonly allow: boolean },
+    args: {
+      readonly agentId: string;
+      readonly connectorId: string;
+      readonly permissionName: string;
+      readonly allow: boolean;
+    },
   ): void => {
     set(internalPermissionDraft$, (current) => {
-      if (!current) {
-        return null;
+      if (
+        current?.agentId !== args.agentId ||
+        current.connectorId !== args.connectorId
+      ) {
+        return current;
       }
       const permissionNames = new Set(current.permissionNames);
       if (args.allow) {
@@ -121,13 +153,17 @@ export const agentCustomConnectorPermissionBundle$ = computed(
     if (!get(customConnectorPermissionsEnabled$)) {
       return null;
     }
-    const connectorId = get(customConnectorPermissionTargetId$);
-    if (!connectorId) {
+    const target = get(internalPermissionTarget$);
+    if (!target) {
+      return null;
+    }
+    const detail = await get(agentDetail$);
+    if (detail?.agentId !== target.agentId) {
       return null;
     }
     const client = get(zeroClient$)(zeroCustomConnectorByIdContract);
     const result = await accept(
-      client.permissions({ params: { id: connectorId } }),
+      client.permissions({ params: { id: target.connectorId } }),
       [200, 404],
     );
     return result.status === 200 ? result.body : null;
@@ -290,21 +326,18 @@ export const saveAgentCustomConnectorPermissions$ = command(
   async (
     { get, set },
     args: {
+      readonly agentId: string;
       readonly connectorId: string;
       readonly permissionNames: readonly string[];
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const detail = await get(agentDetail$);
     signal.throwIfAborted();
-    if (!detail?.agentId) {
-      throw new Error("No agent detail loaded");
-    }
     const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
     await withCleanup(
       accept(
         client.update({
-          params: { id: detail.agentId },
+          params: { id: args.agentId },
           body: {
             grants: [
               {
@@ -319,7 +352,7 @@ export const saveAgentCustomConnectorPermissions$ = command(
         [200],
       ),
       () => {
-        set(clearAgentCustomConnectorDraft$, detail.agentId);
+        set(clearAgentCustomConnectorDraft$, args.agentId);
         set(reloadAgentCustomConnectors$);
         set(reloadCustomConnectorAuthorizedAgents$);
       },

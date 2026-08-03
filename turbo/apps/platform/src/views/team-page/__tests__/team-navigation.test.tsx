@@ -642,7 +642,7 @@ describe("team page navigation", () => {
             },
           ],
           defaultPolicies: {
-            "standard:use": "ask",
+            "standard:use": "allow",
             "messages:send-as-user": "deny",
             "resources:delete": "deny",
           },
@@ -712,6 +712,80 @@ describe("team page navigation", () => {
       });
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
     });
+  });
+
+  it("does not show a custom connector permission draft on another agent", async () => {
+    const customConnector = {
+      ...createCustomConnector(),
+      permissionBundleRef: "builtin:feishu@1" as const,
+    };
+    const updatedAgentIds: string[] = [];
+    mockTeamAPIs({ customConnector });
+    context.mocks.api(
+      zeroCustomConnectorByIdContract.permissions,
+      ({ respond }) => {
+        return respond(200, {
+          ref: "builtin:feishu@1",
+          permissions: [
+            {
+              name: "messages:send-as-user",
+              description: "Send or edit messages as the connected user.",
+            },
+          ],
+          defaultPolicies: {
+            "messages:send-as-user": "deny",
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        updatedAgentIds.push(params.id);
+        return respond(200, {
+          enabledIds: [customConnector.id],
+          grants:
+            "grants" in body
+              ? body.grants
+              : [
+                  {
+                    customConnectorId: customConnector.id,
+                    permissionNames: [],
+                  },
+                ],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.CustomConnectorPermissions]: true,
+      },
+    });
+
+    await screen.findByText("Acme Search");
+    click(screen.getByLabelText("Manage Acme Search permissions"));
+    const messagePermission = await screen.findByText("messages:send-as-user");
+    const permissionRow = messagePermission.parentElement?.parentElement;
+    if (!(permissionRow instanceof HTMLElement)) {
+      throw new Error("custom connector permission row not found");
+    }
+    click(buttonByText("Allow", permissionRow));
+
+    context.store.set(detachedNavigateTo$, ROUTES.agentDetail, {
+      pathParams: { agentId: zeroAgentId },
+      searchParams: new URLSearchParams(),
+    });
+
+    await screen.findByRole("heading", { name: "Zero" });
+    await waitFor(() => {
+      expect(
+        screen.queryByText("messages:send-as-user"),
+      ).not.toBeInTheDocument();
+    });
+    expect(updatedAgentIds).toStrictEqual([]);
   });
 
   it("hides custom connector permission management without a bundle", async () => {

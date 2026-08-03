@@ -24,7 +24,7 @@ import {
   agentCustomConnectorPermissionBundle$,
   agentAddedCustomConnectors$,
   closeCustomConnectorPermissions$,
-  customConnectorPermissionTargetId$,
+  customConnectorPermissionDraft$,
   openCustomConnectorPermissions$,
   toggleAgentCustomConnector$,
 } from "../../signals/zero-page/job-detail/custom-connectors.ts";
@@ -142,7 +142,7 @@ export function JobCustomConnectorsSection() {
   const pageSignal = useGet(pageSignal$);
   const saving = useGet(agentCustomConnectorToggleSaving$);
   const permissionEditingEnabled = useGet(customConnectorPermissionsEnabled$);
-  const permissionTargetId = useGet(customConnectorPermissionTargetId$);
+  const permissionDraft = useGet(customConnectorPermissionDraft$);
   const openPermissions = useSet(openCustomConnectorPermissions$);
   const closePermissions = useSet(closeCustomConnectorPermissions$);
   const permissionBundleLoadable = useLoadable(
@@ -174,11 +174,20 @@ export function JobCustomConnectorsSection() {
     );
   };
 
-  const permissionTarget = permissionTargetId
+  const activePermissionDraft =
+    permissionDraft?.agentId === detail?.agentId ? permissionDraft : null;
+  const permissionTargetConnector = activePermissionDraft
     ? connectors.find((connector) => {
-        return connector.id === permissionTargetId;
+        return connector.id === activePermissionDraft.connectorId;
       })
     : undefined;
+  const permissionTarget =
+    activePermissionDraft && permissionTargetConnector
+      ? {
+          connector: permissionTargetConnector,
+          draft: activePermissionDraft,
+        }
+      : null;
   const permissionBundle =
     permissionBundleLoadable.state === "hasData"
       ? permissionBundleLoadable.data
@@ -205,14 +214,19 @@ export function JobCustomConnectorsSection() {
               c.hasSecret &&
               c.permissionBundleRef !== null &&
               c.permissionBundleRef !== undefined &&
-              grantsLoadable.state === "hasData"
+              grantsLoadable.state === "hasData" &&
+              detail?.agentId !== undefined
             }
             isLast={i === connectors.length - 1}
             onToggle={(checked) => {
               return handleToggle(c.id, checked);
             }}
             onManage={() => {
+              if (!detail?.agentId) {
+                return;
+              }
               openPermissions({
+                agentId: detail.agentId,
                 connectorId: c.id,
                 permissionNames:
                   grantsLoadable.state === "hasData"
@@ -227,8 +241,9 @@ export function JobCustomConnectorsSection() {
       })}
       {permissionTarget ? (
         <CustomConnectorPermissionsDrawer
-          connectorId={permissionTarget.id}
-          connectorName={permissionTarget.displayName}
+          agentId={permissionTarget.draft.agentId}
+          connectorId={permissionTarget.connector.id}
+          connectorName={permissionTarget.connector.displayName}
           agentName={
             detail?.displayName ??
             t(($) => {
@@ -239,7 +254,10 @@ export function JobCustomConnectorsSection() {
           loading={permissionBundleLoadable.state === "loading"}
           loadError={permissionBundleLoadable.state === "hasError"}
           onClose={() => {
-            closePermissions();
+            closePermissions({
+              agentId: permissionTarget.draft.agentId,
+              connectorId: permissionTarget.draft.connectorId,
+            });
           }}
         />
       ) : null}
