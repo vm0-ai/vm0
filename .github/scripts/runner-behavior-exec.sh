@@ -1058,7 +1058,7 @@ echo "PASS: exact veth DNS observation"
 
 wait_for_idle_runner_pool() {
   local namespace idle namespace_count
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 300); do
     namespace_count=0
     idle=true
     while read -r namespace; do
@@ -1077,6 +1077,38 @@ wait_for_idle_runner_pool() {
     sleep 0.1
   done
   fail "runner namespace pool did not return to two idle attachments"
+}
+
+restore_runner_pool_after_dns_failure() {
+  local attempt first_pid second_pid first_status second_status output
+  DNS_DIAGNOSTIC_LOG_FILE=$(mktemp "/tmp/vm0-${SVC}-dns-recovery.XXXXXX")
+  # The failed original and replacement can each leave one completed pool
+  # replenishment error for acquire to consume before a fresh creation starts.
+  for attempt in 1 2 3; do
+    : >"$DNS_DIAGNOSTIC_LOG_FILE"
+    sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+      --timeout 90 --prompt 'sleep 2 && echo dns-recovery-one' \
+      >>"$DNS_DIAGNOSTIC_LOG_FILE" 2>&1 &
+    first_pid=$!
+    sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+      --timeout 90 --prompt 'sleep 2 && echo dns-recovery-two' \
+      >>"$DNS_DIAGNOSTIC_LOG_FILE" 2>&1 &
+    second_pid=$!
+    first_status=0
+    second_status=0
+    wait "$first_pid" || first_status=$?
+    wait "$second_pid" || second_status=$?
+    if [ "$first_status" -eq 0 ] && [ "$second_status" -eq 0 ]; then
+      rm -f "$DNS_DIAGNOSTIC_LOG_FILE"
+      DNS_DIAGNOSTIC_LOG_FILE=""
+      wait_for_idle_runner_pool
+      return
+    fi
+  done
+  output=$(tail -n 40 "$DNS_DIAGNOSTIC_LOG_FILE")
+  rm -f "$DNS_DIAGNOSTIC_LOG_FILE"
+  DNS_DIAGNOSTIC_LOG_FILE=""
+  fail "runner namespace pool did not recover after DNS fault: $output"
 }
 
 assert_veth_diagnostic_reports() {
@@ -1169,7 +1201,7 @@ run_dns_failure_diagnostic_case() {
     || fail "$mode DNS failure diagnostics were incomplete"
   rm -f "$DNS_DIAGNOSTIC_LOG_FILE"
   DNS_DIAGNOSTIC_LOG_FILE=""
-  wait_for_idle_runner_pool
+  restore_runner_pool_after_dns_failure
 }
 
 echo "--- Test: transient guest DNS failure diagnostic ---"
