@@ -15,8 +15,9 @@
 //! installation failed.
 //!
 //! Before DNS readiness starts, network evidence snapshots an attachment cursor together with its
-//! counter baseline. Terminal failure capture reuses that cursor to select only later trace
-//! packets, then serializes a [`GuestDnsNetfilterTraceReport`] beside the counter evidence. Runtime
+//! counter baseline. Terminal failure capture reuses that cursor to select only later readiness
+//! packets. The failure-only veth handoff diagnostic takes a fresh cursor immediately before its
+//! single fixed-source-port query. Both paths serialize a [`GuestDnsNetfilterTraceReport`]. Runtime
 //! shutdown removes namespace rules with the namespace pool before stopping the shared monitor.
 //! [`GuestDnsNetfilterTraceMonitor::shutdown`] limits child cleanup with
 //! [`MONITOR_SHUTDOWN_TIMEOUT`]; dropping the monitor cancels and aborts any remaining task as a
@@ -31,17 +32,18 @@
 //! outside that window even if later steps arrive afterward. A cursor from another monitor
 //! generation returns `cursor_mismatch` instead of comparing unrelated sequence numbers.
 //!
-//! Because the monitor is runtime-wide, a packet is attributed to one readiness attempt only when
+//! Because the monitor is runtime-wide, a packet is attributed to one requested DNS probe only when
 //! the packet header and the exact raw PREROUTING TRACE rule jointly match all isolation fields:
 //! namespace rule comment, host veth, namespace peer IP, fixed readiness destination and packet
-//! length, UDP, and destination port 53. The netfilter family and packet ID then associate that
-//! packet's headers and trace steps across raw PREROUTING, NAT/REDIRECT, and FORWARD/INPUT
-//! processing. Reaching NAT also proves passage through the intervening root conntrack hook. These
-//! checks prevent interleaved traffic from another local namespace from being reported as evidence
-//! for this guest. The configured DNS proxy port does not broaden that initial identity; after
-//! attribution it confirms the REDIRECT target, post-redirect header, and pool INPUT rule.
+//! length, UDP, destination port 53, and an optional diagnostic source port. The netfilter family
+//! and packet ID then associate that packet's headers and trace steps across raw PREROUTING,
+//! NAT/REDIRECT, and FORWARD/INPUT processing. Reaching NAT also proves passage through the
+//! intervening root conntrack hook. These checks prevent interleaved traffic from another local
+//! namespace from being reported as evidence for this guest. The configured DNS proxy port does
+//! not broaden that initial identity; after attribution it confirms the REDIRECT target,
+//! post-redirect header, and pool INPUT rule.
 //!
-//! Capture waits until it has seen a terminal trace step for each reported readiness attempt, or
+//! Capture waits until it has seen a terminal trace step for each expected packet, or
 //! until [`TRACE_CAPTURE_WAIT`] expires. DROP and REJECT verdicts, filter ACCEPT verdicts, and
 //! INPUT, FORWARD, or OUTPUT filter policy steps complete a packet. The wait only lets the
 //! asynchronous monitor finish emitting trace lines; it does not extend the readiness policy
@@ -190,7 +192,7 @@ impl GuestDnsNetfilterTraceAttachment {
     /// A disabled attachment returns `None` and is omitted from the enclosing evidence report. An
     /// unavailable attachment returns an `attachment_unavailable` report. An enabled attachment
     /// without a cursor returns `baseline_unavailable`; otherwise capture uses the cursor's
-    /// post-baseline window and may wait for `readiness_attempts` terminal packets.
+    /// post-cursor window and may wait for `target.expected_packets` terminal packets.
     pub(crate) async fn capture(
         &self,
         cursor: Option<GuestDnsNetfilterTraceCursor>,
@@ -1100,10 +1102,10 @@ impl GuestDnsNetfilterTraceReader {
         }
     }
 
-    /// Build an instantaneous report from the retained post-baseline window.
+    /// Build an instantaneous report from the retained post-cursor window.
     ///
     /// This rejects another monitor generation before inspecting packets, applies the complete
-    /// readiness identity filter, and keeps only the newest [`MAX_REPORTED_PACKETS`] packet
+    /// requested DNS identity filter, and keeps only the newest [`MAX_REPORTED_PACKETS`] packet
     /// details after recording the retained match count.
     fn capture_now(
         &self,
