@@ -181,7 +181,6 @@ function buildQueueFirstGoalRunInput(args: {
     }),
     zeroRunMetadata: {
       goalId: normalizedGoal.goalId,
-      runGroupId: normalizedGoal.goalId,
     },
     queueFirstAssociation: {
       kind: "goal_event",

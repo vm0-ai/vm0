@@ -99,8 +99,7 @@ export const chatEvents = pgTable(
       { onDelete: "no action" },
     ),
     interruptsRunId: uuid("interrupts_run_id"),
-    // Stable grouping key for repeated automation/workflow/goal-triggered
-    // runs rendered in a chat thread.
+    // Stable grouping key for autonomous goal continuations rendered in chat.
     runGroupId: uuid("run_group_id"),
     eventType: text("event_type").$type<ChatEventType>().notNull(),
     /**

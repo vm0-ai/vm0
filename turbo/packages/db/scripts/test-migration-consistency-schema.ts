@@ -2630,6 +2630,13 @@ type PermanentFunction = {
 const EXPECTED_PERMANENT_TRIGGERS = [
   {
     definition:
+      "CREATE TRIGGER bridge_goal_only_chat_event_run_group_0810 BEFORE INSERT ON public.chat_events FOR EACH ROW EXECUTE FUNCTION bridge_goal_only_chat_event_run_group_0810()",
+    schemaName: "public",
+    tableName: "chat_events",
+    triggerName: "bridge_goal_only_chat_event_run_group_0810",
+  },
+  {
+    definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
     schemaName: "public",
     tableName: "chat_events",
@@ -2747,6 +2754,13 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "video_artifacts",
     triggerName: "video_artifacts_delete_artifact_registry",
   },
+  {
+    definition:
+      "CREATE TRIGGER bridge_goal_only_zero_run_group_0810 BEFORE INSERT OR UPDATE OF run_group_id, goal_id ON public.zero_runs FOR EACH ROW EXECUTE FUNCTION bridge_goal_only_zero_run_group_0810()",
+    schemaName: "public",
+    tableName: "zero_runs",
+    triggerName: "bridge_goal_only_zero_run_group_0810",
+  },
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
@@ -2761,6 +2775,20 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     bodyHash: "4886a7314cbaa815a4f8290a16a2f528",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "d222c803fed6a784bf53288dd866f2a2",
+    functionName: "bridge_goal_only_chat_event_run_group_0810",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "24620b451e6c4d3c61ca9e449f5faa19",
+    functionName: "bridge_goal_only_zero_run_group_0810",
+    identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
@@ -18500,6 +18528,348 @@ async function validateRunEventSequenceNumberRollout(): Promise<void> {
   }
 }
 
+const GOAL_ONLY_RUN_GROUPS_PREVIOUS_MIGRATION = 810;
+const GOAL_ONLY_RUN_GROUPS_MIGRATION = 811;
+
+async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
+  console.log("=== Validate goal-only run group cleanup ===\n");
+  const testDb = "migration_goal_only_run_groups_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    composeId: "00000000-0000-4000-8000-000000081001",
+    sessionId: "00000000-0000-4000-8000-000000081002",
+    threadId: "00000000-0000-4000-8000-000000081003",
+    goalId: "00000000-0000-4000-8000-000000081004",
+    automationGroupId: "00000000-0000-4000-8000-000000081005",
+    workflowRunId: "00000000-0000-4000-8000-000000081006",
+    goalRunId: "00000000-0000-4000-8000-000000081007",
+    workflowEventId: "00000000-0000-4000-8000-000000081008",
+    goalEventId: "00000000-0000-4000-8000-000000081009",
+    drainingWorkflowRunId: "00000000-0000-4000-8000-000000081010",
+    drainingWorkflowEventId: "00000000-0000-4000-8000-000000081011",
+    orgId: "goal-only-run-groups-org",
+    userId: "goal-only-run-groups-user",
+  } as const;
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0811_clear_non_goal_run_groups.sql"),
+    "utf8",
+  );
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.doesNotMatch(migrationSql, /\bLOCK\s+TABLE\b/u);
+  assert.doesNotMatch(
+    migrationSql,
+    /(?:DROP|DISABLE)\s+TRIGGER\s+"chat_events_reject_update"/u,
+  );
+  assert.equal((migrationSql.match(/\bLIMIT 10000\b/gu) ?? []).length, 2);
+  assert.equal(
+    (migrationSql.match(/\bFOR UPDATE OF "candidate" SKIP LOCKED\b/gu) ?? [])
+      .length,
+    2,
+  );
+  assert.equal((migrationSql.match(/\bCOMMIT\b/gu) ?? []).length, 2);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, GOAL_ONLY_RUN_GROUPS_PREVIOUS_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, $2, 'goal-only-run-groups', $3)
+        `,
+        [fixture.composeId, fixture.userId, fixture.orgId],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+          VALUES ($1, $2, $3, 'goal-only-run-groups')
+        `,
+        [fixture.composeId, fixture.orgId, fixture.userId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_sessions" (
+            "id",
+            "user_id",
+            "org_id",
+            "agent_compose_id"
+          )
+          VALUES ($1, $2, $3, $4)
+        `,
+        [fixture.sessionId, fixture.userId, fixture.orgId, fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_runs" (
+            "id",
+            "user_id",
+            "session_id",
+            "status",
+            "prompt",
+            "org_id"
+          )
+          VALUES
+            ($1, $3, $4, 'running', 'legacy workflow run', $5),
+            ($2, $3, $4, 'running', 'goal continuation run', $5)
+        `,
+        [
+          fixture.workflowRunId,
+          fixture.goalRunId,
+          fixture.userId,
+          fixture.sessionId,
+          fixture.orgId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES ($1, $2, $3, 'goal-only run groups')
+        `,
+        [fixture.threadId, fixture.userId, fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "thread_goals" (
+            "id",
+            "org_id",
+            "owner_user_id",
+            "agent_id",
+            "chat_thread_id",
+            "status",
+            "objective",
+            "objective_brief"
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            'active',
+            'Keep this goal running',
+            'Keep this goal running'
+          )
+        `,
+        [
+          fixture.goalId,
+          fixture.orgId,
+          fixture.userId,
+          fixture.composeId,
+          fixture.threadId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_runs" (
+            "id",
+            "trigger_source",
+            "chat_thread_id",
+            "run_group_id",
+            "goal_id"
+          )
+          VALUES
+            ($1, 'workflow-schedule', $3, $4, NULL),
+            ($2, 'workflow-event', $3, $5, $5)
+        `,
+        [
+          fixture.workflowRunId,
+          fixture.goalRunId,
+          fixture.threadId,
+          fixture.automationGroupId,
+          fixture.goalId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "run_group_id",
+            "event_type",
+            "content",
+            "run_event_sequence_number",
+            "seq_id"
+          )
+          VALUES
+            ($1, $3, $4, $6, 'output.message', 'workflow result', 1, 1),
+            ($2, $3, $5, $7, 'output.message', 'goal result', 1, 2)
+        `,
+        [
+          fixture.workflowEventId,
+          fixture.goalEventId,
+          fixture.threadId,
+          fixture.workflowRunId,
+          fixture.goalRunId,
+          fixture.automationGroupId,
+          fixture.goalId,
+        ],
+      );
+
+      await applyMigrationsUpTo(client, GOAL_ONLY_RUN_GROUPS_MIGRATION);
+
+      const runGroups = await client.query<{
+        id: string;
+        runGroupId: string | null;
+      }>(
+        `
+          SELECT "id", "run_group_id" AS "runGroupId"
+          FROM "zero_runs"
+          WHERE "id" IN ($1, $2)
+          ORDER BY "id"
+        `,
+        [fixture.workflowRunId, fixture.goalRunId],
+      );
+      assert.deepEqual(runGroups.rows, [
+        { id: fixture.workflowRunId, runGroupId: null },
+        { id: fixture.goalRunId, runGroupId: fixture.goalId },
+      ]);
+
+      const eventGroups = await client.query<{
+        id: string;
+        runGroupId: string | null;
+      }>(
+        `
+          SELECT "id", "run_group_id" AS "runGroupId"
+          FROM "chat_events"
+          WHERE "id" IN ($1, $2)
+          ORDER BY "id"
+        `,
+        [fixture.workflowEventId, fixture.goalEventId],
+      );
+      assert.deepEqual(eventGroups.rows, [
+        { id: fixture.workflowEventId, runGroupId: null },
+        { id: fixture.goalEventId, runGroupId: fixture.goalId },
+      ]);
+
+      // Simulate the draining API after migration completion. Its legacy
+      // insert shape still sends the automation id as run_group_id to both
+      // tables; the compatibility bridges must normalize both writes.
+      await client.query(
+        `
+          INSERT INTO "agent_runs" (
+            "id",
+            "user_id",
+            "session_id",
+            "status",
+            "prompt",
+            "org_id"
+          )
+          VALUES ($1, $2, $3, 'running', 'draining workflow run', $4)
+        `,
+        [
+          fixture.drainingWorkflowRunId,
+          fixture.userId,
+          fixture.sessionId,
+          fixture.orgId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_runs" (
+            "id",
+            "trigger_source",
+            "chat_thread_id",
+            "run_group_id",
+            "goal_id"
+          )
+          VALUES ($1, 'workflow-schedule', $2, $3, NULL)
+        `,
+        [
+          fixture.drainingWorkflowRunId,
+          fixture.threadId,
+          fixture.automationGroupId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "run_group_id",
+            "event_type",
+            "content",
+            "run_event_sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, $2, $3, $4, 'output.message', 'draining result', 1, 3)
+        `,
+        [
+          fixture.drainingWorkflowEventId,
+          fixture.threadId,
+          fixture.drainingWorkflowRunId,
+          fixture.automationGroupId,
+        ],
+      );
+
+      const drainingGroups = await client.query<{
+        eventRunGroupId: string | null;
+        zeroRunGroupId: string | null;
+      }>(
+        `
+          SELECT
+            "event"."run_group_id" AS "eventRunGroupId",
+            "run"."run_group_id" AS "zeroRunGroupId"
+          FROM "zero_runs" AS "run"
+          INNER JOIN "chat_events" AS "event"
+            ON "event"."run_id" = "run"."id"
+          WHERE "run"."id" = $1
+        `,
+        [fixture.drainingWorkflowRunId],
+      );
+      assert.deepEqual(drainingGroups.rows, [
+        { eventRunGroupId: null, zeroRunGroupId: null },
+      ]);
+
+      const migrationStatements = migrationSql
+        .split("--> statement-breakpoint")
+        .map((statement) => {
+          return statement.trim();
+        })
+        .filter((statement) => {
+          return statement.length > 0;
+        });
+      for (const statement of migrationStatements) {
+        await client.query(statement);
+      }
+
+      await assertChatEventsAppendOnlyProtection(
+        client,
+        fixture.workflowEventId,
+      );
+      const rejectFunction = await client.query<{ definition: string }>(`
+        SELECT pg_get_functiondef(
+          'public.reject_chat_event_source_update()'::regprocedure
+        ) AS "definition"
+      `);
+      assert.doesNotMatch(
+        rejectFunction.rows[0]?.definition ?? "",
+        /run_group_id/u,
+      );
+
+      console.log("   ✅ Legacy workflow run groups are cleared");
+      console.log("   ✅ Goal continuation run groups are preserved");
+      console.log("   ✅ Draining automation writes are normalized");
+      console.log(
+        "   ✅ Cleanup is batched, retryable, and append-only safe\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log("=== Phase 1.5: Validate Latest Snapshot Accuracy ===\n");
 
@@ -18633,6 +19003,7 @@ async function main(): Promise<void> {
     await validateChatEventLowTrafficIndexes();
     await validateChatEventRevokeIndex();
     await validateRunEventSequenceNumberRollout();
+    await validateGoalOnlyRunGroupsCleanup();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();

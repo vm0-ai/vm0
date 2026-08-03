@@ -406,8 +406,6 @@ interface ZeroRunMetadata {
   // Run provenance for workflow schedule automations.
   readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
-  // Stable chat run-group key for automation/workflow/goal-triggered runs.
-  readonly runGroupId?: string;
   // Run provenance for autonomous thread-goal continuation.
   readonly goalId?: string;
 }
@@ -5146,7 +5144,7 @@ function launchZeroRunValues(
     triggerSource: args.body.triggerSource,
     workflowAutomationId: metadata.workflowAutomationId ?? null,
     triggerBrief: metadata.triggerBrief ?? null,
-    runGroupId: metadata.runGroupId ?? null,
+    runGroupId: metadata.goalId ?? null,
     goalId: metadata.goalId ?? null,
     triggerAgentId: metadata.triggerAgentId ?? null,
     ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),

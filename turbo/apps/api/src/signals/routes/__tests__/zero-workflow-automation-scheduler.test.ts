@@ -163,6 +163,7 @@ async function executeDueWorkflowAutomations(
 
 interface WorkflowRunMessage {
   readonly runId: string;
+  readonly runGroupId?: string;
   readonly triggerSource: string | undefined;
   readonly triggerBrief: string | null | undefined;
   readonly workflowId: string | undefined;
@@ -189,6 +190,9 @@ async function workflowRunMessages(
     return [
       {
         runId: message.runId,
+        ...(message.runGroupId === undefined
+          ? {}
+          : { runGroupId: message.runGroupId }),
         triggerSource: message.triggerSource,
         triggerBrief: automationPart.automationBrief,
         workflowId: automationPart.workflowId,
@@ -424,6 +428,7 @@ describe("zero workflow automation scheduler", () => {
     await executeDueWorkflowAutomations(created.body.id);
 
     const run = await onlyWorkflowRunMessage(threadId);
+    expect(run.runGroupId).toBeUndefined();
     expect(run.triggerSource).toBe("workflow-schedule");
     expect(run.triggerBrief).toMatch(
       new RegExp(
