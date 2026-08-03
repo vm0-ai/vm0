@@ -14,10 +14,12 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
+  zeroCustomConnectorByIdContract,
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroFeishuConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-connect";
 import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feishu-oauth";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -1330,6 +1332,7 @@ describe("Feishu integration", () => {
         },
       ],
       authMode: "oauth",
+      permissionBundleRef: "builtin:feishu@1",
       connected: false,
       oauthConfig: {
         providerAdapter: "feishu",
@@ -1359,6 +1362,26 @@ describe("Feishu integration", () => {
     );
     expect(skillMarkdown).not.toContain("Okou Feishu");
     expect(skillMarkdown).not.toContain(managedConnector.id);
+    const permissionBundle = await accept(
+      setupApp({ context })(zeroCustomConnectorByIdContract).permissions({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: managedConnector.id },
+      }),
+      [200],
+    );
+    expect(permissionBundle.body).toMatchObject({
+      ref: "builtin:feishu@1",
+      defaultPolicies: {
+        "standard:use": "allow",
+        "messages:send-as-user": "deny",
+        "resources:delete": "deny",
+        "sharing:manage": "allow",
+        "chats:manage": "deny",
+        "comments:write": "allow",
+        "calendar:write": "allow",
+        "tasks:write": "allow",
+      },
+    });
 
     const customConnectorOAuthClient = setupApp({ context })(
       zeroCustomConnectorOAuth2Contract,
@@ -2106,6 +2129,19 @@ describe("Feishu integration", () => {
       connectorList.body.connectors[0],
       "Expected connected Feishu custom connector",
     );
+    const customConnectorGrants = await accept(
+      setupApp({ context })(zeroAgentCustomConnectorsContract).get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: defaultAgentId },
+      }),
+      [200],
+    );
+    expect(customConnectorGrants.body.grants).toStrictEqual([
+      {
+        customConnectorId: managedConnector.id,
+        permissionNames: [],
+      },
+    ]);
     const fileKey = `file_v2_${"a".repeat(1400)}`;
     await postEvent(
       callbackUrl,
@@ -2156,10 +2192,99 @@ describe("Feishu integration", () => {
                 Authorization: expect.stringContaining("secrets."),
               },
             },
+            permissions: expect.arrayContaining([
+              expect.objectContaining({
+                name: "standard:use",
+                rules: expect.arrayContaining([
+                  "GET /authen/v1/user_info",
+                  "GET /docx/{path*}",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "messages:send-as-user",
+                rules: expect.arrayContaining([
+                  "POST /im/v1/messages",
+                  "POST /im/v1/messages/{message_id}/forward",
+                  "DELETE /im/v1/messages/{message_id}",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "resources:delete",
+                rules: expect.arrayContaining([
+                  "DELETE /drive/{path*}",
+                  "DELETE /docx/{path*}",
+                  "POST /bitable/v1/apps/{app_token}/tables/batch_delete",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "sharing:manage",
+                rules: expect.arrayContaining([
+                  "PATCH /drive/v2/permissions/{path*}",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "chats:manage",
+                rules: expect.arrayContaining([
+                  "POST /im/v1/chats/{chat_id}/members",
+                  "POST /im/v1/chats/{chat_id}/{path*}",
+                  "PATCH /im/v1/chats/{chat_id}/{path*}",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "comments:write",
+                rules: expect.arrayContaining([
+                  "POST /drive/v1/files/{file_token}/comments",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "calendar:write",
+                rules: expect.arrayContaining([
+                  "POST /calendar/v4/calendars/{calendar_id}/events",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "tasks:write",
+                rules: expect.arrayContaining(["POST /task/v2/{path*}"]),
+              }),
+            ]),
           },
         ],
       },
     });
+    expect(claim.networkPolicies?.[internalName]).toStrictEqual({
+      allow: [
+        "standard:use",
+        "sharing:manage",
+        "comments:write",
+        "calendar:write",
+        "tasks:write",
+      ],
+      deny: ["messages:send-as-user", "resources:delete", "chats:manage"],
+      ask: [],
+      unknownPolicy: "deny",
+    });
+    const permissionGrant = await accept(
+      setupApp({ context })(zeroAgentCustomConnectorsContract).update({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: defaultAgentId },
+        body: {
+          grants: [
+            {
+              customConnectorId: managedConnector.id,
+              permissionNames: ["messages:send-as-user"],
+            },
+          ],
+          operation: "replace",
+        },
+      }),
+      [200],
+    );
+    expect(permissionGrant.body.grants).toStrictEqual([
+      {
+        customConnectorId: managedConnector.id,
+        permissionNames: ["messages:send-as-user"],
+      },
+    ]);
     expect(
       expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts.some(
         (storage) => {

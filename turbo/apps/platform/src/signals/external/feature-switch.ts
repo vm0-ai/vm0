@@ -96,6 +96,12 @@ export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
   );
 });
 
+export const customConnectorPermissionsEnabled$ = computed((get): boolean => {
+  return (
+    get(featureSwitch$)[FeatureSwitchKey.CustomConnectorPermissions] ?? false
+  );
+});
+
 export const reloadFeatureSwitch$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const clerk = await get(clerk$);

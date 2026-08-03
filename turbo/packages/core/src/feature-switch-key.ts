@@ -86,4 +86,5 @@ export enum FeatureSwitchKey {
   CustomConnectorCliCreate = "customConnectorCliCreate",
   CustomConnectorOAuth2 = "customConnectorOAuth2",
   MermaidDiagrams = "mermaidDiagrams",
+  CustomConnectorPermissions = "customConnectorPermissions",
 }
