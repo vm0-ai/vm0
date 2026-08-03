@@ -5,11 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 TEST_TMP_DIR="$(mktemp -d)"
 FIXTURE_DIR="$TEST_TMP_DIR/fixture"
+FIXTURE_TMP_ROOT="$TEST_TMP_DIR/fixture-tmp"
 SERVER_PID=""
 SERVER_URL=""
 REQUEST_LOG=""
 FIXTURE_STATUS=0
 FIXTURE_OUTPUT=""
+FIXTURE_ELAPSED_MS=0
 
 cleanup() {
   if [[ -n "$SERVER_PID" ]]; then
@@ -43,6 +45,30 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local value="$1"
+  local unexpected="$2"
+  local message="$3"
+  if [[ "$value" == *"$unexpected"* ]]; then
+    fail "$message: expected output not to contain '$unexpected', got: $value"
+  fi
+}
+
+assert_at_most() {
+  local maximum="$1"
+  local actual="$2"
+  local message="$3"
+  if (( actual > maximum )); then
+    fail "$message: expected at most '$maximum', got '$actual'"
+  fi
+}
+
+assert_fixture_tmp_empty() {
+  local remaining
+  remaining="$(find "$FIXTURE_TMP_ROOT" -mindepth 1 -maxdepth 1 -print -quit)"
+  assert_equal "" "$remaining" "fixture temporary directory should be empty"
+}
+
 stop_server() {
   kill "$SERVER_PID" 2>/dev/null || true
   wait "$SERVER_PID" 2>/dev/null || true
@@ -61,6 +87,7 @@ start_server() {
 import json
 import sys
 import threading
+import time
 from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -100,6 +127,10 @@ class Handler(BaseHTTPRequestHandler):
         self.discard_body()
         self.record()
         if self.path == "/api/test/storage-fixture/prepare":
+            if scenario == "prepare-stalled":
+                time.sleep(10)
+                self.close_connection = True
+                return
             port = self.server.server_address[1]
             body = json.dumps(
                 {
@@ -133,6 +164,10 @@ class Handler(BaseHTTPRequestHandler):
         self.discard_body()
         attempt = self.record()
         if self.path == "/archive":
+            if scenario == "archive-stalled":
+                time.sleep(10)
+                self.close_connection = True
+                return
             if scenario == "retry-success" and attempt == 1:
                 self.respond(500)
                 return
@@ -177,10 +212,13 @@ request_count() {
   ' "$REQUEST_LOG"
 }
 
+# shellcheck source=e2e/helpers/http.bash
+source "$REPO_ROOT/e2e/helpers/http.bash"
+
 e2e_api_curl() {
   local path="$1"
   shift
-  curl -fsS \
+  e2e_curl \
     -H "Authorization: Bearer test-token" \
     -H "Content-Type: application/json" \
     "$@" \
@@ -191,14 +229,18 @@ e2e_api_curl() {
 source "$REPO_ROOT/e2e/helpers/storage-fixtures.bash"
 
 run_fixture() {
-  if FIXTURE_OUTPUT="$(seed_storage_fixture artifact test-artifact "$FIXTURE_DIR" 2>&1)"; then
+  local started_at finished_at
+  started_at="$(date +%s%3N)"
+  if FIXTURE_OUTPUT="$(TMPDIR="$FIXTURE_TMP_ROOT" seed_storage_fixture artifact test-artifact "$FIXTURE_DIR" 2>&1)"; then
     FIXTURE_STATUS=0
   else
     FIXTURE_STATUS=$?
   fi
+  finished_at="$(date +%s%3N)"
+  FIXTURE_ELAPSED_MS=$((finished_at - started_at))
 }
 
-mkdir -p "$FIXTURE_DIR"
+mkdir -p "$FIXTURE_DIR" "$FIXTURE_TMP_ROOT"
 printf 'fixture data\n' > "$FIXTURE_DIR/data.txt"
 
 start_server retry-success
@@ -231,5 +273,41 @@ assert_contains "$FIXTURE_OUTPUT" "# Storage fixture archive upload failed" "arc
 assert_equal 3 "$(request_count PUT /archive)" "archive should stop after three attempts"
 assert_equal 0 "$(request_count PUT /manifest)" "failed archive should prevent manifest upload"
 assert_equal 0 "$(request_count POST /api/test/storage-fixture/commit)" "failed archive should prevent commit"
+
+export E2E_CURL_CONNECT_TIMEOUT_SECONDS=0.2
+export E2E_CURL_MAX_TIME_SECONDS=0.2
+export E2E_STORAGE_FIXTURE_RETRY_MAX_TIME_SECONDS=1
+
+start_server prepare-stalled
+run_fixture
+stop_server
+if [[ "$FIXTURE_STATUS" -eq 0 ]]; then
+  fail "stalled prepare request should fail"
+fi
+assert_contains "$FIXTURE_OUTPUT" "# Storage fixture prepare request failed" "prepare timeout should identify its stage"
+assert_not_contains "$FIXTURE_OUTPUT" "$SERVER_URL" "prepare timeout should not expose its URL"
+assert_not_contains "$FIXTURE_OUTPUT" "test-token" "prepare timeout should not expose its token"
+assert_at_most 8000 "$FIXTURE_ELAPSED_MS" "prepare timeout should beat the finite server delay"
+assert_equal 1 "$(request_count POST /api/test/storage-fixture/prepare)" "prepare timeout should not retry"
+assert_equal 0 "$(request_count PUT /archive)" "failed prepare should prevent archive upload"
+assert_equal 0 "$(request_count POST /api/test/storage-fixture/commit)" "failed prepare should prevent commit"
+assert_fixture_tmp_empty
+
+start_server archive-stalled
+run_fixture
+stop_server
+if [[ "$FIXTURE_STATUS" -eq 0 ]]; then
+  fail "stalled archive upload should fail"
+fi
+assert_contains "$FIXTURE_OUTPUT" "# Storage fixture archive upload failed" "archive timeout should identify its stage"
+assert_not_contains "$FIXTURE_OUTPUT" "$SERVER_URL" "archive timeout should not expose its presigned URL"
+assert_at_most 8000 "$FIXTURE_ELAPSED_MS" "archive timeout should beat the finite server delay"
+archive_attempts="$(request_count PUT /archive)"
+if (( archive_attempts < 1 || archive_attempts > 2 )); then
+  fail "archive timeout should make one or two attempts inside the retry window: got '$archive_attempts'"
+fi
+assert_equal 0 "$(request_count PUT /manifest)" "failed archive should prevent manifest upload"
+assert_equal 0 "$(request_count POST /api/test/storage-fixture/commit)" "failed archive should prevent commit"
+assert_fixture_tmp_empty
 
 echo "storage-fixtures-test: ok"
