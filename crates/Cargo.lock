@@ -2627,6 +2627,7 @@ dependencies = [
  "guest-write-file",
  "hex",
  "httpmock",
+ "idna",
  "libc",
  "nbd-cow",
  "nix",

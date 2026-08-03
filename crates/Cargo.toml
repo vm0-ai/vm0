@@ -70,6 +70,7 @@ futures-util = "0.3"
 hex = "0.4"
 hmac = "0.13.0"
 httpmock = "0.8"
+idna = "1"
 libc = "0.2"
 nix = { version = "0.31", default-features = false }
 proptest = { version = "1", default-features = false, features = ["std"] }

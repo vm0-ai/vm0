@@ -492,8 +492,20 @@ fn validate_firewall_base_for_cache(base: &str) -> Result<(), String> {
         return validate_parameterized_firewall_base_for_cache(base);
     }
     let parsed = url::Url::parse(base).map_err(|_| "base URL is invalid".to_string())?;
+    let authority = raw_url_authority(base)
+        .ok_or_else(|| "base URL must include :// after the scheme".to_string())?;
+    if authority.is_empty() {
+        return Err("base URL must include a host".to_string());
+    }
+    if raw_authority_has_empty_port(base) {
+        return Err("base URL authority must not include an empty port".to_string());
+    }
+    crate::firewall_hostname_policy::validate_base_host_for_cache(raw_host_from_authority(
+        authority,
+    ))?;
+
     let scheme = parsed.scheme();
-    if scheme != "http" && scheme != "https" {
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
         return Err("base URL scheme must be http or https".to_string());
     }
     if parsed.host_str().is_none() {
@@ -566,7 +578,7 @@ fn validate_parameterized_firewall_base_for_cache(base: &str) -> Result<(), Stri
     if scheme.contains('{') || scheme.contains('}') {
         return Err("base URL scheme must not contain parameters".to_string());
     }
-    if scheme != "http" && scheme != "https" {
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
         return Err("base URL scheme must be http or https".to_string());
     }
 
@@ -616,7 +628,9 @@ fn validate_parameterized_firewall_base_host(
     host: &str,
     param_names: &mut HashSet<String>,
 ) -> Result<String, String> {
-    let segments: Vec<&str> = host.split('.').collect();
+    let has_trailing_dot = host.ends_with('.');
+    let host_without_trailing_dot = host.strip_suffix('.').unwrap_or(host);
+    let segments: Vec<&str> = host_without_trailing_dot.split('.').collect();
     if segments.len() < 2 {
         return Err("base URL host must have at least two segments".to_string());
     }
@@ -663,6 +677,9 @@ fn validate_parameterized_firewall_base_host(
     if !has_static_segment {
         return Err("base URL host must have at least one static segment".to_string());
     }
+    if has_trailing_dot {
+        materialized_host.push('.');
+    }
     Ok(materialized_host)
 }
 
@@ -678,6 +695,7 @@ fn validate_parameterized_firewall_base_authority(
     materialized_host: &str,
     port_suffix: &str,
 ) -> Result<(), String> {
+    crate::firewall_hostname_policy::validate_base_host_for_cache(materialized_host)?;
     let syntax_target = format!("{scheme}://{materialized_host}{port_suffix}");
     let parsed = url::Url::parse(&syntax_target)
         .map_err(|_| "parameterized base URL authority is invalid".to_string())?;
@@ -793,7 +811,7 @@ fn validate_host_policy_hostname(value: &str, allow_leading_dot: bool) -> Result
     if host.parse::<IpAddr>().is_ok() {
         return Err("hostPolicy host must not be an IP address".to_string());
     }
-    if is_ipv4_literal_like(host) {
+    if crate::firewall_hostname_policy::is_ipv4_literal_like(host) {
         return Err("hostPolicy host must not look like an IPv4 address".to_string());
     }
     let labels: Vec<&str> = host.split('.').collect();
@@ -801,21 +819,6 @@ fn validate_host_policy_hostname(value: &str, allow_leading_dot: bool) -> Result
         return Err("hostPolicy host must have at least two non-empty labels".to_string());
     }
     Ok(())
-}
-
-fn is_ipv4_literal_like(host: &str) -> bool {
-    let labels: Vec<&str> = host.split('.').collect();
-    !labels.is_empty()
-        && labels.len() <= 4
-        && labels.iter().all(|label| {
-            let Some(rest) = label
-                .strip_prefix("0x")
-                .or_else(|| label.strip_prefix("0X"))
-            else {
-                return !label.is_empty() && label.chars().all(|ch| ch.is_ascii_digit());
-            };
-            !rest.is_empty() && rest.chars().all(|ch| ch.is_ascii_hexdigit())
-        })
 }
 
 /// Auth configuration for a firewall API entry.
@@ -1063,11 +1066,30 @@ fn hex_value(byte: u8) -> Option<u8> {
 }
 
 fn raw_authority_has_empty_port(value: &str) -> bool {
-    let Some(rest) = value.split_once("://").map(|(_, rest)| rest) else {
+    let Some(authority) = raw_url_authority(value) else {
         return false;
     };
+    authority.ends_with(':')
+}
+
+fn raw_url_authority(value: &str) -> Option<&str> {
+    let rest = value.split_once("://").map(|(_, rest)| rest)?;
     let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    rest[..authority_end].ends_with(':')
+    Some(&rest[..authority_end])
+}
+
+fn raw_host_from_authority(authority: &str) -> &str {
+    let without_userinfo = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    if without_userinfo.starts_with('[') {
+        return without_userinfo
+            .find(']')
+            .map_or(without_userinfo, |end| &without_userinfo[..=end]);
+    }
+    without_userinfo
+        .rsplit_once(':')
+        .map_or(without_userinfo, |(host, _)| host)
 }
 
 fn raw_url_path(value: &str) -> &str {
@@ -1444,6 +1466,31 @@ impl SandboxReuseResult {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn firewall_base_url_validation_matches_shared_contract() {
+        let mismatches: Vec<String> =
+            crate::test_fixtures::firewall_base_url_contract::firewall_base_url_validation_cases()
+                .into_iter()
+                .filter_map(|test_case| {
+                    let result = validate_firewall_base_for_cache(&test_case.base);
+                    (result.is_ok() != test_case.expected_valid).then(|| {
+                        format!(
+                            "shared case {:?} produced unexpected result for {:?}: {:?}",
+                            test_case.name,
+                            test_case.base,
+                            result.err()
+                        )
+                    })
+                })
+                .collect();
+
+        assert!(
+            mismatches.is_empty(),
+            "firewall base URL contract mismatches:\n{}",
+            mismatches.join("\n")
+        );
+    }
 
     #[test]
     fn raw_url_path_does_not_treat_query_or_fragment_content_as_path() {
