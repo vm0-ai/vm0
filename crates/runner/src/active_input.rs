@@ -158,6 +158,13 @@ impl ActiveInputAblySubscription {
             }
         }
     }
+
+    async fn wait_or_reconcile(&mut self, max_wait: Duration) -> bool {
+        tokio::select! {
+            open = self.wait() => open,
+            () = tokio::time::sleep(max_wait) => true,
+        }
+    }
 }
 
 impl ActiveInputSource {
@@ -206,10 +213,10 @@ impl ActiveInputSource {
             .is_some_and(ActiveInputAblySubscription::is_connected))
     }
 
-    pub(crate) async fn wait_for_ably_notification(&mut self) {
+    pub(crate) async fn wait_for_ably_notification_or_reconcile(&mut self, max_wait: Duration) {
         let closed = match self {
             Self::Api(source) => match source.ably_subscription.as_mut() {
-                Some(subscription) => !subscription.wait().await,
+                Some(subscription) => !subscription.wait_or_reconcile(max_wait).await,
                 None => false,
             },
             Self::LocalQueue(_) => false,
@@ -295,5 +302,17 @@ mod tests {
         assert!(!second.is_connected());
         assert!(first.wait().await);
         assert!(second.wait().await);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn ably_subscription_reconciles_without_a_notification() {
+        let notifications = ActiveInputAblyNotifications::new();
+        let mut subscription = notifications.subscribe(RunId::new_v4());
+
+        assert!(
+            subscription
+                .wait_or_reconcile(Duration::from_secs(30))
+                .await
+        );
     }
 }

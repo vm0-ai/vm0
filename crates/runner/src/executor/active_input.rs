@@ -21,12 +21,13 @@
 //!
 //! Ably-capable API sources read once after process startup and then wait for a
 //! runner-group notification before reading the durable mailbox again while Ably is
-//! connected. They temporarily fall back to adaptive polling during an Ably outage;
-//! legacy API responses and local queue sources retain adaptive polling throughout.
-//! Retryable guest-control errors always use the fast retry interval. Stop and job
-//! cancellation take priority at read and wait boundaries, but are not selected during
-//! a forwarding pass. Each control call has a deadline, and explicit stop bounds task
-//! join time before aborting the task.
+//! connected, with a low-frequency reconciliation read to cover lost notifications.
+//! They temporarily fall back to adaptive polling during an Ably outage; legacy API
+//! responses and local queue sources retain adaptive polling throughout. Retryable
+//! guest-control errors always use the fast retry interval. Stop and job cancellation
+//! take priority at read and wait boundaries, but are not selected during a forwarding
+//! pass. Each control call has a deadline, and explicit stop bounds task join time
+//! before aborting the task.
 
 use std::collections::{HashSet, VecDeque};
 use std::time::Duration;
@@ -41,6 +42,7 @@ use crate::local_queue::ActiveInputEntry;
 
 const ACTIVE_INPUT_POLL_FAST_INTERVAL: Duration = Duration::from_millis(50);
 const ACTIVE_INPUT_POLL_IDLE_MAX_INTERVAL: Duration = Duration::from_millis(250);
+const ACTIVE_INPUT_ABLY_RECONCILE_INTERVAL: Duration = Duration::from_secs(30);
 const ACTIVE_INPUT_CONTROL_TIMEOUT: Duration = Duration::from_secs(1);
 const ACTIVE_INPUT_FORWARDER_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
 const ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY: usize = 1024;
@@ -207,21 +209,16 @@ async fn run_forwarder(
         };
 
         if source.uses_ably_notifications() && outcome != ForwardOutcome::RetryPending {
-            if source.ably_notifications_connected() {
-                tokio::select! {
-                    biased;
-                    () = stop.cancelled() => return,
-                    () = job_cancel.cancelled() => return,
-                    () = source.wait_for_ably_notification() => {}
-                }
+            let max_wait = if source.ably_notifications_connected() {
+                ACTIVE_INPUT_ABLY_RECONCILE_INTERVAL
             } else {
-                tokio::select! {
-                    biased;
-                    () = stop.cancelled() => return,
-                    () = job_cancel.cancelled() => return,
-                    () = source.wait_for_ably_notification() => {}
-                    () = tokio::time::sleep(poll_interval) => {}
-                }
+                poll_interval
+            };
+            tokio::select! {
+                biased;
+                () = stop.cancelled() => return,
+                () = job_cancel.cancelled() => return,
+                () = source.wait_for_ably_notification_or_reconcile(max_wait) => {}
             }
             continue;
         }
