@@ -1,0 +1,3 @@
+match flow.metadata:
+    case {"vm_run_id": _} | {"firewall_name": _}:
+        pass
