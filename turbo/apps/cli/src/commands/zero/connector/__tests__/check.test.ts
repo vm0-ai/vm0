@@ -370,12 +370,12 @@ describe("zero connector check command", () => {
         'Result: "contents:write" is in the deny list — denied.',
       );
       expect(getOutput()).toContain(
-        "zero connector permission-request github --permission contents:write",
+        "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD>",
       );
       expect(getOutput()).not.toContain("--callback-prompt");
     });
 
-    it("prints a callback permission command example in the current web chat", async () => {
+    it("requires a URL diagnostic before printing a callback permission command", async () => {
       vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
       vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
       stubDiagnostic(
@@ -395,9 +395,10 @@ describe("zero connector check command", () => {
       ]);
 
       expect(getOutput()).toContain(
-        'zero connector permission-request github --permission contents:write --callback-prompt "SOMETHING_AGENT_WANT_TO_BE_CALLBACK"',
+        "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD>",
       );
-      expect(getOutput()).toContain("automatically start the next round");
+      expect(getOutput()).not.toContain("--callback-prompt");
+      expect(getOutput()).not.toContain("automatically start the next round");
     });
 
     it.each([
@@ -868,10 +869,12 @@ describe("zero connector check command", () => {
         expect(getOutput()).not.toContain("allow list: [");
         expect(getOutput()).not.toContain("deny list:  [");
         expect(getOutput()).not.toContain("ask list:   [");
-        const requestCommand =
-          "zero connector permission-request github --permission contents:read";
+        const requestCommand = "zero connector permission-request";
         if (policy.outcome === "deny" || policy.outcome === "ask") {
-          expect(getOutput()).toContain(requestCommand);
+          expect(getOutput()).toContain(
+            "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD>",
+          );
+          expect(getOutput()).not.toContain(requestCommand);
         } else {
           expect(getOutput()).not.toContain(requestCommand);
         }
@@ -912,7 +915,7 @@ describe("zero connector check command", () => {
       expect(getOutput()).toContain('"metadata:read" is in the ask list');
       expect(getOutput()).not.toContain("--permission contents:read");
       expect(getOutput()).toContain(
-        "zero connector permission-request github --permission metadata:read",
+        "zero connector permission-request 'github' --permission 'metadata:read' --url 'https://api.github.com/repos/vm0-ai/vm0' --method 'GET'",
       );
     });
 
@@ -977,7 +980,7 @@ describe("zero connector check command", () => {
         expect(getOutput()).toContain(expected);
         if (expectsGuidance) {
           expect(getOutput()).toContain(
-            "zero connector permission-request github --permission __unknown__",
+            "zero connector permission-request 'github' --permission '__unknown__' --url 'https://api.github.com/not-a-known-endpoint' --method 'GET'",
           );
         } else {
           expect(getOutput()).not.toContain("--permission __unknown__");
