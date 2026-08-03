@@ -753,10 +753,19 @@ describe("thread-owned utility sidebar", () => {
     expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
   });
 
-  it("auto-opens the thread browser while its latest lifecycle event is started", async () => {
+  it("fits the live browser once per sidebar opening and keeps manual fit", async () => {
     const liveUrl = "https://live.browser-use.com/?wss=auto-open-browser";
     const requestStarted = context.mocks.deferred<void>();
     const releaseResponse = context.mocks.deferred<void>();
+    let viewportRect = DOMRect.fromRect({ width: 720, height: 900 });
+    const getBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        return Object.hasOwn(this.dataset, "browserSessionViewport")
+          ? viewportRect
+          : getBoundingClientRect.call(this);
+      },
+    );
     const browser = browserSession({
       name: "Auto-open browser",
       liveUrl,
@@ -818,34 +827,38 @@ describe("thread-owned utility sidebar", () => {
     const frame = await screen.findByTitle("Live browser: Auto-open browser");
     expect(frame).toHaveAttribute("src", liveUrl);
     expect(frame.closest("[data-browser-session-sidebar]")).not.toBeNull();
-    expect(resizeAspectRatios).toStrictEqual([]);
-
-    const viewport = frame.closest("[data-browser-session-viewport]");
-    if (!(viewport instanceof HTMLDivElement)) {
-      throw new Error("Expected a live browser viewport");
-    }
-    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(
-      DOMRect.fromRect({
-        width: 720,
-        height: 900,
-      }),
-    );
     const fitWindow = queryAllByRoleFast("button").find((button) => {
       return button.getAttribute("aria-label") === "Fit browser to window";
     });
     if (!(fitWindow instanceof HTMLButtonElement)) {
       throw new Error("Expected the fit browser button");
     }
-    expect(fitWindow).toBeEnabled();
+    await waitFor(() => {
+      expect(resizeAspectRatios).toStrictEqual([0.8]);
+      expect(fitWindow).toBeEnabled();
+    });
+
+    viewportRect = DOMRect.fromRect({ width: 900, height: 600 });
     click(fitWindow);
 
     await waitFor(() => {
       expect(leaseRequests).toBeGreaterThan(0);
-      expect(resizeAspectRatios).toStrictEqual([0.8]);
+      expect(resizeAspectRatios).toStrictEqual([0.8, 1.5]);
       expect(fitWindow).toBeEnabled();
       expect(
         screen.getByTitle("Live browser: Auto-open browser"),
       ).toHaveAttribute("src", liveUrl);
+    });
+
+    click(screen.getByLabelText("Close live browser"));
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Live browser")).not.toBeInTheDocument();
+    });
+
+    viewportRect = DOMRect.fromRect({ width: 600, height: 1000 });
+    click(screen.getByLabelText("Open browser"));
+    await waitFor(() => {
+      expect(resizeAspectRatios).toStrictEqual([0.8, 1.5, 0.6]);
     });
   });
 

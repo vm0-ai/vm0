@@ -12,6 +12,7 @@ import {
   type Computed,
   type State,
 } from "ccstate";
+import { animationFrame } from "signal-timers";
 
 import { formatAppNumber } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -21,7 +22,13 @@ import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { zeroBrowserEnabled$ } from "../external/feature-switch.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import { setAblyPayloadLoop$ } from "../realtime.ts";
-import { onRef, settle, setLoop, withCleanup } from "../utils.ts";
+import {
+  createDeferredPromise,
+  onRef,
+  settle,
+  setLoop,
+  withCleanup,
+} from "../utils.ts";
 import { parseTrustedPlatformActionUrl } from "./platform-action-url.ts";
 
 // One heartbeat per minute keeps a viewed browser comfortably inside its
@@ -43,7 +50,11 @@ export interface BrowserSessionSignals extends BrowserSessionDescriptor {
   readonly reloadPanel$: Command<void, []>;
   readonly start$: Command<Promise<void>, [AbortSignal]>;
   readonly stop$: Command<Promise<void>, [AbortSignal]>;
-  readonly fitWindow$: Command<Promise<void>, [number, AbortSignal]>;
+  readonly fitViewport$: Command<Promise<void>, [HTMLElement, AbortSignal]>;
+  readonly autoFitViewportRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
   readonly subscribe$: Command<Promise<void>, [AbortSignal]>;
   // Attach to the visible panel container: the lease heartbeat lives exactly as
   // long as that element is mounted.
@@ -107,10 +118,75 @@ async function fetchBrowserSession(
   return response.status === 200 ? response.body.browser : null;
 }
 
+function isActiveSidebarSizeTransition(animation: Animation): boolean {
+  if (!("transitionProperty" in animation)) {
+    return false;
+  }
+  const property = animation.transitionProperty;
+  return (
+    (property === "flex-basis" || property === "width") &&
+    animation.playState !== "finished" &&
+    animation.playState !== "idle"
+  );
+}
+
+function waitForBrowserSidebarLayout(
+  viewport: HTMLElement,
+  signal: AbortSignal,
+): Promise<void> {
+  const sidebarPane = viewport.closest<HTMLElement>(
+    "[data-chat-thread-sidebar-pane]",
+  );
+  if (!sidebarPane) {
+    throw new Error("Browser viewport is outside the thread sidebar pane");
+  }
+  const pane = sidebarPane;
+
+  const ready = createDeferredPromise<void>(signal);
+  function cleanup(): void {
+    pane.removeEventListener("transitionend", handleTransitionSettled);
+    pane.removeEventListener("transitioncancel", handleTransitionSettled);
+    signal.removeEventListener("abort", cleanup);
+  }
+  function finish(): void {
+    cleanup();
+    if (!ready.settled()) {
+      ready.resolve(undefined);
+    }
+  }
+  function handleTransitionSettled(event: TransitionEvent): void {
+    if (
+      event.target === pane &&
+      (event.propertyName === "flex-basis" || event.propertyName === "width")
+    ) {
+      finish();
+    }
+  }
+
+  pane.addEventListener("transitionend", handleTransitionSettled);
+  pane.addEventListener("transitioncancel", handleTransitionSettled);
+  signal.addEventListener("abort", cleanup, { once: true });
+  animationFrame(
+    () => {
+      const animations =
+        typeof pane.getAnimations === "function" ? pane.getAnimations() : [];
+      if (!animations.some(isActiveSidebarSizeTransition)) {
+        finish();
+      }
+    },
+    { signal },
+  );
+  return ready.promise;
+}
+
 function createFitWindowSignals(
   descriptor: BrowserSessionDescriptor,
+  session$: BrowserSessionSignals["session$"],
   sessionOverride$: State<ZeroBrowserSession | null | undefined>,
-): Pick<BrowserSessionSignals, "fittingWindow$" | "fitWindow$"> {
+): Pick<
+  BrowserSessionSignals,
+  "autoFitViewportRef$" | "fittingWindow$" | "fitViewport$"
+> {
   const fittingWindowState$ = state(false);
   const fitWindow$ = command(
     async (
@@ -144,11 +220,51 @@ function createFitWindowSignals(
       }
     },
   );
+  const fitViewport$ = command(
+    async (
+      { get, set },
+      viewport: HTMLElement,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const session = await get(session$);
+      signal.throwIfAborted();
+      if (
+        session?.status !== "active" ||
+        session.liveUrl === null ||
+        session.screen?.resizable !== true
+      ) {
+        return;
+      }
+      const { width, height } = viewport.getBoundingClientRect();
+      if (
+        !Number.isFinite(width) ||
+        !Number.isFinite(height) ||
+        width <= 0 ||
+        height <= 0
+      ) {
+        return;
+      }
+      await set(fitWindow$, width / height, signal);
+    },
+  );
+  const autoFitViewportRef$ = onRef(
+    command(
+      async (
+        { set },
+        viewport: HTMLElement,
+        signal: AbortSignal,
+      ): Promise<void> => {
+        await waitForBrowserSidebarLayout(viewport, signal);
+        await set(fitViewport$, viewport, signal);
+      },
+    ),
+  );
   return {
+    autoFitViewportRef$,
     fittingWindow$: computed((get) => {
       return get(fittingWindowState$);
     }),
-    fitWindow$,
+    fitViewport$,
   };
 }
 
@@ -352,10 +468,8 @@ export function createBrowserSessionSignals(
     });
   });
 
-  const { fittingWindow$, fitWindow$ } = createFitWindowSignals(
-    descriptor,
-    sessionOverride$,
-  );
+  const { autoFitViewportRef$, fittingWindow$, fitViewport$ } =
+    createFitWindowSignals(descriptor, session$, sessionOverride$);
   const mutationContext: BrowserMutationSignalContext = {
     descriptor,
     session$,
@@ -423,10 +537,11 @@ export function createBrowserSessionSignals(
     panelSession$: session$,
     ...startSignals,
     ...stopSignals,
+    autoFitViewportRef$,
     fittingWindow$,
     reload$,
     reloadPanel$: reload$,
-    fitWindow$,
+    fitViewport$,
     ...subscriptionSignals,
     keepAliveRef$,
   };

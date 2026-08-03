@@ -23,7 +23,7 @@ export function BrowserSessionSidebar({
   onClose,
 }: BrowserSessionSidebarProps) {
   const { t } = useTranslation();
-  const fitWindow = useSet(signals.fitWindow$);
+  const fitViewport = useSet(signals.fitViewport$);
   const fittingWindow = useGet(signals.fittingWindow$);
   const stop = useSet(signals.stop$);
   const stopping = useGet(signals.stopping$);
@@ -50,17 +50,8 @@ export function BrowserSessionSidebar({
     if (!liveViewport) {
       return;
     }
-    const { width, height } = liveViewport.getBoundingClientRect();
-    if (
-      !Number.isFinite(width) ||
-      !Number.isFinite(height) ||
-      width <= 0 ||
-      height <= 0
-    ) {
-      return;
-    }
     detach(
-      fitWindow(width / height, pageSignal),
+      fitViewport(liveViewport, pageSignal),
       Reason.DomCallback,
       "fit browser to sidebar window",
     );

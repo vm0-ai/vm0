@@ -185,6 +185,7 @@ export function BrowserSessionPanel({
 }: BrowserSessionPanelProps) {
   const { t } = useTranslation();
   const sessionLoadable = useLastLoadable(signals.panelSession$);
+  const autoFitViewportRef = useSet(signals.autoFitViewportRef$);
   const keepAliveRef = useSet(signals.keepAliveRef$);
   const start = useSet(signals.start$);
   const starting = useGet(signals.starting$);
@@ -262,6 +263,7 @@ export function BrowserSessionPanel({
     <PanelFrame panelRef={keepAliveRef}>
       {containLiveFrame ? (
         <div
+          ref={autoFitViewportRef}
           data-browser-session-viewport
           style={{ containerType: "size" }}
           className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/20"

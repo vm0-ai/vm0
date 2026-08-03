@@ -98,6 +98,7 @@ export function ChatThreadSidebarShell({
       </div>
       {open && <ChatThreadSidebarResizeHandle />}
       <div
+        data-chat-thread-sidebar-pane
         data-testid="chat-thread-sidebar-pane"
         className={cn(
           "flex min-h-0 min-w-0 overflow-hidden",
