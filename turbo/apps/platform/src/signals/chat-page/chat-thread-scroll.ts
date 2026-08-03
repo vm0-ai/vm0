@@ -278,8 +278,9 @@ function createScrollNavigationSignals(
     set(scrollToBottom$);
   });
 
-  // Coalesced across the container and content observers: a resize that changes
-  // both boxes still restores once.
+  // Viewport and composer resizes settle over a frame, so their restore waits
+  // for the next one. The flag coalesces repeated notifications into a single
+  // restore.
   const scheduleRestoreAfterResize$ = command(
     ({ set }, signal: AbortSignal) => {
       if (!runtime.initialized || runtime.resizeScheduled) {
@@ -297,11 +298,24 @@ function createScrollNavigationSignals(
     },
   );
 
+  // Content growth restores in the same frame that produced it. ResizeObserver
+  // callbacks run after layout and before paint, so a scroll written here is
+  // part of that frame; waiting for the next one would paint the grown content
+  // at the old offset first, which reads as a flash before the view snaps back.
+  const restoreAfterContentResize$ = command(({ set }) => {
+    if (!runtime.initialized) {
+      return;
+    }
+    L.debug("content resize scroll restore", { threadId });
+    set(restoreAfterResize$);
+  });
+
   return {
     scrollTo$,
     scrollToBottom$,
     scrollToTop$,
     scheduleRestoreAfterResize$,
+    restoreAfterContentResize$,
   };
 }
 
@@ -474,7 +488,7 @@ function createScrollContentOnRef(
     command(({ set }, content: HTMLElement, signal: AbortSignal) => {
       L.debug("content bound", { threadId });
       const resizeObserver = new ResizeObserver(() => {
-        set(navigation.scheduleRestoreAfterResize$, signal);
+        set(navigation.restoreAfterContentResize$);
       });
       resizeObserver.observe(content);
       signal.addEventListener(

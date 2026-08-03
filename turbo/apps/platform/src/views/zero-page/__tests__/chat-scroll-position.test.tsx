@@ -795,11 +795,13 @@ describe("chat scroll position", () => {
     growContent(400);
     resizeObserver.trigger(messageContainer);
 
-    await waitFor(() => {
-      expect(container.scrollTop).toBe(
-        container.scrollHeight - container.clientHeight,
-      );
-    });
+    // Asserted synchronously: the restore must happen inside the observer
+    // callback, which the browser runs before painting the frame that grew the
+    // content. Waiting for the next frame would paint the grown content at the
+    // old offset first, which the reader sees as a flash.
+    expect(container.scrollTop).toBe(
+      container.scrollHeight - container.clientHeight,
+    );
   });
 
   it("keeps the visible anchor when content above the reader grows", async () => {
@@ -830,10 +832,8 @@ describe("chat scroll position", () => {
     growContentAbove(400);
     resizeObserver.trigger(messageContainer);
 
-    await waitFor(() => {
-      expect(viewportOffsetTop("grow-above-4")).toBe(-20);
-      expect(container.scrollTop).toBe(820);
-    });
+    expect(viewportOffsetTop("grow-above-4")).toBe(-20);
+    expect(container.scrollTop).toBe(820);
   });
 
   it("keeps following the tail when a nested scroller scrolls after late content growth", async () => {
