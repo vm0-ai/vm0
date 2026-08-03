@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.153.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.153.0...runner-rs-v0.153.1) (2026-08-03)
+
+
+### Refactoring
+
+* **runner:** unify runner preference admission ([#24792](https://github.com/vm0-ai/vm0/issues/24792)) ([baf4026](https://github.com/vm0-ai/vm0/commit/baf40262d03d595fa7c7e2d82df78d6928dda3a5))
+
+
+### Performance Improvements
+
+* **python:** enforce firewall auth fetch deadline ([#24752](https://github.com/vm0-ai/vm0/issues/24752)) ([0ad635e](https://github.com/vm0-ai/vm0/commit/0ad635e706fcc691e2d70b5d9ee3b402b73aadf2))
+
 ## [0.153.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.152.0...runner-rs-v0.153.0) (2026-08-03)
 
 
