@@ -461,6 +461,56 @@ function mockLiveThread({
   };
 }
 
+function mockLateGrowingThread({
+  threadId,
+  prefix,
+}: {
+  readonly threadId: string;
+  readonly prefix: string;
+}): {
+  readonly publishAppendedEvents: () => Promise<void>;
+  readonly growContent: (extraScrollHeight: number) => void;
+} {
+  const { publishAppendedEvents } = mockLiveThread({
+    threadId,
+    initialEvents: simpleUserEvents(threadId, prefix, 8),
+    appendedEvents: simpleUserEvents(threadId, prefix, 9).slice(8),
+  });
+  let extraScrollHeight = 0;
+  installChatLayout(
+    new Map([
+      [
+        threadId,
+        {
+          clientHeight: () => {
+            return 300;
+          },
+          scrollHeight: () => {
+            const rendered = document.body.textContent?.includes(
+              `${prefix} message 8`,
+            )
+              ? 1100
+              : 1000;
+            return rendered + extraScrollHeight;
+          },
+          eventRect: (eventId) => {
+            const index = Number(eventId.split("-").at(-1));
+            return Number.isFinite(index)
+              ? { top: index * 100, height: 80 }
+              : undefined;
+          },
+        },
+      ],
+    ]),
+  );
+  return {
+    publishAppendedEvents,
+    growContent: (nextExtraScrollHeight: number) => {
+      extraScrollHeight = nextExtraScrollHeight;
+    },
+  };
+}
+
 function mockBackfilledHistoryScroll({
   threadId,
   finalScrollHeight,
@@ -673,6 +723,81 @@ describe("chat scroll position", () => {
     await waitFor(() => {
       expect(screen.getByText("tail-follow message 8")).toBeInTheDocument();
       expect(container.scrollTop).toBe(800);
+    });
+  });
+
+  it("keeps following the tail when late content growth delivers the tail scroll event", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000809";
+    const { publishAppendedEvents, growContent } = mockLateGrowingThread({
+      threadId,
+      prefix: "late-growth",
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const container = await waitFor(() => {
+      expect(screen.getByText("late-growth message 7")).toBeInTheDocument();
+      const current = chatScrollContainer();
+      expect(current.scrollTop).toBe(700);
+      return current;
+    });
+
+    // A diagram finishes rendering after the tail scroll was written, so the
+    // browser delivers that scroll event against taller content.
+    growContent(400);
+    fireEvent.scroll(container);
+
+    await publishAppendedEvents();
+
+    await waitFor(() => {
+      expect(screen.getByText("late-growth message 8")).toBeInTheDocument();
+      expect(container.scrollTop).toBe(
+        container.scrollHeight - container.clientHeight,
+      );
+      expect(document.querySelector("[data-scroll-to-bottom]")).toBeNull();
+    });
+  });
+
+  it("keeps following the tail when a nested scroller scrolls after late content growth", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000810";
+    const { publishAppendedEvents, growContent } = mockLateGrowingThread({
+      threadId,
+      prefix: "nested-scroll",
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const container = await waitFor(() => {
+      expect(screen.getByText("nested-scroll message 7")).toBeInTheDocument();
+      const current = chatScrollContainer();
+      expect(current.scrollTop).toBe(700);
+      return current;
+    });
+    // Reading history and returning to the bottom leaves the thread following
+    // the tail again.
+    scrollTo(container, 420);
+    scrollTo(container, 700);
+
+    growContent(400);
+    const messageContainer = container.querySelector(
+      "[data-message-container]",
+    );
+    if (!messageContainer) {
+      throw new Error("Chat message container not found");
+    }
+    // Panning a wide diagram or table sideways scrolls a nested container. The
+    // capture-phase listener sees that event, but it says nothing about where
+    // the thread itself sits.
+    fireEvent.scroll(messageContainer);
+
+    await publishAppendedEvents();
+
+    await waitFor(() => {
+      expect(screen.getByText("nested-scroll message 8")).toBeInTheDocument();
+      expect(container.scrollTop).toBe(
+        container.scrollHeight - container.clientHeight,
+      );
+      expect(document.querySelector("[data-scroll-to-bottom]")).toBeNull();
     });
   });
 

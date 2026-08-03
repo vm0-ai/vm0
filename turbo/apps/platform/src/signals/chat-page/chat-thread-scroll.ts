@@ -59,7 +59,19 @@ function scrollAnchorForEvent(
   );
 }
 
+function applyScrollTop(
+  runtime: ScrollRuntime,
+  container: HTMLElement,
+  scrollTop: number,
+): void {
+  container.scrollTop = scrollTop;
+  // Remember where this module left the container. The browser clamps the
+  // assignment, so read the offset back instead of trusting the requested one.
+  runtime.programmaticScrollTop = container.scrollTop;
+}
+
 function scrollToPosition(
+  runtime: ScrollRuntime,
   container: HTMLElement,
   position: ThreadScrollPosition,
 ): void {
@@ -71,7 +83,11 @@ function scrollToPosition(
   }
   const currentViewportOffsetTop =
     target.getBoundingClientRect().top - container.getBoundingClientRect().top;
-  container.scrollTop += currentViewportOffsetTop - position.viewportOffsetTop;
+  applyScrollTop(
+    runtime,
+    container,
+    container.scrollTop + currentViewportOffsetTop - position.viewportOffsetTop,
+  );
 }
 
 function firstVisibleScrollAnchor(container: HTMLElement): HTMLElement | null {
@@ -117,6 +133,11 @@ interface ScrollRuntime {
   initialized: boolean;
   resizeScheduled: boolean;
   latestRenderRequestRevision: number;
+  // Offset this module last wrote to the container, cleared by the next scroll
+  // event. Scroll events are delivered asynchronously, so content rendered in
+  // between (an async diagram, a late image) can make that event measure as
+  // "not at the bottom" and park the thread on an anchor nobody chose.
+  programmaticScrollTop: number | null;
 }
 
 function createInternalScrollSignals(threadId: string) {
@@ -152,10 +173,17 @@ function createInternalScrollSignals(threadId: string) {
     set(threadScrollPositions$, next);
   });
   const syncThreadScrollPosition$ = command(
-    ({ set }, container: HTMLElement) => {
+    ({ set }, container: HTMLElement, capturePosition: boolean) => {
       if (isAtBottom(container)) {
         set(clearThreadScrollPosition$);
         L.debug("scroll position cleared at bottom", {
+          threadId,
+          scrollTop: container.scrollTop,
+        });
+        return;
+      }
+      if (!capturePosition) {
+        L.debug("programmatic scroll position ignored", {
           threadId,
           scrollTop: container.scrollTop,
         });
@@ -208,7 +236,7 @@ function createScrollNavigationSignals(
     if (!container) {
       throw new Error("Chat scroll container is not mounted");
     }
-    scrollToPosition(container, position);
+    scrollToPosition(runtime, container, position);
     runtime.initialized = true;
   });
 
@@ -218,7 +246,7 @@ function createScrollNavigationSignals(
       throw new Error("Chat scroll container is not mounted");
     }
     set(scroll.clearThreadScrollPosition$);
-    container.scrollTop = container.scrollHeight;
+    applyScrollTop(runtime, container, container.scrollHeight);
     runtime.initialized = true;
   });
 
@@ -227,9 +255,9 @@ function createScrollNavigationSignals(
     if (!container) {
       throw new Error("Chat scroll container is not mounted");
     }
-    container.scrollTop = 0;
+    applyScrollTop(runtime, container, 0);
     runtime.initialized = true;
-    set(scroll.syncThreadScrollPosition$, container);
+    set(scroll.syncThreadScrollPosition$, container, true);
   });
 
   const restoreAfterResize$ = command(({ get, set }) => {
@@ -271,9 +299,9 @@ function createScrollNavigationSignals(
         return;
       }
       if (request.position) {
-        scrollToPosition(container, request.position);
+        scrollToPosition(runtime, container, request.position);
       } else {
-        container.scrollTop = container.scrollHeight;
+        applyScrollTop(runtime, container, container.scrollHeight);
       }
       runtime.initialized = true;
       L.debug("render scroll committed", {
@@ -341,12 +369,21 @@ function createScrollContainerOnRef(
         initialized: runtime.initialized,
       });
 
-      const handleScroll = () => {
+      const handleScroll = (event: Event) => {
         if (!runtime.initialized) {
           L.debug("pre-initialization scroll ignored", { threadId });
           return;
         }
-        set(scroll.syncThreadScrollPosition$, container);
+        if (event.target !== container) {
+          // The listener runs in the capture phase, so nested scrollers (wide
+          // diagrams, code blocks, tables) deliver their scroll events here
+          // too. Where they sit says nothing about where the thread sits.
+          return;
+        }
+        const programmatic =
+          runtime.programmaticScrollTop === container.scrollTop;
+        runtime.programmaticScrollTop = null;
+        set(scroll.syncThreadScrollPosition$, container, !programmatic);
       };
       const scheduleRestoreAfterResize = () => {
         if (!runtime.initialized || runtime.resizeScheduled) {
@@ -389,6 +426,7 @@ function createScrollContainerOnRef(
           );
           set(scroll.clearScrollContainer$, container);
           runtime.initialized = false;
+          runtime.programmaticScrollTop = null;
           L.debug("container unbound", { threadId });
         },
         { once: true },
@@ -404,6 +442,7 @@ export function createChatThreadScrollSignals(
     initialized: false,
     resizeScheduled: false,
     latestRenderRequestRevision: 0,
+    programmaticScrollTop: null,
   };
   const scroll = createInternalScrollSignals(threadId);
   const navigation = createScrollNavigationSignals(threadId, scroll, runtime);
