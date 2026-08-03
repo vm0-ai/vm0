@@ -62,6 +62,10 @@ class FirewallAuthDeadlineExceededError(Exception):
     """Raised when one /firewall/auth request exceeds its total lifetime."""
 
 
+class FirewallAuthProtocolError(Exception):
+    """Raised when the platform returns malformed HTTP without exposing its bytes."""
+
+
 class FirewallAuthApiError(Exception):
     """Raised when /firewall/auth returns a structured error envelope."""
 
@@ -802,6 +806,8 @@ async def fetch_firewall_headers(
                 "Firewall auth fetch deadline exceeded"
             ) from None
         raise
+    except h11.ProtocolError:
+        raise FirewallAuthProtocolError("Firewall auth HTTP protocol error") from None
 
     if not _HTTP_STATUS_SUCCESS_MIN <= response.status < _HTTP_STATUS_REDIRECTION_MIN:
         _raise_firewall_auth_http_error(response, url)

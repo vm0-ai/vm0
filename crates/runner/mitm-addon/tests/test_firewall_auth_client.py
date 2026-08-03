@@ -1098,6 +1098,32 @@ class TestFirewallAuthAsyncTransport:
         assert requests[0].method == "POST"
         assert requests[0].target == "/api/webhooks/agent/firewall/auth"
 
+    async def test_protocol_error_does_not_expose_response_bytes(self, mitm_ctx):
+        sensitive_response_bytes = b"sensitive-resolved-auth-value"
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            await _read_raw_http_request(reader)
+            writer.write(
+                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n"
+                b"Connection: close\r\n\r\n" + sensitive_response_bytes + b"\r\n"
+            )
+            await writer.drain()
+            await _close_test_writer(writer)
+
+        async with _run_test_server(handle_client) as port:
+            with (
+                mitm_ctx(api_url=f"http://127.0.0.1:{port}"),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                pytest.raises(auth_client.FirewallAuthProtocolError) as exc_info,
+            ):
+                await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert str(exc_info.value) == "Firewall auth HTTP protocol error"
+        assert sensitive_response_bytes.decode() not in str(exc_info.value)
+
     async def test_total_deadline_aborts_a_trickling_response(self, mitm_ctx):
         request_received = asyncio.Event()
         peer_closed = asyncio.Event()
