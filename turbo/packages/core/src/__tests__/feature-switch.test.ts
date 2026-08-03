@@ -14,6 +14,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
       true,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.CustomConnectorCliCreate, {}),
     ).toBe(true);
@@ -40,7 +41,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
       false,
     );
-    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
     );
