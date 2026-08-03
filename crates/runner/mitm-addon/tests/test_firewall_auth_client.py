@@ -1117,7 +1117,7 @@ class TestFirewallAuthAsyncTransport:
             with (
                 mitm_ctx(api_url=f"http://127.0.0.1:{port}"),
                 patch.object(platform_api, "VERCEL_BYPASS", ""),
-                pytest.raises(auth_client.FirewallAuthProtocolError) as exc_info,
+                pytest.raises(ValueError, match=r"^Firewall auth HTTP protocol error$") as exc_info,
             ):
                 await auth_client.fetch_firewall_headers(firewall_auth_request())
 
