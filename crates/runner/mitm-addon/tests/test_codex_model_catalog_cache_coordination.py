@@ -263,6 +263,88 @@ async def test_singleflight_rechecks_entry_after_etag_invalidation(real_flow):
     catalog_cache.handle_error(follower)
 
 
+async def test_etag_signal_supersedes_in_flight_owner_and_releases_follower(real_flow):
+    superseded_owner = catalog_flow(real_flow, version="superseded-owner")
+    matching_owner = catalog_flow(real_flow, version="matching-owner")
+    isolated_owner = catalog_flow(
+        real_flow,
+        version="isolated-owner",
+        auth_value="auth-b",
+    )
+    for owner in (superseded_owner, matching_owner, isolated_owner):
+        await prepare_miss(owner)
+
+    follower = catalog_flow(real_flow, version="superseded-owner")
+    follower_prepare = asyncio.create_task(
+        catalog_cache.prepare_request(follower, request_end_stream=True)
+    )
+    await asyncio.sleep(0)
+    assert not follower_prepare.done()
+
+    signal = responses_flow(real_flow, etag='"catalog-v2"')
+    mitm_addon.responseheaders(signal)
+
+    matching_body = b'{"models":[{"slug":"matching"}]}'
+    matching_owner.response = catalog_response(
+        body=matching_body,
+        etag='"catalog-v2"',
+        encoding="br",
+    )
+    assert finish_response(matching_owner)["model_catalog_cache_status"] == (
+        "model_catalog_cold_stored"
+    )
+
+    isolated_body = b'{"models":[{"slug":"isolated"}]}'
+    isolated_owner.response = catalog_response(
+        body=isolated_body,
+        etag='"catalog-v1"',
+        encoding="br",
+    )
+    assert finish_response(isolated_owner)["model_catalog_cache_status"] == (
+        "model_catalog_cold_stored"
+    )
+
+    superseded_owner.response = catalog_response(etag='"catalog-v1"', encoding="br")
+    superseded_telemetry = finish_response(superseded_owner)
+    await asyncio.wait_for(follower_prepare, timeout=0.1)
+
+    validation_latency = superseded_telemetry.pop("model_catalog_cache_validation_latency_ms")
+    assert isinstance(validation_latency, int)
+    assert validation_latency >= 0
+    assert superseded_telemetry == {
+        "model_catalog_cache_status": "model_catalog_cold_not_stored",
+        "model_catalog_cache_bypass_reason": "concurrent_change",
+        "model_catalog_cache_upstream_encoding": "br",
+    }
+    assert follower.response is None
+    assert follower.request.headers["Accept-Encoding"] == "br"
+
+    replacement_body = b'{"models":[{"slug":"replacement"}]}'
+    follower.response = catalog_response(
+        body=replacement_body,
+        etag='"catalog-v2"',
+        encoding="br",
+    )
+    assert finish_response(follower)["model_catalog_cache_status"] == ("model_catalog_cold_stored")
+
+    expected_hits = (
+        (catalog_flow(real_flow, version="superseded-owner"), replacement_body),
+        (catalog_flow(real_flow, version="matching-owner"), matching_body),
+        (
+            catalog_flow(
+                real_flow,
+                version="isolated-owner",
+                auth_value="auth-b",
+            ),
+            isolated_body,
+        ),
+    )
+    for hit, expected_body in expected_hits:
+        await catalog_cache.prepare_request(hit, request_end_stream=True)
+        assert hit.response is not None
+        assert hit.response.content == expected_body
+
+
 async def test_singleflight_waiter_bound_bypasses_excess_requests(real_flow):
     owner = catalog_flow(real_flow, version="waiter-capacity")
     await prepare_miss(owner)
