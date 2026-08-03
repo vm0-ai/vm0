@@ -14,7 +14,7 @@ import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
 import matching
 import platform_api
-from tests.auth_endpoint_helpers import firewall_auth_success_response
+from tests.auth_endpoint_helpers import FakeAuthEndpoint, firewall_auth_success_response
 from tests.auth_state_helpers import cached_headers
 from tests.aws_sigv4_helpers import (
     DEFAULT_SIGV4_TIMESTAMP,
@@ -652,6 +652,52 @@ class TestHandleFirewallRequest:
             await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
+
+    async def test_fetch_admission_saturation_returns_redacted_503(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        encrypted_secrets = "encrypted-sensitive-payload"
+        sandbox_token = "sensitive-sandbox-token"
+        flow = _firewall_flow(real_flow)
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        endpoint = FakeAuthEndpoint()
+        api_entry = _api_entry()
+        vm_info = _vm_info(
+            tmp_path,
+            encrypted_secrets=encrypted_secrets,
+            sandbox_marker=sandbox_token,
+        )
+        allow = _allow(api_entry)
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(auth_cache, "MAX_ADMITTED_FIREWALL_AUTH_FETCHES", 0),
+        ):
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert endpoint.request_count == 0
+        assert flow.response is not None
+        assert flow.response.status_code == 503
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert (
+            flow.metadata[metadata_keys.FIREWALL_ERROR] == auth.FIREWALL_AUTH_FETCH_SATURATED_ERROR
+        )
+        assert flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] is True
+        assert "Authorization" not in flow.request.headers
+        body = json.loads(flow.response.content)
+        assert body == {
+            "error": "firewall_auth_fetch_saturated",
+            "message": "Firewall auth is temporarily saturated",
+            "permission": "github",
+            "base": "https://api.github.com",
+        }
+        log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
+        assert "Firewall auth fetch admission saturated" in log_text
+        assert encrypted_secrets not in log_text
+        assert sandbox_token not in log_text
 
     async def test_failure_returns_502(self, real_flow, headers, mitm_ctx, tmp_path):
         flow = _firewall_flow(real_flow)
