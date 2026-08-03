@@ -2639,12 +2639,10 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
 function ChatThreadEventsMain({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
-  const scrollContentOnRef = useSet(thread.scrollContentOnRef$);
 
   return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
       <div
-        ref={scrollContentOnRef}
         data-message-container
         className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
         style={{ visibility: renderedGroupsReady ? "visible" : "hidden" }}

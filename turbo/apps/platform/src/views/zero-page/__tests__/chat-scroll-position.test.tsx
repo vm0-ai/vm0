@@ -470,7 +470,6 @@ function mockLateGrowingThread({
 }): {
   readonly publishAppendedEvents: () => Promise<void>;
   readonly growContent: (extraScrollHeight: number) => void;
-  readonly growContentAbove: (extraScrollHeight: number) => void;
 } {
   const { publishAppendedEvents } = mockLiveThread({
     threadId,
@@ -478,7 +477,6 @@ function mockLateGrowingThread({
     appendedEvents: simpleUserEvents(threadId, prefix, 9).slice(8),
   });
   let extraScrollHeight = 0;
-  let eventTopShift = 0;
   installChatLayout(
     new Map([
       [
@@ -498,7 +496,7 @@ function mockLateGrowingThread({
           eventRect: (eventId) => {
             const index = Number(eventId.split("-").at(-1));
             return Number.isFinite(index)
-              ? { top: index * 100 + eventTopShift, height: 80 }
+              ? { top: index * 100, height: 80 }
               : undefined;
           },
         },
@@ -509,12 +507,6 @@ function mockLateGrowingThread({
     publishAppendedEvents,
     growContent: (nextExtraScrollHeight: number) => {
       extraScrollHeight = nextExtraScrollHeight;
-    },
-    // Content that grows above the reader — a diagram rendering in history —
-    // pushes every message down by the same amount.
-    growContentAbove: (nextExtraScrollHeight: number) => {
-      extraScrollHeight = nextExtraScrollHeight;
-      eventTopShift = nextExtraScrollHeight;
     },
   };
 }
@@ -764,165 +756,6 @@ describe("chat scroll position", () => {
       );
       expect(document.querySelector("[data-scroll-to-bottom]")).toBeNull();
     });
-  });
-
-  it("follows the tail when content finishes rendering after the tail scroll", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000811";
-    const { growContent } = mockLateGrowingThread({
-      threadId,
-      prefix: "content-growth",
-    });
-    const resizeObserver = installResizeObserver();
-
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-
-    const container = await waitFor(() => {
-      expect(screen.getByText("content-growth message 7")).toBeInTheDocument();
-      const current = chatScrollContainer();
-      expect(current.scrollTop).toBe(700);
-      return current;
-    });
-    const messageContainer = container.querySelector(
-      "[data-message-container]",
-    );
-    if (!messageContainer) {
-      throw new Error("Chat message container not found");
-    }
-    expect(resizeObserver.isObserved(messageContainer)).toBeTruthy();
-
-    // A diagram finishes rendering well after its message was committed. Only
-    // the content box changes, so the container observer never sees it.
-    growContent(400);
-    resizeObserver.trigger(messageContainer);
-
-    // Asserted synchronously: the restore must happen inside the observer
-    // callback, which the browser runs before painting the frame that grew the
-    // content. Waiting for the next frame would paint the grown content at the
-    // old offset first, which the reader sees as a flash.
-    expect(container.scrollTop).toBe(
-      container.scrollHeight - container.clientHeight,
-    );
-  });
-
-  it("keeps following the tail when growing content delivers a second scroll event", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000815";
-    const { growContent } = mockLateGrowingThread({
-      threadId,
-      prefix: "second-scroll",
-    });
-    const resizeObserver = installResizeObserver();
-
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-
-    const container = await waitFor(() => {
-      expect(screen.getByText("second-scroll message 7")).toBeInTheDocument();
-      const current = chatScrollContainer();
-      expect(current.scrollTop).toBe(700);
-      return current;
-    });
-    const messageContainer = container.querySelector(
-      "[data-message-container]",
-    );
-    if (!messageContainer) {
-      throw new Error("Chat message container not found");
-    }
-
-    // Content that keeps growing restores once per frame, and every restore
-    // leaves a scroll event behind. The reader has not touched the thread, so
-    // none of those events may park it — including a second one that arrives
-    // before the next restore writes a new offset.
-    growContent(400);
-    resizeObserver.trigger(messageContainer);
-    fireEvent.scroll(container);
-    growContent(800);
-    fireEvent.scroll(container);
-
-    expect(document.querySelector("[data-scroll-to-bottom]")).toBeNull();
-    resizeObserver.trigger(messageContainer);
-    expect(container.scrollTop).toBe(
-      container.scrollHeight - container.clientHeight,
-    );
-  });
-
-  it("follows the tail when the anchored event stops being rendered", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000816";
-    const { growContent } = mockLateGrowingThread({
-      threadId,
-      prefix: "anchor-gone",
-    });
-    const resizeObserver = installResizeObserver();
-
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-
-    const container = await waitFor(() => {
-      expect(screen.getByText("anchor-gone message 7")).toBeInTheDocument();
-      const current = chatScrollContainer();
-      expect(current.scrollTop).toBe(700);
-      return current;
-    });
-    const messageContainer = container.querySelector(
-      "[data-message-container]",
-    );
-    if (!messageContainer) {
-      throw new Error("Chat message container not found");
-    }
-
-    container.scrollTop = 300;
-    fireEvent.scroll(container);
-    await waitFor(() => {
-      expect(document.querySelector("[data-scroll-to-bottom]")).not.toBeNull();
-    });
-
-    // Sending while a run is active queues the message, and a queued message
-    // moves into the thinking indicator, which renders no anchor. The position
-    // the thread is holding then points at nothing.
-    for (const anchor of Array.from(
-      container.querySelectorAll("[data-chat-scroll-anchor-event-id]"),
-    )) {
-      anchor.remove();
-    }
-
-    growContent(400);
-    resizeObserver.trigger(messageContainer);
-
-    expect(container.scrollTop).toBe(
-      container.scrollHeight - container.clientHeight,
-    );
-    await waitFor(() => {
-      expect(document.querySelector("[data-scroll-to-bottom]")).toBeNull();
-    });
-  });
-
-  it("keeps the visible anchor when content above the reader grows", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000812";
-    const { growContentAbove } = mockLateGrowingThread({
-      threadId,
-      prefix: "grow-above",
-    });
-    const resizeObserver = installResizeObserver();
-
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-
-    const container = await waitFor(() => {
-      expect(screen.getByText("grow-above message 7")).toBeInTheDocument();
-      const current = chatScrollContainer();
-      expect(current.scrollTop).toBe(700);
-      return current;
-    });
-    const messageContainer = container.querySelector(
-      "[data-message-container]",
-    );
-    if (!messageContainer) {
-      throw new Error("Chat message container not found");
-    }
-    scrollTo(container, 420);
-    expect(viewportOffsetTop("grow-above-4")).toBe(-20);
-
-    growContentAbove(400);
-    resizeObserver.trigger(messageContainer);
-
-    expect(viewportOffsetTop("grow-above-4")).toBe(-20);
-    expect(container.scrollTop).toBe(820);
   });
 
   it("keeps following the tail when a nested scroller scrolls after late content growth", async () => {
@@ -1571,7 +1404,7 @@ describe("chat scroll position", () => {
       throw new Error("Chat message container not found");
     }
     expect(resizeObserver.isObserved(container)).toBeTruthy();
-    expect(resizeObserver.isObserved(messageContainer)).toBeTruthy();
+    expect(resizeObserver.isObserved(messageContainer)).toBeFalsy();
     scrollTo(container, 420);
     expect(viewportOffsetTop("resize-preserve-4")).toBe(-20);
 

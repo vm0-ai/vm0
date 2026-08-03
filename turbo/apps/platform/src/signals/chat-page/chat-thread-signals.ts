@@ -111,7 +111,6 @@ export interface ChatThreadSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  scrollContentOnRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   scrollTo$: Command<void, [ThreadScrollPosition]>;
   scrollToBottom$: Command<void, []>;
