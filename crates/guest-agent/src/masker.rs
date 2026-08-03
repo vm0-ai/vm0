@@ -561,6 +561,16 @@ mod tests {
     }
 
     #[test]
+    fn chained_overlapping_secrets_are_fully_masked() {
+        let masker = masker_from_secrets(&["abcdeX", "XmiddleY", "Yvery-sensitive-value"]);
+
+        assert_eq!(
+            masker.mask_string("abcdeXmiddleYvery-sensitive-value"),
+            "***"
+        );
+    }
+
+    #[test]
     fn masks_nested_json() {
         let masker = masker_with(vec!["secret123"]);
         let mut val = json!({
@@ -1108,8 +1118,8 @@ mod tests {
         assert_eq!(masker.mask_string("北京-other"), "北京-other");
     }
 
-    /// Regression for #9778: when one secret is a substring of another,
-    /// the longer match must win so no portion of the longer secret leaks.
+    /// Regression for #9778: when one secret is a substring of another, the
+    /// full containing range must be redacted so no secret fragment leaks.
     #[test]
     fn substring_secret_is_fully_masked() {
         // Short secret registered BEFORE the long one — this is the ordering
@@ -1120,7 +1130,7 @@ mod tests {
         let raw = format!("{short},{long}");
         let masker = SecretMasker::from_raw(&raw);
 
-        // Longer pattern wins: no "my" or "-token-xyz" fragments escape.
+        // The union covers the containing pattern, so no fragments escape.
         assert_eq!(
             masker.mask_string("mysecret-token-xyz appeared in log"),
             "*** appeared in log"
