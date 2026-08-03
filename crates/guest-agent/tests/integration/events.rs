@@ -211,7 +211,7 @@ async fn prepare_event_does_not_capture_session_metadata() {
 }
 
 #[tokio::test]
-async fn send_event_preserves_invalid_session_id_without_checkpoint_metadata() {
+async fn send_event_preserves_rejected_claude_session_ids_without_checkpoint_metadata() {
     let api = SharedApiMock::new().await;
     let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
@@ -219,32 +219,32 @@ async fn send_event_preserves_invalid_session_id_without_checkpoint_metadata() {
     let (sid_file, hist_file) = session_file_paths();
 
     let mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/events")
-            .body_includes(r#""session_id":"bad/session-id""#);
+        when.method(POST).path("/api/webhooks/agent/events");
         then.status(200);
     });
 
-    let session_id = "bad/session-id";
     let masker = SecretMasker::from_raw("");
-    let event = json!({
-        "type": "system",
-        "subtype": "init",
-        "session_id": session_id
-    });
-    let result = send_shared_event(event, 1, &masker).await;
+    for (sequence_number, session_id) in [(1, "session.with.dot".to_string()), (2, "a".repeat(129))]
+    {
+        let event = json!({
+            "type": "system",
+            "subtype": "init",
+            "session_id": session_id
+        });
+        let result = send_shared_event(event, sequence_number, &masker).await;
 
-    assert!(result.is_ok());
-    mock.assert_calls_async(1).await;
-    assert_eq!(masker.mask_string(session_id), session_id);
-    assert!(
-        !std::path::Path::new(&sid_file).exists(),
-        "invalid session id must not be persisted"
-    );
-    assert!(
-        !std::path::Path::new(&hist_file).exists(),
-        "invalid session id must not create a history marker"
-    );
+        assert!(result.is_ok());
+        assert_eq!(masker.mask_string(&session_id), session_id);
+        assert!(
+            !std::path::Path::new(&sid_file).exists(),
+            "rejected session id must not be persisted"
+        );
+        assert!(
+            !std::path::Path::new(&hist_file).exists(),
+            "rejected session id must not create a history marker"
+        );
+    }
+    mock.assert_calls_async(2).await;
 }
 
 #[tokio::test]

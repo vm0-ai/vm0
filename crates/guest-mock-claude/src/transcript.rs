@@ -1,7 +1,8 @@
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+use guest_contracts::claude_session_id::is_valid_claude_session_id;
 use serde_json::{Value, json};
 use std::io::Write;
-use std::path::{Component, Path, PathBuf};
+use std::path::PathBuf;
 use uuid::Uuid;
 
 /// Generate a mock session ID: `mock-{uuid-v7}`.
@@ -9,26 +10,11 @@ pub(crate) fn generate_session_id() -> String {
     format!("mock-{}", Uuid::now_v7())
 }
 
-pub(crate) fn is_valid_session_history_id(session_id: &str) -> bool {
-    if session_id.is_empty()
-        || session_id == "."
-        || session_id == ".."
-        || session_id.contains('/')
-        || session_id.contains('\\')
-        || session_id.chars().any(char::is_control)
-    {
-        return false;
-    }
-
-    let mut components = Path::new(session_id).components();
-    matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none()
-}
-
 /// Build the session history file path and create the directory.
 ///
 /// Claude Code stores session history at: `{home}/.claude/projects/-{path}/{session_id}.jsonl`
 fn build_session_history_path(session_id: &str, home: &str) -> Option<String> {
-    if !is_valid_session_history_id(session_id) {
+    if !is_valid_claude_session_id(session_id) {
         return None;
     }
 
@@ -203,22 +189,21 @@ mod tests {
     }
 
     #[test]
-    fn session_history_id_accepts_safe_file_components() {
+    fn session_history_id_accepts_contract_ids() {
         for session_id in [
             "mock-123",
             "preview-1",
             "550e8400-e29b-41d4-a716-446655440000",
-            "session.with.dot",
         ] {
             assert!(
-                is_valid_session_history_id(session_id),
+                is_valid_claude_session_id(session_id),
                 "expected {session_id} to be accepted"
             );
         }
     }
 
     #[test]
-    fn session_history_path_rejects_unsafe_session_ids() {
+    fn session_history_path_rejects_non_contract_session_ids() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path().to_str().unwrap();
 
@@ -232,13 +217,18 @@ mod tests {
             "nested/path",
             "nested\\path",
             "line\nbreak",
+            "session.with.dot",
+            "é",
         ] {
             assert!(
-                !is_valid_session_history_id(session_id),
+                !is_valid_claude_session_id(session_id),
                 "expected {session_id:?} to be rejected"
             );
             assert_eq!(build_session_history_path(session_id, home), None);
         }
+        let overlong_id = "a".repeat(129);
+        assert!(!is_valid_claude_session_id(&overlong_id));
+        assert_eq!(build_session_history_path(&overlong_id, home), None);
         assert!(!dir.path().join(".claude").exists());
     }
 

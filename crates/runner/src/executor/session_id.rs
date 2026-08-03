@@ -1,18 +1,7 @@
-const MAX_SESSION_ID_LEN: usize = 128;
-const INVALID_SESSION_ID_DIAGNOSTIC_PREVIEW_BYTES: usize = MAX_SESSION_ID_LEN;
-
-/// Returns true if the session ID is short enough for guest filenames and
-/// contains only safe characters (alphanumeric, dash, underscore).
-pub(super) fn is_valid_session_id(id: &str) -> bool {
-    !id.is_empty()
-        && id.len() <= MAX_SESSION_ID_LEN
-        && id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-}
+use guest_contracts::claude_session_id::MAX_CLAUDE_SESSION_ID_BYTES;
 
 pub(super) fn invalid_session_id_diagnostic_preview(id: &str) -> String {
-    let mut end = id.len().min(INVALID_SESSION_ID_DIAGNOSTIC_PREVIEW_BYTES);
+    let mut end = id.len().min(MAX_CLAUDE_SESSION_ID_BYTES);
     while !id.is_char_boundary(end) {
         end -= 1;
     }
@@ -22,10 +11,6 @@ pub(super) fn invalid_session_id_diagnostic_preview(id: &str) -> String {
     } else {
         format!("{preview}...[truncated {} bytes]", id.len() - end)
     }
-}
-
-pub(super) fn canonical_codex_thread_id(id: &str) -> Option<String> {
-    guest_contracts::codex_thread_id::canonical_codex_thread_id(id)
 }
 
 #[cfg(test)]
@@ -50,11 +35,14 @@ mod tests {
 
     #[test]
     fn invalid_session_id_preview_truncates_overlong_values() {
-        let id = "a".repeat(MAX_SESSION_ID_LEN + 2);
+        let id = "a".repeat(MAX_CLAUDE_SESSION_ID_BYTES + 2);
 
         assert_eq!(
             invalid_session_id_diagnostic_preview(&id),
-            format!("{}...[truncated 2 bytes]", "a".repeat(MAX_SESSION_ID_LEN))
+            format!(
+                "{}...[truncated 2 bytes]",
+                "a".repeat(MAX_CLAUDE_SESSION_ID_BYTES)
+            )
         );
     }
 

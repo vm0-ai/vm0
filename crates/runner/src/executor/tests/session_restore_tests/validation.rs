@@ -1,6 +1,7 @@
-use super::super::super::session_id::{canonical_codex_thread_id, is_valid_session_id};
 use super::super::super::session_restore::restore_session;
 use super::*;
+use guest_contracts::claude_session_id::is_valid_claude_session_id;
+use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 
 #[test]
 fn session_id_validation_rejects_path_traversal() {
@@ -13,12 +14,15 @@ fn session_id_validation_rejects_path_traversal() {
         "",
     ];
     for id in invalid_ids {
-        assert!(!is_valid_session_id(id), "expected rejection for: {id:?}");
+        assert!(
+            !is_valid_claude_session_id(id),
+            "expected rejection for: {id:?}"
+        );
     }
 
     let overlong_id = "a".repeat(129);
     assert!(
-        !is_valid_session_id(&overlong_id),
+        !is_valid_claude_session_id(&overlong_id),
         "expected overlong session id rejection"
     );
 }
@@ -32,7 +36,10 @@ fn session_id_validation_accepts_valid_ids() {
         "01961d3a-c0ab-7891-a6d3-9b52cd28716c",
     ];
     for id in valid_ids {
-        assert!(is_valid_session_id(id), "expected acceptance for: {id:?}");
+        assert!(
+            is_valid_claude_session_id(id),
+            "expected acceptance for: {id:?}"
+        );
     }
 }
 
