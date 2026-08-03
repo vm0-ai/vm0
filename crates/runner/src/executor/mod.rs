@@ -9,10 +9,12 @@
 //! kept-alive idle VM.
 //!
 //! Both paths return `ExecuteOutcome` plus a pending `JobTelemetry`
-//! buffer. When `ExecuteOutcome::sandbox` is `Some`, the sandbox is still alive
-//! and the caller decides whether to park it for reuse or destroy it. The
-//! caller also flushes telemetry after firing `provider.complete`, so the
-//! user-visible completion signal is not blocked on best-effort uploads.
+//! buffer. When `ExecuteOutcome::sandbox` is `Some`, the executor transfers
+//! ownership of a still-live sandbox that the caller must finalize through the
+//! runner's park-or-destroy path. Presence alone does not mean the sandbox can
+//! be parked. The caller also flushes telemetry after firing
+//! `provider.complete`, so the user-visible completion signal is not blocked on
+//! best-effort uploads.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -236,12 +238,20 @@ impl ExecutionHooks {
     }
 }
 
-/// Outcome of a job execution, including the sandbox for possible reuse.
+/// Outcome of a job execution and ownership of any sandbox still alive afterward.
 pub struct ExecuteOutcome {
     pub failure: Option<ExecutionFailure>,
-    /// The sandbox after execution. `Some` when the sandbox is still alive
-    /// and eligible for keep-alive parking. `None` when execution failed
-    /// during create/start (sandbox was destroyed inline).
+    /// Sandbox ownership after execution.
+    ///
+    /// `Some` transfers a still-live sandbox to the caller for finalization; it
+    /// does not imply the sandbox is eligible for reuse. Finalization may
+    /// attempt parking only after a zero exit code, no cancellation, an open
+    /// parking gate, and an available reuse key. A failed or rejected park
+    /// attempt still destroys the sandbox.
+    ///
+    /// `None` means no live sandbox ownership is returned, either because no
+    /// sandbox was created or because executor-side cleanup already consumed
+    /// it.
     pub sandbox: Option<Box<dyn Sandbox>>,
     pub source_ip: String,
     pub network_log_session: Option<NetworkLogSession>,
