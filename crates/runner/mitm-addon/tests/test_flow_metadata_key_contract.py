@@ -191,6 +191,17 @@ def test_registered_flow_metadata_guard_flags_direct_literals(tmp_path):
     )
 
 
+def test_registered_flow_metadata_guard_flags_match_or_pattern_keys(tmp_path):
+    source_path = tmp_path / "match_or_pattern_keys.py"
+    _write_python_source(source_path, "match_or_pattern_keys.base.py.txt")
+
+    violations = flow_metadata_key_linter.metadata_key_violations(source_path)
+
+    assert _normalized_violations(source_path, violations) == _expected_lines(
+        "match_or_pattern_keys.expected.txt"
+    )
+
+
 def test_registered_flow_metadata_guard_flags_direct_unbound_mapping_reads(tmp_path):
     source_path = tmp_path / "unbound_calls.py"
     _write_python_source(source_path, "unbound_calls.base.py.txt")
