@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.62.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.5...guest-agent-v0.62.6) (2026-08-03)
+
+
+### Refactoring
+
+* **rust:** centralize base cli agent session id validation ([#24759](https://github.com/vm0-ai/vm0/issues/24759)) ([da34435](https://github.com/vm0-ai/vm0/commit/da34435c6747be672914e4651c29d0abd2b47936))
+
 ## [0.62.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.4...guest-agent-v0.62.5) (2026-08-03)
 
 

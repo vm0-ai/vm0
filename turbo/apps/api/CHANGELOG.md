@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.367.0](https://github.com/vm0-ai/vm0/compare/api-v1.366.1...api-v1.367.0) (2026-08-03)
+
+
+### Features
+
+* **api:** publish canonical runner reuse preference ([#24738](https://github.com/vm0-ai/vm0/issues/24738)) ([8c2db7b](https://github.com/vm0-ai/vm0/commit/8c2db7b17d97d01de5beef22823935bb86af2f06))
+* **browser:** persist browser session screenshots ([#24667](https://github.com/vm0-ai/vm0/issues/24667)) ([3c8faad](https://github.com/vm0-ai/vm0/commit/3c8faadaeef149d2db77910b4a7d1b4547cd4d0d))
+* **core:** enable custom connector features globally ([#24696](https://github.com/vm0-ai/vm0/issues/24696)) ([7ccc87b](https://github.com/vm0-ai/vm0/commit/7ccc87bcfb0e2f51e88dad0fbd64b3bd957ac088))
+* fully enable artifact versioning switches ([#24704](https://github.com/vm0-ai/vm0/issues/24704)) ([e26e2f2](https://github.com/vm0-ai/vm0/commit/e26e2f2e8614d136899fff712adc5aa7d8c3f796))
+
+
+### Bug Fixes
+
+* **api:** accept versioned browser screenshot URLs ([#24762](https://github.com/vm0-ai/vm0/issues/24762)) ([7498cf6](https://github.com/vm0-ai/vm0/commit/7498cf671174b5fdc3a3003d67950b22277273e7))
+
+
+### Performance Improvements
+
+* **api:** align runner claim timing boundaries ([#24731](https://github.com/vm0-ai/vm0/issues/24731)) ([18888ec](https://github.com/vm0-ai/vm0/commit/18888eca288fd1dc77369db95e153ad3e7e6143d))
+* **api:** attribute goal drain latency ([#24757](https://github.com/vm0-ai/vm0/issues/24757)) ([35f35b4](https://github.com/vm0-ai/vm0/commit/35f35b40ea4b54ba7b4608910aeb799bdcb0bcfa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.264.0
+    * @vm0/core bumped to 8.504.0
+    * @vm0/db bumped to 1.162.0
+
 ## [1.366.1](https://github.com/vm0-ai/vm0/compare/api-v1.366.0...api-v1.366.1) (2026-08-03)
 
 
