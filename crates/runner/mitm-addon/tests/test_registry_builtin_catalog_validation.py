@@ -164,7 +164,14 @@ class TestRegistryBuiltinCatalogValidation:
         assert snapshot.unavailable_reason == "cache_invalid"
         assert spy.call_count == 0
 
-    def test_runner_catalog_cache_accepts_valid_template_base(self, tmp_path, mitm_ctx):
+    @pytest.mark.parametrize(
+        "template_whitespace",
+        [" ", "\ufeff"],
+        ids=["space", "byte-order-mark"],
+    )
+    def test_runner_catalog_cache_accepts_valid_template_base(
+        self, tmp_path, mitm_ctx, template_whitespace
+    ):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
         write_multi_vm_registry(
@@ -186,7 +193,13 @@ class TestRegistryBuiltinCatalogValidation:
                     "name": "templated",
                     "apis": [
                         {
-                            "base": "https://${{ vars.TENANT }}.example.com",
+                            "base": (
+                                "https://${{"
+                                + template_whitespace
+                                + "vars.TENANT"
+                                + template_whitespace
+                                + "}}.example.com"
+                            ),
                             "auth": {"headers": {}},
                             "permissions": [{"name": "read", "rules": ["GET /items"]}],
                         }
@@ -276,6 +289,13 @@ class TestRegistryBuiltinCatalogValidation:
     def test_malformed_template_base_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
         firewall = cache_firewall("fallback", "https://cache.example.com")
         firewall["apis"][0]["base"] = "https://${{ secrets.TENANT }}.example.com"
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
+    def test_python_only_template_whitespace_runner_catalog_cache_fails_closed(
+        self, tmp_path, mitm_ctx
+    ):
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["base"] = "https://${{\u0085vars.TENANT\u0085}}.example.com"
         _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
 
     def test_malformed_template_parameter_base_runner_catalog_cache_fails_closed(
