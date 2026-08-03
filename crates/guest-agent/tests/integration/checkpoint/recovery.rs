@@ -137,6 +137,30 @@ async fn recovery_checkpoint_does_not_prune_eligible_codex_history() {
     assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
     prepare_mock.assert_calls_async(0).await;
     checkpoint_mock.assert_calls_async(0).await;
+
+    let source_history = std::fs::read(&history_path).unwrap();
+    let encoded_history = zstd_session_history_for_test(&source_history).unwrap();
+    let encoded_history_path = history_path.with_extension("jsonl.zst");
+    std::fs::write(&encoded_history_path, &encoded_history).unwrap();
+    std::fs::remove_file(&history_path).unwrap();
+
+    let error = create_bounded_recovery_checkpoint(&runtime)
+        .await
+        .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("Session history exceeds maximum size"),
+        "recovery checkpoint must apply the bounded hard limit to reused Codex zstd: {error}"
+    );
+    assert_eq!(
+        std::fs::read(&encoded_history_path).unwrap(),
+        encoded_history
+    );
+    assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
+    prepare_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(0).await;
 }
 
 async fn assert_recovery_checkpoint_derives_claude_history_marker(

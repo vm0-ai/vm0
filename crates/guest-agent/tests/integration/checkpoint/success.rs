@@ -486,7 +486,8 @@ async fn success_checkpoint_uploads_non_utf8_session_history() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
-    let runtime = runtime_from_process_env().unwrap();
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_claude_session_pruning(&mut runtime, true);
     let _files_guard = SessionCheckpointFilesGuard::new();
     let history = b"{\"type\":\"system\"}\nnon-utf8:\xC3(\n".to_vec();
     let _history_dir = write_literal_session_history("success-non-utf8-session", &history).unwrap();
