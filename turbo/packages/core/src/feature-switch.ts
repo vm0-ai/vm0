@@ -126,7 +126,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.JoggAiConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the JoggAI video generation connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
