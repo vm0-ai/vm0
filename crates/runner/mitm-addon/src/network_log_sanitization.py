@@ -2,7 +2,7 @@
 
 import urllib.parse
 
-from runtime_url_parsing import split_runtime_url
+from runtime_url_parsing import split_runtime_url, strip_url_query_and_fragment
 
 _URLSPLIT_LEADING_STRIP_CHARACTERS = "".join(chr(codepoint) for codepoint in range(0x21))
 _URLSPLIT_REMOVABLE_CHARACTERS = "\t\r\n"
@@ -22,16 +22,6 @@ def _sanitize_netloc_for_network_log(netloc: str) -> str:
     if "@" not in netloc:
         return netloc
     return netloc.rsplit("@", 1)[1]
-
-
-def _strip_query_fragment_for_network_log(value: str) -> str:
-    query_start = value.find("?")
-    fragment_start = value.find("#", 0, query_start if query_start >= 0 else len(value))
-    if fragment_start >= 0:
-        return value[:fragment_start]
-    if query_start >= 0:
-        return value[:query_start]
-    return value
 
 
 def _sanitize_url_text_fallback_for_network_log(value: str) -> str:
@@ -92,7 +82,7 @@ def sanitize_url_for_network_log(value: str) -> str:
     is not a general sanitizer for arbitrary captured header values or path
     contents.
     """
-    retained_value = _strip_query_fragment_for_network_log(value)
+    retained_value = strip_url_query_and_fragment(value)
     normalized_value = _normalize_for_urlsplit(retained_value)
     try:
         parts = split_runtime_url(normalized_value)
@@ -109,6 +99,6 @@ def sanitize_url_for_network_log(value: str) -> str:
 
 def sanitize_request_url_for_network_log(value: str) -> str:
     """Preserve a complete request URL while removing URL userinfo."""
-    retained_value = _strip_query_fragment_for_network_log(value)
+    retained_value = strip_url_query_and_fragment(value)
     suffix = value[len(retained_value) :]
     return f"{sanitize_url_for_network_log(retained_value)}{suffix}"

@@ -1,11 +1,16 @@
 """Core firewall dispatch and network policy tests for the request hook."""
 
 import json
+import urllib.parse
+from collections.abc import Iterator
+from contextlib import contextmanager
+from unittest.mock import patch
 
 import pytest
 
 import connector_intent
 import flow_metadata_keys as metadata_keys
+import http_local_responses
 import mitm_addon
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
@@ -17,6 +22,26 @@ from tests.request_handler_helpers import (
     _write_registry,
 )
 from tests.upstream_connection_helpers import seed_server_binding
+
+
+@contextmanager
+def _observe_local_response_parser_inputs() -> Iterator[list[str]]:
+    parsed_urls: list[str] = []
+    real_split_runtime_url = http_local_responses.split_runtime_url
+
+    def observe_runtime_url_parse(value: str) -> urllib.parse.SplitResult:
+        cache_before = urllib.parse.urlsplit.cache_info()
+        parts = real_split_runtime_url(value)
+        assert urllib.parse.urlsplit.cache_info() == cache_before
+        parsed_urls.append(value)
+        return parts
+
+    with patch.object(
+        http_local_responses,
+        "split_runtime_url",
+        side_effect=observe_runtime_url_parse,
+    ):
+        yield parsed_urls
 
 
 async def test_firewall_match_calls_handler(
@@ -205,6 +230,38 @@ async def test_ambiguous_connector_route_fails_before_auth_and_logs_candidates(
     assert network_log_entry["connector_route_reason"] == reason
     assert network_log_entry["connector_route_candidates"] == ["auditor", "primary"]
     assert "firewall_name" not in network_log_entry
+
+
+async def test_ambiguous_response_discards_large_fragment_before_url_parsing(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    reg_path = _write_registry(tmp_path, vm_info=_shared_route_vm(tmp_path))
+    retained_url = "https://shared.example.com/items/123"
+    discarded_suffix = f"#fragment={'x' * 200_000}?sensitive=query"
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        path=f"/items/123{discarded_suffix}",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+        _observe_local_response_parser_inputs() as parsed_urls,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_awaited()
+    assert parsed_urls == [retained_url]
+    assert flow.response is not None
+    assert flow.response.status_code == 409
+    body = json.loads(flow.response.content)
+    assert body["path"] == "/items/123"
+    assert body["url"] == retained_url
 
 
 async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ctx, headers):
@@ -730,23 +787,28 @@ async def test_firewall_block_response_url_preserves_raw_encoded_path_without_qu
         ),
     )
 
+    retained_url = "https://api.github.com/repos/%2e%2e/repo"
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
         host="api.github.com",
-        path="/repos/%2e%2e/repo?token=secret#fragment",
+        path=f"/repos/%2e%2e/repo?token={'x' * 200_000}#fragment",
     )
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        _observe_local_response_parser_inputs() as parsed_urls,
+    ):
         await mitm_addon.request(flow)
 
+    assert parsed_urls == [retained_url]
     assert flow.response is not None
     assert flow.response.status_code == 403
     raw_body = flow.response.content.decode()
     body = json.loads(raw_body)
     assert body["path"] == "/repos/%2e%2e/repo"
-    assert body["url"] == "https://api.github.com/repos/%2e%2e/repo"
-    assert "token=secret" not in raw_body
+    assert body["url"] == retained_url
+    assert "token=" not in raw_body
     assert "fragment" not in raw_body
 
 
