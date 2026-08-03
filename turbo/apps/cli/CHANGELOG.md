@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.274.11](https://github.com/vm0-ai/vm0/compare/cli-v9.274.10...cli-v9.274.11) (2026-08-03)
+
+
+### Bug Fixes
+
+* **cli:** bind connector permission requests to diagnostics ([#24719](https://github.com/vm0-ai/vm0/issues/24719)) ([d2f2bf9](https://github.com/vm0-ai/vm0/commit/d2f2bf95f6d480e8cdb9ee78a34b8bc685ebdc5a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.263.1
+    * @vm0/core bumped to 8.503.1
+
 ## [9.274.10](https://github.com/vm0-ai/vm0/compare/cli-v9.274.9...cli-v9.274.10) (2026-08-03)
 
 
