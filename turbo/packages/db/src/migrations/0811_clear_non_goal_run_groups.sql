@@ -1,5 +1,5 @@
--- Custom SQL migration file
 -- vm0:non-transactional
+-- Custom SQL migration file
 -- Existing automation runs used run_group_id as a presentation hint. Goal
 -- continuations are now the only grouped runs, so clear every other value in
 -- small transactions while normal readers and writers continue.

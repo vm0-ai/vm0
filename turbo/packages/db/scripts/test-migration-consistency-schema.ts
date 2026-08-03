@@ -18528,8 +18528,8 @@ async function validateRunEventSequenceNumberRollout(): Promise<void> {
   }
 }
 
-const GOAL_ONLY_RUN_GROUPS_PREVIOUS_MIGRATION = 809;
-const GOAL_ONLY_RUN_GROUPS_MIGRATION = 810;
+const GOAL_ONLY_RUN_GROUPS_PREVIOUS_MIGRATION = 810;
+const GOAL_ONLY_RUN_GROUPS_MIGRATION = 811;
 
 async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
   console.log("=== Validate goal-only run group cleanup ===\n");
@@ -18696,7 +18696,7 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
             "run_group_id",
             "event_type",
             "content",
-            "sequence_number",
+            "run_event_sequence_number",
             "seq_id"
           )
           VALUES
@@ -18798,7 +18798,7 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
             "run_group_id",
             "event_type",
             "content",
-            "sequence_number",
+            "run_event_sequence_number",
             "seq_id"
           )
           VALUES ($1, $2, $3, $4, 'output.message', 'draining result', 1, 3)
