@@ -588,6 +588,45 @@ class TestXConnectorErrorPipeline:
         assert "connector_response_finish" not in flow.metadata
         assert "connector_response_report_on_interruption" not in flow.metadata
 
+    @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
+    def test_full_pipeline_complete_compressed_stream_error_reports_verified_rows(
+        self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api, encoding_case
+    ):
+        """A connection error still bills rows from a verified compressed member."""
+        flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = encoding_case
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(
+            _compress_body(
+                encoding_case,
+                b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n{"data":{"id":"2"}}\n',
+            )
+        )
+        assert flow.metadata[metadata_keys.X_NDJSON_STATE]["data_count"] == 2
+        flow.error = Error("connection reset by peer")
+
+        with usage_webhook_api() as webhook:
+            mitm_addon.error(flow)
+            usage.flush_usage_events(trigger="test")
+
+        payloads = webhook.usage_events()
+        by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
+        assert webhook.request_count == 1
+        assert len(payloads) == len(by_cat)
+        assert by_cat == {"posts.read": 2, "user.read": 1}
+
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        entries = read_jsonl_entries_after_flush(proxy_log)
+        assert any(entry["type"] == "connection_error" for entry in entries)
+        assert all("unparseable" not in entry["message"].lower() for entry in entries)
+        assert all("parse_error" not in entry for entry in entries)
+        assert "connector_response_finish" not in flow.metadata
+        assert "connector_response_report_on_interruption" not in flow.metadata
+        assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
+        assert flow.response.stream is False
+
     def test_full_pipeline_stream_error_midflight(
         self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api
     ):
