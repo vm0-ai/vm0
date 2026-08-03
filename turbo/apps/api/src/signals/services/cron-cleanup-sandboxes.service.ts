@@ -548,15 +548,10 @@ export const cleanupSandboxes$ = command(
     signal.throwIfAborted();
     const drainedCount = await set(drainStaleQueues$, signal);
     signal.throwIfAborted();
-    await tapError(
-      set(
-        drainStaleChatThreadQueues$,
-        { dispatchFailedCallbacks: dispatchFailedRunCallbacks },
-        signal,
-      ),
-      (error) => {
-        L.error("Failed to drain stale chat thread queues", { error });
-      },
+    await set(
+      drainStaleChatThreadQueues$,
+      { dispatchFailedCallbacks: dispatchFailedRunCallbacks },
+      signal,
     );
     signal.throwIfAborted();
     await tapError(set(drainStaleCanonicalSlackIngress$, signal), (error) => {

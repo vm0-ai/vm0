@@ -12,7 +12,6 @@ import { describe, expect, it } from "vitest";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import {
-  decryptChatEventInputParamsFixture,
   findAgentphoneChatEventByPromptFixture,
   readChatEventContextFixture,
 } from "../../../test-fixtures/chat-events";
@@ -634,15 +633,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     const secondEvent = await findAgentphoneChatEventByPromptFixture(
       "second queued prompt",
     );
-    if (!secondEvent || !actor.orgId) {
-      throw new Error("Expected pending AgentPhone queue item owner");
+    if (!secondEvent) {
+      throw new Error("Expected pending AgentPhone queue item");
     }
-    await expect(
-      decryptChatEventInputParamsFixture(secondEvent.eventId, {
-        orgId: actor.orgId,
-        userId: actor.userId,
-      }),
-    ).resolves.toStrictEqual({ version: 1 });
     await ap.postAgentPhoneInboundMessage({
       channel: "sms",
       from: phone,

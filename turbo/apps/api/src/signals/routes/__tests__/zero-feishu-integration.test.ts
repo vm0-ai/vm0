@@ -29,10 +29,8 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { extractFileFromTarGz } from "../../../lib/tar";
 import { server } from "../../../mocks/server";
 import {
-  decryptChatEventInputParamsFixture,
-  findPendingChatEventInputParamsByPromptFixture,
+  findPendingChatEventByPromptFixture,
   readChatEventContextFixture,
-  readChatEventInputParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
@@ -3004,24 +3002,13 @@ describe("Feishu integration", () => {
       ),
     ).toBeFalsy();
     const queuedFeishuParams =
-      await findPendingChatEventInputParamsByPromptFixture(secondPrompt);
+      await findPendingChatEventByPromptFixture(secondPrompt);
     expect(queuedFeishuParams).toMatchObject({
       eventId: expect.any(String),
-      encryptedParams: expect.any(String),
     });
     if (!queuedFeishuParams) {
-      throw new Error("Expected queued canonical Feishu transport params");
+      throw new Error("Expected queued canonical Feishu event");
     }
-    const secondOrgId = requireValue(
-      secondActor.orgId,
-      "Expected the second Feishu actor organization",
-    );
-    await expect(
-      decryptChatEventInputParamsFixture(queuedFeishuParams.eventId, {
-        orgId: secondOrgId,
-        userId: secondActor.userId,
-      }),
-    ).resolves.toStrictEqual({ version: 1 });
     await runsApi.heartbeatRunner(runnerGroup);
     const firstClaim = await runsApi.claimRunnerJob(firstRun.id);
     const firstCliSessionId = `bdd-feishu-canonical-group-${firstRun.id}`;
@@ -3034,9 +3021,6 @@ describe("Feishu integration", () => {
     });
 
     const secondRun = await findRun(secondActor, secondPrompt);
-    await expect(
-      readChatEventInputParamsFixture(queuedFeishuParams.eventId),
-    ).resolves.toBeNull();
     await runsApi.heartbeatRunner(runnerGroup);
     const secondClaim = await runsApi.claimRunnerJob(secondRun.id);
     expect(secondClaim.prompt).toBe(secondPrompt);

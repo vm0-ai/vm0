@@ -421,7 +421,6 @@ export interface LoadedChatEventReplacementTarget extends StoredChatEventContext
   readonly chatThreadId: string;
   readonly createdAt: Date;
   readonly eventType: NonNullable<ChatEventInsert["eventType"]>;
-  readonly encryptedParams: string | null;
 }
 
 type NewDisplayContext =
@@ -1166,13 +1165,8 @@ export async function replaceChatEvent(
       eventType: chatEvents.eventType,
       contextType: chatEvents.contextType,
       contextId: chatEvents.contextId,
-      encryptedParams: chatEventInputParams.encryptedParams,
     })
     .from(chatEvents)
-    .leftJoin(
-      chatEventInputParams,
-      eq(chatEventInputParams.eventId, chatEvents.id),
-    )
     .where(eq(chatEvents.id, eventId))
     .limit(1);
   if (!target) {
@@ -1206,28 +1200,18 @@ export async function replaceLoadedChatEvent(
     );
   }
 
-  const replacementWithParams =
-    isPendingInputEvent(replacement) && target.encryptedParams
-      ? {
-          ...replacement,
-          encryptedParams:
-            "encryptedParams" in replacement && replacement.encryptedParams
-              ? replacement.encryptedParams
-              : target.encryptedParams,
-        }
-      : replacement;
   const replacementId = replacement.id ?? randomUUID();
   const { pointer: contextPointer, displayContext } = replacementContext(
     target,
     replacementId,
-    replacementWithParams,
+    replacement,
   );
   const seqId = await reserveChatEventSeqIds(tx, replacement.chatThreadId, 1);
   const rows = await tx
     .insert(chatEvents)
     .values({
       ...persistedChatEventValues(
-        { ...replacementWithParams, createdAt },
+        { ...replacement, createdAt },
         {
           id: replacementId,
           ...contextPointer,
@@ -1250,7 +1234,7 @@ export async function replaceLoadedChatEvent(
   if (displayContext) {
     await insertDisplayContext(tx, displayContext, inserted.createdAt);
   }
-  await insertEventInputParams(tx, inserted.id, replacementWithParams);
+  await insertEventInputParams(tx, inserted.id, replacement);
   if (options?.preserveAssetRefs !== false) {
     await tx
       .insert(chatEventAssetRefs)

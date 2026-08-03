@@ -85,7 +85,6 @@ import {
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
-  readChatEventInputParamsFixture,
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
@@ -5784,7 +5783,6 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       [201],
     );
     expect(queued.body).toMatchObject({ runId: null });
-    await expect(readChatEventInputParamsFixture(queuedId)).resolves.toBeNull();
     // Completing the anchor run promotes the queued message into a fresh
     // run whose prompt carries the resolved attachment references.
     chatCallbacks.mockChatOutputEvents([]);
@@ -5811,7 +5809,6 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     if (!promoted?.runId) {
       throw new Error("Expected the queued message to auto-send into a run");
     }
-    await expect(readChatEventInputParamsFixture(queuedId)).resolves.toBeNull();
     expect(promoted.content).toBeNull();
     expect(chatEventDisplayText(promoted)).toBe("queued with attachment");
     expect(promoted.attachFiles).toMatchObject([
@@ -6283,21 +6280,11 @@ describe("CHAT-02: shared user message queue", () => {
       [201],
     );
     expect(previewQueued.body).toMatchObject({ runId: null });
-    await expect(
-      readChatEventInputParamsFixture(previewMessageId),
-    ).resolves.toBeNull();
-
     const replayedPreviewMessageId = randomUUID();
     await replayPendingChatInputQueueEventFixture({
       eventId: previewMessageId,
       replacementId: replayedPreviewMessageId,
     });
-    await expect(
-      readChatEventInputParamsFixture(previewMessageId),
-    ).resolves.toBeNull();
-    await expect(
-      readChatEventInputParamsFixture(replayedPreviewMessageId),
-    ).resolves.toBeNull();
     const mockMessageId = randomUUID();
     const mockQueued = await chat.requestSendEvent(
       actor,
@@ -6311,10 +6298,6 @@ describe("CHAT-02: shared user message queue", () => {
       [201],
     );
     expect(mockQueued.body).toMatchObject({ runId: null });
-    await expect(
-      readChatEventInputParamsFixture(mockMessageId),
-    ).resolves.toBeNull();
-
     await updateFeatureSwitchesForUser(context, actorWithOrg, {
       [FeatureSwitchKey.RealAgentInPreview]: true,
     });
@@ -6350,9 +6333,6 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(previewClaim.claim.prompt).toContain(`[ID] ${previewFileId}`);
     expect(previewClaim.claim.realAgentInPreview).toBeTruthy();
-    await expect(
-      readChatEventInputParamsFixture(replayedPreviewMessageId),
-    ).resolves.toBeNull();
     await updateFeatureSwitchesForUser(context, actorWithOrg, {
       [FeatureSwitchKey.RealAgentInPreview]: false,
     });

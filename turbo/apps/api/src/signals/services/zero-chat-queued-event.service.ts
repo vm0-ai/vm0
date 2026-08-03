@@ -3,7 +3,6 @@ import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import { command } from "ccstate";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
-import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   chatEvents,
   type ChatEventAttachFileMetadata,
@@ -58,10 +57,7 @@ import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
-import {
-  decryptPersistentSecretsMap,
-  encryptPersistentSecretsMap,
-} from "./crypto.utils";
+import { encryptPersistentSecretsMap } from "./crypto.utils";
 import { noGoalChangeAfterQueueEvent } from "./chat-goal-queue.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
@@ -91,7 +87,6 @@ type QueuedUserMessageRunParams = z.infer<
 
 const queuedChatEvent = alias(chatEvents, "queued_chat_event");
 const queuedChatEventRevoker = alias(chatEvents, "queued_chat_event_revoker");
-const queuedEncryptedParams = chatEventInputParams.encryptedParams;
 const queueFirstReplacementTargetFields = {
   id: chatEvents.id,
   chatThreadId: chatEvents.chatThreadId,
@@ -99,7 +94,6 @@ const queueFirstReplacementTargetFields = {
   eventType: chatEvents.eventType,
   contextType: chatEvents.contextType,
   contextId: chatEvents.contextId,
-  encryptedParams: queuedEncryptedParams,
 } as const;
 
 export interface QueuedUserMessage {
@@ -121,7 +115,6 @@ export interface QueuedUserMessage {
     | "agentphone"
     | "github"
     | "workflow-schedule";
-  readonly encryptedParams: string | null;
 }
 
 export type QueueFirstRunAssociation =
@@ -195,21 +188,6 @@ export async function encryptQueuedUserMessageRunParams(
     throw new Error("Failed to encrypt queued user message run params");
   }
   return encrypted;
-}
-
-export async function decryptQueuedUserMessageRunParams(
-  encryptedParams: string | null,
-  ctx: { readonly orgId: string; readonly userId: string },
-): Promise<QueuedUserMessageRunParams | null> {
-  if (!encryptedParams) {
-    return null;
-  }
-  const decrypted = await decryptPersistentSecretsMap(encryptedParams, ctx);
-  const raw = decrypted?.[USER_MESSAGE_QUEUE_RUN_PARAMS_KEY];
-  if (!raw) {
-    return null;
-  }
-  return queuedUserMessageRunParamsSchema.parse(JSON.parse(raw) as unknown);
 }
 
 export const resolveAttachFileMetadata$ = command(
@@ -312,14 +290,9 @@ export async function loadNextUnclaimedQueuedUserMessage(
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
       triggerSource: chatEvents.triggerSource,
-      encryptedParams: queuedEncryptedParams,
     })
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
-    .leftJoin(
-      chatEventInputParams,
-      eq(chatEventInputParams.eventId, chatEvents.id),
-    )
     .where(
       and(
         eq(chatEvents.id, head.id),
@@ -380,7 +353,6 @@ function replacementTargetFromQueueHead(
     eventType: head.eventType,
     contextType: head.contextType,
     contextId: head.contextId,
-    encryptedParams: head.encryptedParams,
   };
 }
 
@@ -397,10 +369,6 @@ async function resolveUserQueueFirstClaimSnapshot(
       triggerSource: chatEvents.triggerSource,
     })
     .from(chatEvents)
-    .leftJoin(
-      chatEventInputParams,
-      eq(chatEventInputParams.eventId, chatEvents.id),
-    )
     .where(
       and(
         eq(chatEvents.chatThreadId, args.threadId),
@@ -449,10 +417,6 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
       workflowName: zeroWorkflows.name,
     })
     .from(chatEvents)
-    .leftJoin(
-      chatEventInputParams,
-      eq(chatEventInputParams.eventId, chatEvents.id),
-    )
     .leftJoin(
       chatAutomationContext,
       and(
@@ -537,10 +501,6 @@ async function resolveGoalQueueFirstClaimSnapshot(
       goalBrief: chatGoalContext.objectiveBrief,
     })
     .from(chatEvents)
-    .leftJoin(
-      chatEventInputParams,
-      eq(chatEventInputParams.eventId, chatEvents.id),
-    )
     .leftJoin(
       threadGoals,
       and(

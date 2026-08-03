@@ -38,7 +38,6 @@ import {
   holdChatEventQueueAdmissionLockFixture,
   holdOrgAdmissionLockFixture,
   readChatEventContextFixture,
-  readChatEventInputParamsFixture,
   setQueuedUserMessageCreatedAtFixture,
   setWorkflowQueueEventCreatedAtFixture,
 } from "../../../test-fixtures/chat-events";
@@ -622,12 +621,6 @@ describe("workflow queue", () => {
     if (!secondEvent || !thirdEvent) {
       throw new Error("Expected two pending workflow queue events");
     }
-    await expect(
-      readChatEventInputParamsFixture(secondEvent.id),
-    ).resolves.toBeNull();
-    await expect(
-      readChatEventInputParamsFixture(thirdEvent.id),
-    ).resolves.toBeNull();
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
       firstRunId,
     ]);
@@ -638,17 +631,11 @@ describe("workflow queue", () => {
     await completeRunThroughSandbox(scenario, firstRunId);
     const afterFirst = await workflowRunIds(automation.threadId);
     expect(afterFirst).toHaveLength(2);
-    await expect(
-      readChatEventInputParamsFixture(secondEvent.id),
-    ).resolves.toBeNull();
     const secondClaim = await completeRunThroughSandbox(
       scenario,
       afterFirst[1]!,
     );
     expect(secondClaim.apiStartTime).toBe(dequeuedAt);
-    await expect(
-      readChatEventInputParamsFixture(thirdEvent.id),
-    ).resolves.toBeNull();
   });
 
   it("keeps workflow events queued until cancellation recovery completes", async () => {
@@ -853,9 +840,6 @@ describe("workflow queue", () => {
     ).resolves.toMatchObject({
       automationId: created.body.id,
     });
-    await expect(
-      readChatEventInputParamsFixture(coalescedEvent.id),
-    ).resolves.toBeNull();
     await completeRunThroughSandbox(scenario, busyRunId);
     const afterBusy = await workflowRunIds(webhookAutomation.threadId);
     expect(afterBusy).toHaveLength(2);
@@ -1141,10 +1125,6 @@ describe("workflow queue", () => {
     if (!rejectedEvent?.revokesEventId) {
       throw new Error("Expected the rejected event to revoke its queue input");
     }
-    await expect(
-      readChatEventInputParamsFixture(rejectedEvent.revokesEventId),
-    ).resolves.toBeNull();
-
     await runsApi.ensureOrgModelProvider(scenario.actor);
     const runId = await expectAcceptedRunId(
       await postWorkflowWebhook(automation, "next trigger"),

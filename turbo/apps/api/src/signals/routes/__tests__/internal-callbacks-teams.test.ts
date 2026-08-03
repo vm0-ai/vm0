@@ -14,10 +14,8 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
-  decryptChatEventInputParamsFixture,
-  findPendingChatEventInputParamsByPromptFixture,
+  findPendingChatEventByPromptFixture,
   readChatEventContextFixture,
-  readChatEventInputParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
@@ -645,13 +643,12 @@ describe("Teams chat callbacks", () => {
       text: queuedPrompt,
     });
     const queuedParams =
-      await findPendingChatEventInputParamsByPromptFixture(queuedPrompt);
+      await findPendingChatEventByPromptFixture(queuedPrompt);
     expect(queuedParams).toMatchObject({
       eventId: expect.any(String),
-      encryptedParams: expect.any(String),
     });
     if (!queuedParams) {
-      throw new Error("Expected queued Teams transport params");
+      throw new Error("Expected queued Teams event");
     }
     await expect(
       readChatEventContextFixture(queuedParams.eventId),
@@ -678,22 +675,12 @@ describe("Teams chat callbacks", () => {
       teamsSenderPrincipalName: "ada@example.com",
       teamsConnectionId: expect.any(String),
     });
-    await expect(
-      decryptChatEventInputParamsFixture(queuedParams.eventId, {
-        orgId: teams.fixture.orgId,
-        userId: teams.fixture.userId,
-      }),
-    ).resolves.toStrictEqual({ version: 1 });
-
     await completeSandboxRun({
       runId: firstRunId,
       sandboxToken: firstClaim.sandboxToken,
       exitCode: 0,
     });
     const queuedRunId = await runIdForPrompt(teams.actor, queuedPrompt);
-    await expect(
-      readChatEventInputParamsFixture(queuedParams.eventId),
-    ).resolves.toBeNull();
     const queuedClaim = await claimTeamsRun({
       runnerGroup: teams.runnerGroup,
       runId: queuedRunId,
@@ -740,9 +727,9 @@ describe("Teams chat callbacks", () => {
       omitRecipient: true,
     });
     const queuedParams =
-      await findPendingChatEventInputParamsByPromptFixture(queuedPrompt);
+      await findPendingChatEventByPromptFixture(queuedPrompt);
     if (!queuedParams) {
-      throw new Error("Expected queued Teams bot fallback params");
+      throw new Error("Expected queued Teams bot fallback event");
     }
     await expect(
       readChatEventContextFixture(queuedParams.eventId),
@@ -750,13 +737,6 @@ describe("Teams chat callbacks", () => {
       teamsBotId: null,
       teamsBotName: null,
     });
-    await expect(
-      decryptChatEventInputParamsFixture(queuedParams.eventId, {
-        orgId: teams.fixture.orgId,
-        userId: teams.fixture.userId,
-      }),
-    ).resolves.toStrictEqual({ version: 1 });
-
     await completeSandboxRun({
       runId: firstRunId,
       sandboxToken: firstClaim.sandboxToken,

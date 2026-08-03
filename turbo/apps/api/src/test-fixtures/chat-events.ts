@@ -13,7 +13,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
-import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
 import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
@@ -36,7 +35,6 @@ import {
 } from "../signals/services/zero-chat-event.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
-import { decryptQueuedUserMessageRunParams } from "../signals/services/zero-chat-queued-event.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -54,11 +52,6 @@ const blockedByPidRowSchema = z.object({ blocked: z.boolean() });
 const blockedQueryRowSchema = z.object({ query: z.string() });
 
 type ChatThreadBlockedStatementKind = "select_for_update" | "update" | "other";
-
-interface ChatEventInputParamsFixture {
-  readonly eventId: string;
-  readonly encryptedParams: string;
-}
 
 interface ChatEventContextFixture {
   readonly id: string;
@@ -644,31 +637,6 @@ export async function seedChatEventAnnotationProjectionFixture(
   return { claimedPendingId, rejectedPendingId };
 }
 
-export async function readChatEventInputParamsFixture(
-  eventId: string,
-): Promise<ChatEventInputParamsFixture | null> {
-  const [row] = await db()
-    .select({
-      eventId: chatEventInputParams.eventId,
-      encryptedParams: chatEventInputParams.encryptedParams,
-    })
-    .from(chatEventInputParams)
-    .where(eq(chatEventInputParams.eventId, eventId))
-    .limit(1);
-  return row ?? null;
-}
-
-export async function decryptChatEventInputParamsFixture(
-  eventId: string,
-  ctx: { readonly orgId: string; readonly userId: string },
-) {
-  const row = await readChatEventInputParamsFixture(eventId);
-  if (!row) {
-    return null;
-  }
-  return await decryptQueuedUserMessageRunParams(row.encryptedParams, ctx);
-}
-
 async function pendingTelegramEventContext(eventId: string) {
   const [row] = await db()
     .select({
@@ -779,17 +747,15 @@ export async function findAgentphoneChatEventByPromptFixture(
   return row ?? null;
 }
 
-export async function findPendingChatEventInputParamsByPromptFixture(
+export async function findPendingChatEventByPromptFixture(
   prompt: string,
-): Promise<ChatEventInputParamsFixture | null> {
+): Promise<{ readonly eventId: string } | null> {
   const rows = await db()
     .select({
-      eventId: chatEventInputParams.eventId,
-      encryptedParams: chatEventInputParams.encryptedParams,
+      eventId: chatEvents.id,
       userMessage: chatEvents.userMessage,
     })
-    .from(chatEventInputParams)
-    .innerJoin(chatEvents, eq(chatEvents.id, chatEventInputParams.eventId))
+    .from(chatEvents)
     .where(isNull(chatEvents.runId));
   const row = rows.find((candidate) => {
     return candidate.userMessage?.parts.some((part) => {
@@ -799,27 +765,39 @@ export async function findPendingChatEventInputParamsByPromptFixture(
   return row ?? null;
 }
 
-/**
- * Makes one pending queue item fail while loading its private run parameters.
- * Product APIs cannot persist malformed encrypted state.
- */
-export async function invalidatePendingChatEventInputParamsFixture(
-  eventId: string,
-): Promise<void> {
-  const rows = await db()
-    .insert(chatEventInputParams)
-    .values({
-      eventId,
-      encryptedParams: "invalid-encrypted-queue-params",
-    })
-    .onConflictDoUpdate({
-      target: chatEventInputParams.eventId,
-      set: { encryptedParams: "invalid-encrypted-queue-params" },
-    })
-    .returning({ eventId: chatEventInputParams.eventId });
-  if (rows.length !== 1) {
-    throw new Error("Expected one pending queue item to become invalid");
-  }
+/** Inserts a pending Slack event, then removes the context its claim requires. */
+export async function insertQueuedSlackMissingContextFixture(args: {
+  readonly threadId: string;
+  readonly content: string;
+}): Promise<string> {
+  return await db().transaction(async (tx) => {
+    const event = await insertChatEvent(tx, {
+      chatThreadId: args.threadId,
+      eventType: "input.prompt",
+      userMessage: createUserMessageDocument({ text: args.content }),
+      runId: null,
+      triggerSource: "slack",
+      slackContext: {
+        messagePermalink: null,
+        channelId: "C_MONITOR_FAILURE",
+        messageTs: "1.000001",
+        conversationContext: "",
+        messageText: args.content,
+        messageFiles: [],
+        mentionDisplayNames: {},
+        senderDisplayName: "Queue Monitor Fixture",
+        senderUserId: "U_MONITOR_FAILURE",
+        channelType: "channel",
+        threadTs: "1.000001",
+        routeThreadTs: null,
+      },
+    });
+    if (!event) {
+      throw new Error("Failed to insert queued Slack fixture");
+    }
+    await tx.delete(chatSlackContext).where(eq(chatSlackContext.id, event.id));
+    return event.id;
+  });
 }
 
 export async function replayPendingChatInputQueueEventFixture(args: {

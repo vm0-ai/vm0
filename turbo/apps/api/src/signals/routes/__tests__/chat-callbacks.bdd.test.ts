@@ -24,7 +24,7 @@ import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
-  invalidatePendingChatEventInputParamsFixture,
+  insertQueuedSlackMissingContextFixture,
   readChatEventContextFixture,
   removeAcknowledgedCancellationLifecycleFixture,
 } from "../../../test-fixtures/chat-events";
@@ -2547,10 +2547,9 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     });
     await claimChatRun(runnerGroup, poisonedRun.runId);
     await claimChatRun(runnerGroup, healthyRun.runId);
-    const poisonedEventId = await queueChatEvent(actor, {
-      agentId,
+    const poisonedEventId = await insertQueuedSlackMissingContextFixture({
       threadId: poisonedRun.threadId,
-      prompt: "fail this expired recovery drain",
+      content: "fail this expired recovery drain",
     });
     const healthyEventId = await queueChatEvent(actor, {
       agentId,
@@ -2561,8 +2560,6 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     await api.requestCancelRun(actor, poisonedRun.runId, [200]);
     await api.requestCancelRun(actor, healthyRun.runId, [200]);
     await flushWaitUntilForTest();
-    await invalidatePendingChatEventInputParamsFixture(poisonedEventId);
-
     mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
     await accept(
       cancellationRecoveryCronClient().reconcile({
