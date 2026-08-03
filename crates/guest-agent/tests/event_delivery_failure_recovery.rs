@@ -134,8 +134,7 @@ async fn run_event_failure_case(
             .json_body(json!({"checkpointId": "event-delivery-recovery-checkpoint"}));
     });
 
-    let output = tokio::time::timeout(
-        Duration::from_secs(20),
+    let output = common::command_output_with_timeout(
         Command::new(env!("CARGO_BIN_EXE_guest-agent"))
             .env_clear()
             .env("VM0_TEST_DISABLE_HTTP_RETRY_DELAY", "1")
@@ -164,11 +163,11 @@ async fn run_event_failure_case(
             .env(
                 guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
                 &runtime_dir,
-            )
-            .output(),
+            ),
+        Duration::from_secs(20),
+        "guest-agent exceeded its finalization budget",
     )
-    .await
-    .map_err(|_| io::Error::other("guest-agent exceeded its finalization budget"))??;
+    .await?;
 
     assert!(events.calls_async().await >= 3);
     prepare.assert_calls_async(1).await;
