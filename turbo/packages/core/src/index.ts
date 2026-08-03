@@ -730,13 +730,11 @@ export {
 } from "./frameworks";
 export { FeatureSwitchKey } from "./feature-switch-key";
 export {
+  filterFeatureSwitchOverrides,
   getAllFeatureStates,
-  filterUserOverridableFeatureSwitchOverrides,
   getFeatureSwitchDescriptions,
   getFeatureSwitchMetadata,
-  getUserOverridableFeatureSwitchKeys,
   isFeatureEnabled,
-  isUserOverridableFeatureSwitch,
   type FeatureSwitch,
   type FeatureSwitchContext,
   type FeatureSwitchMetadata,

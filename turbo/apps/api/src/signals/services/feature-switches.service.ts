@@ -1,6 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import {
-  filterUserOverridableFeatureSwitchOverrides,
+  filterFeatureSwitchOverrides,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -26,12 +26,11 @@ function splitFeatureSwitchesByScope(switches: Record<string, boolean>): {
   readonly userSwitches: Record<string, boolean>;
   readonly orgSwitches: Record<string, boolean>;
 } {
-  const userOverridableSwitches =
-    filterUserOverridableFeatureSwitchOverrides(switches);
+  const registeredSwitches = filterFeatureSwitchOverrides(switches);
   const userSwitches: Record<string, boolean> = {};
   const orgSwitches: Record<string, boolean> = {};
 
-  for (const [key, value] of Object.entries(userOverridableSwitches)) {
+  for (const [key, value] of Object.entries(registeredSwitches)) {
     if (isOrgScopedFeatureSwitchKey(key)) {
       orgSwitches[key] = value;
     } else {
@@ -80,7 +79,7 @@ export function userFeatureSwitchOverridesFromRows(
   let orgSwitches: Record<string, boolean> = {};
 
   for (const row of rows) {
-    const switches = filterUserOverridableFeatureSwitchOverrides(row.switches);
+    const switches = filterFeatureSwitchOverrides(row.switches);
     if (row.userId === userId) {
       userSwitches = switches;
     }
@@ -213,8 +212,8 @@ async function upsertFeatureSwitches(
   const existing =
     (existingRow?.switches as Record<string, boolean> | undefined) ?? {};
   const merged: Record<string, boolean> = {
-    ...filterUserOverridableFeatureSwitchOverrides(existing),
-    ...filterUserOverridableFeatureSwitchOverrides(switches),
+    ...filterFeatureSwitchOverrides(existing),
+    ...filterFeatureSwitchOverrides(switches),
   };
   const now = nowDate();
 

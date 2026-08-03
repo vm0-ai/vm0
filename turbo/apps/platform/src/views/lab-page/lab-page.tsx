@@ -2,7 +2,6 @@ import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   getFeatureSwitchMetadata,
-  getUserOverridableFeatureSwitchKeys,
   type FeatureSwitchMetadata,
 } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -39,7 +38,7 @@ function compareByName(a: FeatureSwitchKey, b: FeatureSwitchKey): number {
 }
 
 function sortedFeatureSwitchKeys(): FeatureSwitchKey[] {
-  return [...getUserOverridableFeatureSwitchKeys()].sort(compareByName);
+  return Object.values(FeatureSwitchKey).sort(compareByName);
 }
 
 function maintainerLabel(email: string): string {
@@ -282,7 +281,7 @@ export function LabPage() {
   const pageSignal = useGet(pageSignal$);
   const metadata = getFeatureSwitchMetadata();
   const sorted = sortedFeatureSwitchKeys();
-  const allKeys = getUserOverridableFeatureSwitchKeys();
+  const allKeys = Object.values(FeatureSwitchKey);
   const maintainerOptions = maintainerFilterOptions({
     keys: allKeys,
     metadata,
