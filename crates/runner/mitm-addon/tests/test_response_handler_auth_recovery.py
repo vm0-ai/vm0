@@ -11,6 +11,7 @@ import firewall_auth_cache as auth_cache
 import flow_metadata_keys as metadata_keys
 import http_network_log
 import mitm_addon
+import registry
 from tests.auth_state_helpers import (
     auth_cache_key,
     auth_state_is_empty,
@@ -22,6 +23,7 @@ from tests.auth_state_helpers import (
 )
 from tests.flow_helpers import header_map
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
+from tests.registry_helpers import write_simple_registry
 
 
 def test_401_firewall_cache_invalidation(real_flow, mitm_ctx, headers):
@@ -125,26 +127,35 @@ def test_invalid_content_length_with_network_log_does_not_block_401_cache_invali
     assert force_refresh_pending(cache_key)
 
 
-def test_401_without_existing_state_marks_force_refresh(real_flow, mitm_ctx, headers):
-    """401 should request a forced refresh even if no cache entry exists yet."""
+def test_late_401_does_not_recreate_registry_evicted_auth_state(tmp_path, real_flow, mitm_ctx):
+    """A response from an evicted run must not reacquire auth-state ownership."""
+    registry_file = tmp_path / "registry.json"
+    write_simple_registry(registry_file, run_id="run-conn-old")
+    registry.load_registry_state(str(registry_file))
+
     flow = real_flow(with_response=False, host="api.github.com")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-new"
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-old"
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
-    flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-new:0"
+    flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-old:0"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
     flow.response = tutils.tresp(status_code=401, headers=http.Headers())
 
-    cache_key = auth_cache_key(run_id="run-conn-new", api_id="run-conn-new:0")
+    cache_key = auth_cache_key(run_id="run-conn-old", api_id="run-conn-old:0")
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
+    set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+
+    registry_file.write_text('{"updatedAt": 1, "vms": {}}')
+    removed_run_state = registry.load_registry_state(str(registry_file))
     assert not has_auth_state(cache_key)
 
     with mitm_ctx():
         mitm_addon.response(flow)
 
-    assert cached_headers(cache_key) is None
-    assert force_refresh_pending(cache_key)
+    assert not has_auth_state(cache_key)
+    assert registry.load_registry_state(str(registry_file)) is removed_run_state
+    assert not has_auth_state(cache_key)
 
 
 def test_401_within_cooldown_does_not_re_mark(real_flow, mitm_ctx, headers):
