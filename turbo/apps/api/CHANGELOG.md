@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.366.0](https://github.com/vm0-ai/vm0/compare/api-v1.365.0...api-v1.366.0) (2026-08-03)
+
+
+### Features
+
+* **feishu:** add managed connector permission controls ([#24344](https://github.com/vm0-ai/vm0/issues/24344)) ([49d167d](https://github.com/vm0-ai/vm0/commit/49d167da75e79c360fd4f7baf59032b49ba6776d))
+
+
+### Bug Fixes
+
+* allow overriding every feature switch ([#24632](https://github.com/vm0-ai/vm0/issues/24632)) ([d428036](https://github.com/vm0-ai/vm0/commit/d428036e06a2a2589129a3599d671f188b5a05c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.263.0
+    * @vm0/core bumped to 8.503.0
+    * @vm0/db bumped to 1.161.1
+
 ## [1.365.0](https://github.com/vm0-ai/vm0/compare/api-v1.364.11...api-v1.365.0) (2026-08-03)
 
 
