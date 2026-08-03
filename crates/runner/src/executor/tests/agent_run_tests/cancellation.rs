@@ -105,6 +105,7 @@ async fn run_in_sandbox_preserves_wait_result_when_cancel_arrives_after_wait() {
             bytes_written: 14,
             chunk_truncated: true,
             stream_overflowed: false,
+            stream_incomplete: false,
         }
     );
 }
@@ -454,6 +455,7 @@ async fn run_in_sandbox_cancels_guest_process_and_waits_for_terminal_status() {
             bytes_written: 14,
             chunk_truncated: true,
             stream_overflowed: true,
+            stream_incomplete: false,
         }
     );
     assert!(overrides.process_control_calls().is_empty());
