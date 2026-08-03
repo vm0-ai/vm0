@@ -15,8 +15,9 @@
 //! installation failed.
 //!
 //! Before DNS readiness starts, network evidence snapshots an attachment cursor together with its
-//! counter baseline. Terminal failure capture reuses that cursor to select only later trace
-//! packets, then serializes a [`GuestDnsNetfilterTraceReport`] beside the counter evidence. Runtime
+//! counter baseline. Terminal failure capture reuses that cursor to select only later readiness
+//! packets. The failure-only veth handoff diagnostic takes a fresh cursor immediately before its
+//! single fixed-source-port query. Both paths serialize a [`GuestDnsNetfilterTraceReport`]. Runtime
 //! shutdown removes namespace rules with the namespace pool before stopping the shared monitor.
 //! [`GuestDnsNetfilterTraceMonitor::shutdown`] limits child cleanup with
 //! [`MONITOR_SHUTDOWN_TIMEOUT`]; dropping the monitor cancels and aborts any remaining task as a
@@ -25,23 +26,25 @@
 //! # Capture window and packet identity
 //!
 //! A [`GuestDnsNetfilterTraceCursor`] is a reusable value identifying one monitor generation and
-//! the last packet sequence assigned by baseline time. It is not a consumer offset: capture does
-//! not advance shared state, and every capture with that cursor applies the same baseline boundary
-//! to the packets retained at capture time. A packet first observed before the baseline stays
-//! outside that window even if later steps arrive afterward. A cursor from another monitor
-//! generation returns `cursor_mismatch` instead of comparing unrelated sequence numbers.
+//! the last packet sequence and line-loss counters observed at baseline time. It is not a consumer
+//! offset: capture does not advance shared state, and every capture with that cursor applies the
+//! same baseline boundary to the packets retained at capture time. A packet first observed before
+//! the baseline stays outside that window even if later steps arrive afterward. A cursor from
+//! another monitor generation returns `cursor_mismatch` instead of comparing unrelated sequence
+//! numbers or counters.
 //!
-//! Because the monitor is runtime-wide, a packet is attributed to one readiness attempt only when
+//! Because the monitor is runtime-wide, a packet is attributed to one requested DNS probe only when
 //! the packet header and the exact raw PREROUTING TRACE rule jointly match all isolation fields:
 //! namespace rule comment, host veth, namespace peer IP, fixed readiness destination and packet
-//! length, UDP, and destination port 53. The netfilter family and packet ID then associate that
-//! packet's headers and trace steps across raw PREROUTING, NAT/REDIRECT, and FORWARD/INPUT
-//! processing. Reaching NAT also proves passage through the intervening root conntrack hook. These
-//! checks prevent interleaved traffic from another local namespace from being reported as evidence
-//! for this guest. The configured DNS proxy port does not broaden that initial identity; after
-//! attribution it confirms the REDIRECT target, post-redirect header, and pool INPUT rule.
+//! length, UDP, destination port 53, and an optional diagnostic source port. The netfilter family
+//! and packet ID then associate that packet's headers and trace steps across raw PREROUTING,
+//! NAT/REDIRECT, and FORWARD/INPUT processing. Reaching NAT also proves passage through the
+//! intervening root conntrack hook. These checks prevent interleaved traffic from another local
+//! namespace from being reported as evidence for this guest. The configured DNS proxy port does
+//! not broaden that initial identity; after attribution it confirms the REDIRECT target,
+//! post-redirect header, and pool INPUT rule.
 //!
-//! Capture waits until it has seen a terminal trace step for each reported readiness attempt, or
+//! Capture waits until it has seen a terminal trace step for each expected packet, or
 //! until [`TRACE_CAPTURE_WAIT`] expires. DROP and REJECT verdicts, filter ACCEPT verdicts, and
 //! INPUT, FORWARD, or OUTPUT filter policy steps complete a packet. The wait only lets the
 //! asynchronous monitor finish emitting trace lines; it does not extend the readiness policy
@@ -63,9 +66,12 @@
 //! - `cursor_mismatch` prevents evidence from different monitor generations from being combined.
 //!
 //! A disabled attachment omits the trace report entirely. For reports captured through an enabled
-//! reader, evicted, malformed, and oversized-line counters are cumulative for the shared monitor
-//! generation, not scoped to the cursor window. Synthetic unavailable-attachment and
-//! unavailable-baseline reports use zero counters because they have no usable reader window.
+//! reader, evicted, malformed, and oversized-line counters remain cumulative for the shared monitor
+//! generation. Separate post-cursor malformed and truncated-line counters identify parser loss in
+//! the requested capture window. The active handoff diagnostic treats `no_matching_packet` as
+//! negative evidence only when both post-cursor counters are zero. Synthetic
+//! unavailable-attachment and unavailable-baseline reports use zero counters because they have no
+//! usable reader window.
 //!
 //! # Resource and output bounds
 //!
@@ -123,11 +129,14 @@ static NEXT_MONITOR_ID: AtomicU64 = AtomicU64::new(1);
 ///
 /// `sequence` is the last packet assigned before readiness capture starts. Reports include only
 /// packets with a greater sequence, and reading through this cursor never advances shared state.
-/// `monitor_id` prevents the sequence from being interpreted after the monitor is replaced.
+/// The line counters let capture distinguish a clean absence from parser loss after the cursor.
+/// `monitor_id` prevents any cursor state from being interpreted after the monitor is replaced.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct GuestDnsNetfilterTraceCursor {
     monitor_id: u64,
     sequence: u64,
+    malformed_lines: u64,
+    truncated_lines: u64,
 }
 
 /// A cloneable observation handle for the runtime-wide trace state.
@@ -155,6 +164,16 @@ pub(crate) enum GuestDnsNetfilterTraceAttachment {
     Enabled(GuestDnsNetfilterTraceReader),
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct GuestDnsNetfilterTraceCaptureTarget<'a> {
+    pub(crate) namespace: &'a str,
+    pub(crate) host_device: &'a str,
+    pub(crate) peer_ip: &'a str,
+    pub(crate) source_port: Option<u16>,
+    pub(crate) dns_port: u16,
+    pub(crate) expected_packets: u16,
+}
+
 impl GuestDnsNetfilterTraceAttachment {
     pub(crate) fn unavailable(reason: &'static str) -> Self {
         Self::Unavailable(reason)
@@ -180,15 +199,11 @@ impl GuestDnsNetfilterTraceAttachment {
     /// A disabled attachment returns `None` and is omitted from the enclosing evidence report. An
     /// unavailable attachment returns an `attachment_unavailable` report. An enabled attachment
     /// without a cursor returns `baseline_unavailable`; otherwise capture uses the cursor's
-    /// post-baseline window and may wait for `readiness_attempts` terminal packets.
+    /// post-cursor window and may wait for `target.expected_packets` terminal packets.
     pub(crate) async fn capture(
         &self,
         cursor: Option<GuestDnsNetfilterTraceCursor>,
-        namespace: &str,
-        host_device: &str,
-        peer_ip: &str,
-        dns_port: u16,
-        readiness_attempts: u16,
+        target: GuestDnsNetfilterTraceCaptureTarget<'_>,
     ) -> Option<GuestDnsNetfilterTraceReport> {
         match self {
             Self::Disabled => None,
@@ -196,18 +211,7 @@ impl GuestDnsNetfilterTraceAttachment {
                 Some(GuestDnsNetfilterTraceReport::attachment_unavailable(reason))
             }
             Self::Enabled(reader) => Some(match cursor {
-                Some(cursor) => {
-                    reader
-                        .capture(
-                            cursor,
-                            namespace,
-                            host_device,
-                            peer_ip,
-                            dns_port,
-                            readiness_attempts,
-                        )
-                        .await
-                }
+                Some(cursor) => reader.capture(cursor, target).await,
                 None => GuestDnsNetfilterTraceReport::baseline_unavailable(),
             }),
         }
@@ -599,6 +603,7 @@ impl TracePacket {
         namespace: &str,
         host_device: &str,
         peer_ip: &str,
+        source_port: Option<u16>,
     ) -> Option<&TracePacketHeader> {
         let traces_udp_readiness_rule = self.steps.iter().any(|step| {
             step.table == "raw"
@@ -622,6 +627,7 @@ impl TracePacket {
                     .is_some_and(|protocol| protocol.eq_ignore_ascii_case("udp"))
                     || traces_udp_readiness_rule)
                 && header.destination_port == Some(53)
+                && source_port.is_none_or(|source_port| header.source_port == Some(source_port))
         })
     }
 
@@ -630,10 +636,11 @@ impl TracePacket {
         namespace: &str,
         host_device: &str,
         peer_ip: &str,
+        source_port: Option<u16>,
         dns_port: u16,
     ) -> Option<TracePacketReport> {
         let original_header = self
-            .readiness_header(namespace, host_device, peer_ip)?
+            .readiness_header(namespace, host_device, peer_ip, source_port)?
             .clone();
         let dns_port_value = dns_port;
         let dns_port = dns_port.to_string();
@@ -1005,8 +1012,9 @@ impl TraceMonitorSnapshot {
 ///
 /// `matched_packets` counts all matching packets still present in the cursor window before the
 /// serialized packet cap is applied. Reader-produced eviction and line counters are cumulative for
-/// the monitor generation, while synthetic attachment/baseline reports use zero counters. Each
-/// packet separately reports whether its retained detail was truncated.
+/// the monitor generation, while the post-cursor counters identify parser loss in this capture
+/// window. Synthetic attachment/baseline reports use zero counters. Each packet separately reports
+/// whether its retained detail was truncated.
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct GuestDnsNetfilterTraceReport {
     status: TraceReportStatus,
@@ -1015,10 +1023,25 @@ pub(crate) struct GuestDnsNetfilterTraceReport {
     evicted_packets: u64,
     malformed_lines: u64,
     truncated_lines: u64,
+    post_cursor_malformed_lines: u64,
+    post_cursor_truncated_lines: u64,
     packets: Vec<TracePacketReport>,
 }
 
 impl GuestDnsNetfilterTraceReport {
+    pub(crate) fn exact_single_packet_observed(&self) -> Option<bool> {
+        match self.status {
+            TraceReportStatus::Captured if self.matched_packets == 1 => Some(true),
+            TraceReportStatus::NoMatchingPacket
+                if self.post_cursor_malformed_lines == 0
+                    && self.post_cursor_truncated_lines == 0 =>
+            {
+                Some(false)
+            }
+            _ => None,
+        }
+    }
+
     fn attachment_unavailable(reason: &str) -> Self {
         Self {
             status: TraceReportStatus::AttachmentUnavailable,
@@ -1030,6 +1053,8 @@ impl GuestDnsNetfilterTraceReport {
             evicted_packets: 0,
             malformed_lines: 0,
             truncated_lines: 0,
+            post_cursor_malformed_lines: 0,
+            post_cursor_truncated_lines: 0,
             packets: Vec::new(),
         }
     }
@@ -1045,6 +1070,8 @@ impl GuestDnsNetfilterTraceReport {
             evicted_packets: 0,
             malformed_lines: 0,
             truncated_lines: 0,
+            post_cursor_malformed_lines: 0,
+            post_cursor_truncated_lines: 0,
             packets: Vec::new(),
         }
     }
@@ -1065,6 +1092,8 @@ impl GuestDnsNetfilterTraceReader {
         GuestDnsNetfilterTraceCursor {
             monitor_id: state.monitor_id,
             sequence: state.next_sequence.saturating_sub(1),
+            malformed_lines: state.malformed_lines,
+            truncated_lines: state.truncated_lines,
         }
     }
 
@@ -1076,40 +1105,33 @@ impl GuestDnsNetfilterTraceReader {
     async fn capture(
         &self,
         cursor: GuestDnsNetfilterTraceCursor,
-        namespace: &str,
-        host_device: &str,
-        peer_ip: &str,
-        dns_port: u16,
-        readiness_attempts: u16,
+        target: GuestDnsNetfilterTraceCaptureTarget<'_>,
     ) -> GuestDnsNetfilterTraceReport {
         let deadline = Instant::now() + TRACE_CAPTURE_WAIT;
-        let expected_packets = usize::from(readiness_attempts);
+        let expected_packets = usize::from(target.expected_packets);
         loop {
             let notified = self.changed.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();
-            let report = self.capture_now(cursor, namespace, host_device, peer_ip, dns_port);
+            let report = self.capture_now(cursor, target);
             if expected_packets == 0 || report.complete_for(expected_packets) {
                 return report;
             }
             if timeout_at(deadline, &mut notified).await.is_err() {
-                return self.capture_now(cursor, namespace, host_device, peer_ip, dns_port);
+                return self.capture_now(cursor, target);
             }
         }
     }
 
-    /// Build an instantaneous report from the retained post-baseline window.
+    /// Build an instantaneous report from the retained post-cursor window.
     ///
     /// This rejects another monitor generation before inspecting packets, applies the complete
-    /// readiness identity filter, and keeps only the newest [`MAX_REPORTED_PACKETS`] packet
+    /// requested DNS identity filter, and keeps only the newest [`MAX_REPORTED_PACKETS`] packet
     /// details after recording the retained match count.
     fn capture_now(
         &self,
         cursor: GuestDnsNetfilterTraceCursor,
-        namespace: &str,
-        host_device: &str,
-        peer_ip: &str,
-        dns_port: u16,
+        target: GuestDnsNetfilterTraceCaptureTarget<'_>,
     ) -> GuestDnsNetfilterTraceReport {
         let state = lock_state(&self.state);
         if cursor.monitor_id != state.monitor_id {
@@ -1120,6 +1142,8 @@ impl GuestDnsNetfilterTraceReader {
                 evicted_packets: state.evicted_packets,
                 malformed_lines: state.malformed_lines,
                 truncated_lines: state.truncated_lines,
+                post_cursor_malformed_lines: 0,
+                post_cursor_truncated_lines: 0,
                 packets: Vec::new(),
             };
         }
@@ -1128,7 +1152,15 @@ impl GuestDnsNetfilterTraceReader {
             .packets
             .iter()
             .filter(|packet| packet.sequence > cursor.sequence)
-            .filter_map(|packet| packet.report(namespace, host_device, peer_ip, dns_port))
+            .filter_map(|packet| {
+                packet.report(
+                    target.namespace,
+                    target.host_device,
+                    target.peer_ip,
+                    target.source_port,
+                    target.dns_port,
+                )
+            })
             .collect::<Vec<_>>();
         let matched_packets = matches.len();
         let first_reported = matched_packets.saturating_sub(MAX_REPORTED_PACKETS);
@@ -1153,6 +1185,12 @@ impl GuestDnsNetfilterTraceReader {
             evicted_packets: state.evicted_packets,
             malformed_lines: state.malformed_lines,
             truncated_lines: state.truncated_lines,
+            post_cursor_malformed_lines: state
+                .malformed_lines
+                .saturating_sub(cursor.malformed_lines),
+            post_cursor_truncated_lines: state
+                .truncated_lines
+                .saturating_sub(cursor.truncated_lines),
             packets,
         }
     }
@@ -1194,13 +1232,25 @@ mod tests {
         }
     }
 
+    fn capture_target() -> GuestDnsNetfilterTraceCaptureTarget<'static> {
+        GuestDnsNetfilterTraceCaptureTarget {
+            namespace: "vm0-ns-00-01",
+            host_device: "vm0-ve-00-01",
+            peer_ip: "10.200.0.2",
+            source_port: None,
+            dns_port: 5300,
+            expected_packets: 1,
+        }
+    }
+
     #[test]
     fn parses_verified_trace_and_reports_farthest_root_hook() {
         let (reader, state) = reader_and_state();
         let cursor = reader.cursor();
         ingest_verified_fixture(&state);
 
-        let report = reader.capture_now(cursor, "vm0-ns-00-01", "vm0-ve-00-01", "10.200.0.2", 5300);
+        let report = reader.capture_now(cursor, capture_target());
+        assert_eq!(report.exact_single_packet_observed(), Some(true));
         let value = serde_json::to_value(report).unwrap();
 
         assert_eq!(value["status"], "captured");
@@ -1238,9 +1288,10 @@ mod tests {
             "PACKET: 2 other IN=vm0-ve-00-01 SRC=10.200.0.2 DST=192.0.2.1 LEN=67 PROTO=UDP SPT=1 DPT=53",
         );
 
-        let report = reader.capture_now(cursor, "vm0-ns-00-01", "vm0-ve-00-01", "10.200.0.2", 5300);
+        let report = reader.capture_now(cursor, capture_target());
 
         assert!(matches!(report.status, TraceReportStatus::NoMatchingPacket));
+        assert_eq!(report.exact_single_packet_observed(), Some(false));
     }
 
     #[test]
@@ -1257,7 +1308,7 @@ mod tests {
         }
         drop(state);
 
-        let report = reader.capture_now(cursor, "vm0-ns-00-01", "vm0-ve-00-01", "10.200.0.2", 5300);
+        let report = reader.capture_now(cursor, capture_target());
 
         assert!(matches!(report.status, TraceReportStatus::NoMatchingPacket));
     }
@@ -1278,7 +1329,7 @@ mod tests {
         }
         drop(state);
 
-        let report = reader.capture_now(cursor, "vm0-ns-00-01", "vm0-ve-00-01", "10.200.0.2", 5300);
+        let report = reader.capture_now(cursor, capture_target());
         let value = serde_json::to_value(report).unwrap();
         let observed = value["packets"][0]["observed"].as_array().unwrap();
 
@@ -1301,7 +1352,7 @@ mod tests {
             ingest_verified_fixture(&state);
         }
 
-        let report = reader.capture_now(cursor, "vm0-ns-00-01", "vm0-ve-00-01", "10.200.0.2", 5300);
+        let report = reader.capture_now(cursor, capture_target());
         let output = serde_json::to_string(&report).unwrap();
 
         assert!(matches!(report.status, TraceReportStatus::Captured));
@@ -1319,14 +1370,7 @@ mod tests {
         let (reader, state) = reader_and_state();
         let cursor = reader.cursor();
         let changed = Arc::clone(&reader.changed);
-        let capture = reader.capture(
-            cursor,
-            "vm0-ns-00-01",
-            "vm0-ve-00-01",
-            "10.200.0.2",
-            5300,
-            1,
-        );
+        let capture = reader.capture(cursor, capture_target());
         tokio::pin!(capture);
         assert!(
             futures_util::poll!(capture.as_mut()).is_pending(),
@@ -1360,6 +1404,39 @@ mod tests {
         assert_eq!(observed.len(), 2);
         assert!(observed.first().is_some_and(|(_, truncated)| *truncated));
         assert_eq!(observed.get(1), Some(&(ORIGINAL_PACKET.to_string(), false)));
+    }
+
+    #[tokio::test]
+    async fn post_cursor_parser_loss_prevents_negative_trace_evidence() {
+        let (reader, state) = reader_and_state();
+        let lost_lines = format!(
+            "not an xtables monitor line\n{}\n",
+            "x".repeat(MAX_TRACE_LINE_BYTES + 1)
+        );
+        read_trace_stream(
+            lost_lines.as_bytes(),
+            Arc::clone(&state),
+            Arc::clone(&reader.changed),
+        )
+        .await
+        .unwrap();
+        let cursor = reader.cursor();
+        read_trace_stream(
+            lost_lines.as_bytes(),
+            Arc::clone(&state),
+            Arc::clone(&reader.changed),
+        )
+        .await
+        .unwrap();
+
+        let report = reader.capture_now(cursor, capture_target());
+
+        assert!(matches!(report.status, TraceReportStatus::NoMatchingPacket));
+        assert_eq!(report.exact_single_packet_observed(), None);
+        assert_eq!(report.malformed_lines, 2);
+        assert_eq!(report.truncated_lines, 2);
+        assert_eq!(report.post_cursor_malformed_lines, 1);
+        assert_eq!(report.post_cursor_truncated_lines, 1);
     }
 
     #[test]
