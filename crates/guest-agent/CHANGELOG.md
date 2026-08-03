@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.63.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.0...guest-agent-v0.63.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** use process-owned mock build locks ([#24801](https://github.com/vm0-ai/vm0/issues/24801)) ([a4065d7](https://github.com/vm0-ai/vm0/commit/a4065d78e488b2ba4c518c292db362db081f2c2c))
+
+
+### Performance Improvements
+
+* **guest-agent:** use statx for reuse identity ([#24806](https://github.com/vm0-ai/vm0/issues/24806)) ([d3bbc05](https://github.com/vm0-ai/vm0/commit/d3bbc0578c5a00f44b1dfc063a9ae55d3ac1f139))
+
 ## [0.63.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.7...guest-agent-v0.63.0) (2026-08-03)
 
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.154.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.153.1...runner-rs-v0.154.0) (2026-08-03)
+
+
+### Features
+
+* **api:** prefer finalizing predecessor ([#24811](https://github.com/vm0-ai/vm0/issues/24811)) ([3bbf0f5](https://github.com/vm0-ai/vm0/commit/3bbf0f5b5662863a9e805f7122a2828e41b9e501))
+
+
+### Bug Fixes
+
+* **python:** align connector template reference grammar ([#24807](https://github.com/vm0-ai/vm0/issues/24807)) ([720ce85](https://github.com/vm0-ai/vm0/commit/720ce857af1ba555366d7da103d07c72132515ca))
+* **runner:** enforce shared firewall url contract ([#24808](https://github.com/vm0-ai/vm0/issues/24808)) ([0568bc4](https://github.com/vm0-ai/vm0/commit/0568bc4b580f7e0d1be7695904053918b27de6b4))
+* **runner:** localize guest dns loss across veth ([#24791](https://github.com/vm0-ai/vm0/issues/24791)) ([32ff5f5](https://github.com/vm0-ai/vm0/commit/32ff5f5d305669d91d9459a7f4b8c359444201b7))
+
+
+### Documentation
+
+* **mitm-addon:** document catalog wait revalidation ([#24797](https://github.com/vm0-ai/vm0/issues/24797)) ([2350806](https://github.com/vm0-ai/vm0/commit/23508065d7b0c986e500d2d2cf4e39d6d31efc91))
+* **runner:** clarify sandbox finalization ownership ([#24798](https://github.com/vm0-ai/vm0/issues/24798)) ([a69ccee](https://github.com/vm0-ai/vm0/commit/a69ccee8d8c5a21e2792bb76b40c735bf0899d66))
+
 ## [0.153.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.153.0...runner-rs-v0.153.1) (2026-08-03)
 
 
