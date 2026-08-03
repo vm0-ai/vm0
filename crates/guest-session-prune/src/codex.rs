@@ -267,6 +267,24 @@ pub fn select_codex_compact_generation(
     select_with_limits_and_hook(source, expected_thread_id, PRODUCTION_LIMITS, || {})
 }
 
+/// Select a Codex compact generation with a bounded integration-test window.
+#[doc(hidden)]
+pub fn select_codex_compact_generation_with_candidate_limit_for_test(
+    source: &mut File,
+    expected_thread_id: &str,
+    candidate_max_bytes: u64,
+) -> io::Result<CodexHistorySelection> {
+    select_with_limits_and_hook(
+        source,
+        expected_thread_id,
+        SelectionLimits {
+            candidate_max_bytes,
+            ..PRODUCTION_LIMITS
+        },
+        || {},
+    )
+}
+
 fn select_with_limits_and_hook(
     source: &mut File,
     expected_thread_id: &str,

@@ -145,9 +145,7 @@ async fn success_checkpoint_preserves_oversized_claude_history_when_pruning_disa
             .json_body(json!({"checkpointId": "checkpoint-unpruned-claude"}));
     });
 
-    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
-        .await
-        .unwrap();
+    create_bounded_checkpoint(&runtime).await.unwrap();
 
     prepare_mock.assert_calls_async(1).await;
     checkpoint_mock.assert_calls_async(1).await;
@@ -271,9 +269,7 @@ async fn success_checkpoint_reconciles_claude_compact_generation_after_commit() 
         });
     });
 
-    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
-        .await
-        .unwrap();
+    create_bounded_checkpoint(&runtime).await.unwrap();
 
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(1).await;
@@ -362,9 +358,7 @@ async fn success_checkpoint_reconciles_codex_compact_generation_after_commit() {
         });
     });
 
-    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
-        .await
-        .unwrap();
+    create_bounded_checkpoint(&runtime).await.unwrap();
 
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(1).await;
@@ -432,9 +426,7 @@ async fn success_checkpoint_omits_identity_when_live_history_replacement_fails()
         });
     });
 
-    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
-        .await
-        .unwrap();
+    create_bounded_checkpoint(&runtime).await.unwrap();
 
     prepare_mock.assert_calls_async(1).await;
     checkpoint_mock.assert_calls_async(1).await;
@@ -476,9 +468,7 @@ async fn success_checkpoint_keeps_live_history_when_compact_commit_fails() {
             .json_body(json!({}));
     });
 
-    let error = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
-        .await
-        .unwrap_err();
+    let error = create_bounded_checkpoint(&runtime).await.unwrap_err();
 
     assert!(
         error
@@ -496,7 +486,8 @@ async fn success_checkpoint_uploads_non_utf8_session_history() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
-    let runtime = runtime_from_process_env().unwrap();
+    let mut runtime = runtime_from_process_env().unwrap();
+    set_claude_session_pruning(&mut runtime, true);
     let _files_guard = SessionCheckpointFilesGuard::new();
     let history = b"{\"type\":\"system\"}\nnon-utf8:\xC3(\n".to_vec();
     let _history_dir = write_literal_session_history("success-non-utf8-session", &history).unwrap();

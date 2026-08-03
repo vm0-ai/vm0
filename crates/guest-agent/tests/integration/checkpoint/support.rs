@@ -9,9 +9,34 @@ use std::{
 };
 
 pub(super) const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
+pub(super) const CHECKPOINT_TEST_CANDIDATE_MAX_BYTES: u64 =
+    api_contracts::generated::constants::runners::SESSION_HISTORY_GZIP_MIN_BYTES;
+pub(super) const CHECKPOINT_TEST_MAX_BYTES: u64 = CHECKPOINT_TEST_CANDIDATE_MAX_BYTES * 2;
 
 pub(super) fn runtime_from_process_env() -> Result<guest_agent::run_context::GuestRuntime, String> {
     guest_agent::run_context::GuestRuntime::from_process_env()
+}
+
+pub(super) async fn create_bounded_checkpoint(
+    runtime: &guest_agent::run_context::GuestRuntime,
+) -> Result<(), guest_agent::error::AgentError> {
+    guest_agent::checkpoint::create_checkpoint_for_runtime_with_history_limits_for_test(
+        runtime,
+        CHECKPOINT_TEST_CANDIDATE_MAX_BYTES,
+        CHECKPOINT_TEST_MAX_BYTES,
+    )
+    .await
+}
+
+pub(super) async fn create_bounded_recovery_checkpoint(
+    runtime: &guest_agent::run_context::GuestRuntime,
+) -> Result<(), guest_agent::error::AgentError> {
+    guest_agent::checkpoint::create_recovery_checkpoint_for_runtime_with_history_limits_for_test(
+        runtime,
+        CHECKPOINT_TEST_CANDIDATE_MAX_BYTES,
+        CHECKPOINT_TEST_MAX_BYTES,
+    )
+    .await
 }
 
 pub(super) fn set_claude_session_pruning(
@@ -154,7 +179,7 @@ pub(super) fn write_prunable_claude_history(
     let mut history_file =
         std::fs::File::create(&history_path).map_err(|error| format!("create history: {error}"))?;
     history_file
-        .set_len(guest_session_prune::CLAUDE_COMPACT_GENERATION_MAX_BYTES + 1)
+        .set_len(CHECKPOINT_TEST_CANDIDATE_MAX_BYTES + 1)
         .map_err(|error| format!("size history: {error}"))?;
     history_file
         .seek(SeekFrom::End(0))
@@ -290,7 +315,7 @@ pub(super) fn write_prunable_codex_history(
         .write_all(&canonical)
         .map_err(|error| format!("write canonical Codex history: {error}"))?;
     history_file
-        .set_len(api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES + 1)
+        .set_len(CHECKPOINT_TEST_MAX_BYTES + 1)
         .map_err(|error| format!("size Codex history: {error}"))?;
     history_file
         .seek(SeekFrom::End(0))
