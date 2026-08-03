@@ -4,9 +4,8 @@
  * Provides centralized feature flag management with user-identity based overrides.
  * User IDs are stored as FNV-1a hashes to avoid exposing plain-text identifiers in source code.
  *
- * NOT AN AUTHORIZATION BOUNDARY. User-overridable switches can be self-enabled
- * through `POST /api/zero/feature-switches`, and `userOverridable: false` only
- * excludes a switch from that API. For money-granting, credential, or
+ * NOT AN AUTHORIZATION BOUNDARY. Every registered switch accepts user overrides
+ * through `POST /api/zero/feature-switches`. For money-granting, credential, or
  * privilege-escalation endpoints, gate with a hard identity check (e.g.
  * `isStaffOrg()` from `./staff-org`) instead of this system.
  */
@@ -21,13 +20,11 @@ export interface FeatureSwitch {
   readonly enabledUserHashes?: readonly string[];
   readonly enabledEmailHashes?: readonly string[];
   readonly enabledOrgIdHashes?: readonly string[];
-  readonly userOverridable?: boolean;
 }
 
 export interface FeatureSwitchMetadata {
   readonly maintainer: string;
   readonly description?: string;
-  readonly userOverridable: boolean;
 }
 
 export interface FeatureSwitchContext {
@@ -252,7 +249,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the daily 7:00 local-time Morning Brief email built from GitHub, Gmail, and Google Calendar.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: true,
   },
   [FeatureSwitchKey.ManualMorningBrief]: {
     maintainer: "ethan@vm0.ai",
@@ -260,7 +256,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show a Send now button in Settings that triggers a Morning Brief immediately for testing.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: true,
   },
   [FeatureSwitchKey.NotionWorkflowAutomations]: {
     maintainer: "lancy@vm0.ai",
@@ -275,7 +270,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show creation entry points for GitHub workflow job, pull request review, deployment status, and issue comment automations.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -330,7 +324,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Use the Upload popover in the chat composer instead of the legacy paperclip attachment button.",
     enabled: false,
-    userOverridable: false,
   },
   [FeatureSwitchKey.StructuredPromptInlineTemplates]: {
     maintainer: "bingjie@vm0.ai",
@@ -338,7 +331,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable multiple inline artifact templates in structured chat prompts.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: true,
   },
   [FeatureSwitchKey.CustomModelGateways]: {
     maintainer: "ethan@vm0.ai",
@@ -346,7 +338,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable admin-defined Anthropic Messages and OpenAI Responses model gateway connections.",
     enabled: false,
     enabledOrgIdHashes: CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES,
-    userOverridable: false,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -381,7 +372,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Keep the PWA chat composer pinned above the software keyboard and support swipe-to-dismiss gestures.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
   },
   [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: {
     maintainer: "ethan@vm0.ai",
@@ -403,7 +393,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Open an artifact clicked in a chat thread inside the already-open artifact sidebar instead of stacking the page-global lightbox over it.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: true,
   },
   [FeatureSwitchKey.ComposerSkillSubstringSearch]: {
     maintainer: "yuma@vm0.ai",
@@ -452,7 +441,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable Strapi integration settings and Strapi entry-published workflow automations.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
   },
   [FeatureSwitchKey.ArtifactKeyV2]: {
     maintainer: "yuma@vm0.ai",
@@ -486,7 +474,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the manual connector readiness check on workflow settings pages.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
   },
   [FeatureSwitchKey.ZeroMailReplyFollowUp]: {
     maintainer: "yuma@vm0.ai",
@@ -494,7 +481,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable Zero Mail reply follow-up for staff after all API deployments can read Gmail event configurations with threadId.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
   },
   [FeatureSwitchKey.ZeroBrowser]: {
     maintainer: "liangyou@vm0.ai",
@@ -522,7 +508,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the configure-permissions entry in the chat composer connector popover, opening the agent×connector firewall dialog inline.",
     enabled: false,
-    userOverridable: true,
   },
   [FeatureSwitchKey.CustomConnectorCliCreate]: {
     maintainer: "liangyou@vm0.ai",
@@ -633,31 +618,18 @@ export function getFeatureSwitchMetadata(): Record<
     result[key] = {
       maintainer: featureSwitch.maintainer,
       description: featureSwitch.description,
-      userOverridable: featureSwitch.userOverridable !== false,
     };
   }
   return result;
 }
 
-export function isUserOverridableFeatureSwitch(
-  key: string,
-): key is FeatureSwitchKey {
-  if (!(key in FEATURE_SWITCHES)) {
-    return false;
-  }
-  return FEATURE_SWITCHES[key as FeatureSwitchKey].userOverridable !== false;
-}
-
-export function getUserOverridableFeatureSwitchKeys(): readonly FeatureSwitchKey[] {
-  return Object.values(FeatureSwitchKey).filter(isUserOverridableFeatureSwitch);
-}
-
-export function filterUserOverridableFeatureSwitchOverrides(
+/** Keep overrides for currently registered feature switches. */
+export function filterFeatureSwitchOverrides(
   switches: Record<string, boolean>,
 ): Record<string, boolean> {
   const filtered: Record<string, boolean> = {};
   for (const [key, value] of Object.entries(switches)) {
-    if (isUserOverridableFeatureSwitch(key)) {
+    if (key in FEATURE_SWITCHES) {
       filtered[key] = value;
     }
   }

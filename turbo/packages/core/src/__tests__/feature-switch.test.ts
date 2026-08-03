@@ -3,10 +3,9 @@ import { FeatureSwitchKey } from "../feature-switch-key";
 import {
   isFeatureEnabled,
   getAllFeatureStates,
-  filterUserOverridableFeatureSwitchOverrides,
+  filterFeatureSwitchOverrides,
   getFeatureSwitchDescriptions,
   getFeatureSwitchMetadata,
-  getUserOverridableFeatureSwitchKeys,
 } from "../feature-switch";
 
 describe("isFeatureEnabled", () => {
@@ -225,58 +224,20 @@ describe("getAllFeatureStates", () => {
   });
 });
 
-describe("user-overridable switches", () => {
-  it("excludes internal switches from user override helpers", () => {
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.ComposerUploadPopover,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.WorkflowConnectorReadiness,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.PwaChatKeyboardGestures,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.ZeroMailReplyFollowUp,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.ZeroBrowser,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.GithubWebhookAutomations,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.StrapiIntegration,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.StructuredPromptInlineTemplates,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.ComposerConnectorPermissions,
+describe("feature switch override filtering", () => {
+  it("keeps overrides for every registered switch", () => {
+    const switches = Object.fromEntries(
+      Object.values(FeatureSwitchKey).map((key) => {
+        return [key, true];
+      }),
     );
 
-    expect(
-      filterUserOverridableFeatureSwitchOverrides({
-        [FeatureSwitchKey.ComposerUploadPopover]: true,
-        [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
-        [FeatureSwitchKey.PwaChatKeyboardGestures]: true,
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-        [FeatureSwitchKey.ZeroBrowser]: true,
-        [FeatureSwitchKey.ComposerConnectorPermissions]: true,
-        [FeatureSwitchKey.Dummy]: false,
-      }),
-    ).toStrictEqual({
-      [FeatureSwitchKey.ZeroBrowser]: true,
-      [FeatureSwitchKey.ComposerConnectorPermissions]: true,
-      [FeatureSwitchKey.Dummy]: false,
-      [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-    });
+    expect(filterFeatureSwitchOverrides(switches)).toStrictEqual(switches);
   });
 
   it("ignores persisted overrides for removed switches", () => {
     expect(
-      filterUserOverridableFeatureSwitchOverrides({
+      filterFeatureSwitchOverrides({
         zeroPeopleSearch: false,
       }),
     ).toStrictEqual({});

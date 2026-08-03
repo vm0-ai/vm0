@@ -5,10 +5,7 @@ import {
   ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import {
-  isFeatureEnabled,
-  isUserOverridableFeatureSwitch,
-} from "@vm0/core/feature-switch";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -141,12 +138,7 @@ function isZeroCapabilityEnabled(
     return true;
   }
 
-  return isFeatureEnabled(
-    featureSwitch,
-    isUserOverridableFeatureSwitch(featureSwitch)
-      ? { userId, orgId, overrides }
-      : { userId, orgId },
-  );
+  return isFeatureEnabled(featureSwitch, { userId, orgId, overrides });
 }
 
 function isCapabilityAvailableToAgent(

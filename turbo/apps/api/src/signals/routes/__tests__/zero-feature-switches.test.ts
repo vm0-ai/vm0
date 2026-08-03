@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
@@ -14,9 +16,11 @@ function client() {
 }
 
 describe("/api/zero/feature-switches", () => {
-  it("exposes mail reply follow-up only to staff", async () => {
+  it("defaults mail reply follow-up to staff and accepts user overrides", async () => {
     const mocks = createZeroRouteMocks(context);
     const headers = { authorization: "Bearer clerk-session" };
+    const nonStaffUserId = `user_${randomUUID()}`;
+    const nonStaffOrgId = `org_${randomUUID()}`;
     mockOptionalEnv("ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED", "true");
 
     mocks.clerk.session("user_staff_feature_switch_test", STAFF_ORG_ID);
@@ -25,14 +29,29 @@ describe("/api/zero/feature-switches", () => {
       staff.body.effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp],
     ).toBeTruthy();
 
-    mocks.clerk.session(
-      "user_nonstaff_feature_switch_test",
-      "org_nonstaff_feature_switch_test",
-    );
+    mocks.clerk.session(nonStaffUserId, nonStaffOrgId);
     const nonStaff = await accept(client().get({ headers }), [200]);
     expect(
       nonStaff.body.effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp],
     ).toBeFalsy();
+
+    const overridden = await accept(
+      client().update({
+        headers,
+        body: {
+          switches: {
+            [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
+          },
+        },
+      }),
+      [200],
+    );
+    expect(
+      overridden.body.switches[FeatureSwitchKey.ZeroMailReplyFollowUp],
+    ).toBeTruthy();
+    expect(
+      overridden.body.effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp],
+    ).toBeTruthy();
   });
 
   it("persists and activates inline templates for a non-staff org", async () => {
