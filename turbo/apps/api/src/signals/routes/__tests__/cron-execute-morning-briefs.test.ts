@@ -1222,10 +1222,23 @@ describe("cron execute morning briefs", () => {
     if (!rejectedBrief) {
       throw new Error("Expected the rejected Morning Brief input event");
     }
+    const replacement = events.find((event) => {
+      return (
+        event.eventType === "input.rejected" &&
+        event.revokesEventId === rejectedBrief.id
+      );
+    });
+    if (
+      !replacement ||
+      replacement.eventType !== "input.rejected" ||
+      !replacement.error
+    ) {
+      throw new Error("Expected the rejected Morning Brief replacement");
+    }
     expect(events).toContainEqual(
       expect.objectContaining({
-        eventType: "control.revoke",
-        revokesEventId: rejectedBrief.id,
+        eventType: "output.error",
+        error: replacement.error,
       }),
     );
 

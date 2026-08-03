@@ -816,7 +816,7 @@ export async function recordQueueFirstFailedRun(
  * Discard a queue-first user message that never dispatched by appending a
  * tombstone. The revoke edge removes it from both queue and visible history.
  */
-export async function discardUnclaimedUserMessageInTransaction(
+async function discardUnclaimedUserMessageInTransaction(
   db: DbTransaction,
   args: {
     readonly threadId: string;
@@ -887,6 +887,7 @@ export async function failQueuedUserMessage(
         userMessage: chatEvents.userMessage,
         attachFiles: chatEvents.attachFiles,
         generationTemplate: chatEvents.generationTemplate,
+        createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
       .where(
@@ -905,6 +906,9 @@ export async function failQueuedUserMessage(
     if (!queued.userMessage) {
       throw new Error("Queued input event is missing userMessage");
     }
+    const terminalAt = new Date(
+      Math.max(args.currentTime.getTime(), queued.createdAt.getTime() + 1),
+    );
 
     const replacement = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.threadId,
@@ -914,7 +918,7 @@ export async function failQueuedUserMessage(
       generationTemplate: queued.generationTemplate,
       runId: null,
       error: args.errorMarker,
-      createdAt: args.currentTime,
+      createdAt: terminalAt,
     });
     if (!replacement) {
       return null;
@@ -926,7 +930,7 @@ export async function failQueuedUserMessage(
       content: args.assistantContent,
       runId: null,
       error: args.errorMarker,
-      createdAt: new Date(args.currentTime.getTime() + 1),
+      createdAt: new Date(terminalAt.getTime() + 1),
     });
     if (!assistant) {
       throw new Error("Failed to append integration admission error");

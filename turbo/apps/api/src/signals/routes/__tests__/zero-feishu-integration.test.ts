@@ -34,6 +34,8 @@ import {
   findPendingChatEventByPromptFixture,
   readChatEventContextFixture,
 } from "../../../test-fixtures/chat-events";
+import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
 import { createDeferredPromise } from "../../utils";
@@ -112,6 +114,7 @@ interface CapturedFeishuMessage {
   readonly msgType: "interactive" | "text";
   readonly content: Readonly<Record<string, unknown>>;
   readonly replyInThread: boolean;
+  readonly idempotencyKey?: string;
 }
 
 interface FeishuMessageRequestBody {
@@ -119,6 +122,7 @@ interface FeishuMessageRequestBody {
   readonly msg_type: "interactive" | "text";
   readonly content: string;
   readonly reply_in_thread?: boolean;
+  readonly uuid?: string;
 }
 
 interface FeishuRunFixture {
@@ -414,6 +418,7 @@ describe("Feishu integration", () => {
   let removedReactions: string[];
   let historyMessages: readonly Readonly<Record<string, unknown>>[];
   let failedSendTargets: string[];
+  let failedSendContentFragments: string[];
   let oauthTokenExpiresInSeconds: number;
   let oauthTokenGrantTypes: string[];
   let oauthTokenRedirectUris: string[];
@@ -468,6 +473,7 @@ describe("Feishu integration", () => {
     removedReactions = [];
     historyMessages = [];
     failedSendTargets = [];
+    failedSendContentFragments = [];
     oauthTokenExpiresInSeconds = 7200;
     oauthTokenGrantTypes = [];
     oauthTokenRedirectUris = [];
@@ -547,6 +553,18 @@ describe("Feishu integration", () => {
         "https://open.feishu.cn/open-apis/im/v1/messages",
         async ({ request }) => {
           const body = (await request.json()) as FeishuMessageRequestBody;
+          const failedContentIndex = failedSendContentFragments.findIndex(
+            (fragment) => {
+              return body.content.includes(fragment);
+            },
+          );
+          if (failedContentIndex !== -1) {
+            failedSendContentFragments.splice(failedContentIndex, 1);
+            return HttpResponse.json({
+              code: 1,
+              msg: "temporary message failure",
+            });
+          }
           const failedTargetIndex = failedSendTargets.indexOf(
             body.receive_id ?? "",
           );
@@ -565,6 +583,7 @@ describe("Feishu integration", () => {
               Record<string, unknown>
             >,
             replyInThread: false,
+            ...(body.uuid ? { idempotencyKey: body.uuid } : {}),
           });
           return HttpResponse.json({
             code: 0,
@@ -3013,6 +3032,288 @@ describe("Feishu integration", () => {
       }),
       [200],
     );
+  });
+
+  it("terminalizes and delivers a queued Feishu admission failure exactly once", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl, defaultAgentId } = fixture;
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped Feishu actor");
+    }
+    await connectFixtureUser(fixture);
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [
+        {
+          organization: { id: actor.orgId },
+          role: "org:admin",
+        },
+      ],
+    });
+
+    const firstPrompt = "finish before queued Feishu credit loss";
+    const firstMessageId = `om_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, firstPrompt, "ou_feishu_user", {
+        messageId: firstMessageId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const firstRun = await findRun(actor, firstPrompt);
+    await runsApi.heartbeatRunner(runnerGroup);
+    const firstClaim = await runsApi.claimRunnerJob(firstRun.id);
+
+    const queuedPrompt = "reject this queued Feishu message after credit loss";
+    const queuedMessageId = `om_${randomUUID()}`;
+    const queuedPayload = directMessage(appId, queuedPrompt, "ou_feishu_user", {
+      messageId: queuedMessageId,
+    });
+    await postEvent(callbackUrl, queuedPayload, { encrypted: true });
+    await flushWaitUntilForTest();
+    const queuedEvent = await findPendingChatEventByPromptFixture(queuedPrompt);
+    if (!queuedEvent) {
+      throw new Error("Expected the queued Feishu input event");
+    }
+    expect(
+      (await runsApi.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === queuedPrompt;
+      }),
+    ).toHaveLength(0);
+
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: actor.orgId,
+      status: "suspended",
+      canBuyCredits: true,
+    });
+    outboundMessages = [];
+    context.mocks.ably.publish.mockClear();
+    await completeRunSession({
+      runId: firstRun.id,
+      sandboxToken: firstClaim.sandboxToken,
+      sessionId: `bdd-feishu-admission-${firstRun.id}`,
+      history: `bdd Feishu admission history ${firstRun.id}`,
+      assistantText: "First Feishu task completed",
+    });
+
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const threadEvents = await accept(
+      setupApp({ context })(chatThreadsContract).events({
+        headers: { authorization: "Bearer clerk-session" },
+        query: {},
+      }),
+      [200],
+    );
+    const thread = requireValue(
+      threadEvents.body.events.find((event) => {
+        return event.kind === "created" && event.agentId === defaultAgentId;
+      }),
+      "Expected the queued Feishu chat thread",
+    );
+    const messages = await accept(
+      setupApp({ context })(chatThreadEventsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: thread.chatThreadId },
+        query: {},
+      }),
+      [200],
+    );
+    const original = messages.body.events.find((event) => {
+      return event.id === queuedEvent.eventId;
+    });
+    if (!original || original.eventType !== "input.prompt") {
+      throw new Error("Expected the original queued Feishu prompt");
+    }
+    expect(original.runId).toBeUndefined();
+    expect(original.userMessage.parts).toContainEqual({
+      type: "text",
+      text: queuedPrompt,
+    });
+    const replacements = messages.body.events.filter((event) => {
+      return event.revokesEventId === queuedEvent.eventId;
+    });
+    expect(replacements).toStrictEqual([
+      expect.objectContaining({
+        eventType: "input.rejected",
+        error: "insufficient_credits",
+      }),
+    ]);
+    const errors = messages.body.events.filter((event) => {
+      return (
+        event.eventType === "output.error" &&
+        event.error === "insufficient_credits"
+      );
+    });
+    expect(errors).toHaveLength(1);
+    const errorEvent = requireValue(
+      errors[0],
+      "Expected the queued Feishu output error",
+    );
+    expect(errorEvent.content).toContain("Add credits");
+    const deliveredErrors = outboundMessages.filter((message) => {
+      return messageContent(message).includes("Add credits");
+    });
+    expect(deliveredErrors).toStrictEqual([
+      expect.objectContaining({
+        kind: "send",
+        target: "oc_feishu_dm",
+        idempotencyKey: errorEvent.id,
+      }),
+    ]);
+    expect(
+      removedReactions.filter((messageId) => {
+        return messageId === queuedMessageId;
+      }),
+    ).toHaveLength(1);
+    expect(
+      (await runsApi.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === queuedPrompt;
+      }),
+    ).toHaveLength(0);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${thread.chatThreadId}`,
+      null,
+    );
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `chatThreadRunCreated:${thread.chatThreadId}`,
+      null,
+    );
+
+    await postEvent(callbackUrl, queuedPayload, { encrypted: true });
+    await flushWaitUntilForTest();
+    expect(
+      outboundMessages.filter((message) => {
+        return messageContent(message).includes("Add credits");
+      }),
+    ).toHaveLength(1);
+    const afterReplay = await accept(
+      setupApp({ context })(chatThreadEventsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: thread.chatThreadId },
+        query: {},
+      }),
+      [200],
+    );
+    expect(
+      afterReplay.body.events.filter((event) => {
+        return event.revokesEventId === queuedEvent.eventId;
+      }),
+    ).toHaveLength(1);
+    expect(
+      afterReplay.body.events.filter((event) => {
+        return (
+          event.eventType === "output.error" &&
+          event.error === "insufficient_credits"
+        );
+      }),
+    ).toHaveLength(1);
+
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro",
+      credits: 20_000,
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: actor.orgId,
+      status: "active",
+      canBuyCredits: true,
+    });
+    const failedDeliveryAnchorPrompt =
+      "finish before queued Feishu delivery failure";
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, failedDeliveryAnchorPrompt, "ou_feishu_user", {
+        messageId: `om_${randomUUID()}`,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const failedDeliveryAnchor = await findRun(
+      actor,
+      failedDeliveryAnchorPrompt,
+    );
+    await runsApi.heartbeatRunner(runnerGroup);
+    const failedDeliveryAnchorClaim = await runsApi.claimRunnerJob(
+      failedDeliveryAnchor.id,
+    );
+
+    const failedDeliveryPrompt =
+      "persist this queued Feishu failure before delivery fails";
+    const failedDeliveryMessageId = `om_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, failedDeliveryPrompt, "ou_feishu_user", {
+        messageId: failedDeliveryMessageId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const failedDeliveryEvent =
+      await findPendingChatEventByPromptFixture(failedDeliveryPrompt);
+    if (!failedDeliveryEvent) {
+      throw new Error("Expected the failed-delivery Feishu input event");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: actor.orgId,
+      status: "suspended",
+      canBuyCredits: true,
+    });
+    outboundMessages = [];
+    failedSendContentFragments.push("Add credits");
+    await completeRunSession({
+      runId: failedDeliveryAnchor.id,
+      sandboxToken: failedDeliveryAnchorClaim.sandboxToken,
+      sessionId: `bdd-feishu-delivery-failure-${failedDeliveryAnchor.id}`,
+      history: `bdd Feishu delivery failure history ${failedDeliveryAnchor.id}`,
+      assistantText: "Second Feishu task completed",
+    });
+
+    const afterDeliveryFailure = await accept(
+      setupApp({ context })(chatThreadEventsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: thread.chatThreadId },
+        query: {},
+      }),
+      [200],
+    );
+    expect(
+      afterDeliveryFailure.body.events.filter((event) => {
+        return (
+          event.eventType === "input.rejected" &&
+          event.revokesEventId === failedDeliveryEvent.eventId &&
+          event.error === "insufficient_credits"
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      afterDeliveryFailure.body.events.filter((event) => {
+        return (
+          event.eventType === "output.error" &&
+          event.error === "insufficient_credits"
+        );
+      }),
+    ).toHaveLength(2);
+    expect(
+      (await runsApi.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === failedDeliveryPrompt;
+      }),
+    ).toHaveLength(0);
+    expect(
+      removedReactions.filter((messageId) => {
+        return messageId === failedDeliveryMessageId;
+      }),
+    ).toHaveLength(1);
+    expect(failedSendContentFragments).toHaveLength(0);
   });
 
   it("keeps Feishu group control cases out of runs and resumes queued tasks through the canonical session", async () => {
