@@ -56,10 +56,12 @@ function scrollAnchorForEvent(
   container: HTMLElement,
   eventId: string,
 ): HTMLElement | null {
-  return (
-    scrollAnchors(container).find((anchor) => {
-      return anchor.getAttribute(SCROLL_ANCHOR_ATTRIBUTE) === eventId;
-    }) ?? null
+  // Selected by attribute rather than scanned out of `scrollAnchors`: a reader
+  // holding an anchor restores on every frame the thread grows, and collecting
+  // every anchor in the thread first would walk the whole history before each
+  // paint.
+  return container.querySelector<HTMLElement>(
+    `[${SCROLL_ANCHOR_ATTRIBUTE}="${eventId}"]`,
   );
 }
 
@@ -278,9 +280,12 @@ function createScrollNavigationSignals(
     set(scrollToBottom$);
   });
 
-  // Viewport and composer resizes settle over a frame, so their restore waits
-  // for the next one. The flag coalesces repeated notifications into a single
-  // restore.
+  // The viewport and the composer settle their layout over a frame, so their
+  // restore waits for the next one and the flag folds repeated notifications
+  // into a single run. Resizing the viewport also reflows the message box, so
+  // the content observer restores inside the frame as well and this pass then
+  // runs once more against the settled layout; both write the same position,
+  // which makes the repeat invisible.
   const scheduleRestoreAfterResize$ = command(
     ({ set }, signal: AbortSignal) => {
       if (!runtime.initialized || runtime.resizeScheduled) {
@@ -302,6 +307,9 @@ function createScrollNavigationSignals(
   // callbacks run after layout and before paint, so a scroll written here is
   // part of that frame; waiting for the next one would paint the grown content
   // at the old offset first, which reads as a flash before the view snaps back.
+  // Deliberately outside `resizeScheduled`: sharing that flag would fold this
+  // restore into the deferred pass, which is the frame of delay it exists to
+  // avoid.
   const restoreAfterContentResize$ = command(({ set }) => {
     if (!runtime.initialized) {
       return;
@@ -479,6 +487,11 @@ function createScrollContainerOnRef(
  * scroll was committed — a diagram that finishes rendering, an image that
  * finishes loading — is invisible to the container observer and leaves the
  * thread stranded above the bottom.
+ *
+ * `observe` delivers once on its own. Both refs belong to the same thread and
+ * bind together, so that delivery either arrives before the thread is
+ * initialized and is dropped, or arrives in the frame the render commit already
+ * scrolled and re-applies the position the thread is holding.
  */
 function createScrollContentOnRef(
   threadId: string,
