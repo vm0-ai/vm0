@@ -53,6 +53,7 @@ import {
 import {
   publishChatThreadDetailChangedSafely,
   publishChatThreadMessageCreatedSafely,
+  publishChatThreadRunCreatedSafely,
   publishThreadListChanged,
   publishThreadListChangedSafely,
   publishUserSignal,
@@ -3219,15 +3220,9 @@ async function publishAutoSentQueuedRunSignals(args: {
     "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
     "nested",
     async () => {
-      await publishUserSignal(
-        [args.userId],
-        `chatThreadMessageCreated:${args.threadId}`,
-      );
-      await publishUserSignal(
-        [args.userId],
-        `chatThreadRunCreated:${args.threadId}`,
-      );
-      await publishThreadListChanged(args.userId);
+      await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
+      await publishChatThreadRunCreatedSafely(args.userId, args.threadId);
+      await publishThreadListChangedSafely(args.userId);
     },
   );
 }
