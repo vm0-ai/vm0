@@ -52,8 +52,11 @@ use std::time::{Duration, Instant};
 use vsock_proto::{
     self, ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecLifecyclePolicy,
     ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy, MSG_ERROR,
-    MSG_EXEC_RESULT, MSG_EXEC_STARTED,
+    MSG_EXEC_STARTED,
 };
+
+#[cfg(test)]
+use vsock_proto::MSG_EXEC_RESULT;
 
 use crate::drain::{BoundedDrainResult, BoundedStreamConfig, drain_bounded_cancellable};
 use crate::error::to_io_error;
@@ -1547,7 +1550,10 @@ fn send_exec_result_after_lock<F>(
 where
     F: FnOnce(),
 {
-    let payload = vsock_proto::encode_exec_result(
+    let mut encoded = Vec::new();
+    vsock_proto::encode_exec_result_frame_into(
+        &mut encoded,
+        frame.seq,
         frame.termination,
         frame.duration_ms,
         frame.stdout,
@@ -1555,7 +1561,6 @@ where
         frame.diagnostic,
     )
     .map_err(to_io_error)?;
-    let encoded = vsock_proto::encode(MSG_EXEC_RESULT, frame.seq, &payload).map_err(to_io_error)?;
     writer.write_frame_after_lock(&encoded, after_lock)
 }
 
