@@ -1497,6 +1497,137 @@ describe("CHAT-02: queueing and recalling messages", () => {
     await cancelChatRun(actor, active.runId);
   }, 90_000);
 
+  it("rejects queued messages above the guest-control payload limit", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatSteer]: true },
+    );
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor active input payload boundary run",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(active.runId, {
+      activeInput: true,
+    });
+    expect(claim.activeInput).toBeTruthy();
+
+    const maxPayloadBytes = 1024 * 1024;
+    const payloadBytes = (text: string): number => {
+      return Buffer.byteLength(
+        JSON.stringify({ type: "active-input", text }),
+        "utf8",
+      );
+    };
+    const queuePrompt = async (text: string): Promise<string> => {
+      const eventId = randomUUID();
+      const queued = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: active.threadId,
+          prompt: text,
+          clientEventId: eventId,
+        },
+        [201],
+      );
+      if (queued.status !== 201) {
+        throw new Error("Expected the queued send to be accepted");
+      }
+      expect(queued.body.runId).toBeNull();
+      return eventId;
+    };
+    const rejectAndRecall = async (text: string): Promise<void> => {
+      expect(payloadBytes(text)).toBe(maxPayloadBytes + 1);
+      const queuedEventId = await queuePrompt(text);
+      context.mocks.ably.publish.mockClear();
+
+      const rejected = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: active.threadId,
+          steersRunId: active.runId,
+          steersEventId: queuedEventId,
+          clientEventId: randomUUID(),
+        },
+        [400],
+      );
+      expectApiError(rejected.body);
+      expect(rejected.body.error.message).toBe(
+        "Queued message is too large to send to the active run",
+      );
+      expect(context.mocks.ably.publish).not.toHaveBeenCalled();
+
+      const recalled = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: active.threadId,
+          revokesEventId: queuedEventId,
+          clientEventId: randomUUID(),
+        },
+        [201],
+      );
+      if (recalled.status !== 201) {
+        throw new Error(
+          "Expected the rejected queued message to be recallable",
+        );
+      }
+      expect(recalled.body.runId).toBeNull();
+    };
+
+    const exactText = "x".repeat(1_048_543);
+    expect(payloadBytes(exactText)).toBe(maxPayloadBytes);
+    const exactQueuedEventId = await queuePrompt(exactText);
+    const exactActiveInputEventId = randomUUID();
+    const accepted = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        steersRunId: active.runId,
+        steersEventId: exactQueuedEventId,
+        clientEventId: exactActiveInputEventId,
+      },
+      [201],
+    );
+    if (accepted.status !== 201) {
+      throw new Error("Expected the exact-limit queued message to be steered");
+    }
+
+    const [mailboxEntry] = await api.readRunnerActiveInputs(
+      claim.sandboxToken,
+      active.runId,
+      1,
+    );
+    if (!mailboxEntry) {
+      throw new Error("Expected the exact-limit runner mailbox entry");
+    }
+    expect(mailboxEntry.sequence).toBe(1);
+    expect(mailboxEntry.messageId).toBe(exactActiveInputEventId);
+    expect(payloadBytes(mailboxEntry.text)).toBe(maxPayloadBytes);
+    expect(createHash("sha256").update(mailboxEntry.text).digest("hex")).toBe(
+      createHash("sha256").update(exactText).digest("hex"),
+    );
+
+    await rejectAndRecall("x".repeat(1_048_544));
+    await rejectAndRecall(`${"x".repeat(1_048_542)}"`);
+    await rejectAndRecall(`${"x".repeat(1_048_540)}🚀`);
+
+    await expect(
+      api.readRunnerActiveInputs(claim.sandboxToken, active.runId, 2),
+    ).resolves.toStrictEqual([]);
+    await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
   it("queues, retries, and recalls messages behind an active run", async () => {
     const { actor, agentId, providerId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
