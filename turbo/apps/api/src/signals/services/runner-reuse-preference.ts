@@ -101,6 +101,11 @@ function runnerStateHas(args: {
   );
 }
 
+/**
+ * Poll ordering runs before a job is selected, so any runner with qualifying
+ * local reuse may prioritize the job independently of the globally selected
+ * preference identity.
+ */
 export function runnerReusePreferencePollPriority(args: {
   readonly db: Pick<Db, "select">;
   readonly runnerId: string;

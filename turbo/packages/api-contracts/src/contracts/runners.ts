@@ -101,6 +101,10 @@ const runnerProcessIdentitySchema = z
   })
   .strict();
 
+/**
+ * Advisory cross-runner coordination, not an exclusive assignment. A runner
+ * with an equivalent compatible local resource remains eligible to claim.
+ */
 export const runnerPreferenceSchema = z
   .object({
     runnerIdentity: runnerProcessIdentitySchema,
