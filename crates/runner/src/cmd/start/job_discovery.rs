@@ -109,12 +109,6 @@ enum PreferencePreparation {
     Deferred,
 }
 
-enum ClaimAdmissionOutcome {
-    Admitted(Box<AdmittedClaim>),
-    Pending(Box<JobCandidate>),
-    NotAdmitted,
-}
-
 struct ReuseAdmissionRequest<'a> {
     profile_name: &'a str,
     device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
@@ -172,8 +166,24 @@ pub(super) async fn handle_discovered_job(
         return DiscoveredJobResult::completed(false);
     };
 
-    let admission = claim_with_local_admission(
+    let prepared = match prepare_preference_candidate(
         candidate,
+        &profile_name,
+        job_vcpu,
+        job_memory,
+        &device_rate_limits,
+        &ctx,
+    )
+    .await
+    {
+        PreferencePreparation::Ready(prepared) => prepared,
+        PreferencePreparation::Pending(candidate) => {
+            return DiscoveredJobResult::pending(candidate);
+        }
+        PreferencePreparation::Deferred => return DiscoveredJobResult::completed(false),
+    };
+    let Some(admission) = claim_with_local_admission(
+        prepared,
         run_id,
         &profile_name,
         job_vcpu,
@@ -181,15 +191,9 @@ pub(super) async fn handle_discovered_job(
         &device_rate_limits,
         &mut ctx,
     )
-    .await;
-    let admission = match admission {
-        ClaimAdmissionOutcome::Admitted(admission) => *admission,
-        ClaimAdmissionOutcome::Pending(candidate) => {
-            return DiscoveredJobResult::pending(*candidate);
-        }
-        ClaimAdmissionOutcome::NotAdmitted => {
-            return DiscoveredJobResult::completed(false);
-        }
+    .await
+    else {
+        return DiscoveredJobResult::completed(false);
     };
     let AdmittedClaim {
         claimed,
@@ -360,52 +364,35 @@ async fn publish_active_run_status(
 }
 
 async fn claim_with_local_admission(
-    candidate: JobCandidate,
+    prepared: PreparedCandidate,
     run_id: RunId,
     profile_name: &str,
     job_vcpu: u32,
     job_memory: u32,
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     ctx: &mut DiscoveredJobContext<'_>,
-) -> ClaimAdmissionOutcome {
+) -> Option<AdmittedClaim> {
     let PreparedCandidate {
         mut candidate,
         resource,
-    } = match prepare_preference_candidate(
-        candidate,
-        profile_name,
-        job_vcpu,
-        job_memory,
-        device_rate_limits,
-        ctx,
-    )
-    .await
-    {
-        PreferencePreparation::Ready(prepared) => prepared,
-        PreferencePreparation::Pending(candidate) => {
-            return ClaimAdmissionOutcome::Pending(Box::new(candidate));
-        }
-        PreferencePreparation::Deferred => return ClaimAdmissionOutcome::NotAdmitted,
-    };
+    } = prepared;
     candidate.mark_local_admission_started();
 
     // Reserve either the exact reusable sandbox or fresh capacity before
     // claiming so a losing claim can restore all local ownership.
     let resource = match resource {
         Some(resource) => resource,
-        None => match acquire_local_admission_resource(
-            &candidate,
-            profile_name,
-            job_vcpu,
-            job_memory,
-            device_rate_limits,
-            ctx,
-        )
-        .await
-        {
-            Some(resource) => resource,
-            None => return ClaimAdmissionOutcome::NotAdmitted,
-        },
+        None => {
+            acquire_local_admission_resource(
+                &candidate,
+                profile_name,
+                job_vcpu,
+                job_memory,
+                device_rate_limits,
+                ctx,
+            )
+            .await?
+        }
     };
     // Register cancellation before claiming so provider-side cancel channels
     // (Ably supervisor for ApiProvider, `.cancel` scan for LocalProvider) can
@@ -415,7 +402,7 @@ async fn claim_with_local_admission(
         Ok(registration) => registration,
         Err(_) => {
             rollback_untracked_resource(resource, ctx).await;
-            return ClaimAdmissionOutcome::NotAdmitted;
+            return None;
         }
     };
 
@@ -432,18 +419,18 @@ async fn claim_with_local_admission(
         RunnerMode::Running => {}
         RunnerMode::Starting => {
             admission.rollback(ctx).await;
-            return ClaimAdmissionOutcome::NotAdmitted;
+            return None;
         }
         RunnerMode::Draining => {
             admission.rollback(ctx).await;
-            return ClaimAdmissionOutcome::NotAdmitted;
+            return None;
         }
         RunnerMode::Stopping => {
             admission.cancellation.request_hard_cancellation().await;
         }
         RunnerMode::Stopped => {
             admission.rollback(ctx).await;
-            return ClaimAdmissionOutcome::NotAdmitted;
+            return None;
         }
     }
     // claim() runs in the branch handler: non-interruptible, so a valid
@@ -453,7 +440,7 @@ async fn claim_with_local_admission(
         // runner, or the provider rejected the job. Release the reservation and
         // cancellation registration so the runner can continue.
         admission.rollback(ctx).await;
-        return ClaimAdmissionOutcome::NotAdmitted;
+        return None;
     };
     if claimed.context().run_id != run_id {
         warn!(
@@ -462,10 +449,10 @@ async fn claim_with_local_admission(
             "provider returned claimed job with mismatched run_id"
         );
         admission.rollback(ctx).await;
-        return ClaimAdmissionOutcome::NotAdmitted;
+        return None;
     }
 
-    ClaimAdmissionOutcome::Admitted(Box::new(admission.into_admitted(claimed)))
+    Some(admission.into_admitted(claimed))
 }
 
 async fn prepare_preference_candidate(
