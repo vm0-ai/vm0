@@ -398,7 +398,7 @@ def test_unparseable_response_accumulates_repeated_id_like_fallback_hints(
         ),
         (
             "/2/tweets",
-            f"ids={','.join(str(i) for i in range(100))}&ids=,,",
+            f"ids={','.join(str(i) for i in range(1, 101))}&ids=,,",
             "tweet.read",
             "GET /2/tweets",
             "posts.read",
@@ -825,7 +825,7 @@ def test_x_json_parse_error_ignores_id_like_hints_on_irrelevant_paths(
         ),
         (
             "/2/tweets",
-            f"ids={','.join(str(i) for i in range(100))}&ids=overflow",
+            f"ids={','.join(str(i) for i in range(1, 101))}&ids=,,&ids=101",
             "tweet.read",
             "GET /2/tweets",
         ),
