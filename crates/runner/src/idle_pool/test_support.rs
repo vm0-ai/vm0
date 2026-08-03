@@ -9,7 +9,8 @@ use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::workspace_image_cache::WorkspaceImagePromotionContext;
 
-use super::{IdleSandboxMetadata, IdleSandboxResources, ParkedIdleCandidate};
+use super::ParkedIdleCandidate;
+use super::entry::{IdleSandboxMetadata, IdleSandboxResources};
 
 const DEFAULT_PROFILE_NAME: &str = "vm0/default";
 const DEFAULT_SOURCE_IP: &str = "10.0.0.1";
