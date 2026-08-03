@@ -489,4 +489,46 @@ describe("POST /api/test/teams-dispatch-probe", () => {
       (await readTeamsState(missingDefault.tenantId)).recent_runs,
     ).toStrictEqual([]);
   });
+
+  it("continues dispatch when thread-list realtime publishing fails", async () => {
+    const fixture = await seedTeamsFixture({
+      seedConnection: true,
+      seedDefaultAgent: true,
+    });
+    const publishError = new Error("Ably channel rate limit exceeded");
+    context.mocks.ably.publish.mockClear();
+    context.mocks.axiomLogging.warn.mockClear();
+    context.mocks.ably.publish
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(publishError);
+
+    await dispatchTeamsMessage({
+      fixture,
+      text: "teams dispatch after realtime failure",
+    });
+
+    const body = await readTeamsState(fixture.tenantId);
+    expect(body.recent_runs).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "pending",
+          triggerSource: "teams",
+          userId: fixture.userId,
+          error: null,
+          promptPreview: "teams dispatch after realtime failure",
+          chatThreadId: expect.any(String),
+        }),
+      ]),
+    );
+    expect(context.mocks.ably.publish.mock.calls[1]?.[0]).toBe(
+      "threadListChanged",
+    );
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Failed to publish thread list changed signal",
+      expect.objectContaining({
+        userId: fixture.userId,
+        error: publishError,
+      }),
+    );
+  });
 });

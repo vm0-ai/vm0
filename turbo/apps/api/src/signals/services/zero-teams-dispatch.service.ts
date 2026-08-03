@@ -30,7 +30,7 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadMessageCreatedSafely,
-  publishThreadListChanged,
+  publishThreadListChangedSafely,
 } from "../external/realtime";
 import {
   fetchTeamsChannelMessage,
@@ -1742,7 +1742,7 @@ const runAgentForTeams$ = command(
       persisted.chatThreadId,
     );
     signal.throwIfAborted();
-    await publishThreadListChanged(args.connection.vm0UserId);
+    await publishThreadListChangedSafely(args.connection.vm0UserId);
     signal.throwIfAborted();
     await set(
       drainChatThreadQueueForThread$,
