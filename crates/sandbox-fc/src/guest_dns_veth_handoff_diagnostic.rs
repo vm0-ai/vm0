@@ -713,7 +713,7 @@ struct TcFilterEntry {
     protocol: Option<String>,
     pref: Option<u16>,
     kind: Option<String>,
-    handle: Option<String>,
+    handle: Option<u32>,
     #[serde(default)]
     options: serde_json::Value,
 }
@@ -746,8 +746,7 @@ fn parse_owned_filter(output: &str, identity: FilterIdentity) -> Result<TcCounte
     let entries = serde_json::from_str::<Vec<TcFilterEntry>>(output)
         .map_err(|error| format!("invalid filter JSON: {error}"))?;
     let mut matching = entries.into_iter().filter(|entry| {
-        entry.pref == Some(identity.priority)
-            && entry.handle.as_deref().and_then(parse_filter_handle) == Some(identity.handle)
+        entry.pref == Some(identity.priority) && entry.handle == Some(identity.handle)
     });
     let entry = matching
         .next()
@@ -773,13 +772,6 @@ fn parse_owned_filter(output: &str, identity: FilterIdentity) -> Result<TcCounte
         packets: action.stats.packets,
         bytes: action.stats.bytes,
     })
-}
-
-fn parse_filter_handle(value: &str) -> Option<u32> {
-    value
-        .strip_prefix("0x")
-        .and_then(|value| u32::from_str_radix(value, 16).ok())
-        .or_else(|| value.parse().ok())
 }
 
 fn command_failure(error: CommandError) -> String {

@@ -976,8 +976,16 @@ tc_owned_counters() {
       || fail "failed to read root diagnostic filter"
   fi
   printf '%s\n' "$output" \
-    | jq -er --argjson priority "$TC_DIAGNOSTIC_PRIORITY" '
-      [.[] | select(.pref == $priority and .kind == "flower")] as $owned
+    | jq -er --argjson priority "$TC_DIAGNOSTIC_PRIORITY" \
+      --argjson handle "$TC_DIAGNOSTIC_HANDLE" '
+      [
+        .[]
+        | select(
+            .pref == $priority
+            and .handle == $handle
+            and .kind == "flower"
+          )
+      ] as $owned
       | if ($owned | length) == 1
           and ($owned[0].options.actions | length) == 1
           and $owned[0].options.actions[0].kind == "gact"
