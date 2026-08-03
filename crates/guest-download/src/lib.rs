@@ -76,17 +76,16 @@ fn run_manifest(manifest: Manifest) -> bool {
         instructions::cleanup_instruction_files(&instruction_cleanups);
     }
 
-    // Pre-create all target directories before downloads. This keeps directory
-    // creation independent from scheduler order; overlapping mount paths are
-    // serialized by the download scheduler during extraction.
-    for task in &download_tasks {
-        let mount_path = task.mount_path();
-        if let Err(e) = fs::create_dir_all(mount_path) {
-            log_error!(LOG_TAG, "Failed to create directory {}: {e}", mount_path);
+    // Resolve all logical and physical target identities before downloads.
+    // The scheduler uses both identities to serialize overlapping extraction.
+    let download_tasks = match download::prepare_download_tasks(download_tasks) {
+        Ok(download_tasks) => download_tasks,
+        Err(e) => {
+            log_error!(LOG_TAG, "{e}");
             instructions::cleanup_staged_instruction_sources(&instruction_files);
             return false;
         }
-    }
+    };
     if !prepare_empty_artifacts(&empty_artifacts) {
         instructions::cleanup_staged_instruction_sources(&instruction_files);
         return false;
