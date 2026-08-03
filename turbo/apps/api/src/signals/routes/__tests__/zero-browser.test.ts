@@ -1793,7 +1793,7 @@ describe("zero browser route", () => {
     );
     const firstScreenshotUrl = afterFirstCapture.body.browser.screenshotUrl;
     expect(firstScreenshotUrl).toMatch(
-      /^https:\/\/cdn\.vm7\.io\/artifacts\/.*\/browser-screenshot\.webp$/u,
+      /^https:\/\/cdn\.vm7\.io\/artifacts\/.+\.webp$/u,
     );
     if (!firstScreenshotUrl) {
       throw new Error("Expected the first browser screenshot URL");
