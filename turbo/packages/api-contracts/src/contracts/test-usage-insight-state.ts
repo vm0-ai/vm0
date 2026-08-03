@@ -163,7 +163,6 @@ export const testUsageInsightStateActionResponseSchema = z.object({
   usage_event_billing_error: z.string().nullable().optional(),
   raw_count: z.number().optional(),
   processed_raw_count: z.number().optional(),
-  compacted_raw_count: z.number().optional(),
   hourly_count: z.number().optional(),
   short_window_id: z.string().optional(),
   weekly_window_id: z.string().optional(),
