@@ -17209,6 +17209,390 @@ async function validateRunnerSandboxStatePersistence(): Promise<void> {
   );
 }
 
+const RUN_EVENT_SEQUENCE_NUMBER_PREVIOUS_MIGRATION = 806;
+const RUN_EVENT_SEQUENCE_NUMBER_EXPANSION_MIGRATION = 807;
+
+async function validateRunEventSequenceNumberExpansion(): Promise<void> {
+  console.log("=== Validate populated run event sequence expansion ===\n");
+  const testDb = "migration_run_event_sequence_number_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "00000000-0000-4000-8000-000000080701";
+  const threadId = "00000000-0000-4000-8000-000000080702";
+  const historicalRunId = "00000000-0000-4000-8000-000000080703";
+  const previousApiRunId = "00000000-0000-4000-8000-000000080704";
+  const nextApiRunId = "00000000-0000-4000-8000-000000080705";
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0807_expand_run_event_sequence_number.sql"),
+    "utf8",
+  );
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.doesNotMatch(migrationSql, /\bLOCK\s+TABLE\b/u);
+  assert.doesNotMatch(
+    migrationSql,
+    /(?:DROP|DISABLE)\s+TRIGGER\s+"chat_events_reject_update"/u,
+  );
+  assert.equal(
+    (migrationSql.match(/\bCREATE UNIQUE INDEX CONCURRENTLY\b/gu) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (migrationSql.match(/\bDROP INDEX CONCURRENTLY IF EXISTS\b/gu) ?? [])
+      .length,
+    1,
+  );
+  assert.match(migrationSql, /\bLIMIT 10000\b/u);
+  assert.match(migrationSql, /\bFOR UPDATE SKIP LOCKED\b/u);
+  assert.match(migrationSql, /\bCOMMIT\b/u);
+
+  const schemaSource = await fs.readFile(
+    path.join(PACKAGE_DIR, "src/schema/chat-event.ts"),
+    "utf8",
+  );
+  assert.doesNotMatch(schemaSource, /run_event_sequence_number/u);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      RUN_EVENT_SEQUENCE_NUMBER_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'run-event-sequence-test-user',
+            'run-event-sequence-test',
+            'run-event-sequence-test-org'
+          )
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES (
+            $1,
+            'run-event-sequence-test-user',
+            $2,
+            'run event sequence expansion test'
+          )
+        `,
+        [threadId, composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "sequence_number",
+            "seq_id"
+          )
+          SELECT
+            $1,
+            $2,
+            'output.message',
+            "sequence",
+            "sequence"
+          FROM generate_series(1, 10001) AS "sequence"
+        `,
+        [threadId, historicalRunId],
+      );
+
+      await applyMigrationsUpTo(
+        client,
+        RUN_EVENT_SEQUENCE_NUMBER_EXPANSION_MIGRATION,
+      );
+
+      const historicalRows = await client.query<{
+        mismatches: string;
+        rows: string;
+      }>(
+        `
+          SELECT
+            count(*)::text AS "rows",
+            count(*) FILTER (
+              WHERE "run_event_sequence_number"
+                IS DISTINCT FROM "sequence_number"
+            )::text AS "mismatches"
+          FROM "chat_events"
+          WHERE "run_id" = $1
+        `,
+        [historicalRunId],
+      );
+      assert.deepEqual(historicalRows.rows, [
+        { mismatches: "0", rows: "10001" },
+      ]);
+
+      const previousApiInsert = await client.query<{
+        id: string;
+        runEventSequenceNumber: number;
+        sequenceNumber: number;
+      }>(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'output.message', 7, 10002)
+          RETURNING
+            "id",
+            "sequence_number" AS "sequenceNumber",
+            "run_event_sequence_number" AS "runEventSequenceNumber"
+        `,
+        [threadId, previousApiRunId],
+      );
+      assert.equal(previousApiInsert.rows.length, 1);
+      assert.deepEqual(
+        previousApiInsert.rows.map((row) => {
+          return {
+            runEventSequenceNumber: row.runEventSequenceNumber,
+            sequenceNumber: row.sequenceNumber,
+          };
+        }),
+        [{ runEventSequenceNumber: 7, sequenceNumber: 7 }],
+      );
+
+      const nextApiInsert = await client.query<{
+        runEventSequenceNumber: number;
+        sequenceNumber: number;
+      }>(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_event_sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'output.message', 9, 10003)
+          RETURNING
+            "sequence_number" AS "sequenceNumber",
+            "run_event_sequence_number" AS "runEventSequenceNumber"
+        `,
+        [threadId, nextApiRunId],
+      );
+      assert.deepEqual(nextApiInsert.rows, [
+        { runEventSequenceNumber: 9, sequenceNumber: 9 },
+      ]);
+
+      const indexes = await client.query<{
+        definition: string;
+        isUnique: boolean;
+        isValid: boolean;
+        name: string;
+      }>(`
+        SELECT
+          "index_class"."relname" AS "name",
+          "index"."indisunique" AS "isUnique",
+          "index"."indisvalid" AS "isValid",
+          pg_get_indexdef("index"."indexrelid") AS "definition"
+        FROM "pg_index" AS "index"
+        INNER JOIN "pg_class" AS "index_class"
+          ON "index_class"."oid" = "index"."indexrelid"
+        WHERE "index_class"."relname" IN (
+          'chat_events_run_seq_unique',
+          'chat_events_run_event_seq_unique'
+        )
+        ORDER BY "index_class"."relname"
+      `);
+      assert.deepEqual(
+        indexes.rows.map((index) => {
+          return {
+            isUnique: index.isUnique,
+            isValid: index.isValid,
+            name: index.name,
+          };
+        }),
+        [
+          {
+            isUnique: true,
+            isValid: true,
+            name: "chat_events_run_event_seq_unique",
+          },
+          {
+            isUnique: true,
+            isValid: true,
+            name: "chat_events_run_seq_unique",
+          },
+        ],
+      );
+      assert.match(
+        indexes.rows[0]?.definition ?? "",
+        /\(run_id, run_event_sequence_number\)$/u,
+      );
+      assert.match(
+        indexes.rows[1]?.definition ?? "",
+        /\(run_id, sequence_number\)$/u,
+      );
+
+      await client.query(`DROP INDEX "chat_events_run_event_seq_unique"`);
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "chat_events_run_seq_unique",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'output.message', 7, 10004)
+        `,
+        values: [threadId, previousApiRunId],
+      });
+      await client.query(`
+        CREATE UNIQUE INDEX "chat_events_run_event_seq_unique"
+        ON "chat_events" USING btree (
+          "run_id",
+          "run_event_sequence_number"
+        )
+      `);
+
+      await client.query(`DROP INDEX "chat_events_run_seq_unique"`);
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "chat_events_run_event_seq_unique",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_event_sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'output.message', 9, 10005)
+        `,
+        values: [threadId, nextApiRunId],
+      });
+      await client.query(`
+        CREATE UNIQUE INDEX "chat_events_run_seq_unique"
+        ON "chat_events" USING btree ("run_id", "sequence_number")
+      `);
+
+      await expectDatabaseError(client, {
+        code: "P0001",
+        messageIncludes: "chat event run event sequence columns must match",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "sequence_number",
+            "run_event_sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, gen_random_uuid(), 'output.message', 1, 2, 10006)
+        `,
+        values: [threadId],
+      });
+
+      const previousApiEventId = previousApiInsert.rows[0]?.id;
+      assert.ok(previousApiEventId);
+      await assertChatEventsAppendOnlyProtection(client, previousApiEventId);
+      await expectDatabaseError(client, {
+        code: "P0001",
+        messageIncludes: "chat_events is append-only; UPDATE is not allowed",
+        query: `
+          UPDATE "chat_events"
+          SET "run_event_sequence_number" = 10
+          WHERE "run_id" = $1
+        `,
+        values: [nextApiRunId],
+      });
+
+      const rejectFunction = await client.query<{ definition: string }>(`
+        SELECT pg_get_functiondef(
+          'public.reject_chat_event_source_update()'::regprocedure
+        ) AS "definition"
+      `);
+      assert.doesNotMatch(
+        rejectFunction.rows[0]?.definition ?? "",
+        /run_event_sequence_number/u,
+      );
+
+      const migrationStatements = migrationSql
+        .split("--> statement-breakpoint")
+        .map((statement) => {
+          return statement.trim();
+        })
+        .filter((statement) => {
+          return statement.length > 0;
+        });
+      for (const statement of migrationStatements) {
+        await client.query(statement);
+      }
+
+      const retryState = await client.query<{
+        bridgeEnabled: string;
+        mismatches: string;
+        newIndexValid: boolean;
+        rejectEnabled: string;
+      }>(`
+        SELECT
+          count(*) FILTER (
+            WHERE "run_event_sequence_number" IS DISTINCT FROM "sequence_number"
+          )::text AS "mismatches",
+          (
+            SELECT "tgenabled"::text
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'public.chat_events'::regclass
+              AND "tgname" = 'chat_events_reject_update'
+              AND NOT "tgisinternal"
+          ) AS "rejectEnabled",
+          (
+            SELECT "tgenabled"::text
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'public.chat_events'::regclass
+              AND "tgname" =
+                'bridge_chat_event_run_event_sequence_number_0807'
+              AND NOT "tgisinternal"
+          ) AS "bridgeEnabled",
+          (
+            SELECT "indisvalid"
+            FROM "pg_index"
+            WHERE "indexrelid" =
+              'public.chat_events_run_event_seq_unique'::regclass
+          ) AS "newIndexValid"
+        FROM "chat_events"
+      `);
+      assert.deepEqual(retryState.rows, [
+        {
+          bridgeEnabled: "O",
+          mismatches: "0",
+          newIndexValid: true,
+          rejectEnabled: "O",
+        },
+      ]);
+      await assertChatEventsAppendOnlyProtection(client, previousApiEventId);
+
+      console.log("   ✅ 10,001 historical rows backfill across batches");
+      console.log("   ✅ Previous and next API inserts mirror both directions");
+      console.log("   ✅ Both unique index paths reject duplicates with 23505");
+      console.log("   ✅ Strict append-only protection is restored");
+      console.log("   ✅ A full non-transactional retry is idempotent\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log("=== Phase 1.5: Validate Latest Snapshot Accuracy ===\n");
 
@@ -17341,6 +17725,7 @@ async function main(): Promise<void> {
     await validateChatEventRunLifecycleContraction();
     await validateChatEventLowTrafficIndexes();
     await validateChatEventRevokeIndex();
+    await validateRunEventSequenceNumberExpansion();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();
