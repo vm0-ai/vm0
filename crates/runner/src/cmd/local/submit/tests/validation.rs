@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 
 use super::super::{MAX_LOCAL_SUBMIT_TIMEOUT_SECS, SubmitArgs, run_submit_with_home};
-use super::support::{submit_args_for_test, wait_for_job_and_write_success};
+use super::support::{run_submit_and_write_success, submit_args_for_test};
 use crate::error::RunnerError;
 use crate::local_queue;
 use crate::paths::HomePaths;
@@ -130,17 +130,11 @@ async fn maximum_timeout_is_accepted() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
     let group = "test/group";
-    let group_dir = home.groups_dir().join(group);
     let mut args = submit_args_for_test();
     args.group = group.into();
     args.timeout = MAX_LOCAL_SUBMIT_TIMEOUT_SECS;
-    let watcher = tokio::spawn(wait_for_job_and_write_success(
-        group_dir,
-        crate::profile::DEFAULT_PROFILE.to_owned(),
-    ));
 
-    let code = run_submit_with_home(args, home).await.unwrap();
-    let request = watcher.await.unwrap();
+    let (code, request) = run_submit_and_write_success(args, home).await.unwrap();
 
     assert_eq!(code, ExitCode::SUCCESS);
     assert_eq!(request.prompt, "hello");
