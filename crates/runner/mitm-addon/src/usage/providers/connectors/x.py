@@ -540,7 +540,7 @@ def _count_bounded_non_empty_comma_segments(value: str, max_count: int) -> int |
         count += 1
         if count > max_count:
             return None
-    return count or None
+    return count
 
 
 def _empty_request_query_fallback_hints() -> dict:
@@ -697,9 +697,6 @@ def _parse_request_query_fallback_hints(original_url: str) -> dict:
                         decoded_value = urllib.parse.unquote_plus(raw_value)
                         if id_count_max is not None:
                             remaining = id_count_max - ids_count
-                            if remaining < 1:
-                                ids_count = 0
-                                break
                             value_count = _count_bounded_non_empty_comma_segments(
                                 decoded_value, remaining
                             )
