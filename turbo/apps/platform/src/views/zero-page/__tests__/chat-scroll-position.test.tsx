@@ -6,6 +6,7 @@ import {
   chatThreadEventsContract,
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { mockChatLifecycle, sendMessageInUI } from "./chat-test-helpers.ts";
 import {
   normalizeMockChatEvents,
@@ -774,7 +775,11 @@ describe("chat scroll position", () => {
     });
     const resizeObserver = installResizeObserver();
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
 
     const container = await waitFor(() => {
       expect(screen.getByText("content-growth message 7")).toBeInTheDocument();
@@ -804,6 +809,40 @@ describe("chat scroll position", () => {
     );
   });
 
+  it("leaves content growth alone while diagrams are switched off", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000817";
+    const { growContent } = mockLateGrowingThread({
+      threadId,
+      prefix: "growth-switched-off",
+    });
+    const resizeObserver = installResizeObserver();
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const container = await waitFor(() => {
+      expect(
+        screen.getByText("growth-switched-off message 7"),
+      ).toBeInTheDocument();
+      const current = chatScrollContainer();
+      expect(current.scrollTop).toBe(700);
+      return current;
+    });
+    const messageContainer = container.querySelector(
+      "[data-message-container]",
+    );
+    if (!messageContainer) {
+      throw new Error("Chat message container not found");
+    }
+
+    // Nothing observes the messages, so the thread stays where the per-event
+    // commit left it — the behaviour every reader had before the observer.
+    expect(resizeObserver.isObserved(messageContainer)).toBeFalsy();
+    growContent(400);
+    resizeObserver.trigger(messageContainer);
+
+    expect(container.scrollTop).toBe(700);
+  });
+
   it("keeps following the tail when growing content delivers a second scroll event", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000815";
     const { growContent } = mockLateGrowingThread({
@@ -812,7 +851,11 @@ describe("chat scroll position", () => {
     });
     const resizeObserver = installResizeObserver();
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
 
     const container = await waitFor(() => {
       expect(screen.getByText("second-scroll message 7")).toBeInTheDocument();
@@ -852,7 +895,11 @@ describe("chat scroll position", () => {
     });
     const resizeObserver = installResizeObserver();
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
 
     const container = await waitFor(() => {
       expect(screen.getByText("anchor-gone message 7")).toBeInTheDocument();
@@ -901,7 +948,11 @@ describe("chat scroll position", () => {
     });
     const resizeObserver = installResizeObserver();
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
 
     const container = await waitFor(() => {
       expect(screen.getByText("grow-above message 7")).toBeInTheDocument();
@@ -1558,7 +1609,11 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
 
     const container = await waitFor(() => {
       expect(screen.getByText("resize-preserve message 7")).toBeInTheDocument();
