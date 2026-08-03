@@ -112,9 +112,10 @@ pub(super) struct FinalizeContext {
 /// Finalizes ownership of a sandbox returned by the executor.
 ///
 /// `None` requires no sandbox lifecycle action. For `Some`, idle parking is
-/// attempted only after a zero exit code, no cancellation, an open parking
-/// gate, and an available reuse key. Otherwise, or whenever parking cannot
-/// complete, the sandbox is stopped and destroyed.
+/// considered only when the exit code is zero, cancellation is not active, the
+/// parking gate is open, and a reuse key is available. Otherwise, or if
+/// cancellation wins before ownership transfer or parking cannot complete, the
+/// sandbox is stopped and destroyed.
 pub(super) async fn finalize_sandbox_for_completion(
     sandbox: Option<Box<dyn Sandbox>>,
     active_lease: ActiveBudgetLease,

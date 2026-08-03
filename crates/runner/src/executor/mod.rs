@@ -244,10 +244,10 @@ pub struct ExecuteOutcome {
     /// Sandbox ownership after execution.
     ///
     /// `Some` transfers a still-live sandbox to the caller for finalization; it
-    /// does not imply the sandbox is eligible for reuse. Finalization may
-    /// attempt parking only after a zero exit code, no cancellation, an open
-    /// parking gate, and an available reuse key. A failed or rejected park
-    /// attempt still destroys the sandbox.
+    /// does not imply the sandbox is eligible for reuse. Finalization considers
+    /// parking only when the exit code is zero, cancellation is not active, the
+    /// parking gate is open, and a reuse key is available. Cancellation before
+    /// ownership transfer or an unsuccessful park still destroys the sandbox.
     ///
     /// `None` means no live sandbox ownership is returned, either because no
     /// sandbox was created or because executor-side cleanup already consumed
