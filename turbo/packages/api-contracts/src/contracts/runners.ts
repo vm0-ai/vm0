@@ -647,6 +647,8 @@ export const executionContextSchema = z.object({
   agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   sandboxToken: z.string(),
+  activeInput: z.literal(true).optional(),
+  activeInputAbly: z.literal(true).optional(),
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
@@ -719,6 +721,7 @@ export const runnersJobClaimContract = c.router({
     }),
     body: z.object({
       runnerIdentity: runnerProcessIdentitySchema.optional(),
+      activeInput: z.literal(true).optional(),
       telemetry: runnerClaimTelemetrySchema.optional(),
     }),
     responses: {
@@ -730,6 +733,33 @@ export const runnersJobClaimContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Claim a pending job for execution",
+  },
+});
+
+export const runnersActiveInputsContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/runners/runs/:runId/active-inputs/:fromSequence",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      runId: z.uuid(),
+      fromSequence: z.coerce.number().int().positive(),
+    }),
+    responses: {
+      200: z.object({
+        entries: z.array(
+          z.object({
+            sequence: z.number().int().positive(),
+            messageId: z.uuid(),
+            text: z.string().min(1),
+          }),
+        ),
+      }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "List active input for a running agent run",
   },
 });
 
@@ -852,6 +882,7 @@ export const runnersHeartbeatContract = c.router({
 
 export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
+export type RunnersActiveInputsContract = typeof runnersActiveInputsContract;
 export type RunnersNetworkPolicyRefreshContract =
   typeof runnersNetworkPolicyRefreshContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;

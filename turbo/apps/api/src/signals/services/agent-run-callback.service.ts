@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { and, eq, isNull, notInArray, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, notInArray, or } from "drizzle-orm";
 
 import { env, optionalEnv } from "../../lib/env";
 import { computeHmacSignature } from "../../lib/event-consumer/hmac";
@@ -39,6 +39,17 @@ import {
 import { continueGoalIfIdle$ } from "./zero-goal-continuation.service";
 
 const L = logger("AgentRunCallback");
+
+const INLINE_ONLY_INTEGRATION_DELIVERY_CALLBACK_KINDS = [
+  "slack:chat",
+  "feishu:chat",
+  "teams:chat",
+  "telegram:chat",
+  "github:chat",
+  "slack:org",
+] as const;
+const DELETED_THREAD_INLINE_CALLBACK_ERROR =
+  "Chat thread was deleted before inline callback delivery";
 
 interface CallbackRecord {
   readonly id: string;
@@ -309,12 +320,7 @@ async function dispatchRunCallbacks(
         or(
           isNull(agentRunCallbacks.internalKind),
           notInArray(agentRunCallbacks.internalKind, [
-            "slack:chat",
-            "feishu:chat",
-            "teams:chat",
-            "telegram:chat",
-            "github:chat",
-            "slack:org",
+            ...INLINE_ONLY_INTEGRATION_DELIVERY_CALLBACK_KINDS,
           ]),
         ),
       ),
@@ -342,6 +348,27 @@ export async function dispatchFailedRunCallbacks(
   error: string,
 ): Promise<void> {
   await dispatchRunCallbacks(db, runId, "failed", undefined, error);
+}
+
+export async function failPendingInlineOnlyDeliveryCallbacksForDeletedThread(
+  db: Db,
+  runId: string,
+): Promise<void> {
+  await db
+    .update(agentRunCallbacks)
+    .set({
+      status: "failed",
+      lastError: DELETED_THREAD_INLINE_CALLBACK_ERROR,
+    })
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, runId),
+        eq(agentRunCallbacks.status, "pending"),
+        inArray(agentRunCallbacks.internalKind, [
+          ...INLINE_ONLY_INTEGRATION_DELIVERY_CALLBACK_KINDS,
+        ]),
+      ),
+    );
 }
 
 export const dispatchRunCallbacks$ = command(
@@ -396,12 +423,7 @@ export const dispatchRunCallbacks$ = command(
           or(
             isNull(agentRunCallbacks.internalKind),
             notInArray(agentRunCallbacks.internalKind, [
-              "slack:chat",
-              "feishu:chat",
-              "teams:chat",
-              "telegram:chat",
-              "github:chat",
-              "slack:org",
+              ...INLINE_ONLY_INTEGRATION_DELIVERY_CALLBACK_KINDS,
             ]),
           ),
         ),

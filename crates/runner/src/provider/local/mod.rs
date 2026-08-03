@@ -171,6 +171,8 @@ impl JobProvider for LocalProvider {
             append_system_prompt: None,
             vars: req.vars,
             sandbox_token: String::new(),
+            active_input: None,
+            active_input_ably: None,
             storage_manifest: None,
             environment: environment_merge.environment,
             resume_session: req

@@ -5675,8 +5675,15 @@
     {
       "idx": 810,
       "version": "7",
-      "when": 1785755009685,
-      "tag": "0810_clear_non_goal_run_groups",
+      "when": 1785750870456,
+      "tag": "0810_small_sway",
+      "breakpoints": true
+    },
+    {
+      "idx": 811,
+      "version": "7",
+      "when": 1785759014655,
+      "tag": "0811_clear_non_goal_run_groups",
       "breakpoints": true
     }
   ]

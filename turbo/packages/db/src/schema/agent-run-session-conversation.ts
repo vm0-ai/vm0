@@ -81,6 +81,9 @@ export const agentRuns = pgTable(
     runnerHeartbeatGeneration: bigint("runner_heartbeat_generation", {
       mode: "number",
     }),
+    activeInputEnabled: boolean("active_input_enabled")
+      .default(false)
+      .notNull(),
     runnerGroup: varchar("runner_group", { length: 255 }),
   },
   (table) => {

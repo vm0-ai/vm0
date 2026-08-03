@@ -1,5 +1,30 @@
 # Changelog
 
+## [8.504.1](https://github.com/vm0-ai/vm0/compare/core-v8.504.0...core-v8.504.1) (2026-08-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.264.1
+
+## [8.504.0](https://github.com/vm0-ai/vm0/compare/core-v8.503.1...core-v8.504.0) (2026-08-03)
+
+
+### Features
+
+* **core:** enable custom connector features globally ([#24696](https://github.com/vm0-ai/vm0/issues/24696)) ([7ccc87b](https://github.com/vm0-ai/vm0/commit/7ccc87bcfb0e2f51e88dad0fbd64b3bd957ac088))
+* **core:** enable JoggAI connector globally ([#24739](https://github.com/vm0-ai/vm0/issues/24739)) ([13b3bda](https://github.com/vm0-ai/vm0/commit/13b3bda096212ab27fa52e0cbb165436ba936f68))
+* fully enable artifact versioning switches ([#24704](https://github.com/vm0-ai/vm0/issues/24704)) ([e26e2f2](https://github.com/vm0-ai/vm0/commit/e26e2f2e8614d136899fff712adc5aa7d8c3f796))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.264.0
+
 ## [8.503.1](https://github.com/vm0-ai/vm0/compare/core-v8.503.0...core-v8.503.1) (2026-08-03)
 
 

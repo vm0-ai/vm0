@@ -14,6 +14,7 @@ mod local;
 pub mod mock;
 mod network_policy_refresh;
 
+pub(crate) use api::ApiClient;
 pub use api::{ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths};
 pub use local::LocalProvider;
 pub(crate) use network_policy_refresh::{
@@ -354,9 +355,18 @@ impl ClaimedJob {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn api(
         expected_run_id: RunId,
         context: ExecutionContext,
+    ) -> Result<Self, ClaimedJobRunIdMismatch> {
+        Self::api_with_active_input_source(expected_run_id, context, None)
+    }
+
+    pub(crate) fn api_with_active_input_source(
+        expected_run_id: RunId,
+        context: ExecutionContext,
+        active_input_source: Option<ActiveInputSource>,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
         Self::validate_run_id(expected_run_id, &context)?;
         let completion_auth =
@@ -364,7 +374,7 @@ impl ClaimedJob {
         Ok(Self {
             context,
             completion_auth,
-            active_input_source: None,
+            active_input_source,
         })
     }
 

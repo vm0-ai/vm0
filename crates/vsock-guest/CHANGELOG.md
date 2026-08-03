@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.59](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.58...vsock-guest-v0.19.59) (2026-08-03)
+
+
+### Performance Improvements
+
+* **vsock:** encode exec results into one frame buffer ([#24754](https://github.com/vm0-ai/vm0/issues/24754)) ([eb7bd3a](https://github.com/vm0-ai/vm0/commit/eb7bd3a5947dc39748f96cd430f4283e2be1962e))
+
 ## [0.19.58](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.57...vsock-guest-v0.19.58) (2026-08-03)
 
 ## [0.19.57](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.56...vsock-guest-v0.19.57) (2026-08-02)

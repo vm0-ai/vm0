@@ -2637,13 +2637,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
   },
   {
     definition:
-      "CREATE TRIGGER bridge_chat_event_run_event_sequence_number_0807 BEFORE INSERT ON public.chat_events FOR EACH ROW EXECUTE FUNCTION bridge_chat_event_run_event_sequence_number_0807()",
-    schemaName: "public",
-    tableName: "chat_events",
-    triggerName: "bridge_chat_event_run_event_sequence_number_0807",
-  },
-  {
-    definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
     schemaName: "public",
     tableName: "chat_events",
@@ -2782,13 +2775,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     bodyHash: "4886a7314cbaa815a4f8290a16a2f528",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "8a0560fcbbb11914a72bb7c9a6b86cb8",
-    functionName: "bridge_chat_event_run_event_sequence_number_0807",
-    identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
@@ -8434,6 +8420,7 @@ async function validateChatEventPropertyColumnRollout(): Promise<void> {
       for (const statement of runEventSequenceMigrationStatements) {
         await client.query(statement);
       }
+      await addCurrentChatEventAdditiveStorage(client);
       await validateChatEventPropertyColumnRuntimeCutover(client);
       await validateChatEventPropertyColumnContraction(client);
       await validateLegacyChatEventSeqIdAllocatorDrop(client);
@@ -17859,10 +17846,20 @@ async function validateRunnerSandboxStatePersistence(): Promise<void> {
 
 const RUN_EVENT_SEQUENCE_NUMBER_PREVIOUS_MIGRATION = 806;
 const RUN_EVENT_SEQUENCE_NUMBER_EXPANSION_MIGRATION = 807;
+const RUN_EVENT_SEQUENCE_NUMBER_CONTRACTION_MIGRATION = 810;
 
-async function validateRunEventSequenceNumberExpansion(): Promise<void> {
+async function addCurrentChatEventAdditiveStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    ADD COLUMN "active_input_sequence" integer
+  `);
+}
+
+async function validateRunEventSequenceNumberRollout(): Promise<void> {
   console.log(
-    "=== Validate populated run event sequence expansion and runtime cutover ===\n",
+    "=== Validate populated run event sequence expand, switch, and contract rollout ===\n",
   );
   const testDb = "migration_run_event_sequence_number_test";
   const testDbUrl = createTestDbUrl(testDb);
@@ -17871,6 +17868,7 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
   const historicalRunId = "00000000-0000-4000-8000-000000080703";
   const previousApiRunId = "00000000-0000-4000-8000-000000080704";
   const currentApiRunId = "00000000-0000-4000-8000-000000080705";
+  const contractedRunId = "00000000-0000-4000-8000-000000080706";
 
   const migrationSql = await fs.readFile(
     path.join(MIGRATIONS_DIR, "0807_expand_run_event_sequence_number.sql"),
@@ -17894,6 +17892,37 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
   assert.match(migrationSql, /\bLIMIT 10000\b/u);
   assert.match(migrationSql, /\bFOR UPDATE SKIP LOCKED\b/u);
   assert.match(migrationSql, /\bCOMMIT\b/u);
+
+  const contractionSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0810_small_sway.sql"),
+    "utf8",
+  );
+  assert.ok(contractionSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.equal(
+    (
+      contractionSql.match(
+        /DROP INDEX CONCURRENTLY IF EXISTS "chat_events_run_seq_unique"/gu,
+      ) ?? []
+    ).length,
+    1,
+  );
+  assert.match(
+    contractionSql,
+    /DROP TRIGGER IF EXISTS "bridge_chat_event_run_event_sequence_number_0807"/u,
+  );
+  assert.match(
+    contractionSql,
+    /DROP FUNCTION IF EXISTS "bridge_chat_event_run_event_sequence_number_0807"\(\)/u,
+  );
+  assert.match(contractionSql, /DROP COLUMN IF EXISTS "sequence_number"/u);
+  assert.doesNotMatch(
+    contractionSql,
+    /CREATE OR REPLACE FUNCTION "reject_chat_event_source_update"/u,
+  );
+  assert.doesNotMatch(
+    contractionSql,
+    /"seq_id"|"last_chat_event_seq_id"|"run_event_id"|"chat_events_run_event_seq_unique"/u,
+  );
 
   const schemaSource = await fs.readFile(
     path.join(PACKAGE_DIR, "src/schema/chat-event.ts"),
@@ -17970,6 +17999,7 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
         client,
         RUN_EVENT_SEQUENCE_NUMBER_EXPANSION_MIGRATION,
       );
+      await addCurrentChatEventAdditiveStorage(client);
       const database = drizzle(client);
 
       const historicalRows = await client.query<{
@@ -18240,6 +18270,8 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
         rejectFunction.rows[0]?.definition ?? "",
         /run_event_sequence_number/u,
       );
+      const strictRejectFunctionDefinition = rejectFunction.rows[0]?.definition;
+      assert.ok(strictRejectFunctionDefinition);
 
       const migrationStatements = migrationSql
         .split("--> statement-breakpoint")
@@ -18296,6 +18328,180 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
       ]);
       await assertChatEventsAppendOnlyProtection(client, previousApiEventId);
 
+      await applyMigrationsUpTo(
+        client,
+        RUN_EVENT_SEQUENCE_NUMBER_CONTRACTION_MIGRATION,
+      );
+
+      const preservedRows = await client.query<{
+        maximumSequence: number;
+        minimumSequence: number;
+        rows: string;
+      }>(
+        `
+          SELECT
+            count(*)::text AS "rows",
+            min("run_event_sequence_number") AS "minimumSequence",
+            max("run_event_sequence_number") AS "maximumSequence"
+          FROM "chat_events"
+          WHERE "run_id" = $1
+        `,
+        [historicalRunId],
+      );
+      assert.deepEqual(preservedRows.rows, [
+        {
+          maximumSequence: 10001,
+          minimumSequence: 1,
+          rows: "10001",
+        },
+      ]);
+
+      const switchedRows = await client.query<{
+        runEventSequenceNumber: number;
+        runId: string;
+      }>(
+        `
+          SELECT
+            "run_id" AS "runId",
+            "run_event_sequence_number" AS "runEventSequenceNumber"
+          FROM "chat_events"
+          WHERE "run_id" IN ($1, $2)
+          ORDER BY "run_id"
+        `,
+        [previousApiRunId, currentApiRunId],
+      );
+      assert.deepEqual(switchedRows.rows, [
+        {
+          runEventSequenceNumber: 7,
+          runId: previousApiRunId,
+        },
+        {
+          runEventSequenceNumber: 9,
+          runId: currentApiRunId,
+        },
+      ]);
+
+      const contractedInsert = await database
+        .insert(chatEvents)
+        .values({
+          chatThreadId: threadId,
+          runId: contractedRunId,
+          eventType: "output.message",
+          runEventSequenceNumber: 11,
+          seqId: 10007,
+        })
+        .returning({
+          id: chatEvents.id,
+          sequenceNumber: chatEvents.runEventSequenceNumber,
+        });
+      assert.equal(contractedInsert.length, 1);
+      assert.equal(contractedInsert[0]?.sequenceNumber, 11);
+      const contractedEventId = contractedInsert[0]?.id;
+      assert.ok(contractedEventId);
+
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "chat_events_run_event_seq_unique",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_event_sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'output.message', 11, 10008)
+        `,
+        values: [threadId, contractedRunId],
+      });
+      await assertChatEventsAppendOnlyProtection(client, contractedEventId);
+
+      const contractionStatements = contractionSql
+        .split("--> statement-breakpoint")
+        .map((statement) => {
+          return statement.trim();
+        })
+        .filter((statement) => {
+          return statement.length > 0;
+        });
+      for (const statement of contractionStatements) {
+        await client.query(statement);
+      }
+
+      const contractedCatalog = await client.query<{
+        backfillProcedurePresent: boolean;
+        bridgeFunctionPresent: boolean;
+        bridgeTriggerPresent: boolean;
+        canonicalIndexValid: boolean;
+        legacyColumnPresent: boolean;
+        legacyIndexPresent: boolean;
+        rejectTriggerEnabled: string;
+      }>(`
+        SELECT
+          EXISTS (
+            SELECT 1
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'chat_events'
+              AND "column_name" = 'sequence_number'
+          ) AS "legacyColumnPresent",
+          to_regclass('public.chat_events_run_seq_unique') IS NOT NULL
+            AS "legacyIndexPresent",
+          EXISTS (
+            SELECT 1
+            FROM "pg_index"
+            WHERE "indexrelid" =
+              'public.chat_events_run_event_seq_unique'::regclass
+              AND "indisunique"
+              AND "indisvalid"
+          ) AS "canonicalIndexValid",
+          to_regprocedure(
+            'public.bridge_chat_event_run_event_sequence_number_0807()'
+          ) IS NOT NULL AS "bridgeFunctionPresent",
+          to_regprocedure(
+            'public.backfill_chat_event_run_event_sequence_number_0807()'
+          ) IS NOT NULL AS "backfillProcedurePresent",
+          EXISTS (
+            SELECT 1
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'public.chat_events'::regclass
+              AND "tgname" =
+                'bridge_chat_event_run_event_sequence_number_0807'
+              AND NOT "tgisinternal"
+          ) AS "bridgeTriggerPresent",
+          (
+            SELECT "tgenabled"::text
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'public.chat_events'::regclass
+              AND "tgname" = 'chat_events_reject_update'
+              AND NOT "tgisinternal"
+          ) AS "rejectTriggerEnabled"
+      `);
+      assert.deepEqual(contractedCatalog.rows, [
+        {
+          backfillProcedurePresent: false,
+          bridgeFunctionPresent: false,
+          bridgeTriggerPresent: false,
+          canonicalIndexValid: true,
+          legacyColumnPresent: false,
+          legacyIndexPresent: false,
+          rejectTriggerEnabled: "O",
+        },
+      ]);
+
+      const preservedRejectFunction = await client.query<{
+        definition: string;
+      }>(`
+        SELECT pg_get_functiondef(
+          'public.reject_chat_event_source_update()'::regprocedure
+        ) AS "definition"
+      `);
+      assert.equal(
+        preservedRejectFunction.rows[0]?.definition,
+        strictRejectFunctionDefinition,
+      );
+      await assertChatEventsAppendOnlyProtection(client, contractedEventId);
+
       console.log("   ✅ 10,001 historical rows backfill across batches");
       console.log(
         "   ✅ Draining legacy and current Drizzle inserts coexist with mirrored columns",
@@ -18305,7 +18511,15 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
       );
       console.log("   ✅ Both unique index paths reject duplicates with 23505");
       console.log("   ✅ Strict append-only protection is restored");
-      console.log("   ✅ A full non-transactional retry is idempotent\n");
+      console.log(
+        "   ✅ Contract preserves canonical rows and new writes while the canonical index independently rejects duplicates",
+      );
+      console.log(
+        "   ✅ Legacy column, index, bridge, and backfill procedure are absent",
+      );
+      console.log(
+        "   ✅ Full expansion and contraction non-transactional retries are idempotent\n",
+      );
     } finally {
       await client.end();
     }
@@ -18338,7 +18552,7 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
   } as const;
 
   const migrationSql = await fs.readFile(
-    path.join(MIGRATIONS_DIR, "0810_clear_non_goal_run_groups.sql"),
+    path.join(MIGRATIONS_DIR, "0811_clear_non_goal_run_groups.sql"),
     "utf8",
   );
   assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
@@ -18788,7 +19002,7 @@ async function main(): Promise<void> {
     await validateChatEventRunLifecycleContraction();
     await validateChatEventLowTrafficIndexes();
     await validateChatEventRevokeIndex();
-    await validateRunEventSequenceNumberExpansion();
+    await validateRunEventSequenceNumberRollout();
     await validateGoalOnlyRunGroupsCleanup();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();

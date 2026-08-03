@@ -7,6 +7,7 @@ import type {
 } from "../../lib/event-consumer/verify";
 import { eventDeliveryUnavailable } from "../../lib/error";
 import { logger } from "../../lib/log";
+import { isForeignKeyViolation } from "../../lib/pg-errors";
 import { now } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { publishRunChangedForUserSafely } from "../external/realtime";
@@ -217,6 +218,21 @@ export const receiveAgentEvents$ = command(
     );
     signal.throwIfAborted();
     if (!projectionResult.ok) {
+      if (isForeignKeyViolation(projectionResult.error)) {
+        L.debug("Ignored events for deleted run", {
+          runId: payload.runId,
+          ...range,
+        });
+        return {
+          response: {
+            status: 200 as const,
+            body: {
+              received: payload.events.length,
+              ...range,
+            },
+          },
+        };
+      }
       L.error("Required database run output projection failed", {
         runId: payload.runId,
         ...range,
