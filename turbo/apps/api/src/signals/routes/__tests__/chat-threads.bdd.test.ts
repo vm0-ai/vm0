@@ -2983,7 +2983,8 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     expect(hostedGroup?.files).toHaveLength(1);
     expect(hostedGroup?.files[0]).toMatchObject({
       artifactKind: "hosted-site",
-      url: prepared.url,
+      url: prepared.artifactUrl,
+      aliasUrl: prepared.url,
       contentType: "text/html",
     });
     const plainGroup = artifacts.runs.find((group) => {

@@ -288,6 +288,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     });
     const uploadId = randomUUID();
     const clientEventId = randomUUID();
+    api.mockCompletedUploadObject(actor, uploadId, "launch-plan.txt", 24);
     const expectedUserMessage: UserMessageDocument = {
       version: 1,
       parts: [
@@ -810,9 +811,12 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
         ),
       ],
     });
-    expect(prepared.publicSlug).toMatch(
-      new RegExp(`^${site}-[a-f0-9]{8}-release-01$`),
-    );
+    expect(prepared).toMatchObject({
+      publicSlug: site,
+      aliasUrl: prepared.url,
+      deploymentVersion: 1,
+      artifactUrl: expect.stringContaining(`dpl-${prepared.deploymentId}.`),
+    });
     expect(prepared.uploads).toHaveLength(2);
 
     const otherActor = bdd.user();
@@ -829,12 +833,17 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
       actor,
       prepared.deploymentId,
     );
-    expect(completed).toStrictEqual({
+    expect(completed).toMatchObject({
       siteId: prepared.siteId,
       deploymentId: prepared.deploymentId,
       publicSlug: prepared.publicSlug,
       url: prepared.url,
       status: "ready",
+      deploymentVersion: 1,
+      artifactUrl: prepared.artifactUrl,
+      aliasUrl: prepared.url,
+      isActive: true,
+      activeDeploymentVersion: 1,
     });
 
     const invalid = await api.requestPrepareHostedSite(

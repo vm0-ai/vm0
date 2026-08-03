@@ -434,14 +434,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Store new user artifacts under flat, ten-character hashed public keys.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.HostedArtifactVersions]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Create immutable hosted artifact versions behind stable site aliases.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.HtmlResourceIndex]: {
     maintainer: "bingjie@vm0.ai",

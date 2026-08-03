@@ -237,6 +237,7 @@ async function createHostedArtifact(args: {
   readonly threadId: string;
   readonly fileId: string;
   readonly url: string;
+  readonly aliasUrl: string;
   readonly deploymentId: string;
   readonly bearer: string;
 }> {
@@ -255,13 +256,17 @@ async function createHostedArtifact(args: {
     spaFallback: false,
     files: [hostedTextFile("/index.html", `<main>${args.site}</main>`)],
   });
+  if (!prepared.artifactUrl) {
+    throw new Error("Expected a versioned hosted artifact URL");
+  }
   await chat.completeHostedSiteWithBearer(bearer, prepared.deploymentId);
   await completeChatRunOk(run.runId, sandboxHeaders);
   return {
     runId: run.runId,
     threadId: run.threadId,
-    fileId: prepared.url,
-    url: prepared.url,
+    fileId: prepared.deploymentId,
+    url: prepared.artifactUrl,
+    aliasUrl: prepared.url,
     deploymentId: prepared.deploymentId,
     bearer,
   };
@@ -486,7 +491,9 @@ describe("video Artifact previews", () => {
     const previewedArtifact = response.artifacts.find((item) => {
       return item.fileId === videoArtifact.fileId;
     });
-    expect(previewedArtifact?.previewImageUrl).toMatch(/\/poster-v2\.jpg$/);
+    expect(previewedArtifact?.previewImageUrl).toMatch(
+      /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
+    );
   }, 180_000);
 
   it("leaves video preview empty when media frame extraction fails", async () => {
@@ -613,8 +620,8 @@ describe("GET /api/zero/artifacts", () => {
         expect.objectContaining({
           threadId: run.threadId,
           runId: run.runId,
-          fileId: prepared.url,
-          url: prepared.url,
+          fileId: prepared.deploymentId,
+          url: prepared.artifactUrl,
           size: hostedFile.size,
           updatedAt: expect.any(String),
           artifactKind: "hosted-site",
@@ -631,7 +638,7 @@ describe("GET /api/zero/artifacts", () => {
       ]),
     );
     const hostedArtifact = response.artifacts.find((artifact) => {
-      return artifact.fileId === prepared.url;
+      return artifact.fileId === prepared.deploymentId;
     });
     expect(hostedArtifact).not.toHaveProperty("previewImageUrl");
     expect(
@@ -773,7 +780,7 @@ describe("GET /api/zero/artifacts", () => {
       expect.arrayContaining([
         expect.objectContaining({
           url: artifact.url,
-          aliasUrl: artifact.url,
+          aliasUrl: artifact.aliasUrl,
           previewImageUrl: firstArtifact?.previewImageUrl,
         }),
       ]),

@@ -1,6 +1,10 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
+import {
+  PutObjectCommand,
+  type PutObjectCommandInput,
+} from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
@@ -85,17 +89,18 @@ function sttDailyDurationKey(date: Date = currentDate()): string {
   return `${DAILY_DURATION_KEY_PREFIX}_${date.toISOString().slice(0, 10)}`;
 }
 
-function commandInput(command: unknown): Record<string, unknown> {
-  if (
-    typeof command === "object" &&
-    command !== null &&
-    "input" in command &&
-    typeof command.input === "object" &&
-    command.input !== null
-  ) {
-    return command.input as Record<string, unknown>;
+function putObjectInput(): PutObjectCommandInput {
+  const command = context.mocks.s3.send.mock.calls
+    .map(([candidate]) => {
+      return candidate;
+    })
+    .find((candidate): candidate is PutObjectCommand => {
+      return candidate instanceof PutObjectCommand;
+    });
+  if (!command) {
+    throw new Error("Expected generated speech to be uploaded to S3");
   }
-  return {};
+  return command.input;
 }
 
 function writeAscii(bytes: Uint8Array, offset: number, value: string): void {
@@ -1246,20 +1251,26 @@ describe("POST /api/zero/voice-io/*", () => {
         typeof body === "object" &&
         body !== null &&
         "id" in body &&
-        "filename" in body
+        "filename" in body &&
+        "url" in body
       )
     ) {
       throw new Error("Expected speech response id and filename");
     }
     const fileId = String(body.id);
     const filename = String(body.filename);
+    const url = String(body.url);
     expect(filename).toBe(`voice-${fileId.slice(0, 8)}.wav`);
 
-    const putInput = commandInput(context.mocks.s3.send.mock.calls[0]?.[0]);
+    const putInput = putObjectInput();
     expect(putInput.Bucket).toBe(TEST_BUCKET);
-    expect(putInput.Key).toBe(
-      `artifacts/${fixture.userId}/${fileId}/${filename}`,
-    );
+    expect(putInput.Key).toMatch(/^artifacts\/[0-9a-z]{10}\.wav$/u);
+    expect(url).toBe(`https://cdn.vm7.io/${String(putInput.Key)}`);
+    expect(putInput.Metadata).toStrictEqual({
+      "artifact-id": fileId,
+      filename: encodeURIComponent(filename),
+      "user-id": encodeURIComponent(fixture.userId),
+    });
     expect(putInput.ContentType).toBe(SPEECH_CONTENT_TYPE);
     const putBody = putInput.Body;
     expect(Buffer.isBuffer(putBody)).toBeTruthy();
