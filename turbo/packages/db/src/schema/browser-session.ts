@@ -274,3 +274,17 @@ export const browserSessionScreenshots = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
 );
+
+/**
+ * Durable deletion intent for immutable screenshot objects superseded by a
+ * later capture. The row deliberately has no thread foreign key: cleanup must
+ * remain retryable after the owning thread is deleted.
+ */
+export const browserSessionScreenshotDeletions = pgTable(
+  "browser_session_screenshot_deletions",
+  {
+    objectKey: text("object_key").primaryKey(),
+    chatThreadId: uuid("chat_thread_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+);

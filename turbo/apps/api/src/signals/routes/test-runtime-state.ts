@@ -32,6 +32,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
+import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -49,6 +50,7 @@ import {
   onRejection,
   settleIncludingAbort,
 } from "../utils";
+import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,
@@ -540,11 +542,21 @@ type ReadRunClaimOwnerAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-run-claim-owner" }
 >;
+type ReadBrowserScreenshotSchemaStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-browser-screenshot-schema-state" }
+>;
+type ResetDatabasePoolAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "reset-database-pool" }
+>;
 type PersistenceStateAction =
   | StorageStateAction
   | ReadStorageStateAction
   | ReadRunnerJobStorageStateAction
-  | ReadRunClaimOwnerAction;
+  | ReadRunClaimOwnerAction
+  | ReadBrowserScreenshotSchemaStateAction
+  | ResetDatabasePoolAction;
 
 function isPersistenceStateAction(
   body: TestRuntimeStateActionBody,
@@ -556,6 +568,12 @@ function isPersistenceStateAction(
     }
     case "read-runner-job-storage-state":
     case "read-run-claim-owner": {
+      return true;
+    }
+    case "read-browser-screenshot-schema-state": {
+      return true;
+    }
+    case "reset-database-pool": {
       return true;
     }
     default: {
@@ -611,6 +629,22 @@ async function persistenceStateActionResponse(
     }
     case "read-run-claim-owner": {
       return await readRunClaimOwnerActionResponse(db, body, signal);
+    }
+    case "read-browser-screenshot-schema-state": {
+      const available = await browserScreenshotSchemaAvailable(db);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          browser_screenshot_schema_available: available,
+        },
+      };
+    }
+    case "reset-database-pool": {
+      await closeDbPool();
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
     }
     case "remove-run-canonical-storage-state": {
       await mutateStorageState(db, body, signal);

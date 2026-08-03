@@ -1,5 +1,5 @@
 {
-  "id": "769f8478-5d1d-4cdc-bf10-208682b67ddb",
+  "id": "b0d12f98-9bfa-4aa9-b1d8-2f65ccee2c01",
   "prevId": "78fdc362-e825-4da4-bb5f-dc82c53859a0",
   "version": "7",
   "dialect": "postgresql",
@@ -3472,6 +3472,38 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.browser_session_screenshot_deletions": {
+      "name": "browser_session_screenshot_deletions",
+      "schema": "",
+      "columns": {
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "chat_thread_id": {
+          "name": "chat_thread_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.browser_session_screenshots": {
       "name": "browser_session_screenshots",
       "schema": "",
@@ -4392,6 +4424,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "run_event_sequence_number": {
+          "name": "run_event_sequence_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "run_event_id": {
           "name": "run_event_id",
           "type": "text",
@@ -4583,6 +4621,27 @@
           ],
           "isUnique": false,
           "where": "\"chat_events\".\"run_id\" IS NULL AND \"chat_events\".\"event_type\" IN ('input.prompt', 'input.automation', 'input.goal')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "chat_events_run_event_seq_unique": {
+          "name": "chat_events_run_event_seq_unique",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "run_event_sequence_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}

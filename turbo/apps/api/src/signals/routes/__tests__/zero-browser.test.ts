@@ -42,6 +42,19 @@ const CRON_SECRET = "test-browser-reconcile-secret";
 const STARTED_AT_MS = Date.parse("2026-07-24T10:00:00.000Z");
 const MINUTE_MS = 60_000;
 
+function commandInput(command: unknown): Record<string, unknown> {
+  if (
+    typeof command !== "object" ||
+    command === null ||
+    !("input" in command) ||
+    typeof command.input !== "object" ||
+    command.input === null
+  ) {
+    return {};
+  }
+  return command.input as Record<string, unknown>;
+}
+
 function it(name: string, test: () => Promise<void>, timeout?: number): void {
   vitestTest(
     name,
@@ -1690,7 +1703,15 @@ describe("zero browser route", () => {
         );
       }),
     );
-    context.mocks.s3.send.mockResolvedValue({});
+    let failNextScreenshotDelete = true;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      const input = commandInput(command);
+      if ("Delete" in input && failNextScreenshotDelete) {
+        failNextScreenshotDelete = false;
+        return Promise.reject(new Error("transient screenshot delete failure"));
+      }
+      return Promise.resolve({});
+    });
     let captureCount = 0;
     context.mocks.browserUseCdp.command.mockImplementation((command) => {
       if (command.method === "Target.getTargets") {
@@ -1774,6 +1795,10 @@ describe("zero browser route", () => {
     expect(firstScreenshotUrl).toMatch(
       /^https:\/\/cdn\.vm7\.io\/artifacts\/.*\/browser-screenshot\.webp$/u,
     );
+    if (!firstScreenshotUrl) {
+      throw new Error("Expected the first browser screenshot URL");
+    }
+    const firstScreenshotKey = new URL(firstScreenshotUrl).pathname.slice(1);
 
     const secondLease = await accept(
       client().leaseByThread({
@@ -1846,6 +1871,30 @@ describe("zero browser route", () => {
         sessionId: "foreground-session",
       },
     ]);
+
+    expect(
+      context.mocks.s3.send.mock.calls.filter(([command]) => {
+        const input = commandInput(command);
+        return (JSON.stringify(input.Delete) ?? "").includes(
+          firstScreenshotKey,
+        );
+      }),
+    ).toHaveLength(1);
+    const retriedCleanup = await reconcileBrowsers();
+    expect(retriedCleanup.body).toMatchObject({
+      checked: 2,
+      stopped: 1,
+      errors: 0,
+      healthy: 1,
+    });
+    expect(
+      context.mocks.s3.send.mock.calls.filter(([command]) => {
+        const input = commandInput(command);
+        return (JSON.stringify(input.Delete) ?? "").includes(
+          firstScreenshotKey,
+        );
+      }),
+    ).toHaveLength(2);
 
     await chat.deleteThread(actor, current.threadId);
     await flushWaitUntilForTest();
