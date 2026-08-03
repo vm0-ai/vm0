@@ -565,6 +565,16 @@ describe("runner resume session contract", () => {
         runnerPreference: {
           ...runnerPreference,
           reason: "matchingReuseKey",
+          resource: "reusableSandbox",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreference: {
+          ...runnerPreference,
+          reason: "matchingReuseKey",
           runnerIdentity: {
             ...runnerPreference.runnerIdentity,
             resource: "reusableSandbox",
