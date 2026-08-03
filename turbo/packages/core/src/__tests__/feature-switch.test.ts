@@ -15,9 +15,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
       true,
     );
-    expect(isFeatureEnabled(FeatureSwitchKey.ZeroMailReplyFollowUp, {})).toBe(
-      true,
-    );
     expect(
       isFeatureEnabled(FeatureSwitchKey.ComposerSkillSubstringSearch, {}),
     ).toBe(true);
@@ -55,6 +52,9 @@ describe("isFeatureEnabled", () => {
       false,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroImageRecognition, {})).toBe(
+      false,
+    );
+    expect(isFeatureEnabled(FeatureSwitchKey.ZeroMailReplyFollowUp, {})).toBe(
       false,
     );
   });
@@ -131,6 +131,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroImageRecognition]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroMailReplyFollowUp]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
@@ -164,6 +165,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroImageRecognition]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroMailReplyFollowUp]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
