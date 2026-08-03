@@ -15,7 +15,7 @@ import { writeDb$ } from "../external/db";
 import { putS3Object, verifyS3FilesExist } from "../external/s3";
 import { onRejection, safeSync } from "../utils";
 import {
-  computeContentHashFromHashes,
+  computeContentHashV1FromHashes,
   hashFileContent,
   type FileEntryWithHash,
 } from "./storage-content-hash.service";
@@ -215,7 +215,7 @@ const uploadVolumeServerSideInner$ = command(
         size: file.size,
       };
     });
-    const versionId = computeContentHashFromHashes(storage.id, fileEntries);
+    const versionId = computeContentHashV1FromHashes(storage.id, fileEntries);
     // On upsert conflict the row keeps its original prefix, which can differ
     // from the freshly generated one — always key objects off the stored value.
     const s3Key = `${storage.s3Prefix}/${versionId}`;

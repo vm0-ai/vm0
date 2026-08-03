@@ -21,7 +21,8 @@ import {
 } from "../external/s3";
 import { tapError } from "../utils";
 import {
-  computeContentHashFromHashes,
+  computeContentHashV1FromHashes,
+  computeContentHashV2FromHashes,
   type FileEntryWithHash,
 } from "./storage-content-hash.service";
 
@@ -781,7 +782,7 @@ export const prepareStorageUploadForStorage$ = command(
       }),
     );
     signal.throwIfAborted();
-    const versionId = computeContentHashFromHashes(storage.id, mergedFiles);
+    const versionId = computeContentHashV1FromHashes(storage.id, mergedFiles);
 
     const existingReusable = await get(
       existingStorageVersionIsReusable({
@@ -827,11 +828,15 @@ export const commitStorageUploadForStorage$ = command(
       return notFound("Storage not found");
     }
 
-    const computedVersionId = computeContentHashFromHashes(
+    const computedVersionIdV1 = computeContentHashV1FromHashes(
       storage.id,
       args.files,
     );
-    if (computedVersionId !== args.versionId) {
+    // Temporary rollout compatibility. Remove v1 acceptance in #24805.
+    if (
+      computedVersionIdV1 !== args.versionId &&
+      computeContentHashV2FromHashes(storage.id, args.files) !== args.versionId
+    ) {
       return badRequestMessage("Version ID mismatch - files may have changed");
     }
 

@@ -45,7 +45,7 @@ import {
   type ApiDispatchTimingDimensions,
   type ApiDispatchTimingDimensionsInput,
 } from "./api-dispatch-timing.service";
-import { computeContentHashFromHashes } from "./storage-content-hash.service";
+import { computeContentHashV1FromHashes } from "./storage-content-hash.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
@@ -1395,7 +1395,7 @@ async function initializeEmptyArtifactStorage(
   storage: ArtifactStorageRow,
 ): Promise<void> {
   args.stats?.recordArtifactEnsureMissingHeadVersion();
-  const versionId = computeContentHashFromHashes(storage.id, []);
+  const versionId = computeContentHashV1FromHashes(storage.id, []);
   const s3Key = `${storage.s3Prefix}/${versionId}`;
   const initializedHead = await insertInitialArtifactVersion({
     db: args.db,

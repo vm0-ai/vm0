@@ -52,6 +52,7 @@ export const testStorageStateActionBodySchema = z.discriminatedUnion("action", [
     userId: z.string(),
     storageName: z.string().min(1),
     storageOwner: storageOwnerSchema,
+    storageId: z.uuid().optional(),
     files: z.array(fileEntryWithHashSchema),
     force: z.boolean().optional(),
     baseVersion: z.string().optional(),
@@ -80,6 +81,13 @@ export const testStorageStateActionBodySchema = z.discriminatedUnion("action", [
     storageName: z.string().min(1),
     storageOwner: storageOwnerSchema,
     versionId: z.string().optional(),
+  }),
+  z.object({
+    action: z.literal("delete"),
+    orgId: z.string(),
+    userId: z.string(),
+    storageName: z.string().min(1),
+    storageOwner: storageOwnerSchema,
   }),
 ]);
 

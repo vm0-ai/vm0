@@ -1,0 +1,136 @@
+{
+  "storageId": "01234567-89ab-4def-8123-456789abcdef",
+  "cases": [
+    {
+      "name": "empty",
+      "guestCompatible": true,
+      "files": [],
+      "expectedV1": "dad50c584b1d55c08ceae9741dccb32232d59c87a7fad0765e840e3e39039a10",
+      "expectedV2": "2995f54ead37d25eb72fea78b2c040b201fd13098adff745067cde9e4997b8ba"
+    },
+    {
+      "name": "single",
+      "guestCompatible": true,
+      "files": [
+        {
+          "path": "alpha.txt",
+          "content": "alpha",
+          "hash": "8ed3f6ad685b959ead7022518e1af76cd816f8e8ec7ccdda1ed4018e8f2223f8",
+          "size": 5
+        }
+      ],
+      "expectedV1": "fa155f94b3d8ce29a6f549bfc3f39e28c129ef7df106e754c0dbd04f74d37d60",
+      "expectedV2": "b0edb5119cadd34b10489a9dfa2767e682156b270e6a03396c85df6a1b9b1fdb"
+    },
+    {
+      "name": "collision-two-files",
+      "guestCompatible": true,
+      "files": [
+        {
+          "path": "a",
+          "content": "first",
+          "hash": "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e",
+          "size": 5
+        },
+        {
+          "path": "b",
+          "content": "second",
+          "hash": "16367aacb67a4a017c8da8ab95682ccb390863780f7114dda0a0e0c55644c7c4",
+          "size": 6
+        }
+      ],
+      "expectedV1": "7b1322a2b8008240b3c874a996c8df5a134487ac3bfb7d54d6e9b7c0a30f9e8a",
+      "expectedV2": "678518119d309bdaaff13ed2e3140eaa7ed51ea4ef30e90bc099a0067a8f0b6a"
+    },
+    {
+      "name": "reversed-order",
+      "guestCompatible": true,
+      "files": [
+        {
+          "path": "b",
+          "content": "second",
+          "hash": "16367aacb67a4a017c8da8ab95682ccb390863780f7114dda0a0e0c55644c7c4",
+          "size": 6
+        },
+        {
+          "path": "a",
+          "content": "first",
+          "hash": "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e",
+          "size": 5
+        }
+      ],
+      "expectedV1": "7b1322a2b8008240b3c874a996c8df5a134487ac3bfb7d54d6e9b7c0a30f9e8a",
+      "expectedV2": "678518119d309bdaaff13ed2e3140eaa7ed51ea4ef30e90bc099a0067a8f0b6a"
+    },
+    {
+      "name": "collision-newline-path",
+      "guestCompatible": true,
+      "files": [
+        {
+          "path": "a:a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e\nb",
+          "content": "second",
+          "hash": "16367aacb67a4a017c8da8ab95682ccb390863780f7114dda0a0e0c55644c7c4",
+          "size": 6
+        }
+      ],
+      "expectedV1": "7b1322a2b8008240b3c874a996c8df5a134487ac3bfb7d54d6e9b7c0a30f9e8a",
+      "expectedV2": "917771f85b12715d90368cbde150351d07ac43b8706c6fd3d6979b23b5ed832b"
+    },
+    {
+      "name": "colon-path",
+      "guestCompatible": true,
+      "files": [
+        {
+          "path": "dir:name.txt",
+          "content": "colon",
+          "hash": "70bdae49483e37d0af32b9744687346938f38f56e5c3486b4638795180082bbe",
+          "size": 5
+        }
+      ],
+      "expectedV1": "a28254cf5af7c1780a7dbb92f6a31075532bd33c73baa8d7cd179064892abb12",
+      "expectedV2": "03444e74fb5c088c39a5c6ba4811f9c07cb22c8c9a1bdf80704c30ce0902a4ae"
+    },
+    {
+      "name": "non-bmp-path",
+      "guestCompatible": true,
+      "files": [
+        {
+          "path": "emoji-😀.txt",
+          "content": "emoji",
+          "hash": "4030f0c0b99ba5e189b6fe295448a8ca31ca589a55930175de18032545c11501",
+          "size": 5
+        }
+      ],
+      "expectedV1": "58e32f6b7152c981f14e788ff688323a6ab08403e5f2e1162538b0b00940f0fb",
+      "expectedV2": "34fe5711394b5647f475cabe0af2cfc42270f31280c095ae054ab1ffc082a4ee"
+    },
+    {
+      "name": "replacement-character-path",
+      "guestCompatible": true,
+      "files": [
+        {
+          "path": "�.txt",
+          "content": "unicode",
+          "hash": "2fcf76a4c3c75b1fb5288d83d62dd114dc556d16fba206ab35d38bfe294a2857",
+          "size": 7
+        }
+      ],
+      "expectedV1": "4495b97f31999caca64d527823616fcc734fb91a95d3773dd90eed678bc86c22",
+      "expectedV2": "1426d80f42f6c4dcd00475f98f73dd27ebaccb75087718af812f77104e178a9c"
+    },
+    {
+      "name": "lone-surrogate-path",
+      "guestCompatible": false,
+      "files": [
+        {
+          "pathUtf16": [55296, 46, 116, 120, 116],
+          "content": "unicode",
+          "hash": "2fcf76a4c3c75b1fb5288d83d62dd114dc556d16fba206ab35d38bfe294a2857",
+          "size": 7
+        }
+      ],
+      "expectedV1": "4495b97f31999caca64d527823616fcc734fb91a95d3773dd90eed678bc86c22",
+      "expectedV2": "f3dd21791090d4060c313d35000309cf55ceb86d189397d3b2eb24216ad0e0ab"
+    }
+  ]
+}

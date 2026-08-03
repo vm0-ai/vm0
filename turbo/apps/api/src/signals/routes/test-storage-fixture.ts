@@ -46,6 +46,7 @@ async function findOrCreateFixtureStorageId(args: {
   readonly userId: string;
   readonly name: string;
   readonly owner: "organization" | "user";
+  readonly storageId?: string;
 }) {
   const userId = fixtureOwner(args.userId, args.owner);
   const [existing] = await args.db
@@ -63,7 +64,12 @@ async function findOrCreateFixtureStorageId(args: {
     return existing.id;
   }
 
-  const location = newStorageS3Location(args.orgId);
+  const location = args.storageId
+    ? {
+        storageId: args.storageId,
+        s3Prefix: `${args.orgId}/${args.storageId}`,
+      }
+    : newStorageS3Location(args.orgId);
   const [storage] = await args.db
     .insert(storages)
     .values({
@@ -122,6 +128,7 @@ async function prepareStorageState(
     userId: body.userId,
     name: body.storageName,
     owner: body.storageOwner,
+    storageId: body.storageId,
   });
   signal.throwIfAborted();
   const response = await set(
@@ -302,6 +309,24 @@ async function downloadStorageState(
   });
 }
 
+async function deleteStorageState(
+  db: Db,
+  body: StorageStateAction<"delete">,
+  signal: AbortSignal,
+) {
+  await db
+    .delete(storages)
+    .where(
+      and(
+        eq(storages.orgId, body.orgId),
+        eq(storages.userId, fixtureOwner(body.userId, body.storageOwner)),
+        eq(storages.name, body.storageName),
+      ),
+    );
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 const prepare$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!isTestEndpointAllowed(get(request$))) {
     return testEndpointNotFoundResponse();
@@ -395,6 +420,9 @@ const action$ = command(async ({ get, set }, signal: AbortSignal) => {
     }
     case "download": {
       return await downloadStorageState(db, bodyResult.data, signal);
+    }
+    case "delete": {
+      return await deleteStorageState(db, bodyResult.data, signal);
     }
   }
 });

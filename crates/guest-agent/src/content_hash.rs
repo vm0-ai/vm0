@@ -8,7 +8,7 @@
 //!
 //! The two implementations must stay byte-identical. The inline `#[cfg(test)]`
 //! suite below hardcodes fixture vectors for the Rust port; changes here must
-//! be checked against TS `computeContentHashFromHashes`.
+//! be checked against TS `computeContentHashV1FromHashes`.
 
 use sha2::{Digest, Sha256};
 
@@ -97,7 +97,7 @@ fn formatted_entry_sort_key(entry: ContentHashEntry<'_>) -> Vec<u16> {
 mod tests {
     use super::*;
 
-    // Fixtures below must stay aligned with TS `computeContentHashFromHashes` at
+    // Fixtures below must stay aligned with TS `computeContentHashV1FromHashes` at
     // `turbo/apps/api/src/signals/services/storage-content-hash.service.ts`.
     const STORAGE_A: &str = "01234567-89ab-cdef-0123-456789abcdef";
     const STORAGE_B: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";

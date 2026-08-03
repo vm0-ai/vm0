@@ -14,6 +14,7 @@ type StorageFixtureOwner = "organization" | "user";
 interface BddStoragePrepareBody {
   readonly storageName: string;
   readonly storageOwner: StorageFixtureOwner;
+  readonly storageId?: string;
   readonly files: readonly BddStorageFileEntry[];
   readonly force?: boolean;
   readonly baseVersion?: string;
@@ -36,6 +37,11 @@ interface BddStorageDownloadQuery {
   readonly name: string;
   readonly owner: StorageFixtureOwner;
   readonly version?: string;
+}
+
+interface BddStorageDeleteBody {
+  readonly name: string;
+  readonly owner: StorageFixtureOwner;
 }
 
 function requireOrgId(actor: ApiTestUser): string {
@@ -108,6 +114,7 @@ export function createStoragesBddApi(context: TestContext) {
         userId: actor.userId,
         storageName: body.storageName,
         storageOwner: body.storageOwner,
+        storageId: body.storageId,
         files: fixtureFiles(body.files),
         force: body.force,
         baseVersion: body.baseVersion,
@@ -168,6 +175,16 @@ export function createStoragesBddApi(context: TestContext) {
         throw new Error("Storage download action returned no result");
       }
       return response.download;
+    },
+
+    async deleteStorage(actor: ApiTestUser, body: BddStorageDeleteBody) {
+      await postAction(context, {
+        action: "delete",
+        orgId: requireOrgId(actor),
+        userId: actor.userId,
+        storageName: body.name,
+        storageOwner: body.owner,
+      });
     },
   };
 }
