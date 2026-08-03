@@ -17,6 +17,7 @@ from tests.auth_state_helpers import (
     cached_headers,
     force_refresh_pending,
     has_auth_state,
+    mark_force_refresh,
     require_cached_headers,
     require_last_force_refresh_monotonic_at,
     set_cached_headers,
@@ -99,7 +100,7 @@ class TestFirewallHeaderCache:
         )
         cache_key = auth_cache_key()
         auth_request = _firewall_auth_request(auth_headers={"Authorization": "template"})
-        auth_cache.request_force_refresh(cache_key)
+        mark_force_refresh(cache_key)
         before_fetch = time.monotonic()
 
         with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):

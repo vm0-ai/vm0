@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use flate2::{Compression, write::GzEncoder};
 use httpmock::prelude::*;
+use sandbox::{SandboxError, SandboxOperation, SandboxOperationReason};
 use sha2::{Digest, Sha256};
 use tokio::sync::{Notify, oneshot};
 
@@ -10,6 +11,7 @@ use super::{history_prefix_attribution, serve_history_once};
 use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
 use crate::executor::tests::agent_run_tests::support::{
     assert_failed_action_error_once, assert_no_action, assert_successful_action_once,
+    local_sidecar_restore_plan,
 };
 use crate::executor::tests::support::{
     RUN_IN_SANDBOX_TEST_TIMEOUT, minimal_context, test_executor_config, test_telemetry,
@@ -550,6 +552,18 @@ async fn run_in_sandbox_restores_session_history_from_workspace_sidecar() {
         },
     });
 
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let restore_plan = local_sidecar_restore_plan(
+        &ctx,
+        &config,
+        WorkspaceSessionHistorySidecar {
+            path: sidecar_path,
+            representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+            encoded_size: history.len() as u64,
+        },
+        cancel.clone(),
+    )
+    .await;
     let mut telemetry = test_telemetry(&config, &ctx);
     let result = run_in_sandbox(
         &sandbox,
@@ -561,15 +575,7 @@ async fn run_in_sandbox_restores_session_history_from_workspace_sidecar() {
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::LocalSidecar {
-                sidecar: WorkspaceSessionHistorySidecar {
-                    path: sidecar_path,
-                    representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
-                    encoded_size: history.len() as u64,
-                },
-                fallback: None,
-            }),
+        RunControls::new(cancel, None).with_session_history_restore_plan(restore_plan),
     )
     .await
     .unwrap();
@@ -623,6 +629,18 @@ async fn run_in_sandbox_falls_back_when_workspace_sidecar_hash_mismatches() {
         },
     });
 
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let restore_plan = local_sidecar_restore_plan(
+        &ctx,
+        &config,
+        WorkspaceSessionHistorySidecar {
+            path: sidecar_path,
+            representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+            encoded_size: history.len() as u64,
+        },
+        cancel.clone(),
+    )
+    .await;
     let mut telemetry = test_telemetry(&config, &ctx);
     let result = run_in_sandbox(
         &sandbox,
@@ -634,15 +652,7 @@ async fn run_in_sandbox_falls_back_when_workspace_sidecar_hash_mismatches() {
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::LocalSidecar {
-                sidecar: WorkspaceSessionHistorySidecar {
-                    path: sidecar_path,
-                    representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
-                    encoded_size: history.len() as u64,
-                },
-                fallback: None,
-            }),
+        RunControls::new(cancel, None).with_session_history_restore_plan(restore_plan),
     )
     .await
     .unwrap();
@@ -661,6 +671,166 @@ async fn run_in_sandbox_falls_back_when_workspace_sidecar_hash_mismatches() {
         &ops,
         "session_history_workspace_cache_restore",
         "materialize_error",
+    );
+    assert_successful_action_once(&ops, "session_history_download");
+}
+
+#[tokio::test]
+async fn run_in_sandbox_falls_back_when_workspace_sidecar_open_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = br#"{"type":"init"}"#;
+    let server = MockServer::start_async().await;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-sidecar-open-fallback".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                encoding: ResumeSessionHistoryEncoding::Identity,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
+                download_source: None,
+            },
+        },
+    });
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let restore_plan = local_sidecar_restore_plan(
+        &ctx,
+        &config,
+        WorkspaceSessionHistorySidecar {
+            path: dir.path().join("missing-session-history.blob"),
+            representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+            encoded_size: history.len() as u64,
+        },
+        cancel.clone(),
+    )
+    .await;
+    let mut telemetry = test_telemetry(&config, &ctx);
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(cancel, None).with_session_history_restore_plan(restore_plan),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].content, history);
+    history_mock.assert_calls_async(1).await;
+    let ops = telemetry.pending_ops_snapshot();
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_workspace_cache_restore",
+        "materialize_error",
+    );
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_workspace_cache_file_read",
+        "workspace session history phase failed",
+    );
+    assert_successful_action_once(&ops, "session_history_download");
+}
+
+#[tokio::test]
+async fn run_in_sandbox_falls_back_when_workspace_sidecar_guest_restore_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    sandbox.push_write_file_result(Err(SandboxError::Operation {
+        operation: SandboxOperation::WriteFile,
+        reason: SandboxOperationReason::Guest,
+        message: "local restore write failed".into(),
+    }));
+    let history = br#"{"type":"init"}"#;
+    let sidecar_path = dir.path().join("session-history.blob");
+    tokio::fs::write(&sidecar_path, history).await.unwrap();
+    let server = MockServer::start_async().await;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-sidecar-restore-fallback".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                encoding: ResumeSessionHistoryEncoding::Identity,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
+                download_source: None,
+            },
+        },
+    });
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let restore_plan = local_sidecar_restore_plan(
+        &ctx,
+        &config,
+        WorkspaceSessionHistorySidecar {
+            path: sidecar_path,
+            representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+            encoded_size: history.len() as u64,
+        },
+        cancel.clone(),
+    )
+    .await;
+    let mut telemetry = test_telemetry(&config, &ctx);
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(cancel, None).with_session_history_restore_plan(restore_plan),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 2);
+    assert_eq!(writes[0].content, history);
+    assert_eq!(writes[1].content, history);
+    history_mock.assert_calls_async(1).await;
+    let ops = telemetry.pending_ops_snapshot();
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_workspace_cache_restore",
+        "restore_error",
+    );
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_workspace_cache_guest_restore",
+        "workspace session history phase failed",
     );
     assert_successful_action_once(&ops, "session_history_download");
 }
@@ -703,6 +873,18 @@ async fn run_in_sandbox_restores_codex_zstd_sidecar_with_session_timestamp() {
         },
     });
 
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let restore_plan = local_sidecar_restore_plan(
+        &ctx,
+        &config,
+        WorkspaceSessionHistorySidecar {
+            path: sidecar_path,
+            representation: WorkspaceSessionHistorySidecarRepresentation::CodexZstd,
+            encoded_size: compressed_history.len() as u64,
+        },
+        cancel.clone(),
+    )
+    .await;
     let mut telemetry = test_telemetry(&config, &ctx);
     let result = run_in_sandbox(
         &sandbox,
@@ -714,15 +896,7 @@ async fn run_in_sandbox_restores_codex_zstd_sidecar_with_session_timestamp() {
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::LocalSidecar {
-                sidecar: WorkspaceSessionHistorySidecar {
-                    path: sidecar_path,
-                    representation: WorkspaceSessionHistorySidecarRepresentation::CodexZstd,
-                    encoded_size: compressed_history.len() as u64,
-                },
-                fallback: None,
-            }),
+        RunControls::new(cancel, None).with_session_history_restore_plan(restore_plan),
     )
     .await
     .unwrap();
@@ -772,6 +946,18 @@ async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
         },
     });
 
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let restore_plan = local_sidecar_restore_plan(
+        &ctx,
+        &config,
+        WorkspaceSessionHistorySidecar {
+            path: sidecar_path,
+            representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+            encoded_size: history.len() as u64,
+        },
+        cancel.clone(),
+    )
+    .await;
     let mut telemetry = test_telemetry(&config, &ctx);
     let result = run_in_sandbox(
         &sandbox,
@@ -783,15 +969,7 @@ async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::LocalSidecar {
-                sidecar: WorkspaceSessionHistorySidecar {
-                    path: sidecar_path,
-                    representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
-                    encoded_size: history.len() as u64,
-                },
-                fallback: None,
-            }),
+        RunControls::new(cancel, None).with_session_history_restore_plan(restore_plan),
     )
     .await
     .unwrap();

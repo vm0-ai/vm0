@@ -1,3 +1,5 @@
+#[cfg(test)]
+use std::path::Path;
 use std::time::Instant;
 
 use crate::device_lock::NbdDeviceClaim;
@@ -112,6 +114,16 @@ impl DevicePoolHandle {
     /// that backs the returned handle and all of its clones.
     pub fn new(config: DevicePoolConfig) -> Self {
         Self::from_pool(DevicePool::new(config))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_one_device_for_test(config: DevicePoolConfig, lock_dir: &Path) -> Self {
+        Self::from_pool(DevicePool::new_with_options(
+            config,
+            1,
+            lock_dir.to_path_buf(),
+            |_| true,
+        ))
     }
 
     #[cfg(test)]
@@ -254,7 +266,7 @@ impl DevicePoolHandle {
     }
 
     #[cfg(test)]
-    pub(super) async fn snapshot(&self) -> DevicePoolSnapshot {
+    pub(crate) async fn snapshot(&self) -> DevicePoolSnapshot {
         let (respond_to, response) = oneshot::channel();
         self.commands
             .send(DevicePoolCommand::Snapshot { respond_to })

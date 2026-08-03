@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.151.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.16...runner-rs-v0.151.17) (2026-08-03)
+
+
+### Bug Fixes
+
+* **mitm-addon:** prevent late 401 auth state resurrection ([#24668](https://github.com/vm0-ai/vm0/issues/24668)) ([1b8a731](https://github.com/vm0-ai/vm0/commit/1b8a7313c5fe79cb9b124e3f916582ff26dbee4e))
+
+## [0.151.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.15...runner-rs-v0.151.16) (2026-08-03)
+
+
+### Performance Improvements
+
+* **runner:** prestart workspace sidecar materialization ([#24660](https://github.com/vm0-ai/vm0/issues/24660)) ([bad2db3](https://github.com/vm0-ai/vm0/commit/bad2db3b3b974308b899e75baec4a052dbbb9cc8))
+
 ## [0.151.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.14...runner-rs-v0.151.15) (2026-08-03)
 
 

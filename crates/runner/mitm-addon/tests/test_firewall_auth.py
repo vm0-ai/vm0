@@ -594,9 +594,10 @@ class TestGetFirewallHeaders:
         assert require_last_force_refresh_monotonic_at(cache_key) >= before
         assert cached_headers(cache_key) is None
 
-    def test_force_refresh_first_request_is_allowed_without_previous_timestamp(self, headers):
-        """A fresh auth state has no cooldown timestamp, so the first 401 marks."""
+    def test_force_refresh_first_owned_state_is_allowed_without_previous_timestamp(self):
+        """An owned auth state has no cooldown timestamp, so the first 401 marks."""
         cache_key = auth_cache_key()
+        set_cached_headers(cache_key, headers={"Authorization": "Bearer cached-token"})
 
         with patch.object(auth_cache.time, "monotonic", return_value=10.0):
             auth_cache.request_force_refresh(cache_key)
