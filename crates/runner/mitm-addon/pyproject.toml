@@ -11,6 +11,8 @@ dev = [
 ]
 test = [
     "Brotli>=1.2.0",
+    "cryptography==48.0.1",
+    "h11==0.16.0",
     "h2>=4.3.0",
     "pytest>=7.0",
     "pytest-asyncio>=0.23",

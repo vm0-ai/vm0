@@ -78,7 +78,7 @@ class TestFirewallHeaderCache:
         assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer token"}
 
     async def test_cancelled_force_refresh_leader_keeps_shared_fetch(self, mitm_ctx):
-        """A cancelled leader must leave its threaded forced fetch available to a waiter."""
+        """A cancelled leader must leave its shared forced fetch available to a waiter."""
         endpoint = FakeAuthEndpoint()
         release_response = threading.Event()
         endpoint.queue_json_response(
@@ -555,7 +555,7 @@ class TestGetFirewallHeaders:
 
         assert headers["headers"] == fresh_headers
         assert headers["cache_hit"] is False
-        # fetch_firewall_headers wraps urllib; pins the TTL-expiry→re-fetch contract (#9991).
+        # Pin the TTL-expiry-to-refetch contract independently of the client transport.
         mock_fetch.assert_called_once()
         # Verify cache was updated with new entry
         assert require_cached_headers(cache_key).headers == fresh_headers
