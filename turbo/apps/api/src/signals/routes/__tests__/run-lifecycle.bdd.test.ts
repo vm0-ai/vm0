@@ -145,6 +145,12 @@ function sessionAffinityResource(
   return job?.sessionAffinityResource;
 }
 
+function runnerPreference(
+  job: RunnerJob | null | undefined,
+): RunnerJob["runnerPreference"] {
+  return job?.runnerPreference;
+}
+
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
 const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_atomic_launch",
@@ -3562,6 +3568,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(poll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
     expect(poll.body.job?.reuseKey).toBeNull();
     expect(sessionAffinityProtectedUntil(poll.body.job)).toBeNull();
+    expect(runnerPreference(poll.body.job)).toBeUndefined();
 
     const resumedClaim = await api.claimRunnerJob(resumed.runId);
     expect(resumedClaim.reuseKey).toBeNull();
@@ -3692,6 +3699,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       sessionAffinityResource(canonicalHeartbeatHolder.job),
     ).toBeUndefined();
+    expect(runnerPreference(canonicalHeartbeatHolder.job)).toBeUndefined();
 
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: affinityRunnerId,
@@ -3717,6 +3725,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "workspaceCache",
     );
     expect(workspaceOnlyHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(runnerPreference(workspaceOnlyHolder.job)).toStrictEqual({
+      runnerIdentity: {
+        runnerId: affinityRunnerId,
+        heartbeatGeneration: 1,
+      },
+      reason: "matchingReuseKey",
+      expiresAt: sessionAffinityProtectedUntil(workspaceOnlyHolder.job),
+    });
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
       workspaceCaches: [
@@ -3754,11 +3770,23 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(sessionAffinityResource(reusableOverWorkspace.job)).toBe(
       "reusableSandbox",
     );
+    const reusablePreference = {
+      runnerIdentity: {
+        runnerId: reusableRunnerId,
+        heartbeatGeneration: 1,
+      },
+      reason: "matchingReuseKey" as const,
+      expiresAt: sessionAffinityProtectedUntil(reusableOverWorkspace.job),
+    };
+    expect(runnerPreference(reusableOverWorkspace.job)).toStrictEqual(
+      reusablePreference,
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
       expect.objectContaining({
         runId: reusableOverWorkspace.run.runId,
         sessionAffinityResource: "reusableSandbox",
+        runnerPreference: reusablePreference,
       }),
     );
     await api.requestHeartbeatRunner(true, [200], {
@@ -3783,6 +3811,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       sessionAffinityResource(mismatchedCapableWorkspace.job),
     ).toBeUndefined();
+    expect(runnerPreference(mismatchedCapableWorkspace.job)).toBeUndefined();
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -3803,6 +3832,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       historyGenerationAffinityProtectedUntil(differentGenerationHolder.job),
     ).toBeNull();
+    expect(runnerPreference(differentGenerationHolder.job)).toStrictEqual({
+      runnerIdentity: {
+        runnerId: affinityRunnerId,
+        heartbeatGeneration: 1,
+      },
+      reason: "matchingReuseKey",
+      expiresAt: sessionAffinityProtectedUntil(differentGenerationHolder.job),
+    });
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -3823,6 +3860,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(sessionAffinityResource(exactGenerationHolder.job)).toBe(
       "reusableSandbox",
     );
+    expect(runnerPreference(exactGenerationHolder.job)).toStrictEqual({
+      runnerIdentity: {
+        runnerId: affinityRunnerId,
+        heartbeatGeneration: 1,
+      },
+      reason: "exactHistoryGeneration",
+      expiresAt: historyGenerationAffinityProtectedUntil(
+        exactGenerationHolder.job,
+      ),
+    });
 
     for (const { runId, resource } of [
       {
@@ -3871,6 +3918,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expect(startingHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
     expect(sessionAffinityProtectedUntil(startingHolder.job)).toBeNull();
+    expect(runnerPreference(startingHolder.job)).toBeUndefined();
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -3881,6 +3929,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expect(unavailableHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
     expect(sessionAffinityProtectedUntil(unavailableHolder.job)).toBeNull();
+    expect(runnerPreference(unavailableHolder.job)).toBeUndefined();
     const unavailableClaim = await api.claimRunnerJob(
       unavailableHolder.run.runId,
     );
@@ -3915,6 +3964,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(staleHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
     expect(sessionAffinityProtectedUntil(staleHolder.job)).toBeNull();
     expect(historyGenerationAffinityProtectedUntil(staleHolder.job)).toBeNull();
+    expect(runnerPreference(staleHolder.job)).toBeUndefined();
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -3935,6 +3985,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       historyGenerationAffinityProtectedUntil(profileIncompatibleHolder.job),
     ).toBeNull();
+    expect(runnerPreference(profileIncompatibleHolder.job)).toBeUndefined();
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -3952,11 +4003,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       historyGenerationAffinityProtectedUntil(drainingHolder.job),
     ).toBeNull();
+    expect(runnerPreference(drainingHolder.job)).toBeUndefined();
   });
 
   it("preserves same-thread affinity timing across queued admission", async () => {
     const {
       actor,
+      affinityRunnerId,
       agentId,
       api,
       cliAgentSessionId,
@@ -3975,6 +4028,28 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         historyGenerationRunId: first.runId,
       },
     });
+    const equivalentExactRunnerId = randomUUID();
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: equivalentExactRunnerId,
+      group: runnerGroup,
+      snapshotGeneration: 7,
+      snapshotSequence: 1,
+      admittableProfiles: [],
+      heldSandboxStates: [
+        {
+          reuseKey,
+          lastCompletedAt: nowDate().toISOString(),
+          reusableSandbox: {
+            profile: "vm0/default",
+            historyGenerationRunId: first.runId,
+          },
+        },
+      ],
+    });
+    const preferredExactRunner =
+      affinityRunnerId < equivalentExactRunnerId
+        ? { runnerId: affinityRunnerId, heartbeatGeneration: 1 }
+        : { runnerId: equivalentExactRunnerId, heartbeatGeneration: 7 };
     if (!actor.orgId) {
       throw new Error("Expected affinity actor to have an organization");
     }
@@ -4008,6 +4083,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await releaseOrgAdmissionLock(context);
     await admissionLockRequest;
     const protectedFollowUp = await protectedFollowUpRequest;
+    const exactRunnerPreference = {
+      runnerIdentity: preferredExactRunner,
+      reason: "exactHistoryGeneration" as const,
+      expiresAt: new Date(queueInsertedAt + 500).toISOString(),
+    };
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
       expect.objectContaining({
@@ -4019,6 +4099,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         historyGenerationAffinityProtectedUntil: new Date(
           queueInsertedAt + 500,
         ).toISOString(),
+        runnerPreference: exactRunnerPreference,
       }),
     );
 
@@ -4041,6 +4122,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).toBe(new Date(queueInsertedAt + 500).toISOString());
     expect(sessionAffinityResource(protectedPoll.body.job)).toBe(
       "reusableSandbox",
+    );
+    expect(runnerPreference(protectedPoll.body.job)).toStrictEqual(
+      exactRunnerPreference,
     );
 
     const protectedClaim = await api.claimRunnerJob(protectedFollowUp.runId);
@@ -4135,6 +4219,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(sessionAffinityProtectedUntil(generationExpiredPoll.body.job)).toBe(
       new Date(generationExpiredAt + 2000).toISOString(),
     );
+    expect(runnerPreference(generationExpiredPoll.body.job)).toStrictEqual({
+      runnerIdentity: preferredExactRunner,
+      reason: "matchingReuseKey",
+      expiresAt: new Date(generationExpiredAt + 2000).toISOString(),
+    });
     await api.requestCancelRun(actor, generationExpiredRun.runId, [200]);
     await flushWaitUntilForTest();
 

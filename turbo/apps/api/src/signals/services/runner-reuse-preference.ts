@@ -1,13 +1,19 @@
-import type { SessionAffinityResource } from "@vm0/api-contracts/contracts/runners";
+import type {
+  RunnerPreference,
+  SessionAffinityResource,
+} from "@vm0/api-contracts/contracts/runners";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
 import {
   and,
   arrayContains,
+  asc,
+  desc,
   eq,
   exists,
   gt,
   isNotNull,
+  or,
   sql,
   type SQL,
   type SQLWrapper,
@@ -16,17 +22,15 @@ import {
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
 
-const RUNNER_SESSION_AFFINITY_PROTECTION_MS = 2000;
-const RUNNER_HISTORY_GENERATION_AFFINITY_PROTECTION_MS = Math.min(
+const RUNNER_REUSE_PROTECTION_MS = 2000;
+const RUNNER_EXACT_HISTORY_PROTECTION_MS = Math.min(
   500,
-  RUNNER_SESSION_AFFINITY_PROTECTION_MS,
+  RUNNER_REUSE_PROTECTION_MS,
 );
-const RUNNER_SESSION_AFFINITY_HOLDER_FRESH_MS = 30_000;
+const RUNNER_REUSE_HOLDER_FRESH_MS = 30_000;
 
-function runnerSessionAffinityHolderFreshAfter(currentDate: Date): Date {
-  return new Date(
-    currentDate.getTime() - RUNNER_SESSION_AFFINITY_HOLDER_FRESH_MS,
-  );
+function runnerReuseHolderFreshAfter(currentDate: Date): Date {
+  return new Date(currentDate.getTime() - RUNNER_REUSE_HOLDER_FRESH_MS);
 }
 
 function reusableSandboxCondition(args: {
@@ -97,20 +101,19 @@ function runnerStateHas(args: {
   );
 }
 
-export function runnerSessionAffinityPollPriority(args: {
+export function runnerReusePreferencePollPriority(args: {
   readonly db: Pick<Db, "select">;
   readonly runnerId: string;
   readonly runnerGroup: string;
   readonly currentDate: Date;
 }): SQL {
   const protectedAfter = new Date(
-    args.currentDate.getTime() - RUNNER_SESSION_AFFINITY_PROTECTION_MS,
+    args.currentDate.getTime() - RUNNER_REUSE_PROTECTION_MS,
   );
   const generationProtectedAfter = new Date(
-    args.currentDate.getTime() -
-      RUNNER_HISTORY_GENERATION_AFFINITY_PROTECTION_MS,
+    args.currentDate.getTime() - RUNNER_EXACT_HISTORY_PROTECTION_MS,
   );
-  const freshAfter = runnerSessionAffinityHolderFreshAfter(args.currentDate);
+  const freshAfter = runnerReuseHolderFreshAfter(args.currentDate);
   const targetGenerationRunId = sql`${runnerJobQueue.executionContext}->'resumeSession'->>'historyGenerationRunId'`;
   const reuseKey = runnerJobQueue.reuseKey;
   const profile = runnerJobQueue.profile;
@@ -172,22 +175,14 @@ export function runnerSessionAffinityPollPriority(args: {
   END`;
 }
 
-type RunnerSessionAffinityStatus =
+type RunnerReusePreferenceStatus =
   | "no_session"
   | "expired"
   | "protected"
   | "no_viable_holder"
   | "lookup_error";
 
-interface RunnerSessionAffinityProtection {
-  readonly protectedUntil: Date | null;
-  readonly status: RunnerSessionAffinityStatus;
-  readonly resource: SessionAffinityResource | null;
-  readonly historyGenerationProtectedUntil: Date | null;
-  readonly historyGenerationStatus: RunnerHistoryGenerationAffinityStatus;
-}
-
-type RunnerHistoryGenerationAffinityStatus =
+type RunnerHistoryGenerationPreferenceStatus =
   | "no_session"
   | "no_target"
   | "expired"
@@ -195,8 +190,22 @@ type RunnerHistoryGenerationAffinityStatus =
   | "no_exact_holder"
   | "lookup_error";
 
-export function runnerSessionAffinityLookupError(): RunnerSessionAffinityProtection {
+type CurrentRunnerPreference = Omit<RunnerPreference, "reason"> & {
+  readonly reason: Exclude<RunnerPreference["reason"], "finalizingPredecessor">;
+};
+
+interface RunnerReusePreferenceResolution {
+  readonly runnerPreference: CurrentRunnerPreference | null;
+  readonly protectedUntil: Date | null;
+  readonly status: RunnerReusePreferenceStatus;
+  readonly resource: SessionAffinityResource | null;
+  readonly historyGenerationProtectedUntil: Date | null;
+  readonly historyGenerationStatus: RunnerHistoryGenerationPreferenceStatus;
+}
+
+export function runnerReusePreferenceLookupError(): RunnerReusePreferenceResolution {
   return {
+    runnerPreference: null,
     protectedUntil: null,
     status: "lookup_error",
     resource: null,
@@ -205,36 +214,13 @@ export function runnerSessionAffinityLookupError(): RunnerSessionAffinityProtect
   };
 }
 
-function affinityProtectedUntil(
-  reuseKey: string | null,
-  createdAt: Date,
-): Date | null {
-  if (!reuseKey) {
-    return null;
-  }
-  return new Date(createdAt.getTime() + RUNNER_SESSION_AFFINITY_PROTECTION_MS);
+interface RunnerReuseHolder {
+  readonly runnerIdentity: RunnerPreference["runnerIdentity"];
+  readonly resource: SessionAffinityResource;
+  readonly hasExactHistoryGeneration: boolean;
 }
 
-function historyGenerationAffinityProtectedUntil(args: {
-  readonly reuseKey: string | null;
-  readonly historyGenerationRunId: string | undefined;
-  readonly createdAt: Date;
-}): Date | null {
-  if (!args.reuseKey || !args.historyGenerationRunId) {
-    return null;
-  }
-  return new Date(
-    args.createdAt.getTime() + RUNNER_HISTORY_GENERATION_AFFINITY_PROTECTION_MS,
-  );
-}
-
-interface RunnerSessionAffinityHolders {
-  readonly hasSessionHolder: boolean;
-  readonly hasExactGenerationHolder: boolean;
-  readonly resource: SessionAffinityResource | null;
-}
-
-async function runnerSessionAffinityHolders(args: {
+async function selectRunnerReuseHolder(args: {
   readonly db: Pick<Db, "select">;
   readonly runnerGroup: string;
   readonly profile: string;
@@ -242,7 +228,7 @@ async function runnerSessionAffinityHolders(args: {
   readonly historyGenerationRunId: string | undefined;
   readonly freshAfter: Date;
   readonly shouldLookUpExactGeneration: boolean;
-}): Promise<RunnerSessionAffinityHolders> {
+}): Promise<RunnerReuseHolder | null> {
   const reusableCondition = reusableSandboxCondition({
     reuseKey: sql.param(args.reuseKey),
     profile: sql.param(args.profile),
@@ -260,20 +246,20 @@ async function runnerSessionAffinityHolders(args: {
           historyGenerationRunId: sql.param(args.historyGenerationRunId),
         })
       : sql`false`;
-  const [holders] = await args.db
+  const resourceRank = sql`CASE
+    WHEN ${exactGenerationCondition} THEN 3
+    WHEN ${reusableCondition} THEN 2
+    WHEN ${workspaceCondition} THEN 1
+    ELSE 0
+  END`;
+  const [holder] = await args.db
     .select({
-      hasReusableHolder:
-        sql`coalesce(bool_or(${reusableCondition}), false)`.mapWith(
-          pgBooleanDecoder,
-        ),
-      hasWorkspaceHolder:
-        sql`coalesce(bool_or(${workspaceCondition}), false)`.mapWith(
-          pgBooleanDecoder,
-        ),
-      hasExactGenerationHolder:
-        sql`coalesce(bool_or(${exactGenerationCondition}), false)`.mapWith(
-          pgBooleanDecoder,
-        ),
+      runnerId: runnerState.runnerId,
+      heartbeatGeneration: runnerState.heartbeatGeneration,
+      hasExactHistoryGeneration: sql`${exactGenerationCondition}`.mapWith(
+        pgBooleanDecoder,
+      ),
+      hasReusableSandbox: sql`${reusableCondition}`.mapWith(pgBooleanDecoder),
     })
     .from(runnerState)
     .where(
@@ -281,23 +267,27 @@ async function runnerSessionAffinityHolders(args: {
         eq(runnerState.runnerGroup, args.runnerGroup),
         eq(runnerState.mode, "running"),
         gt(runnerState.lastSeenAt, args.freshAfter),
+        gt(runnerState.heartbeatGeneration, 0),
+        or(exactGenerationCondition, reusableCondition, workspaceCondition),
       ),
-    );
+    )
+    .orderBy(desc(resourceRank), asc(runnerState.runnerId))
+    .limit(1);
 
-  const hasReusableHolder = holders?.hasReusableHolder ?? false;
-  const hasWorkspaceHolder = holders?.hasWorkspaceHolder ?? false;
+  if (!holder) {
+    return null;
+  }
   return {
-    hasSessionHolder: hasReusableHolder || hasWorkspaceHolder,
-    hasExactGenerationHolder: holders?.hasExactGenerationHolder ?? false,
-    resource: hasReusableHolder
-      ? "reusableSandbox"
-      : hasWorkspaceHolder
-        ? "workspaceCache"
-        : null,
+    runnerIdentity: {
+      runnerId: holder.runnerId,
+      heartbeatGeneration: holder.heartbeatGeneration,
+    },
+    resource: holder.hasReusableSandbox ? "reusableSandbox" : "workspaceCache",
+    hasExactHistoryGeneration: holder.hasExactHistoryGeneration,
   };
 }
 
-export async function runnerSessionAffinityProtection(args: {
+export async function resolveRunnerReusePreference(args: {
   readonly db: Pick<Db, "select">;
   readonly runnerGroup: string;
   readonly profile: string;
@@ -305,12 +295,10 @@ export async function runnerSessionAffinityProtection(args: {
   readonly historyGenerationRunId: string | undefined;
   readonly createdAt: Date;
   readonly currentDate: Date;
-}): Promise<RunnerSessionAffinityProtection> {
-  const protectedUntil = affinityProtectedUntil(args.reuseKey, args.createdAt);
-  const historyGenerationProtectedUntil =
-    historyGenerationAffinityProtectedUntil(args);
+}): Promise<RunnerReusePreferenceResolution> {
   if (!args.reuseKey) {
     return {
+      runnerPreference: null,
       protectedUntil: null,
       status: "no_session",
       resource: null,
@@ -318,8 +306,15 @@ export async function runnerSessionAffinityProtection(args: {
       historyGenerationStatus: "no_session",
     };
   }
-  if (!protectedUntil || protectedUntil <= args.currentDate) {
+  const protectedUntil = new Date(
+    args.createdAt.getTime() + RUNNER_REUSE_PROTECTION_MS,
+  );
+  const historyGenerationProtectedUntil = args.historyGenerationRunId
+    ? new Date(args.createdAt.getTime() + RUNNER_EXACT_HISTORY_PROTECTION_MS)
+    : null;
+  if (protectedUntil <= args.currentDate) {
     return {
+      runnerPreference: null,
       protectedUntil: null,
       status: "expired",
       resource: null,
@@ -330,11 +325,11 @@ export async function runnerSessionAffinityProtection(args: {
     };
   }
 
-  const freshAfter = runnerSessionAffinityHolderFreshAfter(args.currentDate);
+  const freshAfter = runnerReuseHolderFreshAfter(args.currentDate);
   const shouldLookUpExactGeneration =
     historyGenerationProtectedUntil !== null &&
     historyGenerationProtectedUntil > args.currentDate;
-  const holders = await runnerSessionAffinityHolders({
+  const holder = await selectRunnerReuseHolder({
     db: args.db,
     runnerGroup: args.runnerGroup,
     profile: args.profile,
@@ -343,30 +338,54 @@ export async function runnerSessionAffinityProtection(args: {
     freshAfter,
     shouldLookUpExactGeneration,
   });
-  const historyGenerationStatus: RunnerHistoryGenerationAffinityStatus =
+  const historyGenerationStatus: RunnerHistoryGenerationPreferenceStatus =
     !args.historyGenerationRunId
       ? "no_target"
       : !shouldLookUpExactGeneration
         ? "expired"
-        : holders.hasExactGenerationHolder
+        : holder?.hasExactHistoryGeneration
           ? "protected"
           : "no_exact_holder";
 
+  if (!holder) {
+    return {
+      runnerPreference: null,
+      protectedUntil: null,
+      status: "no_viable_holder",
+      resource: null,
+      historyGenerationProtectedUntil: null,
+      historyGenerationStatus,
+    };
+  }
+
+  const hasExactHistoryGeneration =
+    holder.hasExactHistoryGeneration &&
+    historyGenerationProtectedUntil !== null;
+
   return {
-    protectedUntil: holders.hasSessionHolder ? protectedUntil : null,
-    status: holders.hasSessionHolder ? "protected" : "no_viable_holder",
-    resource: holders.resource,
-    historyGenerationProtectedUntil: holders.hasExactGenerationHolder
+    runnerPreference: {
+      runnerIdentity: holder.runnerIdentity,
+      reason: hasExactHistoryGeneration
+        ? "exactHistoryGeneration"
+        : "matchingReuseKey",
+      expiresAt: hasExactHistoryGeneration
+        ? historyGenerationProtectedUntil.toISOString()
+        : protectedUntil.toISOString(),
+    },
+    protectedUntil,
+    status: "protected",
+    resource: holder.resource,
+    historyGenerationProtectedUntil: hasExactHistoryGeneration
       ? historyGenerationProtectedUntil
       : null,
     historyGenerationStatus,
   };
 }
 
-export function runnerSessionAffinityTelemetryResource(
-  affinity: RunnerSessionAffinityProtection,
+export function runnerReusePreferenceTelemetryResource(
+  resolution: RunnerReusePreferenceResolution,
 ): "reusableSandbox" | "workspaceCache" | "none" {
-  return affinity.resource ?? "none";
+  return resolution.resource ?? "none";
 }
 
 export function runnerReuseKeyTelemetryKind(
