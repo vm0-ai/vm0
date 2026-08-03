@@ -27,6 +27,7 @@ pub const DNS_DIAGNOSTIC_HOSTNAME: &str = "vm0-vethprobe.invalid";
 pub const DNS_READINESS_IPV4: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
 
 pub(crate) const DNS_READINESS_RESOLVER_IPV4: Ipv4Addr = Ipv4Addr::new(8, 8, 8, 8);
+/// Fixed diagnostic port outside Linux's default ephemeral range, used to correlate one query.
 pub(crate) const DNS_DIAGNOSTIC_SOURCE_PORT: u16 = 30_053;
 
 const _: () = assert!(DNS_DIAGNOSTIC_HOSTNAME.len() == DNS_READINESS_HOSTNAME.len());

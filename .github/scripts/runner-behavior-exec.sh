@@ -1087,11 +1087,11 @@ restore_runner_pool_after_dns_failure() {
   for attempt in 1 2 3; do
     : >"$DNS_DIAGNOSTIC_LOG_FILE"
     sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
-      --timeout 90 --prompt 'sleep 2 && echo dns-recovery-one' \
+      --timeout 30 --prompt 'sleep 2 && echo dns-recovery-one' \
       >>"$DNS_DIAGNOSTIC_LOG_FILE" 2>&1 &
     first_pid=$!
     sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
-      --timeout 90 --prompt 'sleep 2 && echo dns-recovery-two' \
+      --timeout 30 --prompt 'sleep 2 && echo dns-recovery-two' \
       >>"$DNS_DIAGNOSTIC_LOG_FILE" 2>&1 &
     second_pid=$!
     first_status=0

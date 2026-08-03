@@ -10,6 +10,7 @@ use crate::guest_dns_netfilter_trace::{
     GuestDnsNetfilterTraceAttachment, GuestDnsNetfilterTraceCaptureTarget,
     GuestDnsNetfilterTraceReport,
 };
+use crate::guest_dns_readiness::GUEST_DNS_READINESS_PACKET_BYTES;
 use crate::network::{
     DNS_DIAGNOSTIC_SOURCE_PORT, DNS_READINESS_RESOLVER_IPV4, DnsDiagnosticProbeReport,
     probe_namespace_dns_diagnostic,
@@ -127,16 +128,23 @@ fn classify(
     let (Some(namespace_egress), Some(root_ingress)) = (namespace_egress, root_ingress) else {
         return VethHandoffOutcome::ProbeUnavailable;
     };
-    match (namespace_egress.packets, root_ingress.packets) {
-        (0, 0) => VethHandoffOutcome::NamespaceEgressNotObserved,
-        (1, 0) => VethHandoffOutcome::RootIngressNotObserved,
-        (1, 1) => match root_netfilter_trace
-            .and_then(GuestDnsNetfilterTraceReport::exact_single_packet_observed)
-        {
-            Some(true) => VethHandoffOutcome::RootNetfilterObserved,
-            Some(false) => VethHandoffOutcome::RootNetfilterNotObserved,
-            None => VethHandoffOutcome::RootIngressObserved,
-        },
+    match (
+        (namespace_egress.packets, namespace_egress.bytes),
+        (root_ingress.packets, root_ingress.bytes),
+    ) {
+        ((0, 0), (0, 0)) => VethHandoffOutcome::NamespaceEgressNotObserved,
+        ((1, GUEST_DNS_READINESS_PACKET_BYTES), (0, 0)) => {
+            VethHandoffOutcome::RootIngressNotObserved
+        }
+        ((1, GUEST_DNS_READINESS_PACKET_BYTES), (1, GUEST_DNS_READINESS_PACKET_BYTES)) => {
+            match root_netfilter_trace
+                .and_then(GuestDnsNetfilterTraceReport::exact_single_packet_observed)
+            {
+                Some(true) => VethHandoffOutcome::RootNetfilterObserved,
+                Some(false) => VethHandoffOutcome::RootNetfilterNotObserved,
+                None => VethHandoffOutcome::RootIngressObserved,
+            }
+        }
         _ => VethHandoffOutcome::ProbeUnavailable,
     }
 }
