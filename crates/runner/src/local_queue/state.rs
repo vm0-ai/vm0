@@ -14,15 +14,12 @@ pub(crate) struct LocalDiscoveredJob {
     pub(crate) profile_name: String,
     pub(crate) job_path: PathBuf,
     pub(crate) reuse_key: Option<String>,
-    pub(crate) cli_agent_session_id: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
 struct LocalDiscoveryMetadata {
     #[serde(default)]
     reuse_key: Option<String>,
-    #[serde(default)]
-    session_id: Option<String>,
 }
 
 pub(crate) enum LocalClaimResult {
@@ -197,16 +194,12 @@ impl LocalQueue {
                         .and_then(|bytes| {
                             serde_json::from_slice::<LocalDiscoveryMetadata>(&bytes).ok()
                         });
-                let (reuse_key, cli_agent_session_id) = match metadata {
-                    Some(metadata) => (metadata.reuse_key, metadata.session_id),
-                    None => (None, None),
-                };
+                let reuse_key = metadata.and_then(|metadata| metadata.reuse_key);
                 return Some(LocalDiscoveredJob {
                     run_id: candidate.run_id,
                     profile_name: profile.clone(),
                     job_path: candidate.path,
                     reuse_key,
-                    cli_agent_session_id,
                 });
             }
         }

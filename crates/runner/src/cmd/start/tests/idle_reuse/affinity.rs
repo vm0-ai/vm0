@@ -122,11 +122,7 @@ async fn invalid_reserved_resume_session_fails_before_reuse() {
         .discover_tx
         .send(
             crate::provider::JobCandidate::new(run_id, "vm0/default".into())
-                .with_affinity_metadata(
-                    Some(reuse_key.to_string()),
-                    Some(invalid_session_id.to_string()),
-                    None,
-                ),
+                .with_reuse_key(Some(reuse_key.to_string())),
         )
         .unwrap();
 

@@ -35,17 +35,11 @@ pub struct Job {
     pub run_id: RunId,
     pub experimental_profile: String,
     #[serde(default)]
-    pub cli_agent_session_id: Option<String>,
-    #[serde(default)]
     pub reuse_key: Option<String>,
     #[serde(default)]
     pub history_generation_run_id: Option<RunId>,
     #[serde(default)]
-    pub history_generation_affinity_protected_until: Option<String>,
-    #[serde(default)]
-    pub affinity_protected_until: Option<String>,
-    #[serde(default)]
-    pub session_affinity_resource: Option<SessionAffinityResource>,
+    pub runner_preference: Option<serde_json::Value>,
 }
 
 pub(crate) fn reuse_key_kind(reuse_key: &str) -> &'static str {
@@ -60,13 +54,6 @@ impl Job {
     pub(crate) fn reuse_key(&self) -> Option<&str> {
         self.reuse_key.as_deref()
     }
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum SessionAffinityResource {
-    ReusableSandbox,
-    WorkspaceCache,
 }
 
 // ---------------------------------------------------------------------------
@@ -1476,7 +1463,14 @@ mod tests {
                 "runId": "550e8400-e29b-41d4-a716-446655440000",
                 "experimentalProfile": "browser",
                 "cliAgentSessionId": "legacy-session",
-                "sessionAffinityResource": "workspaceCache"
+                "runnerPreference": {
+                    "runnerIdentity": {
+                        "runnerId": "b85bb257-21c1-4b8f-8676-a4051f35b7b0",
+                        "heartbeatGeneration": 7
+                    },
+                    "reason": "matchingReuseKey",
+                    "expiresAt": "2026-08-03T12:00:00.000Z"
+                }
             }
         });
         let resp: PollResponse = serde_json::from_value(json).unwrap();
@@ -1488,10 +1482,7 @@ mod tests {
                 .unwrap()
         );
         assert_eq!(job.experimental_profile, "browser");
-        assert_eq!(
-            job.session_affinity_resource,
-            Some(SessionAffinityResource::WorkspaceCache)
-        );
+        assert!(job.runner_preference.is_some());
         assert!(job.reuse_key().is_none());
     }
 

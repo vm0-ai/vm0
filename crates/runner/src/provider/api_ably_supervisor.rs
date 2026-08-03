@@ -27,12 +27,12 @@ use super::api_direct_candidates::{
     DirectJobCandidate,
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
+use super::{RunnerPreference, parse_runner_preference};
 use crate::active_input::ActiveInputAblyNotifications;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::RunCancellationRegistry;
-use crate::types::SessionAffinityResource;
 
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
 const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
@@ -716,21 +716,14 @@ async fn handle_ably_message_with_network_policy_refresh(
                     "ably: job notification, queueing direct candidate"
                 );
                 JobNotificationAction::Direct(
-                    DirectJobCandidate::new_with_affinity_metadata(
+                    DirectJobCandidate::new_with_routing_metadata(
                         notif.run_id,
                         profile.to_owned(),
                         notification_received_at,
                         notif.reuse_key.map(str::to_owned),
-                        notif.cli_agent_session_id.map(str::to_owned),
-                        notif.affinity_protected_until.map(str::to_owned),
+                        notif.runner_preference,
                     )
-                    .with_history_generation_run_id(notif.history_generation_run_id)
-                    .with_session_affinity_resource(notif.session_affinity_resource)
-                    .with_history_generation_affinity_protected_until(
-                        notif
-                            .history_generation_affinity_protected_until
-                            .map(str::to_owned),
-                    ),
+                    .with_history_generation_run_id(notif.history_generation_run_id),
                 )
             } else {
                 info!(
@@ -771,11 +764,8 @@ struct JobNotification<'a> {
     run_id: RunId,
     profile: Option<&'a str>,
     reuse_key: Option<&'a str>,
-    cli_agent_session_id: Option<&'a str>,
-    session_affinity_resource: Option<SessionAffinityResource>,
     history_generation_run_id: Option<RunId>,
-    history_generation_affinity_protected_until: Option<&'a str>,
-    affinity_protected_until: Option<&'a str>,
+    runner_preference: Option<RunnerPreference>,
 }
 
 struct NetworkPolicyRefreshNotification {
@@ -960,40 +950,9 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("profile")
         .and_then(|v| v.as_str())
         .filter(|value| !value.is_empty());
-    let cli_agent_session_id = msg
-        .data
-        .get("cliAgentSessionId")
-        .and_then(|v| v.as_str())
-        .filter(|value| !value.is_empty());
     let reuse_key = msg
         .data
         .get("reuseKey")
-        .and_then(|v| v.as_str())
-        .filter(|value| !value.is_empty());
-    let affinity_protected_until = msg
-        .data
-        .get("affinityProtectedUntil")
-        .and_then(|v| v.as_str())
-        .filter(|value| !value.is_empty());
-    let session_affinity_resource = match msg.data.get("sessionAffinityResource") {
-        Some(value) if value.as_str() == Some("reusableSandbox") => {
-            Some(SessionAffinityResource::ReusableSandbox)
-        }
-        Some(value) if value.as_str() == Some("workspaceCache") => {
-            Some(SessionAffinityResource::WorkspaceCache)
-        }
-        Some(value) => {
-            warn!(
-                value = %value,
-                "ably: invalid session affinity resource, ignoring job notification"
-            );
-            return None;
-        }
-        None => None,
-    };
-    let history_generation_affinity_protected_until = msg
-        .data
-        .get("historyGenerationAffinityProtectedUntil")
         .and_then(|v| v.as_str())
         .filter(|value| !value.is_empty());
     let history_generation_run_id = msg
@@ -1001,15 +960,24 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("historyGenerationRunId")
         .and_then(|v| v.as_str())
         .and_then(|value| value.parse().ok());
+    let runner_preference = match parse_runner_preference(msg.data.get("runnerPreference").cloned())
+    {
+        Ok(runner_preference) => runner_preference,
+        Err(error) => {
+            warn!(
+                run_id = %run_id,
+                error = %error,
+                "ably: invalid runner preference, using ordinary admission"
+            );
+            None
+        }
+    };
     Some(JobNotification {
         run_id,
         profile,
         reuse_key,
-        cli_agent_session_id,
-        session_affinity_resource,
         history_generation_run_id,
-        history_generation_affinity_protected_until,
-        affinity_protected_until,
+        runner_preference,
     })
 }
 
@@ -1157,6 +1125,7 @@ impl AblyDisconnectState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::RunnerPreferenceReason;
 
     fn make_message(name: Option<&str>, data: serde_json::Value) -> ably_subscriber::Message {
         ably_subscriber::Message {
@@ -1934,13 +1903,8 @@ mod tests {
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000001",
                 "profile": "vm0/default",
-                "cliAgentSessionId": "sess-ably",
                 "reuseKey": "thread:chat-thread",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
-                "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                "affinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                "sessionAffinityResource": "workspaceCache",
-                // Old runners must ignore the additive preference during rollout.
                 "runnerPreference": {
                     "runnerIdentity": {
                         "runnerId": "00000000-0000-0000-0000-000000000005",
@@ -1962,19 +1926,60 @@ mod tests {
         assert_eq!(candidate.profile_name(), "vm0/default");
         let candidate = candidate.into_job_candidate();
         assert_eq!(candidate.reuse_key(), Some("thread:chat-thread"));
-        assert_eq!(candidate.cli_agent_session_id(), Some("sess-ably"));
         assert_eq!(
             candidate.history_generation_run_id(),
             Some("00000000-0000-0000-0000-000000000098".parse().unwrap())
         );
-        assert!(candidate.is_affinity_protected());
-        assert!(candidate.is_history_generation_affinity_protected());
+        let preference = candidate
+            .runner_preference()
+            .expect("canonical preference should be parsed");
         assert_eq!(
-            candidate.session_affinity_resource(),
-            Some(SessionAffinityResource::WorkspaceCache)
+            preference.reason(),
+            RunnerPreferenceReason::MatchingReuseKey
         );
+        assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
         assert_no_direct_candidate(&direct_candidates).await;
         assert!(!wakeups.snapshot().await.poll_now);
+    }
+
+    #[tokio::test]
+    async fn malformed_optional_preference_preserves_direct_candidate() {
+        let tokens = RunCancellationRegistry::new();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000011",
+                "profile": "vm0/default",
+                "reuseKey": "thread:malformed-preference",
+                "runnerPreference": {
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000005",
+                        "heartbeatGeneration": 7
+                    },
+                    "reason": "futureReason",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                }
+            }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        let candidate = pop_direct_candidate(&direct_candidates)
+            .await
+            .into_job_candidate();
+        assert_eq!(candidate.reuse_key(), Some("thread:malformed-preference"));
+        assert!(candidate.runner_preference().is_none());
+        assert_no_direct_candidate(&direct_candidates).await;
     }
 
     #[tokio::test]
@@ -2264,20 +2269,6 @@ mod tests {
             .await
             .expect("dropping supervisor should cancel the task")
             .unwrap();
-    }
-
-    #[test]
-    fn parse_job_notification_rejects_unknown_session_affinity_resource() {
-        let msg = make_message(
-            Some("job"),
-            serde_json::json!({
-                "runId": "00000000-0000-0000-0000-000000000001",
-                "profile": "vm0/default",
-                "sessionAffinityResource": "futureResource"
-            }),
-        );
-
-        assert!(parse_job_notification(&msg).is_none());
     }
 
     #[test]
