@@ -54,9 +54,7 @@ import {
   publishChatThreadDetailChangedSafely,
   publishChatThreadMessageCreatedSafely,
   publishChatThreadRunCreatedSafely,
-  publishThreadListChanged,
   publishThreadListChangedSafely,
-  publishUserSignal,
 } from "../external/realtime";
 import {
   recordSandboxOperation,
@@ -3265,6 +3263,17 @@ function recordQueuedMessageAdmissionFailure(
   });
 }
 
+async function publishQueuedAdmissionFailureInvalidations(args: {
+  readonly userId: string;
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
+  args.signal.throwIfAborted();
+  await publishThreadListChangedSafely(args.userId);
+  args.signal.throwIfAborted();
+}
+
 async function handleWebQueuedMessageAdmissionFailure(args: {
   readonly db: Db;
   readonly failure: WebQueuedMessageAdmissionFailure;
@@ -3294,11 +3303,11 @@ async function handleWebQueuedMessageAdmissionFailure(args: {
   }
 
   recordQueuedMessageAdmissionFailure(args.failure);
-  await publishUserSignal(
-    [args.failure.userId],
-    `chatThreadMessageCreated:${args.failure.threadId}`,
-  );
-  await publishThreadListChanged(args.failure.userId);
+  await publishQueuedAdmissionFailureInvalidations({
+    userId: args.failure.userId,
+    threadId: args.failure.threadId,
+    signal: args.signal,
+  });
 }
 
 async function handleFeishuQueuedMessageAdmissionFailure(args: {
@@ -3332,12 +3341,11 @@ async function handleFeishuQueuedMessageAdmissionFailure(args: {
   }
 
   recordQueuedMessageAdmissionFailure(args.failure);
-  await publishUserSignal(
-    [args.failure.userId],
-    `chatThreadMessageCreated:${args.failure.threadId}`,
-  );
-  await publishThreadListChanged(args.failure.userId);
-  args.signal.throwIfAborted();
+  await publishQueuedAdmissionFailureInvalidations({
+    userId: args.failure.userId,
+    threadId: args.failure.threadId,
+    signal: args.signal,
+  });
   await tapError(
     args.deliver(
       {
@@ -3397,12 +3405,11 @@ async function handleSlackQueuedMessageAdmissionFailure(args: {
   }
 
   recordQueuedMessageAdmissionFailure(args.failure);
-  await publishUserSignal(
-    [args.failure.userId],
-    `chatThreadMessageCreated:${args.failure.threadId}`,
-  );
-  await publishThreadListChanged(args.failure.userId);
-  args.signal.throwIfAborted();
+  await publishQueuedAdmissionFailureInvalidations({
+    userId: args.failure.userId,
+    threadId: args.failure.threadId,
+    signal: args.signal,
+  });
   await tapError(
     args.deliver(
       {
@@ -3458,12 +3465,11 @@ async function handleTeamsQueuedMessageAdmissionFailure(args: {
   }
 
   recordQueuedMessageAdmissionFailure(args.failure);
-  await publishUserSignal(
-    [args.failure.userId],
-    `chatThreadMessageCreated:${args.failure.threadId}`,
-  );
-  await publishThreadListChanged(args.failure.userId);
-  args.signal.throwIfAborted();
+  await publishQueuedAdmissionFailureInvalidations({
+    userId: args.failure.userId,
+    threadId: args.failure.threadId,
+    signal: args.signal,
+  });
   await tapError(
     args.deliver(
       {
@@ -3515,12 +3521,11 @@ async function handleTelegramQueuedMessageAdmissionFailure(args: {
   }
 
   recordQueuedMessageAdmissionFailure(args.failure);
-  await publishUserSignal(
-    [args.failure.userId],
-    `chatThreadMessageCreated:${args.failure.threadId}`,
-  );
-  await publishThreadListChanged(args.failure.userId);
-  args.signal.throwIfAborted();
+  await publishQueuedAdmissionFailureInvalidations({
+    userId: args.failure.userId,
+    threadId: args.failure.threadId,
+    signal: args.signal,
+  });
   await tapError(
     args.deliver(
       {
@@ -3572,12 +3577,11 @@ async function handleAgentPhoneQueuedMessageAdmissionFailure(args: {
   }
 
   recordQueuedMessageAdmissionFailure(args.failure);
-  await publishUserSignal(
-    [args.failure.userId],
-    `chatThreadMessageCreated:${args.failure.threadId}`,
-  );
-  await publishThreadListChanged(args.failure.userId);
-  args.signal.throwIfAborted();
+  await publishQueuedAdmissionFailureInvalidations({
+    userId: args.failure.userId,
+    threadId: args.failure.threadId,
+    signal: args.signal,
+  });
   await tapError(
     args.deliver(
       {
@@ -3629,12 +3633,11 @@ async function handleGitHubQueuedMessageAdmissionFailure(args: {
   }
 
   recordQueuedMessageAdmissionFailure(args.failure);
-  await publishUserSignal(
-    [args.failure.userId],
-    `chatThreadMessageCreated:${args.failure.threadId}`,
-  );
-  await publishThreadListChanged(args.failure.userId);
-  args.signal.throwIfAborted();
+  await publishQueuedAdmissionFailureInvalidations({
+    userId: args.failure.userId,
+    threadId: args.failure.threadId,
+    signal: args.signal,
+  });
   await tapError(
     args.deliver(
       {
@@ -3704,11 +3707,11 @@ async function handleMorningBriefQueuedMessageAdmissionFailure(args: {
   }
 
   recordQueuedMessageAdmissionFailure(args.failure);
-  await publishUserSignal(
-    [args.failure.userId],
-    `chatThreadMessageCreated:${args.failure.threadId}`,
-  );
-  await publishThreadListChanged(args.failure.userId);
+  await publishQueuedAdmissionFailureInvalidations({
+    userId: args.failure.userId,
+    threadId: args.failure.threadId,
+    signal: args.signal,
+  });
 }
 
 async function handleQueuedMessageAdmissionFailure(args: {

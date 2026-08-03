@@ -3391,9 +3391,13 @@ describe("CHAT-02: drain-time admission failure", () => {
       canBuyCredits: true,
     });
     context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValue(
+      new Error("Injected queued Web admission realtime failure"),
+    );
 
     await completeChatRunOk(anchor.runId, anchorHeaders);
     await flushWaitUntilForTest();
+    context.mocks.ably.publish.mockResolvedValue(undefined);
     const terminal = await waitForThreadMessages(
       actor,
       anchor.threadId,
