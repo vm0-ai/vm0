@@ -214,6 +214,142 @@ class TestFirewallHeaderCache:
         }
         assert cached_tokens == {"Bearer token-1", "Bearer token-2"}
 
+    async def test_distinct_fetch_admission_bounds_active_and_waiting_work(self, mitm_ctx):
+        endpoint = FakeAuthEndpoint()
+        release_first = threading.Event()
+        release_second = threading.Event()
+        endpoint.queue_json_response(
+            firewall_auth_success_response(
+                {"Authorization": "Bearer token-1"},
+                expires_at=time.time() + 3600,
+            ),
+            release_event=release_first,
+        )
+        endpoint.queue_json_response(
+            firewall_auth_success_response(
+                {"Authorization": "Bearer token-2"},
+                expires_at=time.time() + 3600,
+            ),
+            release_event=release_second,
+        )
+        endpoint.queue_json_response(
+            firewall_auth_success_response(
+                {"Authorization": "Bearer token-3"},
+                expires_at=time.time() + 3600,
+            )
+        )
+        auth_request = _firewall_auth_request(auth_headers={"Authorization": "template"})
+        first_key = auth_cache_key(api_id="api-1")
+        second_key = auth_cache_key(api_id="api-2")
+        third_key = auth_cache_key(api_id="api-3")
+        mark_force_refresh(third_key)
+
+        tasks: list[asyncio.Task[dict]] = []
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(auth_cache, "MAX_CONCURRENT_FIREWALL_AUTH_FETCHES", 1),
+            patch.object(auth_cache, "MAX_ADMITTED_FIREWALL_AUTH_FETCHES", 2),
+        ):
+            first = asyncio.create_task(auth_cache.get_firewall_headers(first_key, auth_request))
+            tasks.append(first)
+            try:
+                assert await asyncio.to_thread(endpoint.wait_for_request_count, 1)
+
+                follower = asyncio.create_task(
+                    auth_cache.get_firewall_headers(first_key, auth_request)
+                )
+                second = asyncio.create_task(
+                    auth_cache.get_firewall_headers(second_key, auth_request)
+                )
+                tasks.extend((follower, second))
+                await asyncio.sleep(0)
+
+                assert auth_cache.admitted_firewall_auth_fetches_for_tests() == 2
+                assert endpoint.request_count == 1
+                with pytest.raises(auth_cache.FirewallAuthFetchSaturatedError):
+                    await auth_cache.get_firewall_headers(third_key, auth_request)
+                assert endpoint.request_count == 1
+                assert force_refresh_pending(third_key)
+
+                release_first.set()
+                first_result, follower_result = await asyncio.gather(first, follower)
+                assert await asyncio.to_thread(endpoint.wait_for_request_count, 2)
+                assert endpoint.request_count == 2
+
+                release_second.set()
+                second_result = await second
+                assert auth_cache.admitted_firewall_auth_fetches_for_tests() == 0
+
+                third_result = await auth_cache.get_firewall_headers(third_key, auth_request)
+            finally:
+                release_first.set()
+                release_second.set()
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+        assert first_result["headers"] == {"Authorization": "Bearer token-1"}
+        assert first_result["cache_hit"] is False
+        assert follower_result["headers"] == {"Authorization": "Bearer token-1"}
+        assert follower_result["cache_hit"] is True
+        assert second_result["headers"] == {"Authorization": "Bearer token-2"}
+        assert third_result["headers"] == {"Authorization": "Bearer token-3"}
+        assert endpoint.request_count == 3
+        assert endpoint.requests[2].json_body()["forceRefresh"] is True
+        assert not force_refresh_pending(third_key)
+
+    async def test_cancelled_leader_keeps_admission_until_shared_failure(self, mitm_ctx):
+        endpoint = FakeAuthEndpoint()
+        release_failure = threading.Event()
+        endpoint.queue_response(500, body=b"not-json", release_event=release_failure)
+        endpoint.queue_json_response(
+            firewall_auth_success_response(
+                {"Authorization": "Bearer recovered"},
+                expires_at=time.time() + 3600,
+            )
+        )
+        auth_request = _firewall_auth_request(auth_headers={"Authorization": "template"})
+        first_key = auth_cache_key(api_id="api-1")
+        second_key = auth_cache_key(api_id="api-2")
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(auth_cache, "MAX_CONCURRENT_FIREWALL_AUTH_FETCHES", 1),
+            patch.object(auth_cache, "MAX_ADMITTED_FIREWALL_AUTH_FETCHES", 1),
+        ):
+            leader = asyncio.create_task(auth_cache.get_firewall_headers(first_key, auth_request))
+            follower = None
+            try:
+                assert await asyncio.to_thread(endpoint.wait_for_request_count, 1)
+                leader.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await leader
+
+                follower = asyncio.create_task(
+                    auth_cache.get_firewall_headers(first_key, auth_request)
+                )
+                await asyncio.sleep(0)
+                assert auth_cache.admitted_firewall_auth_fetches_for_tests() == 1
+                with pytest.raises(auth_cache.FirewallAuthFetchSaturatedError):
+                    await auth_cache.get_firewall_headers(second_key, auth_request)
+                assert endpoint.request_count == 1
+
+                release_failure.set()
+                with pytest.raises(urllib.error.HTTPError):
+                    await follower
+                assert auth_cache.admitted_firewall_auth_fetches_for_tests() == 0
+
+                recovered = await auth_cache.get_firewall_headers(second_key, auth_request)
+            finally:
+                release_failure.set()
+                tasks = [task for task in (leader, follower) if task is not None]
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+        assert recovered["headers"] == {"Authorization": "Bearer recovered"}
+        assert recovered["cache_hit"] is False
+        assert endpoint.request_count == 2
+        assert auth_cache.admitted_firewall_auth_fetches_for_tests() == 0
+
     async def test_same_run_and_api_with_different_auth_identities_fetch_independently(
         self, mitm_ctx
     ):
