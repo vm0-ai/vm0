@@ -1190,16 +1190,19 @@ mod tests {
         let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
         let message = error.to_string();
 
-        assert!(message.contains("signal failed"));
-        assert!(message.contains("additionally rollback failed"));
-        assert!(message.contains("failed to roll back drain transition"));
-        assert!(message.contains("(signal_drain)"));
-        assert!(message.contains("remove drain restart override"));
-        assert!(message.contains("remove failed"));
-        assert!(message.contains("restore boot enablement"));
-        assert!(message.contains("restore enablement failed"));
-        assert!(message.contains("reload restored systemd state"));
-        assert!(message.contains("reload failed"));
+        assert!(message.contains(
+            "drain failed for vm0-runner-test: internal error: signal failed; additionally rollback failed"
+        ));
+        assert!(
+            message.contains(
+                "failed to roll back drain transition for vm0-runner-test (signal_drain)"
+            )
+        );
+        assert!(message.contains("remove drain restart override: internal error: remove failed"));
+        assert!(
+            message.contains("restore boot enablement: internal error: restore enablement failed")
+        );
+        assert!(message.contains("reload restored systemd state: internal error: reload failed"));
         assert_eq!(
             ops.events,
             [
@@ -1236,10 +1239,14 @@ mod tests {
         let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
         let message = error.to_string();
 
-        assert!(message.contains("signal failed"));
-        assert!(message.contains("additionally rollback failed"));
-        assert!(message.contains("failed to roll back drain transition"));
-        assert!(message.contains("(signal_drain)"));
+        assert!(message.contains(
+            "drain failed for vm0-runner-test: internal error: signal failed; additionally rollback failed"
+        ));
+        assert!(
+            message.contains(
+                "failed to roll back drain transition for vm0-runner-test (signal_drain)"
+            )
+        );
         assert!(message.contains("prior boot enablement is unavailable"));
         assert_eq!(
             ops.events,
