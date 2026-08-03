@@ -482,7 +482,19 @@ def capture_and_strip_prefetch_marker(flow: http.HTTPFlow) -> None:
 
 
 async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> bool:
-    """Serve or prepare a catalog request and report whether it waited for an owner."""
+    """Serve or prepare a catalog request and report whether it crossed a wait.
+
+    ``True`` means the request waited for at least one in-flight owner. The wait may
+    end through owner success, failure or release, timeout, invalidation, or
+    replacement, and the waiter may subsequently become the replacement owner. A
+    local cache response does not continue upstream. Otherwise, a caller that may
+    inject ordinary upstream credentials must revalidate the current upstream
+    continuation before proceeding after a ``True`` result.
+
+    ``mitm_addon._prepare_codex_catalog_request_with_upstream_revalidation()``
+    implements this contract. Its focused lifecycle coverage is
+    ``test_catalog_wait_revalidates_only_provider_continuation``.
+    """
     if _FLOW_STATE in flow.metadata or _FLOW_TELEMETRY in flow.metadata:
         return False
     if flow_metadata.firewall_name(flow.metadata) != _FIREWALL_NAME:
