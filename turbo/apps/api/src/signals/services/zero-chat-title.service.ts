@@ -245,7 +245,7 @@ async function getLatestTitleContextMessages(
       content: chatEvents.content,
       userMessage: chatEvents.userMessage,
       createdAt: chatEvents.createdAt,
-      sequenceNumber: chatEvents.sequenceNumber,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
     })
     .from(chatEvents)
     .leftJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
@@ -424,7 +424,7 @@ async function getLatestFollowupContextMessages(
       content: chatEvents.content,
       userMessage: chatEvents.userMessage,
       createdAt: chatEvents.createdAt,
-      sequenceNumber: chatEvents.sequenceNumber,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
     })
     .from(chatEvents)
     .where(
