@@ -590,7 +590,7 @@ class TestXConnectorErrorPipeline:
 
     @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
     def test_full_pipeline_complete_compressed_stream_error_reports_verified_rows(
-        self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api, encoding_case
+        self, tmp_path, real_flow, usage_webhook_api, encoding_case
     ):
         """A connection error still bills rows from a verified compressed member."""
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
