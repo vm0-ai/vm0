@@ -7786,6 +7786,24 @@ async function validateChatEventPropertyColumnRollout(): Promise<void> {
       await validateRevokesEventIdExpansion(client);
       await validateLastChatEventSeqIdExpansion(client);
       await validateFirstAssistantEventAckExpansion(client);
+      // Keep the historical 0757 mixed-version window intact while adding the
+      // later storage that today's Drizzle schema requires. Applying every
+      // intervening migration would prematurely run the 0768 contraction.
+      const runEventSequenceMigrationSql = await fs.readFile(
+        path.join(MIGRATIONS_DIR, "0807_expand_run_event_sequence_number.sql"),
+        "utf8",
+      );
+      const runEventSequenceMigrationStatements = runEventSequenceMigrationSql
+        .split("--> statement-breakpoint")
+        .map((statement) => {
+          return statement.trim();
+        })
+        .filter((statement) => {
+          return statement.length > 0;
+        });
+      for (const statement of runEventSequenceMigrationStatements) {
+        await client.query(statement);
+      }
       await validateChatEventPropertyColumnRuntimeCutover(client);
       await validateChatEventPropertyColumnContraction(client);
       await validateLegacyChatEventSeqIdAllocatorDrop(client);
@@ -17213,14 +17231,16 @@ const RUN_EVENT_SEQUENCE_NUMBER_PREVIOUS_MIGRATION = 806;
 const RUN_EVENT_SEQUENCE_NUMBER_EXPANSION_MIGRATION = 807;
 
 async function validateRunEventSequenceNumberExpansion(): Promise<void> {
-  console.log("=== Validate populated run event sequence expansion ===\n");
+  console.log(
+    "=== Validate populated run event sequence expansion and runtime cutover ===\n",
+  );
   const testDb = "migration_run_event_sequence_number_test";
   const testDbUrl = createTestDbUrl(testDb);
   const composeId = "00000000-0000-4000-8000-000000080701";
   const threadId = "00000000-0000-4000-8000-000000080702";
   const historicalRunId = "00000000-0000-4000-8000-000000080703";
   const previousApiRunId = "00000000-0000-4000-8000-000000080704";
-  const nextApiRunId = "00000000-0000-4000-8000-000000080705";
+  const currentApiRunId = "00000000-0000-4000-8000-000000080705";
 
   const migrationSql = await fs.readFile(
     path.join(MIGRATIONS_DIR, "0807_expand_run_event_sequence_number.sql"),
@@ -17249,7 +17269,14 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
     path.join(PACKAGE_DIR, "src/schema/chat-event.ts"),
     "utf8",
   );
-  assert.doesNotMatch(schemaSource, /run_event_sequence_number/u);
+  assert.match(
+    schemaSource,
+    /runEventSequenceNumber: integer\("run_event_sequence_number"\)/u,
+  );
+  assert.doesNotMatch(
+    schemaSource,
+    /sequenceNumber: integer\("sequence_number"\)/u,
+  );
 
   await createDatabase(testDb);
   try {
@@ -17313,6 +17340,7 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
         client,
         RUN_EVENT_SEQUENCE_NUMBER_EXPANSION_MIGRATION,
       );
+      const database = drizzle(client);
 
       const historicalRows = await client.query<{
         mismatches: string;
@@ -17348,6 +17376,7 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
             "seq_id"
           )
           VALUES ($1, $2, 'output.message', 7, 10002)
+          ON CONFLICT ("run_id", "sequence_number") DO NOTHING
           RETURNING
             "id",
             "sequence_number" AS "sequenceNumber",
@@ -17366,27 +17395,84 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
         [{ runEventSequenceNumber: 7, sequenceNumber: 7 }],
       );
 
-      const nextApiInsert = await client.query<{
+      const currentApiQuery = database
+        .insert(chatEvents)
+        .values({
+          chatThreadId: threadId,
+          runId: currentApiRunId,
+          eventType: "output.message",
+          runEventSequenceNumber: 9,
+          seqId: 10003,
+        })
+        .onConflictDoNothing({
+          target: [chatEvents.runId, chatEvents.runEventSequenceNumber],
+        })
+        .returning({
+          sequenceNumber: chatEvents.runEventSequenceNumber,
+        });
+      const currentApiSql = currentApiQuery.toSQL();
+      const currentApiExplanation = await client.query<{
+        "QUERY PLAN": unknown;
+      }>(`EXPLAIN (FORMAT JSON) ${currentApiSql.sql}`, currentApiSql.params);
+      function collectConflictArbiterIndexes(
+        value: unknown,
+      ): readonly string[] {
+        if (Array.isArray(value)) {
+          return value.flatMap((item) => {
+            return collectConflictArbiterIndexes(item);
+          });
+        }
+        if (typeof value !== "object" || value === null) {
+          return [];
+        }
+        const record = value as Record<string, unknown>;
+        const directIndexes = record["Conflict Arbiter Indexes"];
+        return [
+          ...(Array.isArray(directIndexes)
+            ? directIndexes.filter((item): item is string => {
+                return typeof item === "string";
+              })
+            : []),
+          ...Object.values(record).flatMap((item) => {
+            return collectConflictArbiterIndexes(item);
+          }),
+        ];
+      }
+      assert.deepEqual(
+        collectConflictArbiterIndexes(
+          currentApiExplanation.rows[0]?.["QUERY PLAN"],
+        ),
+        ["chat_events_run_event_seq_unique"],
+      );
+
+      assert.deepEqual(await currentApiQuery, [{ sequenceNumber: 9 }]);
+      const mirroredRuntimeWrites = await client.query<{
+        legacySequenceNumber: number;
         runEventSequenceNumber: number;
-        sequenceNumber: number;
+        runId: string;
       }>(
         `
-          INSERT INTO "chat_events" (
-            "chat_thread_id",
-            "run_id",
-            "event_type",
-            "run_event_sequence_number",
-            "seq_id"
-          )
-          VALUES ($1, $2, 'output.message', 9, 10003)
-          RETURNING
-            "sequence_number" AS "sequenceNumber",
+          SELECT
+            "run_id" AS "runId",
+            "sequence_number" AS "legacySequenceNumber",
             "run_event_sequence_number" AS "runEventSequenceNumber"
+          FROM "chat_events"
+          WHERE "run_id" IN ($1, $2)
+          ORDER BY "run_id"
         `,
-        [threadId, nextApiRunId],
+        [previousApiRunId, currentApiRunId],
       );
-      assert.deepEqual(nextApiInsert.rows, [
-        { runEventSequenceNumber: 9, sequenceNumber: 9 },
+      assert.deepEqual(mirroredRuntimeWrites.rows, [
+        {
+          legacySequenceNumber: 7,
+          runEventSequenceNumber: 7,
+          runId: previousApiRunId,
+        },
+        {
+          legacySequenceNumber: 9,
+          runEventSequenceNumber: 9,
+          runId: currentApiRunId,
+        },
       ]);
 
       const indexes = await client.query<{
@@ -17477,7 +17563,7 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
           )
           VALUES ($1, $2, 'output.message', 9, 10005)
         `,
-        values: [threadId, nextApiRunId],
+        values: [threadId, currentApiRunId],
       });
       await client.query(`
         CREATE UNIQUE INDEX "chat_events_run_seq_unique"
@@ -17512,7 +17598,7 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
           SET "run_event_sequence_number" = 10
           WHERE "run_id" = $1
         `,
-        values: [nextApiRunId],
+        values: [currentApiRunId],
       });
 
       const rejectFunction = await client.query<{ definition: string }>(`
@@ -17581,7 +17667,12 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
       await assertChatEventsAppendOnlyProtection(client, previousApiEventId);
 
       console.log("   ✅ 10,001 historical rows backfill across batches");
-      console.log("   ✅ Previous and next API inserts mirror both directions");
+      console.log(
+        "   ✅ Draining legacy and current Drizzle inserts coexist with mirrored columns",
+      );
+      console.log(
+        "   ✅ Current targeted ON CONFLICT resolves to chat_events_run_event_seq_unique",
+      );
       console.log("   ✅ Both unique index paths reject duplicates with 23505");
       console.log("   ✅ Strict append-only protection is restored");
       console.log("   ✅ A full non-transactional retry is idempotent\n");

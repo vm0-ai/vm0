@@ -270,7 +270,7 @@ const eventColumns = {
   goalEvent: chatEvents.goalEvent,
   error: chatEvents.error,
   seqId: chatEvents.seqId,
-  sequenceNumber: chatEvents.sequenceNumber,
+  sequenceNumber: chatEvents.runEventSequenceNumber,
   createdAt: chatEvents.createdAt,
   attachFiles: chatEvents.attachFiles,
   generationTemplate: chatEvents.generationTemplate,
@@ -318,7 +318,7 @@ const searchMessageColumns = {
   userMessage: chatEvents.userMessage,
   createdAt: chatEvents.createdAt,
   seqId: chatEvents.seqId,
-  sequenceNumber: chatEvents.sequenceNumber,
+  sequenceNumber: chatEvents.runEventSequenceNumber,
   runId: effectiveChatEventRunId(),
 } as const;
 
