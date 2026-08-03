@@ -111,39 +111,74 @@ pub(crate) struct WorkspaceImagePromotionRequest<'a> {
     pub(crate) storage_fingerprints: StorageFingerprints,
 }
 
+/// Encoding of the bytes stored in a workspace session-history sidecar body.
 pub(crate) type WorkspaceSessionHistorySidecarRepresentation =
     guest_contracts::session_history_identity::SessionHistorySidecarRepresentation;
 
+/// A committed sidecar body that passed metadata, request, and file validation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct WorkspaceSessionHistorySidecar {
+    /// Path to the body slot selected by the committed sidecar metadata.
     pub(crate) path: PathBuf,
+    /// Encoding to use when materializing the stored bytes.
     pub(crate) representation: WorkspaceSessionHistorySidecarRepresentation,
+    /// Validated length of the encoded body.
     pub(crate) encoded_size: u64,
 }
 
+/// A guarded temporary body proposed for the next sidecar publication.
+///
+/// The restored-session identity is persisted with the source when promotion
+/// succeeds. Publication consumes the temporary path by moving it into the
+/// cache entry, or discards it when the source is invalid or promotion fails.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct WorkspaceSessionHistorySidecarPromotionSource {
+    /// Runner-managed temporary body path inside the guarded cache entry.
     pub(crate) tmp_path: PathBuf,
+    /// Encoding of the staged body.
     pub(crate) representation: WorkspaceSessionHistorySidecarRepresentation,
+    /// Declared encoded length checked before publication.
     pub(crate) encoded_size: u64,
+    /// Identity fields to commit with the staged body.
     pub(crate) restored_session_identity: crate::restored_session_identity::RestoredSessionIdentity,
 }
 
+/// Sidecar policy applied while publishing the enclosing workspace image.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum WorkspaceSessionHistorySidecarPublication<'a> {
+    /// Keep the committed sidecar after promoting a consumed workspace cache hit
+    /// when finalization did not stage a replacement.
     PreserveExisting,
+    /// Publish a guarded staged source with the promoted workspace image.
     Replace(&'a WorkspaceSessionHistorySidecarPromotionSource),
+    /// Remove any committed sidecar when promoting a non-hit workspace without
+    /// a staged source.
     Prune,
 }
 
+/// Non-fatal reason a local sidecar cannot satisfy a restore request.
+///
+/// Callers can record the stable string form as miss telemetry before using the
+/// authoritative session-history materializer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum WorkspaceSessionHistorySidecarMiss {
+    /// The workspace image itself was not obtained from this cache entry.
     NoCacheHit,
+    /// No committed sidecar metadata exists for the cache entry.
     Missing,
+    /// Metadata could not be read, decoded, or accepted as a supported version
+    /// with a valid encoded-size bound.
     InvalidMetadata,
+    /// The requested restored-session identity is incomplete or differs from
+    /// the identity recorded in the metadata.
     IdentityMismatch,
+    /// The recorded framework, representation, and size relationship is not
+    /// supported by the materializer.
     UnsupportedFormat,
+    /// Metadata selects a body slot that no longer exists.
     BodyMissing,
+    /// The selected body is not the recorded regular file with the expected
+    /// encoded length.
     FileIdentityMismatch,
 }
 
