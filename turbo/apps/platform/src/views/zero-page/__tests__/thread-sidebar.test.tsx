@@ -905,32 +905,28 @@ describe("thread-owned utility sidebar", () => {
       });
     });
 
-    try {
-      setupChatThread({
-        autoOpenEnabled: true,
-        waitForHistoryResponse: async () => {
-          historyRequestStarted.resolve();
-          await releaseHistoryResponse.promise;
+    setupChatThread({
+      autoOpenEnabled: true,
+      waitForHistoryResponse: async () => {
+        historyRequestStarted.resolve();
+        await releaseHistoryResponse.promise;
+      },
+      messages: [
+        {
+          id: "c0000000-0000-4000-a000-000000000054",
+          eventType: "browser.started",
+          content: null,
+          seqId: 51,
+          createdAt: "2026-03-10T00:00:00Z",
         },
-        messages: [
-          {
-            id: "c0000000-0000-4000-a000-000000000054",
-            eventType: "browser.started",
-            content: null,
-            seqId: 51,
-            createdAt: "2026-03-10T00:00:00Z",
-          },
-        ],
-      });
+      ],
+    });
 
-      await historyRequestStarted.promise;
-      await expect(
-        screen.findByTitle("Live browser: Thread browser"),
-      ).resolves.toBeInTheDocument();
-      expect(releaseHistoryResponse.settled()).toBeFalsy();
-    } finally {
-      releaseHistoryResponse.resolve();
-    }
+    await historyRequestStarted.promise;
+    await expect(
+      screen.findByTitle("Live browser: Thread browser"),
+    ).resolves.toBeInTheDocument();
+    expect(releaseHistoryResponse.settled()).toBeFalsy();
   });
 
   it("auto-opens when older history contains the unmatched browser start", async () => {
@@ -1194,13 +1190,9 @@ describe("thread-owned utility sidebar", () => {
     ]);
 
     await markReadStarted.promise;
-    try {
-      await expect(
-        screen.findByTitle("Live browser: Thread browser"),
-      ).resolves.toBeInTheDocument();
-    } finally {
-      finishMarkRead.resolve();
-    }
+    await expect(
+      screen.findByTitle("Live browser: Thread browser"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("does not reopen the same browser start after the user closes it", async () => {
