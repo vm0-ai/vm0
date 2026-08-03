@@ -139,10 +139,11 @@ interface ScrollRuntime {
   initialized: boolean;
   resizeScheduled: boolean;
   latestRenderRequestRevision: number;
-  // Offset this module last wrote to the container, cleared by the next scroll
-  // event. Scroll events are delivered asynchronously, so content rendered in
-  // between (an async diagram, a late image) can make that event measure as
-  // "not at the bottom" and park the thread on an anchor nobody chose.
+  // Offset this module last wrote to the container, cleared once the container
+  // reports a different one. Scroll events are delivered asynchronously, so
+  // content rendered in between (an async diagram, a late image) can make that
+  // event measure as "not at the bottom" and park the thread on an anchor
+  // nobody chose.
   programmaticScrollTop: number | null;
 }
 
@@ -439,7 +440,13 @@ function createScrollContainerOnRef(
         }
         const programmatic =
           runtime.programmaticScrollTop === container.scrollTop;
-        runtime.programmaticScrollTop = null;
+        if (!programmatic) {
+          // The container has left the offset this module wrote, so the reader
+          // moved it. Until that happens the offset is still ours no matter how
+          // many events describe it, and content growing every frame delivers
+          // more of them than the restores that wrote them.
+          runtime.programmaticScrollTop = null;
+        }
         set(scroll.syncThreadScrollPosition$, container, !programmatic);
       };
       const scheduleRestoreAfterResize = () => {
