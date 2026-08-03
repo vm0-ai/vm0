@@ -2,11 +2,7 @@
 import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
-import {
-  CHAT_EVENT_TYPES,
-  chatEventCompatibilityRole,
-  type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
+import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import {
   chatEventsContract,
   type AttachFile,
@@ -19,25 +15,13 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatEvents,
   type ChatEventAttachFileMetadata,
-  type ChatEventGenerationTemplate,
 } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  inArray,
-  isNotNull,
-  isNull,
-  not,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
@@ -69,10 +53,7 @@ import {
   createQueueFirstZeroRun$,
   type ZeroPreCreateSource,
 } from "../services/zero-runs-create.service";
-import {
-  BEFORE_DISPATCH_CANCELLED_ERROR,
-  isQueueFirstRunClaimLost,
-} from "../services/agent-run-create.service";
+import { isQueueFirstRunClaimLost } from "../services/agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import { drainChatThreadQueueForThread$ } from "../services/chat-thread-queue-drain.service";
 import { loadPendingChatQueueEvent } from "../services/chat-event-queue.service";
@@ -101,22 +82,15 @@ import {
   resolvePersistedChatThreadModel,
   type PersistedChatThreadModelResolutionPath,
 } from "../services/zero-chat-thread-model.service";
-import {
-  touchChatThreadLastMessageAt,
-  visibleChatEventCondition,
-} from "../services/zero-chat-event-shared.service";
+import { touchChatThreadLastMessageAt } from "../services/zero-chat-event-shared.service";
 import {
   revokeChatEvent,
   insertChatEvent,
   type NewChatEvent,
   replaceChatEvent,
 } from "../services/zero-chat-event.service";
-import { loadWebChatIncompleteContext } from "../services/zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "../services/zero-chat-active-run.service";
-import {
-  projectUserMessage,
-  requiredUserMessageForEvent,
-} from "../services/zero-chat-user-message.service";
+import { projectUserMessage } from "../services/zero-chat-user-message.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
   discardUnclaimedUserMessage,
@@ -130,11 +104,14 @@ import {
   chatThreadServiceTierFromCodex,
 } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
-import { resolveChatThreadSession } from "../services/chat-session-continuity.service";
 import { attachCanonicalWebInputAssetsToEvent } from "../services/canonical-asset.service";
 import { resolveArtifactObject$ } from "../services/artifact-storage.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import { chatEventTypeIn } from "../services/zero-chat-event-type.service";
+import {
+  buildWebChatAppendSystemPrompt,
+  type WebChatSessionPromptContext,
+} from "../services/zero-web-chat-session-prompt.service";
 import { bestEffort, tapError } from "../utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -197,27 +174,10 @@ type ThreadModelPin = ModelFirstPin;
 
 interface ResolvedThread {
   readonly threadId: string;
-  readonly incompleteContext: string;
   readonly computerUseHostId: string | null;
   readonly cloudBrowserEnabled: boolean;
   readonly isNewThread: boolean;
   readonly isClientThreadRetry: boolean;
-}
-
-interface WebChatPriorRunEvent {
-  readonly eventType: ChatEventType;
-  readonly role: "user" | "assistant";
-  readonly content: string | null;
-  readonly userMessage: UserMessageDocument | null;
-  readonly attachFiles: readonly string[] | null;
-  readonly generationTemplate: ChatEventGenerationTemplate | null;
-}
-
-interface WebChatPriorRun {
-  readonly runId: string;
-  readonly status: string;
-  readonly prompt: string;
-  readonly events: readonly WebChatPriorRunEvent[];
 }
 
 type ModelFirstProviderAdmission = Awaited<
@@ -256,7 +216,7 @@ interface PreparedNormalSend {
   readonly agent: AgentForChatSend;
   readonly thread: ResolvedThread;
   readonly body: RuntimeNormalSendBody;
-  readonly priorContext: string;
+  readonly userMessageInlineTemplatesEnabled: boolean;
   readonly generationTemplatePrompt: string;
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
@@ -378,10 +338,6 @@ interface ExistingClientEventIdRow {
 }
 
 const sendEventBody$ = bodyResultOf(chatEventsContract.send);
-// Existing web chat threads carry a small recent-run window in the system
-// prompt. Session compatibility is decided server-side from the target model.
-const RECENT_CHAT_RUN_LIMIT = 10;
-const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
 const INSUFFICIENT_CREDITS_MARKER = "insufficient_credits";
 const replacementChatEvent = alias(chatEvents, "replacement_chat_event");
 const replacementAgentRun = alias(agentRuns, "replacement_agent_run");
@@ -593,43 +549,6 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-function buildWebChatPrompt(): string {
-  return [
-    "# Current Integration\nYou are currently running inside: Web",
-    "You are communicating with the user through the web chat UI.",
-  ].join("\n\n");
-}
-
-function buildAppendSystemPrompt(
-  incompleteContext: string,
-  priorContext: string,
-  generationTemplatePrompt: string,
-  computerUseHostDisplayName: string | null,
-): string {
-  return [
-    buildWebChatPrompt(),
-    priorContext,
-    incompleteContext,
-    generationTemplatePrompt,
-    computerUseHostDisplayName
-      ? buildComputerUseSystemPrompt(computerUseHostDisplayName)
-      : "",
-  ]
-    .filter((part) => {
-      return part.length > 0;
-    })
-    .join("\n\n");
-}
-
-function buildComputerUseSystemPrompt(displayName: string): string {
-  return [
-    "# Computer Use",
-    `Computer Use is enabled for this run on ${displayName}.`,
-    "Use Zero CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
-    "The computer may go offline while this run is active. If a command reports that the computer is unavailable or offline, ask the user to reconnect Zero Computer Use on that computer, then retry.",
-  ].join("\n");
-}
-
 function resolveRuntimeNormalSendBody(
   body: NormalSendBody,
   inlineTemplatesEnabled: boolean,
@@ -704,104 +623,6 @@ const resolveIncomingAttachFileMetadata$ = command(
   },
 );
 
-function truncatePrior(value: string): string {
-  if (value.length <= WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP) {
-    return value;
-  }
-  return `${value.slice(0, WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
-}
-
-function formatAttachFileIds(
-  ids: readonly string[] | null | undefined,
-): string {
-  if (!ids || ids.length === 0) {
-    return "";
-  }
-  return ids
-    .map((id) => {
-      return `[Web file]\n   [ID] ${id}`;
-    })
-    .join("\n");
-}
-
-function formatPriorRunEvent(
-  event: WebChatPriorRunEvent,
-  inlineTemplatesEnabled: boolean,
-): string {
-  const roleLabel = event.role === "user" ? "User" : "Assistant";
-  const userMessage = requiredUserMessageForEvent(
-    event.eventType,
-    event.userMessage,
-  );
-  if (userMessage) {
-    const prompt = projectUserMessage(userMessage, {
-      inlineTemplates: inlineTemplatesEnabled,
-    }).agentPrompt;
-    return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
-  }
-  const attach = formatAttachFileIds(event.attachFiles);
-  const body = `${roleLabel}: ${
-    event.content === null
-      ? "[empty message]"
-      : truncatePrior(event.content) || "[empty message]"
-  }`;
-  return attach ? `${body}\n${attach}` : body;
-}
-
-function buildWebChatPriorRunsContext(
-  runs: readonly WebChatPriorRun[],
-  inlineTemplatesEnabled: boolean,
-): string {
-  if (runs.length === 0) {
-    return "";
-  }
-  const total = runs.length;
-  const blocks = runs.map((run, index) => {
-    const relativeIndex = index - total + 1;
-    const renderedEvents = run.events.map((event) => {
-      return formatPriorRunEvent(event, inlineTemplatesEnabled);
-    });
-    const hasUserEvent = run.events.some((event) => {
-      return event.role === "user";
-    });
-    const hasAssistantEvent = run.events.some((event) => {
-      return event.role === "assistant";
-    });
-    if (!hasUserEvent) {
-      renderedEvents.unshift(
-        `User: ${truncatePrior(run.prompt) || "[empty message]"}`,
-      );
-    }
-    if (!hasAssistantEvent) {
-      renderedEvents.push("Assistant: [no stored assistant message]");
-    }
-    return [
-      "---",
-      "",
-      `- RELATIVE_INDEX: ${relativeIndex}`,
-      `- RUN_ID: ${run.runId}`,
-      `- RUN_STATUS: ${run.status}`,
-      `- LOG_COMMAND: zero logs ${run.runId} --all`,
-      "",
-      ...renderedEvents,
-    ].join("\n");
-  });
-  return [
-    "# Web Chat Run Context",
-    "",
-    "The runs below are from the same web chat thread. When responding:",
-    "- Runs closer to RELATIVE_INDEX 0 are more recent -- prioritize them.",
-    "- Match the tone of the conversation -- casual messages deserve casual replies.",
-    "- Only provide technical analysis when explicitly asked a technical question.",
-    "- Keep responses proportional to the message length and complexity.",
-    "- Use the LOG_COMMAND for a run if you need more detailed agent log context.",
-    "",
-    blocks.join("\n\n"),
-    "",
-    "---",
-  ].join("\n");
-}
-
 async function loadAgentForChatSend(
   db: Db,
   agentId: string,
@@ -817,98 +638,6 @@ async function loadAgentForChatSend(
     .where(eq(zeroAgents.id, agentId))
     .limit(1);
   return agent;
-}
-
-async function getLatestRunsByThreadId(
-  db: Db,
-  threadId: string,
-  limit: number,
-): Promise<WebChatPriorRun[]> {
-  const runRows = await db
-    .select({
-      runId: zeroRuns.id,
-      status: agentRuns.status,
-      prompt: agentRuns.prompt,
-    })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(
-      and(
-        eq(zeroRuns.chatThreadId, threadId),
-        or(
-          sql`${agentRuns.status} IS DISTINCT FROM ${"cancelled"}`,
-          sql`${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR}`,
-        ),
-      ),
-    )
-    .orderBy(desc(agentRuns.createdAt))
-    .limit(limit);
-
-  const orderedRuns = runRows.reverse();
-  const runIds = orderedRuns.map((run) => {
-    return run.runId;
-  });
-  if (runIds.length === 0) {
-    return [];
-  }
-
-  const eventRows = await db
-    .select({
-      runId: chatEvents.runId,
-      eventType: chatEvents.eventType,
-      content: chatEvents.content,
-      userMessage: chatEvents.userMessage,
-      attachFiles: chatEvents.attachFiles,
-      createdAt: chatEvents.createdAt,
-      sequenceNumber: chatEvents.runEventSequenceNumber,
-      generationTemplate: chatEvents.generationTemplate,
-    })
-    .from(chatEvents)
-    .where(
-      and(
-        eq(chatEvents.chatThreadId, threadId),
-        or(
-          and(
-            chatEventTypeIn(["input.prompt", "input.rejected"]),
-            isNotNull(chatEvents.userMessage),
-          ),
-          and(
-            not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-            isNotNull(chatEvents.content),
-          ),
-        ),
-        inArray(chatEvents.runId, runIds),
-        chatEventTypeIn(CHAT_EVENT_TYPES),
-        visibleChatEventCondition(db),
-      ),
-    )
-    .orderBy(asc(chatEvents.seqId));
-
-  const eventsByRunId = new Map<string, WebChatPriorRunEvent[]>();
-  for (const row of eventRows) {
-    if (row.runId === null) {
-      continue;
-    }
-    const existing = eventsByRunId.get(row.runId) ?? [];
-    existing.push({
-      eventType: row.eventType,
-      role: chatEventCompatibilityRole(row.eventType),
-      content: row.content,
-      userMessage: row.userMessage,
-      attachFiles: row.attachFiles,
-      generationTemplate: row.generationTemplate,
-    });
-    eventsByRunId.set(row.runId, existing);
-  }
-
-  return orderedRuns.map((run) => {
-    return {
-      runId: run.runId,
-      status: run.status,
-      prompt: run.prompt,
-      events: eventsByRunId.get(run.runId) ?? [],
-    };
-  });
 }
 
 async function resolveClientEventSend(params: {
@@ -1444,63 +1173,6 @@ function resolveInitialThreadModelPin(params: {
   return params.explicitRunConfiguration.modelPin;
 }
 
-function resolveTimedExistingThreadSessionContext(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly agentId: string;
-  readonly threadId: string;
-  readonly runConfiguration: ResolvedRunConfiguration;
-  readonly timing?: ApiDispatchTimingCollector;
-}): Promise<
-  [
-    Awaited<ReturnType<typeof resolveChatThreadSession>>,
-    Awaited<ReturnType<typeof loadWebChatIncompleteContext>>,
-  ]
-> {
-  return measureApiDispatchTiming(
-    params.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_session_context_parallel",
-    "nested",
-    () => {
-      return Promise.all([
-        measureApiDispatchTiming(
-          params.timing,
-          "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_session",
-          "nested",
-          () => {
-            return resolveChatThreadSession({
-              db: params.db,
-              threadId: params.threadId,
-              userId: params.userId,
-              orgId: params.orgId,
-              agentComposeId: params.agentId,
-              route: {
-                selectedModel: params.runConfiguration.modelPin.selectedModel,
-                modelProvider:
-                  params.runConfiguration.providerAdmission
-                    .effectiveModelProvider ?? null,
-                modelProviderId:
-                  params.runConfiguration.modelPin.modelProviderId,
-                cliAgentType:
-                  params.runConfiguration.providerAdmission.cliAgentType,
-              },
-            });
-          },
-        ),
-        measureApiDispatchTiming(
-          params.timing,
-          "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_incomplete_context",
-          "nested",
-          () => {
-            return loadWebChatIncompleteContext(params.db, params.threadId);
-          },
-        ),
-      ]);
-    },
-  );
-}
-
 function loadTimedExistingThreadSnapshot(params: {
   readonly db: Db;
   readonly userId: string;
@@ -1544,7 +1216,6 @@ async function resolveThread(params: {
   readonly requestedCodexServiceTier: CodexServiceTier | undefined;
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
-  readonly userMessageInlineTemplatesEnabled: boolean;
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
   if (!params.existingThreadId) {
@@ -1567,7 +1238,6 @@ async function resolveThread(params: {
     return {
       thread: {
         threadId: thread.id,
-        incompleteContext: "",
         computerUseHostId: null,
         cloudBrowserEnabled: false,
         isNewThread: !thread.clientThreadAlreadyExisted,
@@ -1624,21 +1294,9 @@ async function resolveThread(params: {
     persistedModelResolutionPath = persisted.resolutionPath;
   }
 
-  const [sessionResolution, incompleteContext] =
-    await resolveTimedExistingThreadSessionContext({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
-      agentId: params.agentId,
-      threadId: thread.id,
-      runConfiguration,
-      timing: params.timing,
-    });
-  const startNewSession = sessionResolution.action === "rotated";
   return {
     thread: {
       threadId: thread.id,
-      incompleteContext: startNewSession ? "" : incompleteContext,
       computerUseHostId: thread.computerUseHostId,
       cloudBrowserEnabled: thread.cloudBrowserEnabled,
       isNewThread: false,
@@ -1649,27 +1307,6 @@ async function resolveThread(params: {
       ? { modelResolutionPath: persistedModelResolutionPath }
       : {}),
   };
-}
-
-async function prepareRecentChatContext(
-  db: Db,
-  threadId: string,
-  isNewThread: boolean,
-  incompleteContext: string,
-  options: {
-    readonly inlineTemplatesEnabled: boolean;
-  },
-): Promise<string> {
-  if (isNewThread) {
-    return "";
-  }
-  if (incompleteContext.length > 0) {
-    return "";
-  }
-  return buildWebChatPriorRunsContext(
-    await getLatestRunsByThreadId(db, threadId, RECENT_CHAT_RUN_LIMIT),
-    options.inlineTemplatesEnabled,
-  );
 }
 
 function appendUnassociatedUserMessage(params: {
@@ -2364,8 +2001,6 @@ function resolveTimedThread(
           args.body.modelSelection !== undefined ||
           args.body.runOptions !== undefined,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-        userMessageInlineTemplatesEnabled:
-          featureSwitches.userMessageInlineTemplatesEnabled,
         timing: args.timing,
       });
       if (!("status" in resolved)) {
@@ -2377,28 +2012,6 @@ function resolveTimedThread(
       return modelResolutionPath
         ? { model_resolution_path: modelResolutionPath }
         : undefined;
-    },
-  );
-}
-
-function prepareTimedRecentChatContext(
-  args: NormalSendArgs,
-  db: Db,
-  thread: ResolvedThread,
-  inlineTemplatesEnabled: boolean,
-): ReturnType<typeof prepareRecentChatContext> {
-  return measureApiDispatchTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_prepare_recent_chat_context",
-    "nested",
-    () => {
-      return prepareRecentChatContext(
-        db,
-        thread.threadId,
-        thread.isNewThread,
-        thread.incompleteContext,
-        { inlineTemplatesEnabled },
-      );
     },
   );
 }
@@ -2563,13 +2176,6 @@ const prepareNormalSend$ = command(
     }
     const { thread, runConfiguration } = threadAndRunConfiguration;
 
-    const priorContext = await prepareTimedRecentChatContext(
-      args,
-      db,
-      thread,
-      featureSwitches.userMessageInlineTemplatesEnabled,
-    );
-    signal.throwIfAborted();
     const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: runtimeBody.generationTemplate,
       explicitTemplates:
@@ -2603,7 +2209,8 @@ const prepareNormalSend$ = command(
       agent,
       thread,
       body: runtimeBody,
-      priorContext,
+      userMessageInlineTemplatesEnabled:
+        featureSwitches.userMessageInlineTemplatesEnabled,
       generationTemplatePrompt,
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
@@ -3121,6 +2728,12 @@ function buildCreateZeroRunArgs(params: {
   const { args, prepared } = params;
   const { modelPin, providerAdmission, codexServiceTier } =
     prepared.runConfiguration;
+  const webChatSessionPromptContext: WebChatSessionPromptContext = {
+    inlineTemplatesEnabled: prepared.userMessageInlineTemplatesEnabled,
+    generationTemplatePrompt: prepared.generationTemplatePrompt,
+    computerUseHostDisplayName:
+      prepared.computerUseHostGrant?.displayName ?? null,
+  };
   return {
     auth: args.auth,
     apiStartTime: args.apiStartTime,
@@ -3163,12 +2776,15 @@ function buildCreateZeroRunArgs(params: {
     },
     triggerSource: "web" as const,
     dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-    appendSystemPrompt: buildAppendSystemPrompt(
-      prepared.thread.incompleteContext,
-      prepared.priorContext,
-      prepared.generationTemplatePrompt,
-      prepared.computerUseHostGrant?.displayName ?? null,
-    ),
+    ...(prepared.thread.isNewThread
+      ? {
+          appendSystemPrompt: buildWebChatAppendSystemPrompt({
+            incompleteContext: "",
+            priorContext: "",
+            context: webChatSessionPromptContext,
+          }),
+        }
+      : { webChatSessionPromptContext }),
     ...(args.timing ? { timing: args.timing } : {}),
     ...(args.zeroPreCreateSource
       ? { zeroPreCreateSource: args.zeroPreCreateSource }
