@@ -87,7 +87,7 @@ jq -e '
   ) and
   ((.jobs.compile.steps | map(.uses // .name) | index("Configure git safe directory")) <
     (.jobs.compile.steps | map(.uses // .name) | index("Build runner binary"))) and
-  any(.jobs.compile.steps[]; .uses == "mozilla-actions/sccache-action@v0.0.10") and
+  any(.jobs.compile.steps[]; .uses == "mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba") and
   any(.jobs.compile.steps[]; .uses == "Swatinem/rust-cache@v2") and
   any(.jobs.compile.steps[]; .run == ".github/scripts/runner-binary-build/build.sh build") and
   any(.jobs.compile.steps[];
@@ -100,7 +100,7 @@ jq -e '
 
 jq -e '
   ([.jobs | to_entries[] |
-    select(any(.value.steps[]?; .uses == "mozilla-actions/sccache-action@v0.0.10")) |
+    select(any(.value.steps[]?; .uses == "mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba")) |
     .key] == ["compile"]) and
   ([.jobs | to_entries[] |
     select(any(.value.steps[]?; .uses == "Swatinem/rust-cache@v2")) |
