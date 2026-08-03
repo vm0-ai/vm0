@@ -2,8 +2,9 @@
 
 import asyncio
 import json
+import os
 import urllib.error
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -14,7 +15,7 @@ import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
 import matching
 import platform_api
-from tests.auth_endpoint_helpers import firewall_auth_success_response
+from tests.auth_endpoint_helpers import FakeAuthEndpoint, firewall_auth_success_response
 from tests.auth_state_helpers import cached_headers
 from tests.aws_sigv4_helpers import (
     DEFAULT_SIGV4_TIMESTAMP,
@@ -39,13 +40,6 @@ _MISSING_FIELD = object()
 
 def _fail_if_ordinary_upstream_credentials_are_revalidated() -> bool:
     raise AssertionError("ordinary upstream credential guard must not run")
-
-
-def _json_response(body: object) -> MagicMock:
-    mock_resp = MagicMock()
-    mock_resp.__enter__.return_value = mock_resp
-    mock_resp.read.return_value = json.dumps(body).encode()
-    return mock_resp
 
 
 def _allow(
@@ -713,9 +707,25 @@ class TestHandleFirewallRequest:
         vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
 
+        class FailingResolver:
+            async def lookup_ip(self, host: str) -> list[str]:
+                assert host == "auth-endpoint.invalid"
+                raise network_error
+
+        proxy_environment = {
+            "http_proxy": "",
+            "HTTP_PROXY": "",
+            "https_proxy": "",
+            "HTTPS_PROXY": "",
+            "all_proxy": "",
+            "ALL_PROXY": "",
+            "no_proxy": "",
+            "NO_PROXY": "",
+        }
         with (
-            patch("firewall_auth_client._opener.open", side_effect=network_error),
-            mitm_ctx(),
+            patch.dict(os.environ, proxy_environment),
+            patch.object(auth_client, "_dns_resolver", FailingResolver()),
+            mitm_ctx(api_url="http://auth-endpoint.invalid"),
         ):
             await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
@@ -746,14 +756,12 @@ class TestHandleFirewallRequest:
         )
         vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
-        mock_resp = MagicMock()
-        mock_resp.__enter__.return_value = mock_resp
-        mock_resp.__exit__.return_value = False
-        mock_resp.read.return_value = b"not-json"
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_response(200, body=b"not-json")
 
         with (
-            patch("firewall_auth_client._opener.open", return_value=mock_resp),
-            mitm_ctx(),
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
         ):
             await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
@@ -770,7 +778,6 @@ class TestHandleFirewallRequest:
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
         assert "connectors" not in body
-        mock_resp.__exit__.assert_called_once()
 
     @pytest.mark.parametrize(
         ("field_name", "invalid_value", "expected_reason"),
@@ -918,11 +925,12 @@ class TestHandleFirewallRequest:
             response.pop(field_name)
         else:
             response[field_name] = invalid_value
-        mock_resp = _json_response(response)
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response(response)
 
         with (
-            patch("firewall_auth_client._opener.open", return_value=mock_resp),
-            mitm_ctx(),
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
         ):
             result = await handle_firewall_request_without_upstream_admission(
                 flow,
@@ -944,7 +952,6 @@ class TestHandleFirewallRequest:
         assert body["message"] == (
             f"Failed to resolve auth headers: {_MALFORMED_SUCCESS_PREFIX}: {expected_reason}"
         )
-        mock_resp.__exit__.assert_called_once()
 
     async def test_strategy_inconsistent_success_returns_502_without_auth_mutation(
         self,
@@ -962,16 +969,15 @@ class TestHandleFirewallRequest:
         )
         vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
-        mock_resp = _json_response(
-            firewall_auth_success_response({"Authorization": "Bearer resolved"})
-            | {
-                "query": {"api_key": "resolved-key"},
-            }
-        )
+        response = firewall_auth_success_response({"Authorization": "Bearer resolved"}) | {
+            "query": {"api_key": "resolved-key"},
+        }
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response(response)
 
         with (
-            patch("firewall_auth_client._opener.open", return_value=mock_resp),
-            mitm_ctx(),
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
         ):
             result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
@@ -1001,18 +1007,17 @@ class TestHandleFirewallRequest:
         vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
         response_body = json.dumps({"headers": {"Authorization": "Bearer tok"}}).encode()
-        mock_resp = MagicMock()
-        mock_resp.__enter__.return_value = mock_resp
-        mock_resp.read.return_value = response_body
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_response(200, body=response_body)
 
         with (
+            endpoint.run(),
             patch.object(
                 auth_client,
                 "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
                 len(response_body) - 1,
             ),
-            patch("firewall_auth_client._opener.open", return_value=mock_resp),
-            mitm_ctx(),
+            mitm_ctx(api_url=endpoint.api_url),
         ):
             await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
@@ -1030,7 +1035,6 @@ class TestHandleFirewallRequest:
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
         assert "connectors" not in body
-        mock_resp.__exit__.assert_called_once()
 
     async def test_malformed_json_success_response_returns_502_without_auth_mutation(
         self,
@@ -1047,11 +1051,12 @@ class TestHandleFirewallRequest:
         )
         vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
-        mock_resp = _json_response({"headers": []})
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response({"headers": []})
 
         with (
-            patch("firewall_auth_client._opener.open", return_value=mock_resp),
-            mitm_ctx(),
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
         ):
             await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
@@ -1069,7 +1074,6 @@ class TestHandleFirewallRequest:
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
         assert "connectors" not in body
-        mock_resp.__exit__.assert_called_once()
 
     async def test_structured_api_error_is_preserved(self, real_flow, mitm_ctx, tmp_path):
         flow = _firewall_flow(real_flow)
