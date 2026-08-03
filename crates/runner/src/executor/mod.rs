@@ -39,6 +39,7 @@ mod session_id;
 mod session_restore;
 mod storage;
 mod telemetry;
+mod workspace_session_history_materializer;
 
 pub(crate) use crate::restored_session_identity::RestoredSessionIdentity;
 pub(crate) use cli_framework::effective_cli_framework;

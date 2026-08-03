@@ -16,8 +16,8 @@
 //!
 //! The executor consumes the resulting plan immediately before restore.
 //! `Default` and any still-deferred safety path start normal materialization,
-//! `Prestarted` finishes its owned work, and `LocalSidecar` attempts local
-//! restore before falling back to remote materialization. `SkipVerified` still
+//! `Prestarted` finishes its owned work, and `LocalSidecar` finishes prestarted
+//! local work before falling back to remote materialization. `SkipVerified` still
 //! verifies final metadata inside the live sandbox; failed verification records
 //! the stale-identity fallback and starts remote materialization.
 //!
@@ -34,12 +34,12 @@ use super::cli_framework::effective_cli_framework;
 use super::session_history_cpu::SessionHistoryCpuPool;
 use super::session_history_download::{SessionHistoryMaterializer, SessionHistoryProbe};
 use super::telemetry::{RunnerPreSpawnPhase, RunnerPreSpawnTiming};
+use super::workspace_session_history_materializer::WorkspaceSessionHistoryMaterializer;
 use crate::http::HttpClient;
 use crate::restored_session_identity::{
     RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
 };
 use crate::types::{ExecutionContext, SandboxReuseResult};
-use crate::workspace_image_cache::WorkspaceSessionHistorySidecar;
 
 /// Stable telemetry classification for a restore that cannot use verified
 /// history already present in an idle sandbox.
@@ -97,7 +97,7 @@ impl SessionHistoryRestoreFallback {
 ///
 /// The plan moves from post-reuse discovery through optional fresh-workspace
 /// resolution and into executor consumption. Its payload owns any asynchronous
-/// materializer work, validated local sidecar, or verified identity needed by
+/// materializer work or verified identity needed by
 /// the next stage.
 #[derive(Default)]
 #[must_use = "restore plans decide whether resume history download can be skipped"]
@@ -131,17 +131,18 @@ pub(crate) enum SessionHistoryRestorePlan {
         /// Classification recorded when the executor consumes this plan.
         fallback: Option<SessionHistoryRestoreFallback>,
     },
-    /// Attempt restore from a sidecar validated against the cached workspace
-    /// and requested session history.
+    /// Attempt restore from prestarted host work for a sidecar validated
+    /// against the cached workspace and requested session history.
     ///
     /// Retrying sandbox preparation without that workspace image invalidates
     /// the sidecar and replaces this plan with `Prestarted`. During executor
     /// consumption, a non-cancellation materialization or restore failure also
-    /// falls back to remote materialization.
+    /// falls back to remote materialization. The owned materializer cancels
+    /// unfinished work when this plan is dropped.
     LocalSidecar {
-        /// Validated descriptor owned until local materialization is attempted
-        /// or the cached workspace is discarded.
-        sidecar: WorkspaceSessionHistorySidecar,
+        /// Cancellable local materializer owned until executor consumption or
+        /// cached-workspace invalidation.
+        materializer: WorkspaceSessionHistoryMaterializer,
         /// Classification retained until this strategy reaches the executor.
         fallback: Option<SessionHistoryRestoreFallback>,
     },
