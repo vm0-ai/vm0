@@ -491,21 +491,21 @@ def capture_and_strip_prefetch_marker(flow: http.HTTPFlow) -> None:
         flow.metadata[_PREFETCH_REQUEST] = True
 
 
-async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> None:
-    """Serve or prepare one exact authenticated Codex catalog request."""
+async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> bool:
+    """Serve or prepare a catalog request and report whether it waited for an owner."""
     if _FLOW_STATE in flow.metadata or _FLOW_TELEMETRY in flow.metadata:
-        return
+        return False
     if flow_metadata.firewall_name(flow.metadata) != _FIREWALL_NAME:
-        return
+        return False
 
     original_url = flow_metadata.original_url(flow.metadata)
     if not _is_catalog_path(original_url):
-        return
+        return False
 
     canonical_url = _catalog_url(original_url)
     if canonical_url is None:
         _set_telemetry(flow, "model_catalog_bypass", bypass_reason="request_url")
-        return
+        return False
 
     bypass_reason = _request_bypass_reason(
         flow,
@@ -513,12 +513,12 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
     )
     if bypass_reason is not None:
         _set_telemetry(flow, "model_catalog_bypass", bypass_reason=bypass_reason)
-        return
+        return False
 
     credential_digest = _credential_digest(flow)
     if credential_digest is None:
         _set_telemetry(flow, "model_catalog_bypass", bypass_reason="request_identity")
-        return
+        return False
 
     key = _CacheKey(canonical_url, credential_digest)
     is_prefetch = flow.metadata.get(_PREFETCH_REQUEST) is True
@@ -540,7 +540,7 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
                         "completed_consumer" if entry.prefetched and not is_prefetch else None
                     ),
                 )
-                return
+                return wait_deadline is not None
             _remove_entry(key)
         else:
             entry_age_ms = None
@@ -554,7 +554,7 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
                     bypass_reason="request_capacity",
                     entry_age_ms=entry_age_ms,
                 )
-                return
+                return wait_deadline is not None
             if wait_deadline is None:
                 wait_deadline = now + MAX_IN_FLIGHT_WAIT_SECONDS
             remaining_wait_seconds = wait_deadline - now
@@ -565,7 +565,7 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
                     bypass_reason="request_capacity",
                     entry_age_ms=entry_age_ms,
                 )
-                return
+                return True
             joined_prefetch = in_flight.prefetch_owner and not is_prefetch
             in_flight.waiters += 1
             try:
@@ -580,7 +580,7 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
                     bypass_reason="request_capacity",
                     entry_age_ms=entry_age_ms,
                 )
-                return
+                return True
             finally:
                 in_flight.waiters -= 1
             if completed_entry is None:
@@ -597,7 +597,7 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
                 entry_age_ms=_age_milliseconds(completed_entry, completed_at),
                 prefetch_role="inflight_consumer" if joined_prefetch else None,
             )
-            return
+            return True
 
         if not _reserve_flow_capacity():
             _set_telemetry(
@@ -606,7 +606,7 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
                 bypass_reason="request_capacity",
                 entry_age_ms=entry_age_ms,
             )
-            return
+            return wait_deadline is not None
         in_flight = _InFlight(
             future=asyncio.get_running_loop().create_future(),
             prefetch_owner=is_prefetch,
@@ -621,7 +621,7 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
         )
         flow.metadata[_FLOW_STATE] = state
         flow.request.headers["Accept-Encoding"] = _BROTLI_ENCODING
-        return
+        return wait_deadline is not None
 
 
 def _response_headers_bypass_reason(
