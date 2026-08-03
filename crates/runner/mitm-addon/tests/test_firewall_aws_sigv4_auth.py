@@ -887,6 +887,23 @@ async def test_header_sigv4_with_duplicate_signed_header_fails_closed(
     assert_sigv4_failed_closed(result, flow, "Malformed AWS signed headers")
 
 
+async def test_header_sigv4_with_missing_signed_header_fails_closed(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    flow = make_sts_header_sigv4_flow(
+        real_flow,
+        headers,
+        signed_headers="host;x-amz-date;x-test",
+    )
+
+    result = await handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
+
+    assert_sigv4_failed_closed(result, flow, "AWS signed header is missing")
+
+
 async def test_header_sigv4_without_host_signed_header_fails_closed(
     real_flow,
     headers,
@@ -1086,6 +1103,21 @@ async def test_query_sigv4_with_duplicate_signed_header_fails_closed(
     result = await handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
 
     assert_sigv4_failed_closed(result, flow, "Malformed AWS signed headers")
+
+
+async def test_query_sigv4_with_missing_signed_header_fails_closed(
+    real_flow,
+    tmp_path,
+    mitm_ctx,
+):
+    flow = make_sts_query_sigv4_flow(
+        real_flow,
+        path=aws_sigv4_presigned_query_path(signed_headers="host;x-test"),
+    )
+
+    result = await handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
+
+    assert_sigv4_failed_closed(result, flow, "AWS signed header is missing")
 
 
 async def test_query_sigv4_without_host_signed_header_fails_closed(
