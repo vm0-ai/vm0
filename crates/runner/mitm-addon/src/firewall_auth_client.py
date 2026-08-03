@@ -372,8 +372,10 @@ async def _open_connected_stream(
     raise last_error
 
 
-def _abort_writer(writer: asyncio.StreamWriter) -> None:
+async def _abort_writer(writer: asyncio.StreamWriter) -> None:
     writer.transport.abort()
+    with suppress(OSError):
+        await writer.wait_closed()
 
 
 async def _read_proxy_connect_status(reader: asyncio.StreamReader) -> int:
@@ -425,7 +427,7 @@ async def _open_stream(plan: _ConnectionPlan) -> tuple[asyncio.StreamReader, asy
                 server_hostname=plan.origin_host,
             )
     except BaseException:
-        _abort_writer(writer)
+        await _abort_writer(writer)
         raise
     return reader, writer
 
@@ -535,7 +537,7 @@ async def _perform_http_request(
             await writer.wait_closed()
         return response
     except BaseException:
-        _abort_writer(writer)
+        await _abort_writer(writer)
         raise
 
 
