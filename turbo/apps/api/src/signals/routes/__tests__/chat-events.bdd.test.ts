@@ -121,7 +121,6 @@ const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_codex_service_tier",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_prepare_recent_chat_context",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_model_selection",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
@@ -133,25 +132,28 @@ const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
   "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
   "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
+  "api_dispatch_pre_create_zero_resolve_thread_session",
 ] as const;
+const API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE =
+  "api_dispatch_pre_create_zero_resolve_thread_session";
+const API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE =
+  "api_dispatch_pre_create_zero_web_chat_resolve_session_prompt_context";
 const API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE =
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_persisted_model";
-const API_DISPATCH_EXISTING_THREAD_PARALLEL_ACTION_TYPE =
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_session_context_parallel";
-const API_DISPATCH_EXISTING_THREAD_PARALLEL_CHILD_ACTION_TYPES = [
+const API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_session_context_parallel",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_session",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_incomplete_context",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_prepare_recent_chat_context",
 ] as const;
 const API_DISPATCH_EXISTING_THREAD_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
   API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE,
-  API_DISPATCH_EXISTING_THREAD_PARALLEL_ACTION_TYPE,
-  ...API_DISPATCH_EXISTING_THREAD_PARALLEL_CHILD_ACTION_TYPES,
+  API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
 ] as const;
 const API_DISPATCH_EXPLICIT_EXISTING_THREAD_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
-  API_DISPATCH_EXISTING_THREAD_PARALLEL_ACTION_TYPE,
-  ...API_DISPATCH_EXISTING_THREAD_PARALLEL_CHILD_ACTION_TYPES,
+  API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
 ] as const;
 const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_entrypoint_gap",
@@ -510,30 +512,6 @@ function expectApiDispatchSpanKind(
       expect.objectContaining({
         span_kind: spanKind,
       }),
-    );
-  }
-}
-
-function expectApiDispatchParallelGroupContainsChildren(
-  events: readonly Record<string, unknown>[],
-  parentActionType: string,
-  childActionTypes: readonly string[],
-): void {
-  const durationForAction = (actionType: string): number => {
-    const matchingEvents = events.filter((event) => {
-      return event.op_type === actionType;
-    });
-    expect(matchingEvents).toHaveLength(1);
-    const durationMs = matchingEvents[0]?.duration_ms;
-    if (typeof durationMs !== "number") {
-      throw new Error(`Expected timing duration for ${actionType}`);
-    }
-    return durationMs;
-  };
-  const parentDurationMs = durationForAction(parentActionType);
-  for (const childActionType of childActionTypes) {
-    expect(parentDurationMs).toBeGreaterThanOrEqual(
-      durationForAction(childActionType),
     );
   }
 }
@@ -2539,13 +2517,15 @@ describe("CHAT-02: model-first provider policies", () => {
     const timingEvents = apiDispatchTimingEventsForRun(sent.runId);
     expectApiDispatchSpanKind(
       timingEvents,
-      API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
+      [
+        ...API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
+        API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
+      ],
       "nested",
     );
-    expectApiDispatchParallelGroupContainsChildren(
+    expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_EXISTING_THREAD_PARALLEL_ACTION_TYPE,
-      API_DISPATCH_EXISTING_THREAD_PARALLEL_CHILD_ACTION_TYPES,
+      API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES,
     );
     expect(timingEvents).toContainEqual(
       expect.objectContaining({
@@ -2626,13 +2606,15 @@ describe("CHAT-02: model-first provider policies", () => {
     const timingEvents = apiDispatchTimingEventsForRun(recovered.runId);
     expectApiDispatchSpanKind(
       timingEvents,
-      API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
+      [
+        ...API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
+        API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
+      ],
       "nested",
     );
-    expectApiDispatchParallelGroupContainsChildren(
+    expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_EXISTING_THREAD_PARALLEL_ACTION_TYPE,
-      API_DISPATCH_EXISTING_THREAD_PARALLEL_CHILD_ACTION_TYPES,
+      API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES,
     );
     expect(timingEvents).toContainEqual(
       expect.objectContaining({
@@ -3380,16 +3362,18 @@ describe("CHAT-02: run-level model overrides", () => {
     const secondTimingEvents = apiDispatchTimingEventsForRun(second.runId);
     expectApiDispatchSpanKind(
       secondTimingEvents,
-      API_DISPATCH_EXPLICIT_EXISTING_THREAD_ACTION_TYPES,
+      [
+        ...API_DISPATCH_EXPLICIT_EXISTING_THREAD_ACTION_TYPES,
+        API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
+      ],
       "nested",
     );
     expectNoApiDispatchActions(secondTimingEvents, [
       API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE,
     ]);
-    expectApiDispatchParallelGroupContainsChildren(
+    expectNoApiDispatchActions(
       secondTimingEvents,
-      API_DISPATCH_EXISTING_THREAD_PARALLEL_ACTION_TYPE,
-      API_DISPATCH_EXISTING_THREAD_PARALLEL_CHILD_ACTION_TYPES,
+      API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES,
     );
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
@@ -3924,6 +3908,191 @@ describe("CHAT-02: run-level model overrides", () => {
       `bdd-cli-${first.runId}`,
     );
     await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
+  it("rebuilds Web prompt context when a stale retry rotates the session", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for binding validation");
+    }
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const created = await accept(
+      modelProviderConnectionsClient().create({
+        headers: sessionHeaders(actor),
+        body: {
+          displayName: "Retry session gateway",
+          secret: "retry-session-gateway-secret",
+          surfaces: [
+            {
+              protocol: "anthropic-messages",
+              apiBaseUrl: "https://gateway.example.com/anthropic",
+              authHeaderName: "Authorization",
+              authHeaderTemplate: "Bearer {{secret}}",
+              modelMappings: {
+                "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+              },
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const surfaceId = created.body.surfaces[0]?.id;
+    if (!surfaceId) {
+      throw new Error("Expected the retry gateway to have a surface");
+    }
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "vercel-ai-gateway",
+        credentialScope: "org",
+        modelProviderId: null,
+        modelProviderSurfaceId: surfaceId,
+      },
+    ]);
+
+    const anchorPrompt = "successful context before the incomplete round";
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: anchorPrompt,
+      model: "claude-sonnet-4-6",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "successful context response"),
+    ]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    const incompletePrompt = "failed context from the reusable session";
+    const incomplete = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: incompletePrompt,
+    });
+    const incompleteClaim = await claimChatRun(runnerGroup, incomplete.runId);
+    await failChatRun(
+      incomplete.runId,
+      incompleteClaim.sandboxHeaders,
+      "expected retry context failure",
+    );
+    await flushWaitUntilForTest();
+    const originalBinding = await readThreadSessionBinding(
+      context,
+      anchor.threadId,
+    );
+    if (!originalBinding.agent_session_id) {
+      throw new Error("Expected the incomplete run to retain its session");
+    }
+
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: actor.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+    const messageId = randomUUID();
+    const retriedPromise = sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "rotate the prompt context during retry",
+      clientEventId: messageId,
+    });
+    await expect
+      .poll(async () => {
+        const messages = await chat.listThreadEvents(actor, anchor.threadId);
+        return messages.events.some((message) => {
+          return message.id === messageId;
+        });
+      })
+      .toBe(true);
+
+    const bindingClear = await holdThreadSessionBindingClearFixture({
+      threadId: anchor.threadId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      bindingClear.release();
+      await bindingClear.done;
+    });
+    admissionLock.release();
+    await admissionLock.done;
+    await expect
+      .poll(bindingClear.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+
+    await accept(
+      modelProviderConnectionsByIdClient().update({
+        headers: sessionHeaders(actor),
+        params: { id: created.body.id },
+        body: {
+          displayName: "Updated retry session gateway",
+          surfaces: [
+            {
+              protocol: "anthropic-messages",
+              apiBaseUrl: "https://gateway.example.com/anthropic-v2",
+              authHeaderName: "Authorization",
+              authHeaderTemplate: "Bearer {{secret}}",
+              modelMappings: {
+                "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6-v2",
+              },
+            },
+          ],
+        },
+      }),
+      [200],
+    );
+    bindingClear.release();
+    await bindingClear.done;
+    const retried = await retriedPromise;
+
+    expect(
+      sandboxOperationEvents().filter((event) => {
+        return (
+          event.op_type === "chat_thread_session_binding_retry" &&
+          event.chat_thread_id === anchor.threadId
+        );
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        agent_session_id: originalBinding.agent_session_id,
+        resolution_action: "reused",
+        retry_reason: "binding_changed",
+      }),
+    );
+    expect(sandboxOperationEventsForRun(retried.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "chat_thread_session_binding_persisted",
+        binding_action: "rotated",
+      }),
+    );
+    const retriedRun = await api.readRun(actor, retried.runId);
+    const appendSystemPrompt = retriedRun.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain("# Web Chat Run Context");
+    expect(appendSystemPrompt).toContain(anchorPrompt);
+    expect(appendSystemPrompt).toContain(incompletePrompt);
+    expect(appendSystemPrompt).not.toContain("# Incomplete Rounds Context");
+
+    const retryTimingEvents = apiDispatchTimingEventsForRun(retried.runId);
+    for (const actionType of [
+      API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
+      API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
+    ]) {
+      expect(
+        retryTimingEvents.filter((event) => {
+          return event.op_type === actionType;
+        }),
+      ).toHaveLength(2);
+    }
+    const retriedClaim = await claimChatRun(runnerGroup, retried.runId);
+    expect(retriedClaim.claim.resumeSession).toBeNull();
+    await cancelChatRun(actor, retried.runId);
   }, 90_000);
 
   it("retries preparation when the canonical conversation snapshot changes", async () => {

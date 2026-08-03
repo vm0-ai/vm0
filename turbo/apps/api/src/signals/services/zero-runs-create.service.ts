@@ -67,6 +67,10 @@ import {
 import { expandConnectorServerFirewallPolicies } from "./connector-server-firewall-catalog.service";
 import type { QueueFirstRunAssociation } from "./zero-chat-queued-event.service";
 import { buildZeroChatMessagingToolPrompt } from "./zero-chat-messaging-tool-prompt";
+import {
+  resolveWebChatSessionPrompt,
+  type WebChatSessionPromptContext,
+} from "./zero-web-chat-session-prompt.service";
 
 type ZeroRunCreateBody = z.infer<typeof zeroRunCreateBodySchema>;
 type ZeroRunOrigin = "zero_run" | "workflow_automation" | "goal_continuation";
@@ -166,6 +170,7 @@ interface CreateZeroRunCommandArgs {
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
   readonly threadSessionRoute?: ChatThreadSessionRoute;
+  readonly webChatSessionPromptContext?: WebChatSessionPromptContext;
   readonly computerUseHostId?: string;
   readonly modelProviderId?: string;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
@@ -915,20 +920,43 @@ async function resolveThreadSessionForZeroRun(
   db: Db,
   input: ZeroRunAfterPreCreate,
 ): Promise<ZeroRunAfterPreCreate> {
-  if (!input.command.chatThreadId) {
+  const threadId = input.command.chatThreadId;
+  if (!threadId) {
     return input;
   }
-  if (!input.command.threadSessionRoute) {
+  const threadSessionRoute = input.command.threadSessionRoute;
+  if (!threadSessionRoute) {
     throw new Error("Thread-bound Zero run is missing its model route");
   }
-  const resolution = await resolveChatThreadSession({
-    db,
-    threadId: input.command.chatThreadId,
-    userId: input.command.auth.userId,
-    orgId: input.command.auth.orgId,
-    agentComposeId: input.agent.id,
-    route: input.command.threadSessionRoute,
-  });
+  const resolution = await measureZeroPreCreate(
+    input.timing,
+    "api_dispatch_pre_create_zero_resolve_thread_session",
+    () => {
+      return resolveChatThreadSession({
+        db,
+        threadId,
+        userId: input.command.auth.userId,
+        orgId: input.command.auth.orgId,
+        agentComposeId: input.agent.id,
+        route: threadSessionRoute,
+      });
+    },
+  );
+  const webChatSessionPromptContext = input.command.webChatSessionPromptContext;
+  const appendSystemPrompt = webChatSessionPromptContext
+    ? await measureZeroPreCreate(
+        input.timing,
+        "api_dispatch_pre_create_zero_web_chat_resolve_session_prompt_context",
+        () => {
+          return resolveWebChatSessionPrompt({
+            db,
+            threadId,
+            sessionAction: resolution.action,
+            context: webChatSessionPromptContext,
+          });
+        },
+      )
+    : input.command.appendSystemPrompt;
   const body: ZeroRunCreateBody = { ...input.command.body };
   if (resolution.sessionId) {
     body.sessionId = resolution.sessionId;
@@ -937,7 +965,7 @@ async function resolveThreadSessionForZeroRun(
   }
   return {
     ...input,
-    command: { ...input.command, body },
+    command: { ...input.command, body, appendSystemPrompt },
     threadSessionResolution: resolution,
     cloudBrowserEnabled: resolution.cloudBrowserEnabled,
   };
