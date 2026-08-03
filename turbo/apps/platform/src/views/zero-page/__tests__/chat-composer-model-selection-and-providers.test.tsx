@@ -2061,7 +2061,7 @@ describe("chat composer models", () => {
     });
   });
 
-  it("accepts recognition-compatible images for fallback-enabled text-only models", async () => {
+  it("accepts visual attachments across composer paths for fallback-enabled text-only models", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("glm-5.1");
     mockAgent();
@@ -2158,16 +2158,16 @@ describe("chat composer models", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("rejects media outside the recognition contract for fallback-enabled text-only models", async () => {
+  it("accepts media outside the direct recognition contract for fallback-enabled text-only models", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("glm-5.1");
     mockAgent();
     context.mocks.upload.success({
-      id: "recognition-boundary-text",
-      filename: "notes.txt",
-      contentType: "text/plain",
+      id: "recognition-boundary-visual",
+      filename: "uploaded-visual",
+      contentType: "application/octet-stream",
       size: 5,
-      url: "https://example.com/notes.txt",
+      url: "https://example.com/uploaded-visual",
     });
 
     detachedSetupPage({
@@ -2197,26 +2197,20 @@ describe("chat composer models", () => {
     ]);
 
     await expect(
-      screen.findAllByText(/GLM-5\.1 cannot recognize images or videos/i),
-    ).resolves.not.toHaveLength(0);
-    expect(
-      screen.queryByLabelText("Open image preview for animated.gif"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Open image preview for empty.png"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Open image preview for oversized.png"),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Remove clip.mp4")).not.toBeInTheDocument();
-
-    await user.upload(
-      fileInput,
-      new File(["notes"], "notes.txt", { type: "text/plain" }),
-    );
-    await expect(
-      screen.findByLabelText("Remove notes.txt"),
+      screen.findByLabelText("Open image preview for animated.gif"),
     ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Open image preview for empty.png"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Open image preview for oversized.png"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Remove clip.mp4"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
+    ).not.toBeInTheDocument();
   });
 
   it("hides an accepted visual attachment after switching to a text-only model", async () => {
@@ -2261,16 +2255,16 @@ describe("chat composer models", () => {
     });
   });
 
-  it("keeps a compatible image after switching to a fallback-enabled text-only model", async () => {
+  it("keeps a non-native image after switching to a fallback-enabled text-only model", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
     context.mocks.upload.success({
       id: "recognition-model-switch",
-      filename: "storyboard.png",
-      contentType: "image/png",
+      filename: "storyboard.gif",
+      contentType: "image/gif",
       size: 128,
-      url: "https://example.com/storyboard.png",
+      url: "https://example.com/storyboard.gif",
     });
 
     detachedSetupPage({
@@ -2286,11 +2280,11 @@ describe("chat composer models", () => {
       document.querySelector<HTMLInputElement>('input[type="file"]')!;
     await user.upload(
       fileInput,
-      new File(["image"], "storyboard.png", { type: "image/png" }),
+      new File(["image"], "storyboard.gif", { type: "image/gif" }),
     );
 
     await expect(
-      screen.findByLabelText("Open image preview for storyboard.png"),
+      screen.findByLabelText("Open image preview for storyboard.gif"),
     ).resolves.toBeInTheDocument();
 
     await user.click(
@@ -2300,7 +2294,7 @@ describe("chat composer models", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Open image preview for storyboard.png"),
+        screen.getByLabelText("Open image preview for storyboard.gif"),
       ).toBeInTheDocument();
       expect(
         screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),

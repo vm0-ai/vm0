@@ -147,7 +147,7 @@ function uploadContentTypeByExtension(ext: string): string | undefined {
   return contentTypeByExtension[ext];
 }
 
-export function inferUploadContentType(file: File): string {
+function inferUploadContentType(file: File): string {
   const explicitType = file.type.split(";")[0]?.trim().toLowerCase();
   if (explicitType && explicitType !== "application/octet-stream") {
     return explicitType;

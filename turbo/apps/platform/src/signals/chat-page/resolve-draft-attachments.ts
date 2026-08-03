@@ -4,10 +4,6 @@ import type {
   ChatPromptEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
-import {
-  ZERO_RECOGNITION_MAX_FILE_BYTES,
-  zeroRecognitionImageMimeTypeSchema,
-} from "@vm0/api-contracts/contracts/zero-recognition";
 import type {
   DraftSignals,
   ZeroChatAttachment,
@@ -54,19 +50,14 @@ interface VisualAttachmentDescriptor {
   filename?: string | null;
 }
 
-interface AttachmentDescriptor extends VisualAttachmentDescriptor {
-  size: number;
-}
-
 interface PrepareUserMessageOptions {
-  selectedModel: string | null | undefined;
-  imageRecognitionEnabled: boolean;
+  excludeVisualAttachments?: boolean;
 }
 
 const VISUAL_ATTACHMENT_EXTENSION_RE =
   /\.(?:png|jpe?g|gif|webp|avif|heic|heif|bmp|svg|mp4|m4v|mov|webm|avi|mkv)$/i;
 
-function isVisualAttachment({
+export function isVisualAttachment({
   contentType,
   filename,
 }: VisualAttachmentDescriptor): boolean {
@@ -80,29 +71,14 @@ function isVisualAttachment({
   return VISUAL_ATTACHMENT_EXTENSION_RE.test(filename ?? "");
 }
 
-function isRecognitionCompatibleImage({
-  contentType,
-  size,
-}: AttachmentDescriptor): boolean {
-  return (
-    size > 0 &&
-    size <= ZERO_RECOGNITION_MAX_FILE_BYTES &&
-    zeroRecognitionImageMimeTypeSchema.safeParse(contentType).success
-  );
-}
-
-export function shouldExcludeAttachmentForModel(
-  attachment: AttachmentDescriptor,
+export function shouldExcludeVisualAttachmentsForModel(
   selectedModel: string | null | undefined,
   imageRecognitionEnabled: boolean,
 ): boolean {
-  if (
-    getModelImageInputSupport(selectedModel) !== "unsupported" ||
-    !isVisualAttachment(attachment)
-  ) {
-    return false;
-  }
-  return !imageRecognitionEnabled || !isRecognitionCompatibleImage(attachment);
+  return (
+    !imageRecognitionEnabled &&
+    getModelImageInputSupport(selectedModel) === "unsupported"
+  );
 }
 
 export function collectSuccessfulAttachmentInfos(
@@ -174,13 +150,11 @@ export const prepareUserMessageFromDraft$ = command(
     signal: AbortSignal,
   ): Promise<PreparedUserMessage | null> => {
     const draftAttachments = get(draft.attachments$);
-    const allAttachments = draftAttachments.filter((attachment) => {
-      return !shouldExcludeAttachmentForModel(
-        attachment,
-        options.selectedModel,
-        options.imageRecognitionEnabled,
-      );
-    });
+    const allAttachments = options.excludeVisualAttachments
+      ? draftAttachments.filter((attachment) => {
+          return !isVisualAttachment(attachment);
+        })
+      : draftAttachments;
     const allInfos = await Promise.allSettled(
       allAttachments.map((a) => {
         return get(a.fileInfo$);

@@ -721,7 +721,7 @@ describe("chat run queue", () => {
     });
   });
 
-  it("queues an image-only follow-up for a fallback-enabled text-only model", async () => {
+  it("queues a video-only follow-up for a fallback-enabled text-only model", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000902";
     let queuedBody: QueuedMessageCapture | null = null;
@@ -757,11 +757,11 @@ describe("chat run queue", () => {
       },
     });
     context.mocks.upload.success({
-      id: "upload-queued-image",
-      filename: "queued.png",
-      contentType: "image/png",
+      id: "upload-queued-video",
+      filename: "queued.mp4",
+      contentType: "video/mp4",
       size: 12,
-      url: "https://cdn.vm7.io/artifacts/test/upload-queued-image/queued.png",
+      url: "https://cdn.vm7.io/artifacts/test/upload-queued-video/queued.mp4",
     });
 
     detachedSetupPage({
@@ -783,13 +783,11 @@ describe("chat run queue", () => {
     }
     await user.upload(
       fileInput,
-      new File([new Uint8Array(12)], "queued.png", { type: "image/png" }),
+      new File([new Uint8Array(12)], "queued.mp4", { type: "video/mp4" }),
     );
 
     await waitFor(() => {
-      expect(
-        screen.getByLabelText("Open image preview for queued.png"),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove queued.mp4")).toBeInTheDocument();
     });
 
     await user.click(await screen.findByLabelText("Send"));
@@ -797,18 +795,18 @@ describe("chat run queue", () => {
     await waitFor(() => {
       expect(screen.getByText("1 message waiting")).toBeInTheDocument();
       expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "[File: queued.png]",
+        "[File: queued.mp4]",
       );
       expect(queuedBody).toMatchObject({
         content: "(see attached files)",
         hasTextContent: false,
         attachments: [
           {
-            id: "upload-queued-image",
-            filename: "queued.png",
-            contentType: "image/png",
+            id: "upload-queued-video",
+            filename: "queued.mp4",
+            contentType: "video/mp4",
             size: 12,
-            url: "https://cdn.vm7.io/artifacts/test/upload-queued-image/queued.png",
+            url: "https://cdn.vm7.io/artifacts/test/upload-queued-video/queued.mp4",
           },
         ],
       });

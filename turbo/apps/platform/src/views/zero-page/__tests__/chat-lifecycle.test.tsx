@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import {
@@ -528,7 +529,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("starts a new fallback-enabled text-only chat with an image attachment", async () => {
+  it("starts a new fallback-enabled text-only chat with an image above the direct recognition limit", async () => {
     const user = userEvent.setup({ delay: null });
     let sentAttachFiles:
       | {
@@ -566,7 +567,7 @@ describe("chat lifecycle", () => {
       id: "upload-visual-brief",
       filename: "brief.png",
       contentType: "image/png",
-      size: 128,
+      size: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
       url: "https://cdn.vm7.io/artifacts/test/upload-visual-brief/brief.png",
     });
 
@@ -587,10 +588,12 @@ describe("chat lifecycle", () => {
       throw new Error("file input not found");
     }
 
-    await user.upload(
-      fileInput,
-      new File([new Uint8Array(128)], "brief.png", { type: "image/png" }),
-    );
+    const brief = new File(["image"], "brief.png", { type: "image/png" });
+    Object.defineProperty(brief, "size", {
+      configurable: true,
+      value: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+    });
+    await user.upload(fileInput, brief);
 
     await waitFor(() => {
       expect(
@@ -613,13 +616,13 @@ describe("chat lifecycle", () => {
           id: "upload-visual-brief",
           filename: "brief.png",
           contentType: "image/png",
-          size: 128,
+          size: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
         },
       ]);
     });
   });
 
-  it("sends an image attachment in an existing fallback-enabled text-only chat", async () => {
+  it("sends a video attachment in an existing fallback-enabled text-only chat", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000994";
     let sentAttachFiles:
@@ -658,10 +661,10 @@ describe("chat lifecycle", () => {
     });
     context.mocks.upload.success({
       id: "upload-existing-visual",
-      filename: "existing.jpg",
-      contentType: "image/jpeg",
+      filename: "existing.mov",
+      contentType: "video/quicktime",
       size: 64,
-      url: "https://cdn.vm7.io/artifacts/test/upload-existing-visual/existing.jpg",
+      url: "https://cdn.vm7.io/artifacts/test/upload-existing-visual/existing.mov",
     });
 
     detachedSetupPage({
@@ -682,23 +685,23 @@ describe("chat lifecycle", () => {
     }
     await user.upload(
       fileInput,
-      new File([new Uint8Array(64)], "existing.jpg", {
-        type: "image/jpeg",
+      new File([new Uint8Array(64)], "existing.mov", {
+        type: "video/quicktime",
       }),
     );
 
     await expect(
-      screen.findByLabelText("Open image preview for existing.jpg"),
+      screen.findByLabelText("Remove existing.mov"),
     ).resolves.toBeInTheDocument();
 
-    await sendMessageInUI(user, textarea, "Inspect this existing image");
+    await sendMessageInUI(user, textarea, "Inspect this existing video");
 
     await waitFor(() => {
       expect(sentAttachFiles).toStrictEqual([
         {
           id: "upload-existing-visual",
-          filename: "existing.jpg",
-          contentType: "image/jpeg",
+          filename: "existing.mov",
+          contentType: "video/quicktime",
           size: 64,
         },
       ]);

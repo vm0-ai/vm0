@@ -19,7 +19,10 @@ import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
 import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
-import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
+import {
+  prepareUserMessageFromDraft$,
+  shouldExcludeVisualAttachmentsForModel,
+} from "./resolve-draft-attachments.ts";
 import {
   appendOptimisticChatEvent$,
   createOptimisticChatEventEntry,
@@ -502,8 +505,10 @@ const sendNewThreadMessage$ = command(
       draft,
       prompt,
       {
-        selectedModel: resolvedModelSelection.selectedModel,
-        imageRecognitionEnabled: get(zeroImageRecognitionEnabled$),
+        excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
+          resolvedModelSelection.selectedModel,
+          get(zeroImageRecognitionEnabled$),
+        ),
       },
       signal,
     );

@@ -32,6 +32,7 @@ import { buildDraftPersistencePayload } from "../zero-page/draft-persistence.ts"
 import {
   collectSuccessfulAttachmentInfos,
   prepareUserMessageFromDraft$,
+  shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
 import {
   appendOptimisticChatEvent$,
@@ -3183,8 +3184,11 @@ function createPerformSendMessage(deps: SendMessageDeps) {
               draft,
               request.prompt,
               {
-                selectedModel: request.modelSelection?.selectedModel,
-                imageRecognitionEnabled: get(zeroImageRecognitionEnabled$),
+                excludeVisualAttachments:
+                  shouldExcludeVisualAttachmentsForModel(
+                    request.modelSelection?.selectedModel,
+                    get(zeroImageRecognitionEnabled$),
+                  ),
               },
               signal,
             );
@@ -3342,8 +3346,10 @@ function createQueueMessage(deps: QueueMessageDeps) {
         draft,
         prompt,
         {
-          selectedModel: modelSelection?.selectedModel,
-          imageRecognitionEnabled: get(zeroImageRecognitionEnabled$),
+          excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
+            modelSelection?.selectedModel,
+            get(zeroImageRecognitionEnabled$),
+          ),
         },
         signal,
       );
