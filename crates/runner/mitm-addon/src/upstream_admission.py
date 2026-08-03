@@ -321,10 +321,10 @@ def handle_tls_clienthello(
     """Apply the MITM admission decision for a TLS ClientHello.
 
     With no client peer IP, leave the interception decision unchanged. Valid registry VMs stay
-    intercepted, may prebind a privileged upstream, and record ``valid_registry_vm`` with run and
-    SNI identity when the connection can be keyed. Invalid entries and unavailable registry
-    lookups also stay intercepted, recording ``invalid_registry_vm`` and
-    ``registry_unavailable`` respectively, so the request hook can fail closed.
+    intercepted and may prebind a privileged upstream. Invalid VM entries and unavailable registry
+    lookups also stay intercepted, preserving the request hook's fail-closed path. When the
+    connection can be keyed, these outcomes record ``valid_registry_vm`` with run and SNI identity,
+    ``invalid_registry_vm``, or ``registry_unavailable`` respectively.
 
     Only a client IP positively absent from a successfully loaded registry clears prior admission
     state and switches to passthrough. TLS admission is connection identity evidence for later
