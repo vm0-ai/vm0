@@ -7,7 +7,6 @@ import {
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -227,12 +226,7 @@ async function seedFixture(
     throw new Error("Failed to seed orphan monitor message");
   }
 
-  if (fixtureKind === "queued-integration") {
-    await db.insert(chatEventInputParams).values({
-      eventId: event.id,
-      encryptedParams: "encrypted-monitor-params",
-    });
-  } else if (fixtureKind === "revoked-message") {
+  if (fixtureKind === "revoked-message") {
     await db.transaction(async (tx) => {
       await replaceChatEvent(tx, event.id, {
         chatThreadId: thread.id,

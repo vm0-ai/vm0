@@ -38,7 +38,6 @@ import {
 import { buildMorningBriefChatMessage } from "./morning-brief-run-prompt";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { resolveDefaultAgent } from "./zero-email-common.service";
 import { createAutomationChatThread } from "./zero-workflow-user-automation-thread.service";
@@ -288,7 +287,6 @@ async function persistMorningBriefQueueEvent(
     readonly staged: StagedMorningBriefInput;
     readonly chatThreadId: string;
     readonly chatMessage: string;
-    readonly encryptedParams: string;
   },
 ): Promise<void> {
   const { claimed, staged } = args;
@@ -300,7 +298,6 @@ async function persistMorningBriefQueueEvent(
       userMessage: createUserMessageDocument({ text: args.chatMessage }),
       runId: null,
       triggerSource: "workflow-schedule",
-      encryptedParams: args.encryptedParams,
       morningBriefContext: {
         deliveryId: claimed.deliveryId,
         timezone: claimed.timezone,
@@ -367,18 +364,11 @@ const startMorningBriefRun$ = command(
     signal.throwIfAborted();
 
     const chatMessage = buildMorningBriefChatMessage(briefDate);
-    const encryptedParams = await encryptQueuedUserMessageRunParams(
-      { version: 1 },
-      { orgId: row.orgId, userId: row.userId },
-    );
-    signal.throwIfAborted();
-
     await persistMorningBriefQueueEvent(db, {
       claimed,
       staged,
       chatThreadId,
       chatMessage,
-      encryptedParams,
     });
     signal.throwIfAborted();
     await publishChatThreadMessageCreatedSafely(row.userId, chatThreadId);

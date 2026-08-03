@@ -79,7 +79,6 @@ import { insertChatEvent } from "./zero-chat-event.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import { telegramIntegrationBotStatus } from "./zero-telegram-data.service";
 import {
   formatTelegramUserDisplayName,
@@ -1788,15 +1787,6 @@ async function persistTelegramChatMessage(args: {
         });
   args.signal.throwIfAborted();
 
-  const encryptedParams = await encryptQueuedUserMessageRunParams(
-    { version: 1 },
-    {
-      orgId: args.source.orgId,
-      userId: args.source.userLink.vm0UserId,
-    },
-  );
-  args.signal.throwIfAborted();
-
   const inserted = await args.source.db.transaction(async (tx) => {
     const event = await insertChatEvent(
       tx,
@@ -1816,7 +1806,6 @@ async function persistTelegramChatMessage(args: {
         }),
         runId: null,
         triggerSource: "telegram",
-        encryptedParams,
         telegramContext: telegramLaunchContext(args),
         createdAt: currentTime,
       },

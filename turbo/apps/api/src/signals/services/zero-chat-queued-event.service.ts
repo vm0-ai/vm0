@@ -57,7 +57,6 @@ import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
-import { encryptPersistentSecretsMap } from "./crypto.utils";
 import { noGoalChangeAfterQueueEvent } from "./chat-goal-queue.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
@@ -65,7 +64,6 @@ import { attachCanonicalWebInputAssetsToEvent } from "./canonical-asset.service"
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-const USER_MESSAGE_QUEUE_RUN_PARAMS_KEY = "__user_message_queue_run_params__";
 const queuedUserMessageTriggerSourceSchema = z.enum([
   "web",
   "slack",
@@ -76,14 +74,6 @@ const queuedUserMessageTriggerSourceSchema = z.enum([
   "github",
   "workflow-schedule",
 ]);
-
-const queuedUserMessageRunParamsSchema = z.object({
-  version: z.literal(1),
-});
-
-type QueuedUserMessageRunParams = z.infer<
-  typeof queuedUserMessageRunParamsSchema
->;
 
 const queuedChatEvent = alias(chatEvents, "queued_chat_event");
 const queuedChatEventRevoker = alias(chatEvents, "queued_chat_event_revoker");
@@ -174,20 +164,6 @@ export async function lockUserMessageQueueThread(
   threadId: string,
 ): Promise<boolean> {
   return await lockChatQueueThread(db, threadId);
-}
-
-export async function encryptQueuedUserMessageRunParams(
-  params: QueuedUserMessageRunParams,
-  ctx: { readonly orgId: string; readonly userId: string },
-): Promise<string> {
-  const encrypted = await encryptPersistentSecretsMap(
-    { [USER_MESSAGE_QUEUE_RUN_PARAMS_KEY]: JSON.stringify(params) },
-    ctx,
-  );
-  if (!encrypted) {
-    throw new Error("Failed to encrypt queued user message run params");
-  }
-  return encrypted;
 }
 
 export const resolveAttachFileMetadata$ = command(

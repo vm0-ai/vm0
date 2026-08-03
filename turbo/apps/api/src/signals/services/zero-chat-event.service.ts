@@ -11,7 +11,6 @@ import type {
 import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
 import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
-import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   chatEventTerminalPredicate,
   chatEvents,
@@ -228,7 +227,6 @@ type InputPromptEvent = ChatEventIdentity &
     readonly eventType: "input.prompt";
     readonly content?: null;
     readonly triggerSource?: TriggerSource;
-    readonly encryptedParams?: string | null;
   };
 
 type InputAutomationEvent = ChatEventIdentity &
@@ -241,7 +239,6 @@ type InputAutomationEvent = ChatEventIdentity &
     readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
     readonly triggerSource: TriggerSource;
     readonly triggerBrief: string | null;
-    readonly encryptedParams?: string | null;
   };
 
 type InputGoalEvent = ChatEventIdentity &
@@ -558,43 +555,6 @@ type NewDisplayContext =
       readonly timezone: string;
       readonly triggeredAt: Date;
     };
-
-function isPendingInputEvent(values: NewChatEvent): boolean {
-  return (
-    (values.eventType === "input.prompt" ||
-      values.eventType === "input.automation" ||
-      values.eventType === "input.goal") &&
-    values.runId === null
-  );
-}
-
-function eventInputParams(
-  values: NewChatEvent,
-): { readonly encryptedParams: string } | undefined {
-  if (
-    !isPendingInputEvent(values) ||
-    !("encryptedParams" in values) ||
-    !values.encryptedParams
-  ) {
-    return undefined;
-  }
-  return { encryptedParams: values.encryptedParams };
-}
-
-async function insertEventInputParams(
-  tx: ChatEventWriteTransaction,
-  eventId: string,
-  values: NewChatEvent,
-): Promise<void> {
-  const params = eventInputParams(values);
-  if (!params) {
-    return;
-  }
-  await tx.insert(chatEventInputParams).values({
-    eventId,
-    encryptedParams: params.encryptedParams,
-  });
-}
 
 function newAutomationDisplayContext(
   eventId: string,
@@ -1109,7 +1069,6 @@ export async function insertChatEvent(
     if (displayContext) {
       await insertDisplayContext(tx, displayContext, inserted.createdAt);
     }
-    await insertEventInputParams(tx, inserted.id, values);
   }
   return rows[0] ?? null;
 }
@@ -1234,7 +1193,6 @@ export async function replaceLoadedChatEvent(
   if (displayContext) {
     await insertDisplayContext(tx, displayContext, inserted.createdAt);
   }
-  await insertEventInputParams(tx, inserted.id, replacement);
   if (options?.preserveAssetRefs !== false) {
     await tx
       .insert(chatEventAssetRefs)
@@ -1255,9 +1213,6 @@ export async function replaceLoadedChatEvent(
       )
       .onConflictDoNothing();
   }
-  await tx
-    .delete(chatEventInputParams)
-    .where(eq(chatEventInputParams.eventId, target.id));
   return inserted;
 }
 
