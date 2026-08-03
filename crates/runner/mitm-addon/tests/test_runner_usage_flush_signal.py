@@ -281,7 +281,11 @@ class TestRunnerUsageFlushSignal:
         startup_error = RuntimeError("can't start new thread")
         runner_usage_flush_files.write_usage_flush_request()
 
-        with patch.object(usage, "flush_usage_events", return_value=0) as flush_usage_events:
+        with patch.object(
+            usage,
+            "flush_usage_events",
+            wraps=usage.flush_usage_events,
+        ) as flush_usage_events:
             with (
                 patch.object(
                     runner_flush_lifecycle.threading.Thread,
