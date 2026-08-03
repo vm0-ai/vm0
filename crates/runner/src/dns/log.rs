@@ -857,7 +857,7 @@ mod tests {
 
         handle_dns_line(
             &manager,
-            "dnsmasq[1234]: 42 10.0.0.1/54321 query[A] vm0-diagnostic.invalid from 10.0.0.1",
+            "dnsmasq[1234]: 42 10.0.0.1/54321 query[A] vm0-vethprobe.invalid from 10.0.0.1",
         )
         .await;
         manager.flush_path(&path).await;

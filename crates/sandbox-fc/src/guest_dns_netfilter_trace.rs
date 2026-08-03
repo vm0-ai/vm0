@@ -155,6 +155,16 @@ pub(crate) enum GuestDnsNetfilterTraceAttachment {
     Enabled(GuestDnsNetfilterTraceReader),
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct GuestDnsNetfilterTraceCaptureTarget<'a> {
+    pub(crate) namespace: &'a str,
+    pub(crate) host_device: &'a str,
+    pub(crate) peer_ip: &'a str,
+    pub(crate) source_port: Option<u16>,
+    pub(crate) dns_port: u16,
+    pub(crate) expected_packets: u16,
+}
+
 impl GuestDnsNetfilterTraceAttachment {
     pub(crate) fn unavailable(reason: &'static str) -> Self {
         Self::Unavailable(reason)
@@ -184,11 +194,7 @@ impl GuestDnsNetfilterTraceAttachment {
     pub(crate) async fn capture(
         &self,
         cursor: Option<GuestDnsNetfilterTraceCursor>,
-        namespace: &str,
-        host_device: &str,
-        peer_ip: &str,
-        dns_port: u16,
-        readiness_attempts: u16,
+        target: GuestDnsNetfilterTraceCaptureTarget<'_>,
     ) -> Option<GuestDnsNetfilterTraceReport> {
         match self {
             Self::Disabled => None,
@@ -196,18 +202,7 @@ impl GuestDnsNetfilterTraceAttachment {
                 Some(GuestDnsNetfilterTraceReport::attachment_unavailable(reason))
             }
             Self::Enabled(reader) => Some(match cursor {
-                Some(cursor) => {
-                    reader
-                        .capture(
-                            cursor,
-                            namespace,
-                            host_device,
-                            peer_ip,
-                            dns_port,
-                            readiness_attempts,
-                        )
-                        .await
-                }
+                Some(cursor) => reader.capture(cursor, target).await,
                 None => GuestDnsNetfilterTraceReport::baseline_unavailable(),
             }),
         }
@@ -599,6 +594,7 @@ impl TracePacket {
         namespace: &str,
         host_device: &str,
         peer_ip: &str,
+        source_port: Option<u16>,
     ) -> Option<&TracePacketHeader> {
         let traces_udp_readiness_rule = self.steps.iter().any(|step| {
             step.table == "raw"
@@ -622,6 +618,7 @@ impl TracePacket {
                     .is_some_and(|protocol| protocol.eq_ignore_ascii_case("udp"))
                     || traces_udp_readiness_rule)
                 && header.destination_port == Some(53)
+                && source_port.is_none_or(|source_port| header.source_port == Some(source_port))
         })
     }
 
@@ -630,10 +627,11 @@ impl TracePacket {
         namespace: &str,
         host_device: &str,
         peer_ip: &str,
+        source_port: Option<u16>,
         dns_port: u16,
     ) -> Option<TracePacketReport> {
         let original_header = self
-            .readiness_header(namespace, host_device, peer_ip)?
+            .readiness_header(namespace, host_device, peer_ip, source_port)?
             .clone();
         let dns_port_value = dns_port;
         let dns_port = dns_port.to_string();
@@ -1019,6 +1017,14 @@ pub(crate) struct GuestDnsNetfilterTraceReport {
 }
 
 impl GuestDnsNetfilterTraceReport {
+    pub(crate) fn exact_single_packet_observed(&self) -> Option<bool> {
+        match self.status {
+            TraceReportStatus::Captured if self.matched_packets == 1 => Some(true),
+            TraceReportStatus::NoMatchingPacket => Some(false),
+            _ => None,
+        }
+    }
+
     fn attachment_unavailable(reason: &str) -> Self {
         Self {
             status: TraceReportStatus::AttachmentUnavailable,
@@ -1076,24 +1082,20 @@ impl GuestDnsNetfilterTraceReader {
     async fn capture(
         &self,
         cursor: GuestDnsNetfilterTraceCursor,
-        namespace: &str,
-        host_device: &str,
-        peer_ip: &str,
-        dns_port: u16,
-        readiness_attempts: u16,
+        target: GuestDnsNetfilterTraceCaptureTarget<'_>,
     ) -> GuestDnsNetfilterTraceReport {
         let deadline = Instant::now() + TRACE_CAPTURE_WAIT;
-        let expected_packets = usize::from(readiness_attempts);
+        let expected_packets = usize::from(target.expected_packets);
         loop {
             let notified = self.changed.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();
-            let report = self.capture_now(cursor, namespace, host_device, peer_ip, dns_port);
+            let report = self.capture_now(cursor, target);
             if expected_packets == 0 || report.complete_for(expected_packets) {
                 return report;
             }
             if timeout_at(deadline, &mut notified).await.is_err() {
-                return self.capture_now(cursor, namespace, host_device, peer_ip, dns_port);
+                return self.capture_now(cursor, target);
             }
         }
     }
@@ -1106,10 +1108,7 @@ impl GuestDnsNetfilterTraceReader {
     fn capture_now(
         &self,
         cursor: GuestDnsNetfilterTraceCursor,
-        namespace: &str,
-        host_device: &str,
-        peer_ip: &str,
-        dns_port: u16,
+        target: GuestDnsNetfilterTraceCaptureTarget<'_>,
     ) -> GuestDnsNetfilterTraceReport {
         let state = lock_state(&self.state);
         if cursor.monitor_id != state.monitor_id {
@@ -1128,7 +1127,15 @@ impl GuestDnsNetfilterTraceReader {
             .packets
             .iter()
             .filter(|packet| packet.sequence > cursor.sequence)
-            .filter_map(|packet| packet.report(namespace, host_device, peer_ip, dns_port))
+            .filter_map(|packet| {
+                packet.report(
+                    target.namespace,
+                    target.host_device,
+                    target.peer_ip,
+                    target.source_port,
+                    target.dns_port,
+                )
+            })
             .collect::<Vec<_>>();
         let matched_packets = matches.len();
         let first_reported = matched_packets.saturating_sub(MAX_REPORTED_PACKETS);
@@ -1194,13 +1201,24 @@ mod tests {
         }
     }
 
+    fn capture_target() -> GuestDnsNetfilterTraceCaptureTarget<'static> {
+        GuestDnsNetfilterTraceCaptureTarget {
+            namespace: "vm0-ns-00-01",
+            host_device: "vm0-ve-00-01",
+            peer_ip: "10.200.0.2",
+            source_port: None,
+            dns_port: 5300,
+            expected_packets: 1,
+        }
+    }
+
     #[test]
     fn parses_verified_trace_and_reports_farthest_root_hook() {
         let (reader, state) = reader_and_state();
         let cursor = reader.cursor();
         ingest_verified_fixture(&state);
 
-        let report = reader.capture_now(cursor, "vm0-ns-00-01", "vm0-ve-00-01", "10.200.0.2", 5300);
+        let report = reader.capture_now(cursor, capture_target());
         let value = serde_json::to_value(report).unwrap();
 
         assert_eq!(value["status"], "captured");
@@ -1238,7 +1256,7 @@ mod tests {
             "PACKET: 2 other IN=vm0-ve-00-01 SRC=10.200.0.2 DST=192.0.2.1 LEN=67 PROTO=UDP SPT=1 DPT=53",
         );
 
-        let report = reader.capture_now(cursor, "vm0-ns-00-01", "vm0-ve-00-01", "10.200.0.2", 5300);
+        let report = reader.capture_now(cursor, capture_target());
 
         assert!(matches!(report.status, TraceReportStatus::NoMatchingPacket));
     }
@@ -1257,7 +1275,7 @@ mod tests {
         }
         drop(state);
 
-        let report = reader.capture_now(cursor, "vm0-ns-00-01", "vm0-ve-00-01", "10.200.0.2", 5300);
+        let report = reader.capture_now(cursor, capture_target());
 
         assert!(matches!(report.status, TraceReportStatus::NoMatchingPacket));
     }
@@ -1278,7 +1296,7 @@ mod tests {
         }
         drop(state);
 
-        let report = reader.capture_now(cursor, "vm0-ns-00-01", "vm0-ve-00-01", "10.200.0.2", 5300);
+        let report = reader.capture_now(cursor, capture_target());
         let value = serde_json::to_value(report).unwrap();
         let observed = value["packets"][0]["observed"].as_array().unwrap();
 
@@ -1301,7 +1319,7 @@ mod tests {
             ingest_verified_fixture(&state);
         }
 
-        let report = reader.capture_now(cursor, "vm0-ns-00-01", "vm0-ve-00-01", "10.200.0.2", 5300);
+        let report = reader.capture_now(cursor, capture_target());
         let output = serde_json::to_string(&report).unwrap();
 
         assert!(matches!(report.status, TraceReportStatus::Captured));
@@ -1319,14 +1337,7 @@ mod tests {
         let (reader, state) = reader_and_state();
         let cursor = reader.cursor();
         let changed = Arc::clone(&reader.changed);
-        let capture = reader.capture(
-            cursor,
-            "vm0-ns-00-01",
-            "vm0-ve-00-01",
-            "10.200.0.2",
-            5300,
-            1,
-        );
+        let capture = reader.capture(cursor, capture_target());
         tokio::pin!(capture);
         assert!(
             futures_util::poll!(capture.as_mut()).is_pending(),
