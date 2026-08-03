@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.364.11](https://github.com/vm0-ai/vm0/compare/api-v1.364.10...api-v1.364.11) (2026-08-02)
+
+
+### Refactoring
+
+* **db:** contract legacy runner session state persistence ([#24575](https://github.com/vm0-ai/vm0/issues/24575)) ([a5bd04e](https://github.com/vm0-ai/vm0/commit/a5bd04e6c2e6bccbca28bd432d380138c2371ac1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.261.8
+    * @vm0/connectors bumped to 1.202.6
+    * @vm0/core bumped to 8.502.8
+    * @vm0/db bumped to 1.160.13
+
 ## [1.364.10](https://github.com/vm0-ai/vm0/compare/api-v1.364.9...api-v1.364.10) (2026-08-02)
 
 

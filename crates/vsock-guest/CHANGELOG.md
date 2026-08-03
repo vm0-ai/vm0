@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.57](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.56...vsock-guest-v0.19.57) (2026-08-02)
+
+
+### Documentation
+
+* **rust:** document quiesce state contract ([#24580](https://github.com/vm0-ai/vm0/issues/24580)) ([6729bc8](https://github.com/vm0-ai/vm0/commit/6729bc83029542cfa12dc6043b219893de09fd67))
+
 ## [0.19.56](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.55...vsock-guest-v0.19.56) (2026-08-02)
 
 ## [0.19.55](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.54...vsock-guest-v0.19.55) (2026-08-01)
