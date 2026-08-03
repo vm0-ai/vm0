@@ -12,6 +12,7 @@ use tokio::sync::{Notify, oneshot};
 
 use super::support::{
     claude_history_path, final_identity_metadata_bytes, final_identity_runtime_paths,
+    local_sidecar_restore_plan,
 };
 use crate::executor::agent_run::{ProcessCancelTimeouts, RunControls, RunStart, run_in_sandbox};
 use crate::executor::diagnostics::AgentStdoutStreamDiagnostics;
@@ -140,6 +141,17 @@ async fn run_in_sandbox_reports_cancelled_while_workspace_sidecar_read_is_pendin
     let cancel = tokio_util::sync::CancellationToken::new();
     let run_cancel = cancel.clone();
     let run_task = tokio::spawn(async move {
+        let restore_plan = local_sidecar_restore_plan(
+            &ctx,
+            &config,
+            WorkspaceSessionHistorySidecar {
+                path: sidecar_path,
+                representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+                encoded_size: history.len() as u64,
+            },
+            run_cancel.clone(),
+        )
+        .await;
         let mut telemetry = test_telemetry(&config, &ctx);
         run_in_sandbox(
             &*sandbox,
@@ -151,16 +163,7 @@ async fn run_in_sandbox_reports_cancelled_while_workspace_sidecar_read_is_pendin
                 prev_storage: None,
             },
             &mut telemetry,
-            RunControls::new(run_cancel, None).with_session_history_restore_plan(
-                SessionHistoryRestorePlan::LocalSidecar {
-                    sidecar: WorkspaceSessionHistorySidecar {
-                        path: sidecar_path,
-                        representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
-                        encoded_size: history.len() as u64,
-                    },
-                    fallback: None,
-                },
-            ),
+            RunControls::new(run_cancel, None).with_session_history_restore_plan(restore_plan),
         )
         .await
     });

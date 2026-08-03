@@ -1,4 +1,249 @@
 use super::*;
+use async_trait::async_trait;
+use httpmock::prelude::*;
+use sha2::{Digest, Sha256};
+
+use crate::executor::session_history_cpu::{SessionHistoryCpuPool, SessionHistoryCpuTestGate};
+use crate::executor::tests::support::RUN_IN_SANDBOX_TEST_TIMEOUT;
+use crate::executor::{SessionHistoryRestoreFallback, SessionHistoryRestorePlan};
+use crate::types::{
+    ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
+    ResumeSessionHistoryRefKind,
+};
+use crate::workspace_image_cache::WorkspaceSessionHistorySidecarRepresentation;
+
+struct MaterializationObservedFactory {
+    inner: MockSandboxFactory,
+    materialization_gate: SessionHistoryCpuTestGate,
+    release_after_create: bool,
+}
+
+#[async_trait]
+impl SandboxFactory for MaterializationObservedFactory {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn config_hash(&self) -> String {
+        self.inner.config_hash()
+    }
+
+    async fn create(&self, config: sandbox::SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
+        tokio::time::timeout(
+            RUN_IN_SANDBOX_TEST_TIMEOUT,
+            self.materialization_gate.wait_entered(),
+        )
+        .await
+        .expect("sidecar CPU materialization should start before sandbox creation");
+        let result = self.inner.create(config).await;
+        if self.release_after_create {
+            self.materialization_gate.release_one();
+        }
+        result
+    }
+
+    async fn destroy(&self, sandbox: Box<dyn Sandbox>) {
+        self.inner.destroy(sandbox).await;
+    }
+
+    async fn shutdown(&mut self) {
+        self.inner.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn workspace_sidecar_materialization_overlaps_sandbox_creation() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
+    let mut config = test_executor_config(dir.path()).await;
+    config.workspace_cache = Some(cache.clone());
+    let materialization_gate = SessionHistoryCpuTestGate::at_entry(1);
+    config.session_history_cpu =
+        SessionHistoryCpuPool::with_test_gates(1, Some(materialization_gate.clone()), None);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MaterializationObservedFactory {
+        inner: MockSandboxFactory::with_overrides(Arc::clone(&overrides)),
+        materialization_gate,
+        release_after_create: true,
+    };
+    let server = MockServer::start_async().await;
+    let history = br#"{"type":"init"}"#;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    set_reuse_and_session_history_ref(
+        &mut ctx,
+        "sess-cache-sidecar-overlap",
+        history,
+        server.url("/history.blob?token=secret"),
+    );
+    let params = JobParams {
+        workspace_disk_mb: 16,
+        ..default_params()
+    };
+    seed_workspace_image_cache_with_sidecar(
+        &cache,
+        &runner_paths,
+        &ctx,
+        params.workspace_disk_mb,
+        history,
+        WorkspaceSessionHistorySidecarRepresentation::Raw,
+    )
+    .await;
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        execute_new_sandbox_with_prepared_notifier(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &params,
+            &mut telemetry,
+            NewSandboxHooks {
+                controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+                    .with_session_history_restore_plan(
+                        SessionHistoryRestorePlan::DeferredHashBacked {
+                            fallback: Some(SessionHistoryRestoreFallback::NonReuse),
+                        },
+                    ),
+                sandbox_prepared: None,
+            },
+        ),
+    )
+    .await
+    .expect("sandbox creation and sidecar materialization should complete")
+    .unwrap();
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert!(outcome.workspace_image.is_some());
+    assert_eq!(overrides.create_configs().len(), 1);
+    let writes = overrides.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].content, history);
+    history_mock.assert_calls_async(0).await;
+    for action in [
+        "session_history_workspace_cache_file_read",
+        "session_history_workspace_cache_cpu_pool_wait",
+        "session_history_workspace_cache_materialization",
+        "session_history_workspace_cache_materialization_wait",
+        "session_history_workspace_cache_guest_restore",
+        "session_history_workspace_cache_restore",
+    ] {
+        assert_telemetry_action(&telemetry, action, true, None);
+    }
+}
+
+#[tokio::test]
+async fn workspace_retry_cancels_sidecar_materialization_before_cache_invalidation() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
+    let mut config = test_executor_config(dir.path()).await;
+    config.workspace_cache = Some(cache.clone());
+    let materialization_gate = SessionHistoryCpuTestGate::at_entry(1);
+    config.session_history_cpu =
+        SessionHistoryCpuPool::with_test_gates(1, Some(materialization_gate.clone()), None);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_create_result(Err(sandbox_create_error("bad seed image")));
+    let factory = MaterializationObservedFactory {
+        inner: MockSandboxFactory::with_overrides(Arc::clone(&overrides)),
+        materialization_gate: materialization_gate.clone(),
+        release_after_create: false,
+    };
+    let server = MockServer::start_async().await;
+    let history = br#"{"type":"init"}"#;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    set_reuse_and_session_history_ref(
+        &mut ctx,
+        "sess-cache-sidecar-retry",
+        history,
+        server.url("/history.blob?token=secret"),
+    );
+    let params = JobParams {
+        workspace_disk_mb: 16,
+        ..default_params()
+    };
+    let expected_seed = seed_workspace_image_cache_with_sidecar(
+        &cache,
+        &runner_paths,
+        &ctx,
+        params.workspace_disk_mb,
+        history,
+        WorkspaceSessionHistorySidecarRepresentation::Raw,
+    )
+    .await;
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        execute_new_sandbox_with_prepared_notifier(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &params,
+            &mut telemetry,
+            NewSandboxHooks {
+                controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+                    .with_session_history_restore_plan(
+                        SessionHistoryRestorePlan::DeferredHashBacked {
+                            fallback: Some(SessionHistoryRestoreFallback::NonReuse),
+                        },
+                    ),
+                sandbox_prepared: None,
+            },
+        ),
+    )
+    .await
+    .expect("workspace retry should cancel and join sidecar materialization")
+    .unwrap();
+
+    tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        materialization_gate.wait_completed(),
+    )
+    .await
+    .expect("cancelled sidecar CPU work should finish");
+    assert_eq!(outcome.exit_code(), 0);
+    assert!(outcome.workspace_image.is_none());
+    assert_eq!(overrides.create_configs().len(), 2);
+    assert!(!expected_seed.exists());
+    let writes = overrides.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].content, history);
+    history_mock.assert_calls_async(1).await;
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_without_workspace_image",
+        true,
+        None,
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "session_history_workspace_cache_miss",
+        true,
+        Some("sandbox_retry_without_workspace_image"),
+    );
+}
 
 fn set_reuse_and_session_identity(
     context: &mut crate::types::ExecutionContext,
@@ -10,6 +255,29 @@ fn set_reuse_and_session_identity(
         session_id.into(),
         session_history.into(),
     ));
+}
+
+fn set_reuse_and_session_history_ref(
+    context: &mut crate::types::ExecutionContext,
+    session_id: &str,
+    history: &[u8],
+    url: String,
+) {
+    context.reuse_key = Some(format!("thread:workspace-cache-{session_id}"));
+    context.resume_session = Some(ResumeSession {
+        cli_agent_session_id: session_id.into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url,
+                encoding: ResumeSessionHistoryEncoding::Identity,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
+                download_source: None,
+            },
+        },
+    });
 }
 
 #[tokio::test]

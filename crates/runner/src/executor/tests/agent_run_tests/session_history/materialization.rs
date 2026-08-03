@@ -10,6 +10,7 @@ use super::{history_prefix_attribution, serve_history_once};
 use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
 use crate::executor::tests::agent_run_tests::support::{
     assert_failed_action_error_once, assert_no_action, assert_successful_action_once,
+    local_sidecar_restore_plan,
 };
 use crate::executor::tests::support::{
     RUN_IN_SANDBOX_TEST_TIMEOUT, minimal_context, test_executor_config, test_telemetry,
@@ -550,6 +551,18 @@ async fn run_in_sandbox_restores_session_history_from_workspace_sidecar() {
         },
     });
 
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let restore_plan = local_sidecar_restore_plan(
+        &ctx,
+        &config,
+        WorkspaceSessionHistorySidecar {
+            path: sidecar_path,
+            representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+            encoded_size: history.len() as u64,
+        },
+        cancel.clone(),
+    )
+    .await;
     let mut telemetry = test_telemetry(&config, &ctx);
     let result = run_in_sandbox(
         &sandbox,
@@ -561,15 +574,7 @@ async fn run_in_sandbox_restores_session_history_from_workspace_sidecar() {
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::LocalSidecar {
-                sidecar: WorkspaceSessionHistorySidecar {
-                    path: sidecar_path,
-                    representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
-                    encoded_size: history.len() as u64,
-                },
-                fallback: None,
-            }),
+        RunControls::new(cancel, None).with_session_history_restore_plan(restore_plan),
     )
     .await
     .unwrap();
@@ -623,6 +628,18 @@ async fn run_in_sandbox_falls_back_when_workspace_sidecar_hash_mismatches() {
         },
     });
 
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let restore_plan = local_sidecar_restore_plan(
+        &ctx,
+        &config,
+        WorkspaceSessionHistorySidecar {
+            path: sidecar_path,
+            representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+            encoded_size: history.len() as u64,
+        },
+        cancel.clone(),
+    )
+    .await;
     let mut telemetry = test_telemetry(&config, &ctx);
     let result = run_in_sandbox(
         &sandbox,
@@ -634,15 +651,7 @@ async fn run_in_sandbox_falls_back_when_workspace_sidecar_hash_mismatches() {
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::LocalSidecar {
-                sidecar: WorkspaceSessionHistorySidecar {
-                    path: sidecar_path,
-                    representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
-                    encoded_size: history.len() as u64,
-                },
-                fallback: None,
-            }),
+        RunControls::new(cancel, None).with_session_history_restore_plan(restore_plan),
     )
     .await
     .unwrap();
@@ -703,6 +712,18 @@ async fn run_in_sandbox_restores_codex_zstd_sidecar_with_session_timestamp() {
         },
     });
 
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let restore_plan = local_sidecar_restore_plan(
+        &ctx,
+        &config,
+        WorkspaceSessionHistorySidecar {
+            path: sidecar_path,
+            representation: WorkspaceSessionHistorySidecarRepresentation::CodexZstd,
+            encoded_size: compressed_history.len() as u64,
+        },
+        cancel.clone(),
+    )
+    .await;
     let mut telemetry = test_telemetry(&config, &ctx);
     let result = run_in_sandbox(
         &sandbox,
@@ -714,15 +735,7 @@ async fn run_in_sandbox_restores_codex_zstd_sidecar_with_session_timestamp() {
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::LocalSidecar {
-                sidecar: WorkspaceSessionHistorySidecar {
-                    path: sidecar_path,
-                    representation: WorkspaceSessionHistorySidecarRepresentation::CodexZstd,
-                    encoded_size: compressed_history.len() as u64,
-                },
-                fallback: None,
-            }),
+        RunControls::new(cancel, None).with_session_history_restore_plan(restore_plan),
     )
     .await
     .unwrap();
@@ -772,6 +785,18 @@ async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
         },
     });
 
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let restore_plan = local_sidecar_restore_plan(
+        &ctx,
+        &config,
+        WorkspaceSessionHistorySidecar {
+            path: sidecar_path,
+            representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+            encoded_size: history.len() as u64,
+        },
+        cancel.clone(),
+    )
+    .await;
     let mut telemetry = test_telemetry(&config, &ctx);
     let result = run_in_sandbox(
         &sandbox,
@@ -783,15 +808,7 @@ async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::LocalSidecar {
-                sidecar: WorkspaceSessionHistorySidecar {
-                    path: sidecar_path,
-                    representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
-                    encoded_size: history.len() as u64,
-                },
-                fallback: None,
-            }),
+        RunControls::new(cancel, None).with_session_history_restore_plan(restore_plan),
     )
     .await
     .unwrap();

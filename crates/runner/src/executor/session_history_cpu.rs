@@ -134,6 +134,7 @@ impl fmt::Debug for SessionHistoryCpuMaterialization {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct SessionHistoryCpuTimings {
+    admission_wait: Duration,
     validation: Option<SessionHistoryCpuPhaseTiming>,
     decompression: Option<SessionHistoryCpuPhaseTiming>,
     hash_verification: Option<SessionHistoryCpuPhaseTiming>,
@@ -159,7 +160,7 @@ impl SessionHistoryCpuPool {
     }
 
     #[cfg(test)]
-    fn with_test_gates(
+    pub(in crate::executor) fn with_test_gates(
         capacity: usize,
         cpu_gate: Option<SessionHistoryCpuTestGate>,
         reader_gate: Option<SessionHistoryCpuTestGate>,
@@ -180,6 +181,7 @@ impl SessionHistoryCpuPool {
     ) -> RunnerResult<SessionHistoryCpuOutcome> {
         self.hooks.record_submission();
         let operation_cancel = cancel.child_token();
+        let admission_started = Instant::now();
         let permit = tokio::select! {
             biased;
             _ = cancel.cancelled() => return Err(cpu_cancelled_error()),
@@ -187,6 +189,7 @@ impl SessionHistoryCpuPool {
                 RunnerError::Internal(format!("acquire session history CPU permit: {error}"))
             })?,
         };
+        let admission_wait = admission_started.elapsed();
 
         let blocking_cancel = operation_cancel.clone();
         let hooks = self.hooks.clone();
@@ -208,9 +211,10 @@ impl SessionHistoryCpuPool {
         if cancellation_observed || cancel.is_cancelled() {
             return Err(cpu_cancelled_error());
         }
-        let outcome = joined.map_err(|error| {
+        let mut outcome = joined.map_err(|error| {
             RunnerError::Internal(format!("session history CPU task failed: {error}"))
         })?;
+        outcome.timings.admission_wait = admission_wait;
         Ok(outcome)
     }
 }
@@ -352,6 +356,10 @@ impl SessionHistoryCpuJob {
 }
 
 impl SessionHistoryCpuTimings {
+    pub(super) fn admission_wait(self) -> Duration {
+        self.admission_wait
+    }
+
     pub(super) fn validation(self) -> Option<SessionHistoryCpuPhaseTiming> {
         self.validation
     }
@@ -1123,7 +1131,7 @@ fn cpu_cancelled_error() -> RunnerError {
 
 #[cfg(test)]
 #[derive(Clone)]
-struct SessionHistoryCpuTestGate {
+pub(in crate::executor) struct SessionHistoryCpuTestGate {
     inner: Arc<SessionHistoryCpuTestGateInner>,
 }
 
@@ -1153,11 +1161,11 @@ struct SessionHistoryCpuTestGateState {
 
 #[cfg(test)]
 impl SessionHistoryCpuTestGate {
-    fn every_entry() -> Self {
+    pub(in crate::executor) fn every_entry() -> Self {
         Self::new(SessionHistoryCpuTestGateMode::Every)
     }
 
-    fn at_entry(entry: usize) -> Self {
+    pub(in crate::executor) fn at_entry(entry: usize) -> Self {
         Self::new(SessionHistoryCpuTestGateMode::Entry(entry.max(1)))
     }
 
@@ -1207,7 +1215,7 @@ impl SessionHistoryCpuTestGate {
         !cancel.is_cancelled()
     }
 
-    fn release_one(&self) {
+    pub(in crate::executor) fn release_one(&self) {
         let mut state = self
             .inner
             .state
@@ -1218,7 +1226,7 @@ impl SessionHistoryCpuTestGate {
         self.inner.release.notify_one();
     }
 
-    async fn wait_submitted(&self) {
+    pub(in crate::executor) async fn wait_submitted(&self) {
         self.inner
             .submitted
             .acquire()
@@ -1227,7 +1235,7 @@ impl SessionHistoryCpuTestGate {
             .forget();
     }
 
-    async fn wait_entered(&self) {
+    pub(in crate::executor) async fn wait_entered(&self) {
         self.inner
             .entered
             .acquire()
@@ -1236,7 +1244,7 @@ impl SessionHistoryCpuTestGate {
             .forget();
     }
 
-    async fn wait_completed(&self) {
+    pub(in crate::executor) async fn wait_completed(&self) {
         self.inner
             .completed
             .acquire()
