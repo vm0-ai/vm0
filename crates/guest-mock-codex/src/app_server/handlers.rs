@@ -12,9 +12,12 @@ use super::scenario::Scenario;
 use super::{AppServerState, INVALID_REQUEST, PendingResponse, ServerAction, spawn_stderr_holder};
 use serde_json::{Value, json};
 use std::io::{self, Write};
+use std::path::PathBuf;
 use std::thread;
 use uuid::Uuid;
 
+const HANG_ON_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
+const HANG_ON_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
 const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
 const OVERSIZED_STDOUT_BYTES: usize = 65 * 1024 * 1024;
 const EVENT_DELIVERY_FLOOD_COUNT: usize = 640;
@@ -222,6 +225,12 @@ impl AppServerState {
             return Ok(ServerAction::Stop);
         }
         if self.scenario == Scenario::HangOnTurnStart {
+            let home = std::env::var_os("HOME")
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
+            std::fs::write(
+                PathBuf::from(home).join(HANG_ON_TURN_START_READY_FILE),
+                HANG_ON_TURN_START_READY_EVENT,
+            )?;
             loop {
                 thread::park();
             }

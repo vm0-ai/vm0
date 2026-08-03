@@ -55,6 +55,8 @@ pub const SIGKILL_EXIT: i32 = 137;
 pub const CLEAN_EXIT: i32 = 0;
 
 pub const MOCK_TERMINATION_READY_EVENT: &str = "vm0_mock_termination_ready";
+pub const MOCK_CODEX_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
+pub const MOCK_CODEX_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
 pub const MOCK_POST_RESULT_READY_EVENT: &str = "vm0_mock_post_result_ready";
 pub const MOCK_POST_RESULT_ACTIVITY_ONE_EVENT: &str = "vm0_mock_post_result_activity_1_ready";
 pub const MOCK_POST_RESULT_ACTIVITY_TWO_EVENT: &str = "vm0_mock_post_result_activity_2_ready";
