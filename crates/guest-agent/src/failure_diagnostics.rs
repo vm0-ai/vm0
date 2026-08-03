@@ -137,7 +137,18 @@ pub fn claude_zero_turn_failure_for_config(
     with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit.as_ref().cloned())
 }
 
-/// Return session-history availability for failure diagnostics.
+/// Return the conservative session-history target probe for failure diagnostics.
+///
+/// For Claude Code, an existing nonempty history marker supplies the target.
+/// Otherwise, the target is derived from a nonempty, valid session ID. If
+/// neither source resolves a target, this returns `Missing`; errors reading
+/// either source return `Unknown`.
+///
+/// A resolved target is `Empty` only when metadata identifies a zero-byte
+/// regular file. Any other successful metadata result is `Present`, including
+/// a non-regular target, while `NotFound` maps to `Missing` and other metadata
+/// errors map to `Unknown`. The probe does not open or validate history content.
+/// Codex returns `NotApplicable` because this probe does not apply to it.
 pub fn diagnostic_session_history_status_for_config(
     config: &env::GuestConfig,
     runtime_paths: &paths::GuestPaths,
@@ -150,7 +161,14 @@ pub fn diagnostic_session_history_status_for_config(
     }
 }
 
-/// Return whether a session-history status cannot support a recovery checkpoint.
+/// Return whether the zero-turn path has definitive evidence of no history.
+///
+/// Only `Missing` and `Empty` select the `ClaudeZeroTurnNoHistory` shortcut and
+/// skip recovery checkpointing. A false result, including `Present` or
+/// `Unknown`, does not prove that the target is readable or checkpointable; it
+/// lets the real checkpoint attempt determine the outcome. A later checkpoint
+/// failure is classified as `CheckpointFailed`, while success follows normal
+/// completion.
 pub fn session_history_unavailable(status: SessionHistoryStatus) -> bool {
     matches!(
         status,
