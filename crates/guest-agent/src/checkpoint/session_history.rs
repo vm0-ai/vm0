@@ -256,7 +256,6 @@ fn fail_preserving_error(
 pub(super) struct CheckpointSessionHistoryInputs {
     mode: CheckpointMode,
     framework: env::Framework,
-    claude_session_pruning_enabled: bool,
     limits: CheckpointSessionHistoryLimits,
     home_dir: String,
     session_id_file: String,
@@ -268,7 +267,6 @@ impl CheckpointSessionHistoryInputs {
         Self {
             mode,
             framework: inputs.framework,
-            claude_session_pruning_enabled: inputs.claude_session_pruning_enabled,
             limits: inputs.session_history_limits,
             home_dir: inputs.home_dir.to_string(),
             session_id_file: inputs.session_id_file.to_string(),
@@ -416,14 +414,12 @@ async fn upload_session_history(
 fn prepare_session_history(
     mode: CheckpointMode,
     framework: env::Framework,
-    claude_session_pruning_enabled: bool,
     limits: CheckpointSessionHistoryLimits,
     cli_agent_session_id: &str,
     history_marker_payload: &str,
     history_read_start: std::time::Instant,
 ) -> Result<PreparedSessionHistory, AgentError> {
-    if claude_session_pruning_enabled
-        && mode.can_prune_history()
+    if mode.can_prune_history()
         && framework == env::Framework::ClaudeCode
         && !history::is_codex_marker(history_marker_payload)
     {
@@ -836,7 +832,6 @@ fn prepare_checkpoint_session_history(
     let CheckpointSessionHistoryInputs {
         mode,
         framework,
-        claude_session_pruning_enabled,
         limits,
         home_dir,
         session_id_file,
@@ -900,7 +895,6 @@ fn prepare_checkpoint_session_history(
     let prepared_history = prepare_session_history(
         mode,
         framework,
-        claude_session_pruning_enabled,
         limits,
         &cli_agent_session_id,
         &history_marker_payload,

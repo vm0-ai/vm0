@@ -39,16 +39,6 @@ pub(super) async fn create_bounded_recovery_checkpoint(
     .await
 }
 
-pub(super) fn set_claude_session_pruning(
-    runtime: &mut guest_agent::run_context::GuestRuntime,
-    enabled: bool,
-) {
-    runtime
-        .config
-        .feature_flags
-        .insert("claudeSessionPruning".to_string(), enabled);
-}
-
 pub(super) fn session_file_paths() -> (String, String) {
     let paths = shared_guest_paths();
     (
