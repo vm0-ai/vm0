@@ -1,3 +1,4 @@
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { count, eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -94,6 +95,33 @@ export async function setAgentRunCreatedAtFixture(
     .update(agentRuns)
     .set({ createdAt })
     .where(eq(agentRuns.id, runId));
+}
+
+export async function insertPendingInlineDeliveryCallbackFixture(
+  runId: string,
+): Promise<string> {
+  const [callback] = await db()
+    .insert(agentRunCallbacks)
+    .values({ runId, internalKind: "slack:chat", payload: {} })
+    .returning({ id: agentRunCallbacks.id });
+  if (!callback) {
+    throw new Error("Expected the inline delivery callback to be inserted");
+  }
+  return callback.id;
+}
+
+export async function readRunCallbackFixture(callbackId: string): Promise<{
+  readonly status: string;
+  readonly lastError: string | null;
+} | null> {
+  const [callback] = await db()
+    .select({
+      status: agentRunCallbacks.status,
+      lastError: agentRunCallbacks.lastError,
+    })
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.id, callbackId));
+  return callback ?? null;
 }
 
 /** Holds the production event projection lock until the test releases it. */

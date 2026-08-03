@@ -33,6 +33,8 @@ import {
   holdAgentRunDeletionFixture,
   holdOrgCreditLockFixture,
   holdRunOutputProjectionLockFixture,
+  insertPendingInlineDeliveryCallbackFixture,
+  readRunCallbackFixture,
   withThreadlessRunCleanupTestLockFixture,
 } from "../../../test-fixtures/run-deletion";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
@@ -723,6 +725,45 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     );
     expect(response.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
     expect(response.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(1);
+    await expect(findRun(fixture.runId)).resolves.toBeNull();
+  });
+
+  it("terminalizes a stranded inline delivery callback before deleting its run", async () => {
+    mockNow(THREADLESS_TEST_NOW_MS);
+    const fixture = await trackRun(
+      insertRunFixture({
+        status: "completed",
+        createdAt: new Date(THREADLESS_FORWARD_CUTOFF_MS + 1),
+        completedAt: new Date(
+          THREADLESS_TEST_NOW_MS - CANCELLATION_RECOVERY_STALE_AFTER_MS,
+        ),
+        threadless: true,
+      }),
+    );
+    const callbackId = await insertPendingInlineDeliveryCallbackFixture(
+      fixture.runId,
+    );
+    await insertRunnerJobEntry(fixture, new Date(0));
+
+    const waiting = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(waiting.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
+    expect(waiting.body.threadlessRuns.waiting).toBeGreaterThanOrEqual(1);
+    await expect(findRun(fixture.runId)).resolves.not.toBeNull();
+    await expect(readRunCallbackFixture(callbackId)).resolves.toStrictEqual({
+      status: "failed",
+      lastError: "Chat thread was deleted before inline callback delivery",
+    });
+    await expect(findRunnerJob(fixture.runId)).resolves.toBeNull();
+
+    const deleted = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(deleted.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(1);
+    expect(deleted.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(1);
     await expect(findRun(fixture.runId)).resolves.toBeNull();
   });
 

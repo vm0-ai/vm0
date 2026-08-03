@@ -24,6 +24,7 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
 import { settle } from "../utils";
+import { failPendingInlineOnlyDeliveryCallbacksForDeletedThread } from "./agent-run-callback.service";
 import { dispatchCompleteSideEffects$ } from "./agent-webhook-complete.service";
 import {
   cancelRun$,
@@ -260,6 +261,7 @@ async function deleteIfStillEligible(
 
 async function redriveTerminalLifecycle(
   set: Parameters<Parameters<typeof command>[0]>[0]["set"],
+  db: Db,
   candidate: ThreadlessRunCandidate,
   signal: AbortSignal,
 ): Promise<void> {
@@ -292,6 +294,12 @@ async function redriveTerminalLifecycle(
       ...(error === undefined ? {} : { error }),
     },
     signal,
+  );
+  signal.throwIfAborted();
+
+  await failPendingInlineOnlyDeliveryCallbacksForDeletedThread(
+    db,
+    candidate.runId,
   );
   signal.throwIfAborted();
 
@@ -345,7 +353,7 @@ export const cleanupThreadlessRuns$ = command(
             return;
           }
 
-          await redriveTerminalLifecycle(set, candidate, signal);
+          await redriveTerminalLifecycle(set, db, candidate, signal);
           if (await deleteIfStillEligible(db, candidate, quietBefore)) {
             deleted++;
           } else {

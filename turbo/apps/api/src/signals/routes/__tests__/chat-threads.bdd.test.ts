@@ -102,7 +102,9 @@ const store = createStore();
 const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
 const SANDBOX_CLEANUP_CRON_SECRET = "sandbox-cleanup-cron-secret";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const FORWARD_CLEANUP_CUTOFF_MS = Date.parse("2026-08-03T05:40:26.000Z");
 const FORWARD_CLEANUP_TEST_CREATED_AT = "2026-08-03T05:40:26.001Z";
+const PRE_FORWARD_CLEANUP_TEST_CREATED_AT = "2026-08-03T05:40:25.999Z";
 
 type UserMessage = Extract<
   ChatEvent,
@@ -1374,7 +1376,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     );
     await setAgentRunCreatedAtFixture(
       sibling.runId,
-      new Date(FORWARD_CLEANUP_TEST_CREATED_AT),
+      new Date(PRE_FORWARD_CLEANUP_TEST_CREATED_AT),
     );
 
     await expect(chat.listActiveChatThreadIds(actor)).resolves.not.toContain(
@@ -1423,9 +1425,21 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       ]),
     );
 
-    // Terminal-only deletion does not have the active fast path. Both roots
-    // become durable cleanup work and are purged only after the quiet window.
+    // Terminal-only deletion does not have the active fast path. The sibling
+    // predates the watermark, so only its matching post-watermark tombstone
+    // admits it to the forward cleanup cohort.
     await chat.deleteThread(actor, sibling.threadId);
+    const siblingDeletion = (await allThreadEvents(actor)).find((event) => {
+      return (
+        event.kind === "deleted" && event.chatThreadId === sibling.threadId
+      );
+    });
+    if (!siblingDeletion) {
+      throw new Error("Expected the sibling deletion tombstone");
+    }
+    expect(Date.parse(siblingDeletion.createdAt)).toBeGreaterThanOrEqual(
+      FORWARD_CLEANUP_CUTOFF_MS,
+    );
     const cleanupAt = now() + CANCELLATION_RECOVERY_STALE_AFTER_MS;
     mockEnv("CRON_SECRET", SANDBOX_CLEANUP_CRON_SECRET);
     mockNow(cleanupAt);
