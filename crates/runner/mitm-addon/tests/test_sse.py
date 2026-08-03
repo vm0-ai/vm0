@@ -53,6 +53,67 @@ class _FindTrackingBytes(bytes):
 
 
 @pytest.mark.parametrize(
+    "bom_chunks",
+    [
+        pytest.param((b"\xef\xbb\xbf",), id="one-chunk"),
+        pytest.param((b"\xef", b"\xbb\xbf"), id="one-plus-two"),
+        pytest.param((b"\xef\xbb", b"\xbf"), id="two-plus-one"),
+        pytest.param((b"\xef", b"\xbb", b"\xbf"), id="three-chunks"),
+    ],
+)
+def test_ignores_one_leading_utf8_bom_across_chunks(bom_chunks: tuple[bytes, ...]) -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    for chunk in bom_chunks:
+        scanner.feed(chunk)
+    scanner.feed(b"event: target\ndata: ok\n\n")
+
+    assert handler.events == [("target", b"ok")]
+    assert handler.discarded == []
+
+
+@pytest.mark.parametrize("partial_bom", [b"\xef", b"\xef\xbb"])
+def test_preserves_mismatched_partial_bom_at_stream_start(partial_bom: bytes) -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    scanner.feed(partial_bom + b"event: target\ndata: ignored\n\n")
+
+    assert handler.started == []
+    assert handler.events == []
+    assert handler.discarded == []
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        pytest.param(b"\xef\xbb\xbf\xef\xbb\xbf", id="second-bom"),
+        pytest.param(b": comment\n\xef\xbb\xbf", id="later-bom"),
+    ],
+)
+def test_does_not_strip_utf8_bom_after_stream_start(prefix: bytes) -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    scanner.feed(prefix + b"event: target\ndata: ignored\n\n")
+
+    assert handler.started == []
+    assert handler.events == []
+    assert handler.discarded == []
+
+
+def test_preserves_utf8_bom_in_captured_data() -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    scanner.feed(b"\xef\xbb\xbfevent: target\ndata: \xef\xbb\xbfpayload\n\n")
+
+    assert handler.events == [("target", b"\xef\xbb\xbfpayload")]
+    assert handler.discarded == []
+
+
+@pytest.mark.parametrize(
     ("preferred_newline", "other_newline"),
     [
         (b"\n", b"\r"),
