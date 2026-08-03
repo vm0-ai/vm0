@@ -266,13 +266,12 @@ async def test_cancelled_requestheaders_catalog_follower_releases_usage_tracking
             assert not follower_task.done()
 
             follower_task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await follower_task
+            (cancelled_result,) = await asyncio.gather(follower_task, return_exceptions=True)
+            assert isinstance(cancelled_result, asyncio.CancelledError)
     finally:
-        if follower_task is not None:
-            if not follower_task.done():
-                follower_task.cancel()
-            await asyncio.gather(follower_task, return_exceptions=True)
+        if follower_task is not None and not follower_task.done():
+            follower_task.cancel()
+            _ = await asyncio.gather(follower_task, return_exceptions=True)
         catalog_cache.handle_error(owner)
 
     usage.write_pending_snapshot(flush_request_id="after-cancel")
