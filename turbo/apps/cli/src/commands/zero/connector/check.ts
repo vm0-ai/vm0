@@ -39,7 +39,7 @@ type ValidatedCheckConnectorOptions = CheckConnectorOptions &
     | { readonly url?: undefined; readonly envName: string }
   );
 
-type ResolvedDiagnostic = Extract<
+export type ResolvedDiagnostic = Extract<
   ZeroConnectorCheckDiagnosticResult,
   { readonly outcome: "resolved" }
 >;
@@ -161,20 +161,39 @@ function validateCheckConnectorOptions(
   }
 }
 
+export function buildConnectorUrlDiagnosticRequest(args: {
+  readonly url: string;
+  readonly method: string;
+  readonly connectorSlug?: string;
+  readonly environmentName?: string;
+}): UrlDiagnosticRequest {
+  if (rawUrlAuthorityHasUserinfo(args.url)) {
+    throw unsafeInputError("invalid-url");
+  }
+  return {
+    mode: "url",
+    method: args.method.toUpperCase(),
+    url: stripUrlQueryAndFragment(args.url),
+    ...(args.connectorSlug !== undefined
+      ? { connectorSlug: args.connectorSlug }
+      : {}),
+    ...(args.environmentName !== undefined
+      ? { environmentName: args.environmentName }
+      : {}),
+  };
+}
+
 function buildDiagnosticRequest(
   opts: ValidatedCheckConnectorOptions,
   method: string,
 ): ConnectorCheckRequest {
   if (opts.url !== undefined) {
-    return {
-      mode: "url",
+    return buildConnectorUrlDiagnosticRequest({
       method,
-      url: stripUrlQueryAndFragment(opts.url),
-      ...(opts.connector !== undefined
-        ? { connectorSlug: opts.connector }
-        : {}),
-      ...(opts.envName !== undefined ? { environmentName: opts.envName } : {}),
-    };
+      url: opts.url,
+      connectorSlug: opts.connector,
+      environmentName: opts.envName,
+    });
   }
 
   return {
@@ -311,7 +330,7 @@ function environmentNotUsedError(
   );
 }
 
-function resolvedDiagnostic(
+export function resolveConnectorCheckDiagnostic(
   request: ConnectorCheckRequest,
   result: ZeroConnectorCheckDiagnosticResult,
 ): ResolvedDiagnostic {
@@ -627,6 +646,7 @@ function printNamedPolicyResult(
   permission: string,
   policy: ConnectorCheckPolicy,
   agentId: string | undefined,
+  request: UrlDiagnosticRequest | undefined,
 ): void {
   switch (policy.outcome) {
     case "allow": {
@@ -665,6 +685,7 @@ function printNamedPolicyResult(
         permission,
         agentId,
         "To request this permission, run",
+        request,
       );
       return;
     case "ask":
@@ -678,6 +699,7 @@ function printNamedPolicyResult(
         permission,
         agentId,
         "To request this permission, run",
+        request,
       );
       return;
     case "unavailable":
@@ -689,8 +711,9 @@ function printNamedPolicyResult(
 function permissionRequestCommand(
   connectorSlug: string,
   permission: string,
+  request: UrlDiagnosticRequest,
 ): string {
-  return `zero connector permission-request ${connectorSlug} --permission ${permission}`;
+  return `zero connector permission-request ${shellQuoteArg(connectorSlug)} --permission ${shellQuoteArg(permission)} --url ${shellQuoteArg(request.url)} --method ${shellQuoteArg(request.method)}`;
 }
 
 function printPermissionRequestCommands(
@@ -698,8 +721,15 @@ function printPermissionRequestCommands(
   permission: string,
   agentId: string | undefined,
   introduction: string,
+  request: UrlDiagnosticRequest | undefined,
 ): void {
-  const command = permissionRequestCommand(connectorSlug, permission);
+  if (request === undefined) {
+    console.log(
+      "Diagnose the failed request with zero connector check --url <FAILED_URL> --method <METHOD> before requesting this permission.",
+    );
+    return;
+  }
+  const command = permissionRequestCommand(connectorSlug, permission, request);
   console.log(`${introduction}: ${command}`);
   if (!currentChatSupportsActionCallback(agentId)) {
     return;
@@ -716,6 +746,7 @@ function printUnknownEndpointPolicy(
   connectorSlug: string,
   policy: ConnectorCheckPolicy,
   agentId: string | undefined,
+  request: UrlDiagnosticRequest,
 ): void {
   switch (policy.outcome) {
     case "allow":
@@ -734,6 +765,7 @@ function printUnknownEndpointPolicy(
         "__unknown__",
         agentId,
         "To request access to unknown endpoints, run",
+        request,
       );
       return;
     case "ask":
@@ -745,6 +777,7 @@ function printUnknownEndpointPolicy(
         "__unknown__",
         agentId,
         "To request access to unknown endpoints, run",
+        request,
       );
       return;
     case "unavailable":
@@ -754,6 +787,7 @@ function printUnknownEndpointPolicy(
 }
 
 function printUrlPermissionDiagnostic(
+  request: UrlDiagnosticRequest,
   result: ResolvedUrlDiagnostic,
   agentId: string | undefined,
 ): void {
@@ -779,6 +813,7 @@ function printUrlPermissionDiagnostic(
         permission.name,
         permission.policy,
         agentId,
+        request,
       );
     }
   } else {
@@ -790,6 +825,7 @@ function printUrlPermissionDiagnostic(
       result.connector.connectorSlug,
       result.permission.policy,
       agentId,
+      request,
     );
   }
   console.log("");
@@ -819,6 +855,7 @@ function printEnvironmentPermissionDiagnostic(
     permissionName,
     result.permission,
     agentId,
+    undefined,
   );
   console.log("");
 }
@@ -913,7 +950,7 @@ How connectors work:
       const method = opts.method.toUpperCase();
       const request = buildDiagnosticRequest(opts, method);
       const diagnostic = await diagnoseZeroConnectorCheck(request);
-      const result = resolvedDiagnostic(request, diagnostic);
+      const result = resolveConnectorCheckDiagnostic(request, diagnostic);
 
       printDiagnosticSummary(request, result);
       console.log("");
@@ -947,7 +984,11 @@ How connectors work:
       console.log("");
 
       if (result.mode === "url") {
-        printUrlPermissionDiagnostic(result, ctx.agentId);
+        printUrlPermissionDiagnostic(
+          requireUrlRequest(request),
+          result,
+          ctx.agentId,
+        );
       } else {
         printEnvironmentPermissionDiagnostic(
           result,
