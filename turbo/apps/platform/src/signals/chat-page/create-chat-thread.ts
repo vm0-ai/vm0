@@ -4394,6 +4394,7 @@ export function createChatThreadSignals(
     ...messageActions,
     ...assistantErrorRecovery,
     scrollContainerOnRef$: events.scroll.scrollContainerOnRef$,
+    scrollContentOnRef$: events.scroll.scrollContentOnRef$,
     threadScrollPosition$: events.scroll.threadScrollPosition$,
     awayFromBottom$: events.scroll.awayFromBottom$,
     scrollTo$: events.scroll.scrollTo$,
