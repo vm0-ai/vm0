@@ -177,7 +177,7 @@ tests must not resolve a different mitmproxy version from production.
 | `test_auth_cache.py`                                    | Firewall auth cache expiry, refresh, coalescing, cancellation, identity, and eviction                                |
 | `test_firewall_auth_handling.py`                        | Direct firewall auth request mutation, identity, error mapping, metadata, admission, and cancellation                |
 | `test_firewall_auth_client.py`                          | Firewall auth webhook serialization, transport, parsing, body limits, structured errors, and resource cleanup        |
-| `test_platform_api.py`                                  | Shared platform API request headers, credential redirect policy, and URL validation                                  |
+| `test_platform_api.py`                                  | Shared platform API request headers, unredirected credentials, and URL validation                                    |
 | `test_auth_base_forwarder_security.py`                  | Auth-base destination validation, SSRF rejection, and validated TCP/TLS construction                                 |
 | `test_auth_base_forwarder_protocol.py`                  | Auth-base HTTP framing, header filtering, body bounds, and synchronous cleanup                                       |
 | `test_auth_base_forwarder_lifecycle.py`                 | Auth-base abort, admission, deadlines, cancellation, concurrency, worker, and shutdown behavior                      |
