@@ -1112,6 +1112,141 @@ async function sendChatRunMessage(
   return { runId: sent.body.runId, threadId: sent.body.threadId };
 }
 
+interface SameThreadAffinityHeartbeatArgs {
+  readonly admittableProfiles?: string[];
+  readonly mode?: "starting" | "running" | "draining" | "stopping";
+  readonly reusableSandbox?: {
+    readonly profile: string;
+    readonly historyGenerationRunId?: string;
+  };
+  readonly workspaceCaches?: {
+    readonly profile: string;
+    readonly workspaceAffinityVersion: 1;
+  }[];
+}
+
+async function setupSameThreadAffinityScenario() {
+  const api = createRunsApi(context);
+  const chat = createChatFilesBddApi(context);
+  const webhooks = createWebhookCallbackApi(context);
+  const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+  const first = await sendChatRunMessage(actor, {
+    agentId,
+    prompt: "start affinity-protected session",
+  });
+  const firstClaim = await api.claimRunnerJob(first.runId);
+  const cliAgentSessionId = `bdd-affinity-cli-${first.runId}`;
+  const reuseKey = `thread:${first.threadId}`;
+  const affinityRunnerId = randomUUID();
+  const history = `bdd affinity history ${first.runId}`;
+  const historyHash = createHash("sha256").update(history).digest("hex");
+  mockSessionHistoryBlob(historyHash, history);
+  await webhooks.requestAgentCheckpoint(
+    {
+      runId: first.runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId,
+      cliAgentSessionHistoryHash: historyHash,
+    },
+    { authorization: `Bearer ${firstClaim.sandboxToken}` },
+    [200],
+  );
+  await webhooks.requestAgentComplete(
+    { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+    { authorization: `Bearer ${firstClaim.sandboxToken}` },
+    [200],
+  );
+  await flushWaitUntilForTest();
+
+  let affinitySnapshotSequence = 0;
+  function nextAffinitySnapshotSequence(): number {
+    affinitySnapshotSequence += 1;
+    return affinitySnapshotSequence;
+  }
+
+  async function heartbeatHolder(
+    args: SameThreadAffinityHeartbeatArgs,
+  ): Promise<void> {
+    const lastCompletedAt = nowDate().toISOString();
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: affinityRunnerId,
+      group: runnerGroup,
+      snapshotGeneration: 1,
+      snapshotSequence: nextAffinitySnapshotSequence(),
+      admittableProfiles: args.admittableProfiles,
+      heldSandboxStates: args.reusableSandbox
+        ? [
+            {
+              reuseKey,
+              lastCompletedAt,
+              reusableSandbox: args.reusableSandbox,
+            },
+          ]
+        : [],
+      heldWorkspaceStates: args.workspaceCaches
+        ? [
+            {
+              reuseKey,
+              lastCompletedAt,
+              workspaceCaches: args.workspaceCaches,
+            },
+          ]
+        : [],
+      mode: args.mode,
+    });
+  }
+
+  async function pollFollowUp(prompt: string, cancelAfterPoll = true) {
+    const run = await sendChatRunMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt,
+    });
+    const poll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (poll.status !== 200) {
+      throw new Error("Expected affinity poll to return 200");
+    }
+    expect(poll.body.job?.runId).toBe(run.runId);
+    if (cancelAfterPoll) {
+      await api.requestCancelRun(actor, run.runId, [200]);
+      await flushWaitUntilForTest();
+    }
+    return { run, job: poll.body.job };
+  }
+
+  async function waitForCancellation(runId: string): Promise<void> {
+    await expect
+      .poll(async () => {
+        const events = await chat.listThreadEvents(actor, first.threadId);
+        return events.events.some((event) => {
+          return event.eventType === "run.cancelled" && event.runId === runId;
+        });
+      })
+      .toBe(true);
+  }
+
+  return {
+    actor,
+    affinityRunnerId,
+    agentId,
+    api,
+    cliAgentSessionId,
+    first,
+    heartbeatHolder,
+    nextAffinitySnapshotSequence,
+    pollFollowUp,
+    reuseKey,
+    runnerGroup,
+    waitForCancellation,
+    webhooks,
+  };
+}
+
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
   it("emits api dispatch timing for direct dispatch runs", async () => {
     const api = createRunsApi(context);
@@ -3463,126 +3598,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(completed.status).toBe("completed");
   });
 
-  it("exposes same-thread affinity metadata to runner poll responses", async () => {
-    const api = createRunsApi(context);
-    const chat = createChatFilesBddApi(context);
-    const webhooks = createWebhookCallbackApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-
-    const first = await sendChatRunMessage(actor, {
-      agentId,
-      prompt: "start affinity-protected session",
-    });
-    const firstClaim = await api.claimRunnerJob(first.runId);
-    const cliAgentSessionId = `bdd-affinity-cli-${first.runId}`;
-    const reuseKey = `thread:${first.threadId}`;
-    const affinityRunnerId = randomUUID();
-    const history = `bdd affinity history ${first.runId}`;
-    const historyHash = createHash("sha256").update(history).digest("hex");
-    mockSessionHistoryBlob(historyHash, history);
-    await webhooks.requestAgentCheckpoint(
-      {
-        runId: first.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId,
-        cliAgentSessionHistoryHash: historyHash,
-      },
-      { authorization: `Bearer ${firstClaim.sandboxToken}` },
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
-      { authorization: `Bearer ${firstClaim.sandboxToken}` },
-      [200],
-    );
-    await flushWaitUntilForTest();
-
-    let affinitySnapshotSequence = 0;
-    function nextAffinitySnapshotSequence(): number {
-      affinitySnapshotSequence += 1;
-      return affinitySnapshotSequence;
-    }
-
-    async function heartbeatHolder(args: {
-      readonly admittableProfiles?: string[];
-      readonly mode?: "starting" | "running" | "draining" | "stopping";
-      readonly reusableSandbox?: {
-        readonly profile: string;
-        readonly historyGenerationRunId?: string;
-      };
-      readonly workspaceCaches?: {
-        readonly profile: string;
-        readonly workspaceAffinityVersion: 1;
-      }[];
-    }): Promise<void> {
-      const lastCompletedAt = nowDate().toISOString();
-      await api.requestHeartbeatRunner(true, [200], {
-        runnerId: affinityRunnerId,
-        group: runnerGroup,
-        snapshotGeneration: 1,
-        snapshotSequence: nextAffinitySnapshotSequence(),
-        admittableProfiles: args.admittableProfiles,
-        heldSandboxStates: args.reusableSandbox
-          ? [
-              {
-                reuseKey,
-                lastCompletedAt,
-                reusableSandbox: args.reusableSandbox,
-              },
-            ]
-          : [],
-        heldWorkspaceStates: args.workspaceCaches
-          ? [
-              {
-                reuseKey,
-                lastCompletedAt,
-                workspaceCaches: args.workspaceCaches,
-              },
-            ]
-          : [],
-        mode: args.mode,
-      });
-    }
-
-    async function pollFollowUp(
-      prompt: string,
-      cancelAfterPoll = true,
-      pollAtMs?: number,
-    ) {
-      const run = await sendChatRunMessage(actor, {
-        agentId,
-        threadId: first.threadId,
-        prompt,
-      });
-      if (pollAtMs !== undefined) {
-        mockNow(pollAtMs);
-      }
-      const poll = await api.requestPollRunner(
-        true,
-        { group: runnerGroup, supportedProfiles: ["vm0/default"] },
-        [200],
-      );
-      if (poll.status !== 200) {
-        throw new Error("Expected affinity poll to return 200");
-      }
-      expect(poll.body.job?.runId).toBe(run.runId);
-      if (cancelAfterPoll) {
-        await api.requestCancelRun(actor, run.runId, [200]);
-        await flushWaitUntilForTest();
-      }
-      return { run, job: poll.body.job };
-    }
-
-    async function waitForCancellation(runId: string): Promise<void> {
-      await expect
-        .poll(async () => {
-          const events = await chat.listThreadEvents(actor, first.threadId);
-          return events.events.some((event) => {
-            return event.eventType === "run.cancelled" && event.runId === runId;
-          });
-        })
-        .toBe(true);
-    }
+  it("selects same-thread affinity metadata from runner heartbeats", async () => {
+    const {
+      affinityRunnerId,
+      api,
+      cliAgentSessionId,
+      first,
+      heartbeatHolder,
+      nextAffinitySnapshotSequence,
+      pollFollowUp,
+      reuseKey,
+      runnerGroup,
+    } = await setupSameThreadAffinityScenario();
 
     function rawHeartbeatBody(
       extra: Record<string, unknown>,
@@ -3821,6 +3848,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         );
       }
     }
+  });
+
+  it("omits same-thread affinity for unavailable holders", async () => {
+    const {
+      actor,
+      api,
+      cliAgentSessionId,
+      first,
+      heartbeatHolder,
+      pollFollowUp,
+      waitForCancellation,
+      webhooks,
+    } = await setupSameThreadAffinityScenario();
 
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
@@ -3912,6 +3952,21 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       historyGenerationAffinityProtectedUntil(drainingHolder.job),
     ).toBeNull();
+  });
+
+  it("preserves same-thread affinity timing across queued admission", async () => {
+    const {
+      actor,
+      agentId,
+      api,
+      cliAgentSessionId,
+      first,
+      heartbeatHolder,
+      reuseKey,
+      runnerGroup,
+      waitForCancellation,
+      webhooks,
+    } = await setupSameThreadAffinityScenario();
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -4057,22 +4112,30 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await waitForCancellation(protectedFollowUp.runId);
 
     const generationExpiredAt = now();
-    const generationExpiredFollowUp = await pollFollowUp(
-      "continue after exact generation protection expires",
-      false,
-      generationExpiredAt + 600,
-    );
-    expect(
-      historyGenerationAffinityProtectedUntil(generationExpiredFollowUp.job),
-    ).toBeNull();
-    expect(sessionAffinityProtectedUntil(generationExpiredFollowUp.job)).toBe(
-      new Date(generationExpiredAt + 2000).toISOString(),
-    );
-    await api.requestCancelRun(
-      actor,
-      generationExpiredFollowUp.run.runId,
+    const generationExpiredRun = await sendChatRunMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue after exact generation protection expires",
+    });
+    mockNow(generationExpiredAt + 600);
+    const generationExpiredPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
       [200],
     );
+    if (generationExpiredPoll.status !== 200) {
+      throw new Error("Expected affinity poll to return 200");
+    }
+    expect(generationExpiredPoll.body.job?.runId).toBe(
+      generationExpiredRun.runId,
+    );
+    expect(
+      historyGenerationAffinityProtectedUntil(generationExpiredPoll.body.job),
+    ).toBeNull();
+    expect(sessionAffinityProtectedUntil(generationExpiredPoll.body.job)).toBe(
+      new Date(generationExpiredAt + 2000).toISOString(),
+    );
+    await api.requestCancelRun(actor, generationExpiredRun.runId, [200]);
     await flushWaitUntilForTest();
 
     const expiredFollowUp = await sendChatRunMessage(actor, {
