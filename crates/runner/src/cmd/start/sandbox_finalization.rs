@@ -96,7 +96,7 @@ pub(super) struct FinalizeContext {
     pub(super) factory: Arc<Box<dyn SandboxFactory>>,
     pub(super) idle_pool: SharedIdlePool,
     pub(super) status: Arc<StatusTracker>,
-    pub(super) park_notify: Arc<tokio::sync::Notify>,
+    pub(super) reuse_state_notify: Arc<tokio::sync::Notify>,
     pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
     pub(super) parking_gate: ParkingGate,
     pub(super) network_log_drain: NetworkLogDrainCoordinator,
@@ -136,7 +136,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         factory,
         idle_pool,
         status,
-        park_notify,
+        reuse_state_notify,
         workspace_cache_snapshot,
         parking_gate,
         network_log_drain,
@@ -457,7 +457,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                             .publish_idle_status_after_pool_transfer(snapshot)
                             .await;
                         session_affinity_changed = true;
-                        park_notify.notify_one();
+                        reuse_state_notify.notify_one();
                         BudgetOwnership::idle_owned()
                     }
                     ParkResult::Replaced(evicted) => {
@@ -482,13 +482,13 @@ pub(super) async fn finalize_sandbox_for_completion(
                             .publish_idle_status_after_pool_transfer(snapshot)
                             .await;
                         session_affinity_changed = true;
-                        park_notify.notify_one();
+                        reuse_state_notify.notify_one();
                         // The replaced VM was park()ed when it entered the
                         // pool; destroying a parked sandbox is safe — Drop
                         // aborts any leftover handles and the FC process is
                         // killed regardless of balloon state.
                         if destroy_idle_jobs_and_wait(vec![evicted], "park_replaced").await {
-                            park_notify.notify_one();
+                            reuse_state_notify.notify_one();
                         }
                         BudgetOwnership::idle_owned()
                     }
@@ -865,7 +865,7 @@ mod tests {
                 factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
                 idle_pool: Arc::clone(&self.idle_pool),
                 status: Arc::clone(&self.status),
-                park_notify: Arc::new(tokio::sync::Notify::new()),
+                reuse_state_notify: Arc::new(tokio::sync::Notify::new()),
                 workspace_cache_snapshot: WorkspaceCacheStateSnapshot::new(),
                 parking_gate: self.parking_gate.clone(),
                 network_log_drain: NetworkLogDrainCoordinator::noop(),
@@ -2354,7 +2354,7 @@ mod tests {
             ParkResult::Parked
         ));
 
-        let park_notify = Arc::new(tokio::sync::Notify::new());
+        let reuse_state_notify = Arc::new(tokio::sync::Notify::new());
         let (_budget, lease) = test_budget_lease();
         let network_log_session = fixture.network_log_session().await;
         let new_run_id = RunId::new_v4();
@@ -2366,7 +2366,7 @@ mod tests {
             network_log_session,
             RunCancellationHandle::new(),
         );
-        context.park_notify = Arc::clone(&park_notify);
+        context.reuse_state_notify = Arc::clone(&reuse_state_notify);
 
         let finalize_task = tokio::spawn(finalize_sandbox_for_completion(
             Some(Box::new(mock_sandbox_ready_for_idle_reuse(
@@ -2389,14 +2389,14 @@ mod tests {
             .await
             .expect("replaced idle destroy should reach destroy gate");
         assert!(
-            park_notify.notified().now_or_never().is_some(),
+            reuse_state_notify.notified().now_or_never().is_some(),
             "newly parked replacement should notify before replaced destroy finishes"
         );
 
         destroy_gate.release_one();
         let _completion_ready = finalize_task.await.expect("finalizer task should join");
         assert!(
-            park_notify.notified().now_or_never().is_some(),
+            reuse_state_notify.notified().now_or_never().is_some(),
             "replaced idle workspace cache promotion should notify after destroy"
         );
         assert!(

@@ -27,18 +27,31 @@ pub(super) fn active_reuse_keys(active_reuse_keys: &ActiveReuseKeys) -> HashSet<
     lock_counts(active_reuse_keys).keys().cloned().collect()
 }
 
+pub(super) fn contains_active_reuse_key(
+    active_reuse_keys: &ActiveReuseKeys,
+    reuse_key: &str,
+) -> bool {
+    lock_counts(active_reuse_keys).contains_key(reuse_key)
+}
+
 pub(super) struct ActiveReuseKeyGuard {
     active_reuse_keys: ActiveReuseKeys,
+    reuse_state_notify: Arc<tokio::sync::Notify>,
     reuse_key: Option<String>,
 }
 
 impl ActiveReuseKeyGuard {
-    pub(super) fn new(active_reuse_keys: ActiveReuseKeys, reuse_key: Option<String>) -> Self {
+    pub(super) fn new(
+        active_reuse_keys: ActiveReuseKeys,
+        reuse_state_notify: Arc<tokio::sync::Notify>,
+        reuse_key: Option<String>,
+    ) -> Self {
         if let Some(reuse_key) = reuse_key.as_deref() {
             insert_active_reuse_key(&active_reuse_keys, reuse_key);
         }
         Self {
             active_reuse_keys,
+            reuse_state_notify,
             reuse_key,
         }
     }
@@ -48,6 +61,7 @@ impl ActiveReuseKeyGuard {
             return false;
         };
         remove_active_reuse_key(&self.active_reuse_keys, &reuse_key);
+        self.reuse_state_notify.notify_one();
         true
     }
 }
@@ -56,6 +70,7 @@ impl Drop for ActiveReuseKeyGuard {
     fn drop(&mut self) {
         if let Some(reuse_key) = self.reuse_key.as_deref() {
             remove_active_reuse_key(&self.active_reuse_keys, reuse_key);
+            self.reuse_state_notify.notify_one();
         }
     }
 }
@@ -88,7 +103,11 @@ mod tests {
     #[test]
     fn active_reuse_key_guard_registers_and_unregisters_initial_key() {
         let registry = new_active_reuse_keys();
-        let guard = ActiveReuseKeyGuard::new(Arc::clone(&registry), Some("thread:thread-2".into()));
+        let guard = ActiveReuseKeyGuard::new(
+            Arc::clone(&registry),
+            Arc::new(tokio::sync::Notify::new()),
+            Some("thread:thread-2".into()),
+        );
 
         assert!(active_reuse_keys(&registry).contains("thread:thread-2"));
 

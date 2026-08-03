@@ -72,7 +72,7 @@ pub(super) struct SpawnContext {
     /// affinity state changes. This eliminates the up-to-10s blind spot where
     /// the server does not know which runner holds a reusable sandbox or
     /// workspace image cache.
-    pub(super) park_notify: Arc<tokio::sync::Notify>,
+    pub(super) reuse_state_notify: Arc<tokio::sync::Notify>,
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
     pub(super) active_reuse_keys: ActiveReuseKeys,
@@ -242,7 +242,7 @@ struct FinalizationPhase {
     factory: SharedFactory,
     idle_pool: SharedIdlePool,
     status: Arc<StatusTracker>,
-    park_notify: Arc<tokio::sync::Notify>,
+    reuse_state_notify: Arc<tokio::sync::Notify>,
     workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
     parking_gate: ParkingGate,
     network_log_drain: NetworkLogDrainCoordinator,
@@ -276,7 +276,7 @@ impl FinalizationPhase {
             factory,
             idle_pool,
             status,
-            park_notify,
+            reuse_state_notify,
             workspace_cache_snapshot,
             parking_gate,
             network_log_drain,
@@ -339,7 +339,7 @@ impl FinalizationPhase {
                 factory,
                 idle_pool,
                 status,
-                park_notify,
+                reuse_state_notify,
                 workspace_cache_snapshot,
                 parking_gate,
                 network_log_drain,
@@ -415,7 +415,7 @@ struct CompletionPhase {
     provider: Arc<dyn JobProvider>,
     status: Arc<StatusTracker>,
     usage_flush_tx: mpsc::Sender<()>,
-    park_notify: Arc<tokio::sync::Notify>,
+    reuse_state_notify: Arc<tokio::sync::Notify>,
     active_reuse_key_guard: ActiveReuseKeyGuard,
     cleanup_state: RunCleanupState,
 }
@@ -427,7 +427,7 @@ impl CompletionPhase {
             provider,
             status,
             usage_flush_tx,
-            park_notify,
+            reuse_state_notify,
             active_reuse_key_guard,
             cleanup_state,
         } = self;
@@ -454,7 +454,7 @@ impl CompletionPhase {
             );
         }
         if session_affinity_changed {
-            park_notify.notify_one();
+            reuse_state_notify.notify_one();
         }
     }
 }
@@ -581,7 +581,7 @@ pub(super) fn spawn_job(
     let exec_config = Arc::clone(&ctx.exec_config);
     let status = Arc::clone(&ctx.status);
     let idle_pool = Arc::clone(&ctx.idle_pool);
-    let park_notify = Arc::clone(&ctx.park_notify);
+    let reuse_state_notify = Arc::clone(&ctx.reuse_state_notify);
     let workspace_cache_snapshot = ctx.workspace_cache_snapshot.clone();
     let usage_flush_tx = ctx.usage_flush_tx.clone();
     let parking_gate = ctx.parking_gate.clone();
@@ -655,7 +655,7 @@ pub(super) fn spawn_job(
         factory,
         idle_pool: Arc::clone(&idle_pool),
         status: Arc::clone(&status),
-        park_notify: Arc::clone(&park_notify),
+        reuse_state_notify: Arc::clone(&reuse_state_notify),
         workspace_cache_snapshot,
         parking_gate,
         network_log_drain: exec_config.network_log_drain.clone(),
@@ -701,7 +701,7 @@ pub(super) fn spawn_job(
                 provider,
                 status,
                 usage_flush_tx,
-                park_notify,
+                reuse_state_notify,
                 active_reuse_key_guard,
                 cleanup_state: cleanup_state_for_body,
             }
@@ -873,7 +873,7 @@ mod tests {
         status: Arc<StatusTracker>,
         idle_pool: SharedIdlePool,
         parking_gate: ParkingGate,
-        park_notify: Arc<tokio::sync::Notify>,
+        reuse_state_notify: Arc<tokio::sync::Notify>,
     }
 
     impl FinalizationTelemetryFixture {
@@ -900,7 +900,7 @@ mod tests {
                 status,
                 idle_pool,
                 parking_gate,
-                park_notify: Arc::new(tokio::sync::Notify::new()),
+                reuse_state_notify: Arc::new(tokio::sync::Notify::new()),
             }
         }
 
@@ -927,7 +927,7 @@ mod tests {
                 factory: Arc::new(Box::new(sandbox_mock::MockSandboxFactory::new())),
                 idle_pool: Arc::clone(&self.idle_pool),
                 status: Arc::clone(&self.status),
-                park_notify: Arc::clone(&self.park_notify),
+                reuse_state_notify: Arc::clone(&self.reuse_state_notify),
                 workspace_cache_snapshot: WorkspaceCacheStateSnapshot::new(),
                 parking_gate: self.parking_gate.clone(),
                 network_log_drain: NetworkLogDrainCoordinator::noop(),
@@ -1151,13 +1151,20 @@ mod tests {
             ))
             .await;
         assert!(
-            fixture.park_notify.notified().now_or_never().is_some(),
+            fixture
+                .reuse_state_notify
+                .notified()
+                .now_or_never()
+                .is_some(),
             "finalizer should send the early park refresh"
         );
 
         let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
-        let active_reuse_key_guard =
-            ActiveReuseKeyGuard::new(Arc::clone(&active_reuse_keys), Some(session_id.to_owned()));
+        let active_reuse_key_guard = ActiveReuseKeyGuard::new(
+            Arc::clone(&active_reuse_keys),
+            Arc::clone(&fixture.reuse_state_notify),
+            Some(session_id.to_owned()),
+        );
         let (usage_flush_tx, _usage_flush_rx) = mpsc::channel(1);
 
         CompletionPhase {
@@ -1165,7 +1172,7 @@ mod tests {
             provider: Arc::new(NoopCompletionProvider),
             status: Arc::clone(&fixture.status),
             usage_flush_tx,
-            park_notify: Arc::clone(&fixture.park_notify),
+            reuse_state_notify: Arc::clone(&fixture.reuse_state_notify),
             active_reuse_key_guard,
             cleanup_state: RunCleanupState::new(),
         }
@@ -1180,7 +1187,11 @@ mod tests {
             "completion should release the active reuse-key guard before notifying"
         );
         assert!(
-            fixture.park_notify.notified().now_or_never().is_some(),
+            fixture
+                .reuse_state_notify
+                .notified()
+                .now_or_never()
+                .is_some(),
             "completion should send a post-guard-release refresh"
         );
     }

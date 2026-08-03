@@ -31,6 +31,7 @@ use super::builtin_firewall_catalog::{
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
+    parse_runner_preference,
 };
 use crate::active_input::{ActiveInputAblyNotifications, ActiveInputSource};
 use crate::duration::duration_ms;
@@ -47,9 +48,17 @@ use sandbox::SandboxId;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ClaimRequestBody {
+struct ClaimRequestBody<'a> {
     active_input: bool,
+    runner_identity: ClaimRunnerIdentity<'a>,
     telemetry: ClaimRequestTelemetry,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClaimRunnerIdentity<'a> {
+    runner_id: &'a str,
+    heartbeat_generation: u64,
 }
 
 #[derive(Serialize)]
@@ -577,25 +586,24 @@ impl JobProvider for ApiProvider {
                     }
                     let run_id = job.run_id;
                     let reuse_key = job.reuse_key().map(str::to_owned);
-                    let cli_agent_session_id = job.cli_agent_session_id;
                     let history_generation_run_id = job.history_generation_run_id;
-                    let history_generation_affinity_protected_until =
-                        job.history_generation_affinity_protected_until;
-                    let affinity_protected_until = job.affinity_protected_until;
-                    let session_affinity_resource = job.session_affinity_resource;
+                    let runner_preference = match parse_runner_preference(job.runner_preference) {
+                        Ok(runner_preference) => runner_preference,
+                        Err(error) => {
+                            warn!(
+                                run_id = %run_id,
+                                error = %error,
+                                "poll: invalid runner preference, using ordinary admission"
+                            );
+                            None
+                        }
+                    };
                     let profile = job.experimental_profile;
                     info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
                     let mut candidate = JobCandidate::new(run_id, profile)
-                        .with_affinity_metadata(
-                            reuse_key,
-                            cli_agent_session_id,
-                            affinity_protected_until,
-                        )
-                        .with_session_affinity_resource(session_affinity_resource)
+                        .with_reuse_key(reuse_key)
                         .with_history_generation_run_id(history_generation_run_id)
-                        .with_history_generation_affinity_protected_until(
-                            history_generation_affinity_protected_until,
-                        )
+                        .with_runner_preference(runner_preference)
                         .with_discovery_source(JobDiscoverySource::Poll)
                         .with_poll_reason(poll_reason_value(reason))
                         .with_poll_timing(poll_due_started_at.elapsed(), http_request_elapsed);
@@ -635,7 +643,11 @@ impl JobProvider for ApiProvider {
 
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
-        match self.api.claim(&candidate).await {
+        match self
+            .api
+            .claim(&candidate, &self.runner_id, self.heartbeat_generation)
+            .await
+        {
             Ok(Some(ctx)) => {
                 let active_input_source = if ctx.active_input == Some(true) {
                     if ctx.active_input_ably == Some(true) {
@@ -705,8 +717,10 @@ impl JobProvider for ApiProvider {
         }
     }
 
-    async fn defer_poll_after(&self, delay: Duration) {
-        self.poll_wakeups.request_deferred_poll_after(delay).await;
+    async fn defer_poll_until(&self, deadline: Instant) {
+        self.poll_wakeups
+            .request_deferred_poll_until(deadline)
+            .await;
     }
 
     async fn shutdown(&self) {
@@ -992,9 +1006,11 @@ impl ApiClient {
     async fn claim(
         &self,
         candidate: &JobCandidate,
+        runner_id: &str,
+        heartbeat_generation: u64,
     ) -> Result<Option<ExecutionContext>, ClaimApiError> {
         let run_id = candidate.run_id();
-        let body = claim_request_body(candidate);
+        let body = claim_request_body(candidate, runner_id, heartbeat_generation);
         let run_id = run_id.to_string();
         let resp = send_api(
             self.http
@@ -1058,6 +1074,15 @@ impl ApiClient {
                 text: entry.text,
             })
             .collect())
+    }
+
+    #[cfg(test)]
+    async fn claim_for_test(
+        &self,
+        candidate: &JobCandidate,
+    ) -> Result<Option<ExecutionContext>, ClaimApiError> {
+        self.claim(candidate, "550e8400-e29b-41d4-a716-446655440000", 7)
+            .await
     }
 
     /// Report job completion. Uses the per-job **sandbox token** for auth.
@@ -1179,7 +1204,11 @@ impl ApiClient {
     }
 }
 
-fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
+fn claim_request_body<'a>(
+    candidate: &JobCandidate,
+    runner_id: &'a str,
+    heartbeat_generation: u64,
+) -> ClaimRequestBody<'a> {
     let is_ably_candidate = candidate.discovery_source() == Some(JobDiscoverySource::Ably);
     let (
         direct_candidate_notification_to_enqueue_ms,
@@ -1207,6 +1236,10 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
 
     ClaimRequestBody {
         active_input: true,
+        runner_identity: ClaimRunnerIdentity {
+            runner_id,
+            heartbeat_generation,
+        },
         telemetry: ClaimRequestTelemetry {
             discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
             job_discovered_to_claim_request_ms: claim_telemetry_duration_ms(
@@ -1563,11 +1596,18 @@ mod tests {
     use uuid::Uuid;
 
     use crate::http::HttpClientConfig;
+    use crate::provider::RunnerPreferenceReason;
 
     const RUNNER_CLAIM_RESPONSE_FIXTURE: &str = include_str!(
         "../../../../turbo/packages/api-contracts/src/contracts/__tests__/fixtures/runner-claim-response.json"
     );
     const RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID: &str = "00000000-0000-4000-8000-000000020985";
+    const TEST_RUNNER_ID: &str = "550e8400-e29b-41d4-a716-446655440000";
+    const TEST_HEARTBEAT_GENERATION: u64 = 7;
+
+    fn claim_request_body_for_test(candidate: &JobCandidate) -> ClaimRequestBody<'_> {
+        claim_request_body(candidate, TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION)
+    }
 
     fn api_client_for_server(server: &MockServer) -> ApiClient {
         ApiClient::new(
@@ -2131,8 +2171,6 @@ mod tests {
     #[test]
     fn claim_request_body_serializes_runner_timing() {
         let now = std::time::Instant::now();
-        let target_generation_run_id: RunId =
-            "00000000-0000-0000-0000-000000000099".parse().unwrap();
         let candidate = JobCandidate::new_with_timing_for_test(
             RunId::nil(),
             crate::profile::DEFAULT_PROFILE.to_string(),
@@ -2140,16 +2178,17 @@ mod tests {
             Some(now.checked_sub(Duration::from_millis(7)).unwrap()),
         )
         .with_discovery_source(JobDiscoverySource::Poll)
-        .with_session_affinity_resource(Some(
-            crate::types::SessionAffinityResource::ReusableSandbox,
-        ))
-        .with_history_generation_run_id(Some(target_generation_run_id))
         .with_poll_reason("deferred")
         .with_poll_timing(Duration::from_millis(19), Duration::from_millis(11));
 
-        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
 
         assert_eq!(body["activeInput"], true);
+        assert_eq!(body["runnerIdentity"]["runnerId"], TEST_RUNNER_ID);
+        assert_eq!(
+            body["runnerIdentity"]["heartbeatGeneration"],
+            TEST_HEARTBEAT_GENERATION
+        );
         assert_eq!(body["telemetry"]["discoverySource"], "poll");
         assert!(
             body["telemetry"]["jobDiscoveredToClaimRequestMs"]
@@ -2171,11 +2210,7 @@ mod tests {
                 .is_none()
         );
         assert!(body["telemetry"].get("localAdmissionResource").is_none());
-        assert!(
-            !body
-                .to_string()
-                .contains(&target_generation_run_id.to_string())
-        );
+        assert!(body.get("runnerPreference").is_none());
         assert!(!body.to_string().contains("rawSizeBytes"));
         assert!(!body.to_string().contains("sessionId"));
         assert!(!body.to_string().contains("historyHash"));
@@ -2197,7 +2232,7 @@ mod tests {
         candidate.mark_main_loop_handling_started();
         candidate.mark_local_admission_started();
 
-        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
 
         assert_eq!(body["telemetry"]["discoverySource"], "ably");
         assert_eq!(
@@ -2230,7 +2265,7 @@ mod tests {
         candidate.mark_main_loop_handling_started();
         candidate.mark_local_admission_started();
 
-        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
 
         assert_eq!(body["telemetry"]["discoverySource"], "poll");
         assert!(
@@ -2264,7 +2299,7 @@ mod tests {
                     Duration::from_millis(CLAIM_TELEMETRY_DURATION_MS_MAX + 1),
                 );
 
-        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
 
         assert_eq!(
             body["telemetry"]["pollDueToJobDiscoveredMs"],
@@ -2286,7 +2321,7 @@ mod tests {
             None,
         );
 
-        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
 
         assert!(
             body["telemetry"]["jobDiscoveredToClaimRequestMs"]
@@ -2330,7 +2365,7 @@ mod tests {
             JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
                 .with_discovery_source(JobDiscoverySource::Ably);
 
-        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
 
         assert_eq!(body["telemetry"]["discoverySource"], "ably");
         assert!(body["telemetry"].get("pollDueToJobDiscoveredMs").is_none());
@@ -2436,23 +2471,66 @@ mod tests {
 
         assert_eq!(discovered.run_id(), run_id);
         assert_eq!(discovered.profile_name(), "vm0/large");
-        assert_eq!(discovered.cli_agent_session_id(), Some("sess-poll"));
         assert_eq!(
             discovered.history_generation_run_id(),
             Some(history_generation_run_id)
         );
-        assert!(discovered.is_affinity_protected());
-        assert!(discovered.is_history_generation_affinity_protected());
+        let preference = discovered
+            .runner_preference()
+            .expect("canonical preference should be parsed");
         assert_eq!(
-            discovered.session_affinity_resource(),
-            Some(crate::types::SessionAffinityResource::ReusableSandbox)
+            preference.reason(),
+            RunnerPreferenceReason::ExactHistoryGeneration
         );
+        assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
         assert_eq!(
             discovered.discovery_source(),
             Some(JobDiscoverySource::Poll)
         );
         assert!(discovered.poll_due_to_job_discovered_elapsed().is_some());
         assert!(discovered.poll_http_request_elapsed().is_some());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn discover_preserves_poll_job_with_malformed_optional_preference() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::new_v4();
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(200).json_body(serde_json::json!({
+                    "job": {
+                        "runId": run_id,
+                        "experimentalProfile": "vm0/default",
+                        "reuseKey": "thread:malformed-preference",
+                        "runnerPreference": {
+                            "runnerIdentity": {
+                                "runnerId": TEST_RUNNER_ID,
+                                "heartbeatGeneration": 0
+                            },
+                            "reason": "matchingReuseKey",
+                            "expiresAt": "2999-01-01T00:00:00.000Z"
+                        }
+                    }
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test_with_supported_profiles(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+            vec!["vm0/default".to_string()],
+        );
+
+        let candidate = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("discover should preserve the job")
+            .expect("job candidate");
+
+        assert_eq!(candidate.run_id(), run_id);
+        assert_eq!(candidate.reuse_key(), Some("thread:malformed-preference"));
+        assert!(candidate.runner_preference().is_none());
         mock.assert_async().await;
     }
 
@@ -3235,7 +3313,7 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
-        let outcome = api.claim(&candidate).await.unwrap();
+        let outcome = api.claim_for_test(&candidate).await.unwrap();
 
         assert!(outcome.is_none());
         mock.assert_async().await;
@@ -3255,7 +3333,7 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
-        let error = api.claim(&candidate).await.unwrap_err();
+        let error = api.claim_for_test(&candidate).await.unwrap_err();
 
         let ClaimApiError::Request(error) = error else {
             panic!("expected ClaimApiError::Request");
@@ -3288,7 +3366,7 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .claim(&JobCandidate::new(
+            .claim_for_test(&JobCandidate::new(
                 run_id,
                 crate::profile::DEFAULT_PROFILE.to_string(),
             ))
@@ -3337,7 +3415,7 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .claim(&JobCandidate::new(
+            .claim_for_test(&JobCandidate::new(
                 run_id,
                 crate::profile::DEFAULT_PROFILE.to_string(),
             ))
@@ -3386,7 +3464,7 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .claim(&JobCandidate::new(
+            .claim_for_test(&JobCandidate::new(
                 run_id,
                 crate::profile::DEFAULT_PROFILE.to_string(),
             ))
@@ -3445,7 +3523,7 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .claim(&JobCandidate::new(
+            .claim_for_test(&JobCandidate::new(
                 run_id,
                 crate::profile::DEFAULT_PROFILE.to_string(),
             ))
@@ -3493,7 +3571,7 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .claim(&JobCandidate::new(
+            .claim_for_test(&JobCandidate::new(
                 run_id,
                 crate::profile::DEFAULT_PROFILE.to_string(),
             ))
@@ -3758,7 +3836,17 @@ mod tests {
         let claim_path = format!("/api/runners/jobs/{run_id}/claim");
         let claim_mock = server
             .mock_async(|when, then| {
-                when.method(POST).path(claim_path.as_str());
+                when.method(POST)
+                    .path(claim_path.as_str())
+                    .json_body_includes(
+                        serde_json::json!({
+                            "runnerIdentity": {
+                                "runnerId": TEST_RUNNER_ID,
+                                "heartbeatGeneration": TEST_HEARTBEAT_GENERATION,
+                            }
+                        })
+                        .to_string(),
+                    );
                 then.status(200).json_body(serde_json::json!({
                     "runId": run_id,
                     "prompt": "previous response",
