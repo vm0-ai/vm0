@@ -336,11 +336,12 @@ pub trait Sandbox: Send + Sync + Any {
     /// The guest path must be non-empty and must not contain NUL bytes.
     /// `max_bytes` must be positive and is subject to the backend read limit.
     ///
-    /// Returns `Ok(None)` when the backend cannot establish that the path
-    /// resolves to a regular file. This includes missing paths, paths to
-    /// non-regular filesystem objects, broken symlinks, and paths whose guest
-    /// filesystem metadata cannot be inspected. Symlinks that resolve to
-    /// regular files are followed and read.
+    /// Returns `Ok(None)` when the backend's guest-filesystem check cannot
+    /// establish that the path resolves to a regular file. This includes
+    /// missing paths, paths to non-regular filesystem objects, broken
+    /// symlinks, and paths whose guest filesystem metadata cannot be
+    /// inspected. Symlinks that resolve to regular files are followed and
+    /// read.
     ///
     /// A read that races with a path transition can also return `Ok(None)` if
     /// regular-file status can no longer be established. Invalid input,
