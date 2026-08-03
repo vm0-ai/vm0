@@ -2302,6 +2302,7 @@ name = "process-control-ipc"
 version = "0.3.3"
 dependencies = [
  "libc",
+ "proptest",
 ]
 
 [[package]]
