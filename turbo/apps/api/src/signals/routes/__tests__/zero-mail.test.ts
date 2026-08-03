@@ -761,15 +761,6 @@ describe("POST /api/zero/mail/drafts/link", () => {
       replyFollowUpEnabled: true,
     });
     mockGmailDraftApi();
-    const featureSwitches = await accept(
-      featureSwitchesClient().get({ headers: authHeaders() }),
-      [200],
-    );
-    expect(
-      featureSwitches.body.effectiveSwitches[
-        FeatureSwitchKey.ZeroMailReplyFollowUp
-      ],
-    ).toBeTruthy();
 
     const linked = await linkDraft(fixture);
     await accept(

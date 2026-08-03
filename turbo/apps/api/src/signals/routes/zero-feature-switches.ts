@@ -35,6 +35,7 @@ function featureSwitchResponseBody(params: {
     overrides: params.switches,
   });
   effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] =
+    effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] &&
     isZeroMailReplyFollowUpRolloutEnabled();
 
   return {
