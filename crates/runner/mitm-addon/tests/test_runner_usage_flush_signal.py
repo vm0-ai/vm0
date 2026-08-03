@@ -275,6 +275,58 @@ class TestRunnerUsageFlushSignal:
             flush_request_id="request-1",
         )
 
+    def test_worker_start_failure_releases_lock_and_retries_pending_signal(
+        self, runner_usage_flush_files: RunnerUsageFlushFiles
+    ) -> None:
+        startup_error = RuntimeError("can't start new thread")
+        runner_usage_flush_files.write_usage_flush_request()
+
+        with patch.object(
+            usage,
+            "flush_usage_events",
+            wraps=usage.flush_usage_events,
+        ) as flush_usage_events:
+            with (
+                patch.object(
+                    runner_flush_lifecycle.threading.Thread,
+                    "start",
+                    side_effect=startup_error,
+                ),
+                pytest.raises(RuntimeError) as exc_info,
+            ):
+                runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
+
+            assert exc_info.value is startup_error
+            assert runner_flush_lifecycle._usage_flush_requested
+            state_after_failed_start = json.loads(
+                runner_usage_flush_files.pending_path.read_text(encoding="utf-8")
+            )
+            assert "flushRequestId" not in state_after_failed_start
+
+            acquired = runner_flush_lifecycle._usage_flush_signal_lock.acquire(blocking=False)
+            try:
+                assert acquired
+            finally:
+                if acquired:
+                    runner_flush_lifecycle._usage_flush_signal_lock.release()
+
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
+            wait_for_usage_flush_worker_to_stop()
+
+        flush_usage_events.assert_called_once_with(trigger="runner")
+        assert_pending(
+            runner_usage_flush_files.pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-1",
+        )
+        assert not runner_flush_lifecycle._usage_flush_requested
+
+        runner_flush_lifecycle.reset_runner_usage_flush_state_for_tests()
+        assert runner_flush_lifecycle._runner_flush_phase == "running"
+        assert not runner_flush_lifecycle._usage_flush_requested
+
     def test_done_folds_signal_received_during_shutdown_into_acknowledgements(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ):
