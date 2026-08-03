@@ -6,7 +6,6 @@ import type { Db } from "../external/db";
 import {
   runnerReuseKeyTelemetryKind,
   runnerReusePreferenceLookupError,
-  runnerReusePreferenceTelemetryResource,
   resolveRunnerReusePreference,
 } from "./runner-reuse-preference";
 import { tapError } from "../utils";
@@ -61,11 +60,6 @@ export async function notifyRunnerJob(
     {
       reuseKey: args.reuseKey,
       cliAgentSessionId: args.cliAgentSessionId,
-      historyGenerationAffinityProtectedUntil:
-        reusePreference.historyGenerationProtectedUntil?.toISOString() ?? null,
-      affinityProtectedUntil:
-        reusePreference.protectedUntil?.toISOString() ?? null,
-      sessionAffinityResource: reusePreference.resource,
       historyGenerationRunId: args.historyGenerationRunId,
       runnerPreference: reusePreference.runnerPreference,
     },
@@ -76,10 +70,7 @@ export async function notifyRunnerJob(
     runner_group: args.runnerGroup,
     profile: args.profile,
     notification_target: "broadcast",
-    session_affinity: reusePreference.status,
-    session_affinity_resource:
-      runnerReusePreferenceTelemetryResource(reusePreference),
-    history_generation_affinity: reusePreference.historyGenerationStatus,
+    runner_preference_resolution: reusePreference.outcome,
     reuse_key_kind: runnerReuseKeyTelemetryKind(args.reuseKey),
   };
   // Queue-relative actions are cumulative boundaries. Preference lookup and

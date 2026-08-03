@@ -103,10 +103,10 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
+  type RunnerPreferenceResolutionOutcome,
   runnerReuseKeyTelemetryKind,
   runnerReusePreferenceLookupError,
   runnerReusePreferencePollPriority,
-  runnerReusePreferenceTelemetryResource,
   resolveRunnerReusePreference,
 } from "../services/runner-reuse-preference";
 import type { RouteEntry } from "../route-entry";
@@ -536,9 +536,7 @@ function recordPollTimingMetrics(args: {
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
   readonly pollReason: string | undefined;
-  readonly sessionAffinity: string;
-  readonly sessionAffinityResource: string;
-  readonly historyGenerationAffinity: string;
+  readonly runnerPreferenceResolution: RunnerPreferenceResolutionOutcome;
   readonly reuseKeyKind: "thread" | "session" | "none";
   readonly queueCreatedAtMs: number;
   readonly pollRequestStartedAtMs: number;
@@ -550,9 +548,7 @@ function recordPollTimingMetrics(args: {
     runner_group: args.runnerGroup,
     profile: args.profile,
     auth_type: args.authType,
-    session_affinity: args.sessionAffinity,
-    session_affinity_resource: args.sessionAffinityResource,
-    history_generation_affinity: args.historyGenerationAffinity,
+    runner_preference_resolution: args.runnerPreferenceResolution,
     reuse_key_kind: args.reuseKeyKind,
   };
   if (args.pollReason) {
@@ -733,10 +729,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     profile: pendingJob.profile,
     authType: auth.type,
     pollReason: body.data.telemetry?.pollReason,
-    sessionAffinity: reusePreference.status,
-    sessionAffinityResource:
-      runnerReusePreferenceTelemetryResource(reusePreference),
-    historyGenerationAffinity: reusePreference.historyGenerationStatus,
+    runnerPreferenceResolution: reusePreference.outcome,
     reuseKeyKind: runnerReuseKeyTelemetryKind(pendingJob.reuseKey),
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
     pollRequestStartedAtMs,
@@ -758,12 +751,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         cliAgentSessionId: pendingJob.cliAgentSessionId,
         reuseKey: pendingJob.reuseKey,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
-        historyGenerationAffinityProtectedUntil:
-          reusePreference.historyGenerationProtectedUntil?.toISOString() ??
-          null,
-        affinityProtectedUntil:
-          reusePreference.protectedUntil?.toISOString() ?? null,
-        sessionAffinityResource: reusePreference.resource ?? undefined,
         runnerPreference: reusePreference.runnerPreference ?? undefined,
       },
     },
@@ -2390,6 +2377,9 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   if (!body.ok) {
     return body.response;
+  }
+  if (auth.type === "official-runner" && !body.data.runnerIdentity) {
+    return badRequestMessage("Official runner claim requires runnerIdentity");
   }
 
   const runId = get(pathParamsOf(runnersJobClaimContract.claim)).id;
