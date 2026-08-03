@@ -17,6 +17,69 @@ BEGIN
 END;
 $$;--> statement-breakpoint
 
+-- The draining release still writes automation ids into run_group_id. Install
+-- compatibility bridges before cleanup so writes racing the backfill and
+-- writes arriving after it both satisfy the goal-only storage contract.
+CREATE OR REPLACE FUNCTION "bridge_goal_only_zero_run_group_0810"()
+RETURNS trigger AS $$
+BEGIN
+  NEW."run_group_id" := NEW."goal_id";
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;--> statement-breakpoint
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM "pg_trigger"
+    WHERE "tgrelid" = 'public.zero_runs'::regclass
+      AND "tgname" = 'bridge_goal_only_zero_run_group_0810'
+      AND NOT "tgisinternal"
+  ) THEN
+    CREATE TRIGGER "bridge_goal_only_zero_run_group_0810"
+    BEFORE INSERT OR UPDATE OF "run_group_id", "goal_id" ON "zero_runs"
+    FOR EACH ROW
+    EXECUTE FUNCTION "bridge_goal_only_zero_run_group_0810"();
+  END IF;
+END;
+$$;--> statement-breakpoint
+
+CREATE OR REPLACE FUNCTION "bridge_goal_only_chat_event_run_group_0810"()
+RETURNS trigger AS $$
+BEGIN
+  IF NEW."run_group_id" IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM "thread_goals" AS "goal"
+      WHERE "goal"."id" = NEW."run_group_id"
+        AND "goal"."chat_thread_id" = NEW."chat_thread_id"
+    )
+  THEN
+    NEW."run_group_id" := NULL;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;--> statement-breakpoint
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM "pg_trigger"
+    WHERE "tgrelid" = 'public.chat_events'::regclass
+      AND "tgname" = 'bridge_goal_only_chat_event_run_group_0810'
+      AND NOT "tgisinternal"
+  ) THEN
+    CREATE TRIGGER "bridge_goal_only_chat_event_run_group_0810"
+    BEFORE INSERT ON "chat_events"
+    FOR EACH ROW
+    EXECUTE FUNCTION "bridge_goal_only_chat_event_run_group_0810"();
+  END IF;
+END;
+$$;--> statement-breakpoint
+
 -- Keep append-only protection installed while narrowly permitting only a
 -- non-goal run_group_id to be cleared. Every other column remains immutable.
 CREATE OR REPLACE FUNCTION "reject_chat_event_source_update"() RETURNS trigger AS $$

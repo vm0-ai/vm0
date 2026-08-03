@@ -802,6 +802,75 @@ describe("chat lifecycle", () => {
     expect(screen.queryByLabelText("Active goal")).not.toBeInTheDocument();
   });
 
+  it("folds non-goal runs that share a run group id", async () => {
+    const threadId = "thread-non-goal-run-group-folding";
+    const runGroupId = "f0000001-0000-4000-a000-00000000071b";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Non-goal run group folding",
+      chatEvents: [
+        {
+          id: "msg-non-goal-run-group-user-1",
+          role: "user",
+          content: "First non-goal prompt",
+          runId: "f0000001-0000-4000-a000-00000000071c",
+          runGroupId,
+          isGoalRun: false,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-non-goal-run-group-assistant-1",
+          role: "assistant",
+          content: "First non-goal result",
+          runId: "f0000001-0000-4000-a000-00000000071c",
+          runGroupId,
+          isGoalRun: false,
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+        {
+          id: "msg-non-goal-run-group-user-2",
+          role: "user",
+          content: "Latest non-goal prompt",
+          runId: "f0000001-0000-4000-a000-00000000071d",
+          runGroupId,
+          isGoalRun: false,
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+        {
+          id: "msg-non-goal-run-group-assistant-2",
+          role: "assistant",
+          content: "Latest non-goal result",
+          runId: "f0000001-0000-4000-a000-00000000071d",
+          runGroupId,
+          isGoalRun: false,
+          createdAt: "2026-06-09T10:02:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Latest non-goal prompt")).toBeInTheDocument();
+      expect(screen.getByText("Latest non-goal result")).toBeInTheDocument();
+      expect(buttonByLabel("Expand grouped run history")).toBeInTheDocument();
+      expect(
+        screen.queryByText("First non-goal prompt"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("First non-goal result"),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(buttonByLabel("Expand grouped run history"));
+
+    await waitFor(() => {
+      expect(screen.getByText("First non-goal prompt")).toBeInTheDocument();
+      expect(screen.getByText("First non-goal result")).toBeInTheDocument();
+    });
+  });
+
   it("surfaces archived goal history in the latest assistant row", async () => {
     const threadId = "thread-goal-run-group-folding";
     const runGroupId = "f0000001-0000-4000-a000-00000000072b";

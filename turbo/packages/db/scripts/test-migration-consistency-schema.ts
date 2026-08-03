@@ -2630,6 +2630,13 @@ type PermanentFunction = {
 const EXPECTED_PERMANENT_TRIGGERS = [
   {
     definition:
+      "CREATE TRIGGER bridge_goal_only_chat_event_run_group_0810 BEFORE INSERT ON public.chat_events FOR EACH ROW EXECUTE FUNCTION bridge_goal_only_chat_event_run_group_0810()",
+    schemaName: "public",
+    tableName: "chat_events",
+    triggerName: "bridge_goal_only_chat_event_run_group_0810",
+  },
+  {
+    definition:
       "CREATE TRIGGER bridge_chat_event_run_event_sequence_number_0807 BEFORE INSERT ON public.chat_events FOR EACH ROW EXECUTE FUNCTION bridge_chat_event_run_event_sequence_number_0807()",
     schemaName: "public",
     tableName: "chat_events",
@@ -2754,6 +2761,13 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "video_artifacts",
     triggerName: "video_artifacts_delete_artifact_registry",
   },
+  {
+    definition:
+      "CREATE TRIGGER bridge_goal_only_zero_run_group_0810 BEFORE INSERT OR UPDATE OF run_group_id, goal_id ON public.zero_runs FOR EACH ROW EXECUTE FUNCTION bridge_goal_only_zero_run_group_0810()",
+    schemaName: "public",
+    tableName: "zero_runs",
+    triggerName: "bridge_goal_only_zero_run_group_0810",
+  },
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
@@ -2774,6 +2788,20 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "8a0560fcbbb11914a72bb7c9a6b86cb8",
     functionName: "bridge_chat_event_run_event_sequence_number_0807",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "d222c803fed6a784bf53288dd866f2a2",
+    functionName: "bridge_goal_only_chat_event_run_group_0810",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "24620b451e6c4d3c61ca9e449f5faa19",
+    functionName: "bridge_goal_only_zero_run_group_0810",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -18303,6 +18331,8 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
     goalRunId: "00000000-0000-4000-8000-000000081007",
     workflowEventId: "00000000-0000-4000-8000-000000081008",
     goalEventId: "00000000-0000-4000-8000-000000081009",
+    drainingWorkflowRunId: "00000000-0000-4000-8000-000000081010",
+    drainingWorkflowEventId: "00000000-0000-4000-8000-000000081011",
     orgId: "goal-only-run-groups-org",
     userId: "goal-only-run-groups-user",
   } as const;
@@ -18506,6 +18536,86 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
         { id: fixture.goalEventId, runGroupId: fixture.goalId },
       ]);
 
+      // Simulate the draining API after migration completion. Its legacy
+      // insert shape still sends the automation id as run_group_id to both
+      // tables; the compatibility bridges must normalize both writes.
+      await client.query(
+        `
+          INSERT INTO "agent_runs" (
+            "id",
+            "user_id",
+            "session_id",
+            "status",
+            "prompt",
+            "org_id"
+          )
+          VALUES ($1, $2, $3, 'running', 'draining workflow run', $4)
+        `,
+        [
+          fixture.drainingWorkflowRunId,
+          fixture.userId,
+          fixture.sessionId,
+          fixture.orgId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_runs" (
+            "id",
+            "trigger_source",
+            "chat_thread_id",
+            "run_group_id",
+            "goal_id"
+          )
+          VALUES ($1, 'workflow-schedule', $2, $3, NULL)
+        `,
+        [
+          fixture.drainingWorkflowRunId,
+          fixture.threadId,
+          fixture.automationGroupId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "run_group_id",
+            "event_type",
+            "content",
+            "sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, $2, $3, $4, 'output.message', 'draining result', 1, 3)
+        `,
+        [
+          fixture.drainingWorkflowEventId,
+          fixture.threadId,
+          fixture.drainingWorkflowRunId,
+          fixture.automationGroupId,
+        ],
+      );
+
+      const drainingGroups = await client.query<{
+        eventRunGroupId: string | null;
+        zeroRunGroupId: string | null;
+      }>(
+        `
+          SELECT
+            "event"."run_group_id" AS "eventRunGroupId",
+            "run"."run_group_id" AS "zeroRunGroupId"
+          FROM "zero_runs" AS "run"
+          INNER JOIN "chat_events" AS "event"
+            ON "event"."run_id" = "run"."id"
+          WHERE "run"."id" = $1
+        `,
+        [fixture.drainingWorkflowRunId],
+      );
+      assert.deepEqual(drainingGroups.rows, [
+        { eventRunGroupId: null, zeroRunGroupId: null },
+      ]);
+
       const migrationStatements = migrationSql
         .split("--> statement-breakpoint")
         .map((statement) => {
@@ -18534,6 +18644,7 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
 
       console.log("   ✅ Legacy workflow run groups are cleared");
       console.log("   ✅ Goal continuation run groups are preserved");
+      console.log("   ✅ Draining automation writes are normalized");
       console.log(
         "   ✅ Cleanup is batched, retryable, and append-only safe\n",
       );
