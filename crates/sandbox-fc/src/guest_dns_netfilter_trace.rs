@@ -26,11 +26,12 @@
 //! # Capture window and packet identity
 //!
 //! A [`GuestDnsNetfilterTraceCursor`] is a reusable value identifying one monitor generation and
-//! the last packet sequence assigned by baseline time. It is not a consumer offset: capture does
-//! not advance shared state, and every capture with that cursor applies the same baseline boundary
-//! to the packets retained at capture time. A packet first observed before the baseline stays
-//! outside that window even if later steps arrive afterward. A cursor from another monitor
-//! generation returns `cursor_mismatch` instead of comparing unrelated sequence numbers.
+//! the last packet sequence and line-loss counters observed at baseline time. It is not a consumer
+//! offset: capture does not advance shared state, and every capture with that cursor applies the
+//! same baseline boundary to the packets retained at capture time. A packet first observed before
+//! the baseline stays outside that window even if later steps arrive afterward. A cursor from
+//! another monitor generation returns `cursor_mismatch` instead of comparing unrelated sequence
+//! numbers or counters.
 //!
 //! Because the monitor is runtime-wide, a packet is attributed to one requested DNS probe only when
 //! the packet header and the exact raw PREROUTING TRACE rule jointly match all isolation fields:
@@ -65,9 +66,12 @@
 //! - `cursor_mismatch` prevents evidence from different monitor generations from being combined.
 //!
 //! A disabled attachment omits the trace report entirely. For reports captured through an enabled
-//! reader, evicted, malformed, and oversized-line counters are cumulative for the shared monitor
-//! generation, not scoped to the cursor window. Synthetic unavailable-attachment and
-//! unavailable-baseline reports use zero counters because they have no usable reader window.
+//! reader, evicted, malformed, and oversized-line counters remain cumulative for the shared monitor
+//! generation. Separate post-cursor malformed and truncated-line counters identify parser loss in
+//! the requested capture window. The active handoff diagnostic treats `no_matching_packet` as
+//! negative evidence only when both post-cursor counters are zero. Synthetic
+//! unavailable-attachment and unavailable-baseline reports use zero counters because they have no
+//! usable reader window.
 //!
 //! # Resource and output bounds
 //!
