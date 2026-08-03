@@ -789,7 +789,10 @@ describe("GET /api/zero/usage/runs", () => {
       throw new Error("Expected an org-scoped actor");
     }
     const firstRunAt = new Date(nowDate());
-    firstRunAt.setUTCHours(8, 0, 0, 0);
+    // Compaction only claims rows older than the previous UTC hour. Keeping
+    // this mixed-storage fixture in the current hour gives its materializer
+    // deterministic ownership even when compaction tests run in parallel.
+    firstRunAt.setUTCMinutes(0, 0, 0);
     mockNow(firstRunAt);
     await postUsageAllowanceInvoicePaid(context.signal, {
       orgId: actor.orgId,
