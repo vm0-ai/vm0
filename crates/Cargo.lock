@@ -1253,7 +1253,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.62.5"
+version = "0.62.6"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1291,7 +1291,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.58"
+version = "0.2.59"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1303,7 +1303,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "libc",
  "serde",
@@ -1314,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.22.13"
+version = "0.22.14"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1330,7 +1330,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.139"
+version = "0.16.140"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1341,7 +1341,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.32"
+version = "0.21.33"
 dependencies = [
  "api-contracts",
  "guest-contracts",
@@ -1381,7 +1381,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.46"
+version = "0.1.47"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2070,7 +2070,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.70"
+version = "0.4.71"
 dependencies = [
  "bitvec",
  "libc",
@@ -2603,7 +2603,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.151.18"
+version = "0.152.0"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2824,7 +2824,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.172"
+version = "0.37.173"
 dependencies = [
  "async-trait",
  "base64 0.23.0",
@@ -2855,7 +2855,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.65"
+version = "0.8.66"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3776,7 +3776,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.58"
+version = "0.19.59"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3788,7 +3788,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.70"
+version = "0.17.71"
 dependencies = [
  "nix",
  "shell-quote",
@@ -3802,14 +3802,14 @@ dependencies = [
 
 [[package]]
 name = "vsock-proto"
-version = "0.18.24"
+version = "0.18.25"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "vsock-test"
-version = "0.9.181"
+version = "0.9.182"
 dependencies = [
  "guest-write-file",
  "libc",

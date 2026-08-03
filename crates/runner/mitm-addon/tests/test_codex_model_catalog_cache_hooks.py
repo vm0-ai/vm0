@@ -3,13 +3,18 @@
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Literal
 
 import pytest
+from mitmproxy import connection
+from mitmproxy.flow import Error
 
 import codex_model_catalog_cache as catalog_cache
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_classification
+import upstream_destination_binding
 import usage
 from tests.codex_model_catalog_cache_helpers import (
     CATALOG_BODY,
@@ -24,6 +29,7 @@ from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 from tests.requestheaders_helpers import await_requestheaders_result
+from tests.upstream_connection_helpers import mark_connected_tls_upstream
 
 
 async def test_request_bypasses_do_not_touch_unrelated_traffic(real_flow):
@@ -238,6 +244,131 @@ async def test_both_firewall_auth_paths_prepare_catalog_cache(
     assert header_flow.response.content == CATALOG_BODY
     assert header_flow.response.stream is False
     assert "X-VM0-Codex-Model-Catalog-Prefetch" not in header_flow.request.headers
+
+
+@pytest.mark.parametrize("entry_point", ["request", "requestheaders"])
+@pytest.mark.parametrize("owner_result", ["failure", "timeout", "local-response"])
+async def test_catalog_wait_revalidates_only_provider_continuation(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    monkeypatch: pytest.MonkeyPatch,
+    entry_point: Literal["request", "requestheaders"],
+    owner_result: Literal["failure", "timeout", "local-response"],
+):
+    if owner_result == "timeout":
+        monkeypatch.setattr(catalog_cache, "MAX_IN_FLIGHT_WAIT_SECONDS", 0.1)
+
+    resolved_headers = {
+        "Authorization": "Bearer resolved-token",
+        "ChatGPT-Account-ID": "resolved-account",
+    }
+    owner = catalog_flow(
+        real_flow,
+        auth_value="resolved-token",
+        account="resolved-account",
+    )
+    await prepare_miss(owner)
+
+    registry_path = _write_codex_registry(
+        tmp_path,
+        capture=entry_point == "requestheaders",
+        billable=True,
+    )
+    follower_headers = {
+        "Host": "chatgpt.com",
+        "Accept-Encoding": "identity",
+    }
+    if entry_point == "request":
+        follower_headers["Content-Length"] = "0"
+    follower = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="chatgpt.com",
+        method="GET",
+        path="/backend-api/codex/models?client_version=0.145.0",
+        request_headers=header_map(follower_headers),
+    )
+    follower.metadata["_vm0_request_end_stream"] = True
+    mark_connected_tls_upstream(
+        follower,
+        sni="chatgpt.com",
+        server_address=("203.0.113.10", 443),
+        peername=("203.0.113.10", 443),
+    )
+
+    follower_task: asyncio.Task[None] | None = None
+    try:
+        with (
+            mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(headers=resolved_headers),
+        ):
+            if entry_point == "request":
+                follower_task = asyncio.create_task(mitm_addon.request(follower))
+            else:
+                follower_task = asyncio.create_task(
+                    await_requestheaders_result(mitm_addon.requestheaders(follower))
+                )
+
+            await asyncio.sleep(0)
+            assert not follower_task.done()
+            assert follower.request.headers["Authorization"] == "Bearer resolved-token"
+            assert follower.request.headers["ChatGPT-Account-ID"] == "resolved-account"
+            assert follower.metadata["_usage_flow_tracked"] is True
+            assert (
+                follower.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
+            )
+
+            follower.server_conn.state = connection.ConnectionState.CLOSED
+            mitm_addon.server_disconnected(SimpleNamespace(server=follower.server_conn))
+            assert (
+                follower.server_conn.id
+                not in upstream_destination_binding.binding_snapshot_for_tests()
+            )
+
+            if owner_result == "failure":
+                owner.error = Error("upstream reset")
+                catalog_cache.handle_error(owner)
+            elif owner_result == "local-response":
+                owner.response = catalog_response(encoding="br")
+                finish_response(owner)
+
+            await follower_task
+            if entry_point == "requestheaders":
+                await mitm_addon.request(follower)
+
+            assert follower.response is not None
+            if owner_result != "local-response":
+                assert follower.response.status_code == 403
+                assert (
+                    follower.metadata[metadata_keys.FIREWALL_ERROR]
+                    == "upstream_destination_unbound"
+                )
+                assert metadata_keys.REQUEST_STREAM_BUFFER not in follower.metadata
+                assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in follower.metadata
+            else:
+                assert follower.response.status_code == 200
+                assert follower.response.content == CATALOG_BODY
+                assert follower.metadata.get(metadata_keys.FIREWALL_ERROR) is None
+
+            mitm_addon.responseheaders(follower)
+            mitm_addon.response(follower)
+    finally:
+        if follower_task is not None:
+            if not follower_task.done():
+                follower_task.cancel()
+            _ = await asyncio.gather(follower_task, return_exceptions=True)
+        catalog_cache.handle_error(owner)
+        if follower.metadata.get("_usage_flow_tracked"):
+            mitm_addon.response(follower)
+
+    assert "_usage_flow_tracked" not in follower.metadata
+    assert "_codex_model_catalog_cache_state" not in follower.metadata
+    assert "_codex_model_catalog_cache_telemetry" not in follower.metadata
+    assert mitm_addon._FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS not in follower.metadata
+    assert metadata_keys.REQUEST_STREAM_BUFFER not in follower.metadata
+    assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in follower.metadata
 
 
 async def test_cancelled_requestheaders_catalog_follower_releases_usage_tracking(

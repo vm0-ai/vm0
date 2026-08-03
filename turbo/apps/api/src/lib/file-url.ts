@@ -65,17 +65,6 @@ export function isArtifactKeyV2(key: string): boolean {
   return /^artifacts\/[0-9a-z]{10}\.[^/]+$/u.test(key);
 }
 
-/**
- * Build the permanent URL for an uploaded attachment.
- */
-export function buildFileUrl(
-  userId: string,
-  id: string,
-  filename: string,
-): string {
-  return `${publicArtifactsBaseUrl()}/${buildArtifactKey(userId, id, filename)}`;
-}
-
 export function buildFileUrlFromKey(key: string): string {
   return `${publicArtifactsBaseUrl()}/${key.replace(/^\/+/, "")}`;
 }

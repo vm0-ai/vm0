@@ -121,7 +121,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Detect Turbo TypeScript check need
         id: detect
@@ -178,7 +178,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Configure Git safe directory
         run: git config --global --add safe.directory /__w/vm0/vm0
@@ -366,7 +366,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Check file sizes
         env:
@@ -408,7 +408,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 1
       - uses: ./.github/actions/toolchain-init
       - name: Check DB ownership boundary
         run: .github/scripts/check-db-boundary.sh
@@ -609,7 +609,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 2
       - uses: ./.github/actions/toolchain-init
       - name: Prompt for JSONB Contract Changes
         run: |

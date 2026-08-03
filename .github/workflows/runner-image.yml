@@ -73,7 +73,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Resolve runner image identity
         id: identity

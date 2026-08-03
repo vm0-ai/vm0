@@ -1,6 +1,10 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
+import {
+  PutObjectCommand,
+  type PutObjectCommandInput,
+} from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 
@@ -155,17 +159,18 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function commandInput(command: unknown): Record<string, unknown> {
-  if (
-    typeof command === "object" &&
-    command !== null &&
-    "input" in command &&
-    typeof command.input === "object" &&
-    command.input !== null
-  ) {
-    return command.input as Record<string, unknown>;
+function putObjectInput(): PutObjectCommandInput {
+  const command = context.mocks.s3.send.mock.calls
+    .map(([candidate]) => {
+      return candidate;
+    })
+    .find((candidate): candidate is PutObjectCommand => {
+      return candidate instanceof PutObjectCommand;
+    });
+  if (!command) {
+    throw new Error("Expected generated image to be uploaded to S3");
   }
-  return {};
+  return command.input;
 }
 
 // Reads the org credit balance through the product billing surface so charge
@@ -954,17 +959,16 @@ describe("POST /api/zero/image-io/generate", () => {
     const filename = String(body.filename);
     const url = String(body.url);
     expect(filename).toBe(`image-${fileId.slice(0, 8)}.webp`);
-    expect(url).toBe(
-      `https://cdn.vm7.io/artifacts/${encodeURIComponent(
-        fixture.userId,
-      )}/${fileId}/${filename}`,
-    );
 
-    const putInput = commandInput(context.mocks.s3.send.mock.calls[0]?.[0]);
+    const putInput = putObjectInput();
     expect(putInput.Bucket).toBe(TEST_BUCKET);
-    expect(putInput.Key).toBe(
-      `artifacts/${fixture.userId}/${fileId}/${filename}`,
-    );
+    expect(putInput.Key).toMatch(/^artifacts\/[0-9a-z]{10}\.webp$/u);
+    expect(url).toBe(`https://cdn.vm7.io/${String(putInput.Key)}`);
+    expect(putInput.Metadata).toStrictEqual({
+      "artifact-id": fileId,
+      filename: encodeURIComponent(filename),
+      "user-id": encodeURIComponent(fixture.userId),
+    });
     expect(putInput.ContentType).toBe("image/webp");
     const putBody = putInput.Body;
     expect(Buffer.isBuffer(putBody)).toBeTruthy();
@@ -1222,10 +1226,13 @@ describe("POST /api/zero/image-io/generate", () => {
     }
     const fileId = String(body.id);
     const filename = String(body.filename);
-    const putInput = commandInput(context.mocks.s3.send.mock.calls[0]?.[0]);
-    expect(putInput.Key).toBe(
-      `artifacts/${fixture.userId}/${fileId}/${filename}`,
-    );
+    const putInput = putObjectInput();
+    expect(putInput.Key).toMatch(/^artifacts\/[0-9a-z]{10}\.jpg$/u);
+    expect(putInput.Metadata).toStrictEqual({
+      "artifact-id": fileId,
+      filename: encodeURIComponent(filename),
+      "user-id": encodeURIComponent(fixture.userId),
+    });
     expect(putInput.ContentType).toBe("image/jpeg");
 
     // The megapixel category/quantity are asserted in the result body above;

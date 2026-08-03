@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.677.0](https://github.com/vm0-ai/vm0/compare/app-v0.676.1...app-v0.677.0) (2026-08-03)
+
+
+### Features
+
+* **browser:** persist browser session screenshots ([#24667](https://github.com/vm0-ai/vm0/issues/24667)) ([3c8faad](https://github.com/vm0-ai/vm0/commit/3c8faadaeef149d2db77910b4a7d1b4547cd4d0d))
+* **core:** enable custom connector features globally ([#24696](https://github.com/vm0-ai/vm0/issues/24696)) ([7ccc87b](https://github.com/vm0-ai/vm0/commit/7ccc87bcfb0e2f51e88dad0fbd64b3bd957ac088))
+* **platform:** follow chat content growth back to the tail ([#24658](https://github.com/vm0-ai/vm0/issues/24658)) ([3ad2efd](https://github.com/vm0-ai/vm0/commit/3ad2efdfd149ace542f429bc112a9cbdcd2019fc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.264.0
+    * @vm0/core bumped to 8.504.0
+
 ## [0.676.1](https://github.com/vm0-ai/vm0/compare/app-v0.676.0...app-v0.676.1) (2026-08-03)
 
 

@@ -14,6 +14,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
       true,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.CustomConnectorCliCreate, {}),
     ).toBe(true);
@@ -23,6 +24,10 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.CustomConnectorPermissions, {}),
     ).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ArtifactKeyV2, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.HostedArtifactVersions, {})).toBe(
+      true,
+    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -40,7 +45,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
       false,
     );
-    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
     );
@@ -141,7 +145,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
@@ -175,7 +179,8 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(

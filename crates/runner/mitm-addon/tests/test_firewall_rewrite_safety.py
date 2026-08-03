@@ -165,6 +165,78 @@ class TestAuthBaseUrlRewriteSafety:
         assert "super-secret-token" not in log_text
         assert "real-token" not in log_text
 
+    async def test_truncated_upstream_response_returns_502_without_partial_body(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        partial_body = b'{"secret":"partial-upstream-secret"}'
+        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            path="/hook?client=visible",
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Authorization", "Bearer agent"),
+            ),
+            resolved_base="https://real.example.com/webhook/super-secret-token",
+            token_overrides={
+                "headers": {
+                    "Authorization": "Bearer real-token",
+                    "X-Custom": "injected-value",
+                },
+                "query": {"api_key": "resolved-key"},
+                "resolved_secrets": ["WEBHOOK", "API_KEY"],
+                "refreshed_connectors": ["discord"],
+                "refreshed_secrets": ["WEBHOOK"],
+                "cache_hit": False,
+            },
+        )
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+
+        with (
+            fake_forwarder_upstream(
+                body=partial_body,
+                headers=[("Content-Length", str(len(partial_body) + 5))],
+            ) as upstream,
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert upstream.socket.response_file is not None
+        assert upstream.socket.response_file.closed
+        assert upstream.socket.closed
+
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        response_body = json.loads(flow.response.content)
+        assert response_body["error"] == "url_rewrite_forward_failed"
+        assert response_body["message"] == "Failed to forward request to upstream"
+        assert partial_body not in flow.response.content
+
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "url_rewrite_forward_failed"
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
+        assert metadata_keys.AUTH_RESOLVED_SECRETS not in flow.metadata
+        assert metadata_keys.AUTH_REFRESHED_CONNECTORS not in flow.metadata
+        assert metadata_keys.AUTH_REFRESHED_SECRETS not in flow.metadata
+        assert metadata_keys.AUTH_CACHE_HIT not in flow.metadata
+
+        assert flow.request.headers["Authorization"] == "Bearer agent"
+        assert flow.request.path == "/hook?client=visible"
+        assert "X-Custom" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["client"] == "visible"
+
+        log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
+        assert "URL rewrite forward failed" in log_text
+        assert "IncompleteRead" in log_text
+        assert "Firewall URL rewrite:" not in log_text
+        assert "partial-upstream-secret" not in log_text
+        assert "super-secret-token" not in log_text
+        assert "real-token" not in log_text
+
     async def test_resolved_base_http_fails_closed_without_forwarding(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):

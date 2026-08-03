@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.33](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.32...guest-mock-claude-v0.21.33) (2026-08-03)
+
+
+### Refactoring
+
+* **rust:** centralize base cli agent session id validation ([#24759](https://github.com/vm0-ai/vm0/issues/24759)) ([da34435](https://github.com/vm0-ai/vm0/commit/da34435c6747be672914e4651c29d0abd2b47936))
+
 ## [0.21.32](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.31...guest-mock-claude-v0.21.32) (2026-08-02)
 
 

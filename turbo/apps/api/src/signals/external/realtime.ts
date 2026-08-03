@@ -4,7 +4,10 @@ import type {
   BrowserSessionChangedPayload,
   ConnectorChangedPayload,
 } from "@vm0/api-contracts/contracts/realtime";
-import type { SessionAffinityResource } from "@vm0/api-contracts/contracts/runners";
+import type {
+  RunnerPreference,
+  SessionAffinityResource,
+} from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
 import { env } from "../../lib/env";
@@ -379,6 +382,7 @@ export async function publishRunnerJobNotification(
     readonly affinityProtectedUntil: string | null;
     readonly sessionAffinityResource: SessionAffinityResource | null;
     readonly historyGenerationRunId: string | undefined;
+    readonly runnerPreference: RunnerPreference | null;
   },
 ): Promise<boolean> {
   const published = await tapError(
@@ -405,6 +409,9 @@ export async function publishRunnerJobNotification(
           : {}),
         ...(metadata?.historyGenerationRunId
           ? { historyGenerationRunId: metadata.historyGenerationRunId }
+          : {}),
+        ...(metadata?.runnerPreference
+          ? { runnerPreference: metadata.runnerPreference }
           : {}),
       });
       L.debug(`Published job ${runId} to runner-group:${group} (broadcast)`);
