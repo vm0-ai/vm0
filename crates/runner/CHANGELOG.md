@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.151.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.16...runner-rs-v0.151.17) (2026-08-03)
+
+
+### Bug Fixes
+
+* **mitm-addon:** prevent late 401 auth state resurrection ([#24668](https://github.com/vm0-ai/vm0/issues/24668)) ([1b8a731](https://github.com/vm0-ai/vm0/commit/1b8a7313c5fe79cb9b124e3f916582ff26dbee4e))
+
 ## [0.151.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.15...runner-rs-v0.151.16) (2026-08-03)
 
 
