@@ -17,7 +17,6 @@ import * as runnerStateSchema from "./schema/runner-state";
 import * as agentRunQueueSchema from "./schema/agent-run-queue";
 import * as chatAgentphoneContextSchema from "./schema/chat-agentphone-context";
 import * as chatAutomationContextSchema from "./schema/chat-automation-context";
-import * as chatEventInputParamsSchema from "./schema/chat-event-input-params";
 import * as chatFeishuContextSchema from "./schema/chat-feishu-context";
 import * as chatGithubContextSchema from "./schema/chat-github-context";
 import * as chatGoalContextSchema from "./schema/chat-goal-context";
@@ -144,7 +143,6 @@ export const schema = {
   ...agentRunQueueSchema,
   ...chatAgentphoneContextSchema,
   ...chatAutomationContextSchema,
-  ...chatEventInputParamsSchema,
   ...chatFeishuContextSchema,
   ...chatGithubContextSchema,
   ...chatGoalContextSchema,
