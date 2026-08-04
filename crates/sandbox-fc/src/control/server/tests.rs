@@ -13,10 +13,10 @@ use vsock_proto::{
     RawMessage,
 };
 
-use crate::control::client::{ReceivedExecResponse, send_exec_result};
+use crate::control::client::send_exec;
+use crate::control::exec_response::read_raw_exec_response;
 use crate::control::{
-    ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
-    TerminateStatus, send_exec, send_terminate,
+    TerminateAction, TerminateRequest, TerminateResponse, TerminateStatus, send_terminate,
 };
 use crate::park_coordinator::{
     CoordinatorState, DirtyReason, ParkCoordinator, PrepareParkEvidence,
@@ -114,6 +114,7 @@ fn empty_guest() -> GuestState {
 
 fn exec_request(command: &str) -> ExecRequest {
     ExecRequest {
+        response_format: ExecResponseFormat::RawV1,
         expected_run_id: None,
         command: command.into(),
         timeout_secs: 5,
@@ -342,21 +343,21 @@ async fn client_server_no_guest() {
         .unwrap();
 
     match response {
-        ExecResponse::Error { error } => {
+        ExecResult::Error { error } => {
             assert!(error.contains("not running"), "unexpected error: {error}");
         }
-        ExecResponse::Success { .. } => panic!("expected error when guest is None"),
+        ExecResult::Success { .. } => panic!("expected error when guest is None"),
     }
 
     handle.shutdown().await;
 }
 
 #[tokio::test]
-async fn negotiated_client_receives_raw_server_error() {
+async fn client_receives_raw_server_error() {
     let fixture = ControlServerFixture::new();
     let mut handle = fixture.spawn_default(CancellationToken::new());
 
-    let response = send_exec_result(
+    let response = send_exec(
         &fixture.sock_path,
         &exec_request("ps aux"),
         Duration::from_secs(5),
@@ -364,11 +365,44 @@ async fn negotiated_client_receives_raw_server_error() {
     .await
     .unwrap();
 
-    let ReceivedExecResponse::Raw(ExecResult::Error { error }) = response else {
-        panic!("new server should return a negotiated raw error");
+    let ExecResult::Error { error } = response else {
+        panic!("server should return a raw error");
     };
     assert!(error.contains("not running"), "unexpected error: {error}");
     handle.shutdown().await;
+}
+
+#[tokio::test]
+async fn legacy_exec_request_is_rejected_before_guest_execution() {
+    let (exec_seen_tx, mut exec_seen_rx) = oneshot::channel();
+    let fixture =
+        VsockExecFixture::connect(|vsock_base| mock_guest_records_exec(vsock_base, exec_seen_tx))
+            .await;
+    let mut handle = fixture.spawn_server();
+    let mut stream = UnixStream::connect(&fixture.sock_path).await.unwrap();
+    let legacy_request = serde_json::json!({
+        "command": "must-not-run",
+        "timeout_secs": 5,
+        "sudo": false,
+    });
+
+    write_frame(&mut stream, &serde_json::to_vec(&legacy_request).unwrap())
+        .await
+        .unwrap();
+    let response = read_raw_exec_response(&mut stream).await.unwrap();
+
+    let ExecResult::Error { error } = response else {
+        panic!("legacy request should return a raw protocol error");
+    };
+    assert!(
+        error.contains("response_format"),
+        "unexpected error: {error}"
+    );
+    assert!(matches!(exec_seen_rx.try_recv(), Err(TryRecvError::Empty)));
+
+    handle.shutdown().await;
+    fixture.guest_task.abort();
+    let _ = fixture.guest_task.await;
 }
 
 // Terminate protocol behavior.
@@ -737,7 +771,7 @@ async fn control_server_shutdown_cancels_pending_connection() {
 // Vsock-backed control exec lifecycle.
 
 #[tokio::test]
-async fn negotiated_control_exec_streams_both_capture_limits() {
+async fn control_exec_streams_both_capture_limits() {
     const CAPTURE_LIMIT: usize = 7 * 1024 * 1024;
     let stdout = vec![0xa5; CAPTURE_LIMIT];
     let stderr = vec![0x5a; CAPTURE_LIMIT];
@@ -754,7 +788,7 @@ async fn negotiated_control_exec_streams_both_capture_limits() {
     .await;
     let mut handle = fixture.spawn_server();
 
-    let response = send_exec_result(
+    let response = send_exec(
         &fixture.sock_path,
         &exec_request("produce-boundary-output"),
         Duration::from_secs(5),
@@ -762,16 +796,16 @@ async fn negotiated_control_exec_streams_both_capture_limits() {
     .await
     .unwrap();
 
-    let ReceivedExecResponse::Raw(ExecResult::Success {
+    let ExecResult::Success {
         termination,
         stdout,
         stderr,
         stdout_truncated,
         stderr_truncated,
         diagnostic,
-    }) = response
+    } = response
     else {
-        panic!("new client and server should negotiate a raw success response");
+        panic!("server should return a raw success response");
     };
     assert_eq!(termination, ExecTermination::Exited { exit_code: 23 });
     assert_eq!(stdout.len(), CAPTURE_LIMIT);
@@ -798,6 +832,7 @@ async fn control_server_shutdown_cancels_in_flight_vsock_exec() {
         let sock_path = fixture.sock_path.clone();
         async move {
             let request = ExecRequest {
+                response_format: ExecResponseFormat::RawV1,
                 expected_run_id: None,
                 command: "sleep 30".into(),
                 timeout_secs: 30,
@@ -850,13 +885,13 @@ async fn control_exec_rejects_when_policy_gate_is_closing() {
         .unwrap();
 
     match response {
-        ExecResponse::Error { error } => {
+        ExecResult::Error { error } => {
             assert!(
                 error.contains("operation gate closed"),
                 "unexpected error: {error}"
             );
         }
-        ExecResponse::Success { .. } => panic!("expected gate-closed error"),
+        ExecResult::Success { .. } => panic!("expected gate-closed error"),
     }
     assert!(
         matches!(exec_seen_rx.try_recv(), Err(TryRecvError::Empty)),
@@ -877,6 +912,7 @@ async fn control_exec_rejects_zero_timeout_without_guest_exec() {
             .await;
     let mut handle = fixture.spawn_server();
     let request = ExecRequest {
+        response_format: ExecResponseFormat::RawV1,
         expected_run_id: None,
         command: "echo should-not-run".into(),
         timeout_secs: 0,
@@ -887,13 +923,13 @@ async fn control_exec_rejects_zero_timeout_without_guest_exec() {
         .unwrap();
 
     match response {
-        ExecResponse::Error { error } => {
+        ExecResult::Error { error } => {
             assert_eq!(
                 error,
                 "exec failed: exec requires a positive timeout; use supervised exec for unbounded commands"
             );
         }
-        ExecResponse::Success { .. } => panic!("expected zero-timeout validation error"),
+        ExecResult::Success { .. } => panic!("expected zero-timeout validation error"),
     }
     assert!(
         matches!(exec_seen_rx.try_recv(), Err(TryRecvError::Empty)),
@@ -918,13 +954,13 @@ async fn control_exec_terminal_guest_error_completes_vsock_operation() {
         .unwrap();
 
     match response {
-        ExecResponse::Error { error } => {
+        ExecResult::Error { error } => {
             assert!(
                 error.contains("guest refused exec"),
                 "unexpected error: {error}"
             );
         }
-        ExecResponse::Success { .. } => panic!("expected guest error"),
+        ExecResult::Success { .. } => panic!("expected guest error"),
     }
     assert!(fixture.vsock.try_fence_normal_operations().is_ok());
     let attempt = fixture
@@ -964,11 +1000,11 @@ async fn stale_run_exec_is_rejected_after_sandbox_reassignment() {
         .unwrap();
 
     match stale_response {
-        ExecResponse::Error { error } => {
+        ExecResult::Error { error } => {
             assert_eq!(error, format!("exec failed: {RUN_CONTROL_MISMATCH_ERROR}"));
             assert!(!error.contains("run-b"));
         }
-        ExecResponse::Success { .. } => panic!("stale run exec should fail closed"),
+        ExecResult::Success { .. } => panic!("stale run exec should fail closed"),
     }
     assert_eq!(fixture.coordinator.state(), CoordinatorState::Open);
     assert!(fixture.vsock.try_fence_normal_operations().is_ok());
@@ -983,10 +1019,10 @@ async fn stale_run_exec_is_rejected_after_sandbox_reassignment() {
     .await
     .unwrap();
     match matching_response {
-        ExecResponse::Error { error } => {
+        ExecResult::Error { error } => {
             assert!(error.contains("matching run reached guest"), "{error}");
         }
-        ExecResponse::Success { .. } => panic!("mock guest should reject exec"),
+        ExecResult::Success { .. } => panic!("mock guest should reject exec"),
     }
 
     handle.shutdown().await;
@@ -1011,10 +1047,10 @@ async fn control_exec_transport_error_makes_vsock_not_parkable() {
         .unwrap()
         .unwrap();
     match response {
-        ExecResponse::Error { error } => {
+        ExecResult::Error { error } => {
             assert!(error.contains("exec failed"), "unexpected error: {error}");
         }
-        ExecResponse::Success { .. } => panic!("expected transport error"),
+        ExecResult::Success { .. } => panic!("expected transport error"),
     }
     assert_eq!(fixture.coordinator.state(), CoordinatorState::Open);
     assert!(

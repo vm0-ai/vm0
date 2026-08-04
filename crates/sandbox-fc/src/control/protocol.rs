@@ -1,6 +1,5 @@
 use std::io;
 
-use sandbox::ExecTermination;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
@@ -8,167 +7,39 @@ use tokio::net::UnixStream;
 /// Request from a `runner exec` client.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ExecRequest {
+pub(super) struct ExecRequest {
+    /// Required wire marker for the raw exec response protocol.
+    pub(super) response_format: ExecResponseFormat,
     /// Full run identity that must still own the sandbox at guest admission.
     ///
     /// Missing means the caller intentionally selected sandbox scope.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expected_run_id: Option<String>,
+    pub(super) expected_run_id: Option<String>,
     /// Command text to execute inside the guest.
-    pub command: String,
+    pub(super) command: String,
     /// Command timeout in seconds.
     ///
     /// When this field is omitted during JSON deserialization, it defaults to
     /// 30 seconds.
     #[serde(default = "default_timeout")]
-    pub timeout_secs: u32,
+    pub(super) timeout_secs: u32,
     /// Whether to request sudo execution inside the guest.
     ///
     /// When this field is omitted during JSON deserialization, it defaults to
     /// `false`. The guest command runner decides how sudo is applied.
     #[serde(default)]
-    pub sudo: bool,
+    pub(super) sudo: bool,
 }
 
 fn default_timeout() -> u32 {
     30
 }
 
-/// Request that probes control-server capabilities without executing a command.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct CapabilitiesRequest {
-    pub(super) action: CapabilitiesAction,
-}
-
-/// Non-executing control action used for protocol negotiation.
+/// Exec response representation required by the control protocol.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum CapabilitiesAction {
-    Capabilities,
-}
-
-/// Response to a control capability probe.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-pub(super) enum CapabilitiesResponse {
-    Supported { exec_response_raw_version: u8 },
-    Unsupported { error: String },
-}
-
-/// Exec response representation selected by a negotiated request.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub(super) enum ExecResponseFormat {
-    #[default]
-    JsonBase64,
     RawV1,
-}
-
-/// Server-side exec request shape that also accepts a negotiated response format.
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct WireExecRequest {
-    #[serde(default)]
-    pub(super) expected_run_id: Option<String>,
-    pub(super) command: String,
-    #[serde(default = "default_timeout")]
-    pub(super) timeout_secs: u32,
-    #[serde(default)]
-    pub(super) sudo: bool,
-    #[serde(default)]
-    pub(super) response_format: ExecResponseFormat,
-}
-
-impl WireExecRequest {
-    pub(super) fn into_request(self) -> (ExecRequest, ExecResponseFormat) {
-        let Self {
-            expected_run_id,
-            command,
-            timeout_secs,
-            sudo,
-            response_format,
-        } = self;
-        (
-            ExecRequest {
-                expected_run_id,
-                command,
-                timeout_secs,
-                sudo,
-            },
-            response_format,
-        )
-    }
-}
-
-/// Borrowed exec request that explicitly selects raw response version 1.
-#[derive(Debug, Serialize)]
-pub(super) struct RawExecRequest<'a> {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) expected_run_id: Option<&'a str>,
-    pub(super) command: &'a str,
-    pub(super) timeout_secs: u32,
-    pub(super) sudo: bool,
-    pub(super) response_format: ExecResponseFormat,
-}
-
-impl<'a> From<&'a ExecRequest> for RawExecRequest<'a> {
-    fn from(request: &'a ExecRequest) -> Self {
-        let ExecRequest {
-            expected_run_id,
-            command,
-            timeout_secs,
-            sudo,
-        } = request;
-        Self {
-            expected_run_id: expected_run_id.as_deref(),
-            command,
-            timeout_secs: *timeout_secs,
-            sudo: *sudo,
-            response_format: ExecResponseFormat::RawV1,
-        }
-    }
-}
-
-/// Response to a `runner exec` client.
-///
-/// This enum is serialized without a tag. Clients should distinguish variants
-/// by shape: a command result response contains command result fields, while an
-/// error response contains only an `error` string.
-/// Unknown fields are rejected so mixed success/error shapes fail closed.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged, deny_unknown_fields)]
-pub enum ExecResponse {
-    /// Command execution produced a captured result.
-    Success {
-        /// Structured terminal state returned by the guest command runner.
-        termination: ExecTermination,
-        /// Base64-encoded captured stdout bytes.
-        ///
-        /// This is not plain UTF-8 text. `FirecrackerControl::exec_remote`
-        /// decodes it before returning `sandbox::RemoteExecResult`.
-        stdout: String,
-        /// Base64-encoded captured stderr bytes.
-        ///
-        /// This is not plain UTF-8 text. `FirecrackerControl::exec_remote`
-        /// decodes it before returning `sandbox::RemoteExecResult`.
-        stderr: String,
-        /// Whether stdout was cut at the capture limit.
-        ///
-        /// Truncation is independent of the command exit code.
-        stdout_truncated: bool,
-        /// Whether stderr was cut at the capture limit.
-        ///
-        /// Truncation is independent of the command exit code.
-        stderr_truncated: bool,
-        /// Guest-provided terminal diagnostic text.
-        diagnostic: String,
-    },
-    /// Request failed before a command result could be returned.
-    Error {
-        /// Human-readable error message for operators and clients.
-        error: String,
-    },
 }
 
 /// Host-side control action requested over the local control socket.
@@ -291,9 +162,6 @@ pub(super) async fn write_frame_payload_len(stream: &mut UnixStream, len: usize)
 mod tests {
     use super::*;
 
-    use super::super::exec_response::RAW_EXEC_RESPONSE_VERSION;
-    use base64::Engine;
-    use base64::engine::general_purpose::STANDARD as BASE64;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{UnixListener, UnixStream};
 
@@ -348,8 +216,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn protocol_round_trip() {
+    async fn exec_request_round_trip() {
         let request = ExecRequest {
+            response_format: ExecResponseFormat::RawV1,
             expected_run_id: None,
             command: "echo hello".into(),
             timeout_secs: 10,
@@ -363,60 +232,19 @@ mod tests {
         assert_eq!(decoded.command, "echo hello");
         assert_eq!(decoded.timeout_secs, 10);
         assert!(!decoded.sudo);
+        assert_eq!(decoded.response_format, ExecResponseFormat::RawV1);
         assert!(
             serde_json::from_slice::<serde_json::Value>(&request_json)
                 .unwrap()
                 .get("expected_run_id")
                 .is_none()
         );
-
-        // Verify success response round-trips.
-        let response = ExecResponse::Success {
-            termination: ExecTermination::Exited { exit_code: 0 },
-            stdout: BASE64.encode(b"hello\n"),
-            stderr: BASE64.encode(b""),
-            stdout_truncated: false,
-            stderr_truncated: false,
-            diagnostic: "terminal diagnostic".into(),
-        };
-        let response_json = serde_json::to_vec(&response).unwrap();
-        let decoded: ExecResponse = serde_json::from_slice(&response_json).unwrap();
-        match decoded {
-            ExecResponse::Success {
-                termination,
-                stdout,
-                stderr,
-                stdout_truncated,
-                stderr_truncated,
-                diagnostic,
-            } => {
-                assert_eq!(termination, ExecTermination::Exited { exit_code: 0 });
-                assert_eq!(BASE64.decode(stdout).unwrap(), b"hello\n");
-                assert_eq!(BASE64.decode(stderr).unwrap(), b"");
-                assert!(!stdout_truncated);
-                assert!(!stderr_truncated);
-                assert_eq!(diagnostic, "terminal diagnostic");
-            }
-            ExecResponse::Error { .. } => panic!("expected success"),
-        }
-
-        // Verify error response round-trips.
-        let response = ExecResponse::Error {
-            error: "sandbox not running".into(),
-        };
-        let response_json = serde_json::to_vec(&response).unwrap();
-        let decoded: ExecResponse = serde_json::from_slice(&response_json).unwrap();
-        match decoded {
-            ExecResponse::Error { error } => {
-                assert_eq!(error, "sandbox not running");
-            }
-            ExecResponse::Success { .. } => panic!("expected error"),
-        }
     }
 
     #[test]
     fn guarded_exec_request_round_trips_run_identity() {
         let request = ExecRequest {
+            response_format: ExecResponseFormat::RawV1,
             expected_run_id: Some("run-full-id".into()),
             command: "true".into(),
             timeout_secs: 30,
@@ -432,17 +260,18 @@ mod tests {
     #[test]
     fn exec_request_default_timeout() {
         // timeout_secs has a serde default of 30
-        let json = r#"{"command":"echo hi"}"#;
+        let json = r#"{"response_format":"raw_v1","command":"echo hi"}"#;
         let req: ExecRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.expected_run_id, None);
         assert_eq!(req.command, "echo hi");
         assert_eq!(req.timeout_secs, 30);
         assert!(!req.sudo);
+        assert_eq!(req.response_format, ExecResponseFormat::RawV1);
     }
 
     #[test]
     fn exec_request_with_sudo() {
-        let json = r#"{"command":"apt install curl","timeout_secs":60,"sudo":true}"#;
+        let json = r#"{"response_format":"raw_v1","command":"apt install curl","timeout_secs":60,"sudo":true}"#;
         let req: ExecRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.command, "apt install curl");
         assert_eq!(req.timeout_secs, 60);
@@ -450,240 +279,14 @@ mod tests {
     }
 
     #[test]
-    fn wire_exec_request_preserves_legacy_defaults() {
-        let request: WireExecRequest = serde_json::from_str(r#"{"command":"echo hi"}"#).unwrap();
-        let (request, response_format) = request.into_request();
-
-        assert_eq!(request.expected_run_id, None);
-        assert_eq!(request.command, "echo hi");
-        assert_eq!(request.timeout_secs, 30);
-        assert!(!request.sudo);
-        assert_eq!(response_format, ExecResponseFormat::JsonBase64);
-    }
-
-    #[test]
-    fn raw_exec_request_explicitly_selects_raw_v1() {
-        let request = ExecRequest {
-            expected_run_id: Some("run-full-id".into()),
-            command: "printf raw".into(),
-            timeout_secs: 17,
-            sudo: true,
-        };
-        let json = serde_json::to_value(RawExecRequest::from(&request)).unwrap();
-
-        assert_eq!(json["expected_run_id"], "run-full-id");
-        assert_eq!(json["command"], "printf raw");
-        assert_eq!(json["timeout_secs"], 17);
-        assert_eq!(json["sudo"], true);
-        assert_eq!(json["response_format"], "raw_v1");
-
-        let decoded: WireExecRequest = serde_json::from_value(json).unwrap();
-        let (decoded, response_format) = decoded.into_request();
-        assert_eq!(decoded.expected_run_id.as_deref(), Some("run-full-id"));
-        assert_eq!(decoded.command, "printf raw");
-        assert_eq!(response_format, ExecResponseFormat::RawV1);
-    }
-
-    #[test]
-    fn capabilities_response_accepts_additive_fields() {
-        let response: CapabilitiesResponse = serde_json::from_value(serde_json::json!({
-            "exec_response_raw_version": RAW_EXEC_RESPONSE_VERSION,
-            "terminate_version": 1,
-        }))
-        .unwrap();
-
-        let CapabilitiesResponse::Supported {
-            exec_response_raw_version,
-        } = response
-        else {
-            panic!("explicit raw version should remain supported with additive fields");
-        };
-        assert_eq!(exec_response_raw_version, RAW_EXEC_RESPONSE_VERSION);
-    }
-
-    #[test]
-    fn exec_response_success_serialization() {
-        let resp = ExecResponse::Success {
-            termination: ExecTermination::Exited { exit_code: 0 },
-            stdout: BASE64.encode(b"output\n"),
-            stderr: BASE64.encode(b""),
-            stdout_truncated: false,
-            stderr_truncated: false,
-            diagnostic: "diagnostic".into(),
-        };
-        let json = serde_json::to_value(&resp).unwrap();
-        // Untagged enum: no "type" field, just the fields directly
-        assert_eq!(json["termination"]["kind"], "exited");
-        assert_eq!(json["termination"]["exit_code"], 0);
-        assert!(json.get("exit_code").is_none());
-        assert!(json.get("stdout").is_some());
-        assert!(json.get("stderr").is_some());
-        assert_eq!(json["diagnostic"], "diagnostic");
-        assert!(json.get("error").is_none());
-    }
-
-    #[test]
-    fn exec_response_success_serializes_non_exited_termination() {
-        for (termination, expected_kind) in [
-            (ExecTermination::TimedOut, "timed_out"),
-            (ExecTermination::Cancelled, "cancelled"),
-            (ExecTermination::StartFailed, "start_failed"),
-            (ExecTermination::WaitFailed, "wait_failed"),
-        ] {
-            let resp = ExecResponse::Success {
-                termination,
-                stdout: BASE64.encode(b""),
-                stderr: BASE64.encode(b""),
-                stdout_truncated: false,
-                stderr_truncated: false,
-                diagnostic: String::new(),
-            };
-            let json = serde_json::to_value(&resp).unwrap();
-            assert_eq!(json["termination"]["kind"], expected_kind);
-            assert!(json["termination"].get("exit_code").is_none());
-            let decoded: ExecResponse = serde_json::from_value(json).unwrap();
-            match decoded {
-                ExecResponse::Success {
-                    termination: decoded,
-                    ..
-                } => assert_eq!(decoded, termination),
-                ExecResponse::Error { .. } => panic!("expected success"),
-            }
-        }
-    }
-
-    #[test]
-    fn exec_response_rejects_legacy_exit_code_success_shape() {
-        let legacy = serde_json::json!({
-            "exit_code": 0,
-            "stdout": BASE64.encode(b""),
-            "stderr": BASE64.encode(b""),
-            "stdout_truncated": false,
-            "stderr_truncated": false
-        });
-
-        let result = serde_json::from_value::<ExecResponse>(legacy);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn exec_response_rejects_mixed_success_error_shape() {
-        let mixed = serde_json::json!({
-            "termination": {
-                "kind": "exited",
-                "exit_code": 0,
-            },
-            "stdout": BASE64.encode(b""),
-            "stderr": BASE64.encode(b""),
-            "stdout_truncated": false,
-            "stderr_truncated": false,
-            "diagnostic": "",
-            "error": "sandbox not running",
-        });
-
-        let result = serde_json::from_value::<ExecResponse>(mixed);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn exec_response_rejects_non_exited_termination_with_exit_code() {
-        for exit_code in [serde_json::json!(124), serde_json::Value::Null] {
-            let malformed = serde_json::json!({
-                "termination": {
-                    "kind": "timed_out",
-                    "exit_code": exit_code,
-                },
-                "stdout": BASE64.encode(b""),
-                "stderr": BASE64.encode(b""),
-                "stdout_truncated": false,
-                "stderr_truncated": false,
-                "diagnostic": "",
-            });
-
-            let result = serde_json::from_value::<ExecResponse>(malformed);
-            assert!(result.is_err());
-        }
-    }
-
-    #[test]
-    fn exec_response_rejects_exited_termination_without_exit_code() {
-        for termination in [
-            serde_json::json!({
-                "kind": "exited",
-            }),
-            serde_json::json!({
-                "kind": "exited",
-                "exit_code": null,
-            }),
-        ] {
-            let malformed = serde_json::json!({
-                "termination": termination,
-                "stdout": BASE64.encode(b""),
-                "stderr": BASE64.encode(b""),
-                "stdout_truncated": false,
-                "stderr_truncated": false,
-                "diagnostic": "",
-            });
-
-            let result = serde_json::from_value::<ExecResponse>(malformed);
-            assert!(result.is_err());
-        }
-    }
-
-    #[test]
-    fn exec_response_rejects_termination_unknown_field() {
-        let malformed = serde_json::json!({
-            "termination": {
-                "kind": "exited",
-                "exit_code": 0,
-                "signal": 9,
-            },
-            "stdout": BASE64.encode(b""),
-            "stderr": BASE64.encode(b""),
-            "stdout_truncated": false,
-            "stderr_truncated": false,
-            "diagnostic": "",
-        });
-
-        let result = serde_json::from_value::<ExecResponse>(malformed);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn exec_response_rejects_invalid_termination_kind_shapes() {
-        for termination in [
-            r#"{"exit_code":0}"#,
-            r#"{"kind":"unknown","exit_code":0}"#,
-            r#"{"kind":"exited","kind":"timed_out","exit_code":0}"#,
-            r#"{"kind":"exited","exit_code":0,"exit_code":1}"#,
-        ] {
-            let malformed = format!(
-                r#"{{
-                    "termination": {termination},
-                    "stdout": "{}",
-                    "stderr": "{}",
-                    "stdout_truncated": false,
-                    "stderr_truncated": false,
-                    "diagnostic": ""
-                }}"#,
-                BASE64.encode(b""),
-                BASE64.encode(b"")
-            );
-
-            let result = serde_json::from_str::<ExecResponse>(&malformed);
-            assert!(result.is_err());
-        }
-    }
-
-    #[test]
-    fn exec_response_error_serialization() {
-        let resp = ExecResponse::Error {
-            error: "sandbox not running".into(),
-        };
-        let json = serde_json::to_value(&resp).unwrap();
-        assert_eq!(json["error"], "sandbox not running");
-        assert!(json.get("termination").is_none());
-        assert!(json.get("exit_code").is_none());
+    fn exec_request_requires_raw_response_format() {
+        assert!(serde_json::from_str::<ExecRequest>(r#"{"command":"echo hi"}"#).is_err());
+        assert!(
+            serde_json::from_str::<ExecRequest>(
+                r#"{"response_format":"raw_v2","command":"echo hi"}"#,
+            )
+            .is_err()
+        );
     }
 
     #[test]

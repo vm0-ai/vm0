@@ -1,4 +1,4 @@
-//! Versioned binary responses for negotiated control-socket exec requests.
+//! Versioned binary responses for control-socket exec requests.
 //!
 //! Every payload starts with `VM0E`, a version byte, and a kind byte. A success
 //! then carries a structured termination, truncation flags, three big-endian

@@ -3,17 +3,15 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use sandbox::{
     RemoteExecResult, RemoteKillResult, SandboxControl, SandboxControlError, SandboxControlTarget,
 };
 
 use super::CONTROL_SOCKET_OVERHEAD_MS;
-use super::client::{ReceivedExecResponse, send_exec_result, send_terminate};
+use super::client::{send_exec, send_terminate};
 use super::exec_response::ExecResult;
 use super::protocol::{
-    ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
+    ExecRequest, ExecResponseFormat, TerminateAction, TerminateRequest, TerminateResponse,
     TerminateStatus,
 };
 use super::resolver::resolve_control_socket;
@@ -44,6 +42,7 @@ impl SandboxControl for FirecrackerControl {
 
         let timeout_secs = request_timeout_secs(timeout);
         let request = ExecRequest {
+            response_format: ExecResponseFormat::RawV1,
             expected_run_id: target.expected_run_id().map(str::to_owned),
             command: command.to_owned(),
             timeout_secs,
@@ -51,7 +50,7 @@ impl SandboxControl for FirecrackerControl {
         };
 
         // Add 5 seconds for control socket overhead beyond the command timeout.
-        let response = send_exec_result(&sock_path, &request, control_timeout(timeout_secs))
+        let response = send_exec(&sock_path, &request, control_timeout(timeout_secs))
             .await
             .map_err(|e| {
                 if e.kind() == io::ErrorKind::InvalidInput {
@@ -61,10 +60,7 @@ impl SandboxControl for FirecrackerControl {
                 }
             })?;
 
-        match response {
-            ReceivedExecResponse::Raw(result) => remote_exec_result_from_result(result),
-            ReceivedExecResponse::Legacy(response) => remote_exec_result_from_response(response),
-        }
+        remote_exec_result_from_result(response)
     }
 
     async fn kill_remote(
@@ -113,39 +109,6 @@ impl SandboxControl for FirecrackerControl {
     }
 }
 
-fn remote_exec_result_from_response(
-    response: ExecResponse,
-) -> Result<RemoteExecResult, SandboxControlError> {
-    let result = match response {
-        ExecResponse::Success {
-            termination,
-            stdout,
-            stderr,
-            stdout_truncated,
-            stderr_truncated,
-            diagnostic,
-        } => {
-            let stdout_bytes = BASE64
-                .decode(&stdout)
-                .map_err(|e| SandboxControlError::Connection(format!("decode stdout: {e}")))?;
-            let stderr_bytes = BASE64
-                .decode(&stderr)
-                .map_err(|e| SandboxControlError::Connection(format!("decode stderr: {e}")))?;
-            ExecResult::Success {
-                termination,
-                stdout: stdout_bytes,
-                stderr: stderr_bytes,
-                diagnostic,
-                stdout_truncated,
-                stderr_truncated,
-            }
-        }
-        ExecResponse::Error { error } => ExecResult::Error { error },
-    };
-
-    remote_exec_result_from_result(result)
-}
-
 fn remote_exec_result_from_result(
     result: ExecResult,
 ) -> Result<RemoteExecResult, SandboxControlError> {
@@ -186,11 +149,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn remote_exec_response_success_decodes_structured_result() {
-        let result = remote_exec_result_from_response(ExecResponse::Success {
+    fn remote_exec_result_maps_structured_result() {
+        let result = remote_exec_result_from_result(ExecResult::Success {
             termination: ExecTermination::Exited { exit_code: 7 },
-            stdout: BASE64.encode(b"out"),
-            stderr: BASE64.encode(b"err"),
+            stdout: b"out".to_vec(),
+            stderr: b"err".to_vec(),
             stdout_truncated: true,
             stderr_truncated: false,
             diagnostic: "diagnostic".into(),
@@ -206,42 +169,8 @@ mod tests {
     }
 
     #[test]
-    fn remote_exec_response_invalid_base64_is_connection_error() {
-        let result = remote_exec_result_from_response(ExecResponse::Success {
-            termination: ExecTermination::Exited { exit_code: 0 },
-            stdout: "not base64".into(),
-            stderr: BASE64.encode(b""),
-            stdout_truncated: false,
-            stderr_truncated: false,
-            diagnostic: String::new(),
-        });
-
-        let Err(SandboxControlError::Connection(message)) = result else {
-            panic!("expected connection error");
-        };
-        assert!(message.contains("decode stdout"));
-    }
-
-    #[test]
-    fn remote_exec_response_invalid_stderr_base64_is_connection_error() {
-        let result = remote_exec_result_from_response(ExecResponse::Success {
-            termination: ExecTermination::Exited { exit_code: 0 },
-            stdout: BASE64.encode(b""),
-            stderr: "not base64".into(),
-            stdout_truncated: false,
-            stderr_truncated: false,
-            diagnostic: String::new(),
-        });
-
-        let Err(SandboxControlError::Connection(message)) = result else {
-            panic!("expected connection error");
-        };
-        assert!(message.contains("decode stderr"));
-    }
-
-    #[test]
-    fn remote_exec_response_error_maps_to_remote_error() {
-        let result = remote_exec_result_from_response(ExecResponse::Error {
+    fn remote_exec_result_error_maps_to_remote_error() {
+        let result = remote_exec_result_from_result(ExecResult::Error {
             error: "sandbox not running".into(),
         });
 

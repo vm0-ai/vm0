@@ -4,8 +4,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::Serialize;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, oneshot};
@@ -14,11 +12,10 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::CONTROL_SOCKET_OVERHEAD_MS;
-use super::exec_response::{ExecResult, RAW_EXEC_RESPONSE_VERSION, write_raw_exec_response};
+use super::exec_response::{ExecResult, write_raw_exec_response};
 use super::protocol::{
-    CapabilitiesRequest, CapabilitiesResponse, ExecRequest, ExecResponse, ExecResponseFormat,
-    TerminateAction, TerminateRequest, TerminateResponse, TerminateStatus, WireExecRequest,
-    read_frame, write_frame,
+    ExecRequest, ExecResponseFormat, TerminateAction, TerminateRequest, TerminateResponse,
+    TerminateStatus, read_frame, write_frame,
 };
 use crate::exec_operation_result::{
     captured_exec_output_bytes, exec_termination_from_vsock_termination, reject_stream_overflow,
@@ -385,53 +382,26 @@ async fn handle_connection(
         result = read_frame(&mut stream) => result?,
     };
 
-    if serde_json::from_slice::<CapabilitiesRequest>(&frame).is_ok() {
-        return write_json_frame(
-            &mut stream,
-            &CapabilitiesResponse::Supported {
-                exec_response_raw_version: RAW_EXEC_RESPONSE_VERSION,
-            },
-        )
-        .await;
-    }
-
     if let Ok(request) = serde_json::from_slice::<TerminateRequest>(&frame) {
         let response = terminate(request, &termination).await;
         return write_json_frame(&mut stream, &response).await;
     }
 
-    let (response, response_format) = match serde_json::from_slice::<WireExecRequest>(&frame) {
-        Ok(request) => {
-            let (request, response_format) = request.into_request();
-            let response = tokio::select! {
-                biased;
-                () = shutdown.cancelled() => return Ok(()),
-                response = execute(request, &guest_operations) => response,
-            };
-            (response, response_format)
-        }
-        Err(e) => (
-            ExecResult::Error {
-                error: format!("invalid request: {e}"),
-            },
-            ExecResponseFormat::JsonBase64,
-        ),
-    };
-
-    match response_format {
-        ExecResponseFormat::JsonBase64 => {
-            let response_json = encode_json_frame(&legacy_response_from_result(response))?;
-            tokio::select! {
-                biased;
-                () = shutdown.cancelled() => return Ok(()),
-                result = write_frame(&mut stream, &response_json) => result?,
-            }
-        }
-        ExecResponseFormat::RawV1 => tokio::select! {
+    let response = match serde_json::from_slice::<ExecRequest>(&frame) {
+        Ok(request) => tokio::select! {
             biased;
             () = shutdown.cancelled() => return Ok(()),
-            result = write_raw_exec_response(&mut stream, &response) => result?,
+            response = execute(request, &guest_operations) => response,
         },
+        Err(e) => ExecResult::Error {
+            error: format!("invalid request: {e}"),
+        },
+    };
+
+    tokio::select! {
+        biased;
+        () = shutdown.cancelled() => return Ok(()),
+        result = write_raw_exec_response(&mut stream, &response) => result?,
     }
 
     Ok(())
@@ -478,6 +448,7 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGat
     };
 
     let ExecRequest {
+        response_format: ExecResponseFormat::RawV1,
         expected_run_id,
         command,
         timeout_secs,
@@ -556,27 +527,6 @@ fn exec_result_from_operation_result(
         stderr_truncated,
         diagnostic,
     })
-}
-
-fn legacy_response_from_result(result: ExecResult) -> ExecResponse {
-    match result {
-        ExecResult::Success {
-            termination,
-            stdout,
-            stderr,
-            stdout_truncated,
-            stderr_truncated,
-            diagnostic,
-        } => ExecResponse::Success {
-            termination,
-            stdout: BASE64.encode(stdout),
-            stderr: BASE64.encode(stderr),
-            stdout_truncated,
-            stderr_truncated,
-            diagnostic,
-        },
-        ExecResult::Error { error } => ExecResponse::Error { error },
-    }
 }
 
 fn control_start_error(error: GuestOperationStartError) -> String {
