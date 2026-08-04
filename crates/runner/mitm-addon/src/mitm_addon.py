@@ -114,6 +114,26 @@ _HTTP_OWS_CHARS = " \t"
 # _REQUEST_HEADERS_TERMINATED is a flow-local sentinel for request() early exit.
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 _FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
+_STALE_FIREWALL_AUTHORIZATION_METADATA_KEYS = (
+    metadata_keys.FIREWALL_BASE,
+    metadata_keys.FIREWALL_API_ID,
+    metadata_keys.FIREWALL_AUTH_CACHE_KEY,
+    metadata_keys.FIREWALL_NAME,
+    metadata_keys.FIREWALL_PERMISSION,
+    metadata_keys.FIREWALL_RULE_MATCH,
+    metadata_keys.FIREWALL_PARAMS,
+    metadata_keys.FIREWALL_BILLABLE,
+    metadata_keys.FIREWALL_ACTION,
+    metadata_keys.FIREWALL_ERROR,
+    metadata_keys.CONNECTOR_ROUTE_REASON,
+    metadata_keys.CONNECTOR_ROUTE_CANDIDATES,
+    metadata_keys.AUTH_RESOLVED_SECRETS,
+    metadata_keys.AUTH_REFRESHED_CONNECTORS,
+    metadata_keys.AUTH_REFRESHED_SECRETS,
+    metadata_keys.AUTH_CACHE_HIT,
+    metadata_keys.AUTH_URL_REWRITE,
+    metadata_keys.MODEL_USAGE_PROVIDER,
+)
 
 _AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
 _HTTP_RESPONSE_BODYLESS_METHODS = frozenset(("CONNECT", "HEAD"))
@@ -619,6 +639,17 @@ def _block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
     http_local_responses.block_stale_tls_admission(flow, reason=reason)
 
 
+def _block_firewall_authorization_changed(
+    flow: http.HTTPFlow,
+    *,
+    current_decision: str,
+) -> None:
+    http_local_responses.block_firewall_authorization_changed(
+        flow,
+        current_decision=current_decision,
+    )
+
+
 def _block_upstream_destination_unbound(
     flow: http.HTTPFlow,
     *,
@@ -966,6 +997,7 @@ async def _try_firewall_request_stream_from_headers(
 
     _maybe_normalize_accept_encoding_for_body_inspection(flow, allow, vm_info)
     _start_request_timing(flow)
+    expected_run_id = flow_metadata.run_id(flow.metadata)
     admitted_server = flow.server_conn
     require_connected = flow.server_conn.connected
     try:
@@ -974,12 +1006,13 @@ async def _try_firewall_request_stream_from_headers(
             allow,
             vm_info,
             revalidate_ordinary_upstream_credentials=lambda: (
-                _has_current_direct_connector_auth_binding(
+                _ordinary_upstream_credentials_are_current_for_requestheaders(
                     flow,
+                    allow,
+                    expected_run_id=expected_run_id,
                     admitted_server=admitted_server,
                     require_connected=require_connected,
                 )
-                and _builtin_host_policy_error_for_firewall_allow(flow, allow) is None
             ),
         )
     except (asyncio.CancelledError, Exception):
@@ -1000,6 +1033,7 @@ async def _try_firewall_request_stream_from_headers(
         await _prepare_codex_catalog_request_with_upstream_revalidation(
             flow,
             allow,
+            expected_run_id=expected_run_id,
             admitted_server=admitted_server,
             require_connected=require_connected,
             request_end_stream=request_end_stream is True,
@@ -1044,6 +1078,7 @@ def _revalidate_ordinary_upstream_credentials_for_request(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
     *,
+    expected_run_id: str,
     admitted_server: connection.Server,
     require_connected: bool,
 ) -> bool:
@@ -1055,19 +1090,24 @@ def _revalidate_ordinary_upstream_credentials_for_request(
         _block_upstream_destination_unbound(flow, reason="connector_auth")
         return False
 
-    public_destination_denial = request_classification.current_public_destination_denial(
-        flow,
-        allow,
+    current_classification = _current_firewall_authorization_classification(flow)
+    current_allow = _equivalent_current_firewall_allow(
+        current_classification,
+        expected_allow=allow,
+        expected_run_id=expected_run_id,
     )
-    if public_destination_denial is not None:
-        _block_public_destination_denied(flow, public_destination_denial)
+    if current_allow is None:
+        _block_current_firewall_authorization(flow, current_classification)
         return False
 
-    host_policy_error = _builtin_host_policy_error_for_firewall_allow(flow, allow)
+    host_policy_error = _builtin_host_policy_error_for_firewall_allow(
+        flow,
+        current_allow.firewall_allow,
+    )
     if host_policy_error is not None:
         _block_builtin_host_policy_denied(
             flow,
-            allow=allow,
+            allow=current_allow.firewall_allow,
             error=host_policy_error,
         )
         return False
@@ -1075,10 +1115,111 @@ def _revalidate_ordinary_upstream_credentials_for_request(
     return True
 
 
+def _current_firewall_authorization_classification(
+    flow: http.HTTPFlow,
+) -> request_classification.RequestClassification:
+    preserved_probe_metadata = {
+        key: flow.metadata[key]
+        for key in (
+            metadata_keys.HTTP_REQUEST_START_MONOTONIC,
+            metadata_keys.WEBSOCKET_UPGRADE_REQUEST,
+        )
+        if key in flow.metadata
+    }
+    request_classification.restore_request_headers_probe_metadata(
+        flow,
+        preserved_probe_metadata,
+    )
+    return _classify_request_for_flow(flow)
+
+
+def _equivalent_current_firewall_allow(
+    classification: request_classification.RequestClassification,
+    *,
+    expected_allow: matching.FirewallAllow,
+    expected_run_id: str,
+) -> request_classification.FirewallAllow | None:
+    if not isinstance(classification, request_classification.FirewallAllow):
+        return None
+    current_run_id = classification.vm_info.get("runId")
+    if current_run_id != expected_run_id:
+        return None
+    if classification.firewall_allow != expected_allow:
+        return None
+    return classification
+
+
+def _ordinary_upstream_credentials_are_current_for_requestheaders(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    *,
+    expected_run_id: str,
+    admitted_server: connection.Server,
+    require_connected: bool,
+) -> bool:
+    if not _has_current_direct_connector_auth_binding(
+        flow,
+        admitted_server=admitted_server,
+        require_connected=require_connected,
+    ):
+        return False
+    current_classification = _current_firewall_authorization_classification(flow)
+    current_allow = _equivalent_current_firewall_allow(
+        current_classification,
+        expected_allow=allow,
+        expected_run_id=expected_run_id,
+    )
+    return current_allow is not None and (
+        _builtin_host_policy_error_for_firewall_allow(
+            flow,
+            current_allow.firewall_allow,
+        )
+        is None
+    )
+
+
+def _clear_stale_firewall_authorization_metadata(flow: http.HTTPFlow) -> None:
+    for key in _STALE_FIREWALL_AUTHORIZATION_METADATA_KEYS:
+        flow.metadata.pop(key, None)
+
+
+def _block_current_firewall_authorization(
+    flow: http.HTTPFlow,
+    classification: request_classification.RequestClassification,
+) -> None:
+    _clear_stale_firewall_authorization_metadata(flow)
+    if classification.kind == "registry_unavailable":
+        _block_registry_unavailable(flow, classification.registry_unavailable)
+        return
+    if classification.kind == "stale_tls_admission":
+        _block_stale_tls_admission(flow, reason=classification.stale_tls_reason)
+        return
+    if classification.kind == "invalid_registry_vm":
+        _block_invalid_registry_vm(flow, classification.invalid_vm)
+        return
+    if classification.kind == "authority_denied":
+        _block_authority_validation_error(flow, classification.authority_error)
+        return
+    if classification.kind == "firewall_ambiguous":
+        _set_firewall_ambiguous_response(flow, classification.firewall_ambiguous)
+        return
+    if classification.kind == "firewall_block":
+        _set_firewall_block_response(flow, classification.firewall_block)
+        return
+    if classification.kind == "public_destination_denied":
+        _block_public_destination_denied(flow, classification.public_destination_denial)
+        return
+    _block_firewall_authorization_changed(
+        flow,
+        current_decision=classification.kind,
+    )
+
+
 async def _prepare_codex_catalog_request_with_upstream_revalidation(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
     *,
+    expected_run_id: str,
     admitted_server: connection.Server,
     require_connected: bool,
     request_end_stream: bool,
@@ -1087,9 +1228,9 @@ async def _prepare_codex_catalog_request_with_upstream_revalidation(
 
     A successful local cache response never continues to the provider. When
     ``prepare_request()`` reports that this flow waited and no local response exists,
-    the suspension may have invalidated its connector binding, public destination,
-    or host-policy assumptions, so ordinary credential-bearing continuation is
-    revalidated before proceeding. See
+    the suspension may have invalidated its connector binding, registry-backed
+    firewall authorization, destination, or host-policy assumptions, so ordinary
+    credential-bearing continuation is revalidated before proceeding. See
     ``test_catalog_wait_revalidates_only_provider_continuation`` for owner failure,
     timeout, and local-response coverage across both request hooks.
     """
@@ -1105,6 +1246,7 @@ async def _prepare_codex_catalog_request_with_upstream_revalidation(
         _revalidate_ordinary_upstream_credentials_for_request(
             flow,
             allow,
+            expected_run_id=expected_run_id,
             admitted_server=admitted_server,
             require_connected=require_connected,
         )
@@ -1247,6 +1389,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 is_billable_firewall(allow.name, vm_info),
                 _is_model_provider_usage_observable(allow.name, vm_info),
             )
+            expected_run_id = flow_metadata.run_id(flow.metadata)
             admitted_server = flow.server_conn
             require_connected = flow.server_conn.connected
             auth_result = await handle_firewall_request(
@@ -1257,6 +1400,7 @@ async def request(flow: http.HTTPFlow) -> None:
                     _revalidate_ordinary_upstream_credentials_for_request(
                         flow,
                         allow,
+                        expected_run_id=expected_run_id,
                         admitted_server=admitted_server,
                         require_connected=require_connected,
                     )
@@ -1272,6 +1416,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 await _prepare_codex_catalog_request_with_upstream_revalidation(
                     flow,
                     allow,
+                    expected_run_id=expected_run_id,
                     admitted_server=admitted_server,
                     require_connected=require_connected,
                     request_end_stream=True,
