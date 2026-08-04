@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.3.2](https://github.com/vm0-ai/vm0/compare/zero-cli-v0.3.1...zero-cli-v0.3.2) (2026-08-04)
+
 ## [0.3.1](https://github.com/vm0-ai/vm0/compare/zero-cli-v0.3.0...zero-cli-v0.3.1) (2026-08-04)
 
 

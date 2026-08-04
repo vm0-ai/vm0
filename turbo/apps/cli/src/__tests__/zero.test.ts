@@ -13,7 +13,6 @@ describe("zero CLI program", () => {
 
   it("should register all expected zero commands", () => {
     const expectedCommands = [
-      "org",
       "model",
       "model-provider",
       "agent",
@@ -56,6 +55,7 @@ describe("zero CLI program", () => {
 
   it("should not include infrastructure or utility commands", () => {
     const excludedCommands = [
+      "org",
       "auth",
       "compose",
       "volume",
@@ -73,7 +73,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 37 commands", () => {
-    expect(commandNames).toHaveLength(37);
+  it("should have exactly 36 commands", () => {
+    expect(commandNames).toHaveLength(36);
   });
 });
