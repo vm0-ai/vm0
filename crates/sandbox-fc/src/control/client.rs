@@ -184,8 +184,7 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
     }
 
-    #[tokio::test]
-    async fn negotiated_exec_falls_back_before_sending_command_to_legacy_server() {
+    async fn assert_negotiated_exec_uses_legacy_response(capabilities: CapabilitiesResponse) {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
         let listener = UnixListener::bind(&sock_path).unwrap();
@@ -195,11 +194,8 @@ mod tests {
             let probe: CapabilitiesRequest = serde_json::from_slice(&probe_json).unwrap();
             assert_eq!(probe.action, CapabilitiesAction::Capabilities);
             assert!(serde_json::from_slice::<ExecRequest>(&probe_json).is_err());
-            let unsupported = serde_json::to_vec(&ExecResponse::Error {
-                error: "invalid request: unknown field `action`".into(),
-            })
-            .unwrap();
-            write_frame(&mut probe_stream, &unsupported).await.unwrap();
+            let capabilities = serde_json::to_vec(&capabilities).unwrap();
+            write_frame(&mut probe_stream, &capabilities).await.unwrap();
 
             let (mut exec_stream, _) = listener.accept().await.unwrap();
             let exec_json = read_frame(&mut exec_stream).await.unwrap();
@@ -250,6 +246,22 @@ mod tests {
         assert!(!stderr_truncated);
         assert_eq!(diagnostic, "legacy diagnostic");
         server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn negotiated_exec_falls_back_before_sending_command_to_legacy_server() {
+        assert_negotiated_exec_uses_legacy_response(CapabilitiesResponse::Unsupported {
+            error: "invalid request: unknown field `action`".into(),
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn negotiated_exec_falls_back_from_unknown_raw_version() {
+        assert_negotiated_exec_uses_legacy_response(CapabilitiesResponse::Supported {
+            exec_response_raw_version: RAW_EXEC_RESPONSE_VERSION + 1,
+        })
+        .await;
     }
 
     #[tokio::test(start_paused = true)]
