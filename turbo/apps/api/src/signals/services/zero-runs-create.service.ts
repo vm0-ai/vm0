@@ -1,5 +1,3 @@
-import { randomBytes } from "node:crypto";
-
 import { PLAN_UPGRADE_CLI_HINT } from "@vm0/api-contracts/contracts/errors";
 import { CANONICAL_WORKING_DIR } from "@vm0/api-contracts/contracts/runners";
 import { zeroRunCreateBodySchema } from "@vm0/api-contracts/contracts/zero-runs";
@@ -139,7 +137,6 @@ interface InternalRunCallback {
 type RunCallback = HttpRunCallback | InternalRunCallback;
 
 interface ZeroRunMetadata {
-  readonly triggerAgentId?: string;
   readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
   readonly goalId?: string;
@@ -223,10 +220,6 @@ function forbidden(message: string) {
       },
     },
   };
-}
-
-function generateCallbackSecret(): string {
-  return randomBytes(32).toString("hex");
 }
 
 function buildAgentIdentityPrompt(agent: ZeroAgentRunRecord): string | null {
@@ -637,14 +630,11 @@ function createRunBody(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly userInfo: UserInfo;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
-  readonly triggerAgentId: string | undefined;
   readonly triggerSource: TriggerSource | undefined;
   readonly appendSystemPrompt: string | undefined;
   readonly cloudBrowserEnabled: boolean | undefined;
 }) {
-  const triggerSource =
-    args.triggerSource ??
-    (args.triggerAgentId ? ("agent" as const) : ("web" as const));
+  const triggerSource = args.triggerSource ?? "web";
   const baseAppendSystemPrompt = buildAppendSystemPrompt({
     agent: args.agent,
     featureSwitchContext: args.featureSwitchContext,
@@ -673,18 +663,6 @@ function createRunBody(args: {
     disallowedTools: [...DISALLOWED_TOOLS],
     vars: { ZERO_AGENT_ID: args.agent.id },
   };
-}
-
-function callbacksForAutomationAgent(triggerAgentId: string | undefined) {
-  return triggerAgentId
-    ? [
-        {
-          internalKind: "agent" as const,
-          secret: generateCallbackSecret(),
-          payload: { triggerAgentId },
-        },
-      ]
-    : undefined;
 }
 
 function measureZeroPreCreate<T>(
@@ -739,7 +717,6 @@ async function loadZeroRunPostAuthorizationContext(
     readonly userId: string;
     readonly orgId: string;
     readonly agentId: string;
-    readonly triggerRunId: string | undefined;
     readonly apiStartTime: number;
     readonly timing: ApiDispatchTimingCollector;
   },
@@ -754,7 +731,6 @@ async function loadZeroRunPostAuthorizationContext(
         userId: args.userId,
         orgId: args.orgId,
         agentId: args.agentId,
-        triggerRunId: args.triggerRunId,
         checkedAt: new Date(args.apiStartTime),
       });
       measuredSnapshotRows = loadedRows;
@@ -820,7 +796,6 @@ function buildZeroCreateAgentRunArgs(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly userInfo: UserInfo;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
-  readonly triggerAgentId: string | undefined;
   readonly workflows: readonly RunWorkflowRef[];
   readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   readonly allowedCustomConnectorIds: readonly string[];
@@ -841,7 +816,6 @@ function buildZeroCreateAgentRunArgs(args: {
       featureSwitchContext: args.featureSwitchContext,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
       permissionPolicies: args.runPermissionPolicies,
-      triggerAgentId: args.triggerAgentId,
       triggerSource: command.triggerSource,
       appendSystemPrompt: command.appendSystemPrompt,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
@@ -860,10 +834,7 @@ function buildZeroCreateAgentRunArgs(args: {
       chatThreadId: command.chatThreadId,
       codexServiceTier: command.codexServiceTier,
     }),
-    callbacks: [
-      ...(callbacksForAutomationAgent(args.triggerAgentId) ?? []),
-      ...(command.callbacks ?? []),
-    ],
+    callbacks: command.callbacks,
     includeZeroTokenSecret: true,
     zeroTokenComputerUseHostId: command.computerUseHostId,
     zeroTokenCloudBrowserEnabled: args.cloudBrowserEnabled,
@@ -877,10 +848,7 @@ function buildZeroCreateAgentRunArgs(args: {
       source: "zero_agent",
     },
     validateEnvironmentReferences: false,
-    zeroRunMetadata: {
-      ...command.zeroRunMetadata,
-      triggerAgentId: args.triggerAgentId,
-    },
+    zeroRunMetadata: command.zeroRunMetadata,
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
     ...(command.zeroRunModelPin
       ? { zeroRunModelPin: command.zeroRunModelPin }
@@ -911,7 +879,6 @@ interface ZeroRunAfterPreCreate {
   readonly timing: ApiDispatchTimingCollector;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly command: AnyCreateZeroRunCommandArgs;
-  readonly triggerAgentId: string | undefined;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
 }
 
@@ -1070,10 +1037,6 @@ const createZeroRunInternal$ = command(
       return forbidden("Only the private agent owner can run this agent");
     }
 
-    const triggerRunId =
-      args.auth.tokenType === "sandbox" || args.auth.tokenType === "zero"
-        ? args.auth.runId
-        : undefined;
     const {
       userInfo,
       featureSwitchContext,
@@ -1083,14 +1046,12 @@ const createZeroRunInternal$ = command(
       workflows,
       runPermissionPolicies,
       connectorCatalogSnapshot,
-      triggerAgentId,
     } = await loadZeroRunPostAuthorizationContext(
       db,
       {
         userId: args.auth.userId,
         orgId: args.auth.orgId,
         agentId: agent.id,
-        triggerRunId,
         apiStartTime: args.apiStartTime,
         timing,
       },
@@ -1106,7 +1067,6 @@ const createZeroRunInternal$ = command(
         featureSwitchContext,
         runPermissionPolicies,
         connectorCatalogSnapshot,
-        triggerAgentId,
         workflows,
         allowedConnectorSlugs,
         allowedCustomConnectorIds,
