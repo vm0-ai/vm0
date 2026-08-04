@@ -35,7 +35,9 @@ async def test_brotli_miss_without_length_is_cached_and_passed_through(real_flow
     assert "Content-Length" not in brotli_flow.response.headers
     assert response_stream(brotli_flow)(compressed_body) == compressed_body
 
-    catalog_cache.finalize_response(brotli_flow)
+    finalization = catalog_cache.finalize_response(brotli_flow)
+    assert finalization is not None
+    await finalization
     assert brotli_flow.response.status_code == 200
     assert brotli_flow.response.raw_content == compressed_body
     assert brotli_flow.response.headers["Content-Encoding"] == "br"
@@ -77,7 +79,7 @@ async def test_set_cookie_is_not_replayed_from_cached_brotli_response(real_flow)
     )
     del cold.response.headers["Content-Length"]
 
-    telemetry = finish_response(cold)
+    telemetry = await finish_response(cold)
 
     assert telemetry["model_catalog_cache_status"] == "model_catalog_cold_stored"
     assert cold.response.headers["Set-Cookie"] == "catalog_session=opaque; Secure"
@@ -196,7 +198,7 @@ async def test_invalid_identity_responses_pass_through_without_installing(
     original_status = response.status_code
     original_body = response.raw_content
 
-    telemetry = finish_response(flow)
+    telemetry = await finish_response(flow)
     validation_latency = telemetry.pop("model_catalog_cache_validation_latency_ms")
 
     assert flow.response.status_code == original_status
@@ -297,7 +299,9 @@ async def test_invalid_streamed_brotli_passes_through_without_installing(
     assert flow.response.status_code == 200
     assert callable(flow.response.stream)
     assert response_stream(flow)(wire_body) == wire_body
-    catalog_cache.finalize_response(flow)
+    finalization = catalog_cache.finalize_response(flow)
+    assert finalization is not None
+    await finalization
 
     assert flow.response.status_code == 200
     assert flow.response.raw_content == wire_body
@@ -341,7 +345,7 @@ async def test_brotli_cache_policy_bypasses_body_validation(
     )
     wire_body = flow.response.raw_content
 
-    telemetry = finish_response(flow)
+    telemetry = await finish_response(flow)
 
     assert flow.response.status_code == 200
     assert flow.response.raw_content == wire_body
@@ -363,7 +367,7 @@ async def test_catalog_responses_with_trailers_are_never_cached(
     flow.response = catalog_response(encoding=encoding)
     flow.response.trailers = header_map({"Digest": "sha-256=:opaque:"})
 
-    telemetry = finish_response(flow)
+    telemetry = await finish_response(flow)
 
     assert telemetry["model_catalog_cache_status"] == "model_catalog_cold_not_stored"
     assert telemetry["model_catalog_cache_bypass_reason"] == "response_body"
@@ -384,7 +388,7 @@ async def test_catalog_response_accepts_long_leading_zero_content_length(real_fl
         headers={"Content-Length": "0" * 64 + str(len(CATALOG_BODY))},
     )
 
-    telemetry = finish_response(flow)
+    telemetry = await finish_response(flow)
 
     assert telemetry["model_catalog_cache_status"] == "model_catalog_cold_stored"
 
@@ -468,7 +472,9 @@ async def test_unsafe_encoded_headers_pass_through_without_caching(
     assert callable(flow.response.stream)
     wire_body = response.raw_content or b""
     assert response_stream(flow)(wire_body) == wire_body
-    catalog_cache.finalize_response(flow)
+    finalization = catalog_cache.finalize_response(flow)
+    if finalization is not None:
+        await finalization
     assert flow.response.status_code == 200
     assert flow.response.raw_content == wire_body
     telemetry: dict[str, object] = {}

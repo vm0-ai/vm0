@@ -50,6 +50,7 @@ from tests.aws_sigv4_helpers import (
     aws_sigv4_authorization,
     resolved_aws_sigv4_credentials,
 )
+from tests.codex_model_catalog_cache_helpers import catalog_flow
 from tests.firewall_aws_sigv4_helpers import aws_api_entry
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
@@ -360,7 +361,9 @@ async def test_http2_fresh_catalog_hit_completes_without_provider_connection(
     )
     mitm_addon.responseheaders(seed_flow)
     assert response_stream(seed_flow)(catalog_body) == catalog_body
-    codex_model_catalog_cache.finalize_response(seed_flow)
+    finalization = codex_model_catalog_cache.finalize_response(seed_flow)
+    assert finalization is not None
+    await finalization
     codex_model_catalog_cache.release_flow_state(seed_flow)
     response_streaming.release_response_stream_state(seed_flow)
 
@@ -499,6 +502,7 @@ async def _catalog_http_stream(
 
 async def test_http2_brotli_catalog_is_streamed_unchanged_while_cached(
     tmp_path: Path,
+    real_flow,
 ) -> None:
     catalog_path = "/backend-api/codex/models?client_version=0.145.0"
     catalog_body = b'{"models":[{"slug":"gpt-test"}]}'
@@ -568,6 +572,17 @@ async def test_http2_brotli_catalog_is_streamed_unchanged_while_cached(
         assert flow.response.status_code == 200
         assert flow.response.headers["Content-Encoding"] == "br"
         assert flow.response.headers["Content-Length"] == str(len(compressed_body))
+
+        cache_hit = catalog_flow(
+            real_flow,
+            version="0.145.0",
+            auth_value="resolved-access",
+            account="resolved-account",
+        )
+        await codex_model_catalog_cache.prepare_request(cache_hit, request_end_stream=True)
+        assert cache_hit.response is not None
+        assert cache_hit.response.content == catalog_body
+        codex_model_catalog_cache.release_flow_state(cache_hit)
 
         after_response = list(stream.handle_event(events.HookCompleted(response_hook, None)))
 
