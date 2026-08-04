@@ -823,7 +823,9 @@ async def test_firewall_allow_small_bounded_body_retargets_unconnected_upstream(
 
         await mitm_addon.request(flow)
 
-    assert validated_flows == [flow, flow]
+    # Header prebinding, request dispatch, and the post-auth authorization guard
+    # each validate the current trusted authority before credential mutation.
+    assert validated_flows == [flow, flow, flow]
     auth_fetch.assert_awaited_once()
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer resolved"
