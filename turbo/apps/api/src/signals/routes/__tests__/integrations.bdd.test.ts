@@ -11,10 +11,7 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
-import {
-  findPendingChatEventByPromptFixture,
-  readChatEventContextFixture,
-} from "../../../test-fixtures/chat-events";
+import { readChatEventContextFixture } from "../../../test-fixtures/chat-events";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
@@ -310,14 +307,6 @@ async function pollSlackRun(runnerGroup: string): Promise<string> {
     runnerGroup,
     "Expected a Slack-triggered run in the runner queue",
   );
-}
-
-async function requirePendingChatEvent(prompt: string) {
-  const event = await findPendingChatEventByPromptFixture(prompt);
-  if (!event) {
-    throw new Error(`Expected queued event for ${prompt}`);
-  }
-  return event;
 }
 
 async function pollQueuedWebAndSlackRuns(args: {
@@ -1832,14 +1821,19 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       ]),
     );
-    const queuedSlackParams = await requirePendingChatEvent(
-      "stay canonical on the same route",
-    );
-    expect(queuedSlackParams).toMatchObject({
-      eventId: expect.any(String),
+    const queuedSlackEvents = state.pending_chat_events.filter((pending) => {
+      return (
+        pending.chatThreadId === canonicalChatThreadId &&
+        pending.triggerSource === "slack"
+      );
     });
+    expect(queuedSlackEvents).toHaveLength(1);
+    const [queuedSlackEvent] = queuedSlackEvents;
+    if (!queuedSlackEvent) {
+      throw new Error("Expected the canonical thread's pending Slack event");
+    }
     await expect(
-      readChatEventContextFixture(queuedSlackParams.eventId),
+      readChatEventContextFixture(queuedSlackEvent.id),
     ).resolves.toMatchObject({
       contextType: "slack",
       contextId: expect.any(String),
