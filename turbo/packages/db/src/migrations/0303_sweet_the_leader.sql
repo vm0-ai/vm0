@@ -1,1 +1,0 @@
-CREATE INDEX "idx_zero_runs_chat_thread_id" ON "zero_runs" USING btree ("chat_thread_id") WHERE chat_thread_id IS NOT NULL;

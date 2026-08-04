@@ -1,1 +1,0 @@
-CREATE UNIQUE INDEX "idx_model_providers_one_default_per_user" ON "model_providers" USING btree ("org_id","user_id") WHERE is_default = true;

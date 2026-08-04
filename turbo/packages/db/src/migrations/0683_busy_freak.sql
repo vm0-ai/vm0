@@ -1,2 +1,0 @@
-ALTER TABLE "connector_catalog_sync_state" DROP COLUMN "last_attempt_metadata_revision";--> statement-breakpoint
-ALTER TABLE "connector_catalog_sync_state" DROP COLUMN "last_rejected_candidate_fingerprint";

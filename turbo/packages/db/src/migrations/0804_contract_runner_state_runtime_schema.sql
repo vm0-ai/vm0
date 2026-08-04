@@ -1,2 +1,0 @@
--- This migration intentionally advances only the Drizzle schema baseline.
--- Migration 0800 retains the physical compatibility bridge until #24512.

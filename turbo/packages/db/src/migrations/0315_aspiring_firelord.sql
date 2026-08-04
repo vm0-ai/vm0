@@ -1,1 +1,0 @@
-DROP TABLE "client_credit_usage" CASCADE;

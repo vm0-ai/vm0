@@ -1,1 +1,0 @@
-ALTER TABLE "agent_runs" ADD COLUMN "trigger_source" varchar(20);

@@ -1,1 +1,0 @@
-ALTER TABLE "runner_state" ADD COLUMN "held_workspace_states" jsonb DEFAULT '[]'::jsonb NOT NULL;
