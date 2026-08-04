@@ -89,7 +89,7 @@
           }
         ]
       },
-      "helpText": "Usage: zero [options] [command]\n\nZero CLI — interact with the zero platform from inside the sandbox\n\nOptions:\n  -V, --version      output the version number\n  -h, --help         display help for command\n\nCommands:\n  org                Manage organization settings, members, and providers\n  model              List available models and model-switching guidance\n  model-provider     Inspect model provider routing\n  agent              View or manage zero agents\n  connector          Check third-party service connections (GitHub, Slack, etc.)\n  mail               Review and send mail through Gmail or Outlook Mail\n  credit             View or buy credits\n  upgrade            Create a workspace plan upgrade link\n  doctor             Diagnose runtime issues (connector health, permission denials)\n  preference         View or update user preferences (timezone, notifications)\n  secret             Read or write secrets (API keys, tokens)\n  github             Upload and download GitHub files\n  slack              Send messages, upload files, and download files from Slack as the bot\n  feishu             Send messages to Feishu as an organization bot\n  teams              Send Microsoft Teams messages, upload files, and download files\n  telegram           Inspect bots, send messages, upload files, and download files from Telegram\n  phone              Send AgentPhone messages, upload files, and download media\n  variable           Read or write non-sensitive configuration values\n  logs               View and search agent run logs\n  search             Search logs, chat, or get a recipe for external sources\n  chat               Manage the current web chat thread\n  resource           Pull registry resources from private R2-backed archives\n  whoami             Show agent identity, run ID, and capabilities\n  intro              Print Zero's self-introduction and capability guide\n  workflow           Manage workflows\n  goal               Manage the current thread goal\n  developer-support  Submit a diagnostic report to the dev team\n  computer-use       Desktop app computer use through Zero CLI\n  generate           Generate assets via vm0's built-in pipelines or get connector skill-invocation\n                     guidance\n  web                Upload and download files via the web chat endpoint\n  video              Video processing utilities\n  host               Publish static sites and clone owned hosted site files\n  maps               Use managed zero maps services\n  weather            Use managed Zero weather services\n  scrape             Scrape public web pages through managed zero scrape\n  people-search      Find professionals through managed zero people search\n  web-search         Search the public web through managed zero web search\n  finance            Query financial instruments through managed zero finance\n  banking            Use managed zero banking services\n  help [command]     display help for command\n\nExamples:\n  Check a connector?     zero connector check --env-name <ENV_NAME>\n  Check credits?         zero credit\n  Buy credits?           zero credit 20000\n  Upgrade plan?         zero upgrade pro\n  Send a Slack message?  zero slack message send --help\n  Send Feishu?          zero feishu message send --help\n  Link Gmail draft?     zero mail link --help\n  Send Teams?           zero teams message send --help\n  Upload Teams?         zero teams upload-file --help\n  Download Teams?       zero teams download-file --help\n  Upload GitHub?        zero github upload-file --help\n  Download GitHub?      zero github download-file --help\n  List Telegram bots?    zero telegram bot list\n  Send Telegram?         zero telegram message send --help\n  Upload Telegram?       zero telegram upload-file --help\n  Download Telegram?     zero telegram download-file --help\n  Send AgentPhone?       zero phone message --help\n  Upload AgentPhone?     zero phone upload-file --help\n  Download AgentPhone?   zero phone download-file --help\n  List models?          zero model ls\n  Model routing?        zero model-provider ls\n  Update yourself?       zero agent --help\n  Manage workflows?     zero workflow --help\n  Rename this chat?     zero chat rename \"New title\"\n  Introduce Zero?       zero intro\n  List generators?       zero generate --help\n  Generate image?        zero generate image --raw-prompt \"...\"\n  Generate website?      zero generate website --prompt \"...\"\n  Generate voice?        zero generate voice --prompt \"...\"\n  Host a static site?    zero host ./dist --site my-site --spa\n  Clone hosted site?     zero host clone <public-slug>\n  Get directions?       zero maps directions --origin \"SFO\" --destination \"Mountain View\" --json\n  Check weather?        zero weather current --lat 39.9042 --lng 116.4074 --json\n  Scrape a web page?    zero scrape https://example.com --json\n  Search the public web? zero web-search \"latest news\" --json\n  Get a market quote?   zero finance quote AAPL --json\n  Find a professional?   zero people-search \"platform engineering leaders\" --json\n  Read bank data?       zero banking accounts --json\n  Check your identity?   zero whoami\n",
+      "helpText": "Usage: zero [options] [command]\n\nZero CLI — interact with the zero platform from inside the sandbox\n\nOptions:\n  -V, --version      output the version number\n  -h, --help         display help for command\n\nCommands:\n  org                Manage organization settings, members, and providers\n  model              List available models and model-switching guidance\n  model-provider     Inspect model provider routing\n  agent              View or manage zero agents\n  connector          Check third-party service connections (GitHub, Slack, etc.)\n  mail               Review and send mail through Gmail or Outlook Mail\n  credit             View or buy credits\n  upgrade            Create a workspace plan upgrade link\n  doctor             Diagnose runtime issues (connector health, permission denials)\n  github             Upload and download GitHub files\n  slack              Send messages, upload files, and download files from Slack as the bot\n  feishu             Send messages to Feishu as an organization bot\n  teams              Send Microsoft Teams messages, upload files, and download files\n  telegram           Inspect bots, send messages, upload files, and download files from Telegram\n  phone              Send AgentPhone messages, upload files, and download media\n  logs               View and search agent run logs\n  search             Search logs, chat, or get a recipe for external sources\n  chat               Manage the current web chat thread\n  resource           Pull registry resources from private R2-backed archives\n  whoami             Show agent identity, run ID, and capabilities\n  intro              Print Zero's self-introduction and capability guide\n  workflow           Manage workflows\n  goal               Manage the current thread goal\n  developer-support  Submit a diagnostic report to the dev team\n  computer-use       Desktop app computer use through Zero CLI\n  generate           Generate assets via vm0's built-in pipelines or get connector skill-invocation\n                     guidance\n  web                Upload and download files via the web chat endpoint\n  video              Video processing utilities\n  host               Publish static sites and clone owned hosted site files\n  maps               Use managed zero maps services\n  weather            Use managed Zero weather services\n  scrape             Scrape public web pages through managed zero scrape\n  people-search      Find professionals through managed zero people search\n  web-search         Search the public web through managed zero web search\n  finance            Query financial instruments through managed zero finance\n  banking            Use managed zero banking services\n  help [command]     display help for command\n\nExamples:\n  Check a connector?     zero connector check --env-name <ENV_NAME>\n  Check credits?         zero credit\n  Buy credits?           zero credit 20000\n  Upgrade plan?         zero upgrade pro\n  Send a Slack message?  zero slack message send --help\n  Send Feishu?          zero feishu message send --help\n  Link Gmail draft?     zero mail link --help\n  Send Teams?           zero teams message send --help\n  Upload Teams?         zero teams upload-file --help\n  Download Teams?       zero teams download-file --help\n  Upload GitHub?        zero github upload-file --help\n  Download GitHub?      zero github download-file --help\n  List Telegram bots?    zero telegram bot list\n  Send Telegram?         zero telegram message send --help\n  Upload Telegram?       zero telegram upload-file --help\n  Download Telegram?     zero telegram download-file --help\n  Send AgentPhone?       zero phone message --help\n  Upload AgentPhone?     zero phone upload-file --help\n  Download AgentPhone?   zero phone download-file --help\n  List models?          zero model ls\n  Model routing?        zero model-provider ls\n  Update yourself?       zero agent --help\n  Manage workflows?     zero workflow --help\n  Rename this chat?     zero chat rename \"New title\"\n  Introduce Zero?       zero intro\n  List generators?       zero generate --help\n  Generate image?        zero generate image --raw-prompt \"...\"\n  Generate website?      zero generate website --prompt \"...\"\n  Generate voice?        zero generate voice --prompt \"...\"\n  Host a static site?    zero host ./dist --site my-site --spa\n  Clone hosted site?     zero host clone <public-slug>\n  Get directions?       zero maps directions --origin \"SFO\" --destination \"Mountain View\" --json\n  Check weather?        zero weather current --lat 39.9042 --lng 116.4074 --json\n  Scrape a web page?    zero scrape https://example.com --json\n  Search the public web? zero web-search \"latest news\" --json\n  Get a market quote?   zero finance quote AAPL --json\n  Find a professional?   zero people-search \"platform engineering leaders\" --json\n  Read bank data?       zero banking accounts --json\n  Check your identity?   zero whoami\n",
       "visibility": null
     },
     {
@@ -8495,7 +8495,7 @@
           }
         ]
       },
-      "helpText": "Usage: zero generate [options] [command]\n\nGenerate assets via vm0's built-in pipelines or get connector skill-invocation guidance\n\nOptions:\n  -h, --help                   display help for command\n\nCommands:\n  image [options]              Generate a billed image file from a prompt\n  presentation [options]       Generate an HTML presentation from a prompt\n  report [options]             Generate an HTML report from a prompt\n  docs-design [options]        Generate a documentation design from a prompt\n  poster [options]             Generate an HTML poster from a prompt\n  dashboard-design [options]   Generate a dashboard design from a prompt\n  mobile-app-design [options]  Generate a mobile app design prototype from a prompt\n  video [options]              Generate a billed video file from a prompt\n  website [options]            Prepare website authoring instructions from a prompt\n  sprite [options]             Prepare 2D game sprite/asset authoring instructions from a prompt\n  voice [options]              Generate a billed speech audio file from text\n  music [options]              List connectors that provide music generation\n  text [options]               List connectors that provide text generation\n  code [options]               List connectors that provide code generation\n  document [options]           List connectors that provide document generation\n  help [command]               display help for command\n\nExamples:\n  Generate image:        zero generate image --raw-prompt \"A watercolor fox\"\n  Generate deck:         zero generate presentation --prompt \"A product roadmap\"\n  Generate report:       zero generate report --prompt \"A Q2 usage report\"\n  Generate docs:         zero generate docs-design --prompt \"A setup guide\"\n  Generate video:        zero generate video --prompt \"A cinematic city shot\"\n  Generate site:         zero generate website --prompt \"A launch site\"\n  Generate sprite:       zero generate sprite --prompt \"A slime monster idle loop\"\n  Generate speech:       zero generate voice --prompt \"Hello\"\n  Show music choices:    zero generate music\n\n  Show image choices:    zero generate image\n  Show report choices:   zero generate report\n  Use a connector:       zero generate video --provider heygen\n  Force built-in:        zero generate image --provider built-in --model gpt-image-1.5 --raw-prompt ...\n\nNotes:\n  - Run \"zero generate <type>\" with no --prompt to list generation choices for that type.\n  - Media and connector-backed generation types may expose --provider for vm0 or connector execution guidance.\n  - HTML artifact types use registry-backed --design-system and --template selection.\n",
+      "helpText": "Usage: zero generate [options] [command]\n\nGenerate assets via vm0's built-in pipelines or get connector skill-invocation guidance\n\nOptions:\n  -h, --help                   display help for command\n\nCommands:\n  image [options]              Generate a billed image file from a prompt\n  presentation [options]       Generate an HTML presentation from a prompt\n  report [options]             Generate an HTML report from a prompt\n  docs-design [options]        Generate a documentation design from a prompt\n  poster [options]             Generate an HTML poster from a prompt\n  dashboard-design [options]   Generate a dashboard design from a prompt\n  mobile-app-design [options]  Generate a mobile app design prototype from a prompt\n  video [options]              Generate a billed video file from a prompt\n  avatar-video [options]       Generate a billed JoggAI talking-avatar video\n  website [options]            Prepare website authoring instructions from a prompt\n  sprite [options]             Prepare 2D game sprite/asset authoring instructions from a prompt\n  voice [options]              Generate a billed speech audio file from text\n  music [options]              List connectors that provide music generation\n  text [options]               List connectors that provide text generation\n  code [options]               List connectors that provide code generation\n  document [options]           List connectors that provide document generation\n  help [command]               display help for command\n\nExamples:\n  Generate image:        zero generate image --raw-prompt \"A watercolor fox\"\n  Generate deck:         zero generate presentation --prompt \"A product roadmap\"\n  Generate report:       zero generate report --prompt \"A Q2 usage report\"\n  Generate docs:         zero generate docs-design --prompt \"A setup guide\"\n  Generate video:        zero generate video --prompt \"A cinematic city shot\"\n  Generate avatar video: zero generate avatar-video --avatar-id 81 --voice-id en-US-ChristopherNeural --script \"Hello\"\n  Generate site:         zero generate website --prompt \"A launch site\"\n  Generate sprite:       zero generate sprite --prompt \"A slime monster idle loop\"\n  Generate speech:       zero generate voice --prompt \"Hello\"\n  Show music choices:    zero generate music\n\n  Show image choices:    zero generate image\n  Show report choices:   zero generate report\n  Use a connector:       zero generate video --provider heygen\n  Force built-in:        zero generate image --provider built-in --model gpt-image-1.5 --raw-prompt ...\n\nNotes:\n  - Run \"zero generate <type>\" with no --prompt to list generation choices for that type.\n  - Media and connector-backed generation types may expose --provider for vm0 or connector execution guidance.\n  - HTML artifact types use registry-backed --design-system and --template selection.\n",
       "visibility": {
         "capabilityGate": {
           "mode": "always"
@@ -8503,6 +8503,553 @@
         "featureSwitch": null,
         "runOnly": false
       }
+    },
+    {
+      "path": [
+        "zero",
+        "generate",
+        "avatar-video"
+      ],
+      "name": "avatar-video",
+      "aliases": [],
+      "description": "Generate a billed JoggAI talking-avatar video",
+      "listingDescription": "Generate a billed JoggAI talking-avatar video",
+      "summary": "",
+      "usage": "[options]",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--all",
+          "name": "all",
+          "attributeName": "all",
+          "short": null,
+          "long": "--all",
+          "aliases": [],
+          "description": "When listing providers, include unavailable or unauthorized connectors",
+          "valueRequirement": "none",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--aspect-ratio <ratio>",
+          "name": "aspect-ratio",
+          "attributeName": "aspectRatio",
+          "short": null,
+          "long": "--aspect-ratio",
+          "aliases": [],
+          "description": "Output ratio: portrait, landscape, or square",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--audio-url <url>",
+          "name": "audio-url",
+          "attributeName": "audioUrl",
+          "short": null,
+          "long": "--audio-url",
+          "aliases": [],
+          "description": "Public audio URL to drive the avatar",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--avatar-age <age>",
+          "name": "avatar-age",
+          "attributeName": "avatarAge",
+          "short": null,
+          "long": "--avatar-age",
+          "aliases": [],
+          "description": "adult, senior, or young_adult",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--avatar-ethnicity <ethnicity>",
+          "name": "avatar-ethnicity",
+          "attributeName": "avatarEthnicity",
+          "short": null,
+          "long": "--avatar-ethnicity",
+          "aliases": [],
+          "description": "Avatar ethnicity filter",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--avatar-gender <gender>",
+          "name": "avatar-gender",
+          "attributeName": "avatarGender",
+          "short": null,
+          "long": "--avatar-gender",
+          "aliases": [],
+          "description": "female or male",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--avatar-id <id>",
+          "name": "avatar-id",
+          "attributeName": "avatarId",
+          "short": null,
+          "long": "--avatar-id",
+          "aliases": [],
+          "description": "Public JoggAI avatar ID",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--avatar-scene <scene>",
+          "name": "avatar-scene",
+          "attributeName": "avatarScene",
+          "short": null,
+          "long": "--avatar-scene",
+          "aliases": [],
+          "description": "Avatar scene filter",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--avatar-style <style>",
+          "name": "avatar-style",
+          "attributeName": "avatarStyle",
+          "short": null,
+          "long": "--avatar-style",
+          "aliases": [],
+          "description": "professional or social",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--json",
+          "name": "json",
+          "attributeName": "json",
+          "short": null,
+          "long": "--json",
+          "aliases": [],
+          "description": "Print resource lists or the generation result as JSON",
+          "valueRequirement": "none",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--list-avatars",
+          "name": "list-avatars",
+          "attributeName": "listAvatars",
+          "short": null,
+          "long": "--list-avatars",
+          "aliases": [],
+          "description": "List public JoggAI avatars",
+          "valueRequirement": "none",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--list-voices",
+          "name": "list-voices",
+          "attributeName": "listVoices",
+          "short": null,
+          "long": "--list-voices",
+          "aliases": [],
+          "description": "List public JoggAI voices",
+          "valueRequirement": "none",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--no-caption",
+          "name": "no-caption",
+          "attributeName": "caption",
+          "short": null,
+          "long": "--no-caption",
+          "aliases": [],
+          "description": "Disable generated captions",
+          "valueRequirement": "none",
+          "mandatory": false,
+          "variadic": false,
+          "negated": true,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--page <number>",
+          "name": "page",
+          "attributeName": "page",
+          "short": null,
+          "long": "--page",
+          "aliases": [],
+          "description": "Discovery page",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": true,
+            "value": 1,
+            "description": null
+          }
+        },
+        {
+          "flags": "--page-size <number>",
+          "name": "page-size",
+          "attributeName": "pageSize",
+          "short": null,
+          "long": "--page-size",
+          "aliases": [],
+          "description": "Discovery page size (1-100)",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": true,
+            "value": 10,
+            "description": null
+          }
+        },
+        {
+          "flags": "--provider <name>",
+          "name": "provider",
+          "attributeName": "provider",
+          "short": null,
+          "long": "--provider",
+          "aliases": [],
+          "description": "Provider: 'built-in' to use vm0 credits, or a connector name for skill guidance",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--screen-style <style>",
+          "name": "screen-style",
+          "attributeName": "screenStyle",
+          "short": null,
+          "long": "--screen-style",
+          "aliases": [],
+          "description": "Screen style: 1 full screen, 2 split screen, or 3 picture in picture",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": true,
+            "value": 1,
+            "description": null
+          }
+        },
+        {
+          "flags": "--script <text>",
+          "name": "script",
+          "attributeName": "script",
+          "short": null,
+          "long": "--script",
+          "aliases": [],
+          "description": "Speech script; can also be piped via stdin",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--video-name <name>",
+          "name": "video-name",
+          "attributeName": "videoName",
+          "short": null,
+          "long": "--video-name",
+          "aliases": [],
+          "description": "Name the video in JoggAI",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--voice-age <age>",
+          "name": "voice-age",
+          "attributeName": "voiceAge",
+          "short": null,
+          "long": "--voice-age",
+          "aliases": [],
+          "description": "young, middle_aged, or old",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--voice-gender <gender>",
+          "name": "voice-gender",
+          "attributeName": "voiceGender",
+          "short": null,
+          "long": "--voice-gender",
+          "aliases": [],
+          "description": "female or male",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--voice-id <id>",
+          "name": "voice-id",
+          "attributeName": "voiceId",
+          "short": null,
+          "long": "--voice-id",
+          "aliases": [],
+          "description": "JoggAI voice ID",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--voice-language <language>",
+          "name": "voice-language",
+          "attributeName": "voiceLanguage",
+          "short": null,
+          "long": "--voice-language",
+          "aliases": [],
+          "description": "Voice language filter",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "--voice-use-case <use-case>",
+          "name": "voice-use-case",
+          "attributeName": "voiceUseCase",
+          "short": null,
+          "long": "--voice-use-case",
+          "aliases": [],
+          "description": "Voice use-case filter",
+          "valueRequirement": "required",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": false,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        },
+        {
+          "flags": "-h, --help",
+          "name": "help",
+          "attributeName": "help",
+          "short": "-h",
+          "long": "--help",
+          "aliases": [
+            "-h"
+          ],
+          "description": "display help for command",
+          "valueRequirement": "none",
+          "mandatory": false,
+          "variadic": false,
+          "negated": false,
+          "hidden": false,
+          "implicit": true,
+          "choices": [],
+          "default": {
+            "present": false,
+            "value": null,
+            "description": null
+          }
+        }
+      ],
+      "implicitHelpCommand": null,
+      "helpText": "Usage: zero generate avatar-video [options]\n\nGenerate a billed JoggAI talking-avatar video\n\nOptions:\n  --script <text>                 Speech script; can also be piped via stdin\n  --audio-url <url>               Public audio URL to drive the avatar\n  --avatar-id <id>                Public JoggAI avatar ID\n  --voice-id <id>                 JoggAI voice ID\n  --aspect-ratio <ratio>          Output ratio: portrait, landscape, or square\n  --screen-style <style>          Screen style: 1 full screen, 2 split screen, or 3 picture in\n                                  picture (default: 1)\n  --no-caption                    Disable generated captions\n  --video-name <name>             Name the video in JoggAI\n  --list-avatars                  List public JoggAI avatars\n  --list-voices                   List public JoggAI voices\n  --page <number>                 Discovery page (default: 1)\n  --page-size <number>            Discovery page size (1-100) (default: 10)\n  --avatar-style <style>          professional or social\n  --avatar-gender <gender>        female or male\n  --avatar-age <age>              adult, senior, or young_adult\n  --avatar-scene <scene>          Avatar scene filter\n  --avatar-ethnicity <ethnicity>  Avatar ethnicity filter\n  --voice-language <language>     Voice language filter\n  --voice-gender <gender>         female or male\n  --voice-age <age>               young, middle_aged, or old\n  --voice-use-case <use-case>     Voice use-case filter\n  --provider <name>               Provider: 'built-in' to use vm0 credits, or a connector name for\n                                  skill guidance\n  --all                           When listing providers, include unavailable or unauthorized\n                                  connectors\n  --json                          Print resource lists or the generation result as JSON\n  -h, --help                      display help for command\n\nExamples:\n  List provider choices: zero generate avatar-video\n  Generate from audio:   zero generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural --audio-url https://example.com/voice.mp3\n  Pipe a script:         cat script.txt | zero generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural\n\nBuilt-in workflow (vm0 credits):\n  1. zero generate avatar-video --provider built-in --list-avatars\n  2. zero generate avatar-video --provider built-in --list-voices --voice-language english\n  3. zero generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural --script \"Welcome to vm0\"\n\nJoggAI connector workflow (BYOK):\n  1. zero connector status joggai\n  2. zero generate avatar-video --provider joggai\n     Follow the printed JoggAI skill guidance for direct provider operations.\n\nOutput:\n  Prints the generated /f/ video URL and metadata. Use --json for a complete,\n  machine-readable resource list or generation result.\n\nNotes:\n  - Run the command with no script/audio to reflect built-in and connector choices.\n  - Use exactly one of --script (or piped stdin) and --audio-url.\n  - Public avatar and voice IDs are discoverable with the list flags.\n  - Built-in generation uses vm0-managed JoggAI credentials and charges org credits.\n  - Connector generation uses the connected JoggAI account and provider credits.\n  - Authenticates via ZERO_TOKEN and requires file:write capability.\n",
+      "visibility": null
     },
     {
       "path": [
@@ -14984,7 +15531,7 @@
           }
         ]
       },
-      "helpText": "Usage: zero org [options] [command]\n\nManage organization settings, members, and providers\n\nOptions:\n  -h, --help            display help for command\n\nCommands:\n  status                View current organization status\n  set [options] <slug>  Rename your organization slug\n  list                  List all accessible organizations\n  members               View organization members\n  invite [options]      Invite a member to the current organization\n  remove <email>        Remove a member from the current organization\n  leave                 Leave the current organization\n  delete <slug>         Delete the current organization (admin only)\n  secret                Manage org-level secrets (admin)\n  variable              Manage org-level variables (admin)\n  model-provider        Manage org-level model providers\n  help [command]        display help for command\n",
+      "helpText": "Usage: zero org [options] [command]\n\nManage organization settings, members, and providers\n\nOptions:\n  -h, --help        display help for command\n\nCommands:\n  status            View current organization status\n  list              List all accessible organizations\n  members           View organization members\n  invite [options]  Invite a member to the current organization\n  remove <email>    Remove a member from the current organization\n  leave             Leave the current organization\n  secret            Manage org-level secrets (admin)\n  variable          Manage org-level variables (admin)\n  model-provider    Manage org-level model providers\n  help [command]    display help for command\n",
       "visibility": {
         "capabilityGate": {
           "mode": "hidden"
@@ -14992,62 +15539,6 @@
         "featureSwitch": null,
         "runOnly": false
       }
-    },
-    {
-      "path": [
-        "zero",
-        "org",
-        "delete"
-      ],
-      "name": "delete",
-      "aliases": [],
-      "description": "Delete the current organization (admin only)",
-      "listingDescription": "Delete the current organization (admin only)",
-      "summary": "",
-      "usage": "[options] <slug>",
-      "hidden": false,
-      "arguments": [
-        {
-          "name": "slug",
-          "description": "Organization slug to confirm deletion",
-          "required": true,
-          "variadic": false,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "options": [
-        {
-          "flags": "-h, --help",
-          "name": "help",
-          "attributeName": "help",
-          "short": "-h",
-          "long": "--help",
-          "aliases": [
-            "-h"
-          ],
-          "description": "display help for command",
-          "valueRequirement": "none",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": true,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "implicitHelpCommand": null,
-      "helpText": "Usage: zero org delete [options] <slug>\n\nDelete the current organization (admin only)\n\nArguments:\n  slug        Organization slug to confirm deletion\n\nOptions:\n  -h, --help  display help for command\n",
-      "visibility": null
     },
     {
       "path": [
@@ -15890,83 +16381,6 @@
       "path": [
         "zero",
         "org",
-        "set"
-      ],
-      "name": "set",
-      "aliases": [],
-      "description": "Rename your organization slug",
-      "listingDescription": "Rename your organization slug",
-      "summary": "",
-      "usage": "[options] <slug>",
-      "hidden": false,
-      "arguments": [
-        {
-          "name": "slug",
-          "description": "The new organization slug",
-          "required": true,
-          "variadic": false,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "options": [
-        {
-          "flags": "--force",
-          "name": "force",
-          "attributeName": "force",
-          "short": null,
-          "long": "--force",
-          "aliases": [],
-          "description": "Force change existing organization (may break references)",
-          "valueRequirement": "none",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": false,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        },
-        {
-          "flags": "-h, --help",
-          "name": "help",
-          "attributeName": "help",
-          "short": "-h",
-          "long": "--help",
-          "aliases": [
-            "-h"
-          ],
-          "description": "display help for command",
-          "valueRequirement": "none",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": true,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "implicitHelpCommand": null,
-      "helpText": "Usage: zero org set [options] <slug>\n\nRename your organization slug\n\nArguments:\n  slug        The new organization slug\n\nOptions:\n  --force     Force change existing organization (may break references)\n  -h, --help  display help for command\n",
-      "visibility": null
-    },
-    {
-      "path": [
-        "zero",
-        "org",
         "status"
       ],
       "name": "status",
@@ -16801,75 +17215,6 @@
     {
       "path": [
         "zero",
-        "preference"
-      ],
-      "name": "preference",
-      "aliases": [],
-      "description": "View or update user preferences (timezone, notifications)",
-      "listingDescription": "View or update user preferences (timezone, notifications)",
-      "summary": "",
-      "usage": "[options]",
-      "hidden": false,
-      "arguments": [],
-      "options": [
-        {
-          "flags": "--timezone <timezone>",
-          "name": "timezone",
-          "attributeName": "timezone",
-          "short": null,
-          "long": "--timezone",
-          "aliases": [],
-          "description": "IANA timezone (e.g., America/New_York)",
-          "valueRequirement": "required",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": false,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        },
-        {
-          "flags": "-h, --help",
-          "name": "help",
-          "attributeName": "help",
-          "short": "-h",
-          "long": "--help",
-          "aliases": [
-            "-h"
-          ],
-          "description": "display help for command",
-          "valueRequirement": "none",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": true,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "implicitHelpCommand": null,
-      "helpText": "Usage: zero preference [options]\n\nView or update user preferences (timezone, notifications)\n\nOptions:\n  --timezone <timezone>  IANA timezone (e.g., America/New_York)\n  -h, --help             display help for command\n",
-      "visibility": {
-        "capabilityGate": {
-          "mode": "hidden"
-        },
-        "featureSwitch": null,
-        "runOnly": false
-      }
-    },
-    {
-      "path": [
-        "zero",
         "recognize"
       ],
       "name": "recognize",
@@ -16960,7 +17305,7 @@
             "image-recognition:write"
           ]
         },
-        "featureSwitch": "zeroImageRecognition",
+        "featureSwitch": null,
         "runOnly": true
       }
     },
@@ -17471,298 +17816,6 @@
         "featureSwitch": null,
         "runOnly": false
       }
-    },
-    {
-      "path": [
-        "zero",
-        "secret"
-      ],
-      "name": "secret",
-      "aliases": [],
-      "description": "Read or write secrets (API keys, tokens)",
-      "listingDescription": "Read or write secrets (API keys, tokens)",
-      "summary": "",
-      "usage": "[options] [command]",
-      "hidden": false,
-      "arguments": [],
-      "options": [
-        {
-          "flags": "-h, --help",
-          "name": "help",
-          "attributeName": "help",
-          "short": "-h",
-          "long": "--help",
-          "aliases": [
-            "-h"
-          ],
-          "description": "display help for command",
-          "valueRequirement": "none",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": true,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "implicitHelpCommand": {
-        "name": "help",
-        "aliases": [],
-        "description": "display help for command",
-        "arguments": [
-          {
-            "name": "command",
-            "description": "",
-            "required": false,
-            "variadic": false,
-            "choices": [],
-            "default": {
-              "present": false,
-              "value": null,
-              "description": null
-            }
-          }
-        ]
-      },
-      "helpText": "Usage: zero secret [options] [command]\n\nRead or write secrets (API keys, tokens)\n\nOptions:\n  -h, --help               display help for command\n\nCommands:\n  list|ls                  List all secrets\n  set [options] <name>     Create or update a secret\n  delete [options] <name>  Delete a secret\n  help [command]           display help for command\n",
-      "visibility": {
-        "capabilityGate": {
-          "mode": "hidden"
-        },
-        "featureSwitch": null,
-        "runOnly": false
-      }
-    },
-    {
-      "path": [
-        "zero",
-        "secret",
-        "delete"
-      ],
-      "name": "delete",
-      "aliases": [],
-      "description": "Delete a secret",
-      "listingDescription": "Delete a secret",
-      "summary": "",
-      "usage": "[options] <name>",
-      "hidden": false,
-      "arguments": [
-        {
-          "name": "name",
-          "description": "Secret name to delete",
-          "required": true,
-          "variadic": false,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "options": [
-        {
-          "flags": "-h, --help",
-          "name": "help",
-          "attributeName": "help",
-          "short": "-h",
-          "long": "--help",
-          "aliases": [
-            "-h"
-          ],
-          "description": "display help for command",
-          "valueRequirement": "none",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": true,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        },
-        {
-          "flags": "-y, --yes",
-          "name": "yes",
-          "attributeName": "yes",
-          "short": "-y",
-          "long": "--yes",
-          "aliases": [
-            "-y"
-          ],
-          "description": "Skip confirmation prompt",
-          "valueRequirement": "none",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": false,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "implicitHelpCommand": null,
-      "helpText": "Usage: zero secret delete [options] <name>\n\nDelete a secret\n\nArguments:\n  name        Secret name to delete\n\nOptions:\n  -y, --yes   Skip confirmation prompt\n  -h, --help  display help for command\n",
-      "visibility": null
-    },
-    {
-      "path": [
-        "zero",
-        "secret",
-        "list"
-      ],
-      "name": "list",
-      "aliases": [
-        "ls"
-      ],
-      "description": "List all secrets",
-      "listingDescription": "List all secrets",
-      "summary": "",
-      "usage": "[options]",
-      "hidden": false,
-      "arguments": [],
-      "options": [
-        {
-          "flags": "-h, --help",
-          "name": "help",
-          "attributeName": "help",
-          "short": "-h",
-          "long": "--help",
-          "aliases": [
-            "-h"
-          ],
-          "description": "display help for command",
-          "valueRequirement": "none",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": true,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "implicitHelpCommand": null,
-      "helpText": "Usage: zero secret list|ls [options]\n\nList all secrets\n\nOptions:\n  -h, --help  display help for command\n",
-      "visibility": null
-    },
-    {
-      "path": [
-        "zero",
-        "secret",
-        "set"
-      ],
-      "name": "set",
-      "aliases": [],
-      "description": "Create or update a secret",
-      "listingDescription": "Create or update a secret",
-      "summary": "",
-      "usage": "[options] <name>",
-      "hidden": false,
-      "arguments": [
-        {
-          "name": "name",
-          "description": "Secret name (uppercase, e.g., MY_API_KEY)",
-          "required": true,
-          "variadic": false,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "options": [
-        {
-          "flags": "-b, --body <value>",
-          "name": "body",
-          "attributeName": "body",
-          "short": "-b",
-          "long": "--body",
-          "aliases": [
-            "-b"
-          ],
-          "description": "Secret value (required in non-interactive mode)",
-          "valueRequirement": "required",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": false,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        },
-        {
-          "flags": "-d, --description <description>",
-          "name": "description",
-          "attributeName": "description",
-          "short": "-d",
-          "long": "--description",
-          "aliases": [
-            "-d"
-          ],
-          "description": "Optional description",
-          "valueRequirement": "required",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": false,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        },
-        {
-          "flags": "-h, --help",
-          "name": "help",
-          "attributeName": "help",
-          "short": "-h",
-          "long": "--help",
-          "aliases": [
-            "-h"
-          ],
-          "description": "display help for command",
-          "valueRequirement": "none",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": true,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "implicitHelpCommand": null,
-      "helpText": "Usage: zero secret set [options] <name>\n\nCreate or update a secret\n\nArguments:\n  name                             Secret name (uppercase, e.g., MY_API_KEY)\n\nOptions:\n  -b, --body <value>               Secret value (required in non-interactive mode)\n  -d, --description <description>  Optional description\n  -h, --help                       display help for command\n",
-      "visibility": null
     },
     {
       "path": [
@@ -19585,287 +19638,6 @@
         "featureSwitch": null,
         "runOnly": false
       }
-    },
-    {
-      "path": [
-        "zero",
-        "variable"
-      ],
-      "name": "variable",
-      "aliases": [],
-      "description": "Read or write non-sensitive configuration values",
-      "listingDescription": "Read or write non-sensitive configuration values",
-      "summary": "",
-      "usage": "[options] [command]",
-      "hidden": false,
-      "arguments": [],
-      "options": [
-        {
-          "flags": "-h, --help",
-          "name": "help",
-          "attributeName": "help",
-          "short": "-h",
-          "long": "--help",
-          "aliases": [
-            "-h"
-          ],
-          "description": "display help for command",
-          "valueRequirement": "none",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": true,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "implicitHelpCommand": {
-        "name": "help",
-        "aliases": [],
-        "description": "display help for command",
-        "arguments": [
-          {
-            "name": "command",
-            "description": "",
-            "required": false,
-            "variadic": false,
-            "choices": [],
-            "default": {
-              "present": false,
-              "value": null,
-              "description": null
-            }
-          }
-        ]
-      },
-      "helpText": "Usage: zero variable [options] [command]\n\nRead or write non-sensitive configuration values\n\nOptions:\n  -h, --help                    display help for command\n\nCommands:\n  list|ls                       List all variables\n  set [options] <name> <value>  Create or update a variable\n  delete [options] <name>       Delete a variable\n  help [command]                display help for command\n",
-      "visibility": {
-        "capabilityGate": {
-          "mode": "hidden"
-        },
-        "featureSwitch": null,
-        "runOnly": false
-      }
-    },
-    {
-      "path": [
-        "zero",
-        "variable",
-        "delete"
-      ],
-      "name": "delete",
-      "aliases": [],
-      "description": "Delete a variable",
-      "listingDescription": "Delete a variable",
-      "summary": "",
-      "usage": "[options] <name>",
-      "hidden": false,
-      "arguments": [
-        {
-          "name": "name",
-          "description": "Variable name to delete",
-          "required": true,
-          "variadic": false,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "options": [
-        {
-          "flags": "-h, --help",
-          "name": "help",
-          "attributeName": "help",
-          "short": "-h",
-          "long": "--help",
-          "aliases": [
-            "-h"
-          ],
-          "description": "display help for command",
-          "valueRequirement": "none",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": true,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        },
-        {
-          "flags": "-y, --yes",
-          "name": "yes",
-          "attributeName": "yes",
-          "short": "-y",
-          "long": "--yes",
-          "aliases": [
-            "-y"
-          ],
-          "description": "Skip confirmation prompt",
-          "valueRequirement": "none",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": false,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "implicitHelpCommand": null,
-      "helpText": "Usage: zero variable delete [options] <name>\n\nDelete a variable\n\nArguments:\n  name        Variable name to delete\n\nOptions:\n  -y, --yes   Skip confirmation prompt\n  -h, --help  display help for command\n",
-      "visibility": null
-    },
-    {
-      "path": [
-        "zero",
-        "variable",
-        "list"
-      ],
-      "name": "list",
-      "aliases": [
-        "ls"
-      ],
-      "description": "List all variables",
-      "listingDescription": "List all variables",
-      "summary": "",
-      "usage": "[options]",
-      "hidden": false,
-      "arguments": [],
-      "options": [
-        {
-          "flags": "-h, --help",
-          "name": "help",
-          "attributeName": "help",
-          "short": "-h",
-          "long": "--help",
-          "aliases": [
-            "-h"
-          ],
-          "description": "display help for command",
-          "valueRequirement": "none",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": true,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "implicitHelpCommand": null,
-      "helpText": "Usage: zero variable list|ls [options]\n\nList all variables\n\nOptions:\n  -h, --help  display help for command\n",
-      "visibility": null
-    },
-    {
-      "path": [
-        "zero",
-        "variable",
-        "set"
-      ],
-      "name": "set",
-      "aliases": [],
-      "description": "Create or update a variable",
-      "listingDescription": "Create or update a variable",
-      "summary": "",
-      "usage": "[options] <name> <value>",
-      "hidden": false,
-      "arguments": [
-        {
-          "name": "name",
-          "description": "Variable name (uppercase, e.g., MY_VAR)",
-          "required": true,
-          "variadic": false,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        },
-        {
-          "name": "value",
-          "description": "Variable value",
-          "required": true,
-          "variadic": false,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "options": [
-        {
-          "flags": "-d, --description <description>",
-          "name": "description",
-          "attributeName": "description",
-          "short": "-d",
-          "long": "--description",
-          "aliases": [
-            "-d"
-          ],
-          "description": "Optional description",
-          "valueRequirement": "required",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": false,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        },
-        {
-          "flags": "-h, --help",
-          "name": "help",
-          "attributeName": "help",
-          "short": "-h",
-          "long": "--help",
-          "aliases": [
-            "-h"
-          ],
-          "description": "display help for command",
-          "valueRequirement": "none",
-          "mandatory": false,
-          "variadic": false,
-          "negated": false,
-          "hidden": false,
-          "implicit": true,
-          "choices": [],
-          "default": {
-            "present": false,
-            "value": null,
-            "description": null
-          }
-        }
-      ],
-      "implicitHelpCommand": null,
-      "helpText": "Usage: zero variable set [options] <name> <value>\n\nCreate or update a variable\n\nArguments:\n  name                             Variable name (uppercase, e.g., MY_VAR)\n  value                            Variable value\n\nOptions:\n  -d, --description <description>  Optional description\n  -h, --help                       display help for command\n",
-      "visibility": null
     },
     {
       "path": [
