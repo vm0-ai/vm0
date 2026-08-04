@@ -9,6 +9,8 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { threadGoals } from "@vm0/db/schema/thread-goal";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
@@ -39,6 +41,7 @@ type FixtureKind = Extract<
   TestCronMonitorChatEventQueueStateActionBody,
   { readonly action: "seed-fixture" }
 >["fixture_kind"];
+type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const STALE_CONTEXT_FIXTURES = [
   {
@@ -141,6 +144,77 @@ async function seedActiveRun(
   signal.throwIfAborted();
 }
 
+async function seedGoalFixture(
+  tx: DbTransaction,
+  args: {
+    readonly composeId: string;
+    readonly fixtureKind: "orphaned-goal" | "paused-goal";
+    readonly orgId: string;
+    readonly threadId: string;
+    readonly userId: string;
+  },
+) {
+  const [goal] = await tx
+    .insert(threadGoals)
+    .values({
+      orgId: args.orgId,
+      ownerUserId: args.userId,
+      agentId: args.composeId,
+      chatThreadId: args.threadId,
+      status: args.fixtureKind === "paused-goal" ? "paused" : "active",
+      objective: "orphan monitor goal objective",
+      objectiveBrief: "orphan monitor goal",
+    })
+    .returning({ id: threadGoals.id });
+  if (!goal) {
+    throw new Error("Failed to seed orphan monitor goal");
+  }
+  const [goalEvent] = await tx
+    .insert(chatEvents)
+    .values({
+      chatThreadId: args.threadId,
+      eventType: "input.goal",
+      runGroupId: goal.id,
+      userMessage: createUserMessageDocument({
+        text: null,
+        nonContentPart: { type: "goal", goalBrief: "orphan monitor goal" },
+      }),
+      runId: null,
+      createdAt: new Date(0),
+      seqId: 1,
+    })
+    .returning({ id: chatEvents.id });
+  if (args.fixtureKind === "orphaned-goal") {
+    await tx.delete(threadGoals).where(eq(threadGoals.id, goal.id));
+  }
+  return goalEvent;
+}
+
+async function seedGoalAgent(
+  db: Db,
+  args: {
+    readonly composeId: string;
+    readonly fixtureKind: FixtureKind;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  if (
+    args.fixtureKind !== "orphaned-goal" &&
+    args.fixtureKind !== "paused-goal"
+  ) {
+    return;
+  }
+  await db.insert(zeroAgents).values({
+    id: args.composeId,
+    orgId: args.orgId,
+    owner: args.userId,
+    name: `orphan-monitor-${randomUUID()}`,
+  });
+  signal.throwIfAborted();
+}
+
 async function seedFixture(
   db: Db,
   fixtureKind: FixtureKind,
@@ -160,6 +234,12 @@ async function seedFixture(
   if (!compose) {
     throw new Error("Failed to seed orphan monitor compose");
   }
+
+  await seedGoalAgent(
+    db,
+    { composeId: compose.id, fixtureKind, orgId, userId },
+    signal,
+  );
 
   const [thread] = await db
     .insert(chatThreads)
@@ -204,6 +284,17 @@ async function seedFixture(
         triggerBrief: null,
       });
       return [automation];
+    }
+    if (fixtureKind === "orphaned-goal" || fixtureKind === "paused-goal") {
+      return [
+        await seedGoalFixture(tx, {
+          composeId: compose.id,
+          fixtureKind,
+          orgId,
+          threadId: thread.id,
+          userId,
+        }),
+      ];
     }
     const event =
       fixtureKind === "failed-message"

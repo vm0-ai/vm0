@@ -185,6 +185,41 @@ describe("cron monitor chat event queue", () => {
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
+  it("alerts when a pending goal event has lost its goal row", async () => {
+    const fixture = await trackFixture(seedFixture("orphaned-goal"));
+
+    const response = await accept(
+      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: "Internal server error",
+    });
+    expect(
+      context.mocks.sentry.captureException.mock.calls.at(-1)?.[0],
+    ).toMatchObject({
+      code: "ORPHANED_QUEUED_CHAT_MESSAGES",
+      orphanedMessages: 1,
+      orphanedMessagesBySource: { goal: 1 },
+    });
+  });
+
+  it("does not alert while a pending goal continuation is paused", async () => {
+    const fixture = await trackFixture(seedFixture("paused-goal"));
+
+    const response = await accept(
+      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      orphanedMessages: 0,
+    });
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+  });
+
   it("does not alert for a newly queued event below the age threshold", async () => {
     const fixture = await trackFixture(seedFixture("queued-integration"));
 
