@@ -77,6 +77,7 @@ import {
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
+import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
 import {
@@ -530,6 +531,7 @@ function recordPollTimingMetrics(args: {
   readonly pollReason: string | undefined;
   readonly runnerPreferenceResolution: RunnerPreferenceResolutionOutcome;
   readonly reuseKeyKind: "thread" | "session" | "none";
+  readonly historyGenerationRunId: string | undefined;
   readonly queueCreatedAtMs: number;
   readonly pollRequestStartedAtMs: number;
   readonly pendingJobLookupStartedAtMs: number;
@@ -545,6 +547,9 @@ function recordPollTimingMetrics(args: {
   };
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
+  }
+  if (args.historyGenerationRunId) {
+    dimensions.history_generation_run_id = args.historyGenerationRunId;
   }
 
   recordSandboxOperations([
@@ -723,6 +728,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     pollReason: body.data.telemetry?.pollReason,
     runnerPreferenceResolution: reusePreference.outcome,
     reuseKeyKind: runnerReuseKeyTelemetryKind(pendingJob.reuseKey),
+    historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
     pollRequestStartedAtMs,
     pendingJobLookupStartedAtMs,
@@ -1920,6 +1926,9 @@ function scheduleSuccessfulClaimSideEffects(args: {
     pollDueToJobDiscoveredMs: args.telemetry?.pollDueToJobDiscoveredMs,
     pollHttpRequestMs: args.telemetry?.pollHttpRequestMs,
     pollReason: args.telemetry?.pollReason,
+    historyGenerationRunId: historyGenerationRunIdForStoredExecutionContext(
+      args.storedContext,
+    ),
     claimRouteTiming: args.claimRouteTiming,
   });
 }
@@ -1945,6 +1954,7 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
+  readonly historyGenerationRunId: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): void {
   waitUntil(
@@ -1980,6 +1990,7 @@ interface ClaimTimingMetricArgs {
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
+  readonly historyGenerationRunId: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }
 
@@ -2073,6 +2084,9 @@ function claimTimingDimensions(
   }
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
+  }
+  if (args.historyGenerationRunId) {
+    dimensions.history_generation_run_id = args.historyGenerationRunId;
   }
   return dimensions;
 }
