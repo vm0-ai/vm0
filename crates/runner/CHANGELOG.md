@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.157.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.157.0...runner-rs-v0.157.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **runner:** report unavailable status in doctor ([#25051](https://github.com/vm0-ai/vm0/issues/25051)) ([c5b3cc8](https://github.com/vm0-ai/vm0/commit/c5b3cc8618e9ada1c986d7afd1307e9582a46085))
+
+
+### Refactoring
+
+* canonicalize deepseek model provider ([#25030](https://github.com/vm0-ai/vm0/issues/25030)) ([c19ea0f](https://github.com/vm0-ai/vm0/commit/c19ea0fa2d196143ab899db3953904c814e2b016))
+
 ## [0.157.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.156.2...runner-rs-v0.157.0) (2026-08-04)
 
 
@@ -1906,7 +1918,6 @@
 
 ### Bug Fixes
 
-* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
 * prune stale runner direct candidates ([#20649](https://github.com/vm0-ai/vm0/issues/20649)) ([191387f](https://github.com/vm0-ai/vm0/commit/191387fcdb094faae15cb83c940d463bcf5d580a))
 
 ## [0.139.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.138.2...runner-rs-v0.139.0) (2026-07-08)

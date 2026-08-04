@@ -51,9 +51,9 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
             &guest_contracts::env::RunPayload {
                 prompt: prompt.to_string(),
                 codex_runtime_config: r#"{
-                    "providerId": "minimax",
-                    "name": "MiniMax",
-                    "baseUrl": "https://api.minimax.io/v1",
+                    "providerId": "deepseek",
+                    "name": "DeepSeek",
+                    "baseUrl": "https://api.deepseek.com/",
                     "envKey": "OPENAI_API_KEY",
                     "wireApi": "responses",
                     "supportsWebsockets": false
@@ -66,7 +66,7 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
             &runtime_dir,
             &HashMap::from([
                 ("OPENAI_API_KEY".to_string(), "sk-test".to_string()),
-                ("OPENAI_MODEL".to_string(), "MiniMax-M3".to_string()),
+                ("OPENAI_MODEL".to_string(), "deepseek-v4-flash".to_string()),
                 (
                     "OPENAI_BASE_URL".to_string(),
                     "https://api.should-not-win.test/v1".to_string(),
@@ -167,13 +167,13 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
         input_event
             .get("thread_request_model")
             .and_then(Value::as_str),
-        Some("MiniMax-M3")
+        Some("deepseek-v4-flash")
     );
     assert_eq!(
         input_event
             .get("thread_request_model_provider")
             .and_then(Value::as_str),
-        Some("minimax")
+        Some("deepseek")
     );
     assert!(
         input_event

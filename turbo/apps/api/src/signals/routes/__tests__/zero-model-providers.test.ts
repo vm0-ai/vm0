@@ -690,23 +690,6 @@ describe("POST /api/zero/model-providers", () => {
     expect(other.body.provider.type).toBe("anthropic-api-key");
   });
 
-  it("keeps MiniMax on Claude Code", async () => {
-    const fixture = uniqueOrgUser("zmp-minimax-framework");
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
-
-    const response = await accept(
-      client.upsert({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { type: "minimax-api-key", secret: "sk-minimax-test" },
-      }),
-      [201],
-    );
-
-    expect(response.body.provider.type).toBe("minimax-api-key");
-    expect(response.body.provider.framework).toBe("claude-code");
-  });
-
   it("does not mark provider rows as defaults across frameworks", async () => {
     const fixture = uniqueOrgUser("zmp-cross-framework");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");

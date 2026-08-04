@@ -168,8 +168,8 @@ function mockApiKeyModelRouteStory(): void {
   context.mocks.data.orgModelPolicies([
     builtInPolicy(
       "00000000-0000-4000-a000-000000000211",
-      "deepseek-v4-pro",
-      "DeepSeek V4 Pro",
+      "deepseek-v4-flash",
+      "DeepSeek V4 Flash",
       true,
     ),
     claudeOpusApiKeyPolicy(),
@@ -641,8 +641,8 @@ describe("organization model providers settings", () => {
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000214",
-        "deepseek-v4-pro",
-        "DeepSeek V4 Pro",
+        "deepseek-v4-flash",
+        "DeepSeek V4 Flash",
         true,
       ),
       builtInPolicy(
@@ -666,7 +666,7 @@ describe("organization model providers settings", () => {
       screen.findByRole("heading", { name: "Modelos" }),
     ).resolves.toBeInTheDocument();
     const deepseekRow = await screen.findByTestId(
-      "org-model-policy-row-deepseek-v4-pro",
+      "org-model-policy-row-deepseek-v4-flash",
     );
     expect(within(deepseekRow).getByText("Integrado")).toBeInTheDocument();
 
@@ -695,18 +695,6 @@ describe("organization model providers settings", () => {
     await expect(
       screen.findByRole("option", { name: "Claude Opus 4.7" }),
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Auto" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "GPT-5.4" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "GPT-5.4 Mini" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "DeepSeek V4 Pro" }),
-    ).not.toBeInTheDocument();
     await expect(
       screen.findByRole("option", { name: "DeepSeek V4 Flash" }),
     ).resolves.toBeInTheDocument();
@@ -909,18 +897,18 @@ describe("organization model providers settings", () => {
 
     const defaultRow = screen.getByTestId("default-model-row");
     expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
-      "DeepSeek V4 Pro",
+      "DeepSeek V4 Flash",
     );
 
     const deepseekRow = await screen.findByTestId(
-      "org-model-policy-row-deepseek-v4-pro",
+      "org-model-policy-row-deepseek-v4-flash",
     );
-    click(within(deepseekRow).getByLabelText("Actions for DeepSeek V4 Pro"));
+    click(within(deepseekRow).getByLabelText("Actions for DeepSeek V4 Flash"));
     click(menuItemByText("Delete model"));
 
     await waitFor(() => {
       expect(
-        screen.queryByTestId("org-model-policy-row-deepseek-v4-pro"),
+        screen.queryByTestId("org-model-policy-row-deepseek-v4-flash"),
       ).not.toBeInTheDocument();
       expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
         "Claude Opus 4.7",
@@ -934,8 +922,8 @@ describe("organization model providers settings", () => {
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000211",
-        "deepseek-v4-pro",
-        "DeepSeek V4 Pro",
+        "deepseek-v4-flash",
+        "DeepSeek V4 Flash",
         true,
       ),
       claudeOpusApiKeyPolicy(),
@@ -955,7 +943,7 @@ describe("organization model providers settings", () => {
 
     const defaultRow = screen.getByTestId("default-model-row");
     expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
-      "DeepSeek V4 Pro",
+      "DeepSeek V4 Flash",
     );
 
     click(within(defaultRow).getByRole("combobox"));

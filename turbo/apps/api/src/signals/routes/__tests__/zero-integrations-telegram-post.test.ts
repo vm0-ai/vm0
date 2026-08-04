@@ -2514,7 +2514,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
     await seedModelPolicies({
       fixture,
-      selectedModel: "deepseek-v4-pro",
+      selectedModel: "deepseek-v4-flash",
     });
     const telegramMocks = telegramApiMocks();
 
@@ -2542,7 +2542,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       "/model claude-sonnet-4-6",
     );
     expect(telegramMocks.sentMessages[0]?.text).toContain(
-      "/model deepseek-v4-pro",
+      "/model deepseek-v4-flash",
     );
     expect(telegramMocks.sentMessages[0]?.text).not.toContain("/model default");
 
