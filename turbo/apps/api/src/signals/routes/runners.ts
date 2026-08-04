@@ -176,6 +176,7 @@ type ClaimRouteTimingActionType =
   | "claim_route_secret_materialization"
   | "claim_route_response_assembly"
   | "claim_route_response_network_policy_refresh"
+  | "claim_route_response_network_policy_refresh_baseline_database"
   | "claim_route_response_resume_session"
   | "claim_route_transition_running"
   | "claim_route_transition_execute";
@@ -1359,6 +1360,13 @@ async function refreshClaimNetworkPolicies(args: {
         args.db,
         scope,
         baseline,
+        async <T>(operation: () => Promise<T>): Promise<T> => {
+          return await args.timing.measure(
+            "claim_route_response_network_policy_refresh_baseline_database",
+            "nested",
+            operation,
+          );
+        },
       );
       if (resolution.kind === "incompatible") {
         return await fullRefresh("full_incompatible_baseline");
