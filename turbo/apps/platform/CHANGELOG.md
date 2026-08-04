@@ -1850,7 +1850,6 @@
 * **artifacts:** suppress toast for cancelled refresh ([#22922](https://github.com/vm0-ai/vm0/issues/22922)) ([6525eac](https://github.com/vm0-ai/vm0/commit/6525eac67bf2b7f38a417d93c2f82524afb434be))
 * **chat:** keep user message links as links ([#22931](https://github.com/vm0-ai/vm0/issues/22931)) ([cc2964b](https://github.com/vm0-ai/vm0/commit/cc2964be172b843604dcd0a870c8bc709d323990))
 * **chat:** preserve connector copy and support reconnect actions ([#22925](https://github.com/vm0-ai/vm0/issues/22925)) ([59d0382](https://github.com/vm0-ai/vm0/commit/59d0382be2aa7e9951bb409c4fd62d6d0eff5f65))
-* retire gpt-5.4 models ([#22923](https://github.com/vm0-ai/vm0/issues/22923)) ([0e5de85](https://github.com/vm0-ai/vm0/commit/0e5de85debf5ae6eb58e3a56a598ca2d21e506a0))
 * **workflows:** route manual runs through the chat queue ([#22933](https://github.com/vm0-ai/vm0/issues/22933)) ([b586e29](https://github.com/vm0-ai/vm0/commit/b586e29777c315815054da64a8657377d6708775))
 
 
@@ -4918,7 +4917,6 @@
 * expose build commit sha ([#19954](https://github.com/vm0-ai/vm0/issues/19954)) ([50733bd](https://github.com/vm0-ai/vm0/commit/50733bd6e0ed5e57dd476f5139072b18d56018fb))
 * expose connector catalog status view models ([#19580](https://github.com/vm0-ai/vm0/issues/19580)) ([697e259](https://github.com/vm0-ai/vm0/commit/697e25903a89443aa024dc38dfaca850133d99db))
 * gate icon-only collapsed manage nav ([#20241](https://github.com/vm0-ai/vm0/issues/20241)) ([36c7282](https://github.com/vm0-ai/vm0/commit/36c72824d5d61db302ffa7cb69a185c1f8889a14))
-* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
 * hide creator attribution on private agents tab ([#19724](https://github.com/vm0-ai/vm0/issues/19724)) ([ec6ca7f](https://github.com/vm0-ai/vm0/commit/ec6ca7f8c3303d4a1e05c1db83eaa98e28734096)), closes [#19723](https://github.com/vm0-ai/vm0/issues/19723)
 * migrate legacy automations to workflow schedule triggers globally ([#20033](https://github.com/vm0-ai/vm0/issues/20033)) ([eeb91c2](https://github.com/vm0-ai/vm0/commit/eeb91c258a50f67b05a341ebbbbb7e1b872d0030))
 * move subscription usage into account menu ([#19698](https://github.com/vm0-ai/vm0/issues/19698)) ([9d8716d](https://github.com/vm0-ai/vm0/commit/9d8716d7eeacdcf1448727463ac43740d49891f8))
@@ -6276,7 +6274,6 @@
 ### Features
 
 * add workflow prompt action to chat messages ([#19651](https://github.com/vm0-ai/vm0/issues/19651)) ([85f48a5](https://github.com/vm0-ai/vm0/commit/85f48a5f25a56078f933cd6d05359ffe73ef2da0))
-* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
 
 
 ### Bug Fixes
@@ -12984,7 +12981,6 @@
 
 ### Bug Fixes
 
-* adjust deepseek-v4-pro credit multiplier from 0.3x to 0.06x ([#11435](https://github.com/vm0-ai/vm0/issues/11435)) ([049f315](https://github.com/vm0-ai/vm0/commit/049f31501d973889dc39f336e5c2139e4568ed3c))
 
 ## [0.306.1](https://github.com/vm0-ai/vm0/compare/app-v0.306.0...app-v0.306.1) (2026-04-28)
 

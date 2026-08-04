@@ -1852,9 +1852,9 @@ mod tests {
             runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", true, &user_env);
         runtime.disable_builtin_web_search = true;
         runtime.codex_runtime_config = Some(codex_runtime_config::CodexRuntimeConfig {
-            provider_id: "minimax".to_string(),
-            name: "MiniMax".to_string(),
-            base_url: "https://api.minimax.io/v1".to_string(),
+            provider_id: "deepseek".to_string(),
+            name: "DeepSeek".to_string(),
+            base_url: "https://api.deepseek.com/".to_string(),
             env_key: "OPENAI_API_KEY".to_string(),
             http_headers: None,
             requires_openai_auth: None,
@@ -1865,7 +1865,7 @@ mod tests {
 
         let overrides = runtime.codex_startup_config_overrides();
 
-        assert!(overrides.contains(&r#"model_provider="minimax""#.to_string()));
+        assert!(overrides.contains(&r#"model_provider="deepseek""#.to_string()));
         assert!(overrides.contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string()));
     }
 
@@ -1987,7 +1987,7 @@ mod tests {
     fn structured_codex_runtime_config_omits_stale_openai_base_url_from_child_env() {
         let user_env = HashMap::from([
             ("OPENAI_API_KEY".to_string(), "sk-test".to_string()),
-            ("OPENAI_MODEL".to_string(), "MiniMax-M3".to_string()),
+            ("OPENAI_MODEL".to_string(), "deepseek-v4-flash".to_string()),
             (
                 "OPENAI_BASE_URL".to_string(),
                 "https://api.should-not-win.test/v1".to_string(),
@@ -1996,9 +1996,9 @@ mod tests {
         let mut runtime =
             runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", false, &user_env);
         runtime.codex_runtime_config = Some(codex_runtime_config::CodexRuntimeConfig {
-            provider_id: "minimax".to_string(),
-            name: "MiniMax".to_string(),
-            base_url: "https://api.minimax.io/v1".to_string(),
+            provider_id: "deepseek".to_string(),
+            name: "DeepSeek".to_string(),
+            base_url: "https://api.deepseek.com/".to_string(),
             env_key: "OPENAI_API_KEY".to_string(),
             http_headers: None,
             requires_openai_auth: None,
@@ -2017,7 +2017,7 @@ mod tests {
         assert!(
             env_values
                 .iter()
-                .any(|(key, value)| { key == "OPENAI_MODEL" && value == "MiniMax-M3" })
+                .any(|(key, value)| { key == "OPENAI_MODEL" && value == "deepseek-v4-flash" })
         );
         assert!(!env_values.iter().any(|(key, _)| key == "OPENAI_BASE_URL"));
     }

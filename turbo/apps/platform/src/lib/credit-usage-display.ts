@@ -2,11 +2,6 @@ import { getModelDisplayName } from "@vm0/core/model-display-name";
 import { i18n } from "../i18n/index.ts";
 
 const USAGE_DISPLAY_NAMES = {
-  auto(): string {
-    return i18n.t(($) => {
-      return $.usage.displayNames.auto;
-    });
-  },
   finance(): string {
     return i18n.t(($) => {
       return $.usage.displayNames.finance;
@@ -64,10 +59,6 @@ const MANAGED_USAGE_PROVIDER_DISPLAY_NAMES: Readonly<
   "google-air-quality": USAGE_DISPLAY_NAMES.weather,
 };
 
-const MODEL_DISPLAY_NAMES: Readonly<Record<string, () => string>> = {
-  "vm0-model": USAGE_DISPLAY_NAMES.auto,
-};
-
 function titleCaseUsageToken(token: string): string {
   const upper = token.toUpperCase();
   if (["AI", "API", "GLM", "GPT", "ID", "SQL", "URL", "VM0"].includes(upper)) {
@@ -109,11 +100,6 @@ function stripUsageProviderPrefix(value: string): string {
 }
 
 function usageModelDisplayName(model: string): string {
-  const usageDisplayName = MODEL_DISPLAY_NAMES[model];
-  if (usageDisplayName) {
-    return usageDisplayName();
-  }
-
   const directDisplayName = getModelDisplayName(model);
   if (directDisplayName !== model) {
     return directDisplayName;

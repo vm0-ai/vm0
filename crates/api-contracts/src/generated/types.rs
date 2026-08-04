@@ -51,12 +51,9 @@ pub mod models {
         /// Model-provider type `minimax-api-key`.
         #[serde(rename = "minimax-api-key")]
         MinimaxApiKey,
-        /// Model-provider type `deepseek-api-key`.
-        #[serde(rename = "deepseek-api-key")]
-        DeepseekApiKey,
-        /// Model-provider type `deepseek-codex`.
-        #[serde(rename = "deepseek-codex")]
-        DeepseekCodex,
+        /// Model-provider type `deepseek`.
+        #[serde(rename = "deepseek")]
+        Deepseek,
         /// Model-provider type `zai-api-key`.
         #[serde(rename = "zai-api-key")]
         ZaiApiKey,
@@ -122,9 +119,6 @@ pub mod models {
         /// Model identifier `claude-sonnet-4-6`.
         #[serde(rename = "claude-sonnet-4-6")]
         ClaudeSonnet46,
-        /// Model identifier `deepseek-v4-pro`.
-        #[serde(rename = "deepseek-v4-pro")]
-        DeepseekV4Pro,
         /// Model identifier `deepseek-v4-flash`.
         #[serde(rename = "deepseek-v4-flash")]
         DeepseekV4Flash,

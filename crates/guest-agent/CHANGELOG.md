@@ -663,7 +663,6 @@
 ### Bug Fixes
 
 * add runner exit signal diagnostics ([#20674](https://github.com/vm0-ai/vm0/issues/20674)) ([bf46c07](https://github.com/vm0-ai/vm0/commit/bf46c07f8a9954576040760dfcfb3bb81ee2d1ea))
-* remove minimax codex legacy base url ([#20707](https://github.com/vm0-ai/vm0/issues/20707)) ([a4a9e77](https://github.com/vm0-ai/vm0/commit/a4a9e77fe2d8e1065f1b57a9ead26565b054fa39))
 
 
 ### Refactoring
@@ -677,7 +676,6 @@
 
 ### Bug Fixes
 
-* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
 
 ## [0.49.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.48.0...guest-agent-v0.49.0) (2026-07-08)
 
@@ -830,7 +828,6 @@
 
 ### Features
 
-* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
 
 ## [0.43.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.5...guest-agent-v0.43.6) (2026-07-01)
 

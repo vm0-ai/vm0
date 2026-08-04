@@ -2625,7 +2625,7 @@ jobs:
             policies: [
               {model: "claude-opus-4-7", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
               {model: "claude-sonnet-4-6", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
-              {model: "deepseek-v4-pro", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
+              {model: "deepseek-v4-flash", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
               {model: "gpt-5.5", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null}
             ]
           }')"

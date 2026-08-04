@@ -120,6 +120,13 @@
       "when": 1785836983732,
       "tag": "0824_clear_goal_context_pointers",
       "breakpoints": true
+    },
+    {
+      "idx": 825,
+      "version": "7",
+      "when": 1785841450355,
+      "tag": "0825_migrate_legacy_deepseek_state",
+      "breakpoints": true
     }
   ]
 }

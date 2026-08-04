@@ -56,7 +56,7 @@ def test_extracts_usage_from_wrapped_response_done_event():
             "type": "response.done",
             "response": {
                 "id": "resp_2",
-                "model": "gpt-5.4",
+                "model": "gpt-5.5",
                 "usage": {
                     "input_tokens": 12,
                     "output_tokens": 7,
@@ -68,7 +68,7 @@ def test_extracts_usage_from_wrapped_response_done_event():
 
     assert extract_openai_responses_usage_from_event(event) == {
         "message_id": "resp_2",
-        "model": "gpt-5.4",
+        "model": "gpt-5.5",
         "tokens.input": 12,
         "tokens.output": 7,
     }
@@ -106,7 +106,7 @@ def test_extracts_usage_from_wrapped_response_failed_event():
             "type": "response.failed",
             "response": {
                 "id": "resp_failed",
-                "model": "gpt-5.4",
+                "model": "gpt-5.5",
                 "usage": {
                     "input_tokens": 12000,
                     "output_tokens": 0,
@@ -118,7 +118,7 @@ def test_extracts_usage_from_wrapped_response_failed_event():
 
     assert extract_openai_responses_usage_from_event(event) == {
         "message_id": "resp_failed",
-        "model": "gpt-5.4",
+        "model": "gpt-5.5",
         "tokens.input": 12000,
         "tokens.output": 0,
     }
@@ -582,7 +582,7 @@ def test_merge_zero_only_source_does_not_relabel_existing_positive_usage():
         target,
         {
             "message_id": "resp_empty",
-            "model": "gpt-5.4",
+            "model": "gpt-5.5",
             "tokens.input": 0,
             "tokens.output": 0,
             "tokens.cache_read": 0,
@@ -631,7 +631,7 @@ def test_merge_updates_with_positive_quantities():
         target,
         {
             "message_id": "resp_2",
-            "model": "gpt-5.4",
+            "model": "gpt-5.5",
             "tokens.input": 12,
             "tokens.output": 7,
         },
@@ -639,7 +639,7 @@ def test_merge_updates_with_positive_quantities():
 
     assert target == {
         "message_id": "resp_2",
-        "model": "gpt-5.4",
+        "model": "gpt-5.5",
         "tokens.input": 12,
         "tokens.output": 7,
     }

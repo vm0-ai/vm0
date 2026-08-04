@@ -36,10 +36,10 @@ class TestOpenAIResponsesSseUsageExtractor:
         parse(
             b"event: response.done\n"
             b'data: {"type":"response.done","response":{"id":"resp_2",'
-            b'"model":"gpt-5.4","usage":{"input_tokens":12,"output_tokens":7}}}\n\n'
+            b'"model":"gpt-5.5","usage":{"input_tokens":12,"output_tokens":7}}}\n\n'
         )
         assert usage["message_id"] == "resp_2"
-        assert usage["model"] == "gpt-5.4"
+        assert usage["model"] == "gpt-5.5"
         assert usage["tokens.input"] == 12
         assert usage["tokens.output"] == 7
         assert "tokens.cache_read" not in usage
@@ -65,11 +65,11 @@ class TestOpenAIResponsesSseUsageExtractor:
         parse(
             b"event: response.failed\n"
             b'data: {"type":"response.failed","response":{"id":"resp_failed",'
-            b'"model":"gpt-5.4","usage":{"input_tokens":12000,"output_tokens":0}}}\n\n'
+            b'"model":"gpt-5.5","usage":{"input_tokens":12000,"output_tokens":0}}}\n\n'
         )
         assert usage == {
             "message_id": "resp_failed",
-            "model": "gpt-5.4",
+            "model": "gpt-5.5",
             "tokens.input": 12000,
             "tokens.output": 0,
         }
@@ -140,10 +140,10 @@ class TestOpenAIResponsesSseUsageExtractor:
     def test_accepts_data_level_type_without_event_line(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
-            b'data: {"type":"response.completed","response":{"model":"gpt-5.4-mini",'
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.6-luna",'
             b'"usage":{"input_tokens":3}}}\n\n'
         )
-        assert usage["model"] == "gpt-5.4-mini"
+        assert usage["model"] == "gpt-5.6-luna"
         assert usage["tokens.input"] == 3
 
     @pytest.mark.parametrize("prefix", [b"", b"\xef\xbb\xbf"])
@@ -220,10 +220,10 @@ class TestOpenAIResponsesSseUsageExtractor:
 
         parse(
             b"event: response.completed\n"
-            b'data: {"response":{"model":"gpt-5.4","usage":{"output_tokens":6}}}\n\n'
+            b'data: {"response":{"model":"gpt-5.5","usage":{"output_tokens":6}}}\n\n'
         )
 
-        assert usage["model"] == "gpt-5.4"
+        assert usage["model"] == "gpt-5.5"
         assert usage["tokens.output"] == 6
 
     def test_named_terminal_event_with_known_non_usage_type_is_ignored(self):
@@ -364,24 +364,24 @@ class TestOpenAIResponsesSseUsageExtractor:
             b"data: "
             + delta_payload
             + b"\n\n"
-            + b'data: {"type":"response.completed","response":{"model":"gpt-5.4",'
+            + b'data: {"type":"response.completed","response":{"model":"gpt-5.5",'
             + b'"usage":{"output_tokens":9}}}\n\n'
         )
 
-        assert usage["model"] == "gpt-5.4"
+        assert usage["model"] == "gpt-5.5"
         assert usage["tokens.output"] == 9
 
     def test_eventless_terminal_type_split_across_chunks_extracts_usage(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(b'data: {"type":"response.comp')
         parse(
-            b'leted","response":{"id":"resp_split","model":"gpt-5.4",'
+            b'leted","response":{"id":"resp_split","model":"gpt-5.5",'
             b'"usage":{"input_tokens":6,"output_tokens":4}}}\n\n'
         )
 
         assert usage == {
             "message_id": "resp_split",
-            "model": "gpt-5.4",
+            "model": "gpt-5.5",
             "tokens.input": 6,
             "tokens.output": 4,
         }
@@ -391,11 +391,11 @@ class TestOpenAIResponsesSseUsageExtractor:
         parse(b'data: {"type":"response.output_text.')
         parse(
             b'delta","delta":"ignored"}\n\n'
-            b'data: {"type":"response.completed","response":{"model":"gpt-5.4",'
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.5",'
             b'"usage":{"output_tokens":5}}}\n\n'
         )
 
-        assert usage["model"] == "gpt-5.4"
+        assert usage["model"] == "gpt-5.5"
         assert usage["tokens.output"] == 5
 
     @pytest.mark.parametrize(
@@ -534,52 +534,52 @@ class TestOpenAIResponsesSseUsageExtractor:
         parse(
             b'data: {"padding":"'
             + b"x" * (openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES + 1)
-            + b'","type":"response.completed","response":{"model":"gpt-5.4",'
+            + b'","type":"response.completed","response":{"model":"gpt-5.5",'
             + b'"usage":{"output_tokens":8}}}\n\n'
         )
 
-        assert usage["model"] == "gpt-5.4"
+        assert usage["model"] == "gpt-5.5"
         assert usage["tokens.output"] == 8
 
     def test_finish_flushes_response_completed_without_blank_line(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
             b"event: response.completed\n"
-            b'data: {"response":{"model":"gpt-5.4",'
+            b'data: {"response":{"model":"gpt-5.5",'
             b'"usage":{"output_tokens":4}}}'
         )
         parse.finish()
-        assert usage["model"] == "gpt-5.4"
+        assert usage["model"] == "gpt-5.5"
         assert usage["tokens.output"] == 4
 
     def test_finish_flushes_eventless_response_completed_without_blank_line(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
-            b'data: {"type":"response.completed","response":{"model":"gpt-5.4",'
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.5",'
             b'"usage":{"output_tokens":14}}}'
         )
         parse.finish()
-        assert usage["model"] == "gpt-5.4"
+        assert usage["model"] == "gpt-5.5"
         assert usage["tokens.output"] == 14
 
     def test_accepts_sse_fields_without_optional_space(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
             b"event:response.completed\n"
-            b'data:{"response":{"model":"gpt-5.4",'
+            b'data:{"response":{"model":"gpt-5.5",'
             b'"usage":{"output_tokens":5}}}\n\n'
         )
-        assert usage["model"] == "gpt-5.4"
+        assert usage["model"] == "gpt-5.5"
         assert usage["tokens.output"] == 5
 
     def test_accepts_event_name_after_data_line(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
-            b'data: {"response":{"model":"gpt-5.4",'
+            b'data: {"response":{"model":"gpt-5.5",'
             b'"usage":{"output_tokens":4}}}\n'
             b"event: response.completed\n\n"
         )
-        assert usage["model"] == "gpt-5.4"
+        assert usage["model"] == "gpt-5.5"
         assert usage["tokens.output"] == 4
 
     def test_handles_chunked_event_and_data_prefix(self):
@@ -601,11 +601,11 @@ class TestOpenAIResponsesSseUsageExtractor:
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
             b"event: response.completed\r\n"
-            b'data: {"response":{"model":"gpt-5.4",'
+            b'data: {"response":{"model":"gpt-5.5",'
             b'"usage":{"input_tokens":10,"output_tokens":4}}}\r\n'
             b"\r\n"
         )
-        assert usage["model"] == "gpt-5.4"
+        assert usage["model"] == "gpt-5.5"
         assert usage["tokens.input"] == 10
         assert usage["tokens.output"] == 4
 
@@ -614,18 +614,18 @@ class TestOpenAIResponsesSseUsageExtractor:
         parse(
             b"event: response.completed\n"
             b'data: {"response":\n'
-            b'data: {"model":"gpt-5.4","usage":{"output_tokens":4}}}\n\n'
+            b'data: {"model":"gpt-5.5","usage":{"output_tokens":4}}}\n\n'
         )
-        assert usage["model"] == "gpt-5.4"
+        assert usage["model"] == "gpt-5.5"
         assert usage["tokens.output"] == 4
 
     def test_multidata_eventless_response_completed_event(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
             b'data: {"type":"response.completed",\n'
-            b'data: "response":{"model":"gpt-5.4","usage":{"output_tokens":15}}}\n\n'
+            b'data: "response":{"model":"gpt-5.5","usage":{"output_tokens":15}}}\n\n'
         )
-        assert usage["model"] == "gpt-5.4"
+        assert usage["model"] == "gpt-5.5"
         assert usage["tokens.output"] == 15
 
     def test_skips_large_irrelevant_events_without_buffering(self):
@@ -703,7 +703,7 @@ class TestOpenAIResponsesSseUsageExtractor:
             b"event: response.completed\n"
             b"data: {invalid json}\n\n"
             b"event: response.completed\n"
-            b'data: {"response":{"model":"gpt-5.4",'
+            b'data: {"response":{"model":"gpt-5.5",'
             b'"usage":{"input_tokens":13,"output_tokens":8}}}\n\n'
         )
         if with_parse_error_callback:
@@ -714,7 +714,7 @@ class TestOpenAIResponsesSseUsageExtractor:
             assert error
         else:
             assert parse_errors == []
-        assert usage["model"] == "gpt-5.4"
+        assert usage["model"] == "gpt-5.5"
         assert usage["tokens.input"] == 13
         assert usage["tokens.output"] == 8
 

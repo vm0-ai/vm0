@@ -240,36 +240,6 @@ describe("personal usage settings", () => {
     });
   });
 
-  it("shows Auto for VM0 model usage", async () => {
-    const user = userEvent.setup();
-    const row = usageRow({
-      title: "Auto model usage",
-      credits: 100,
-      runId: "run-auto-model",
-    });
-    mockPersonalUsageStory([
-      {
-        ...row,
-        breakdown: [
-          {
-            kind: "model",
-            credits: 100,
-            providers: [{ provider: "vm0-model", credits: 100 }],
-          },
-        ],
-      },
-    ]);
-    await openUsageSettings();
-
-    await user.hover(screen.getByTestId("usage-kind-segment-model"));
-
-    await waitFor(() => {
-      expect(screen.getAllByText("Auto").length).toBeGreaterThanOrEqual(1);
-      expect(screen.queryByText("VM0 Model")).not.toBeInTheDocument();
-      expect(screen.queryByText("vm0-model")).not.toBeInTheDocument();
-    });
-  });
-
   it("keeps keyboard focus styling on the usage title instead of the row", async () => {
     mockPersonalUsageStory();
     await openUsageSettings();

@@ -20,9 +20,9 @@ const CODEX_FIXED_STARTUP_CONFIGS: [&str; 3] = [
 const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
     ["features.fast_mode=true", r#"service_tier="fast""#];
 const STRUCTURED_CODEX_RUNTIME_CONFIG: &str = r#"{
-    "providerId": "minimax",
-    "name": "MiniMax",
-    "baseUrl": "https://api.minimax.io/v1",
+    "providerId": "deepseek",
+    "name": "DeepSeek",
+    "baseUrl": "https://api.deepseek.com/",
     "envKey": "OPENAI_API_KEY",
     "wireApi": "responses",
     "supportsWebsockets": false
@@ -170,7 +170,7 @@ async fn codex_exec_preserves_provider_config_precedence() -> TestResult {
 
     let structured_user_env = HashMap::from([
         ("OPENAI_API_KEY".to_string(), "sk-test".to_string()),
-        ("OPENAI_MODEL".to_string(), "MiniMax-M3".to_string()),
+        ("OPENAI_MODEL".to_string(), "deepseek-v4-flash".to_string()),
         (
             "OPENAI_BASE_URL".to_string(),
             "https://api.should-not-win.test/v1".to_string(),
@@ -190,7 +190,7 @@ async fn codex_exec_preserves_provider_config_precedence() -> TestResult {
 
     assert_eq!(structured_result.exit_code, common::CLEAN_EXIT);
     let structured_args = read_recorded_args(&argv_path)?;
-    assert_config_count(&structured_args, r#"model_provider="minimax""#, 1);
+    assert_config_count(&structured_args, r#"model_provider="deepseek""#, 1);
     assert!(
         !structured_args
             .iter()
