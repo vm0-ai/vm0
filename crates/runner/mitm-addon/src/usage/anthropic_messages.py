@@ -15,6 +15,9 @@ from .model_tokens import ANTHROPIC_USAGE_FIELD_CATEGORIES
 from .sse import SseUsageScanner
 
 _ANTHROPIC_MESSAGES_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
+# Bound dense syntax and slow scalar inspection while retaining the selective
+# parser's bulk-scan path for ordinary large content strings.
+_ANTHROPIC_MESSAGES_MAX_WORK_UNITS = 65_536
 _SseUsageParseErrorCallback = Callable[[str, str], None]
 AnthropicMessagesLifecycleCallback = Callable[[str, str | None], None]
 
@@ -136,7 +139,10 @@ class _AnthropicMessagesSseUsageHandler:
         )
 
     def on_event_start(self, event_name: str | None) -> None:
-        self._extractor = JsonSelectiveExtractor(scalar_fields=_ANTHROPIC_SSE_SCALAR_FIELDS)
+        self._extractor = JsonSelectiveExtractor(
+            scalar_fields=_ANTHROPIC_SSE_SCALAR_FIELDS,
+            max_work_units=_ANTHROPIC_MESSAGES_MAX_WORK_UNITS,
+        )
 
     def on_data(self, chunk: bytes) -> None:
         if self._extractor is not None:
@@ -211,7 +217,10 @@ class AnthropicMessagesJsonUsageExtractor:
     """
 
     def __init__(self) -> None:
-        self._extractor = JsonSelectiveExtractor(scalar_fields=_MODEL_JSON_SCALAR_FIELDS)
+        self._extractor = JsonSelectiveExtractor(
+            scalar_fields=_MODEL_JSON_SCALAR_FIELDS,
+            max_work_units=_ANTHROPIC_MESSAGES_MAX_WORK_UNITS,
+        )
 
     def feed(self, chunk: bytes) -> None:
         self._extractor.feed(chunk)
