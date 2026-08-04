@@ -493,6 +493,8 @@
       "workspaceSwitcher": {
         "create": "Buat ruang kerja",
         "creating": "Membuat…",
+        "defaultName": "Ruang kerja {{name}}",
+        "defaultNameFallback": "Ruang kerja saya",
         "join": "Gabung",
         "joining": "Bergabung…",
         "organizationFallback": "Organisasi",

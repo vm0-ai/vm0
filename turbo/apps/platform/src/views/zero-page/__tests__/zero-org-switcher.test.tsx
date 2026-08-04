@@ -159,6 +159,7 @@ describe("zero org switcher", () => {
       user: {
         id: "test-user-123",
         fullName: "Alex Rivera",
+        firstName: "Alex",
         email: "alex.rivera@example.test",
         createOrganizationEnabled: true,
       },
@@ -199,8 +200,8 @@ describe("zero org switcher", () => {
 
     await waitFor(() => {
       expect(mockedClerk.createOrganization).toHaveBeenCalledWith({
-        name: expect.stringMatching(/^workspace-/u),
-        slug: expect.stringMatching(/^workspace-/u),
+        name: "Alex's Workspace",
+        slug: expect.stringMatching(/^alex-[0-9a-f]{8}$/u),
       });
       expect(mockedClerk.setActive).toHaveBeenCalledWith({
         organization: "new-org-id",

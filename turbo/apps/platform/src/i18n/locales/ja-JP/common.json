@@ -493,6 +493,8 @@
       "workspaceSwitcher": {
         "create": "ワークスペースの作成",
         "creating": "作成中…",
+        "defaultName": "{{name}}のワークスペース",
+        "defaultNameFallback": "マイワークスペース",
         "join": "参加する",
         "joining": "参加中…",
         "organizationFallback": "組織",

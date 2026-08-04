@@ -507,6 +507,8 @@
       "workspaceSwitcher": {
         "create": "Criar espaço de trabalho",
         "creating": "Criando…",
+        "defaultName": "Espaço de trabalho de {{name}}",
+        "defaultNameFallback": "Meu espaço de trabalho",
         "join": "Entrar",
         "joining": "Entrando…",
         "organizationFallback": "Organização",

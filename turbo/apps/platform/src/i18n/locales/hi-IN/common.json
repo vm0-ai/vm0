@@ -493,6 +493,8 @@
       "workspaceSwitcher": {
         "create": "वर्कस्पेस बनाएं",
         "creating": "बनाया जा रहा है...",
+        "defaultName": "{{name}} का वर्कस्पेस",
+        "defaultNameFallback": "मेरा वर्कस्पेस",
         "join": "जोड़ना",
         "joining": "शामिल हो रहे हैं...",
         "organizationFallback": "संगठन",

@@ -493,6 +493,8 @@
       "workspaceSwitcher": {
         "create": "Arbeitsbereich erstellen",
         "creating": "Wird erstellt…",
+        "defaultName": "Arbeitsbereich von {{name}}",
+        "defaultNameFallback": "Mein Arbeitsbereich",
         "join": "Beitreten",
         "joining": "Beitritt läuft…",
         "organizationFallback": "Organisation",

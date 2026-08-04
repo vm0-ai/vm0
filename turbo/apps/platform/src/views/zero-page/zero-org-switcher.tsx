@@ -125,6 +125,45 @@ function InvitationRow({
   );
 }
 
+/**
+ * The name a new workspace is titled after: the creator's first name, else
+ * their full name, else the local part of their email. `null` when Clerk
+ * exposes none of them, in which case the workspace gets a generic name.
+ */
+function workspaceOwnerName(user: {
+  firstName?: string | null;
+  fullName?: string | null;
+  primaryEmailAddress?: { emailAddress: string } | null;
+}): string | null {
+  const firstName = user.firstName?.trim();
+  if (firstName) {
+    return firstName;
+  }
+  const fullName = user.fullName?.trim();
+  if (fullName) {
+    return fullName;
+  }
+  const emailLocalPart = user.primaryEmailAddress?.emailAddress
+    .split("@")[0]
+    ?.trim();
+  return emailLocalPart || null;
+}
+
+/**
+ * Clerk slugs allow lowercase alphanumerics and hyphens only, so scripts it
+ * cannot represent (CJK, for example) collapse to an empty prefix and fall
+ * back to "workspace". The random suffix keeps the slug unique.
+ */
+function workspaceSlug(ownerName: string | null): string {
+  const prefix = (ownerName ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 24)
+    .replace(/-+$/gu, "");
+  return `${prefix || "workspace"}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
 function CreateWorkspaceItem() {
   const clerkLoadable = useLastLoadable(clerk$);
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
@@ -137,10 +176,22 @@ function CreateWorkspaceItem() {
       return;
     }
     setCreating(true);
-    const slug = `workspace-${crypto.randomUUID().slice(0, 8)}`;
+    const ownerName = clerk.user ? workspaceOwnerName(clerk.user) : null;
+    const name =
+      ownerName === null
+        ? t(($) => {
+            return $.appShell.sidebar.workspaceSwitcher.defaultNameFallback;
+          })
+        : t(
+            ($) => {
+              return $.appShell.sidebar.workspaceSwitcher.defaultName;
+            },
+            { name: ownerName },
+          );
+    const slug = workspaceSlug(ownerName);
     await bestEffort(
       (async () => {
-        const org = await clerk.createOrganization({ name: slug, slug });
+        const org = await clerk.createOrganization({ name, slug });
         await clerk.setActive({ organization: org.id });
       })(),
     );

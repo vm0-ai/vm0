@@ -493,6 +493,8 @@
       "workspaceSwitcher": {
         "create": "워크스페이스 만들기",
         "creating": "만드는 중…",
+        "defaultName": "{{name}}의 워크스페이스",
+        "defaultNameFallback": "내 워크스페이스",
         "join": "참여",
         "joining": "참여 중…",
         "organizationFallback": "조직",

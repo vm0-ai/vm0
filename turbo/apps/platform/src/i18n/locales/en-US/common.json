@@ -493,6 +493,8 @@
       "workspaceSwitcher": {
         "create": "Create workspace",
         "creating": "Creating…",
+        "defaultName": "{{name}}'s Workspace",
+        "defaultNameFallback": "My Workspace",
         "join": "Join",
         "joining": "Joining…",
         "organizationFallback": "Organization",
