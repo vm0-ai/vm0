@@ -655,23 +655,6 @@ export async function setTelegramThinkingMessageIdFixture(
     .where(eq(chatTelegramContext.id, event.contextId));
 }
 
-export async function clearGitHubTriggerCommentBodyFixture(
-  eventId: string,
-): Promise<void> {
-  const [event] = await db()
-    .select({ contextId: chatEvents.contextId })
-    .from(chatEvents)
-    .where(eq(chatEvents.id, eventId))
-    .limit(1);
-  if (!event?.contextId) {
-    throw new Error("Expected pending GitHub event context");
-  }
-  await db()
-    .update(chatGithubContext)
-    .set({ triggerCommentBody: null })
-    .where(eq(chatGithubContext.id, event.contextId));
-}
-
 interface AgentphoneChatEventByPromptFixture {
   readonly eventId: string;
 }

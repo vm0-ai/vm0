@@ -3085,13 +3085,18 @@ function buildCompletedWorkFolding(
         !isThinkingOnlyAssistantEvent(event)
       );
     });
+    const userEvents = runEvents.filter((event) => {
+      return chatEventCompatibilityRole(event.eventType) === "user";
+    });
     const trailingEvents =
       finalEventIndex >= 0 ? runEvents.slice(finalEventIndex + 1) : [];
-    const trailingEventsAreMarkers = trailingEvents.every((event) => {
+    const trailingEventsCanFold = trailingEvents.every((event) => {
+      const role = chatEventCompatibilityRole(event.eventType);
       return (
-        chatEventCompatibilityRole(event.eventType) === "assistant" &&
-        (!isRenderableAssistantEvent(event) ||
-          event.eventType === "run.completed")
+        role === "user" ||
+        (role === "assistant" &&
+          (!isRenderableAssistantEvent(event) ||
+            event.eventType === "run.completed"))
       );
     });
     const visibleTrailingEvents = trailingEvents.filter((event) => {
@@ -3100,15 +3105,9 @@ function buildCompletedWorkFolding(
     if (
       finalEvent !== undefined &&
       hiddenEvents.length > 0 &&
-      trailingEventsAreMarkers
+      trailingEventsCanFold
     ) {
-      visibleEvents.push(
-        ...precedingEvents.filter((event) => {
-          return chatEventCompatibilityRole(event.eventType) === "user";
-        }),
-        finalEvent,
-        ...visibleTrailingEvents,
-      );
+      visibleEvents.push(...userEvents, finalEvent, ...visibleTrailingEvents);
       folds.push({
         key: `${runId}:${finalEvent.id}`,
         finalEventId: finalEvent.id,

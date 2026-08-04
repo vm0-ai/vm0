@@ -1,6 +1,6 @@
 import { optionalEnv } from "../../lib/env";
 
-export function githubAppBotUsername(): string | undefined {
+function githubAppBotUsername(): string | undefined {
   const appSlug = optionalEnv("GITHUB_APP_SLUG")?.trim();
   if (!appSlug) {
     return undefined;
