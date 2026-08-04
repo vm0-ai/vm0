@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { env } from "../../lib/env";
 
-type BuiltInGenerationProviderWebhookProvider = "fal" | "byteplus";
+type BuiltInGenerationProviderWebhookProvider = "fal" | "byteplus" | "joggai";
 
 function webhookTokenPayload(args: {
   readonly provider: BuiltInGenerationProviderWebhookProvider;
@@ -89,5 +89,22 @@ export function bytePlusBuiltInGenerationWebhookUrl(args: {
   if (args.visualKey) {
     baseUrl.searchParams.set("visualKey", args.visualKey);
   }
+  return baseUrl.toString();
+}
+
+export function joggAiBuiltInGenerationWebhookUrl(args: {
+  readonly generationId: string;
+}): string {
+  const baseUrl = new URL(
+    `/api/webhooks/built-in-generations/joggai/${args.generationId}`,
+    env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
+  );
+  baseUrl.searchParams.set(
+    "token",
+    signBuiltInGenerationProviderWebhookToken({
+      provider: "joggai",
+      generationId: args.generationId,
+    }),
+  );
   return baseUrl.toString();
 }

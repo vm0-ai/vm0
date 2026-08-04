@@ -17,6 +17,7 @@ const CONNECTOR_LABELS: Record<string, string> = {
   elevenlabs: "ElevenLabs",
   fal: "fal.ai",
   hume: "Hume",
+  joggai: "JoggAI",
   "luma-ai": "Luma AI",
   minimax: "MiniMax",
   openai: "OpenAI",
@@ -28,6 +29,7 @@ const CONNECTOR_GENERATION: Record<string, readonly string[]> = {
   elevenlabs: ["audio"],
   fal: ["image", "video"],
   hume: ["audio"],
+  joggai: ["video"],
   "luma-ai": ["image", "video"],
   minimax: ["audio"],
   openai: ["audio", "image", "text"],
@@ -379,6 +381,35 @@ describe("zero generate lister", () => {
     expect(text).not.toContain("Next actions:");
     expect(text).not.toContain(
       "Use --all to see every video generation candidate.",
+    );
+  });
+
+  it("reflects built-in and connector choices for avatar video", async () => {
+    server.use(
+      stubConnectorsWithConfiguredSlugs(
+        [connector("joggai", "jogg-user")],
+        ["joggai"],
+      ),
+      stubUserConnectors(["joggai"]),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "avatar-video"]);
+
+    const text = output();
+    expect(text).toContain(
+      "Talking-avatar video generation choices for current agent",
+    );
+    expect(text).toContain("joggai");
+    expect(text).toContain("JoggAI");
+    expect(text).toContain("@jogg-user");
+    expect(text).toContain("Built-in command:");
+    expect(text).toContain("Built-in JoggAI talking-avatar video generation");
+    expect(text).toContain("Models: joggai-talking-avatar");
+    expect(text).toContain(
+      "Use: zero generate avatar-video --provider built-in -h",
+    );
+    expect(text).toContain(
+      "Availability: Available on the current plan without connector setup.",
     );
   });
 

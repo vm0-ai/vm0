@@ -282,6 +282,9 @@ export {
   generateWebVoice,
   generateWebImage,
   generateWebVideo,
+  generateWebAvatarVideo,
+  listWebAvatarVideoAvatars,
+  listWebAvatarVideoVoices,
 } from "./domains/web";
 
 // Domain modules - Zero Host

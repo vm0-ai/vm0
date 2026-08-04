@@ -1,0 +1,266 @@
+import chalk from "chalk";
+import { HttpResponse, http } from "msw";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { server } from "../../../../mocks/server";
+import { generateCommand } from "../index";
+
+const AVATARS_URL = "http://localhost:3000/api/zero/avatar-video/avatars";
+const VOICES_URL = "http://localhost:3000/api/zero/avatar-video/voices";
+const GENERATE_URL = "http://localhost:3000/api/zero/avatar-video/generate";
+
+const AVATAR_VIDEO_RESULT = {
+  id: "avatar-video-file-id",
+  filename: "avatar-video-avatar-v.mp4",
+  contentType: "video/mp4",
+  size: 1234,
+  url: "http://localhost:3000/f/user-1/avatar-video-file-id/avatar-video-avatar-v.mp4",
+  durationSeconds: 42,
+  creditsCharged: 499,
+  provider: "joggai",
+  model: "joggai-talking-avatar",
+  providerVideoId: "jogg-video-123",
+  avatarId: 81,
+  voiceId: "en-US-ChristopherNeural",
+  inputType: "script",
+  aspectRatio: "landscape",
+  screenStyle: 2,
+  caption: false,
+  sourceUrl: "https://res.jogg.ai/avatar-video.mp4",
+} as const;
+
+function stubBillingStatus() {
+  return http.get("http://localhost:3000/api/zero/billing/status", () => {
+    return HttpResponse.json({
+      tier: "team",
+      canBuyCredits: true,
+      videoGenerationAllowed: true,
+      credits: 10_000,
+      onboardingPaymentPending: false,
+      subscriptionStatus: "active",
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      scheduledChange: null,
+      hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+      creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
+      creditBreakdown: [],
+      creditGrants: [],
+      concurrencyLimit: 1,
+      concurrencySubscriptions: [],
+    });
+  });
+}
+
+describe("zero generate avatar-video command", () => {
+  vi.spyOn(process, "exit").mockImplementation((() => {
+    throw new Error("process.exit called");
+  }) as never);
+  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+  const mockConsoleError = vi
+    .spyOn(console, "error")
+    .mockImplementation(() => {});
+
+  beforeEach(() => {
+    chalk.level = 0;
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
+    server.use(stubBillingStatus());
+  });
+
+  afterEach(() => {
+    mockConsoleLog.mockClear();
+    mockConsoleError.mockClear();
+  });
+
+  it("lists filtered public avatars as JSON", async () => {
+    server.use(
+      http.get(AVATARS_URL, ({ request }) => {
+        expect(request.headers.get("authorization")).toBe("Bearer test-token");
+        const url = new URL(request.url);
+        expect(url.searchParams.get("page")).toBe("2");
+        expect(url.searchParams.get("pageSize")).toBe("20");
+        expect(url.searchParams.get("aspectRatio")).toBe("portrait");
+        expect(url.searchParams.get("style")).toBe("professional");
+        return HttpResponse.json({
+          avatars: [
+            {
+              id: 81,
+              name: "Ada",
+              coverUrl: "https://res.jogg.ai/ada.jpg",
+              style: "professional",
+            },
+          ],
+        });
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "avatar-video",
+      "--list-avatars",
+      "--page",
+      "2",
+      "--page-size",
+      "20",
+      "--aspect-ratio",
+      "portrait",
+      "--avatar-style",
+      "professional",
+      "--json",
+    ]);
+
+    expect(mockConsoleLog.mock.calls).toEqual([
+      [
+        JSON.stringify({
+          avatars: [
+            {
+              id: 81,
+              name: "Ada",
+              coverUrl: "https://res.jogg.ai/ada.jpg",
+              style: "professional",
+            },
+          ],
+        }),
+      ],
+    ]);
+  });
+
+  it("lists voices in a human-readable form", async () => {
+    server.use(
+      http.get(VOICES_URL, ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("language")).toBe("english");
+        return HttpResponse.json({
+          voices: [
+            {
+              id: "en-US-ChristopherNeural",
+              name: "Christopher",
+              sampleUrl: "https://res.jogg.ai/christopher.mp3",
+              language: "english",
+              gender: "male",
+            },
+          ],
+          hasMore: true,
+        });
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "avatar-video",
+      "--list-voices",
+      "--voice-language",
+      "english",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain("Public JoggAI voices");
+    expect(stdout).toContain("en-US-ChristopherNeural  Christopher");
+    expect(stdout).toContain("Sample: https://res.jogg.ai/christopher.mp3");
+    expect(stdout).toContain("More voices are available");
+  });
+
+  it("generates an avatar video and prints its artifact metadata", async () => {
+    server.use(
+      http.post(GENERATE_URL, async ({ request }) => {
+        expect(request.headers.get("authorization")).toBe("Bearer test-token");
+        expect(await request.json()).toStrictEqual({
+          avatarId: 81,
+          voiceId: "en-US-ChristopherNeural",
+          script: "Welcome to vm0",
+          aspectRatio: "landscape",
+          screenStyle: 2,
+          caption: false,
+          videoName: "vm0 introduction",
+        });
+        return HttpResponse.json(AVATAR_VIDEO_RESULT);
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "avatar-video",
+      "--avatar-id",
+      "81",
+      "--voice-id",
+      "en-US-ChristopherNeural",
+      "--script",
+      "Welcome to vm0",
+      "--aspect-ratio",
+      "landscape",
+      "--screen-style",
+      "2",
+      "--no-caption",
+      "--video-name",
+      "vm0 introduction",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      `Avatar video generated: ${AVATAR_VIDEO_RESULT.url}`,
+    );
+    expect(stdout).toContain(`File: ${AVATAR_VIDEO_RESULT.filename}`);
+    expect(stdout).toContain("Duration: 42s");
+    expect(stdout).toContain("Credits charged: 499");
+  });
+
+  it("prints a complete generation result as JSON", async () => {
+    server.use(
+      http.post(GENERATE_URL, () => {
+        return HttpResponse.json(AVATAR_VIDEO_RESULT);
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "avatar-video",
+      "--avatar-id",
+      "81",
+      "--voice-id",
+      "en-US-ChristopherNeural",
+      "--script",
+      "Welcome to vm0",
+      "--json",
+    ]);
+
+    expect(mockConsoleLog.mock.calls).toEqual([
+      [JSON.stringify(AVATAR_VIDEO_RESULT)],
+    ]);
+  });
+
+  it("rejects mixed script and audio input before calling the API", async () => {
+    const generate = vi.fn();
+    server.use(
+      http.post(GENERATE_URL, () => {
+        generate();
+        return HttpResponse.json(AVATAR_VIDEO_RESULT);
+      }),
+    );
+
+    await expect(
+      generateCommand.parseAsync([
+        "node",
+        "cli",
+        "avatar-video",
+        "--avatar-id",
+        "81",
+        "--voice-id",
+        "en-US-ChristopherNeural",
+        "--script",
+        "Hello",
+        "--audio-url",
+        "https://example.com/voice.mp3",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(generate).not.toHaveBeenCalled();
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Use exactly one of --script and --audio-url"),
+    );
+  });
+});
