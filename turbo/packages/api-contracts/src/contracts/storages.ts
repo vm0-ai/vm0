@@ -41,6 +41,11 @@ export const storageManifestFilesSchema = z
   )
   .refine(
     (files) => {
+      // The array check already rejects this case. Avoid another linear pass
+      // over an arbitrarily oversized request just to report a second issue.
+      if (files.length > STORAGE_MANIFEST_MAX_FILES) {
+        return true;
+      }
       let pathBytes = 0;
       for (const file of files) {
         pathBytes += storageManifestPathEncoder.encode(file.path).byteLength;

@@ -488,6 +488,10 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit");
             then.status(200).json_body(json!({"unreachable": true}));
         });
+        let upload = server.mock(|when, then| {
+            when.method(PUT);
+            then.status(200);
+        });
         let http = HttpClient::with_api_config(
             server.base_url(),
             "test-token",
@@ -524,6 +528,7 @@ mod tests {
             "got: {count_message}"
         );
         prepare.assert_calls(0);
+        upload.assert_calls(0);
         commit.assert_calls(0);
 
         let telemetry_entries = std::fs::read_to_string(&telemetry_path)
