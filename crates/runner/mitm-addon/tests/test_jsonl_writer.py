@@ -98,6 +98,69 @@ def test_writer_warns_and_retires_batch_when_writev_returns_zero(tmp_path, mitm_
     assert (tmp_path / "network.jsonl").read_bytes() == b""
 
 
+def test_writer_rate_limits_append_failures_until_stable_recovery(tmp_path, mitm_ctx):
+    missing_dir = tmp_path / "missing"
+    failing_path = missing_dir / "network.jsonl"
+    first_failing_path = tmp_path / "missing-0" / "network.jsonl"
+    healthy_path = tmp_path / "healthy.jsonl"
+    now = 0.0
+
+    def monotonic() -> float:
+        return now
+
+    def write_and_flush(path: str, line: bytes) -> None:
+        jsonl_writer.write_jsonl_line(path, line, "network")
+        assert jsonl_writer.flush_log_path(path)
+
+    with (
+        patch.object(jsonl_writer.time, "monotonic", side_effect=monotonic),
+        mitm_ctx() as log,
+    ):
+        for index in range(1000):
+            path = tmp_path / f"missing-{index}" / "network.jsonl"
+            write_and_flush(str(path), b"{}\n")
+
+        assert log.warn.call_count == 1
+
+        now = 59.0
+        write_and_flush(str(healthy_path), b"healthy-before-interval\n")
+        assert log.warn.call_count == 1
+
+        now = 60.0
+        write_and_flush(str(failing_path), b"{}\n")
+        assert log.warn.call_count == 2
+
+        now = 119.0
+        write_and_flush(str(healthy_path), b"healthy-before-recovery\n")
+        assert log.warn.call_count == 2
+
+        missing_dir.mkdir()
+        now = 120.0
+        write_and_flush(str(failing_path), b"recovered\n")
+        assert failing_path.read_bytes() == b"recovered\n"
+        assert log.warn.call_args_list[2].args == ("JSONL log writes recovered",)
+
+        failing_path.unlink()
+        missing_dir.rmdir()
+        write_and_flush(str(failing_path), b"{}\n")
+
+    assert log.warn.call_count == 4
+    for warning_index, expected_path in (
+        (0, first_failing_path),
+        (1, failing_path),
+        (3, failing_path),
+    ):
+        warning = log.warn.call_args_list[warning_index].args[0]
+        assert warning.startswith("Failed to write network log: FileNotFoundError: ")
+        assert str(expected_path) in warning
+    assert healthy_path.read_bytes() == b"healthy-before-interval\nhealthy-before-recovery\n"
+    assert jsonl_writer._pending_bytes == 0
+    assert jsonl_writer._queued_writes == 0
+    assert not jsonl_writer._accepted_by_path
+    assert not jsonl_writer._completed_by_path
+    assert not jsonl_writer._flush_waiters_by_path
+
+
 def test_writer_publishes_backlog_completion_once_per_batch(tmp_path):
     class ObservedCondition:
         def __init__(self) -> None:
