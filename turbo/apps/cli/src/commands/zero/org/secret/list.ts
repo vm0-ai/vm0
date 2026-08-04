@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroOrgSecrets } from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+import { listZeroOrgSecrets } from "../../../../lib/api/domains/zero-org-secrets";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 
 export const listCommand = new Command()
   .name("list")

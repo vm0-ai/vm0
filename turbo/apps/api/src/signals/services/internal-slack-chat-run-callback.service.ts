@@ -11,7 +11,6 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
-
 import { buildAgentResponseMessage } from "../../lib/slack-blocks";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -22,7 +21,7 @@ import {
   createSlackClient,
   postMessage,
 } from "../external/slack-message-client";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { settleIncludingAbort } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";

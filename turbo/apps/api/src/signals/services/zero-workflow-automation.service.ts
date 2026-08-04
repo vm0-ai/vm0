@@ -57,7 +57,6 @@ import {
   type ZeroWorkflowScheduleType,
 } from "@vm0/db/schema/zero-workflow";
 import { and, asc, eq } from "drizzle-orm";
-
 import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
@@ -97,10 +96,8 @@ import {
   revealWorkflowWebhookSecretFields,
 } from "./workflow-webhook-automation.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import {
-  runWorkflowAutomationNow$,
-  type RunWorkflowAutomationResult,
-} from "./zero-workflow-automation-run.service";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import type { RunWorkflowAutomationResult } from "./zero-workflow-automation-launch.service";
 import {
   ensureWorkflowUserAutomationThread,
   loadWorkflowUserAutomationThreadId,

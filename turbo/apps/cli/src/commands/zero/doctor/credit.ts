@@ -1,12 +1,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
 
+import { getZeroBillingStatus } from "../../../lib/api/domains/zero-billing";
 import {
-  getZeroBillingStatus,
   getZeroOrg,
   getZeroOrgMembers,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/zero-orgs";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { getPlatformOrigin } from "./platform-url";
 import {
   currentPlanAllowsVideo,

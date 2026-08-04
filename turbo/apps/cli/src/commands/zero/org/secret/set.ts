@@ -1,11 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { setZeroOrgSecret } from "../../../../lib/api";
+import { setZeroOrgSecret } from "../../../../lib/api/domains/zero-org-secrets";
 import {
   isInteractive,
   promptPassword,
 } from "../../../../lib/utils/prompt-utils";
-import { withErrorHandler } from "../../../../lib/command";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 
 export const setCommand = new Command()
   .name("set")

@@ -14,7 +14,7 @@ import {
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroImageIoInterpretMarksRoutes } from "../zero-image-io-interpret-marks";
 import { createFixtureTracker } from "./helpers/zero-route-test";

@@ -44,11 +44,8 @@ import { zeroVoiceIoSpeechContract } from "@vm0/api-contracts/contracts/zero-voi
 import { zeroVoiceIoSttContract } from "@vm0/api-contracts/contracts/zero-voice-io-stt";
 
 import { mockEnv } from "../../../../lib/env";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import {
   mockListStripeInvoices,
   mockStripeClient,

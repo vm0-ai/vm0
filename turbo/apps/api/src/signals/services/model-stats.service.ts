@@ -24,7 +24,6 @@ import {
   VM0_MODEL_TO_PROVIDER,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { z } from "zod";
-
 import {
   executeRawRows,
   pgTimestampWithoutTimezoneToDateSchema,
@@ -35,7 +34,7 @@ import {
 } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { type Db, writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { lockModelStatsAggregation } from "./model-stats-aggregation-lock.service";
 
 const HOUR_MS = 60 * 60_000;

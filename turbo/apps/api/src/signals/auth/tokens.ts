@@ -9,7 +9,7 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { safeJsonParse } from "../utils";
 import {
   CliAuth,

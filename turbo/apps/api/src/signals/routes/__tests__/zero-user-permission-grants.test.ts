@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
-
 import { createStore } from "ccstate";
 import { afterEach, describe, expect, it } from "vitest";
-
 import {
   type ApplyUserPermissionGrant,
   type UserPermissionGrantResponse,
@@ -10,8 +8,8 @@ import {
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
-
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";

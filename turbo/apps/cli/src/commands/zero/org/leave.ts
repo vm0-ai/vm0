@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { leaveZeroOrg } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { leaveZeroOrg } from "../../../lib/api/domains/zero-orgs";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 export const leaveCommand = new Command()
   .name("leave")

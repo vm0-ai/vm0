@@ -1,6 +1,5 @@
 import { Buffer } from "node:buffer";
 import { createHash, timingSafeEqual } from "node:crypto";
-
 import { strapiEntryPublishedEventConfigSchema } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -18,21 +17,20 @@ import {
 import { command } from "ccstate";
 import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { z } from "zod";
-
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { safeJsonParse, settle } from "../utils";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import type { WorkflowQueueAdmissionTransaction } from "./workflow-chat-event-queue.service";
-import {
-  runWorkflowAutomationNow$,
-  type AutomationRow,
-  type RunFailure,
-  type RunWorkflowAutomationNowArgs,
-  type RunWorkflowAutomationResult,
-} from "./zero-workflow-automation-run.service";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import type {
+  AutomationRow,
+  RunFailure,
+  RunWorkflowAutomationNowArgs,
+  RunWorkflowAutomationResult,
+} from "./zero-workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 
 const log = logger("api:strapi-workflow-event");

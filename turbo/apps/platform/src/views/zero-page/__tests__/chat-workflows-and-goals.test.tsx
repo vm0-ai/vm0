@@ -23,7 +23,7 @@ import {
   mockChatLifecycle,
   sendQueuedMessage,
 } from "./chat-test-helpers.ts";
-import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../workflow-chat-prompts.ts";
+import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../../signals/chat-page/workflow-prompt-action";
 import {
   context,
   detachedSetupPage,

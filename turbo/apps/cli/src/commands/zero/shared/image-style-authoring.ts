@@ -1,7 +1,7 @@
-import {
-  type GenerationOutputKind,
-  type RegistryEntry,
-} from "./resource-registry";
+import type {
+  GenerationOutputKind,
+  RegistryEntry,
+} from "@vm0/core/resource-registry";
 
 interface StyledImageCompilationOptions {
   readonly prompt: string;

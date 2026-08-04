@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { deleteZeroOrgModelProvider } from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+import { deleteZeroOrgModelProvider } from "../../../../lib/api/domains/zero-org-model-providers";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 import {
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,

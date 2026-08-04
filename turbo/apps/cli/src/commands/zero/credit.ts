@@ -6,9 +6,9 @@ import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-bi
 import {
   createZeroCreditCheckout,
   getZeroBillingStatus,
-  getZeroOrgMembers,
-} from "../../lib/api";
-import { withErrorHandler } from "../../lib/command";
+} from "../../lib/api/domains/zero-billing";
+import { getZeroOrgMembers } from "../../lib/api/domains/zero-orgs";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { decodeZeroTokenPayload } from "../../lib/api/zero-token";
 import { getPlatformOrigin } from "./doctor/platform-url";
 import {

@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroOrgs } from "../../../lib/api";
+import { listZeroOrgs } from "../../../lib/api/domains/zero-orgs";
 import { getActiveOrg } from "../../../lib/api/config";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 export const listCommand = new Command()
   .name("list")

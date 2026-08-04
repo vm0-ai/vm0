@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-
 import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersMainContract,
@@ -7,8 +6,8 @@ import {
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
 import { HttpResponse, http } from "msw";
-
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
 import { generateSandboxToken } from "../../auth/tokens";

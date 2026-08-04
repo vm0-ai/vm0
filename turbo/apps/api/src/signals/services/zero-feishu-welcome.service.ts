@@ -7,7 +7,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { buildFeishuWelcomeMessage } from "../../lib/feishu-message-card";
 import { sendFeishuMessage } from "../external/feishu-client";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { settle } from "../utils";
 

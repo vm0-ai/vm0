@@ -4,7 +4,7 @@ import {
   hostedArtifactKindSchema,
   type HostedArtifactKind,
 } from "@vm0/api-contracts/contracts/zero-host";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { publishStaticSite } from "../../../lib/host/publish-static-site";
 import { cloneHostedSiteCommand } from "./clone";
 import { versionsHostedSiteCommand } from "./versions";

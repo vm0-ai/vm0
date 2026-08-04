@@ -11,7 +11,7 @@ import { pgTextDecoder } from "../../lib/db-structured-result";
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { Db, ReadonlyDb } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { settleIncludingAbort } from "../utils";
 import { lockConnectorState } from "./auth-state-lock.service";
 import type {

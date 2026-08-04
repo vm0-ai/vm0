@@ -9,6 +9,7 @@ import {
   zeroFinanceQuoteRequestSchema,
   zeroFinanceRangeSchema,
   zeroFinanceSearchRequestSchema,
+  type ZeroFinanceResponse,
   type ZeroFinanceInterval,
   type ZeroFinanceRange,
 } from "@vm0/api-contracts/contracts/zero-finance";
@@ -18,9 +19,8 @@ import {
   callZeroFinanceProfile,
   callZeroFinanceQuote,
   callZeroFinanceSearch,
-  type ZeroFinanceResponse,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/zero-finance";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 interface JsonOption {
   readonly json?: boolean;

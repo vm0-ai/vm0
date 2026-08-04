@@ -22,7 +22,7 @@ import {
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   addGithubCommentReaction,
   fetchGithubIssueComments,

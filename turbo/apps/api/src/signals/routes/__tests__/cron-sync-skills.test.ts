@@ -21,7 +21,8 @@ import { http, HttpResponse } from "msw";
 import { create as createTar } from "tar";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createBddApi } from "./helpers/api-bdd";

@@ -8,12 +8,6 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
 import type { ComposerSlashWorkflow } from "../../signals/zero-page/workflow-composer-domain.ts";
 
-export {
-  buildComposerSlashWorkflows,
-  findWorkflowQueryMatches,
-  type ComposerSlashWorkflow,
-} from "../../signals/zero-page/workflow-composer-domain.ts";
-
 function slashWorkflowOptionId(workflowName: string): string {
   return `slash-workflow-option-${workflowName}`;
 }

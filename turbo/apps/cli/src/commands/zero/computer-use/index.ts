@@ -14,8 +14,8 @@ import {
   type ComputerUseFilesystemTool,
   type ComputerUsePluginCallBody,
 } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+import { ApiRequestError } from "../../../lib/api/core/client-factory";
 import {
-  ApiRequestError,
   createComputerUsePluginCommand,
   listComputerUseHosts,
   createComputerUseReadCommand,
@@ -23,7 +23,7 @@ import {
   fetchComputerUsePluginContent,
   fetchComputerUseScreenshot,
   getComputerUseCommand,
-} from "../../../lib/api";
+} from "../../../lib/api/domains/zero-computer-use";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   computerUseOutputDir,

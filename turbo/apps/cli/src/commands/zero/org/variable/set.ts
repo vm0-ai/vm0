@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { setZeroOrgVariable } from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+import { setZeroOrgVariable } from "../../../../lib/api/domains/zero-org-variables";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 
 export const setCommand = new Command()
   .name("set")

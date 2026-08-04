@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { sendFeishuMessage } from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+import { sendFeishuMessage } from "../../../../lib/api/domains/integrations-feishu";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 
 interface SendFeishuOptions {
   readonly installation?: string;

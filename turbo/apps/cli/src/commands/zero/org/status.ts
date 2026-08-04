@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getZeroOrg } from "../../../lib/api";
+import { getZeroOrg } from "../../../lib/api/domains/zero-orgs";
 import { ApiRequestError } from "../../../lib/api/core/client-factory";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 export const statusCommand = new Command()
   .name("status")

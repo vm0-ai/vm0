@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
-import type { PresentationTemplateItem } from "@vm0/core";
+import type { PresentationTemplateItem } from "@vm0/core/presentation-template-items";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { zeroBrowserEnabled$ } from "../external/feature-switch.ts";
 import { jsonParseOr, tapError } from "../utils.ts";
@@ -842,17 +842,3 @@ export function createComposerUiSignals() {
 }
 
 export type ComposerUiSignalGroups = ReturnType<typeof createComposerUiSignals>;
-
-// -- Per-message generation template selections --------------------------------
-
-const internalNewThreadGenerationTemplate$ = state<
-  GenerationTemplateRequest | undefined
->(undefined);
-export const newThreadGenerationTemplate$ = computed((get) => {
-  return get(internalNewThreadGenerationTemplate$);
-});
-export const setNewThreadGenerationTemplate$ = command(
-  ({ set }, value: GenerationTemplateRequest | undefined) => {
-    set(internalNewThreadGenerationTemplate$, value);
-  },
-);

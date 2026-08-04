@@ -35,6 +35,7 @@ import {
   type ComposerFeedbackSignals,
   type FeedbackItem,
 } from "./chat-feedback.ts";
+import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import {
   findActiveChatThreadSuggestionRange,
   serializeChatThreadMention,
@@ -160,16 +161,6 @@ function composerPlaceholder(): string {
   return i18n.t(($) => {
     return $.chat.composer.placeholder;
   });
-}
-
-function isIOS(): boolean {
-  if (typeof navigator === "undefined") {
-    return false;
-  }
-  return (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-  );
 }
 
 interface WorkflowHighlightStorage {
@@ -1998,7 +1989,7 @@ function createMountEditorCommand({
         mountSignal: signal,
       };
       set(registerMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
-      if (autoFocus && !isIOS()) {
+      if (autoFocus && !isMobileTextInputDevice()) {
         editor.commands.focus("end");
       }
       signal.addEventListener("abort", () => {

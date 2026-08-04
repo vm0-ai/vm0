@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { removeZeroOrgMember } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { removeZeroOrgMember } from "../../../lib/api/domains/zero-orgs";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 export const removeCommand = new Command()
   .name("remove")

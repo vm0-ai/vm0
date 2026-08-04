@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { publishChatThreadDetailChangedSafely } from "../external/realtime";
 import { tapError } from "../utils";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";

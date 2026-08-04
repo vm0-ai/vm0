@@ -228,8 +228,6 @@ interface CreateComposerSignalsOptions {
   };
   readonly chatEvents$: Computed<ChatEvent[]>;
   readonly threadId?: string;
-  readonly generationTemplate$?: ComposerTemplateSignals["generationTemplate$"];
-  readonly setGenerationTemplate$?: ComposerTemplateSignals["setGenerationTemplate$"];
   readonly singleLineOnMobile: boolean;
   readonly modelSelection$: ComposerModelSignals["modelSelection$"];
   readonly selectedModelOauthAvailable$: ComposerModelSignals["selectedModelOauthAvailable$"];
@@ -451,9 +449,7 @@ export function createComposerSignals(
     agentId$,
     inlineTemplatesEnabled$,
     {
-      // Existing threads must not steal selection while cached events hydrate.
-      // Empty new chats live in the agent composer, which still auto-focuses.
-      autoFocus: options.threadId === undefined,
+      autoFocus: true,
       singleLineOnMobile: options.singleLineOnMobile,
     },
     feedback,
@@ -529,10 +525,8 @@ export function createComposerSignals(
     template: {
       ...composerTemplateSignals(workflowComposer),
       ...ui.template,
-      generationTemplate$:
-        options.generationTemplate$ ?? draft.generationTemplate$,
-      setGenerationTemplate$:
-        options.setGenerationTemplate$ ?? draft.setGenerationTemplate$,
+      generationTemplate$: draft.generationTemplate$,
+      setGenerationTemplate$: draft.setGenerationTemplate$,
     },
   };
 }
@@ -701,9 +695,7 @@ function createComposerSubmissionSignals(
             action,
             {
               prompt,
-              generationTemplate: get(
-                options.generationTemplate$ ?? draft.generationTemplate$,
-              ),
+              generationTemplate: get(draft.generationTemplate$),
               editorDocument: submission.editorDocument,
             },
             signal,

@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroOrgModelProviders } from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+import { listZeroOrgModelProviders } from "../../../../lib/api/domains/zero-org-model-providers";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 
 interface CreateListCommandOptions {
   scopeLabel?: string;

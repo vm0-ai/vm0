@@ -4,7 +4,7 @@ import prompts from "prompts";
 import {
   listZeroOrgModelProviders,
   upsertZeroOrgModelProvider,
-} from "../../../../lib/api";
+} from "../../../../lib/api/domains/zero-org-model-providers";
 import {
   MODEL_PROVIDER_TYPES,
   hasAuthMethods,
@@ -12,7 +12,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { isInteractive } from "../../../../lib/utils/prompt-utils";
-import { withErrorHandler } from "../../../../lib/command";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 import {
   type SetupInput,
   handleNonInteractiveMode,

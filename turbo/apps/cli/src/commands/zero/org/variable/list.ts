@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroOrgVariables } from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+import { listZeroOrgVariables } from "../../../../lib/api/domains/zero-org-variables";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 
 /**
  * Truncate value for display if too long

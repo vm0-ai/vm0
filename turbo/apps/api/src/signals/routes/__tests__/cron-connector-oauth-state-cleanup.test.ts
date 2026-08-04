@@ -7,7 +7,8 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";

@@ -14,7 +14,7 @@ import type { z } from "zod";
 
 import { badRequestMessage } from "../../lib/error";
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 
 type AgentComposeApiContent = z.infer<typeof agentComposeApiContentSchema>;
 

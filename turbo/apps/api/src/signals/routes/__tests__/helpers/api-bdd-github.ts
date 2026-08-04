@@ -24,15 +24,11 @@ import {
   createAgentComposeFixture,
   readAgentComposeByIdFixture,
 } from "../../../../test-fixtures/agent-composes";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import type { ApiTestUser } from "./api-bdd";
 import { mockClerkMembership } from "./api-bdd-clerk";
 import { createZeroRouteMocks } from "./zero-route-test";
-export { mockClerkMembership } from "./api-bdd-clerk";
 
 const GITHUB_APP_SLUG = "vm0-test";
 const GITHUB_APP_CLIENT_ID = "github-app-client-id";

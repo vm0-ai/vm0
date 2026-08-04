@@ -1,11 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { deleteZeroOrgVariable } from "../../../../lib/api";
+import { deleteZeroOrgVariable } from "../../../../lib/api/domains/zero-org-variables";
 import {
   isInteractive,
   promptConfirm,
 } from "../../../../lib/utils/prompt-utils";
-import { withErrorHandler } from "../../../../lib/command";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 
 export const removeCommand = new Command()
   .name("remove")

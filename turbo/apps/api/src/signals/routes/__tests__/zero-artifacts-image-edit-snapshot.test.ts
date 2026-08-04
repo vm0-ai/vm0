@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { artifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";

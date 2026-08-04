@@ -1,8 +1,8 @@
 import { readFileSync } from "fs";
 import { Command } from "commander";
 import chalk from "chalk";
-import { sendTelegramMessage } from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+import { sendTelegramMessage } from "../../../../lib/api/domains/integrations-telegram";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 
 function parsePositiveInteger(value: string, flag: string): number {
   const parsed = Number(value);
