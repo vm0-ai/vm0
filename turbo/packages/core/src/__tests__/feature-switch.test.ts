@@ -62,6 +62,7 @@ describe("isFeatureEnabled", () => {
       false,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.RustZeroCli, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -157,6 +158,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.JoggAiBuiltIn]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -190,6 +192,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.JoggAiBuiltIn]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {
