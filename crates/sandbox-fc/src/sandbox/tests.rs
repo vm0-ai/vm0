@@ -3776,6 +3776,7 @@ where
     let guard = tracing::subscriber::set_default(subscriber);
     tracing::callsite::rebuild_interest_cache();
     tokio::pin!(future);
+    tokio::time::pause();
 
     loop {
         if has_captured_event(&captured.entries(), "waiting for balloon") {
@@ -3789,7 +3790,6 @@ where
         }
     }
 
-    tokio::time::pause();
     tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
     tokio::time::resume();
     let output = future.await;
@@ -4092,6 +4092,7 @@ async fn wait_for_balloon_rechecks_after_initial_25_ms_delay() {
     let subscriber = tracing_subscriber::registry().with(captured.clone());
     let guard = tracing::subscriber::set_default(subscriber);
     tracing::callsite::rebuild_interest_cache();
+    tokio::time::pause();
     let wait = wait_for_balloon(&client, target_mib, "fast-start");
     tokio::pin!(wait);
 
@@ -4116,7 +4117,6 @@ async fn wait_for_balloon_rechecks_after_initial_25_ms_delay() {
         1
     );
 
-    tokio::time::pause();
     tokio::time::advance(Duration::from_millis(24)).await;
     assert!(
         api.drain_requests().is_empty(),
@@ -4143,11 +4143,17 @@ async fn wait_for_balloon_rechecks_after_initial_25_ms_delay() {
 #[tokio::test]
 async fn wait_for_balloon_caps_adaptive_polling_at_14_samples() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let request_entered = Arc::new(Notify::new());
+    let response_release = Arc::new(Notify::new());
     let mut api = MockLifecycleApi::with_stats(
         std::collections::VecDeque::new(),
-        std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
-            target_mib, 0,
-        ))]),
+        std::iter::repeat_with(|| MockBalloonStatsReply::GatedOk {
+            entered: Arc::clone(&request_entered),
+            release: Arc::clone(&response_release),
+            stats: MockBalloonStats::new(target_mib, 0),
+        })
+        .take(14)
+        .collect(),
     );
     let client = ApiClient::new(api.socket_path()).unwrap();
     let captured = CapturedEvents::default();
@@ -4157,40 +4163,42 @@ async fn wait_for_balloon_caps_adaptive_polling_at_14_samples() {
     let wait = wait_for_balloon(&client, target_mib, "bounded-schedule");
     tokio::pin!(wait);
 
-    loop {
-        let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
-        if sample_count == 1 {
-            break;
-        }
-        tokio::select! {
-            outcome = &mut wait => {
-                panic!("balloon wait completed before the first deficient sample: {outcome:?}");
-            }
-            () = tokio::task::yield_now() => {}
-        }
-    }
-
-    tokio::time::pause();
     for (index, delay_ms) in [
-        25_u64, 50, 100, 200, 400, 500, 500, 500, 500, 500, 500, 500, 500,
+        0_u64, 25, 50, 100, 200, 400, 500, 500, 500, 500, 500, 500, 500, 500,
     ]
     .into_iter()
     .enumerate()
     {
-        tokio::time::advance(Duration::from_millis(delay_ms - 1)).await;
-        assert!(
-            futures_util::poll!(wait.as_mut()).is_pending(),
-            "balloon wait completed before the scheduled sample {}",
-            index + 2
-        );
-        assert_eq!(
-            captured_message_count(&captured.entries(), "waiting for balloon"),
-            index + 1,
-            "statistics GET began before the scheduled delay of {delay_ms} ms"
-        );
-        tokio::time::advance(Duration::from_millis(1)).await;
-        tokio::time::resume();
-        let expected_sample_count = index + 2;
+        if delay_ms > 0 {
+            tokio::time::advance(Duration::from_millis(delay_ms - 1)).await;
+            assert!(
+                futures_util::poll!(wait.as_mut()).is_pending(),
+                "balloon wait completed before scheduled sample {}",
+                index + 1
+            );
+            assert_eq!(
+                captured_message_count(&captured.entries(), "waiting for balloon"),
+                index,
+                "statistics GET began before the scheduled delay of {delay_ms} ms"
+            );
+            tokio::time::advance(Duration::from_millis(1)).await;
+            tokio::time::resume();
+        }
+        loop {
+            tokio::select! {
+                () = request_entered.notified() => break,
+                outcome = &mut wait => {
+                    panic!(
+                        "balloon wait completed before statistics request {}; outcome={outcome:?}",
+                        index + 1
+                    );
+                }
+                () = tokio::task::yield_now() => {}
+            }
+        }
+        tokio::time::pause();
+        response_release.notify_one();
+        let expected_sample_count = index + 1;
         loop {
             let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
             if sample_count == expected_sample_count {
@@ -4205,7 +4213,6 @@ async fn wait_for_balloon_caps_adaptive_polling_at_14_samples() {
                 () = tokio::task::yield_now() => {}
             }
         }
-        tokio::time::pause();
     }
 
     tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
