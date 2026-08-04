@@ -3,14 +3,17 @@ use super::*;
 use std::future::Future;
 use std::os::unix::fs::PermissionsExt;
 
-use base64::Engine;
 use sandbox::ExecTermination;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::{mpsc, oneshot};
 use vsock_host::{ExecOwnedCapturedOutput, NormalOperationFenceRejection, VsockHost};
-use vsock_proto::{Decoder, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage};
+use vsock_proto::{
+    Decoder, ExecCapturedOutput, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY,
+    RawMessage,
+};
 
+use crate::control::client::{ReceivedExecResponse, send_exec_result};
 use crate::control::{
     ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
     TerminateStatus, send_exec, send_terminate,
@@ -141,10 +144,10 @@ fn control_exec_result(
 }
 
 fn expect_exec_success(
-    response: ExecResponse,
+    response: ExecResult,
 ) -> (ExecTermination, Vec<u8>, Vec<u8>, bool, bool, String) {
     match response {
-        ExecResponse::Success {
+        ExecResult::Success {
             termination,
             stdout,
             stderr,
@@ -153,13 +156,13 @@ fn expect_exec_success(
             diagnostic,
         } => (
             termination,
-            BASE64.decode(stdout).expect("stdout should decode"),
-            BASE64.decode(stderr).expect("stderr should decode"),
+            stdout,
+            stderr,
             stdout_truncated,
             stderr_truncated,
             diagnostic,
         ),
-        ExecResponse::Error { error } => panic!("expected success response, got error: {error}"),
+        ExecResult::Error { error } => panic!("expected success response, got error: {error}"),
     }
 }
 
@@ -214,7 +217,7 @@ async fn bind_server_sets_private_socket_mode() {
 
 #[test]
 fn control_exec_result_preserves_ordinary_exit_state() {
-    let response = exec_response_from_operation_result(control_exec_result(
+    let response = exec_result_from_operation_result(control_exec_result(
         vsock_proto::ExecTermination::Exited { exit_code: 7 },
         b"out".to_vec(),
         b"err".to_vec(),
@@ -260,7 +263,7 @@ fn control_exec_result_preserves_structured_terminal_state() {
             b"stderr clue".to_vec(),
         ),
     ] {
-        let response = exec_response_from_operation_result(control_exec_result(
+        let response = exec_result_from_operation_result(control_exec_result(
             termination,
             Vec::new(),
             expected_stderr.clone(),
@@ -277,7 +280,7 @@ fn control_exec_result_preserves_structured_terminal_state() {
 
 #[test]
 fn control_exec_result_rejects_invalid_capture_state() {
-    let overflow = exec_response_from_operation_result(vsock_host::ExecOperationResult {
+    let overflow = exec_result_from_operation_result(vsock_host::ExecOperationResult {
         stream_overflowed: true,
         ..control_exec_result(
             vsock_proto::ExecTermination::Exited { exit_code: 0 },
@@ -290,7 +293,7 @@ fn control_exec_result_rejects_invalid_capture_state() {
     assert_eq!(overflow.kind(), io::ErrorKind::InvalidData);
     assert!(overflow.to_string().contains("overflowed a stream queue"));
 
-    let stdout_discarded = exec_response_from_operation_result(vsock_host::ExecOperationResult {
+    let stdout_discarded = exec_result_from_operation_result(vsock_host::ExecOperationResult {
         stdout: ExecOwnedCapturedOutput::Discarded,
         ..control_exec_result(
             vsock_proto::ExecTermination::Exited { exit_code: 0 },
@@ -303,7 +306,7 @@ fn control_exec_result_rejects_invalid_capture_state() {
     assert_eq!(stdout_discarded.kind(), io::ErrorKind::InvalidData);
     assert!(stdout_discarded.to_string().contains("discarded stdout"));
 
-    let stderr_discarded = exec_response_from_operation_result(vsock_host::ExecOperationResult {
+    let stderr_discarded = exec_result_from_operation_result(vsock_host::ExecOperationResult {
         stderr: ExecOwnedCapturedOutput::Discarded,
         ..control_exec_result(
             vsock_proto::ExecTermination::Exited { exit_code: 0 },
@@ -345,6 +348,26 @@ async fn client_server_no_guest() {
         ExecResponse::Success { .. } => panic!("expected error when guest is None"),
     }
 
+    handle.shutdown().await;
+}
+
+#[tokio::test]
+async fn negotiated_client_receives_raw_server_error() {
+    let fixture = ControlServerFixture::new();
+    let mut handle = fixture.spawn_default(CancellationToken::new());
+
+    let response = send_exec_result(
+        &fixture.sock_path,
+        &exec_request("ps aux"),
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+
+    let ReceivedExecResponse::Raw(ExecResult::Error { error }) = response else {
+        panic!("new server should return a negotiated raw error");
+    };
+    assert!(error.contains("not running"), "unexpected error: {error}");
     handle.shutdown().await;
 }
 
@@ -714,6 +737,57 @@ async fn control_server_shutdown_cancels_pending_connection() {
 // Vsock-backed control exec lifecycle.
 
 #[tokio::test]
+async fn negotiated_control_exec_streams_both_capture_limits() {
+    const CAPTURE_LIMIT: usize = 7 * 1024 * 1024;
+    let stdout = vec![0xa5; CAPTURE_LIMIT];
+    let stderr = vec![0x5a; CAPTURE_LIMIT];
+    let fixture = VsockExecFixture::connect(move |vsock_base| {
+        mock_guest_returns_exec(
+            vsock_base,
+            stdout,
+            stderr,
+            true,
+            false,
+            "boundary diagnostic",
+        )
+    })
+    .await;
+    let mut handle = fixture.spawn_server();
+
+    let response = send_exec_result(
+        &fixture.sock_path,
+        &exec_request("produce-boundary-output"),
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+
+    let ReceivedExecResponse::Raw(ExecResult::Success {
+        termination,
+        stdout,
+        stderr,
+        stdout_truncated,
+        stderr_truncated,
+        diagnostic,
+    }) = response
+    else {
+        panic!("new client and server should negotiate a raw success response");
+    };
+    assert_eq!(termination, ExecTermination::Exited { exit_code: 23 });
+    assert_eq!(stdout.len(), CAPTURE_LIMIT);
+    assert!(stdout.iter().all(|byte| *byte == 0xa5));
+    assert_eq!(stderr.len(), CAPTURE_LIMIT);
+    assert!(stderr.iter().all(|byte| *byte == 0x5a));
+    assert!(stdout_truncated);
+    assert!(!stderr_truncated);
+    assert_eq!(diagnostic, "boundary diagnostic");
+
+    handle.shutdown().await;
+    fixture.guest_task.abort();
+    let _ = fixture.guest_task.await;
+}
+
+#[tokio::test]
 async fn control_server_shutdown_cancels_in_flight_vsock_exec() {
     let (exec_seen_tx, exec_seen_rx) = oneshot::channel();
     let fixture =
@@ -1047,6 +1121,55 @@ async fn mock_guest_errors_exec(vsock_base: PathBuf, error: &'static str) {
             let frame = vsock_proto::encode(MSG_ERROR, message.seq, &payload).unwrap();
             stream.write_all(&frame).await.unwrap();
             std::future::pending::<()>().await;
+        }
+    }
+}
+
+async fn mock_guest_returns_exec(
+    vsock_base: PathBuf,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    stdout_truncated: bool,
+    stderr_truncated: bool,
+    diagnostic: &'static str,
+) {
+    let listener_path = PathBuf::from(format!(
+        "{}_{}",
+        vsock_base.display(),
+        vsock_proto::VSOCK_PORT
+    ));
+    wait_for_socket_exists(&listener_path).await;
+
+    let mut stream = UnixStream::connect(&listener_path).await.unwrap();
+    let mut decoder = Decoder::new();
+    mock_vsock_handshake(&mut stream, &mut decoder).await;
+
+    loop {
+        let message = read_vsock_message(&mut stream, &mut decoder).await;
+        if message.msg_type == MSG_EXEC_START {
+            let mut frame = Vec::new();
+            vsock_proto::encode_exec_result_frame_into(
+                &mut frame,
+                message.seq,
+                vsock_proto::ExecTermination::Exited { exit_code: 23 },
+                10,
+                ExecCapturedOutput::Captured {
+                    bytes: &stdout,
+                    truncated: stdout_truncated,
+                },
+                ExecCapturedOutput::Captured {
+                    bytes: &stderr,
+                    truncated: stderr_truncated,
+                },
+                diagnostic,
+            )
+            .unwrap();
+            stream.write_all(&frame).await.unwrap();
+            drop(frame);
+            drop(stdout);
+            drop(stderr);
+            std::future::pending::<()>().await;
+            return;
         }
     }
 }

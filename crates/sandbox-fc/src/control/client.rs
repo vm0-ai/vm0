@@ -6,9 +6,16 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::net::UnixStream;
 
+use super::exec_response::{ExecResult, RAW_EXEC_RESPONSE_VERSION, read_raw_exec_response};
 use super::protocol::{
-    ExecRequest, ExecResponse, TerminateRequest, TerminateResponse, read_frame, write_frame,
+    CapabilitiesAction, CapabilitiesRequest, CapabilitiesResponse, ExecRequest, ExecResponse,
+    RawExecRequest, TerminateRequest, TerminateResponse, read_frame, write_frame,
 };
+
+pub(super) enum ReceivedExecResponse {
+    Raw(ExecResult),
+    Legacy(ExecResponse),
+}
 
 /// Send an exec request to a control socket and return the wire response.
 ///
@@ -26,6 +33,35 @@ pub async fn send_exec(
     timeout: Duration,
 ) -> io::Result<ExecResponse> {
     send_control_request(sock_path, request, timeout).await
+}
+
+pub(super) async fn send_exec_result(
+    sock_path: &Path,
+    request: &ExecRequest,
+    timeout: Duration,
+) -> io::Result<ReceivedExecResponse> {
+    let deadline = deadline_after(timeout)?;
+    let capabilities: CapabilitiesResponse = send_control_request_until(
+        sock_path,
+        &CapabilitiesRequest {
+            action: CapabilitiesAction::Capabilities,
+        },
+        deadline,
+    )
+    .await?;
+
+    match capabilities {
+        CapabilitiesResponse::Supported {
+            exec_response_raw_version: RAW_EXEC_RESPONSE_VERSION,
+        } => send_raw_exec_request(sock_path, request, deadline)
+            .await
+            .map(ReceivedExecResponse::Raw),
+        CapabilitiesResponse::Supported { .. } | CapabilitiesResponse::Unsupported { .. } => {
+            send_control_request_until(sock_path, request, deadline)
+                .await
+                .map(ReceivedExecResponse::Legacy)
+        }
+    }
 }
 
 /// Send a host-side terminate request to a control socket.
@@ -47,24 +83,56 @@ where
     Response: DeserializeOwned,
 {
     let deadline = deadline_after(timeout)?;
+    send_control_request_until(sock_path, request, deadline).await
+}
 
-    let mut stream = tokio::time::timeout_at(deadline, UnixStream::connect(sock_path))
-        .await
-        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "connect timed out"))??;
-
-    let request_json = serde_json::to_vec(request)
-        .map_err(|e| io::Error::other(format!("serialize request: {e}")))?;
+async fn send_control_request_until<Request, Response>(
+    sock_path: &Path,
+    request: &Request,
+    deadline: tokio::time::Instant,
+) -> io::Result<Response>
+where
+    Request: Serialize,
+    Response: DeserializeOwned,
+{
+    let mut stream = connect_until(sock_path, deadline).await?;
+    let request_json = encode_json_request(request)?;
 
     tokio::time::timeout_at(deadline, async {
         write_frame(&mut stream, &request_json).await?;
         let frame = read_frame(&mut stream).await?;
-        let response: Response = serde_json::from_slice(&frame).map_err(|e| {
+        serde_json::from_slice(&frame).map_err(|e| {
             io::Error::new(io::ErrorKind::InvalidData, format!("invalid response: {e}"))
-        })?;
-        Ok(response)
+        })
     })
     .await
     .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "request timed out"))?
+}
+
+async fn send_raw_exec_request(
+    sock_path: &Path,
+    request: &ExecRequest,
+    deadline: tokio::time::Instant,
+) -> io::Result<ExecResult> {
+    let mut stream = connect_until(sock_path, deadline).await?;
+    let request_json = encode_json_request(&RawExecRequest::from(request))?;
+
+    tokio::time::timeout_at(deadline, async {
+        write_frame(&mut stream, &request_json).await?;
+        read_raw_exec_response(&mut stream).await
+    })
+    .await
+    .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "request timed out"))?
+}
+
+async fn connect_until(sock_path: &Path, deadline: tokio::time::Instant) -> io::Result<UnixStream> {
+    tokio::time::timeout_at(deadline, UnixStream::connect(sock_path))
+        .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "connect timed out"))?
+}
+
+fn encode_json_request(request: &impl Serialize) -> io::Result<Vec<u8>> {
+    serde_json::to_vec(request).map_err(|e| io::Error::other(format!("serialize request: {e}")))
 }
 
 fn deadline_after(timeout: Duration) -> io::Result<tokio::time::Instant> {
@@ -76,6 +144,11 @@ fn deadline_after(timeout: Duration) -> io::Result<tokio::time::Instant> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    use sandbox::ExecTermination;
+    use tokio::net::UnixListener;
 
     #[tokio::test]
     async fn send_exec_missing_socket_returns_not_found() {
@@ -111,9 +184,76 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
     }
 
+    #[tokio::test]
+    async fn negotiated_exec_falls_back_before_sending_command_to_legacy_server() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("control.sock");
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let server = tokio::spawn(async move {
+            let (mut probe_stream, _) = listener.accept().await.unwrap();
+            let probe_json = read_frame(&mut probe_stream).await.unwrap();
+            let probe: CapabilitiesRequest = serde_json::from_slice(&probe_json).unwrap();
+            assert_eq!(probe.action, CapabilitiesAction::Capabilities);
+            assert!(serde_json::from_slice::<ExecRequest>(&probe_json).is_err());
+            let unsupported = serde_json::to_vec(&ExecResponse::Error {
+                error: "invalid request: unknown field `action`".into(),
+            })
+            .unwrap();
+            write_frame(&mut probe_stream, &unsupported).await.unwrap();
+
+            let (mut exec_stream, _) = listener.accept().await.unwrap();
+            let exec_json = read_frame(&mut exec_stream).await.unwrap();
+            let json: serde_json::Value = serde_json::from_slice(&exec_json).unwrap();
+            assert!(json.get("response_format").is_none());
+            let exec: ExecRequest = serde_json::from_slice(&exec_json).unwrap();
+            assert_eq!(exec.command, "printf legacy");
+            let response = serde_json::to_vec(&ExecResponse::Success {
+                termination: ExecTermination::Exited { exit_code: 7 },
+                stdout: BASE64.encode(b"legacy out"),
+                stderr: BASE64.encode(b"legacy err"),
+                stdout_truncated: true,
+                stderr_truncated: false,
+                diagnostic: "legacy diagnostic".into(),
+            })
+            .unwrap();
+            write_frame(&mut exec_stream, &response).await.unwrap();
+        });
+
+        let response = send_exec_result(
+            &sock_path,
+            &ExecRequest {
+                expected_run_id: None,
+                command: "printf legacy".into(),
+                timeout_secs: 5,
+                sudo: false,
+            },
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+
+        let ReceivedExecResponse::Legacy(ExecResponse::Success {
+            termination,
+            stdout,
+            stderr,
+            stdout_truncated,
+            stderr_truncated,
+            diagnostic,
+        }) = response
+        else {
+            panic!("legacy server should return the legacy response shape");
+        };
+        assert_eq!(termination, ExecTermination::Exited { exit_code: 7 });
+        assert_eq!(BASE64.decode(stdout).unwrap(), b"legacy out");
+        assert_eq!(BASE64.decode(stderr).unwrap(), b"legacy err");
+        assert!(stdout_truncated);
+        assert!(!stderr_truncated);
+        assert_eq!(diagnostic, "legacy diagnostic");
+        server.await.unwrap();
+    }
+
     #[tokio::test(start_paused = true)]
     async fn send_exec_times_out_waiting_for_response() {
-        use tokio::net::UnixListener;
         use tokio::sync::oneshot;
 
         let dir = tempfile::tempdir().unwrap();

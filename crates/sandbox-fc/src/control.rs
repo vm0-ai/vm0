@@ -6,17 +6,21 @@
 //!
 //! ## Wire format
 //!
-//! Length-prefixed JSON frames: `[4-byte big-endian length][JSON payload]`.
+//! Length-prefixed frames: `[4-byte big-endian length][payload]`. Requests and
+//! legacy responses use JSON. Negotiated exec responses use a versioned binary
+//! payload so captured stdout and stderr can be transferred without base64.
 //! One request per connection, one response per connection.
 //!
 //! Exec request payloads are [`ExecRequest`]. Termination request payloads are
-//! [`TerminateRequest`]. Responses are serialized as untagged JSON objects.
+//! [`TerminateRequest`]. Public legacy responses are serialized as untagged
+//! JSON objects.
 //!
 //! Termination clients send `{"action":"terminate"}`. A status response is
 //! shaped like `{"status":"accepted"}`; an error response is shaped like
 //! `{"error":"..."}`.
 
 mod client;
+mod exec_response;
 mod protocol;
 mod provider;
 mod resolver;

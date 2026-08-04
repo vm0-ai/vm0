@@ -34,6 +34,96 @@ fn default_timeout() -> u32 {
     30
 }
 
+/// Request that probes control-server capabilities without executing a command.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct CapabilitiesRequest {
+    pub(super) action: CapabilitiesAction,
+}
+
+/// Non-executing control action used for protocol negotiation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum CapabilitiesAction {
+    Capabilities,
+}
+
+/// Response to a control capability probe.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged, deny_unknown_fields)]
+pub(super) enum CapabilitiesResponse {
+    Supported { exec_response_raw_version: u8 },
+    Unsupported { error: String },
+}
+
+/// Exec response representation selected by a negotiated request.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ExecResponseFormat {
+    #[default]
+    JsonBase64,
+    RawV1,
+}
+
+/// Server-side exec request shape that also accepts a negotiated response format.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct WireExecRequest {
+    #[serde(default)]
+    pub(super) expected_run_id: Option<String>,
+    pub(super) command: String,
+    #[serde(default = "default_timeout")]
+    pub(super) timeout_secs: u32,
+    #[serde(default)]
+    pub(super) sudo: bool,
+    #[serde(default)]
+    pub(super) response_format: ExecResponseFormat,
+}
+
+impl WireExecRequest {
+    pub(super) fn into_request(self) -> (ExecRequest, ExecResponseFormat) {
+        let Self {
+            expected_run_id,
+            command,
+            timeout_secs,
+            sudo,
+            response_format,
+        } = self;
+        (
+            ExecRequest {
+                expected_run_id,
+                command,
+                timeout_secs,
+                sudo,
+            },
+            response_format,
+        )
+    }
+}
+
+/// Borrowed exec request that explicitly selects raw response version 1.
+#[derive(Debug, Serialize)]
+pub(super) struct RawExecRequest<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) expected_run_id: Option<&'a str>,
+    pub(super) command: &'a str,
+    pub(super) timeout_secs: u32,
+    pub(super) sudo: bool,
+    pub(super) response_format: ExecResponseFormat,
+}
+
+impl<'a> From<&'a ExecRequest> for RawExecRequest<'a> {
+    fn from(request: &'a ExecRequest) -> Self {
+        Self {
+            expected_run_id: request.expected_run_id.as_deref(),
+            command: &request.command,
+            timeout_secs: request.timeout_secs,
+            sudo: request.sudo,
+            response_format: ExecResponseFormat::RawV1,
+        }
+    }
+}
+
 /// Response to a `runner exec` client.
 ///
 /// This enum is serialized without a tag. Clients should distinguish variants
@@ -146,7 +236,7 @@ pub enum TerminateResponse {
 }
 
 /// Maximum frame payload size: 64 MiB, excluding the 4-byte length prefix.
-const MAX_FRAME_PAYLOAD_SIZE: u32 = 64 * 1024 * 1024;
+pub(super) const MAX_FRAME_PAYLOAD_SIZE: u32 = 64 * 1024 * 1024;
 
 fn frame_payload_len_error(len: usize) -> io::Error {
     io::Error::new(
@@ -155,7 +245,7 @@ fn frame_payload_len_error(len: usize) -> io::Error {
     )
 }
 
-fn validate_frame_payload_len(len: usize) -> io::Result<u32> {
+pub(super) fn validate_frame_payload_len(len: usize) -> io::Result<u32> {
     if len > MAX_FRAME_PAYLOAD_SIZE as usize {
         return Err(frame_payload_len_error(len));
     }
@@ -165,19 +255,30 @@ fn validate_frame_payload_len(len: usize) -> io::Result<u32> {
 
 /// Read a length-prefixed frame from the stream.
 pub(super) async fn read_frame(stream: &mut UnixStream) -> io::Result<Vec<u8>> {
-    let len = validate_frame_payload_len(stream.read_u32().await? as usize)?;
-    let mut buf = vec![0u8; len as usize];
+    let len = read_frame_payload_len(stream).await?;
+    let mut buf = vec![0u8; len];
     stream.read_exact(&mut buf).await?;
     Ok(buf)
 }
 
+/// Read and validate a frame payload length without allocating its payload.
+pub(super) async fn read_frame_payload_len(stream: &mut UnixStream) -> io::Result<usize> {
+    let len = stream.read_u32().await? as usize;
+    validate_frame_payload_len(len)?;
+    Ok(len)
+}
+
 /// Write a length-prefixed frame to the stream.
 pub(super) async fn write_frame(stream: &mut UnixStream, data: &[u8]) -> io::Result<()> {
-    let len = validate_frame_payload_len(data.len())?;
-    stream.write_u32(len).await?;
+    write_frame_payload_len(stream, data.len()).await?;
     stream.write_all(data).await?;
     stream.flush().await?;
     Ok(())
+}
+
+/// Validate and write a frame payload length without requiring a contiguous payload.
+pub(super) async fn write_frame_payload_len(stream: &mut UnixStream, len: usize) -> io::Result<()> {
+    stream.write_u32(validate_frame_payload_len(len)?).await
 }
 
 #[cfg(test)]
@@ -339,6 +440,41 @@ mod tests {
         assert_eq!(req.command, "apt install curl");
         assert_eq!(req.timeout_secs, 60);
         assert!(req.sudo);
+    }
+
+    #[test]
+    fn wire_exec_request_preserves_legacy_defaults() {
+        let request: WireExecRequest = serde_json::from_str(r#"{"command":"echo hi"}"#).unwrap();
+        let (request, response_format) = request.into_request();
+
+        assert_eq!(request.expected_run_id, None);
+        assert_eq!(request.command, "echo hi");
+        assert_eq!(request.timeout_secs, 30);
+        assert!(!request.sudo);
+        assert_eq!(response_format, ExecResponseFormat::JsonBase64);
+    }
+
+    #[test]
+    fn raw_exec_request_explicitly_selects_raw_v1() {
+        let request = ExecRequest {
+            expected_run_id: Some("run-full-id".into()),
+            command: "printf raw".into(),
+            timeout_secs: 17,
+            sudo: true,
+        };
+        let json = serde_json::to_value(RawExecRequest::from(&request)).unwrap();
+
+        assert_eq!(json["expected_run_id"], "run-full-id");
+        assert_eq!(json["command"], "printf raw");
+        assert_eq!(json["timeout_secs"], 17);
+        assert_eq!(json["sudo"], true);
+        assert_eq!(json["response_format"], "raw_v1");
+
+        let decoded: WireExecRequest = serde_json::from_value(json).unwrap();
+        let (decoded, response_format) = decoded.into_request();
+        assert_eq!(decoded.expected_run_id.as_deref(), Some("run-full-id"));
+        assert_eq!(decoded.command, "printf raw");
+        assert_eq!(response_format, ExecResponseFormat::RawV1);
     }
 
     #[test]
