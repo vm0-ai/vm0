@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.63.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.6...guest-agent-v0.63.7) (2026-08-04)
+
 ## [0.63.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.5...guest-agent-v0.63.6) (2026-08-04)
 
 

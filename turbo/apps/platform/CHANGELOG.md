@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.679.3](https://github.com/vm0-ai/vm0/compare/app-v0.679.2...app-v0.679.3) (2026-08-04)
+
+
+### Bug Fixes
+
+* **platform:** make browser session viewer full page ([#25006](https://github.com/vm0-ai/vm0/issues/25006)) ([00f8660](https://github.com/vm0-ai/vm0/commit/00f86603a3e5b4f03588057a47d9788ea5044b71))
+
+
+### Refactoring
+
+* **org:** confirm workspace deletion with a literal and drop the cli delete command ([#25002](https://github.com/vm0-ai/vm0/issues/25002)) ([1a21a62](https://github.com/vm0-ai/vm0/commit/1a21a628d642e86840ee3739ccb86fcbffd8dd02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.1
+    * @vm0/core bumped to 8.509.0
+
 ## [0.679.2](https://github.com/vm0-ai/vm0/compare/app-v0.679.1...app-v0.679.2) (2026-08-04)
 
 

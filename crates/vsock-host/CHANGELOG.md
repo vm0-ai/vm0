@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.73](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.72...vsock-host-v0.17.73) (2026-08-04)
+
+
+### Documentation
+
+* **vsock-host:** correct write_files guidance ([#25023](https://github.com/vm0-ai/vm0/issues/25023)) ([0d88534](https://github.com/vm0-ai/vm0/commit/0d885349db652c296bc2f12162987aca61cdff1f))
+
 ## [0.17.72](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.71...vsock-host-v0.17.72) (2026-08-04)
 
 

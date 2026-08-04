@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/vm0-ai/vm0/compare/zero-cli-v0.3.0...zero-cli-v0.3.1) (2026-08-04)
+
+
+### Refactoring
+
+* **cli:** remove unsupported user config commands ([#25022](https://github.com/vm0-ai/vm0/issues/25022)) ([a3380fc](https://github.com/vm0-ai/vm0/commit/a3380fc52e819c70ee3f2994e5495a7d51ab5d37))
+
 ## [0.3.0](https://github.com/vm0-ai/vm0/compare/zero-cli-v0.2.0...zero-cli-v0.3.0) (2026-08-04)
 
 
