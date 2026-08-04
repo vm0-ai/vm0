@@ -11,7 +11,6 @@ import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 const OPENROUTER_USAGE_IDEMPOTENCY_NAMESPACE =
   "3cf6f344-d67b-4d96-ae5d-fd6c0d134b70";
 
-const USAGE_KIND = "model";
 const INPUT_CATEGORY = "tokens.input";
 const CACHE_READ_CATEGORY = "tokens.cache_read";
 const OUTPUT_CATEGORY = "tokens.output";
@@ -31,6 +30,9 @@ interface RecordOpenRouterUsageArgs {
   readonly userId: string;
   readonly runId: string | undefined;
   readonly provider: string;
+  // Recorded as the usage event `kind`, so pricing rows and usage displays
+  // are scoped per task (like web-search vs people-search on one provider),
+  // not per model.
   readonly operation: string;
   readonly operationId: string;
   readonly usage: OpenRouterUsage | undefined;
@@ -89,7 +91,7 @@ function usageIdempotencyKey(args: {
 export const checkOpenRouterUsagePricing$ = command(
   async (
     { set },
-    args: { readonly provider: string },
+    args: { readonly provider: string; readonly operation: string },
     signal: AbortSignal,
   ): Promise<readonly string[]> => {
     const writeDb = set(writeDb$);
@@ -98,7 +100,7 @@ export const checkOpenRouterUsagePricing$ = command(
       .from(usagePricing)
       .where(
         and(
-          eq(usagePricing.kind, USAGE_KIND),
+          eq(usagePricing.kind, args.operation),
           eq(usagePricing.provider, args.provider),
           inArray(usagePricing.category, [...OPENROUTER_USAGE_CATEGORIES]),
         ),
@@ -140,7 +142,7 @@ export const recordOpenRouterUsage$ = command(
         }),
         orgId: args.orgId,
         userId: args.userId,
-        kind: USAGE_KIND,
+        kind: args.operation,
         provider: args.provider,
         category: entry.category,
         quantity: entry.quantity,

@@ -8,10 +8,28 @@ describe("getCreditUsageDisplayName", () => {
     await initializeI18n(DEFAULT_LOCALE);
   });
 
-  it("labels image recognition usage with a user-facing name", () => {
+  it("labels image task kinds with a user-facing name", () => {
     expect(
-      getCreditUsageDisplayName("model", "google/gemini-3.5-flash"),
+      getCreditUsageDisplayName("image-recognition", "google/gemini-3.5-flash"),
     ).toBe("Image Recognize");
+    expect(
+      getCreditUsageDisplayName(
+        "image-interpret-marks",
+        "google/gemini-3.5-flash",
+      ),
+    ).toBe("Image Recognize");
+  });
+
+  it("labels the task even if a different model backs it later", () => {
+    expect(
+      getCreditUsageDisplayName("image-recognition", "acme/vision-pro"),
+    ).toBe("Image Recognize");
+  });
+
+  it("labels pre-task-kind model rows recorded for image recognition", () => {
+    expect(getCreditUsageDisplayName("model", "google/gemini-3.5-flash")).toBe(
+      "Image Recognize",
+    );
   });
 
   it("keeps friendly names for regular chat models", () => {
