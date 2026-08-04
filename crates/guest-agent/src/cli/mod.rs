@@ -548,14 +548,13 @@ impl<'a> CliEventIngestor<'a> {
         masker: &SecretMasker,
         behavior: CliFrameworkBehavior,
     ) -> Result<ParsedEventAction, AgentError> {
-        let observed_at = Instant::now();
         let is_stream_event =
             event.get("type").and_then(serde_json::Value::as_str) == Some("stream_event");
         if !is_stream_event
             && behavior.is_codex_turn_started(event)
             && let Some(codex_startup) = self.codex_startup
         {
-            codex_startup.record_success_at(observed_at);
+            codex_startup.record_success_at(Instant::now());
         }
         Self::write_raw_line(log_file, raw_line).await;
 

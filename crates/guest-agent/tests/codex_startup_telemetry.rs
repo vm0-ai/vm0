@@ -117,6 +117,33 @@ fn app_server_records_startup_success_at_primary_turn_started() -> TestResult {
 }
 
 #[test]
+fn app_server_secondary_turn_started_does_not_complete_startup() -> TestResult {
+    common::ensure_canonical_workspace_for_test()?;
+
+    let mock_codex = common::build_and_locate_mock_codex()?;
+    let tmp = tempfile::tempdir()?;
+    let runtime_dir = tmp.path().join("runtime");
+    let run_payload_path = write_run_payload(&runtime_dir, "ignore secondary startup")?;
+
+    let output = run_guest_agent(GuestAgentInvocation {
+        framework: TestFramework::Codex {
+            binary: &mock_codex,
+            app_server_scenario: Some("secondary-thread-notifications"),
+        },
+        runtime_dir: &runtime_dir,
+        run_payload_path: &run_payload_path,
+        home: tmp.path(),
+        run_id: "codex-app-server-secondary-startup",
+    })?;
+
+    assert_guest_success(&output);
+    let operations = read_sandbox_operations(&runtime_dir)?;
+    assert_one_codex_startup(&operations, false)?;
+
+    Ok(())
+}
+
+#[test]
 fn claude_code_does_not_record_codex_startup() -> TestResult {
     common::ensure_canonical_workspace_for_test()?;
 
