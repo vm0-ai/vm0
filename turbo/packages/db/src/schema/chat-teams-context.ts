@@ -32,8 +32,6 @@ export const chatTeamsContext = pgTable("chat_teams_context", {
   threadId: text("thread_id"),
   serviceUrl: text("service_url"),
   teamsAppId: text("teams_app_id"),
-  botId: text("bot_id"),
-  botName: text("bot_name"),
   senderUserId: text("sender_user_id"),
   senderDisplayName: text("sender_display_name"),
   senderPrincipalName: text("sender_principal_name"),
