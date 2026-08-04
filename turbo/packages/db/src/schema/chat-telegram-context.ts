@@ -1,11 +1,4 @@
-import {
-  boolean,
-  integer,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { chatThreads } from "./chat-thread";
 
@@ -21,7 +14,6 @@ export const chatTelegramContext = pgTable("chat_telegram_context", {
     ),
   chatId: text("chat_id").notNull(),
   messageId: text("message_id").notNull(),
-  isDm: boolean("is_dm"),
   messageThreadId: integer("message_thread_id"),
   /**
    * Server-private Telegram launch material retained with the trigger

@@ -54,7 +54,7 @@ interface DrainChatThreadQueueInput {
 /**
  * The single per-thread scheduler entry: terminal run callbacks, cancel,
  * resume, and the stale sweep all converge here. User messages are attempted
- * first; workflow automation remains second and goal continuation third. Each
+ * first; goal continuation remains second and workflow automation third. Each
  * later drain observes a newly-created active run and stops. The final claims
  * serialize on the same thread row and fold pending events by class priority,
  * then original `created_at` and id.
@@ -80,6 +80,17 @@ export const drainChatThreadQueueForThread$ = command(
       signal,
     );
     signal.throwIfAborted();
+    await set(
+      drainGoalQueueForThread$,
+      {
+        chatThreadId: input.chatThreadId,
+        apiStartTime,
+        dispatchFailedCallbacks: input.dispatchFailedCallbacks,
+        queueItemCreatedBefore: input.queueItemCreatedBefore,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     const workflowResult = await set(
       drainWorkflowQueueForThread$,
       {
@@ -94,20 +105,7 @@ export const drainChatThreadQueueForThread$ = command(
       signal,
     );
     signal.throwIfAborted();
-    if (workflowResult) {
-      return workflowResult;
-    }
-    await set(
-      drainGoalQueueForThread$,
-      {
-        chatThreadId: input.chatThreadId,
-        apiStartTime,
-        dispatchFailedCallbacks: input.dispatchFailedCallbacks,
-        queueItemCreatedBefore: input.queueItemCreatedBefore,
-      },
-      signal,
-    );
-    return null;
+    return workflowResult;
   },
 );
 
