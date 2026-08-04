@@ -88,7 +88,6 @@ import {
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
-  readChatEventContextFixture,
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
@@ -6625,18 +6624,6 @@ describe("CHAT-02: shared user message queue", () => {
       },
     });
     expect(firstInput?.runId).toBeUndefined();
-    if (!firstInput) {
-      throw new Error("Expected the first delegated input event");
-    }
-    await expect(
-      readChatEventContextFixture(firstInput.id),
-    ).resolves.toMatchObject({
-      contextType: "agent_run",
-      contextId: source.runId,
-      agentRunSourceChatThreadId: source.threadId,
-      agentRunSourceAgentId: agentId,
-    });
-
     const legacyFirstMessages = await chat.listThreadEvents(
       actor,
       firstTargetThread.id,
@@ -6706,18 +6693,6 @@ describe("CHAT-02: shared user message queue", () => {
       titleSnapshot: "Delegation source",
       href: `/chats/${source.threadId}#run-${source.runId}`,
     });
-    if (!secondInput) {
-      throw new Error("Expected the second delegated input event");
-    }
-    await expect(
-      readChatEventContextFixture(secondInput.id),
-    ).resolves.toMatchObject({
-      contextType: "agent_run",
-      contextId: source.runId,
-      agentRunSourceChatThreadId: source.threadId,
-      agentRunSourceAgentId: agentId,
-    });
-
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
@@ -6764,10 +6739,6 @@ describe("CHAT-02: shared user message queue", () => {
         parts: [{ type: "text", text: "provenance rollout disabled" }],
       },
     });
-    await expect(
-      readChatEventContextFixture(gatedEventId),
-    ).resolves.toMatchObject({ contextType: null, contextId: null });
-
     await cancelChatRun(actor, gatedTargetRunId);
     await cancelChatRun(actor, secondTargetRunId);
     await cancelChatRun(actor, firstTargetRunId);

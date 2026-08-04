@@ -110,6 +110,20 @@ export async function readBrowserScreenshotSchemaAvailable(
   return response.browser_screenshot_schema_available;
 }
 
+export async function readChatAgentRunContextSchemaAvailable(
+  context: TestContext,
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "read-chat-agent-run-context-schema-state",
+  });
+  if (response.chat_agent_run_context_schema_available === undefined) {
+    throw new Error(
+      "readChatAgentRunContextSchemaAvailable missing schema availability",
+    );
+  }
+  return response.chat_agent_run_context_schema_available;
+}
+
 export async function resetDatabasePool(context: TestContext): Promise<void> {
   await postAction(context, { action: "reset-database-pool" });
 }

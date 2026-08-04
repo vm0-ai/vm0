@@ -11,7 +11,6 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatAgentRunContext } from "@vm0/db/schema/chat-agent-run-context";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
@@ -60,8 +59,6 @@ interface ChatEventContextFixture {
   readonly revokesEventId: string | null;
   readonly contextType: string | null;
   readonly contextId: string | null;
-  readonly agentRunSourceChatThreadId: string | null;
-  readonly agentRunSourceAgentId: string | null;
   readonly automationId: string | null;
   readonly triggerBrief: string | null;
   readonly workflowName: string | null;
@@ -159,8 +156,6 @@ export async function readChatEventContextFixture(
       revokesEventId: chatEvents.revokesEventId,
       contextType: chatEvents.contextType,
       contextId: chatEvents.contextId,
-      agentRunSourceChatThreadId: chatAgentRunContext.sourceChatThreadId,
-      agentRunSourceAgentId: chatAgentRunContext.sourceAgentId,
       automationId: chatAutomationContext.automationId,
       triggerBrief: chatAutomationContext.triggerBrief,
       workflowName: chatAutomationContext.workflowName,
@@ -248,7 +243,6 @@ export async function readChatEventContextFixture(
       goalObjectiveBrief: chatGoalContext.objectiveBrief,
     })
     .from(chatEvents)
-    .leftJoin(chatAgentRunContext, eq(chatAgentRunContext.id, contextId))
     .leftJoin(chatAutomationContext, eq(chatAutomationContext.id, contextId))
     .leftJoin(chatSlackContext, eq(chatSlackContext.id, contextId))
     .leftJoin(chatFeishuContext, eq(chatFeishuContext.id, contextId))

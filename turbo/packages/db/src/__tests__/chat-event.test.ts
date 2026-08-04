@@ -1,7 +1,31 @@
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
+import { schema } from "../index";
+import { chatAgentRunContext } from "../schema/chat-agent-run-context";
 import { chatEvents } from "../schema/chat-event";
+
+describe("chatAgentRunContext schema", () => {
+  it("exports durable source-run provenance without live-entity references", () => {
+    const config = getTableConfig(chatAgentRunContext);
+    const columns = new Map(
+      config.columns.map((column) => {
+        return [column.name, column.notNull] as const;
+      }),
+    );
+
+    expect(schema.chatAgentRunContext).toBe(chatAgentRunContext);
+    expect(columns).toEqual(
+      new Map([
+        ["id", true],
+        ["source_chat_thread_id", true],
+        ["source_agent_id", true],
+        ["created_at", true],
+      ]),
+    );
+    expect(config.foreignKeys).toHaveLength(0);
+  });
+});
 
 describe("chatEvents schema", () => {
   it("exposes only canonical userMessage storage", () => {

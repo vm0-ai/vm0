@@ -109,6 +109,7 @@ import {
   chatThreadServiceTierFromCodex,
 } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
+import { chatAgentRunContextSchemaAvailable } from "../services/chat-agent-run-context-schema.service";
 import { attachCanonicalWebInputAssetsToEvent } from "../services/canonical-asset.service";
 import { resolveArtifactObject$ } from "../services/artifact-storage.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
@@ -294,9 +295,13 @@ async function resolveNormalSendAgentRunSource(params: {
   | { readonly source: ChatAgentRunSourceAnnotation | null }
   | { readonly response: ReturnType<typeof badRequestMessage> }
 > {
-  // Keep provenance aligned with the existing Zero chat messaging rollout.
-  // Migration 0825 must be present before the API version that writes it.
-  const source = params.enabled
+  const sourceSchemaAvailable =
+    params.enabled &&
+    params.auth.tokenType === "zero" &&
+    (await chatAgentRunContextSchemaAvailable(params.db));
+  // Keep provenance aligned with the existing Zero chat messaging rollout,
+  // while allowing an API deployment to safely precede migration 0825.
+  const source = sourceSchemaAvailable
     ? await resolveChatAgentRunSource(params.db, params.auth)
     : null;
   if (hasAgentRunSourceAnnotation(params.userMessage) && source === null) {
