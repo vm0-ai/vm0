@@ -123,7 +123,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     assert_eq!(
         env.idle_pool.lock().await.len(),
         0,
-        "nonzero job should not park a VM",
+        "soft-drained parking gate should prevent VM parking",
     );
 
     assert!(
