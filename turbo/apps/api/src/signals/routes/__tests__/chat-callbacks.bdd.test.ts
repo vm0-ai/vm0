@@ -1950,8 +1950,14 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       .poll(modelPolicyReads.blockedWaiterCount)
       .toBeGreaterThanOrEqual(1);
 
-    const [goalEventId] = await goalQueueEventIds(first.threadId);
-    expect(goalEventId).toBeDefined();
+    let goalEventId: string | undefined;
+    await expect
+      .poll(async () => {
+        const [eventId] = await goalQueueEventIds(first.threadId);
+        goalEventId = eventId;
+        return eventId;
+      })
+      .toBeDefined();
     if (!goalEventId) {
       throw new Error("Expected the invalidated failing goal queue event");
     }
@@ -2034,8 +2040,14 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       .poll(modelPolicyReads.blockedWaiterCount)
       .toBeGreaterThanOrEqual(1);
 
-    const [goalEventId] = await goalQueueEventIds(first.threadId);
-    expect(goalEventId).toBeDefined();
+    let goalEventId: string | undefined;
+    await expect
+      .poll(async () => {
+        const [eventId] = await goalQueueEventIds(first.threadId);
+        goalEventId = eventId;
+        return eventId;
+      })
+      .toBeDefined();
     if (!goalEventId) {
       throw new Error("Expected the final-boundary goal queue event");
     }
