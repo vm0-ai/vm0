@@ -1010,7 +1010,7 @@
     "fitAction": "Sesuaikan",
     "fitWindow": "Sesuaikan browser ke jendela",
     "iframeTitle": "Browser live: {{name}}",
-    "invalidLink": "Tautan browser tidak valid",
+    "notFound": "Browser tidak ditemukan",
     "open": "Buka browser {{name}}",
     "openAction": "Buka",
     "openNewPage": "Buka browser ini di halaman baru",

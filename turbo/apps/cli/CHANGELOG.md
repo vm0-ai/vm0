@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.276.3](https://github.com/vm0-ai/vm0/compare/cli-v9.276.2...cli-v9.276.3) (2026-08-04)
+
+
+### Refactoring
+
+* **cli:** remove unsupported user config commands ([#25022](https://github.com/vm0-ai/vm0/issues/25022)) ([a3380fc](https://github.com/vm0-ai/vm0/commit/a3380fc52e819c70ee3f2994e5495a7d51ab5d37))
+* **org:** confirm workspace deletion with a literal and drop the cli delete command ([#25002](https://github.com/vm0-ai/vm0/issues/25002)) ([1a21a62](https://github.com/vm0-ai/vm0/commit/1a21a628d642e86840ee3739ccb86fcbffd8dd02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.269.1
+    * @vm0/core bumped to 8.509.0
+
 ## [9.276.2](https://github.com/vm0-ai/vm0/compare/cli-v9.276.1...cli-v9.276.2) (2026-08-04)
 
 

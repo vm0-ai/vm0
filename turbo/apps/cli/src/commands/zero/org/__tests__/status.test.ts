@@ -63,7 +63,7 @@ describe("zero org status command", () => {
       expect.stringContaining("No organization configured"),
     );
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("zero org set"),
+      expect.stringContaining("Create or join an organization"),
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });

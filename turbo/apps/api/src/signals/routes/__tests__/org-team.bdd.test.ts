@@ -279,16 +279,16 @@ describe("ORG-01: org logo lifecycle through the Clerk boundary", () => {
 });
 
 describe("ORG-01: org update and delete error matrix", () => {
-  it("maps no-org, slug-force, reserved, conflict, admin-leave, and delete failure arms [ORG-UPDATE-B]", async () => {
+  it("maps no-org, legacy slug body, rename, admin-leave, and delete failure arms [ORG-UPDATE-B]", async () => {
     const noOrg = api.user({ orgId: null });
     const noOrgUpdate = await api.requestUpdateOrg(
       noOrg,
-      { force: false },
+      { name: "No Org Rename" },
       [400],
     );
     expectApiError(noOrgUpdate.body);
     expect(noOrgUpdate.body.error.message).toBe(
-      "No org configured. Set your org with: zero org set <slug>",
+      "No organization is selected for this request",
     );
 
     const admin = api.user();
@@ -297,60 +297,40 @@ describe("ORG-01: org update and delete error matrix", () => {
     await onboardAdmin(admin, { slug: baseSlug, name: "BDD R5 Org" });
     api.mockClerkOrg(admin, { slug: baseSlug, name: "BDD R5 Org" });
 
+    // An old CLI still sending the removed slug rename body must fail loudly
+    // instead of silently succeeding as an empty update.
     context.mocks.clerk.organizations.updateOrganization.mockClear();
-    const unforced = await api.requestUpdateOrg(
+    const legacySlugBody = await api.requestRawJson(
       admin,
-      { slug: slug("bdd-r5-next"), force: false },
+      "/api/zero/org",
+      "PUT",
+      { slug: slug("bdd-r5-next"), force: true },
       [400],
     );
-    expectApiError(unforced.body);
-    expect(unforced.body.error.message).toBe(
-      "Changing org slug may break existing references. Use --force to confirm.",
-    );
-    expect(
-      context.mocks.clerk.organizations.updateOrganization,
-    ).not.toHaveBeenCalled();
-
-    const reserved = await api.requestUpdateOrg(
-      admin,
-      { slug: "vm0-team", force: true },
-      [400],
-    );
-    expectApiError(reserved.body);
-    expect(reserved.body.error.message).toBe("Org slug is reserved");
-    expect(
-      context.mocks.clerk.organizations.updateOrganization,
-    ).not.toHaveBeenCalled();
-
-    // A second org caches the taken slug through its own org read; renaming
-    // the first org onto it must conflict.
-    const otherAdmin = api.user();
-    const takenSlug = slug("bdd-r5-taken");
-    api.mockClerkOrg(otherAdmin, { slug: takenSlug, name: "BDD Taken Org" });
-    const otherOrg = await api.readOrg(otherAdmin);
-    expect(otherOrg.slug).toBe(takenSlug);
-    api.mockClerkOrg(admin, { slug: baseSlug, name: "BDD R5 Org" });
-    const conflicted = await api.requestUpdateOrg(
-      admin,
-      { slug: takenSlug, force: true },
-      [409],
-    );
-    expectApiError(conflicted.body);
-    expect(conflicted.body.error.message).toBe(
-      `Org "${takenSlug}" already exists`,
-    );
-
-    // No-op update returns the current org without touching Clerk.
-    context.mocks.clerk.organizations.updateOrganization.mockClear();
-    const noop = await api.requestUpdateOrg(admin, { force: false }, [200]);
-    expect(noop.body).toMatchObject({
-      id: admin.orgId,
-      slug: baseSlug,
-      name: "BDD R5 Org",
+    expect(legacySlugBody.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
     });
     expect(
       context.mocks.clerk.organizations.updateOrganization,
     ).not.toHaveBeenCalled();
+    const unchanged = await api.readOrg(admin);
+    expect(unchanged).toMatchObject({ slug: baseSlug, name: "BDD R5 Org" });
+
+    // A name update reaches Clerk and returns the refreshed org.
+    api.mockClerkOrg(admin, { slug: baseSlug, name: "BDD R5 Org Renamed" });
+    const renamed = await api.requestUpdateOrg(
+      admin,
+      { name: "BDD R5 Org Renamed" },
+      [200],
+    );
+    expect(renamed.body).toMatchObject({
+      id: admin.orgId,
+      slug: baseSlug,
+      name: "BDD R5 Org Renamed",
+    });
+    expect(
+      context.mocks.clerk.organizations.updateOrganization,
+    ).toHaveBeenCalledWith(admin.orgId, { name: "BDD R5 Org Renamed" });
 
     const adminLeave = await api.requestLeaveOrg(admin, [403]);
     expectApiError(adminLeave.body);
@@ -947,7 +927,7 @@ describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
     // routes share the same authRoute statement).
     const updateRejected = await api.requestUpdateOrgWithBearer(
       zeroToken,
-      { name: "Token Rename", force: false },
+      { name: "Token Rename" },
       [403],
     );
     expect(updateRejected.body).toStrictEqual({

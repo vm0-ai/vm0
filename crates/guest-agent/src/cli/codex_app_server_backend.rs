@@ -27,8 +27,8 @@ use super::codex_app_server_events::{
 };
 use super::event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use super::{
-    AgentExecutionDeadline, CliEventIngestor, CliExecutionResult, CliRuntimeConfig,
-    HeartbeatMonitor, HeartbeatStatus, LOG_TAG, ParsedEventAction, command,
+    AgentExecutionDeadline, CliEventIngestor, CliExecutionControls, CliExecutionResult,
+    CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus, LOG_TAG, ParsedEventAction, command,
 };
 use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use guest_common::{log_info, log_warn};
@@ -60,8 +60,8 @@ struct ThreadIdentity {
     canonical_id: String,
 }
 
-struct EventIngestSink<'a> {
-    ingestor: &'a mut CliEventIngestor,
+struct EventIngestSink<'a, 'startup> {
+    ingestor: &'a mut CliEventIngestor<'startup>,
     output_timing: &'a mut CodexOutputTiming,
     log_file: &'a mut tokio::fs::File,
     masker: &'a SecretMasker,
@@ -145,8 +145,7 @@ pub(super) async fn execute_codex_app_server_for_runtime(
     masker: &SecretMasker,
     mut heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
-    active_input: ActiveInputWriter,
-    user_cancellation: CancellationToken,
+    controls: CliExecutionControls<'_>,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
     log_info!(LOG_TAG, "Starting codex app-server execution...");
@@ -159,8 +158,7 @@ pub(super) async fn execute_codex_app_server_for_runtime(
         &mut heartbeat_monitor,
         should_send_events,
         event_delivery.sender(),
-        active_input,
-        user_cancellation,
+        controls,
         runtime,
     )
     .await;
@@ -190,13 +188,17 @@ async fn run_codex_app_server(
     heartbeat_monitor: &mut HeartbeatMonitor,
     should_send_events: bool,
     event_tx: &EventDeliverySender,
-    mut active_input: ActiveInputWriter,
-    user_cancellation: CancellationToken,
+    controls: CliExecutionControls<'_>,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
+    let CliExecutionControls {
+        mut active_input,
+        user_cancellation,
+        codex_startup,
+    } = controls;
     let log_file = guest_contracts::runtime_paths::create_private(runtime.agent_log_file.as_ref())?;
     let mut log_file = tokio::fs::File::from_std(log_file);
-    let mut ingestor = CliEventIngestor::new(runtime);
+    let mut ingestor = CliEventIngestor::new(runtime, codex_startup);
     let mut output_timing = CodexOutputTiming::default();
     let resume_thread_id = resume_thread_id_from_runtime(runtime)?;
     let mut client = CodexAppServerClient::spawn(codex_app_server_config(runtime))
@@ -736,7 +738,7 @@ async fn race_with_heartbeat<T>(
 
 async fn drain_queued_notifications(
     client: &mut CodexAppServerClient,
-    sink: &mut EventIngestSink<'_>,
+    sink: &mut EventIngestSink<'_, '_>,
     active_input: &ActiveInputWriter,
     thread_started_emitted: &mut bool,
     scope: &CodexTurnScope<'_>,
@@ -776,7 +778,7 @@ async fn drain_queued_notifications(
 
 async fn ingest_run_notification(
     notification: ServerNotification,
-    sink: &mut EventIngestSink<'_>,
+    sink: &mut EventIngestSink<'_, '_>,
     active_input: &ActiveInputWriter,
     thread_started_emitted: &mut bool,
     scope: &CodexTurnScope<'_>,
@@ -837,7 +839,7 @@ fn heartbeat_error(result: Result<HeartbeatStatus, oneshot::error::RecvError>) -
 
 async fn ingest_notification(
     notification: ServerNotification,
-    sink: &mut EventIngestSink<'_>,
+    sink: &mut EventIngestSink<'_, '_>,
     thread_started_emitted: bool,
     expected_thread_id: &str,
     active_turn_id: &str,
@@ -977,7 +979,10 @@ fn validate_scope(
     Ok(())
 }
 
-fn record_output_item_start(start: Option<&CodexOutputItemStart>, sink: &mut EventIngestSink<'_>) {
+fn record_output_item_start(
+    start: Option<&CodexOutputItemStart>,
+    sink: &mut EventIngestSink<'_, '_>,
+) {
     if let Some(start) = start {
         sink.output_timing.record(start, sink.ingestor);
     }
@@ -994,7 +999,7 @@ fn event_turn_id(event: &Value) -> Option<&str> {
         .or_else(|| event.pointer("/turn/id").and_then(Value::as_str))
 }
 
-async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_>) -> Result<(), AgentError> {
+async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_, '_>) -> Result<(), AgentError> {
     let raw_line = serde_json::to_vec(&event)?;
     match sink
         .ingestor

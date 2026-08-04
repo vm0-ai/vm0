@@ -32,7 +32,9 @@ async def test_singleflight_delivers_owner_response_to_follower(real_flow):
 
     first_body = b'{"models":[{"slug":"first"}]}'
     first.response = catalog_response(body=first_body, encoding="br")
-    assert finish_response(first)["model_catalog_cache_status"] == "model_catalog_cold_stored"
+    assert (await finish_response(first))["model_catalog_cache_status"] == (
+        "model_catalog_cold_stored"
+    )
     await second_prepare
     assert second.response is not None
     assert second.response.content == first_body
@@ -64,7 +66,7 @@ async def test_prefetch_marker_is_stripped_and_roles_distinguish_consumers(real_
     assert not consumer_prepare.done()
 
     prefetch.response = catalog_response(encoding="br")
-    prefetch_telemetry = finish_response(prefetch)
+    prefetch_telemetry = await finish_response(prefetch)
     assert prefetch_telemetry["model_catalog_prefetch_role"] == "producer"
 
     await consumer_prepare
@@ -182,7 +184,7 @@ async def test_cancelled_follower_does_not_cancel_singleflight_owner(real_flow):
     assert not surviving_prepare.done()
 
     owner.response = catalog_response(encoding="br")
-    finish_response(owner)
+    await finish_response(owner)
     await surviving_prepare
     assert surviving_follower.response is not None
     assert surviving_follower.response.content == CATALOG_BODY
@@ -206,7 +208,7 @@ async def test_singleflight_wait_is_bounded_without_canceling_owner(real_flow):
     }
 
     owner.response = catalog_response(encoding="br")
-    finish_response(owner)
+    await finish_response(owner)
     hit = catalog_flow(real_flow, version="bounded-wait")
     await catalog_cache.prepare_request(hit, request_end_stream=True)
     assert hit.response is not None
@@ -253,7 +255,7 @@ async def test_singleflight_rechecks_entry_after_etag_invalidation(real_flow):
     assert not follower_prepare.done()
 
     owner.response = catalog_response(encoding="br")
-    finish_response(owner)
+    await finish_response(owner)
     invalidation = responses_flow(real_flow, etag='"catalog-v2"')
     mitm_addon.responseheaders(invalidation)
 
@@ -290,7 +292,7 @@ async def test_etag_signal_supersedes_in_flight_owner_and_releases_follower(real
         etag='"catalog-v2"',
         encoding="br",
     )
-    assert finish_response(matching_owner)["model_catalog_cache_status"] == (
+    assert (await finish_response(matching_owner))["model_catalog_cache_status"] == (
         "model_catalog_cold_stored"
     )
 
@@ -300,12 +302,12 @@ async def test_etag_signal_supersedes_in_flight_owner_and_releases_follower(real
         etag='"catalog-v1"',
         encoding="br",
     )
-    assert finish_response(isolated_owner)["model_catalog_cache_status"] == (
+    assert (await finish_response(isolated_owner))["model_catalog_cache_status"] == (
         "model_catalog_cold_stored"
     )
 
     superseded_owner.response = catalog_response(etag='"catalog-v1"', encoding="br")
-    superseded_telemetry = finish_response(superseded_owner)
+    superseded_telemetry = await finish_response(superseded_owner)
     await asyncio.wait_for(follower_prepare, timeout=0.1)
 
     validation_latency = superseded_telemetry.pop("model_catalog_cache_validation_latency_ms")
@@ -325,7 +327,9 @@ async def test_etag_signal_supersedes_in_flight_owner_and_releases_follower(real
         etag='"catalog-v2"',
         encoding="br",
     )
-    assert finish_response(follower)["model_catalog_cache_status"] == ("model_catalog_cold_stored")
+    assert (await finish_response(follower))["model_catalog_cache_status"] == (
+        "model_catalog_cold_stored"
+    )
 
     expected_hits = (
         (catalog_flow(real_flow, version="superseded-owner"), replacement_body),

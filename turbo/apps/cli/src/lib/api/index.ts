@@ -9,16 +9,9 @@ export { ApiRequestError } from "./core/client-factory";
 // Domain modules - Registry Resources
 export { getRegistryResourceDownload } from "./domains/registry-resources";
 
-// Domain modules - Zero User Preferences
-export {
-  getZeroUserPreferences,
-  updateZeroUserPreferences,
-} from "./domains/zero-user-preferences";
-
 // Domain modules - Zero Organizations
 export {
   getZeroOrg,
-  updateZeroOrg,
   listZeroOrgs,
   getZeroOrgMembers,
   inviteZeroOrgMember,
@@ -31,20 +24,6 @@ export {
   getZeroBillingStatus,
   createZeroCreditCheckout,
 } from "./domains/zero-billing";
-
-// Domain modules - Zero Secrets
-export {
-  listZeroSecrets,
-  setZeroSecret,
-  deleteZeroSecret,
-} from "./domains/zero-secrets";
-
-// Domain modules - Zero Variables
-export {
-  listZeroVariables,
-  setZeroVariable,
-  deleteZeroVariable,
-} from "./domains/zero-variables";
 
 // Domain modules - Zero Org Secrets
 export {

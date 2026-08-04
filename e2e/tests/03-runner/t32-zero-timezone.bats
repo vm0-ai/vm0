@@ -2,8 +2,8 @@
 
 load '../../helpers/setup'
 
-# CLI validation is covered by command integration tests. These runner tests
-# retain the deployed preference-to-sandbox boundary using the E2E API helper.
+# Preference CRUD is covered by API integration tests. These runner tests retain
+# the deployed preference-to-sandbox boundary using the E2E API helper.
 
 setup_file() {
     local unique_id="$(date +%s%3N)-$RANDOM"

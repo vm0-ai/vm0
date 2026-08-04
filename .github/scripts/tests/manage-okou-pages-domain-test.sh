@@ -52,10 +52,25 @@ case "$url" in
       echo "expected the conflicting DNS record to be deleted before creating the Pages domain" >&2
       exit 1
     fi
-    printf '{"success":true,"result":{"name":"pr-22239-app.omby.ai"}}\n'
+    if [[ "${MOCK_PAGES_DUPLICATE_CREATE:-false}" == "true" ]]; then
+      printf '{"success":false,"errors":[{"code":8000018,"message":"domain already added"}],"result":null}\n'
+    elif [[ "${MOCK_PAGES_CREATE_ERROR:-false}" == "true" ]]; then
+      printf '{"success":false,"errors":[{"code":8000042,"message":"domain create failed"}],"result":null}\n'
+    else
+      printf '{"success":true,"result":{"name":"pr-22239-app.omby.ai","status":"active","verification_data":{"status":"active"}}}\n'
+    fi
     ;;
   */pages/projects/okou-app/domains/pr-22239-app.omby.ai)
-    if [[ -n "${MOCK_PAGES_PENDING_RESPONSES:-}" ]]; then
+    if [[ -n "${MOCK_PAGES_MISSING_RESPONSES:-}" ]]; then
+      request_count="$(<"$MOCK_PAGES_STATE_FILE")"
+      request_count="$((request_count + 1))"
+      printf '%s\n' "$request_count" > "$MOCK_PAGES_STATE_FILE"
+      if (( request_count <= MOCK_PAGES_MISSING_RESPONSES )); then
+        printf '{"success":false,"errors":[{"code":8000021,"message":"domain does not exist"}],"result":null}\n'
+      else
+        printf '{"success":true,"result":{"status":"active","verification_data":{"status":"active"}}}\n'
+      fi
+    elif [[ -n "${MOCK_PAGES_PENDING_RESPONSES:-}" ]]; then
       request_count="$(<"$MOCK_PAGES_STATE_FILE")"
       request_count="$((request_count + 1))"
       printf '%s\n' "$request_count" > "$MOCK_PAGES_STATE_FILE"
@@ -191,6 +206,35 @@ status="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
   begin account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
 test "$status" = "active"
 grep -q -- '--request POST' "$request_log"
+test "$(grep -c '/pages/projects/okou-app/domains/pr-22239-app.omby.ai' "$request_log")" = "1"
 unset MOCK_PAGES_REQUIRE_DNS_DELETE MOCK_DNS_TYPE
+
+: > "$request_log"
+export MOCK_PAGES_DUPLICATE_CREATE="true"
+printf '0\n' > "$pages_state_file"
+export MOCK_PAGES_MISSING_RESPONSES="3"
+export MOCK_PAGES_STATE_FILE="$pages_state_file"
+export MOCK_DNS_CONTENT="pr-22239-app.okou-app.pages.dev"
+status="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  begin account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
+test "$status" = "pending"
+test "$(<"$pages_state_file")" = "1"
+grep -q -- '--request POST' "$request_log"
+grep -q 'okou-app.pages.dev' "$request_log"
+output="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  finish account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
+grep -q 'Cloudflare Pages custom branch domain configured' <<< "$output"
+test "$(<"$pages_state_file")" = "4"
+unset MOCK_PAGES_DUPLICATE_CREATE MOCK_PAGES_MISSING_RESPONSES MOCK_PAGES_STATE_FILE
+
+: > "$request_log"
+export MOCK_PAGES_CREATE_ERROR="true"
+if output="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  begin account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app 2>&1)"; then
+  echo "expected a failed Pages domain creation to fail the command" >&2
+  exit 1
+fi
+grep -q 'domain create failed' <<< "$output"
+unset MOCK_PAGES_CREATE_ERROR
 
 echo "manage-okou-pages-domain tests passed"

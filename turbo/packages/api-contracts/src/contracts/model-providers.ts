@@ -88,7 +88,7 @@ const MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS: Partial<
   Record<ModelProviderType, ModelProviderCodexRuntimeConfig>
 > = {
   "deepseek-codex": {
-    providerId: "vm0-model",
+    providerId: "deepseek-codex",
     name: "DeepSeek",
     baseUrl: "https://api.deepseek.com",
     envKey: "OPENAI_API_KEY",
