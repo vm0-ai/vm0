@@ -85,11 +85,16 @@ pub(crate) async fn collect_active_run_mappings_from_home(
     Ok(collect_active_run_mappings(&runners).await)
 }
 
-/// Given a `run_id` prefix, find the unique matching active run from collected
+/// Given a full `run_id` or prefix, find the matching active run from collected
 /// status entries.
 ///
-/// Returns the full `run_id` and `sandbox_id` on unique match. Errors on empty
-/// or ambiguous.
+/// A unique exact match is accepted even when some trusted live runner status
+/// files were unreadable. A non-exact prefix is accepted only when it uniquely
+/// identifies a collected mapping and every trusted live runner status file was
+/// readable.
+///
+/// Returns an error for empty input, no matches, ambiguous matches, or a
+/// non-exact match when the runner-status scan was incomplete.
 /// When no match is found and some runners were unreadable, the error
 /// message includes a diagnostic hint so the operator knows why.
 pub(crate) fn resolve_run_mapping(
@@ -147,8 +152,8 @@ pub(crate) fn resolve_run_mapping(
     }
 }
 
-/// Given a `run_id` prefix, find the unique matching `sandbox_id` from
-/// collected status entries.
+/// Resolve a full `run_id` or prefix to a `sandbox_id` using the same exact-ID,
+/// prefix-uniqueness, and incomplete-scan rules as [`resolve_run_mapping`].
 #[cfg(test)]
 pub(crate) fn resolve_run_to_sandbox(
     input: &str,
