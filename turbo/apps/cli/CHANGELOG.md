@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.275.0](https://github.com/vm0-ai/vm0/compare/cli-v9.274.16...cli-v9.275.0) (2026-08-04)
+
+
+### Features
+
+* **core:** enable html resource indexes globally ([#24369](https://github.com/vm0-ai/vm0/issues/24369)) ([06db205](https://github.com/vm0-ai/vm0/commit/06db205eff3cebbab2a213c38c1f0f73956b2dca))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.507.0
+
 ## [9.274.16](https://github.com/vm0-ai/vm0/compare/cli-v9.274.15...cli-v9.274.16) (2026-08-03)
 
 

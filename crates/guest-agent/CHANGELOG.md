@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.63.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.1...guest-agent-v0.63.2) (2026-08-04)
+
+
+### Documentation
+
+* **guest-agent:** clarify raw config empty values ([#24830](https://github.com/vm0-ai/vm0/issues/24830)) ([a8756fa](https://github.com/vm0-ai/vm0/commit/a8756fa18e99a4026094f0ed64c73fb3f78b2c80))
+
 ## [0.63.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.0...guest-agent-v0.63.1) (2026-08-03)
 
 

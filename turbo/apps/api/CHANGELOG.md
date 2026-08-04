@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.370.1](https://github.com/vm0-ai/vm0/compare/api-v1.370.0...api-v1.370.1) (2026-08-04)
+
+
+### Refactoring
+
+* **runner:** rename affinity internals to reuse terminology ([#24841](https://github.com/vm0-ai/vm0/issues/24841)) ([8bf2594](https://github.com/vm0-ai/vm0/commit/8bf2594f6f00fb8ee9bff85ac544bc72f1908577))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.507.0
+    * @vm0/db bumped to 1.163.3
+
 ## [1.370.0](https://github.com/vm0-ai/vm0/compare/api-v1.369.0...api-v1.370.0) (2026-08-03)
 
 
