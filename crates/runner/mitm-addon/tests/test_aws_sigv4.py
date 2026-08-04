@@ -9,6 +9,7 @@ import runtime_url_parsing
 from aws_sigv4 import (
     AwsSigV4Credentials,
     AwsSigV4SigningError,
+    hash_request_body,
     request_requires_body_for_signing,
     sign_request,
 )
@@ -320,6 +321,46 @@ def test_presigned_query_preserves_ordinary_pairs() -> None:
         "&X-Amz-SignedHeaders=host"
         "&X-Amz-Signature=9245f52c735ed2e7286981a0013837d6c69b227b74cee0a9611b3f0257fc1c68"
     )
+
+
+@pytest.mark.parametrize(
+    ("url", "headers"),
+    [
+        pytest.param(
+            f"https://{STS_HOST}/",
+            _header_auth_headers(),
+            id="header",
+        ),
+        pytest.param(
+            _presigned_url(STS_HOST),
+            [("Host", STS_HOST)],
+            id="presigned",
+        ),
+    ],
+)
+def test_precomputed_body_hash_matches_direct_body_signing(
+    url: str,
+    headers: list[tuple[str, str]],
+) -> None:
+    body = b"expected body"
+    expected = sign_request(
+        method="POST",
+        url=url,
+        headers=headers,
+        body=body,
+        credentials=_credentials(),
+    )
+
+    actual = sign_request(
+        method="POST",
+        url=url,
+        headers=headers,
+        body=b"body ignored by the precomputed path",
+        credentials=_credentials(),
+        precomputed_body_hash=hash_request_body(body),
+    )
+
+    assert actual == expected
 
 
 @pytest.mark.parametrize("amz_date", _INVALID_SEMANTIC_SIGV4_TIMESTAMPS)
@@ -749,6 +790,7 @@ def test_header_auth_content_hash_controls_aws_reference_signature(
         headers=_aws_s3_header_auth_headers(header_value),
         body=body,
         credentials=_aws_s3_example_credentials(),
+        precomputed_body_hash=hash_request_body(b"ignored precomputed body"),
     )
 
     authorization = {name.lower(): value for name, value in headers}["authorization"]
@@ -772,6 +814,7 @@ def test_header_auth_unsigned_payload_controls_reference_signature(
         headers=_aws_s3_header_auth_headers(header_value),
         body=body,
         credentials=_aws_s3_example_credentials(),
+        precomputed_body_hash=hash_request_body(b"ignored precomputed body"),
     )
 
     authorization = {name.lower(): value for name, value in headers}["authorization"]
@@ -804,6 +847,7 @@ def test_presigned_s3_unsigned_payload_matches_aws_reference_signature() -> None
         headers=[("Host", _AWS_S3_EXAMPLE_HOST)],
         body=None,
         credentials=_aws_s3_example_credentials(),
+        precomputed_body_hash=hash_request_body(b"ignored precomputed body"),
     )
 
     query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(signed_url).query))
