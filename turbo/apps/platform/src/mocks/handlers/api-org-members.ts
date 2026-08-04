@@ -7,7 +7,7 @@ import type { OrgMembersResponse } from "@vm0/api-contracts/contracts/org-member
 import { mockApi } from "../msw-contract.ts";
 
 let mockOrgMembersResponse: OrgMembersResponse = {
-  slug: "user-12345678",
+  name: "User Workspace",
   role: "admin",
   members: [],
   pendingInvitations: [],
@@ -23,7 +23,7 @@ export function setMockOrgMembers(
 
 export function resetMockOrgMembers(): void {
   mockOrgMembersResponse = {
-    slug: "user-12345678",
+    name: "User Workspace",
     role: "admin",
     members: [],
     pendingInvitations: [],

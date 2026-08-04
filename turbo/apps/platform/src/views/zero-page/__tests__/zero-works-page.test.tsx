@@ -71,7 +71,6 @@ function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}): void {
     reinstallUrl: null,
     scopeMismatch: false,
     workspaceName: null,
-    agentOrgSlug: null,
     environment: {
       requiredSecrets: [],
       requiredVars: [],

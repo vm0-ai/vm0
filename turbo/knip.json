@@ -9,7 +9,7 @@
         "src/commands/zero/logs/list.ts",
         "src/commands/zero/logs/search.ts"
       ],
-      "project": ["src/**/*.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.ts"],
       "ignoreDependencies": ["@types/tar", "yaml"],
       "tsup": {
         "config": ["tsup.config.ts"]

@@ -219,7 +219,7 @@ function ProfileSection({
                 <img
                   src={(pendingLogoPreview ?? logoUrl)!}
                   alt={
-                    org.slug ??
+                    org.name ||
                     t(($) => {
                       return $.settings.workspace.profile.logo.fallbackAlt;
                     })

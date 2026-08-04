@@ -195,6 +195,31 @@ impl WorkspaceSessionHistorySidecarMetadata {
 }
 
 impl WorkspaceImageCache {
+    #[cfg(test)]
+    pub(super) fn fail_next_session_history_sidecar_metadata_commit(&self) {
+        self.inner
+            .fail_next_session_history_sidecar_metadata_commit
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    async fn commit_session_history_sidecar_metadata(
+        &self,
+        tmp_metadata_path: &Path,
+        sidecar_metadata_path: &Path,
+    ) -> std::io::Result<()> {
+        #[cfg(test)]
+        if self
+            .inner
+            .fail_next_session_history_sidecar_metadata_commit
+            .swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            return Err(std::io::Error::other(
+                "injected workspace session history sidecar metadata commit failure",
+            ));
+        }
+        fs::rename(tmp_metadata_path, sidecar_metadata_path).await
+    }
+
     pub(super) async fn probe_session_history_sidecar(
         &self,
         cache_key: &str,
@@ -314,7 +339,10 @@ impl WorkspaceImageCache {
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
             return Err(e.into());
         }
-        if let Err(e) = fs::rename(&tmp_metadata_path, sidecar_metadata_path).await {
+        if let Err(e) = self
+            .commit_session_history_sidecar_metadata(&tmp_metadata_path, sidecar_metadata_path)
+            .await
+        {
             let _ = remove_workspace_cache_path_if_exists(&tmp_metadata_path).await;
             let _ = remove_workspace_cache_path_if_exists(&sidecar_body_path).await;
             return Err(e.into());

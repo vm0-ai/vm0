@@ -323,7 +323,6 @@ describe("GET /api/zero/integrations/teams/connect", () => {
       teamId: fixture.teamsTeamId,
       teamName: fixture.teamsTeamName,
       defaultAgentName: null,
-      agentOrgSlug: null,
       environment: {
         requiredSecrets: [],
         requiredVars: [],
