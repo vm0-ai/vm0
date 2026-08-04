@@ -301,6 +301,10 @@ export default [
       // This focused transaction validates the rollout contract against real
       // PostgreSQL tables before and after the autonomy-budget columns exist.
       "src/signals/services/__tests__/autonomy-budget-rollout.test.ts",
+      // The pre-0831 constraint cannot be constructed through a production
+      // API. This focused transaction validates the Slack automation rollout
+      // boundary against the migrated and historical constraint shapes.
+      "src/signals/services/__tests__/slack-workflow-automation-rollout.test.ts",
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
     ],
     rules: {
@@ -353,6 +357,10 @@ export default [
       // This focused transaction validates the rollout contract against real
       // PostgreSQL tables before and after the autonomy-budget columns exist.
       "src/signals/services/__tests__/autonomy-budget-rollout.test.ts",
+      // The pre-0831 constraint cannot be constructed through a production
+      // API. This focused transaction validates the Slack automation rollout
+      // boundary against the migrated and historical constraint shapes.
+      "src/signals/services/__tests__/slack-workflow-automation-rollout.test.ts",
     ],
     rules: {
       "no-restricted-imports": [

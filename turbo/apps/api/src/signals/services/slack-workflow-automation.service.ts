@@ -17,6 +17,7 @@ import {
   buildSlackInstallUrl,
   hasAllSlackBotScopes,
 } from "./zero-slack-data.service";
+import { slackUserMentionedAutomationSchemaAvailable } from "./slack-workflow-automation-schema.service";
 
 type SlackUserMentionedEventConfigPreparationResult =
   | {
@@ -103,6 +104,18 @@ export async function prepareSlackUserMentionedEventConfigForPersist(
     return {
       kind: "bad-request",
       message: "Slack user-mentioned automations are not enabled",
+    };
+  }
+
+  // Create, update, and enable all enter this boundary before a write or Slack
+  // API call, so an API deployed ahead of migration 0831 fails cleanly.
+  const schemaAvailable = await slackUserMentionedAutomationSchemaAvailable(db);
+  args.signal.throwIfAborted();
+  if (!schemaAvailable) {
+    return {
+      kind: "bad-request",
+      message:
+        "Slack user-mentioned automations are temporarily unavailable while the database upgrade completes. Try again shortly.",
     };
   }
 

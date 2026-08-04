@@ -1240,6 +1240,40 @@ describe("zero workflow automations", () => {
     const scenario = await setupFixture();
     await setSlackUserMentionAutomationsEnabled(scenario, true);
     integrations.configureSlackAppMocks();
+
+    const memberRejected = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "general",
+          },
+        },
+      }),
+      [400],
+    );
+    expect(memberRejected.body.error.message).toBe(
+      "Ask a workspace admin to install the Zero Slack App before using a Slack user-mentioned automation.",
+    );
+    expect(memberRejected.body.error.message).not.toContain("Install Slack:");
+    expect(memberRejected.body.error.message).not.toContain(
+      "/api/zero/slack/oauth/install",
+    );
+
+    const afterMemberRequest = await accept(
+      automationsClient().list({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+      }),
+      [200],
+    );
+    expect(afterMemberRequest.body).toStrictEqual([]);
+
     mocks.clerk.session(
       scenario.fixture.userId,
       scenario.fixture.orgId,
