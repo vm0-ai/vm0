@@ -1,12 +1,7 @@
 import { command, state, type Command, type Computed } from "ccstate";
 import type { ChatEvent } from "./chat-event-types.ts";
 
-export type ChatEventChange = "initialize" | "preserve" | "follow-tail";
-
-type ChatEventChangeHandler = Command<
-  Promise<void>,
-  [ChatEventChange, AbortSignal]
->;
+type ChatEventChangeHandler = Command<Promise<void>, [AbortSignal]>;
 
 interface ChatEventChangeRegistration {
   readonly id: string;
@@ -66,12 +61,11 @@ export const notifyChatEventsChanged$ = command(
   async (
     { get, set },
     events$: ChatEventsSignal,
-    change: ChatEventChange,
     signal: AbortSignal,
   ): Promise<void> => {
     await Promise.all(
       (get(registrationsByEvents$).get(events$) ?? []).map((registration) => {
-        return set(registration.handler$, change, signal);
+        return set(registration.handler$, signal);
       }),
     );
     signal.throwIfAborted();

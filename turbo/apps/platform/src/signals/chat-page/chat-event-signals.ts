@@ -119,7 +119,6 @@ function createSendInputChatEvent({
             createdAt,
           },
         },
-        "bottom",
         signal,
       );
       signal.throwIfAborted();
@@ -187,7 +186,6 @@ function createSendRevokeChatEvent({
             createdAt: nowDate().toISOString(),
           },
         },
-        "preserve",
         signal,
       );
       signal.throwIfAborted();
@@ -233,7 +231,6 @@ function createSendInterruptChatEvent({
             createdAt: nowDate().toISOString(),
           },
         },
-        "preserve",
         signal,
       );
       signal.throwIfAborted();
@@ -277,7 +274,6 @@ function createSendBrowserLifecycleChatEvent({
             createdAt: nowDate().toISOString(),
           },
         },
-        "preserve",
         signal,
       );
       return { runId: null };

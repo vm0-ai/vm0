@@ -39,10 +39,9 @@ export interface ChatEventDataSource {
   readonly listEventsBefore$: typeof listEventsBefore$;
 }
 
-export type OptimisticScrollBehavior = "preserve" | "bottom";
 export type AppendOptimisticEventCommand = Command<
   Promise<void>,
-  [OptimisticChatEventInput, OptimisticScrollBehavior, AbortSignal]
+  [OptimisticChatEventInput, AbortSignal]
 >;
 
 type PersistentChatEvents$ = State<PersistedChatEvent[]>;
@@ -291,16 +290,10 @@ export function createChatEventStorageSignals({
     async (
       { set },
       input: OptimisticChatEventInput,
-      scrollBehavior: OptimisticScrollBehavior,
       signal: AbortSignal,
     ): Promise<void> => {
       set(appendOptimisticChatEvent$, createOptimisticChatEventEntry(input));
-      await set(
-        notifyChatEventsChanged$,
-        chatEvents$,
-        scrollBehavior === "bottom" ? "follow-tail" : "preserve",
-        signal,
-      );
+      await set(notifyChatEventsChanged$, chatEvents$, signal);
     },
   );
   const indexedDbEventCache = createIndexedDbEventCacheSignals(
@@ -324,7 +317,7 @@ export function createChatEventStorageSignals({
         return mergePersistentEvents([previous, events]);
       });
       set(reconcileOptimisticChatEvents$, { threadId, events });
-      await set(notifyChatEventsChanged$, chatEvents$, "preserve", signal);
+      await set(notifyChatEventsChanged$, chatEvents$, signal);
       signal.throwIfAborted();
     },
   );
@@ -349,7 +342,7 @@ export function createChatEventStorageSignals({
         ),
         signal,
       );
-      await set(notifyChatEventsChanged$, chatEvents$, "initialize", signal);
+      await set(notifyChatEventsChanged$, chatEvents$, signal);
       signal.throwIfAborted();
       if (!result.ok) {
         throw result.error;

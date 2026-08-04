@@ -32,6 +32,7 @@ interface ChatThreadScrollSignals {
     ThreadScrollPosition | null,
     []
   >;
+  readonly followTail$: Command<void, []>;
   readonly autoScroll$: Command<
     Promise<void>,
     [ThreadScrollPosition | null, AbortSignal]
@@ -594,6 +595,7 @@ export function createChatThreadScrollSignals(
     threadScrollPosition$: scroll.threadScrollPosition$,
     awayFromBottom$: scroll.awayFromBottom$,
     captureThreadScrollPosition$: scroll.captureThreadScrollPosition$,
+    followTail$: scroll.clearThreadScrollPosition$,
     autoScroll$: render.autoScroll$,
     scrollTo$: navigation.scrollTo$,
     scrollToTop$: navigation.scrollToTop$,

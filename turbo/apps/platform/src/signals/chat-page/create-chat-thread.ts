@@ -193,10 +193,7 @@ import type {
   SendChatEventInput,
   SendChatEventResult,
 } from "./chat-event-signals.ts";
-import {
-  registerChatEventChangeHandler$,
-  type ChatEventChange,
-} from "./chat-event-change-registry.ts";
+import { registerChatEventChangeHandler$ } from "./chat-event-change-registry.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
@@ -1788,7 +1785,7 @@ function createPagedEventResources(
   });
   const registerBodyBlocks = bodyBlocksRenderer("register");
   const registeredEvents$ = state<RegisteredChatEvent[]>([]);
-  const registerChatEvents$ = command(
+  const syncRegisteredEvents$ = command(
     ({ set }, events: readonly ChatEvent[]): void => {
       set(registeredEvents$, (previous) => {
         const previousById = new Map(
@@ -1828,7 +1825,7 @@ function createPagedEventResources(
       },
     },
     registeredEvents$,
-    registerChatEvents$,
+    syncRegisteredEvents$,
   };
 }
 
@@ -1920,7 +1917,7 @@ function createEventChangeEffects(
     ReturnType<typeof createPagedEventProjections>,
     "rawEvents$" | "latestRunFinishCreatedAt$"
   >,
-  registerChatEvents$: Command<void, [readonly ChatEvent[]]>,
+  syncRegisteredEvents$: Command<void, [readonly ChatEvent[]]>,
 ) {
   const scroll = createChatThreadScrollSignals(threadId);
   const sidebar = createThreadSidebarSignals(threadId);
@@ -1960,19 +1957,9 @@ function createEventChangeEffects(
     },
   );
   const afterEventsChange$ = command(
-    async (
-      { get, set },
-      change: ChatEventChange,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      const scrollPosition =
-        change === "follow-tail"
-          ? null
-          : set(scroll.captureThreadScrollPosition$);
-      set(registerChatEvents$, get(chatEvents.chatEvents$));
-      if (change === "initialize") {
-        set(sidebar.enableEntryAnimations$);
-      }
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const scrollPosition = set(scroll.captureThreadScrollPosition$);
+      set(syncRegisteredEvents$, get(chatEvents.chatEvents$));
       await Promise.all([
         set(autoOpenSidebar$, signal),
         set(scroll.autoScroll$, scrollPosition, signal),
@@ -2022,7 +2009,7 @@ function createChatThreadMessagePipeline({
     threadId,
     chatEvents,
     projections,
-    resources.registerChatEvents$,
+    resources.syncRegisteredEvents$,
   );
   const setupCompleted$ = state(false);
   const chatSkeletonVisible$ = computed((get): boolean => {
@@ -2036,7 +2023,8 @@ function createChatThreadMessagePipeline({
         effects.afterEventsChange$,
         signal,
       );
-      set(resources.registerChatEvents$, get(chatEvents.chatEvents$));
+      set(resources.syncRegisteredEvents$, get(chatEvents.chatEvents$));
+      set(effects.sidebar.enableEntryAnimations$);
       await set(chatEvents.setup$, signal);
       signal.throwIfAborted();
       set(setupCompleted$, true);
@@ -2486,6 +2474,7 @@ interface SendMessageDeps {
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
+  followTail$: Command<void, []>;
   sendEvent$: Command<
     Promise<SendChatEventResult>,
     [SendChatEventInput, AbortSignal]
@@ -2500,8 +2489,14 @@ interface ValidatedSendMessageRequest {
 }
 
 function createPerformSendMessage(deps: SendMessageDeps) {
-  const { threadId, draft, cancelDraftSync$, flushDraftClear$, sendEvent$ } =
-    deps;
+  const {
+    threadId,
+    draft,
+    cancelDraftSync$,
+    flushDraftClear$,
+    followTail$,
+    sendEvent$,
+  } = deps;
   return command(
     async (
       { get, set },
@@ -2544,6 +2539,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
         get(featureSwitch$),
         request.modelSelection,
       );
+      set(followTail$);
       const [, sendResult] = await Promise.all([
         set(flushDraftClear$, signal),
         set(
@@ -2633,6 +2629,7 @@ interface QueueMessageDeps {
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
+  followTail$: Command<void, []>;
   sendEvent$: Command<
     Promise<SendChatEventResult>,
     [SendChatEventInput, AbortSignal]
@@ -2647,6 +2644,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
     draft,
     cancelDraftSync$,
     flushDraftClear$,
+    followTail$,
     sendEvent$,
   } = deps;
   const optimisticCreateUnsettled$ =
@@ -2699,6 +2697,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         features,
         modelSelection,
       );
+      set(followTail$);
       await Promise.all([
         set(flushDraftClear$, signal),
         set(
@@ -3555,6 +3554,7 @@ export function createChatThreadSignals(
     queueDraftSync$,
     cancelDraftSync$,
     flushDraftClear$,
+    followTail$: messages.scroll.followTail$,
     sendEvent$: chatEvents.sendEvent$,
   });
   const assistantErrorRecovery = createAssistantErrorRecoverySignals({
