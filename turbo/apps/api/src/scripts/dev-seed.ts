@@ -487,6 +487,19 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.output", usd(9), 1_000_000],
   ]),
 
+  // Managed image tasks — billed under task-scoped kinds at the backing
+  // model's token rates (see migration 0827).
+  ...usageGroup("image-recognition", "google/gemini-3.5-flash", [
+    ["tokens.input", usd(1.5), 1_000_000],
+    ["tokens.cache_read", usd(0.15), 1_000_000],
+    ["tokens.output", usd(9), 1_000_000],
+  ]),
+  ...usageGroup("image-interpret-marks", "google/gemini-3.5-flash", [
+    ["tokens.input", usd(1.5), 1_000_000],
+    ["tokens.cache_read", usd(0.15), 1_000_000],
+    ["tokens.output", usd(9), 1_000_000],
+  ]),
+
   // X connector — https://docs.x.com/x-api/getting-started/pricing
   ...usageGroup("connector", "x", [
     // Reads — $/resource

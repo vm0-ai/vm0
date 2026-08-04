@@ -9,6 +9,7 @@ import { now } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 
 interface GithubIntegrationMissingData extends GithubInstallationNotFoundResponse {
   readonly isInstalled: false;
@@ -57,6 +58,27 @@ export const reloadGithubIntegration$ = command(({ set }) => {
     return previous + 1;
   });
 });
+
+const refreshGithubIntegrationFromChange$ = command(
+  ({ set }, signal: AbortSignal): boolean => {
+    signal.throwIfAborted();
+    set(reloadGithubIntegration$);
+    return false;
+  },
+);
+
+export const watchGithubIntegration$ = command(
+  async ({ set }, signal: AbortSignal): Promise<void> => {
+    await set(
+      setAblyLoop$,
+      {
+        topic: "github:changed",
+        loopCommand$: refreshGithubIntegrationFromChange$,
+      },
+      signal,
+    );
+  },
+);
 
 function isStandaloneMode(): boolean {
   return window.matchMedia?.("(display-mode: standalone)").matches ?? false;

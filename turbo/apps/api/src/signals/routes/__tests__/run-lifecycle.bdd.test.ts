@@ -62,6 +62,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
+import { seedUserSecret, seedUserVariable } from "./helpers/user-config-state";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -6492,7 +6493,6 @@ describe("RUN-02: persisted run environment resolution", () => {
   it("preserves scope precedence and excludes unreferenced secrets", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
-    const authOrg = createAuthOrgAgentsBddApi(context);
     const actor = bdd.user();
     if (!actor.orgId) {
       throw new Error("Expected persisted environment actor organization");
@@ -6519,48 +6519,62 @@ describe("RUN-02: persisted run environment resolution", () => {
       unreferencedSecret: `BDD_UNREFERENCED_SECRET_${suffix}`,
     };
 
-    await authOrg.setVariable(orgActor, {
+    const orgScope = { orgId: actor.orgId, userId: orgActor.userId };
+    const userScope = { orgId: actor.orgId, userId: actor.userId };
+
+    await seedUserVariable(context, {
+      ...orgScope,
       name: names.orgOnlyVariable,
       value: "org-only-variable-value",
     });
-    await authOrg.setVariable(orgActor, {
+    await seedUserVariable(context, {
+      ...orgScope,
       name: names.userVariable,
       value: "org-user-variable-value",
     });
-    await authOrg.setVariable(actor, {
+    await seedUserVariable(context, {
+      ...userScope,
       name: names.userVariable,
       value: "user-variable-value",
     });
-    await authOrg.setVariable(orgActor, {
+    await seedUserVariable(context, {
+      ...orgScope,
       name: names.requestVariable,
       value: "org-request-variable-value",
     });
-    await authOrg.setVariable(actor, {
+    await seedUserVariable(context, {
+      ...userScope,
       name: names.requestVariable,
       value: "user-request-variable-value",
     });
 
-    await authOrg.setSecret(orgActor, {
+    await seedUserSecret(context, {
+      ...orgScope,
       name: names.orgOnlySecret,
       value: "org-only-secret-value",
     });
-    await authOrg.setSecret(orgActor, {
+    await seedUserSecret(context, {
+      ...orgScope,
       name: names.userSecret,
       value: "org-user-secret-value",
     });
-    await authOrg.setSecret(actor, {
+    await seedUserSecret(context, {
+      ...userScope,
       name: names.userSecret,
       value: "user-secret-value",
     });
-    await authOrg.setSecret(orgActor, {
+    await seedUserSecret(context, {
+      ...orgScope,
       name: names.requestSecret,
       value: "org-request-secret-value",
     });
-    await authOrg.setSecret(actor, {
+    await seedUserSecret(context, {
+      ...userScope,
       name: names.requestSecret,
       value: "user-request-secret-value",
     });
-    await authOrg.setSecret(actor, {
+    await seedUserSecret(context, {
+      ...userScope,
       name: names.unreferencedSecret,
       value: "unreferenced-secret-value",
     });
@@ -7658,13 +7672,14 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 
   it("ignores plain user secrets named like connector tokens", async () => {
     const api = createRunsApi(context);
-    const authOrg = createAuthOrgAgentsBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     // openai is enabled on the agent but never connected; a user secret with
     // the connector's token name must not impersonate the connector.
     await api.enableAgentConnectors(actor, agentId, ["openai"]);
-    await authOrg.setSecret(actor, {
+    await seedUserSecret(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
       name: "OPENAI_TOKEN",
       value: "sk-plain-user-secret",
     });
@@ -8856,7 +8871,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
   it("keeps connector-owned vars out of custom connector base urls", async () => {
     const api = createRunsApi(context);
-    const authOrg = createAuthOrgAgentsBddApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -8866,7 +8880,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       subdomain: "münich",
     });
     await api.enableAgentConnectors(actor, agentId, ["zendesk"]);
-    await authOrg.setVariable(actor, {
+    await seedUserVariable(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
       name: "ZENDESK_SUBDOMAIN",
       value: "user-subdomain",
     });

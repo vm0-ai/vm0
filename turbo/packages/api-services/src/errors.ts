@@ -116,7 +116,7 @@ export const noModelProvider = makeApiError(
   "NoModelProviderError",
   "NO_MODEL_PROVIDER",
   422,
-  "No model provider configured. Run 'zero org model-provider setup' to configure one, or add environment variables to your vm0.yaml.",
+  "No model provider configured. Configure one in Settings → Models in the vm0 web app, or add environment variables to your vm0.yaml.",
 );
 
 export const providerDeleted = makeApiError(

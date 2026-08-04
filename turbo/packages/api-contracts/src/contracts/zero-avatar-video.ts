@@ -16,11 +16,17 @@ export const avatarVideoScreenStyleSchema = z.union([
   z.literal(2),
   z.literal(3),
 ]);
+export const avatarVideoVoiceIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(/^[A-Za-z0-9._:-]+$/);
 
 export const zeroAvatarVideoGenerateRequestSchema = z
   .object({
     avatarId: z.number().int().positive(),
-    voiceId: z.string().trim().min(1),
+    voiceId: avatarVideoVoiceIdSchema,
     script: z.string().trim().min(1).optional(),
     audioUrl: z.url().optional(),
     aspectRatio: avatarVideoAspectRatioSchema.optional(),
@@ -69,7 +75,7 @@ export const zeroAvatarVideoAvatarSchema = z.object({
 });
 
 export const zeroAvatarVideoVoiceSchema = z.object({
-  id: z.string(),
+  id: avatarVideoVoiceIdSchema,
   name: z.string(),
   sampleUrl: z.url().optional(),
   language: z.string().optional(),
@@ -85,6 +91,12 @@ export const zeroAvatarVideoAvatarsResponseSchema = z.object({
 export const zeroAvatarVideoVoicesResponseSchema = z.object({
   voices: z.array(zeroAvatarVideoVoiceSchema),
   hasMore: z.boolean(),
+  filterOptions: z
+    .object({
+      languages: z.array(z.string().min(1)),
+      useCases: z.array(z.string().min(1)),
+    })
+    .optional(),
 });
 
 const pageQuerySchema = z.object({

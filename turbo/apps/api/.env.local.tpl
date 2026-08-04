@@ -92,6 +92,9 @@ OPENAI_WEBHOOK_SECRET=op://Development/openai/OPENAI_WEBHOOK_SECRET
 # Optional: fal media generation
 FAL_KEY=op://Development/fal/FAL_KEY
 
+# Optional: JoggAI talking-avatar video generation
+JOGGAI_API_KEY=op://Development/joggai/JOGGAI_API_KEY
+
 # Optional: BytePlus ModelArk video generation
 BYTEPLUS_API_KEY=op://Development/byteplus/BYTEPLUS_API_KEY
 
@@ -128,9 +131,6 @@ GOOGLE_OAUTH_CLIENT_SECRET=op://Development/google/GOOGLE_OAUTH_CLIENT_SECRET
 GMAIL_PUBSUB_TOPIC_NAME=op://Development/gmail/GMAIL_PUBSUB_TOPIC_NAME
 GMAIL_PUBSUB_PUSH_AUDIENCE=op://Development/gmail/GMAIL_PUBSUB_PUSH_AUDIENCE
 GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL=op://Development/gmail/GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL
-
-# Enable Gmail reply follow-up rollout in development.
-ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED=true
 
 # Optional: Google Ads API (developer token + login customer ID for MCC)
 GOOGLE_ADS_DEVELOPER_TOKEN=op://Development/google/GOOGLE_ADS_DEVELOPER_TOKEN

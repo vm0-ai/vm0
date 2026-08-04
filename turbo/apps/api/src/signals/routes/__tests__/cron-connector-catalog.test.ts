@@ -5,7 +5,6 @@ import { cronConnectorCatalogContract } from "@vm0/api-contracts/contracts/cron"
 import { connectorsSlugCallbackContract } from "@vm0/api-contracts/contracts/connectors-slug-callback";
 import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
 import { runnersBuiltinFirewallsResolveContract } from "@vm0/api-contracts/contracts/runners";
-import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { zeroSteamPlayerContract } from "@vm0/api-contracts/contracts/zero-steam-player";
 import {
   testSystemStoragePresignedUrlCacheStateContract,
@@ -63,6 +62,7 @@ import { createDeferredPromise, settle } from "../../utils";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
 import { readConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
+import { readUserSecrets } from "./helpers/user-config-state";
 import {
   createBddApi,
   expectApiError,
@@ -2210,16 +2210,14 @@ describe("connector catalog valid lifecycle", () => {
       }),
     );
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const secrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(secrets.body.secrets).toContainEqual(
+    const secrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    expect(secrets).toContainEqual(
       expect.objectContaining({ name: PRIVATE_VALUE, type: "connector" }),
     );
-    expect(JSON.stringify(secrets.body)).not.toContain("catalog-manual-secret");
+    expect(JSON.stringify(secrets)).not.toContain("catalog-manual-secret");
     const storageState = await readConnectorCredentialStorageState(context, {
       connectorSlug: "agora",
       orgId: actor.orgId ?? "",
@@ -2271,21 +2269,17 @@ describe("connector catalog valid lifecycle", () => {
       connectionStatus: "connected",
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const secrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(secrets.body.secrets).toContainEqual(
+    const secrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    expect(secrets).toContainEqual(
       expect.objectContaining({
         name: "CATALOG_CLI_DEVICE_ACCESS_TOKEN",
         type: "connector",
       }),
     );
-    expect(JSON.stringify(secrets.body)).not.toContain(
-      "catalog-cli-access-token",
-    );
+    expect(JSON.stringify(secrets)).not.toContain("catalog-cli-access-token");
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeSeed);
   });
 
@@ -2375,13 +2369,11 @@ describe("connector catalog valid lifecycle", () => {
     });
 
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const secrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    const names = secrets.body.secrets.map((secret) => {
+    const secrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const names = secrets.map((secret) => {
       return secret.name;
     });
     expect(names).toContain("CURRENT_CREDENTIAL");
@@ -2418,14 +2410,12 @@ describe("connector catalog valid lifecycle", () => {
     expect(filtered.body.filtering.filteredAuthMethods).toHaveLength(2);
 
     await connectorsApi.deleteConnectorBySlug(actor, "agora");
-    const secretsAfterDelete = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
+    const secretsAfterDelete = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(
-      secretsAfterDelete.body.secrets.map((secret) => {
+      secretsAfterDelete.map((secret) => {
         return secret.name;
       }),
     ).not.toContain("CURRENT_CREDENTIAL");
@@ -2502,13 +2492,11 @@ describe("connector catalog valid lifecycle", () => {
     await connectorsApi.deleteConnectorBySlug(actor, "agora", [204]);
 
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const secrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    const secretNames = secrets.body.secrets.map((secret) => {
+    const secrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const secretNames = secrets.map((secret) => {
       return secret.name;
     });
     expect(secretNames).not.toContain("LEGACY_CREDENTIAL");
@@ -2576,13 +2564,11 @@ describe("connector catalog valid lifecycle", () => {
     expect(callbackLocation.pathname).toBe("/connector/success");
 
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const secrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    const secretNames = secrets.body.secrets.map((secret) => {
+    const secrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const secretNames = secrets.map((secret) => {
       return secret.name;
     });
     expect(secretNames).not.toContain("LEGACY_GMAIL_CREDENTIAL");
@@ -3351,13 +3337,11 @@ describe("connector catalog valid lifecycle", () => {
       oauthScopes: ["read"],
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const secrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(secrets.body.secrets).toContainEqual(
+    const secrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    expect(secrets).toContainEqual(
       expect.objectContaining({
         name: "CATALOG_DEVICE_ACCESS_TOKEN",
         type: "connector",
@@ -3485,14 +3469,12 @@ describe("connector catalog valid lifecycle", () => {
       oauthScopes: ["openid"],
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const secrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
+    const secrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(
-      secrets.body.secrets.map((secret) => {
+      secrets.map((secret) => {
         return secret.name;
       }),
     ).toStrictEqual(
@@ -3669,14 +3651,12 @@ describe("connector catalog valid lifecycle", () => {
     providerResume.release();
     await firstCallback;
 
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const headers = { authorization: "Bearer clerk-session" };
-    const firstSecrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({ headers }),
-      [200],
-    );
+    const firstSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(
-      firstSecrets.body.secrets.map((secret) => {
+      firstSecrets.map((secret) => {
         return secret.name;
       }),
     ).toContain("FIRST_RELEASE_SLACK_TOKEN");
@@ -3705,12 +3685,12 @@ describe("connector catalog valid lifecycle", () => {
       code: "second-release",
       state: secondState,
     });
-    const secondSecrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({ headers }),
-      [200],
-    );
+    const secondSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(
-      secondSecrets.body.secrets.map((secret) => {
+      secondSecrets.map((secret) => {
         return secret.name;
       }),
     ).toContain("SECOND_RELEASE_SLACK_TOKEN");
@@ -3811,15 +3791,13 @@ describe("connector catalog valid lifecycle", () => {
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
-    const initialSecrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({ headers }),
-      [200],
-    );
-    const initialAccessTokenDescription = initialSecrets.body.secrets.find(
-      (secret) => {
-        return secret.name === "CATALOG_GMAIL_ACCESS_TOKEN";
-      },
-    )?.description;
+    const initialSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const initialAccessTokenDescription = initialSecrets.find((secret) => {
+      return secret.name === "CATALOG_GMAIL_ACCESS_TOKEN";
+    })?.description;
     expect(initialAccessTokenDescription).toBe(
       "Connector token output for gmail: CATALOG_GMAIL_ACCESS_TOKEN",
     );
@@ -3873,12 +3851,12 @@ describe("connector catalog valid lifecycle", () => {
     expect(refreshBodies).toHaveLength(1);
     expect(refreshBodies[0]?.get("grant_type")).toBe("refresh_token");
     expect(refreshBodies[0]?.get("refresh_token")).toBe("gmail-refresh-token");
-    const refreshedSecrets = await accept(
-      setupApp({ context })(zeroSecretsContract).list({ headers }),
-      [200],
-    );
+    const refreshedSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(
-      refreshedSecrets.body.secrets.find((secret) => {
+      refreshedSecrets.find((secret) => {
         return secret.name === "CATALOG_GMAIL_ACCESS_TOKEN";
       })?.description,
     ).toBe(initialAccessTokenDescription);

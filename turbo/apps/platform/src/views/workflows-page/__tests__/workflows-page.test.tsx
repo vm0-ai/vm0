@@ -2443,32 +2443,6 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("hides Gmail thread matching while its rollout switch is disabled", async () => {
-    mockWorkflowApis([salesResearch()]);
-
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.ZeroMailReplyFollowUp]: false,
-    });
-
-    await waitFor(() => {
-      expect(buttonByText("Add automation")).toBeInTheDocument();
-    });
-    click(buttonByText("Add automation"));
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-    pickAutomation("Email", /^Gmail new message/);
-
-    const createAutomationForm = await screen.findByRole("form", {
-      name: "Add Gmail automation",
-    });
-    click(within(createAutomationForm).getByLabelText("Condition 1 field"));
-
-    expect(
-      screen.queryByRole("option", { name: "Thread ID" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("creates a Gmail label applied automation with a label name", async () => {
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
@@ -3382,9 +3356,7 @@ describe("workflow detail page", () => {
       updateBodies.push({ automationId, body });
     });
 
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
       expect(screen.getAllByText("Gmail new message").length).toBeGreaterThan(

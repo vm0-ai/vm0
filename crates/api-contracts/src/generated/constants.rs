@@ -100,6 +100,10 @@ pub mod model_provider_env {
 
 /// Runner contract constants shared by TypeScript and Rust.
 pub mod runners {
+    /// Maximum serialized active-input control payload accepted by runner and guest process control.
+    /// The API validates the materialized prompt against this shared limit before committing claimed chat events.
+    pub const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: u64 = 1048576;
+
     /// Maximum API admission hold after public user cancellation when recovery completion is lost.
     /// The stale queue sweep reconsiders expired recovery barriers independently of the generic queue-item age.
     pub const CANCELLATION_RECOVERY_STALE_AFTER_MS: u64 = 120000;

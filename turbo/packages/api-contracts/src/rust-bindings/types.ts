@@ -21,7 +21,27 @@ import {
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
 } from "../contracts/webhooks";
+import { zeroBankingContract } from "../contracts/zero-banking";
+import {
+  zeroFinanceChartRequestSchema,
+  zeroFinanceProfileRequestSchema,
+  zeroFinanceQuoteRequestSchema,
+  zeroFinanceResponseSchema,
+  zeroFinanceSearchRequestSchema,
+} from "../contracts/zero-finance";
+import {
+  zeroPeopleSearchRequestSchema,
+  zeroPeopleSearchResponseSchema,
+} from "../contracts/zero-people-search";
+import {
+  zeroScrapeRequestSchema,
+  zeroScrapeResponseSchema,
+} from "../contracts/zero-scrape";
 import { userModelPreferenceResponseSchema } from "../contracts/zero-user-model-preference";
+import {
+  zeroWebSearchRequestSchema,
+  zeroWebSearchResponseSchema,
+} from "../contracts/zero-web-search";
 
 export interface RustTypeBinding {
   readonly schema: z.ZodType;
@@ -66,6 +86,30 @@ export const rustTypeModuleDocs = [
   {
     rustModulePath: ["models", "preference"],
     rustDoc: ["Current user's selected model preference."],
+  },
+  {
+    rustModulePath: ["zero"],
+    rustDoc: ["Native Zero CLI request and response DTOs."],
+  },
+  {
+    rustModulePath: ["zero", "banking"],
+    rustDoc: ["Managed banking gateway DTOs for the native Zero CLI."],
+  },
+  {
+    rustModulePath: ["zero", "finance"],
+    rustDoc: ["Managed financial data DTOs for the native Zero CLI."],
+  },
+  {
+    rustModulePath: ["zero", "people_search"],
+    rustDoc: ["Managed professional search DTOs for the native Zero CLI."],
+  },
+  {
+    rustModulePath: ["zero", "scrape"],
+    rustDoc: ["Managed public page scraping DTOs for the native Zero CLI."],
+  },
+  {
+    rustModulePath: ["zero", "web_search"],
+    rustDoc: ["Managed public web search DTOs for the native Zero CLI."],
   },
   {
     rustModulePath: ["runners"],
@@ -120,6 +164,71 @@ function enumVariantDocs(
       return [value, [`${subject} \`${value}\`.`]];
     }),
   );
+}
+
+function scrapeResponseBranchDeclarations(
+  rustTypeName: string,
+  resultField: "markdown" | "links",
+): readonly RustTypeDeclarationDoc[] {
+  return [
+    {
+      rustTypeName: `${rustTypeName}Metadata`,
+      rustDoc: ["Optional page metadata returned by Zero Scrape."],
+      fields: {
+        title: ["Optional document title."],
+        description: ["Optional document description."],
+        language: ["Optional detected document language."],
+        statusCode: ["Optional upstream HTTP status code."],
+        publishedTime: ["Optional source publication timestamp."],
+      },
+    },
+    {
+      rustTypeName: `${rustTypeName}Result`,
+      rustDoc: ["Format-specific content returned by Zero Scrape."],
+      fields: {
+        [resultField]: [
+          resultField === "markdown"
+            ? "Extracted page content as Markdown."
+            : "Links extracted from the page.",
+        ],
+      },
+    },
+    {
+      rustTypeName,
+      rustDoc: ["One billed Zero Scrape response branch."],
+      fields: {
+        requestedUrl: ["URL submitted to the managed scrape service."],
+        finalUrl: ["Optional final URL after redirects."],
+        provider: ["Managed scrape provider identifier."],
+        creditsCharged: ["Workspace credits charged for this request."],
+        billingQuantity: ["Provider billing quantity for this request."],
+        metadata: ["Optional metadata extracted from the page."],
+        format: ["Response content format."],
+        mode: ["Managed scrape processing mode."],
+        billingCategory: ["Billing category for the selected format and mode."],
+        result: ["Format-specific scrape result."],
+      },
+    },
+  ];
+}
+
+function scrapeResponseDeclarations(): readonly RustTypeDeclarationDoc[] {
+  return [
+    ...scrapeResponseBranchDeclarations("ResponseStandardMarkdown", "markdown"),
+    ...scrapeResponseBranchDeclarations("ResponseEnhancedMarkdown", "markdown"),
+    ...scrapeResponseBranchDeclarations("ResponseStandardLinks", "links"),
+    ...scrapeResponseBranchDeclarations("ResponseEnhancedLinks", "links"),
+    {
+      rustTypeName: "Response",
+      rustDoc: ["Strongly typed managed Zero Scrape response."],
+      variants: {
+        "standard.markdown": ["Standard Markdown scrape response."],
+        "enhanced.markdown": ["Enhanced Markdown scrape response."],
+        "standard.links": ["Standard link extraction response."],
+        "enhanced.links": ["Enhanced link extraction response."],
+      },
+    },
+  ];
 }
 
 export const rustTypeBindings = [
@@ -277,6 +386,432 @@ export const rustTypeBindings = [
         fields: {
           selectedModel: ["Optional model explicitly selected by the user."],
           updatedAt: ["Optional timestamp of the last preference update."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroScrapeRequestSchema,
+    rustModulePath: ["zero", "scrape"],
+    rustTypeName: "Request",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "RequestFormat",
+        rustDoc: ["Requested Zero Scrape response format."],
+        variants: {
+          markdown: ["Return extracted Markdown content."],
+          links: ["Return links extracted from the page."],
+        },
+      },
+      {
+        rustTypeName: "RequestMode",
+        rustDoc: ["Managed Zero Scrape processing mode."],
+        variants: {
+          standard: ["Use standard page extraction."],
+          enhanced: ["Use enhanced page extraction."],
+        },
+      },
+      {
+        rustTypeName: "Request",
+        rustDoc: ["Request body for managed Zero Scrape."],
+        fields: {
+          url: ["Public HTTP or HTTPS URL to scrape."],
+          format: ["Requested response format."],
+          mode: ["Requested scrape processing mode."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroScrapeResponseSchema,
+    rustModulePath: ["zero", "scrape"],
+    rustTypeName: "Response",
+    direction: "response",
+    declarations: scrapeResponseDeclarations(),
+  },
+  {
+    schema: zeroPeopleSearchRequestSchema,
+    rustModulePath: ["zero", "people_search"],
+    rustTypeName: "Request",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "Request",
+        rustDoc: ["Request body for managed professional search."],
+        fields: {
+          query: ["Natural-language professional search query."],
+          limit: ["Maximum number of profiles to return."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroPeopleSearchResponseSchema,
+    rustModulePath: ["zero", "people_search"],
+    rustTypeName: "Response",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "ResponseProfileSource",
+        rustDoc: ["Provider-backed source supporting a professional profile."],
+        fields: {
+          title: ["Source page title."],
+          url: ["Public HTTP or HTTPS source URL."],
+        },
+      },
+      {
+        rustTypeName: "ResponseProfile",
+        rustDoc: ["Professional profile extracted by the managed provider."],
+        fields: {
+          name: ["Professional's name."],
+          title: ["Optional current role or title."],
+          company: ["Optional current employer."],
+          location: ["Optional reported location."],
+          summary: ["Optional provider-extracted profile summary."],
+          sources: ["Provider-backed sources for this profile."],
+        },
+      },
+      {
+        rustTypeName: "Response",
+        rustDoc: ["Managed professional search response."],
+        fields: {
+          query: ["Normalized query sent to the provider."],
+          limit: ["Requested result limit."],
+          provider: ["Managed professional search provider identifier."],
+          billingCategory: ["Billing category for the request."],
+          billingQuantity: ["Provider billing quantity for the request."],
+          creditsCharged: ["Workspace credits charged for the request."],
+          profiles: ["Professional profiles returned by the provider."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroWebSearchRequestSchema,
+    rustModulePath: ["zero", "web_search"],
+    rustTypeName: "Request",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "RequestRecency",
+        rustDoc: ["Optional recency window for public web search."],
+        variants: enumVariantDocs(
+          ["hour", "day", "week", "month", "year"],
+          "Recency window",
+        ),
+      },
+      {
+        rustTypeName: "Request",
+        rustDoc: ["Request body for managed public web search."],
+        fields: {
+          query: ["Public web search query."],
+          limit: ["Maximum number of results to return."],
+          recency: ["Optional publication recency window."],
+          domains: ["Optional domain allowlist for the search."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroWebSearchResponseSchema,
+    rustModulePath: ["zero", "web_search"],
+    rustTypeName: "Response",
+    direction: "response",
+    fieldTypeOverrides: {
+      domains: "Option<Vec<String>>",
+    },
+    declarations: [
+      {
+        rustTypeName: "ResponseRecency",
+        rustDoc: ["Applied recency window for public web search."],
+        variants: enumVariantDocs(
+          ["hour", "day", "week", "month", "year"],
+          "Recency window",
+        ),
+      },
+      {
+        rustTypeName: "ResponseResult",
+        rustDoc: ["One ranked public web search result."],
+        fields: {
+          rank: ["One-based provider result rank."],
+          title: ["Result page title."],
+          url: ["Public HTTP or HTTPS result URL."],
+          snippet: ["Provider-returned result snippet."],
+          publishedDate: ["Optional source publication date."],
+          lastUpdatedDate: ["Optional source update date."],
+        },
+      },
+      {
+        rustTypeName: "Response",
+        rustDoc: ["Managed public web search response."],
+        fields: {
+          query: ["Normalized query sent to the provider."],
+          limit: ["Requested result limit."],
+          recency: ["Optional applied publication recency window."],
+          domains: ["Optional applied domain allowlist."],
+          provider: ["Managed web search provider identifier."],
+          billingCategory: ["Billing category for the request."],
+          billingQuantity: ["Provider billing quantity for the request."],
+          creditsCharged: ["Workspace credits charged for the request."],
+          results: ["Ranked public web search results."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroFinanceSearchRequestSchema,
+    rustModulePath: ["zero", "finance"],
+    rustTypeName: "SearchRequest",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "SearchRequest",
+        rustDoc: ["Request body for financial instrument search."],
+        fields: {
+          query: ["Financial instrument search query."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroFinanceProfileRequestSchema,
+    rustModulePath: ["zero", "finance"],
+    rustTypeName: "ProfileRequest",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "ProfileRequest",
+        rustDoc: ["Request body for a company profile lookup."],
+        fields: {
+          symbol: ["Provider-supported financial instrument symbol."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroFinanceQuoteRequestSchema,
+    rustModulePath: ["zero", "finance"],
+    rustTypeName: "QuoteRequest",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "QuoteRequest",
+        rustDoc: ["Request body for a market quote lookup."],
+        fields: {
+          symbol: ["Provider-supported financial instrument symbol."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroFinanceChartRequestSchema,
+    rustModulePath: ["zero", "finance"],
+    rustTypeName: "ChartRequest",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "ChartRequestRange",
+        rustDoc: ["Historical range requested for a market chart."],
+        variants: enumVariantDocs(
+          [
+            "1d",
+            "5d",
+            "1mo",
+            "3mo",
+            "6mo",
+            "1y",
+            "2y",
+            "5y",
+            "10y",
+            "ytd",
+            "max",
+          ],
+          "Chart range",
+        ),
+      },
+      {
+        rustTypeName: "ChartRequestInterval",
+        rustDoc: ["Sampling interval requested for a market chart."],
+        variants: enumVariantDocs(
+          ["1m", "2m", "5m", "15m", "30m", "60m", "1d", "1wk", "1mo"],
+          "Chart interval",
+        ),
+      },
+      {
+        rustTypeName: "ChartRequest",
+        rustDoc: ["Request body for market chart data."],
+        fields: {
+          symbol: ["Provider-supported financial instrument symbol."],
+          range: ["Historical range to return."],
+          interval: ["Sampling interval for chart points."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroFinanceResponseSchema,
+    rustModulePath: ["zero", "finance"],
+    rustTypeName: "Response",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "ResponseOperation",
+        rustDoc: ["Managed financial data operation that produced a response."],
+        variants: enumVariantDocs(
+          ["search", "profile", "quote", "chart"],
+          "Finance operation",
+        ),
+      },
+      {
+        rustTypeName: "Response",
+        rustDoc: ["Managed financial data response."],
+        fields: {
+          operation: ["Financial data operation that produced this response."],
+          provider: ["Managed financial data provider identifier."],
+          billingCategory: ["Billing category for the request."],
+          billingQuantity: ["Provider billing quantity for the request."],
+          creditsCharged: ["Workspace credits charged for the request."],
+          result: ["Opaque provider result for the selected operation."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroBankingContract.accounts.body,
+    rustModulePath: ["zero", "banking"],
+    rustTypeName: "AccountsRequest",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "AccountsRequest",
+        rustDoc: ["Empty request body for listing managed bank accounts."],
+      },
+    ],
+  },
+  {
+    schema: zeroBankingContract.accounts.responses[200],
+    rustModulePath: ["zero", "banking"],
+    rustTypeName: "AccountsResponse",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "AccountsResponseAccount",
+        rustDoc: ["One bank account returned by the managed provider."],
+        fields: {
+          id: ["Provider account identifier."],
+          name: ["Optional account display name."],
+          institutionName: ["Optional financial institution name."],
+          type: ["Optional provider account type."],
+          last4: ["Optional last four account digits."],
+          status: ["Optional provider account status."],
+          currency: ["Optional account currency code."],
+        },
+      },
+      {
+        rustTypeName: "AccountsResponse",
+        rustDoc: ["Managed bank account listing response."],
+        fields: {
+          operation: ["Banking operation that produced this response."],
+          provider: ["Managed banking provider identifier."],
+          accounts: ["Bank accounts returned by the provider."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroBankingContract.balances.body,
+    rustModulePath: ["zero", "banking"],
+    rustTypeName: "BalancesRequest",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "BalancesRequest",
+        rustDoc: ["Request body for a managed bank balance lookup."],
+        fields: {
+          accountId: ["Provider account identifier."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroBankingContract.balances.responses[200],
+    rustModulePath: ["zero", "banking"],
+    rustTypeName: "BalancesResponse",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "BalancesResponseBalance",
+        rustDoc: ["Current balance information for one bank account."],
+        fields: {
+          accountId: ["Provider account identifier."],
+          name: ["Optional account display name."],
+          type: ["Optional provider account type."],
+          balance: ["Optional current account balance."],
+          availableBalance: ["Optional currently available balance."],
+          currency: ["Optional balance currency code."],
+          balanceDate: ["Optional provider balance timestamp."],
+        },
+      },
+      {
+        rustTypeName: "BalancesResponse",
+        rustDoc: ["Managed bank balance response."],
+        fields: {
+          operation: ["Banking operation that produced this response."],
+          provider: ["Managed banking provider identifier."],
+          balance: ["Current account balance information."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroBankingContract.transactions.body,
+    rustModulePath: ["zero", "banking"],
+    rustTypeName: "TransactionsRequest",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "TransactionsRequest",
+        rustDoc: ["Request body for managed bank transactions."],
+        fields: {
+          accountId: ["Provider account identifier."],
+          from: ["Inclusive start date formatted as YYYY-MM-DD."],
+          to: ["Inclusive end date formatted as YYYY-MM-DD."],
+          limit: ["Maximum number of transactions to return."],
+        },
+      },
+    ],
+  },
+  {
+    schema: zeroBankingContract.transactions.responses[200],
+    rustModulePath: ["zero", "banking"],
+    rustTypeName: "TransactionsResponse",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "TransactionsResponseTransaction",
+        rustDoc: ["One bank transaction returned by the managed provider."],
+        fields: {
+          id: ["Provider transaction identifier."],
+          accountId: ["Provider account identifier."],
+          amount: ["Optional signed transaction amount."],
+          description: ["Optional transaction description."],
+          memo: ["Optional transaction memo."],
+          postedDate: ["Optional provider posted timestamp."],
+          transactionDate: ["Optional provider transaction timestamp."],
+          status: ["Optional provider transaction status."],
+          categorization: ["Optional provider categorization."],
+          merchant: ["Optional merchant description."],
+        },
+      },
+      {
+        rustTypeName: "TransactionsResponse",
+        rustDoc: ["Managed bank transaction response."],
+        fields: {
+          operation: ["Banking operation that produced this response."],
+          provider: ["Managed banking provider identifier."],
+          accountId: ["Provider account identifier."],
+          transactions: ["Transactions returned by the provider."],
         },
       },
     ],

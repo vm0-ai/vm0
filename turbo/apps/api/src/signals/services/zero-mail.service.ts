@@ -28,7 +28,10 @@ import {
 import { convert } from "html-to-text";
 import { z } from "zod";
 
-import { pgTextDecoder } from "../../lib/db-structured-result";
+import {
+  nullableDriverValueDecoder,
+  pgTextDecoder,
+} from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
@@ -454,7 +457,9 @@ async function loadOwnedMailDraft(args: {
       gmailThreadId: mailDrafts.gmailThreadId,
       gmailMessageId: mailDrafts.gmailMessageId,
       sentGmailMessageId: mailDrafts.sentGmailMessageId,
-      followUpAutomationId: mailDrafts.followUpAutomationId,
+      followUpAutomationId: sql`${mailDrafts.followUpAutomationId}`.mapWith(
+        nullableDriverValueDecoder(pgTextDecoder),
+      ),
       followUpAutomationEnabled: zeroWorkflowAutomations.enabled,
       status: mailDrafts.status,
       senderName: mailDrafts.senderName,
@@ -2239,7 +2244,9 @@ const linkMailFollowUp$ = command(
         .select({
           mailDraftId: mailDrafts.id,
           chatThreadId: chatThreads.id,
-          followUpAutomationId: mailDrafts.followUpAutomationId,
+          followUpAutomationId: sql`${mailDrafts.followUpAutomationId}`.mapWith(
+            nullableDriverValueDecoder(pgTextDecoder),
+          ),
         })
         .from(mailDrafts)
         .innerJoin(chatThreads, eq(chatThreads.id, mailDrafts.chatThreadId))
@@ -2315,6 +2322,8 @@ const linkMailFollowUp$ = command(
   },
 );
 
+// Compatibility service for Platform bundles loaded before the Mail follow-up
+// action was removed. Delete with the legacy route after those clients drain.
 export const setupZeroMailFollowUp$ = command(
   async (
     { get, set },

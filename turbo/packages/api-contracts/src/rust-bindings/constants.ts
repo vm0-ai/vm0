@@ -15,6 +15,7 @@ import {
   CLIENT_VERSION_HEADER,
 } from "../contracts/client-headers";
 import {
+  ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
@@ -265,6 +266,15 @@ export const rustConstantBindings = [
     rustConstName: "CLIENT_TYPE_RUNNER",
     value: rustString(CLIENT_TYPE_RUNNER),
     rustDoc: ["Client type value for the runner."],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES",
+    value: rustU64(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES),
+    rustDoc: [
+      "Maximum serialized active-input control payload accepted by runner and guest process control.",
+      "The API validates the materialized prompt against this shared limit before committing claimed chat events.",
+    ],
   },
   {
     rustModulePath: ["runners"],

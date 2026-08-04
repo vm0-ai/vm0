@@ -166,6 +166,8 @@ export const zeroMailContract = c.router({
     },
     summary: "Send a linked Gmail draft",
   },
+  // Compatibility contract for Platform bundles loaded before the Mail
+  // follow-up action was removed. Delete after that frontend release drains.
   createFollowUp: {
     method: "POST",
     path: "/api/zero/mail/drafts/:mailDraftId/follow-up",

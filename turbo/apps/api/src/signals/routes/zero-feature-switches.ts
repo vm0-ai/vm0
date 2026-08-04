@@ -1,9 +1,7 @@
 import { command, computed } from "ccstate";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -22,6 +20,7 @@ const featureSwitchesAuthOptions = {
 } as const;
 
 const LEGACY_IMAGE_RECOGNITION_SWITCH = "zeroImageRecognition";
+const LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH = "zeroMailReplyFollowUp";
 
 function featureSwitchResponseBody(params: {
   readonly orgId: string;
@@ -32,19 +31,19 @@ function featureSwitchResponseBody(params: {
   readonly supportsCustomModelGateways: boolean;
   readonly supportsImageRecognition: boolean;
   readonly imageRecognitionRolloutComplete: true;
+  readonly supportsAvatarTemplates: boolean;
 }) {
   const registeredEffectiveSwitches = getAllFeatureStates({
     orgId: params.orgId,
     userId: params.userId,
     overrides: params.switches,
   });
-  registeredEffectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] =
-    registeredEffectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] &&
-    isZeroMailReplyFollowUpRolloutEnabled();
-  // Pre-rollout Platform bundles still read the removed switch key. Keep the
-  // positive effective value while those bundles can remain open in browsers.
+  // Platform bundles loaded before Mail follow-up removal still carry this
+  // key. Force them off until their compatible follow-up endpoint can be
+  // removed after the old frontend release drains.
   const effectiveSwitches = {
     ...registeredEffectiveSwitches,
+    [LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH]: false,
     [LEGACY_IMAGE_RECOGNITION_SWITCH]: true,
   };
 
@@ -56,6 +55,7 @@ function featureSwitchResponseBody(params: {
     supportsCustomModelGateways: params.supportsCustomModelGateways,
     supportsImageRecognition: params.supportsImageRecognition,
     imageRecognitionRolloutComplete: params.imageRecognitionRolloutComplete,
+    supportsAvatarTemplates: params.supportsAvatarTemplates,
   };
 }
 
@@ -78,6 +78,7 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       supportsCustomModelGateways,
       supportsImageRecognition: true,
       imageRecognitionRolloutComplete: true,
+      supportsAvatarTemplates: true,
     }),
   };
 });
@@ -119,6 +120,7 @@ const updateFeatureSwitchesInner$ = command(
         supportsCustomModelGateways,
         supportsImageRecognition: true,
         imageRecognitionRolloutComplete: true,
+        supportsAvatarTemplates: true,
       }),
     };
   },

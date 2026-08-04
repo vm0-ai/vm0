@@ -125,9 +125,15 @@ interface RenderTypeContext {
   readonly declarationDocs: ReadonlyMap<string, NormalizedTypeDeclarationDoc>;
   readonly declarations: RustDeclaration[];
   readonly declarationNames: Set<string>;
+  readonly unionDiscriminators: Map<string, StringLiteralDiscriminator>;
   readonly usedDeclarationDocs: Set<string>;
   readonly usedFieldDocs: Set<string>;
   readonly usedVariantDocs: Set<string>;
+}
+
+interface StringLiteralDiscriminator {
+  readonly field: string;
+  readonly value: string;
 }
 
 interface RustDeclaration {
@@ -295,7 +301,13 @@ export function normalizeTypeBindings(
     seenRustNames.add(rustName);
 
     normalized.push({
-      schema: validateJsonSchema(z.toJSONSchema(binding.schema), label),
+      schema: validateJsonSchema(
+        z.toJSONSchema(binding.schema, {
+          io: binding.direction === "request" ? "input" : "output",
+          unrepresentable: "any",
+        }),
+        label,
+      ),
       direction: binding.direction,
       rustModulePath,
       rustTypeName,
@@ -1028,6 +1040,7 @@ function renderTypeBinding(
     declarationDocs: binding.declarationDocs,
     declarations,
     declarationNames: new Set(),
+    unionDiscriminators: new Map(),
     usedDeclarationDocs: new Set(),
     usedFieldDocs: new Set(),
     usedVariantDocs: new Set(),
@@ -1134,6 +1147,15 @@ function rustTypeForSchema(
     return `Option<${rustTypeForSchema(nullable, typeName, context)}>`;
   }
 
+  const unionBranches = getUnionBranches(schema, context.label);
+  if (unionBranches !== null) {
+    return renderUntaggedUnion(unionBranches, typeName, context);
+  }
+
+  if (Object.keys(schema).length === 0) {
+    return "serde_json::Value";
+  }
+
   const enumValues = getStringArray(schema.enum);
   if (enumValues !== null) {
     return renderStringEnum(enumValues, typeName, context);
@@ -1164,6 +1186,132 @@ function rustTypeForSchema(
         `${context.label} uses unsupported JSON schema type: ${type}`,
       );
   }
+}
+
+function renderUntaggedUnion(
+  branches: readonly JsonObject[],
+  typeName: string,
+  context: RenderTypeContext,
+): string {
+  if (context.declarationNames.has(typeName)) {
+    throw new Error(
+      `${context.label} has duplicate Rust type name: ${typeName}`,
+    );
+  }
+  context.declarationNames.add(typeName);
+  const declarationDoc = typeDeclarationDoc(context, typeName);
+  const discriminator = findStringUnionDiscriminator(
+    branches,
+    `${context.label}.${typeName}`,
+  );
+  const variants = branches.map((branch, index) => {
+    const value = discriminator.values[index];
+    if (value === undefined) {
+      throw new Error(`${context.label}.${typeName} lost a union branch`);
+    }
+    const variantName = toRustVariantName(value);
+    const branchTypeName = `${typeName}${variantName}`;
+    context.unionDiscriminators.set(branchTypeName, {
+      field: discriminator.field,
+      value,
+    });
+    return {
+      value,
+      variantName,
+      rustType: rustTypeForSchema(branch, branchTypeName, context),
+    };
+  });
+  const lines = [
+    ...renderOuterRustDoc(declarationDoc.rustDoc, ""),
+    "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]",
+    "#[serde(untagged)]",
+    `pub enum ${typeName} {`,
+  ];
+  const seenVariants = new Set<string>();
+
+  for (const variant of variants) {
+    if (seenVariants.has(variant.variantName)) {
+      throw new Error(
+        `${context.label}.${typeName} has duplicate Rust union variant: ${variant.variantName}`,
+      );
+    }
+    seenVariants.add(variant.variantName);
+    lines.push(
+      ...renderOuterRustDoc(
+        typeVariantDoc(context, typeName, variant.value, declarationDoc),
+        "    ",
+      ),
+    );
+    lines.push(`    ${variant.variantName}(${variant.rustType}),`);
+  }
+
+  lines.push("}");
+  context.declarations.push({
+    name: typeName,
+    lines,
+  });
+  return typeName;
+}
+
+function getUnionBranches(
+  schema: JsonObject,
+  label: string,
+): readonly JsonObject[] | null {
+  if (schema.anyOf === undefined) {
+    return null;
+  }
+  if (!Array.isArray(schema.anyOf)) {
+    throw new Error(`${label} uses malformed anyOf`);
+  }
+
+  const branches: JsonObject[] = [];
+  for (const branch of schema.anyOf) {
+    if (!isJsonObject(branch)) {
+      throw new Error(`${label} uses malformed anyOf branch`);
+    }
+    const nested = getUnionBranches(branch, label);
+    if (nested === null) {
+      branches.push(branch);
+    } else {
+      branches.push(...nested);
+    }
+  }
+  if (branches.length < 2) {
+    throw new Error(`${label} uses an anyOf with fewer than two branches`);
+  }
+  return branches;
+}
+
+function findStringUnionDiscriminator(
+  branches: readonly JsonObject[],
+  label: string,
+): { readonly field: string; readonly values: readonly string[] } {
+  const firstProperties = getOptionalObject(branches[0]?.properties);
+  if (firstProperties === null) {
+    throw new Error(`${label} union branches must be objects`);
+  }
+
+  for (const field of Object.keys(firstProperties)) {
+    const values = branches.map((branch) => {
+      const properties = getOptionalObject(branch.properties);
+      const property = properties?.[field];
+      return isJsonObject(property) && typeof property.const === "string"
+        ? property.const
+        : null;
+    });
+    if (
+      values.every((value): value is string => {
+        return value !== null;
+      }) &&
+      new Set(values).size === branches.length
+    ) {
+      return { field, values };
+    }
+  }
+
+  throw new Error(
+    `${label} union branches need a unique string literal discriminator`,
+  );
 }
 
 function rustTypeForObject(
@@ -1262,14 +1410,25 @@ function renderStruct(
 
   const required = new Set(getStringArray(requiredValue) ?? []);
   const seenRustFields = new Map<string, string>();
+  const fields = Object.entries(properties);
   const lines = [
     ...renderOuterRustDoc(declarationDoc.rustDoc, ""),
     "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]",
     '#[serde(rename_all = "camelCase")]',
-    `pub struct ${typeName} {`,
+    fields.length === 0
+      ? `pub struct ${typeName} {}`
+      : `pub struct ${typeName} {`,
   ];
 
-  for (const [wireName, rawPropertySchema] of Object.entries(properties)) {
+  if (fields.length === 0) {
+    context.declarations.push({
+      name: typeName,
+      lines,
+    });
+    return typeName;
+  }
+
+  for (const [wireName, rawPropertySchema] of fields) {
     if (!isJsonObject(rawPropertySchema)) {
       throw new Error(
         `${context.label}.${typeName}.${wireName} is not an object schema`,
@@ -1287,13 +1446,20 @@ function renderStruct(
 
     const optional = !required.has(wireName);
     const override = context.fieldTypeOverrides[wireName];
+    const discriminator = context.unionDiscriminators.get(typeName);
     const rawType =
-      override ??
-      rustTypeForSchema(
-        rawPropertySchema,
-        nestedTypeNameForField(typeName, wireName, rawPropertySchema),
-        context,
-      );
+      discriminator?.field === wireName
+        ? renderStringLiteralEnum(
+            discriminator.value,
+            `${typeName}${toPascalCase(wireName)}`,
+            context,
+          )
+        : (override ??
+          rustTypeForSchema(
+            rawPropertySchema,
+            nestedTypeNameForField(typeName, wireName, rawPropertySchema),
+            context,
+          ));
     const rustType =
       optional && !isOptionType(rawType) ? `Option<${rawType}>` : rawType;
     const attributes = serdeFieldAttributes({
@@ -1320,6 +1486,33 @@ function renderStruct(
     lines,
   });
 
+  return typeName;
+}
+
+function renderStringLiteralEnum(
+  value: string,
+  typeName: string,
+  context: RenderTypeContext,
+): string {
+  if (context.declarationNames.has(typeName)) {
+    throw new Error(
+      `${context.label} has duplicate Rust type name: ${typeName}`,
+    );
+  }
+  context.declarationNames.add(typeName);
+  const variant = toRustVariantName(value);
+  context.declarations.push({
+    name: typeName,
+    lines: [
+      `/// Literal discriminator for the \`${typeName}\` wire contract.`,
+      "#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]",
+      `pub enum ${typeName} {`,
+      `    /// The \`${value}\` wire value.`,
+      `    #[serde(rename = ${rustStringLiteral(value)})]`,
+      `    ${variant},`,
+      "}",
+    ],
+  });
   return typeName;
 }
 
@@ -1605,6 +1798,10 @@ function unwrapNullable(schema: JsonObject, label: string): JsonObject | null {
     if (nonNullSchema !== undefined) {
       return nonNullSchema;
     }
+  }
+
+  if (nullSchemas.length === 0) {
+    return null;
   }
 
   throw new Error(`${label} uses unsupported anyOf schema`);

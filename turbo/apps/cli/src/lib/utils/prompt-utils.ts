@@ -39,32 +39,3 @@ export async function promptConfirm(
 
   return response.value;
 }
-
-/**
- * Prompt for password/secret input (masked)
- * @param message - The prompt message
- * @returns The user's input, or undefined if cancelled or non-interactive
- */
-export async function promptPassword(
-  message: string,
-): Promise<string | undefined> {
-  // In non-interactive mode, return undefined immediately
-  if (!isInteractive()) {
-    return undefined;
-  }
-
-  const response = await prompts(
-    {
-      type: "password",
-      name: "value",
-      message,
-    },
-    {
-      onCancel: () => {
-        return false;
-      },
-    },
-  );
-
-  return response.value;
-}
