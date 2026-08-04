@@ -1017,6 +1017,63 @@ describe("chat lifecycle", () => {
     }
   });
 
+  it("waits for voice input to finish starting before sending", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000779";
+    const microphoneReady = context.mocks.deferred<void>();
+    const submissionRequested = context.mocks.deferred<void>();
+    const sentPrompts: string[] = [];
+    context.mocks.browser.voiceInput({
+      getUserMediaReady: microphoneReady.promise,
+      rms: 0.1,
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      onRunCreate: (body) => {
+        if (body.prompt !== undefined) {
+          sentPrompts.push(body.prompt);
+        }
+        submissionRequested.resolve(undefined);
+      },
+    });
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      return new Response(JSON.stringify({ text: "startup voice input" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+      const composer = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER);
+      });
+      await fill(composer, "Typed introduction");
+      await user.click(await screen.findByLabelText("Voice input"));
+      await waitFor(() => {
+        expect(screen.getByLabelText("Starting voice input")).toBeDisabled();
+      });
+
+      await user.click(screen.getByLabelText("Send"));
+
+      expect(submissionRequested.settled()).toBeFalsy();
+      microphoneReady.resolve(undefined);
+
+      await waitFor(() => {
+        expect(sentPrompts).toHaveLength(1);
+      });
+      expect(sentPrompts[0]).toContain("Typed introduction");
+      expect(sentPrompts[0]).toContain("startup voice input");
+      await waitFor(() => {
+        expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+      });
+    } finally {
+      if (!microphoneReady.settled()) {
+        microphoneReady.resolve(undefined);
+      }
+    }
+  });
+
   it("transcribes a voice input segment after silence while recording", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "voice-input-segment-thread";
