@@ -32,6 +32,7 @@ use crate::support::{
 pub struct MockSandbox {
     id: String,
     source_ip: String,
+    run_control_id: Option<String>,
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
     exec_calls: Mutex<Vec<ExecCall>>,
     read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
@@ -72,6 +73,7 @@ impl MockSandbox {
         Self {
             id: id.into(),
             source_ip: "10.0.0.1".into(),
+            run_control_id: None,
             exec_results: Mutex::new(VecDeque::new()),
             exec_calls: Mutex::new(Vec::new()),
             read_file_results: Mutex::new(VecDeque::new()),
@@ -279,10 +281,33 @@ impl Sandbox for MockSandbox {
         &self.source_ip
     }
 
+    fn bind_run_control(&mut self, run_id: &str) -> Result<()> {
+        if self.run_control_id.is_some() {
+            return Err(SandboxError::InvalidState {
+                context: SandboxInvalidStateContext::Sandbox,
+                state: "active".into(),
+                message: "run control identity is already bound".into(),
+            });
+        }
+        self.run_control_id = Some(run_id.to_owned());
+        if let Some(overrides) = &self.overrides {
+            overrides
+                .lifecycle
+                .run_control_bind_calls
+                .lock_ignoring_poison()
+                .push(run_id.to_owned());
+        }
+        Ok(())
+    }
+
     async fn start(&mut self) -> Result<()> {
         let Some(o) = &self.overrides else {
             return Ok(());
         };
+        o.lifecycle
+            .start_run_control_ids
+            .lock_ignoring_poison()
+            .push(self.run_control_id.clone());
         o.lifecycle
             .start_results
             .lock_ignoring_poison()
@@ -308,14 +333,19 @@ impl Sandbox for MockSandbox {
     /// is side-effect-free; tests that need to exercise non-idempotent
     /// scenarios queue explicit results.
     async fn park(&mut self) -> Result<SandboxParkOutcome> {
-        let Some(o) = &self.overrides else {
-            return Ok(SandboxParkOutcome::Reusable);
+        let result = if let Some(o) = &self.overrides {
+            *o.lifecycle.park_calls.lock_ignoring_poison() += 1;
+            wait_lifecycle_gate(&o.lifecycle.park_gate).await;
+            o.lifecycle
+                .park_behaviors
+                .next_result(SandboxParkOutcome::Reusable)
+        } else {
+            Ok(SandboxParkOutcome::Reusable)
         };
-        *o.lifecycle.park_calls.lock_ignoring_poison() += 1;
-        wait_lifecycle_gate(&o.lifecycle.park_gate).await;
-        o.lifecycle
-            .park_behaviors
-            .next_result(SandboxParkOutcome::Reusable)
+        if result.is_ok() {
+            self.run_control_id = None;
+        }
+        result
     }
 
     async fn final_exec_and_park(
@@ -341,6 +371,10 @@ impl Sandbox for MockSandbox {
         let Some(o) = &self.overrides else {
             return Ok(());
         };
+        o.lifecycle
+            .unpark_run_control_ids
+            .lock_ignoring_poison()
+            .push(self.run_control_id.clone());
         *o.lifecycle.unpark_calls.lock_ignoring_poison() += 1;
         o.lifecycle.unpark_behaviors.next_result(())
     }

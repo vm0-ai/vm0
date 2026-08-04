@@ -19,7 +19,7 @@ pub struct MockSandboxControl {
     exec_results: Mutex<VecDeque<std::result::Result<RemoteExecResult, SandboxControlError>>>,
     kill_results: Mutex<VecDeque<std::result::Result<RemoteKillResult, SandboxControlError>>>,
     recorded_exec_calls: Mutex<Vec<RemoteExecCall>>,
-    recorded_kill_ids: Mutex<Vec<String>>,
+    recorded_kill_targets: Mutex<Vec<SandboxControlTarget>>,
 }
 
 impl MockSandboxControl {
@@ -37,7 +37,7 @@ impl MockSandboxControl {
             exec_results: Mutex::new(VecDeque::new()),
             kill_results: Mutex::new(VecDeque::new()),
             recorded_exec_calls: Mutex::new(Vec::new()),
-            recorded_kill_ids: Mutex::new(Vec::new()),
+            recorded_kill_targets: Mutex::new(Vec::new()),
         }
     }
 
@@ -71,9 +71,9 @@ impl MockSandboxControl {
         self.kill_results.lock_ignoring_poison().push_back(result);
     }
 
-    /// Return every sandbox id passed to `kill_remote`, in call order.
-    pub fn recorded_kill_ids(&self) -> Vec<String> {
-        self.recorded_kill_ids.lock_ignoring_poison().clone()
+    /// Return every identity scope passed to `kill_remote`, in call order.
+    pub fn recorded_kill_targets(&self) -> Vec<SandboxControlTarget> {
+        self.recorded_kill_targets.lock_ignoring_poison().clone()
     }
 }
 
@@ -81,7 +81,7 @@ impl MockSandboxControl {
 impl SandboxControl for MockSandboxControl {
     async fn exec_remote(
         &self,
-        sandbox_id: &str,
+        target: SandboxControlTarget,
         command: &str,
         timeout: Duration,
         sudo: bool,
@@ -89,7 +89,7 @@ impl SandboxControl for MockSandboxControl {
         self.recorded_exec_calls
             .lock_ignoring_poison()
             .push(RemoteExecCall {
-                sandbox_id: sandbox_id.to_string(),
+                target,
                 command: command.to_string(),
                 timeout,
                 sudo,
@@ -111,11 +111,11 @@ impl SandboxControl for MockSandboxControl {
 
     async fn kill_remote(
         &self,
-        sandbox_id: &str,
+        target: SandboxControlTarget,
     ) -> std::result::Result<RemoteKillResult, SandboxControlError> {
-        self.recorded_kill_ids
+        self.recorded_kill_targets
             .lock_ignoring_poison()
-            .push(sandbox_id.to_string());
+            .push(target);
         self.kill_results
             .lock_ignoring_poison()
             .pop_front()

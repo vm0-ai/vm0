@@ -448,14 +448,17 @@ impl IdleEntry {
         now.duration_since(self.parked_at) >= self.idle_timeout
     }
 
-    /// Unpark and consume this idle entry. On failure the entry becomes an
-    /// idle-owned destroy job so callers cannot keep using a partially
-    /// unparked sandbox.
-    pub async fn try_unpark(mut self) -> IdleUnparkResult {
-        match AssertUnwindSafe(self.resources.sandbox.unpark())
-            .catch_unwind()
-            .await
-        {
+    /// Bind the next run identity while parked, then unpark and consume this
+    /// idle entry. On failure the entry becomes an idle-owned destroy job so
+    /// callers cannot keep using a partially unparked sandbox.
+    pub async fn try_unpark_for_run(mut self, run_id: RunId) -> IdleUnparkResult {
+        let activation = async {
+            self.resources
+                .sandbox
+                .bind_run_control(&run_id.to_string())?;
+            self.resources.sandbox.unpark().await
+        };
+        match AssertUnwindSafe(activation).catch_unwind().await {
             Ok(Ok(())) => {
                 let (sandbox, budget_lease) = self.into_reuse_parts();
                 IdleUnparkResult::Reused {
@@ -575,8 +578,8 @@ impl ReservedIdleSandbox {
             .validate_workspace_promotion_identity(cache, working_dir, image_size_bytes)
     }
 
-    pub async fn try_unpark(self) -> IdleUnparkResult {
-        self.entry.try_unpark().await
+    pub async fn try_unpark_for_run(self, run_id: RunId) -> IdleUnparkResult {
+        self.entry.try_unpark_for_run(run_id).await
     }
 
     pub fn into_destroy_job(self) -> IdleDestroyJob {

@@ -9,9 +9,9 @@ use vsock_proto::{ExecTermination, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_START};
 
 use super::super::support::{
     assert_connection_accepts_exec_operation, captured_output_bytes, exec_capture_default,
-    exec_capture_with_write_observer, host_from_stream, is_connected, make_pair, mock_handshake,
-    normal_operation_readiness, operation_count, read_guest_message, send_exec_result,
-    setup_host_and_guest, wait_for_operation_count,
+    exec_capture_with_write_admission, exec_capture_with_write_observer, host_from_stream,
+    is_connected, make_pair, mock_handshake, normal_operation_readiness, operation_count,
+    read_guest_message, send_exec_result, setup_host_and_guest, wait_for_operation_count,
 };
 use super::start_capture_operation;
 use crate::exec_operation as exec_operation_impl;
@@ -350,6 +350,33 @@ async fn exec_write_observer_error_cleans_registration_without_sending_frame() {
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::NotParkable
+    );
+    assert!(is_connected(&host));
+}
+
+#[tokio::test]
+async fn exec_write_admission_error_releases_unused_reservation_without_sending_frame() {
+    let (host, guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let err = exec_capture_with_write_admission(
+        &host,
+        capture_request("admission-error"),
+        FrameWriteObserver::new(|| Err(io::Error::other("admission failed"))),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(err.to_string().contains("admission failed"));
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("admission error must not send exec frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after admission error: {err}"),
+    }
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
     );
     assert!(is_connected(&host));
 }

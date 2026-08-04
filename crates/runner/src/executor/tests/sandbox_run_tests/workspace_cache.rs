@@ -1480,7 +1480,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
     });
     assert!(matches!(pool.park(candidate), ParkResult::Parked));
     let entry = pool.take(&reuse_key).expect("idle entry should exist");
-    let idle_sandbox = match entry.try_unpark().await {
+    let idle_sandbox = match entry.try_unpark_for_run(crate::ids::RunId::new_v4()).await {
         IdleUnparkResult::Reused { sandbox, .. } => *sandbox,
         IdleUnparkResult::Failed { error, .. } => {
             panic!("test idle entry should unpark: {error}");
@@ -1591,7 +1591,7 @@ async fn reusable_idle_sandbox_with_fresh_workspace_promotion(
     });
     assert!(matches!(pool.park(candidate), ParkResult::Parked));
     let entry = pool.take(&reuse_key).expect("idle entry should exist");
-    let idle_sandbox = match entry.try_unpark().await {
+    let idle_sandbox = match entry.try_unpark_for_run(crate::ids::RunId::new_v4()).await {
         IdleUnparkResult::Reused { sandbox, .. } => *sandbox,
         IdleUnparkResult::Failed { error, .. } => {
             panic!("test idle entry should unpark: {error}");
