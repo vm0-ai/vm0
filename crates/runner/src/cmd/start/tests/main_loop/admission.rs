@@ -1020,6 +1020,52 @@ async fn preference_without_reuse_key_uses_ordinary_admission() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn selected_finalizing_candidate_without_reuse_key_records_mismatch() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let (run_handle, captured) = spawn_run_with_candidate_observations(config);
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    let history_generation_run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(minimal_context(run_id)));
+    env.handle
+        .discover_tx
+        .send(
+            crate::provider::JobCandidate::new(run_id, "vm0/default".into())
+                .with_history_generation_run_id(Some(history_generation_run_id))
+                .with_runner_preference(Some(RunnerPreference::for_test(
+                    TEST_RUNNER_ID.parse().unwrap(),
+                    TEST_HEARTBEAT_GENERATION,
+                    RunnerPreferenceReason::FinalizingPredecessor,
+                    std::time::Instant::now() + Duration::from_secs(30),
+                ))),
+        )
+        .unwrap();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await;
+    assert!(
+        completion.is_some(),
+        "missing reuse metadata should preserve ordinary admission"
+    );
+    assert_candidate_observation(&captured, run_id, history_generation_run_id, "mismatched");
+    let successor_run_id = run_id.to_string();
+    assert!(
+        captured.entries().iter().any(|event| {
+            event.fields.get("successor_run_id") == Some(&successor_run_id)
+                && event.fields.get("reason").map(String::as_str) == Some("missing_reuse_key")
+        }),
+        "mismatch observation should identify the bounded missing-reuse-key reason; events={:#?}",
+        captured.entries()
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn matching_preference_uses_actual_local_sandbox_without_resource_class() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
