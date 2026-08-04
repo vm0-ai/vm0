@@ -2,9 +2,9 @@ name: release-please
 
 # Releases run straight off the push to main. Waiting for the Turbo run on main
 # adds no artifact dependency: each queued pull request's merge-group Turbo run
-# uploads the canonical app artifact under its merged commit SHA, and
+# uploads the canonical app and CLI artifacts under its merged commit SHA, and
 # release-please deploys that same SHA as release_target. The Turbo push run
-# reuses the artifact and only repoints the staging-app Pages alias.
+# reuses those artifacts and only repoints the staging-app Pages alias.
 on:
   push:
     branches: ["main"]
@@ -667,6 +667,46 @@ jobs:
           doppler-project: vm0
           doppler-config: prd
 
+      - name: Wait for canonical CLI artifact
+        id: cli-artifact
+        env:
+          ARTIFACT_SHA: ${{ needs.release-please.outputs.release_target }}
+          CLI_STATIC_BASE_URL: https://static.vm0.io
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$ARTIFACT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "CLI artifact commit must be a full lowercase SHA-1: $ARTIFACT_SHA" >&2
+            exit 1
+          fi
+
+          artifact_base_url="${CLI_STATIC_BASE_URL}/okou-cli/${ARTIFACT_SHA}"
+          artifact_dir="$(mktemp -d)"
+          for attempt in $(seq 1 60); do
+            if curl -fsSL \
+              "${artifact_base_url}/ready.json" \
+              --output "${artifact_dir}/ready.json"; then
+              break
+            fi
+            if (( attempt == 60 )); then
+              echo "CLI artifact was not ready after 10 minutes: $artifact_base_url" >&2
+              exit 1
+            fi
+            echo "Waiting for CLI artifact: $artifact_base_url (attempt $attempt/60)"
+            sleep 10
+          done
+
+          curl -fsSL \
+            "${artifact_base_url}/manifest.json" \
+            --output "${artifact_dir}/manifest.json"
+          curl -fsSL \
+            "${artifact_base_url}/package.tgz" \
+            --output "${artifact_dir}/package.tgz"
+          bash .github/scripts/verify-okou-cli-artifact.sh \
+            "$artifact_dir" \
+            "$ARTIFACT_SHA"
+          echo "package-url=${artifact_base_url}/package.tgz" >> "$GITHUB_OUTPUT"
+
       - name: Resolve API production environment
         id: api-production-env
         uses: ./.github/actions/web-api-env
@@ -677,6 +717,7 @@ jobs:
           web-url: https://www.vm0.ai
           app-url: https://app.vm0.ai
           api-backend-url: ${{ vars.VM0_API_BACKEND_URL }}
+          cli-pkg-url: ${{ steps.cli-artifact.outputs.package-url }}
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}

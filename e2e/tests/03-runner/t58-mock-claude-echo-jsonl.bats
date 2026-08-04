@@ -65,3 +65,12 @@ EOF
     [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
     [ -n "$(run_fixture_field "$output" '.sessionId')" ]
 }
+
+@test "t58-2: CLI_PKG_URL reaches the runner guest" {
+    run run_compose_fixture \
+        "$AGENT_NAME" \
+        'test -n "$CLI_PKG_URL" && printf "CLI_PKG_URL=%s" "$CLI_PKG_URL"'
+
+    assert_success
+    assert_output --regexp 'CLI_PKG_URL=https://static\.vm0\.io/okou-cli/[0-9a-f]{40}/package\.tgz'
+}

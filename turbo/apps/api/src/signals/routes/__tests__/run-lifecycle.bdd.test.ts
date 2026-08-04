@@ -9867,7 +9867,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const npmClaim = await api.claimRunnerJob(npmRun.runId);
     expect(npmClaim.appendSystemPrompt ?? "").toContain(
-      "Run commands with: `npx -p @vm0/cli zero <command>`",
+      'Run commands with: `npx --yes --package="${CLI_PKG_URL}" zero <command>`',
     );
     expect(npmClaim.appendSystemPrompt ?? "").not.toContain(
       "Run commands with: `zero-cli <command>`",
@@ -9891,7 +9891,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "Run commands with: `zero-cli <command>`",
     );
     expect(rustClaim.appendSystemPrompt ?? "").not.toContain(
-      "Run commands with: `npx -p @vm0/cli zero <command>`",
+      'Run commands with: `npx --yes --package="${CLI_PKG_URL}" zero <command>`',
     );
     await api.requestCancelRun(actor, rustRun.runId, [200]);
   });
@@ -10139,6 +10139,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     );
     expect(claim.disallowedTools).not.toContain("WebFetch");
     expect(claim.environment?.ZERO_APP_URL).toBe(appUrl);
+    expect(claim.environment?.CLI_PKG_URL).toBe(
+      "https://static.vm0.io/okou-cli/test-commit/package.tgz",
+    );
     expect(claim.environment?.VM0_APP_URL).toBeUndefined();
     expect(claim.environment?.APP_URL).toBeUndefined();
     expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);

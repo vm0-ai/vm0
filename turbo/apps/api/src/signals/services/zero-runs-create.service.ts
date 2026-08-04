@@ -336,7 +336,7 @@ function buildAgentToolsPrompt(args: {
 }): string {
   const zeroCliCommand = args.rustZeroCliEnabled
     ? "zero-cli"
-    : "npx -p @vm0/cli zero";
+    : 'npx --yes --package="${CLI_PKG_URL}" zero';
   return [
     "# Agent Tools",
     `You have access to the Zero CLI. Run commands with: \`${zeroCliCommand} <command>\``,
@@ -544,6 +544,7 @@ function buildZeroRunExtraEnvironment(args: {
 }): Record<string, string> {
   return {
     ZERO_APP_URL: env("APP_URL"),
+    CLI_PKG_URL: env("CLI_PKG_URL"),
     ZERO_AGENT_ID: args.agentId,
     // Keep the retired rollout marker for older guest CLIs until the CLI
     // released with this cleanup is the oldest supported guest CLI version.
