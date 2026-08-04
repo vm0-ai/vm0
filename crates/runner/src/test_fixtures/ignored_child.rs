@@ -229,12 +229,9 @@ async fn scan_session_members(session_id: libc::pid_t) -> Result<SessionScan, St
             }
         };
 
-        let after = match read_process_stat_checked(pid).await {
+        match read_process_stat_checked(pid).await {
             ProcessStatRead::Found(stat)
-                if process_stat_is_live(&stat) && stat.starttime == before.starttime =>
-            {
-                stat
-            }
+                if process_stat_is_live(&stat) && stat.starttime == before.starttime => {}
             ProcessStatRead::Found(_) | ProcessStatRead::Missing => continue,
             ProcessStatRead::Unreadable(error) => {
                 record_owned_stat_error(
@@ -256,8 +253,8 @@ async fn scan_session_members(session_id: libc::pid_t) -> Result<SessionScan, St
                 );
                 continue;
             }
-        };
-        if after.starttime != before.starttime || process_session_id(raw_pid) != Ok(session_id) {
+        }
+        if process_session_id(raw_pid) != Ok(session_id) {
             continue;
         }
 
