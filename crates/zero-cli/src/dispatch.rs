@@ -117,6 +117,7 @@ impl HandlerRegistry {
                 .about("Zero CLI — native runner-bundled runtime")
                 .version(build.version)
                 .long_version(build.build_id)
+                .propagate_version(true)
                 .disable_help_subcommand(true)
                 .subcommand_required(true),
             |root, entry| root.subcommand(entry.command.clone()),

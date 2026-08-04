@@ -6,6 +6,7 @@ use std::os::unix::ffi::OsStringExt as _;
 use async_trait::async_trait;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use clap::error::ErrorKind;
 use clap::{Arg, ArgMatches, Command};
 use serde_json::{Value, json};
 use zero_cli::build::BuildInfo;
@@ -52,12 +53,14 @@ fn dispatcher_selects_only_an_exact_registered_first_argument() {
     let prefixed_option =
         Invocation::from_args([OsString::from("--json"), OsString::from("native-example")]);
     let help = Invocation::from_args([OsString::from("help"), OsString::from("native-example")]);
+    let root_version = Invocation::from_args([OsString::from("--version")]);
     let unknown = Invocation::from_args([OsString::from("unknown")]);
     let non_unicode = Invocation::from_args([OsString::from_vec(vec![0xff, 0xfe])]);
 
     assert!(registry.handler_for(&selected).is_some());
     assert!(registry.handler_for(&prefixed_option).is_none());
     assert!(registry.handler_for(&help).is_none());
+    assert!(registry.handler_for(&root_version).is_none());
     assert!(registry.handler_for(&unknown).is_none());
     assert!(registry.handler_for(&non_unicode).is_none());
 }
@@ -84,6 +87,32 @@ fn registry_builds_a_versioned_structured_command_root() {
     assert_eq!(
         registry.command_root().get_long_version(),
         Some(BuildInfo::current().build_id)
+    );
+}
+
+#[test]
+fn registry_renders_propagated_native_version_and_build_identity() {
+    let registry = example_registry();
+    let short_version = registry
+        .command_root()
+        .try_get_matches_from(["zero", "native-example", "-V"])
+        .unwrap_err();
+    let long_version = registry
+        .command_root()
+        .try_get_matches_from(["zero", "native-example", "--version"])
+        .unwrap_err();
+
+    assert_eq!(short_version.kind(), ErrorKind::DisplayVersion);
+    assert!(
+        short_version
+            .to_string()
+            .contains(BuildInfo::current().version)
+    );
+    assert_eq!(long_version.kind(), ErrorKind::DisplayVersion);
+    assert!(
+        long_version
+            .to_string()
+            .contains(BuildInfo::current().build_id)
     );
 }
 
