@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.373.2](https://github.com/vm0-ai/vm0/compare/api-v1.373.1...api-v1.373.2) (2026-08-04)
+
+
+### Bug Fixes
+
+* **goals:** revoke invalidated continuations ([#25059](https://github.com/vm0-ai/vm0/issues/25059)) ([1414e0a](https://github.com/vm0-ai/vm0/commit/1414e0a46ece3cd1f022297f65e654ea8bac7e01))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.164.2
+
 ## [1.373.1](https://github.com/vm0-ai/vm0/compare/api-v1.373.0...api-v1.373.1) (2026-08-04)
 
 
