@@ -121,18 +121,24 @@ def test_rejects_malformed_sensitive_url_without_logging_credentials(tmp_path, s
 
 def test_closes_http_error_response(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
+    real_close = urllib.error.HTTPError.close
+    response_closed_states: list[bool] = []
+
+    def close_and_record(error: urllib.error.HTTPError) -> None:
+        real_close(error)
+        response_closed_states.append(error.fp.closed)
 
     with (
         usage_webhook_api() as webhook,
         patch.object(time, "sleep"),
-        patch.object(urllib.error.HTTPError, "close", autospec=True) as close_mock,
+        patch.object(urllib.error.HTTPError, "close", close_and_record),
     ):
         webhook.queue_response(500)
         webhook.queue_response(500)
         _report_and_flush_model_usage(flow)
 
     assert webhook.request_count == 2
-    assert close_mock.call_count == 2
+    assert response_closed_states == [True, True]
 
 
 def test_succeeds_on_first_attempt(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
