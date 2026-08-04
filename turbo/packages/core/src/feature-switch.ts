@@ -454,13 +454,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ZeroMailReplyFollowUp]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Enable Zero Mail reply follow-up for staff after all API deployments can read Gmail event configurations with threadId.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZeroBrowser]: {
     maintainer: "liangyou@vm0.ai",
     description:

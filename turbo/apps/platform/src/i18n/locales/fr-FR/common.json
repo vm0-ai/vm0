@@ -1353,18 +1353,6 @@
       "deletedEmail": "Email supprimé : {{subject}}",
       "details": "Détails de l'email",
       "email": "Email",
-      "followUp": {
-        "action": "Suivi",
-        "active": "Suivi des réponses",
-        "activeDescription": "Les réponses sont suivies et seront rapportées dans cette conversation.",
-        "idleDescription": "Suivre les réponses et être notifié dans cette conversation.",
-        "paused": "Suivi en pause",
-        "pausedDescription": "Le suivi des réponses est actuellement en pause.",
-        "settingUp": "Configuration en cours…",
-        "submitting": "Configuration en cours…",
-        "submittingDescription": "Configuration du suivi des réponses…",
-        "tracking": "Suivi des réponses"
-      },
       "loadingDetails": "Chargement des détails de l'email",
       "needReconnect": "Besoin de reconnexion",
       "noMessage": "(Pas de message)",

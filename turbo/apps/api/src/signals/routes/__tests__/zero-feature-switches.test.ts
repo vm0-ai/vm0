@@ -1,57 +1,47 @@
-import { randomUUID } from "node:crypto";
-
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockOptionalEnv } from "../../../lib/env";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+const LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH = "zeroMailReplyFollowUp";
 
 function client() {
   return setupApp({ context })(zeroFeatureSwitchesContract);
 }
 
 describe("/api/zero/feature-switches", () => {
-  it("defaults mail reply follow-up to staff and accepts user overrides", async () => {
-    const mocks = createZeroRouteMocks(context);
-    const headers = { authorization: "Bearer clerk-session" };
-    const nonStaffUserId = `user_${randomUUID()}`;
-    const nonStaffOrgId = `org_${randomUUID()}`;
-    mockOptionalEnv("ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED", "true");
-
-    mocks.clerk.session("user_staff_feature_switch_test", STAFF_ORG_ID);
-    const staff = await accept(client().get({ headers }), [200]);
-    expect(
-      staff.body.effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp],
-    ).toBeTruthy();
-
-    mocks.clerk.session(nonStaffUserId, nonStaffOrgId);
-    const nonStaff = await accept(client().get({ headers }), [200]);
-    expect(
-      nonStaff.body.effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp],
-    ).toBeFalsy();
-
-    const overridden = await accept(
-      client().update({
-        headers,
-        body: {
-          switches: {
-            [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-          },
-        },
+  it("forces the previous Platform Mail follow-up switch off", async () => {
+    createZeroRouteMocks(context).clerk.session(
+      "user_legacy_mail_follow_up_test",
+      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      "org:member",
+    );
+    const response = await accept(
+      client().get({
+        headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
+
+    const previousPlatformSwitches: Record<string, boolean> = {
+      [LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH]: true,
+    };
+    for (const key of Object.keys(previousPlatformSwitches)) {
+      const value = response.body.effectiveSwitches[key];
+      if (value !== undefined) {
+        previousPlatformSwitches[key] = value;
+      }
+    }
+
     expect(
-      overridden.body.switches[FeatureSwitchKey.ZeroMailReplyFollowUp],
-    ).toBeTruthy();
+      response.body.effectiveSwitches[LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH],
+    ).toBeFalsy();
     expect(
-      overridden.body.effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp],
-    ).toBeTruthy();
+      previousPlatformSwitches[LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH],
+    ).toBeFalsy();
   });
 
   it("persists and activates inline templates for a non-staff org", async () => {

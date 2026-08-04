@@ -1324,18 +1324,6 @@
       "deletedEmail": "Deleted email: {{subject}}",
       "details": "Email details",
       "email": "Email",
-      "followUp": {
-        "action": "Follow up",
-        "active": "Tracking replies",
-        "activeDescription": "Replies are tracked and will be reported in this chat.",
-        "idleDescription": "Track replies and get notified in this chat.",
-        "paused": "Tracking paused",
-        "pausedDescription": "Reply tracking is currently paused.",
-        "settingUp": "Setting up…",
-        "submitting": "Setting up…",
-        "submittingDescription": "Setting up reply tracking…",
-        "tracking": "Tracking replies"
-      },
       "loadingDetails": "Loading email details",
       "needReconnect": "Need reconnect",
       "noMessage": "(No message)",
