@@ -204,8 +204,12 @@ async function fetchMetaAdsUserInfo(
     })
     .parse(await response.json());
 
+  if (!data.id) {
+    throw new Error("No user id in Meta Ads user info response");
+  }
+
   return {
-    id: data.id ?? "",
+    id: data.id,
     username: data.name ?? null,
     email: data.email ?? null,
   };
