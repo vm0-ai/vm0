@@ -282,6 +282,11 @@ export function createChatEventStorageSignals({
 }) {
   const persistentChatEvents$ = state<PersistedChatEvent[]>([]);
   const optimisticEvents$ = createOptimisticChatEventsForThread(threadId);
+  const hasOptimisticUserMessage$ = computed((get): boolean => {
+    return get(optimisticEvents$).some((entry) => {
+      return entry.optimisticUserMessageAssociation !== undefined;
+    });
+  });
   const chatEvents$ = createStoredChatEventsComputed({
     persistentEvents$: persistentChatEvents$,
     optimisticEvents$,
@@ -352,6 +357,7 @@ export function createChatEventStorageSignals({
 
   return {
     chatEvents$,
+    hasOptimisticUserMessage$,
     initialRemoteEventsResolved$,
     initializeIndexedDbEvents$,
     mergePersistentEvents$,

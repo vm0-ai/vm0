@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.37.177](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.176...sandbox-fc-v0.37.177) (2026-08-04)
+
+
+### Documentation
+
+* **sandbox-fc:** document partial cow checkout ownership ([#24977](https://github.com/vm0-ai/vm0/issues/24977)) ([7e22b79](https://github.com/vm0-ai/vm0/commit/7e22b79434813887928463e5d586c24a92d347b7))
+
+
+### Performance Improvements
+
+* measure pre-park successor handoff ([#24938](https://github.com/vm0-ai/vm0/issues/24938)) ([6e7c0aa](https://github.com/vm0-ai/vm0/commit/6e7c0aa73c51d7916efaa354f6ce1ba32b83090f))
+* **sandbox-fc:** stream raw exec responses ([#24940](https://github.com/vm0-ai/vm0/issues/24940)) ([0d032fb](https://github.com/vm0-ai/vm0/commit/0d032fb3a2b22d78b32206e3b48577c97629a7d6))
+
 ## [0.37.176](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.175...sandbox-fc-v0.37.176) (2026-08-04)
 
 

@@ -74,6 +74,39 @@ class TestOpenAIResponsesSseUsageExtractor:
             "tokens.output": 0,
         }
 
+    def test_work_limit_discards_partial_event_and_recovers(self):
+        parse_errors: list[tuple[str, str]] = []
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_parse_error=lambda event, error: parse_errors.append((event, error))
+        )
+        dense_array = b",".join([b"0"] * 40_000)
+        midpoint = len(dense_array) // 2
+
+        parse(
+            b"event: response.completed\n"
+            b'data: {"type":"response.completed","response":{"id":"resp_partial",'
+            b'"model":"gpt-5.6-sol","usage":{"input_tokens":20,"output_tokens":9}},'
+            b'"padding":[' + dense_array[:midpoint] + b"\n"
+        )
+        parse(b"data: " + dense_array[midpoint:] + b"]}\n\n")
+
+        assert usage == {}
+        assert parse_errors == [("response.completed", "work limit exceeded")]
+
+        parse(
+            b"event: response.completed\n"
+            b'data: {"type":"response.completed","response":{"id":"resp_recovered",'
+            b'"model":"gpt-5.6-sol","usage":{"input_tokens":8,"output_tokens":3}}}\n\n'
+        )
+
+        assert usage == {
+            "message_id": "resp_recovered",
+            "model": "gpt-5.6-sol",
+            "tokens.input": 8,
+            "tokens.output": 3,
+        }
+        assert parse_errors == [("response.completed", "work limit exceeded")]
+
     def test_ignores_response_in_progress(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(

@@ -127,7 +127,9 @@ _JSON_PREFILTER_MAX_STRING_BYTES = 1024
 # After this bounded prefix, fall back to the full selective extractor so rare
 # terminal events with late ``type`` fields still report usage.
 _RESPONSES_EVENT_PREFILTER_MAX_BYTES = 4096
-_RESPONSES_WEBSOCKET_MAX_WORK_UNITS = 65_536
+# Bound dense syntax and slow scalar inspection while retaining the selective
+# parser's bulk-scan path for ordinary large content strings.
+_RESPONSES_MAX_WORK_UNITS = 65_536
 _RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR = "work_limit_exceeded"
 
 
@@ -575,7 +577,10 @@ class _OpenAIResponsesSseUsageHandler:
         scalar_fields = (
             _RESPONSES_SSE_SCALAR_FIELDS if include_type else _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS
         )
-        self._extractor = JsonSelectiveExtractor(scalar_fields=scalar_fields)
+        self._extractor = JsonSelectiveExtractor(
+            scalar_fields=scalar_fields,
+            max_work_units=_RESPONSES_MAX_WORK_UNITS,
+        )
         return self._extractor
 
     def _should_include_type_scalar(self) -> bool:
@@ -656,7 +661,10 @@ class OpenAIResponsesJsonUsageExtractor:
     """
 
     def __init__(self) -> None:
-        self._extractor = JsonSelectiveExtractor(scalar_fields=_RESPONSES_RESPONSE_SCALAR_FIELDS)
+        self._extractor = JsonSelectiveExtractor(
+            scalar_fields=_RESPONSES_RESPONSE_SCALAR_FIELDS,
+            max_work_units=_RESPONSES_MAX_WORK_UNITS,
+        )
 
     def feed(self, chunk: bytes) -> None:
         self._extractor.feed(chunk)
@@ -739,7 +747,7 @@ def extract_openai_responses_usage_from_event(
     )
     extractor = JsonSelectiveExtractor(
         scalar_fields=scalar_fields,
-        max_work_units=_RESPONSES_WEBSOCKET_MAX_WORK_UNITS,
+        max_work_units=_RESPONSES_MAX_WORK_UNITS,
     )
     extractor.feed(event._body)
     result = extractor.finish()

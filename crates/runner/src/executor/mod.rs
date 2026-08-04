@@ -69,6 +69,7 @@ use api_contracts::generated::constants::runners::{
     RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
     paths::{CANONICAL_GUEST_HOME_DIR, CANONICAL_WORKING_DIR},
 };
+use guest_contracts::exec_terminal::EXEC_TERMINAL_CLEANUP_BUDGET;
 
 /// Maximum guest-side runtime budget for a single agent process (2 hours).
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
@@ -79,20 +80,25 @@ const JOB_TIMEOUT_EXIT_CODE: i32 = guest_contracts::diagnostics::AGENT_EXECUTION
 /// plus a full presigned-upload timeout without letting an unavailable backend
 /// hold runner capacity indefinitely.
 const JOB_FINALIZATION_GRACE_TIMEOUT: Duration = Duration::from_secs(90);
-/// Extra time for the host to receive guest timeout terminal proof.
-///
-/// The sandbox supervisor receives the execution budget plus finalization
-/// grace. This additional host grace covers vsock-guest's bounded
-/// supervised-process cleanup, its 5s stdout/stderr drain deadline, and normal
-/// scheduling overhead before it sends terminal proof.
-const JOB_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Host-owned allowance beyond guest terminal cleanup for scheduling,
+/// observation, and terminal proof delivery after the supervisor timeout.
+const JOB_TERMINAL_HOST_SLACK: Duration = Duration::from_millis(3_250);
+const JOB_TERMINAL_GRACE_TIMEOUT: Duration =
+    EXEC_TERMINAL_CLEANUP_BUDGET.saturating_add(JOB_TERMINAL_HOST_SLACK);
 /// Maximum time to spend writing a guest control or cancellation frame.
 const PROCESS_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
-/// Grace period for the guest to report a terminal status after cancel is sent.
-/// This covers vsock-guest's bounded supervised-process cleanup (500ms TERM
-/// grace, 1s cgroup.kill empty wait, and 250ms cgroup removal), its 5s
-/// stdout/stderr drain deadline, and normal scheduling overhead.
-const PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(8);
+/// Host-owned allowance beyond guest terminal cleanup after cancel is sent.
+const PROCESS_CANCEL_TERMINAL_HOST_SLACK: Duration = Duration::from_millis(1_250);
+const PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT: Duration =
+    EXEC_TERMINAL_CLEANUP_BUDGET.saturating_add(PROCESS_CANCEL_TERMINAL_HOST_SLACK);
+const _: () = assert!(
+    JOB_TERMINAL_GRACE_TIMEOUT.as_nanos() == 10_000_000_000,
+    "job terminal grace changed; review guest cleanup and host slack"
+);
+const _: () = assert!(
+    PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT.as_nanos() == 8_000_000_000,
+    "process cancellation terminal grace changed; review guest cleanup and host slack"
+);
 const PROCESS_CANCEL_TIMEOUTS: ProcessCancelTimeouts = ProcessCancelTimeouts {
     write: PROCESS_CANCEL_WRITE_TIMEOUT,
     terminal_grace: PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT,
