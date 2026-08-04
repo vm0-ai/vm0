@@ -41,6 +41,11 @@ export const adAttributionMetadataSchema = z
     gclid: z.string().min(1).max(200).optional(),
     gbraid: z.string().min(1).max(200).optional(),
     wbraid: z.string().min(1).max(200).optional(),
+    // GA4's browser client ID is read from the first-party _ga cookie. It is
+    // carried separately from ad click IDs so server-side GA4 events can be
+    // joined back to the browser session without treating every visitor as a
+    // Google Ads conversion.
+    ga_client_id: z.string().min(1).max(100).optional(),
     gclid_present: z.literal("true").optional(),
     gbraid_present: z.literal("true").optional(),
     wbraid_present: z.literal("true").optional(),
