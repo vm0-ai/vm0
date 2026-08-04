@@ -4493,7 +4493,7 @@
       "danger": {
         "delete": {
           "button": "Eliminar espacio de trabajo",
-          "confirmDescription": "Esto eliminará permanentemente {{workspace}} y todos sus datos. Esta acción no puede deshacerse. Escribe el nombre del espacio de trabajo para confirmarlo.",
+          "confirmDescription": "Esto eliminará permanentemente este espacio de trabajo y todos sus datos. Esta acción no puede deshacerse. Escribe confirm para continuar.",
           "description": "Elimina permanentemente este espacio de trabajo y todos sus datos. Esta acción no puede deshacerse.",
           "progress": "Eliminando...",
           "title": "Eliminar espacio de trabajo",

@@ -39,6 +39,7 @@ import {
   saveOrgProfile$,
   leaveOrg$,
   deleteOrg$,
+  WORKSPACE_DELETE_CONFIRMATION,
 } from "../../../../signals/zero-page/settings/workspace-settings-state.ts";
 import { readImageDimensions } from "./read-image-dimensions.ts";
 
@@ -306,13 +307,7 @@ function ProfileSection({
   );
 }
 
-function DangerZoneSection({
-  org,
-  isAdmin,
-}: {
-  org: OrgResponse;
-  isAdmin: boolean;
-}) {
+function DangerZoneSection({ isAdmin }: { isAdmin: boolean }) {
   const { t } = useTranslation();
   const canLeave = !isAdmin;
   const modalSignal = useGet(settingsDialogSignal$);
@@ -332,10 +327,14 @@ function DangerZoneSection({
   };
 
   const handleDelete = async () => {
-    if (deleting || deleteConfirm !== org.slug || !modalSignal) {
+    if (
+      deleting ||
+      deleteConfirm !== WORKSPACE_DELETE_CONFIRMATION ||
+      !modalSignal
+    ) {
       return;
     }
-    await deleteWorkspace(org.slug, modalSignal);
+    await deleteWorkspace(modalSignal);
   };
 
   return (
@@ -464,17 +463,14 @@ function DangerZoneSection({
                       })}
                     </DialogTitle>
                     <DialogDescription>
-                      {t(
-                        ($) => {
-                          return $.settings.workspace.danger.delete
-                            .confirmDescription;
-                        },
-                        { workspace: org.slug },
-                      )}
+                      {t(($) => {
+                        return $.settings.workspace.danger.delete
+                          .confirmDescription;
+                      })}
                     </DialogDescription>
                   </DialogHeader>
                   <Input
-                    placeholder={org.slug}
+                    placeholder={WORKSPACE_DELETE_CONFIRMATION}
                     value={deleteConfirm}
                     onChange={(e) => {
                       return setDeleteConfirm(e.target.value);
@@ -492,7 +488,10 @@ function DangerZoneSection({
                       variant="destructive"
                       size="sm"
                       onClick={onDomEventFn(handleDelete)}
-                      disabled={deleting || deleteConfirm !== org.slug}
+                      disabled={
+                        deleting ||
+                        deleteConfirm !== WORKSPACE_DELETE_CONFIRMATION
+                      }
                     >
                       {deleting
                         ? t(($) => {
@@ -528,7 +527,7 @@ export function OrgGeneralTab() {
   return (
     <div className="flex flex-col gap-8">
       <ProfileSection org={org} isAdmin={isAdmin} />
-      <DangerZoneSection org={org} isAdmin={isAdmin} />
+      <DangerZoneSection isAdmin={isAdmin} />
     </div>
   );
 }

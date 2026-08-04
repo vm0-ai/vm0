@@ -4424,7 +4424,7 @@
       "danger": {
         "delete": {
           "button": "Delete workspace",
-          "confirmDescription": "This will permanently delete {{workspace}} and all its data. This action cannot be undone. Type the workspace name to confirm.",
+          "confirmDescription": "This will permanently delete this workspace and all its data. This action cannot be undone. Type confirm to continue.",
           "description": "Permanently delete this workspace and all its data. This action cannot be undone.",
           "progress": "Deleting...",
           "title": "Delete workspace",

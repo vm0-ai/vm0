@@ -24,7 +24,6 @@ export {
   inviteZeroOrgMember,
   removeZeroOrgMember,
   leaveZeroOrg,
-  deleteZeroOrg,
 } from "./domains/zero-orgs";
 
 // Domain modules - Zero Billing
