@@ -8,6 +8,7 @@ use api_contracts::generated::types::{
         checkpoints,
         storages::{FileEntryWithHash, commit, prepare},
     },
+    zero::{finance, scrape},
 };
 use serde_json::json;
 
@@ -358,4 +359,58 @@ fn generated_zero_cli_compatibility_descriptor_omits_unavailable_metadata() {
     assert_eq!(value["checksumSha256"], "a".repeat(64));
     assert!(value.get("token").is_none());
     assert!(value.get("commandArguments").is_none());
+}
+
+#[test]
+fn generated_scrape_union_preserves_the_exact_response_branch() {
+    let response: scrape::Response = serde_json::from_value(json!({
+        "requestedUrl": "https://example.com",
+        "provider": "firecrawl",
+        "creditsCharged": 2,
+        "billingQuantity": 1,
+        "format": "markdown",
+        "mode": "enhanced",
+        "billingCategory": "enhanced.markdown",
+        "result": { "markdown": "# Example" }
+    }))
+    .unwrap();
+
+    let scrape::Response::EnhancedMarkdown(response) = response else {
+        panic!("expected enhanced Markdown response branch");
+    };
+    assert_eq!(response.mode, "enhanced");
+    assert_eq!(response.result.markdown, "# Example");
+
+    let invalid = serde_json::from_value::<scrape::Response>(json!({
+        "requestedUrl": "https://example.com",
+        "provider": "firecrawl",
+        "creditsCharged": 2,
+        "billingQuantity": 1,
+        "format": "markdown",
+        "mode": "enhanced",
+        "billingCategory": "unsupported",
+        "result": { "markdown": "# Example" }
+    }));
+    assert!(invalid.is_err());
+}
+
+#[test]
+fn generated_finance_response_preserves_opaque_provider_json() {
+    let response: finance::Response = serde_json::from_value(json!({
+        "operation": "quote",
+        "provider": "apidojo",
+        "billingCategory": "request",
+        "billingQuantity": 1,
+        "creditsCharged": 3,
+        "result": {
+            "symbol": "AAPL",
+            "price": 207.5,
+            "marketState": "REGULAR"
+        }
+    }))
+    .unwrap();
+
+    assert_eq!(response.operation, finance::ResponseOperation::Quote);
+    assert_eq!(response.result["symbol"], "AAPL");
+    assert_eq!(response.result["price"], 207.5);
 }

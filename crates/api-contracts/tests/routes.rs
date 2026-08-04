@@ -55,6 +55,27 @@ fn exposes_native_zero_cli_read_only_routes() {
 }
 
 #[test]
+fn exposes_phase_two_native_zero_cli_routes() {
+    let routes = [
+        routes::zero::scrape::SCRAPE,
+        routes::zero::people_search::SEARCH,
+        routes::zero::web_search::SEARCH,
+        routes::zero::finance::SEARCH,
+        routes::zero::finance::PROFILE,
+        routes::zero::finance::QUOTE,
+        routes::zero::finance::CHART,
+        routes::zero::banking::ACCOUNTS,
+        routes::zero::banking::BALANCES,
+        routes::zero::banking::TRANSACTIONS,
+    ];
+
+    assert!(routes.iter().all(|route| route.method == Method::Post));
+    assert_eq!(routes[0].path, "/api/zero/scrape");
+    assert_eq!(routes[3].path, "/api/zero/finance/search");
+    assert_eq!(routes[9].path, "/api/zero/banking/transactions");
+}
+
+#[test]
 fn generated_routes_build_urls_from_base_api_url() {
     let route = routes::webhooks::agent::telemetry::SEND;
 
