@@ -591,8 +591,39 @@ fn display_path(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
+    use std::process::Command;
 
     use super::*;
+
+    #[test]
+    fn pty_execution_connects_all_standard_streams_to_terminals() {
+        if cfg!(target_os = "linux") && !Path::new("/dev/pts").is_dir() {
+            eprintln!("PTY integration probe skipped: /dev/pts is unavailable");
+            return;
+        }
+
+        let mut command = Command::new("/bin/sh");
+        command.arg("-c").arg(
+            r#"
+stdin_mode=pipe
+stdout_mode=pipe
+stderr_mode=pipe
+[ -t 0 ] && stdin_mode=tty
+[ -t 1 ] && stdout_mode=tty
+[ -t 2 ] && stderr_mode=tty
+IFS= read -r payload
+printf 'stdin=%s;stdout=%s;input=%s' "$stdin_mode" "$stdout_mode" "$payload"
+printf 'stderr=%s' "$stderr_mode" >&2
+"#,
+        );
+
+        let output = run_pty(command, b"fixture-input\n", 2_000).unwrap();
+
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"stdin=tty;stdout=tty;input=fixture-input");
+        assert_eq!(output.stderr, b"stderr=tty");
+    }
 
     #[test]
     fn filesystem_snapshot_records_content_modes_and_links() {

@@ -12,6 +12,8 @@ const MAX_HEADER_BYTES: usize = 64 * 1024;
 const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
 const STREAM_TIMEOUT: Duration = Duration::from_secs(5);
 
+type HeaderValues = BTreeMap<String, Vec<Vec<u8>>>;
+
 pub struct MockServer {
     address: SocketAddr,
     stop: Option<Sender<()>>,
@@ -131,6 +133,23 @@ fn handle_connection(
 }
 
 fn read_request(stream: &mut TcpStream, capture_headers: &[String]) -> Result<RequestObservation> {
+    let (mut received, header_end) = read_request_head(stream)?;
+    let (method, target, headers) = parse_request_head(&received, header_end)?;
+    let body = read_request_body(stream, &mut received, header_end, &headers)?;
+    let captured_headers = capture_request_headers(&headers, capture_headers);
+    let (path, query) = target
+        .split_once('?')
+        .map_or((target.as_str(), ""), |(path, query)| (path, query));
+    Ok(RequestObservation {
+        method,
+        path: path.to_owned(),
+        query: query.to_owned(),
+        body,
+        headers: captured_headers,
+    })
+}
+
+fn read_request_head(stream: &mut TcpStream) -> Result<(Vec<u8>, usize)> {
     let mut received = Vec::new();
     let header_end = loop {
         if let Some(position) = find_bytes(&received, b"\r\n\r\n") {
@@ -155,7 +174,13 @@ fn read_request(stream: &mut TcpStream, capture_headers: &[String]) -> Result<Re
             .ok_or_else(|| HarnessError::new("invalid mock HTTP read length"))?;
         received.extend_from_slice(bytes);
     };
+    Ok((received, header_end))
+}
 
+fn parse_request_head(
+    received: &[u8],
+    header_end: usize,
+) -> Result<(String, String, HeaderValues)> {
     let header_bytes = received
         .get(..header_end.saturating_sub(4))
         .ok_or_else(|| HarnessError::new("invalid mock HTTP header boundary"))?;
@@ -183,7 +208,7 @@ fn read_request(stream: &mut TcpStream, capture_headers: &[String]) -> Result<Re
         )));
     }
 
-    let mut headers: BTreeMap<String, Vec<Vec<u8>>> = BTreeMap::new();
+    let mut headers = HeaderValues::new();
     for line in lines {
         let (name, value) = line
             .split_once(':')
@@ -192,7 +217,15 @@ fn read_request(stream: &mut TcpStream, capture_headers: &[String]) -> Result<Re
         let value = value.trim().as_bytes().to_vec();
         headers.entry(name).or_default().push(value);
     }
+    Ok((method, target, headers))
+}
 
+fn read_request_body(
+    stream: &mut TcpStream,
+    received: &mut Vec<u8>,
+    header_end: usize,
+    headers: &HeaderValues,
+) -> Result<Vec<u8>> {
     if headers
         .get("transfer-encoding")
         .is_some_and(|values| !values.is_empty())
@@ -201,7 +234,7 @@ fn read_request(stream: &mut TcpStream, capture_headers: &[String]) -> Result<Re
             "chunked mock HTTP request bodies are not supported by schema v1",
         ));
     }
-    let content_length = parse_content_length(&headers)?;
+    let content_length = parse_content_length(headers)?;
     if content_length > MAX_BODY_BYTES {
         return Err(HarnessError::new(format!(
             "mock HTTP request body exceeds {MAX_BODY_BYTES} bytes"
@@ -222,26 +255,23 @@ fn read_request(stream: &mut TcpStream, capture_headers: &[String]) -> Result<Re
         .get(header_end..body_end)
         .ok_or_else(|| HarnessError::new("invalid mock HTTP body boundary"))?
         .to_vec();
+    Ok(body)
+}
 
+fn capture_request_headers(
+    headers: &HeaderValues,
+    capture_headers: &[String],
+) -> BTreeMap<String, Vec<u8>> {
     let mut captured_headers = BTreeMap::new();
     for name in capture_headers {
         if let Some(values) = headers.get(name) {
             captured_headers.insert(name.clone(), join_header_values(values));
         }
     }
-    let (path, query) = target
-        .split_once('?')
-        .map_or((target.as_str(), ""), |(path, query)| (path, query));
-    Ok(RequestObservation {
-        method,
-        path: path.to_owned(),
-        query: query.to_owned(),
-        body,
-        headers: captured_headers,
-    })
+    captured_headers
 }
 
-fn parse_content_length(headers: &BTreeMap<String, Vec<Vec<u8>>>) -> Result<usize> {
+fn parse_content_length(headers: &HeaderValues) -> Result<usize> {
     let Some(values) = headers.get("content-length") else {
         return Ok(0);
     };

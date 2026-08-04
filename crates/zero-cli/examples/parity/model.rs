@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -254,9 +255,16 @@ fn collect_case_paths(directory: &Path, paths: &mut Vec<PathBuf>) -> Result<()> 
     Ok(())
 }
 
-use std::ffi::OsStr;
-
 fn validate_case(case: &Case, path: &Path) -> Result<()> {
+    validate_case_metadata(case, path)?;
+    validate_relative_path(&case.working_directory, true, "workingDirectory", path)?;
+    validate_environment(&case.environment, path)?;
+    validate_filesystem(&case.filesystem, path)?;
+    let capture_headers = validate_mock_http(&case.mock_http, path)?;
+    validate_normalizations(&case.normalizations, &capture_headers, path)
+}
+
+fn validate_case_metadata(case: &Case, path: &Path) -> Result<()> {
     if case.schema != CASE_SCHEMA_REFERENCE || case.schema_version != CASE_SCHEMA_VERSION {
         return Err(HarnessError::new(format!(
             "{} must use schema reference {CASE_SCHEMA_REFERENCE:?} and schema version {CASE_SCHEMA_VERSION}",
@@ -275,9 +283,11 @@ fn validate_case(case: &Case, path: &Path) -> Result<()> {
             path.display()
         )));
     }
-    validate_relative_path(&case.working_directory, true, "workingDirectory", path)?;
+    Ok(())
+}
 
-    for (key, value) in &case.environment {
+fn validate_environment(environment: &BTreeMap<String, String>, path: &Path) -> Result<()> {
+    for (key, value) in environment {
         if key.is_empty() || key.contains('=') || key.contains('\0') {
             return Err(HarnessError::new(format!(
                 "{} contains invalid environment key {key:?}",
@@ -297,9 +307,12 @@ fn validate_case(case: &Case, path: &Path) -> Result<()> {
             )));
         }
     }
+    Ok(())
+}
 
+fn validate_filesystem(filesystem: &Filesystem, path: &Path) -> Result<()> {
     let mut seed_paths = BTreeSet::new();
-    for entry in &case.filesystem.seed {
+    for entry in &filesystem.seed {
         validate_relative_path(entry.path(), false, "filesystem seed path", path)?;
         if !seed_paths.insert(entry.path().to_path_buf()) {
             return Err(HarnessError::new(format!(
@@ -322,20 +335,22 @@ fn validate_case(case: &Case, path: &Path) -> Result<()> {
             }
         }
     }
+    Ok(())
+}
 
-    let capture_headers = case
-        .mock_http
+fn validate_mock_http(mock_http: &MockHttp, path: &Path) -> Result<BTreeSet<String>> {
+    let capture_headers = mock_http
         .capture_headers
         .iter()
-        .map(String::as_str)
+        .cloned()
         .collect::<BTreeSet<_>>();
-    if capture_headers.len() != case.mock_http.capture_headers.len() {
+    if capture_headers.len() != mock_http.capture_headers.len() {
         return Err(HarnessError::new(format!(
             "{} contains duplicate captureHeaders",
             path.display()
         )));
     }
-    for header in &case.mock_http.capture_headers {
+    for header in &mock_http.capture_headers {
         if !is_http_token(header) || header.bytes().any(|byte| byte.is_ascii_uppercase()) {
             return Err(HarnessError::new(format!(
                 "{} capture header {header:?} must be non-empty lowercase ASCII",
@@ -344,52 +359,62 @@ fn validate_case(case: &Case, path: &Path) -> Result<()> {
         }
     }
 
-    for exchange in &case.mock_http.exchanges {
-        let request = &exchange.request;
-        if request.method.is_empty()
-            || request.method.bytes().any(|byte| byte.is_ascii_lowercase())
-            || !request.path.starts_with('/')
-            || request.query.starts_with('?')
-        {
+    for exchange in &mock_http.exchanges {
+        validate_http_exchange(exchange, path)?;
+    }
+    Ok(capture_headers)
+}
+
+fn validate_http_exchange(exchange: &HttpExchange, path: &Path) -> Result<()> {
+    let request = &exchange.request;
+    if request.method.is_empty()
+        || request.method.bytes().any(|byte| byte.is_ascii_lowercase())
+        || !request.path.starts_with('/')
+        || request.query.starts_with('?')
+    {
+        return Err(HarnessError::new(format!(
+            "{} contains an invalid mock HTTP request definition",
+            path.display()
+        )));
+    }
+    if !(100..=599).contains(&exchange.response.status) {
+        return Err(HarnessError::new(format!(
+            "{} contains invalid mock HTTP status {}",
+            path.display(),
+            exchange.response.status
+        )));
+    }
+    for (header, value) in &exchange.response.headers {
+        if !is_http_token(header) {
             return Err(HarnessError::new(format!(
-                "{} contains an invalid mock HTTP request definition",
+                "{} contains invalid mock response header name {header:?}",
                 path.display()
             )));
         }
-        if !(100..=599).contains(&exchange.response.status) {
+        if header.eq_ignore_ascii_case("content-length")
+            || header.eq_ignore_ascii_case("connection")
+        {
             return Err(HarnessError::new(format!(
-                "{} contains invalid mock HTTP status {}",
-                path.display(),
-                exchange.response.status
+                "{} mock response must not set harness-owned header {header:?}",
+                path.display()
             )));
         }
-        for header in exchange.response.headers.keys() {
-            if !is_http_token(header) {
-                return Err(HarnessError::new(format!(
-                    "{} contains invalid mock response header name {header:?}",
-                    path.display()
-                )));
-            }
-            if header.eq_ignore_ascii_case("content-length")
-                || header.eq_ignore_ascii_case("connection")
-            {
-                return Err(HarnessError::new(format!(
-                    "{} mock response must not set harness-owned header {header:?}",
-                    path.display()
-                )));
-            }
-        }
-        for (header, value) in &exchange.response.headers {
-            if value.contains('\r') || value.contains('\n') {
-                return Err(HarnessError::new(format!(
-                    "{} mock response header {header:?} contains a line break",
-                    path.display()
-                )));
-            }
+        if value.contains('\r') || value.contains('\n') {
+            return Err(HarnessError::new(format!(
+                "{} mock response header {header:?} contains a line break",
+                path.display()
+            )));
         }
     }
+    Ok(())
+}
 
-    for normalization in &case.normalizations {
+fn validate_normalizations(
+    normalizations: &[Normalization],
+    capture_headers: &BTreeSet<String>,
+    path: &Path,
+) -> Result<()> {
+    for normalization in normalizations {
         match normalization {
             Normalization::RuntimeValue { targets, .. } if targets.is_empty() => {
                 return Err(HarnessError::new(format!(
@@ -408,7 +433,6 @@ fn validate_case(case: &Case, path: &Path) -> Result<()> {
             _ => {}
         }
     }
-
     Ok(())
 }
 

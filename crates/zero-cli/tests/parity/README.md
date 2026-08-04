@@ -10,6 +10,10 @@ The command builds the public TypeScript package artifact, builds the
 runner-bundled `zero-cli`, runs the harness self-tests, and then executes every
 case under `v1/cases/` against both executables.
 
+The checked-in help cases exercise both `pipe` and `pty`. A focused harness
+self-test also verifies that PTY stdin, stdout, and stderr independently report
+TTY status while preserving separate output capture.
+
 ## Execution boundary
 
 Each implementation runs as a child process with the same fixture-defined
