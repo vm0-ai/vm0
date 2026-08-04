@@ -15,8 +15,9 @@ use std::path::{Component, Path, PathBuf};
 use thiserror::Error;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+const ARTIFACT_FILE_IDENTITY_V2_DOMAIN: &[u8] = b"vm0-artifact-file-identity-v2\0";
 
-/// Walk directory and compute SHA-256 for each file, skipping `.git` and `.vm0`.
+/// Walk directory and compute byte-and-mode identity for each file, skipping `.git` and `.vm0`.
 #[cfg(target_os = "linux")]
 pub(super) fn collect_file_metadata(dir_path: &str) -> Result<Vec<FileEntry>, ArchiveError> {
     let mut files = Vec::new();
@@ -103,7 +104,7 @@ fn walk_entries(
                 max_path_bytes: STORAGE_MANIFEST_MAX_PATH_BYTES,
             });
         }
-        match compute_file_hash_from_reader(file) {
+        match compute_file_identity_from_reader(file, archive_mode(&metadata)) {
             Ok((hash, size)) => {
                 *path_bytes = observed_path_bytes;
                 out.push(FileEntry {
@@ -151,12 +152,24 @@ fn artifact_path_component<'a>(
 }
 
 #[cfg(test)]
-fn compute_file_hash(path: &Path) -> Result<(String, u64), std::io::Error> {
-    compute_file_hash_from_reader(std::fs::File::open(path)?)
+fn compute_file_identity(path: &Path) -> Result<(String, u64), std::io::Error> {
+    let file = File::open(path)?;
+    let metadata = file.metadata()?;
+    compute_file_identity_from_reader(file, archive_mode(&metadata))
 }
 
-fn compute_file_hash_from_reader(mut reader: impl Read) -> Result<(String, u64), std::io::Error> {
+fn artifact_file_identity_hasher(mode: u32) -> Sha256 {
     let mut hasher = Sha256::new();
+    hasher.update(ARTIFACT_FILE_IDENTITY_V2_DOMAIN);
+    hasher.update(mode.to_be_bytes());
+    hasher
+}
+
+fn compute_file_identity_from_reader(
+    mut reader: impl Read,
+    mode: u32,
+) -> Result<(String, u64), std::io::Error> {
+    let mut hasher = artifact_file_identity_hasher(mode);
     let mut buf = [0u8; 8192];
     let mut total = 0u64;
     loop {
@@ -214,9 +227,9 @@ pub(super) enum ArchiveError {
         actual: u64,
     },
     #[error(
-        "archive file {path:?} content changed after manifest collection: expected sha256 {expected}, got {actual}"
+        "archive file {path:?} identity changed after manifest collection: expected {expected}, got {actual}"
     )]
-    HashMismatch {
+    IdentityMismatch {
         path: String,
         expected: String,
         actual: String,
@@ -290,7 +303,7 @@ pub(super) fn create_archive(
 /// root/child path opening used for archive creation, then verifies that
 /// manifest paths are still non-empty relative paths with no root, prefix, `.`,
 /// or `..` components, entries are still regular files, and file size plus
-/// SHA-256 still match the pre-walked manifest.
+/// byte-and-mode identity still match the pre-walked manifest.
 /// Empty manifests still validate readable artifact-root access through the
 /// no-follow root-opening path.
 ///
@@ -349,7 +362,7 @@ fn consume_verified_archive_file(
     consume: impl FnOnce(&Metadata, &mut ArchiveFileReader<File>) -> Result<(), ArchiveError>,
 ) -> Result<(), ArchiveError> {
     let (file, metadata) = open_manifest_file(root, entry)?;
-    let mut reader = ArchiveFileReader::new(file, entry.size);
+    let mut reader = ArchiveFileReader::new(file, entry.size, archive_mode(&metadata));
     consume(&metadata, &mut reader)?;
 
     let actual_hash = reader
@@ -359,7 +372,7 @@ fn consume_verified_archive_file(
             source,
         })?;
     if actual_hash != entry.hash {
-        return Err(ArchiveError::HashMismatch {
+        return Err(ArchiveError::IdentityMismatch {
             path: entry.path.clone(),
             expected: entry.hash.clone(),
             actual: actual_hash,
@@ -471,11 +484,11 @@ struct ArchiveFileReader<R> {
 }
 
 impl<R> ArchiveFileReader<R> {
-    fn new(inner: R, size: u64) -> Self {
+    fn new(inner: R, size: u64, mode: u32) -> Self {
         Self {
             inner,
             remaining: size,
-            hasher: Sha256::new(),
+            hasher: artifact_file_identity_hasher(mode),
         }
     }
 
@@ -1004,12 +1017,12 @@ mod tests {
         let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
         std::fs::write(root.join("target.txt"), "after!").unwrap();
 
-        assert_archive_inputs_rejected(root, &files, &["target.txt", "content changed"]).unwrap();
+        assert_archive_inputs_rejected(root, &files, &["target.txt", "identity changed"]).unwrap();
     }
 
     #[test]
     fn archive_reader_rejects_extra_bytes_after_declared_size() {
-        let mut reader = ArchiveFileReader::new(Cursor::new(b"abcdef".as_slice()), 3);
+        let mut reader = ArchiveFileReader::new(Cursor::new(b"abcdef".as_slice()), 3, 0o644);
         let mut archived = Vec::new();
 
         io::copy(&mut reader, &mut archived).unwrap();
@@ -1226,32 +1239,32 @@ mod tests {
     }
 
     #[test]
-    fn compute_file_hash_known_value() {
+    fn compute_file_identity_known_value() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.txt");
         std::fs::write(&path, "hello world").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-        let (hash, size) = compute_file_hash(&path).unwrap();
+        let (hash, size) = compute_file_identity(&path).unwrap();
         assert_eq!(size, 11);
-        // SHA-256 of "hello world"
         assert_eq!(
             hash,
-            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+            "6f69406f7b21e3d9a7e458aa935c68b71b7cf42f65bca5026410573e351a9da8"
         );
     }
 
     #[test]
-    fn compute_file_hash_empty_file() {
+    fn compute_file_identity_empty_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("empty.txt");
         std::fs::write(&path, "").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-        let (hash, size) = compute_file_hash(&path).unwrap();
+        let (hash, size) = compute_file_identity(&path).unwrap();
         assert_eq!(size, 0);
-        // SHA-256 of empty string
         assert_eq!(
             hash,
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            "8c3d521e5e864a97dade01f390d422ac29653fb3d03624893971fcedd4bc0dff"
         );
     }
 

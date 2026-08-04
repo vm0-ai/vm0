@@ -88,10 +88,10 @@ async fn snapshot_artifact_plan(
             ));
         }
     };
-    // Skip the VAS round-trips when the mount is byte-identical to what
-    // was originally mounted. `version_id` in VAS *is* the content hash
-    // (same SHA-256 the web producer emits), so an equality check on the
-    // locally-recomputed hash is sufficient — no extra metadata needed.
+    // Skip the VAS round-trips when the mount has the same file bytes and Unix
+    // modes as the version that was originally mounted. `version_id` in VAS is
+    // the deterministic storage identity, so an equality check on the locally
+    // recomputed value is sufficient.
     // See #10967 for the ~3.9s-per-checkpoint motivation.
     let skip_check_start = std::time::Instant::now();
     let content_hash_start = std::time::Instant::now();

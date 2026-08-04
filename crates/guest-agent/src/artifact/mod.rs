@@ -1,4 +1,4 @@
-//! VAS artifact upload — SHA-256 hashing, tar.gz creation, S3 presigned upload.
+//! VAS artifact upload — file byte-and-mode identity, tar.gz creation, S3 presigned upload.
 //!
 //! Flow (caller first walks the mount via [`walk_files_for_checkpoint`], then
 //! invokes [`create_snapshot`] with the pre-walked file list):
@@ -35,6 +35,7 @@ pub(crate) struct FileEntry {
     /// UTF-8 relative protocol path used in prepare/commit payloads, manifests,
     /// and archive creation. Do not derive this from lossy filesystem conversion.
     pub(crate) path: String,
+    /// Opaque identity for the file bytes and Unix mode persisted in the archive.
     pub(crate) hash: String,
     pub(crate) size: u64,
 }
@@ -156,7 +157,7 @@ impl WalkFilesError {
 pub(crate) async fn walk_files_for_checkpoint(
     mount_path: &str,
 ) -> Result<Vec<FileEntry>, WalkFilesError> {
-    log_info!(LOG_TAG, "Computing file hashes...");
+    log_info!(LOG_TAG, "Computing file identities...");
     let hash_start = std::time::Instant::now();
     let mount = mount_path.to_string();
     let files_result =
