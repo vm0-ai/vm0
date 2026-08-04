@@ -4,7 +4,7 @@ import { getStoredAdAttributionMetadata } from "../bootstrap/ad-attribution.ts";
 
 const STORED_AD_ATTRIBUTION_KEY = "vm0.adAttribution";
 
-describe("GA4 client ID attribution", () => {
+describe("ga4 client id attribution", () => {
   afterEach(() => {
     window.sessionStorage.removeItem(STORED_AD_ATTRIBUTION_KEY);
   });
@@ -25,7 +25,7 @@ describe("GA4 client ID attribution", () => {
         window.sessionStorage,
         "_ga=GA1.1.123456789.987654321",
       ),
-    ).toEqual({
+    ).toStrictEqual({
       source_type: "paid",
       gclid: "click-123",
       gclid_present: "true",
@@ -41,7 +41,7 @@ describe("GA4 client ID attribution", () => {
         window.sessionStorage,
         "_ga=GA1.1.123456789.987654321",
       ),
-    ).toEqual({ ga_client_id: "123456789.987654321" });
+    ).toStrictEqual({ ga_client_id: "123456789.987654321" });
   });
 
   it("ignores malformed analytics cookies", () => {
