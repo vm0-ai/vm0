@@ -55,7 +55,7 @@ describe("organization general settings", () => {
     await openGeneralTab();
 
     await waitFor(() => {
-      expect(screen.getByRole("img", { name: "old-slug" })).toHaveAttribute(
+      expect(screen.getByRole("img", { name: "Old Name" })).toHaveAttribute(
         "src",
         logoUrl,
       );
@@ -147,7 +147,7 @@ describe("organization general settings", () => {
     await openGeneralTab();
 
     await waitFor(() => {
-      expect(screen.getByRole("img", { name: "acme" })).toHaveAttribute(
+      expect(screen.getByRole("img", { name: "Acme" })).toHaveAttribute(
         "src",
         initialLogoUrl,
       );
@@ -166,7 +166,7 @@ describe("organization general settings", () => {
 
     await waitFor(() => {
       expect(capturedLogoName).toBe("workspace-logo.png");
-      expect(screen.getByRole("img", { name: "acme" })).toHaveAttribute(
+      expect(screen.getByRole("img", { name: "Acme" })).toHaveAttribute(
         "src",
         uploadedLogoUrl,
       );
@@ -195,7 +195,7 @@ describe("organization general settings", () => {
       new File(["first"], "first-logo.png", { type: "image/png" }),
     );
     await waitFor(() => {
-      expect(screen.getByRole("img", { name: "acme" })).toHaveAttribute(
+      expect(screen.getByRole("img", { name: "Acme" })).toHaveAttribute(
         "src",
         "blob:mock-image-2",
       );
@@ -206,7 +206,7 @@ describe("organization general settings", () => {
       new File(["second"], "second-logo.png", { type: "image/png" }),
     );
     await waitFor(() => {
-      expect(screen.getByRole("img", { name: "acme" })).toHaveAttribute(
+      expect(screen.getByRole("img", { name: "Acme" })).toHaveAttribute(
         "src",
         "blob:mock-image-4",
       );
