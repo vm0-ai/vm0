@@ -6,6 +6,7 @@ import json
 import pytest
 
 from usage import (
+    create_anthropic_messages_json_usage_extractor,
     create_anthropic_messages_sse_usage_extractor,
     extract_anthropic_messages_usage_with_error_from_json,
 )
@@ -451,6 +452,44 @@ class TestAnthropicSseUsageExtractor:
             "tokens.output": 6,
         }
 
+    def test_work_limit_discards_partial_event_and_recovers(self):
+        parse_errors: list[tuple[str, str]] = []
+        lifecycle_events: list[tuple[str, str | None]] = []
+        parse, usage = create_anthropic_messages_sse_usage_extractor(
+            on_parse_error=lambda event, error: parse_errors.append((event, error)),
+            on_lifecycle_event=lambda event, block_type: lifecycle_events.append(
+                (event, block_type)
+            ),
+        )
+        dense_object_first_line = b",".join([b'"x":0'] * 10_000) + b","
+        dense_object_second_line = b",".join([b'"x":0'] * 10_000)
+
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"id":"msg_partial",'
+            b'"model":"claude-sonnet-4-6","usage":{"input_tokens":7}},'
+            b'"padding":{' + dense_object_first_line + b"\n"
+        )
+        parse(b"data: " + dense_object_second_line + b"}}\n\n")
+
+        assert usage == {}
+        assert lifecycle_events == []
+        assert parse_errors == [("message_start", "work limit exceeded")]
+
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"id":"msg_recovered",'
+            b'"model":"claude-sonnet-4-6","usage":{"input_tokens":9}}}\n\n'
+        )
+
+        assert usage == {
+            "message_id": "msg_recovered",
+            "model": "claude-sonnet-4-6",
+            "tokens.input": 9,
+        }
+        assert lifecycle_events == [("message_start", None)]
+        assert parse_errors == [("message_start", "work limit exceeded")]
+
     def test_empty_usage_dict_not_reported(self):
         """Empty model_provider_usage (SSE ran but no usage found) should not trigger report."""
         parse, usage = create_anthropic_messages_sse_usage_extractor()
@@ -591,6 +630,38 @@ class TestExtractAnthropicUsageWithErrorFromJson:
         assert result is not None
         assert result["tokens.cache_read"] == 50
         assert result["tokens.cache_creation"] == 0
+
+    def test_work_limit_accumulates_across_chunks_without_partial_usage(self):
+        extractor = create_anthropic_messages_json_usage_extractor()
+        dense_array = b",".join([b"0"] * 40_000)
+        extractor.feed(
+            b'{"id":"msg_partial","model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":50,"output_tokens":100},"padding":['
+        )
+        midpoint = len(dense_array) // 2
+        extractor.feed(dense_array[:midpoint])
+        extractor.feed(dense_array[midpoint:])
+        extractor.feed(b"]}")
+
+        assert extractor.finish() == (None, "work limit exceeded")
+
+    def test_large_discarded_ascii_content_stays_within_work_limit(self):
+        body = (
+            b'{"id":"msg_bulk","model":"claude-sonnet-4-6",'
+            b'"content":[{"type":"text","text":"'
+            + b"x" * (3 * 1024 * 1024)
+            + b'"}],"usage":{"input_tokens":50,"output_tokens":100}}'
+        )
+
+        result, error = extract_anthropic_messages_usage_with_error_from_json(body, None)
+
+        assert error is None
+        assert result == {
+            "message_id": "msg_bulk",
+            "model": "claude-sonnet-4-6",
+            "tokens.input": 50,
+            "tokens.output": 100,
+        }
 
     def test_gzip_compressed(self, headers):
         original = b'{"model":"test","usage":{"input_tokens":42}}'
