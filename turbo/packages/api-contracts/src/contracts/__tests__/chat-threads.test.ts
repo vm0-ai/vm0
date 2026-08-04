@@ -491,6 +491,8 @@ describe("chat thread generation template contract", () => {
         stylePresetId: "avatar-template:81",
         titleSnapshot: "Ada",
         previewUrl: "https://example.com/ada.jpg",
+        voiceId: "en-US-ChristopherNeural",
+        aspectRatio: "landscape",
       },
     });
 
@@ -502,6 +504,8 @@ describe("chat thread generation template contract", () => {
           stylePresetId: "avatar-template:81",
           titleSnapshot: "Ada",
           previewUrl: "https://example.com/ada.jpg",
+          voiceId: "en-US-ChristopherNeural",
+          aspectRatio: "landscape",
         },
       },
     });

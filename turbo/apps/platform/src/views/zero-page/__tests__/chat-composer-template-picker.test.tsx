@@ -16,6 +16,7 @@ import type {
 import {
   zeroAvatarVideoContract,
   type ZeroAvatarVideoAvatarsQuery,
+  type ZeroAvatarVideoVoicesQuery,
 } from "@vm0/api-contracts/contracts/zero-avatar-video";
 import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -515,28 +516,88 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("loads public avatars by page and sends the selected avatar template", async () => {
+  it("previews avatars and sends the selected avatar and voice", async () => {
     const user = userEvent.setup({ delay: null });
     const observedQueries: ZeroAvatarVideoAvatarsQuery[] = [];
+    const observedVoiceQueries: ZeroAvatarVideoVoicesQuery[] = [];
+    const avatarFilterReady = context.mocks.deferred<void>();
+    const avatarPageTwoReady = context.mocks.deferred<void>();
+    const voiceFilterReady = context.mocks.deferred<void>();
+    const voicePageTwoReady = context.mocks.deferred<void>();
+    const playSpy = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockResolvedValue(undefined);
+    const pauseSpy = vi
+      .spyOn(HTMLMediaElement.prototype, "pause")
+      .mockImplementation(() => {});
     const firstPage = Array.from({ length: 24 }, (_, index) => {
       const id = index + 1;
       return {
         id,
         name: `Avatar ${String(id)}`,
+        videoUrl: `https://example.com/avatar-${String(id)}.${index === 1 ? "jpg" : "mp4"}`,
         coverUrl: `https://example.com/avatar-${String(id)}.jpg`,
+        aspectRatio: 0,
       };
     });
     const selectedAvatar = {
       id: 81,
       name: "Ada",
+      videoUrl: "https://example.com/ada.mp4",
       coverUrl: "https://example.com/ada.jpg",
+      aspectRatio: 0,
+      gender: "male",
+      age: "young_adult",
     };
-    context.mocks.api(zeroAvatarVideoContract.avatars, ({ query, respond }) => {
-      observedQueries.push(query);
-      return respond(200, {
-        avatars: query.page === 2 ? [selectedAvatar] : firstPage,
-      });
-    });
+    const selectedVoice = {
+      id: "en-US-ChristopherNeural",
+      name: "Christopher",
+      sampleUrl: "https://example.com/christopher.mp3",
+      language: "English",
+      gender: "male",
+    };
+    const secondVoice = {
+      id: "en-US-AvaNeural",
+      name: "Ava",
+      sampleUrl: "https://example.com/ava.mp3",
+      language: "English",
+      gender: "female",
+    };
+    context.mocks.api(
+      zeroAvatarVideoContract.avatars,
+      async ({ query, respond }) => {
+        observedQueries.push(query);
+        if (query.page === 1 && query.style === "professional") {
+          await avatarFilterReady.promise;
+        }
+        if (query.page === 2) {
+          await avatarPageTwoReady.promise;
+        }
+        return respond(200, {
+          avatars: query.page === 2 ? [selectedAvatar] : firstPage,
+        });
+      },
+    );
+    context.mocks.api(
+      zeroAvatarVideoContract.voices,
+      async ({ query, respond }) => {
+        observedVoiceQueries.push(query);
+        if (query.page === 1 && query.language === "english") {
+          await voiceFilterReady.promise;
+        }
+        if (query.page === 2) {
+          await voicePageTwoReady.promise;
+        }
+        return respond(200, {
+          voices: query.page === 2 ? [secondVoice] : [selectedVoice],
+          hasMore: query.pageSize === 24 && query.page === 1,
+          filterOptions: {
+            languages: ["english", "spanish"],
+            useCases: ["narrative_story", "social_media"],
+          },
+        });
+      },
+    );
     let submittedTemplate: GenerationTemplateRequest | undefined;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -545,55 +606,284 @@ describe("chat composer templates", () => {
       },
     });
 
-    detachedSetupPage({
-      context,
-      featureSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await user.click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
-    await user.click(
-      await waitFor(() => {
-        return tabByText("Avatar");
-      }),
-    );
-
-    const dialog = screen.getByRole("dialog");
-    await within(dialog).findByLabelText("Select template Avatar 1");
-    await user.click(within(dialog).getByLabelText("Next page"));
-    const selectAvatar = await within(dialog).findByLabelText(
-      "Select template Ada",
-    );
-    expect(within(dialog).getByAltText("Ada")).toHaveAttribute(
-      "src",
-      selectedAvatar.coverUrl,
-    );
-    await user.click(selectAvatar);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove template Ada")).toBeInTheDocument();
-    });
-    const editor = await findComposerEditor();
-    await sendMessageInUI(user, editor, "Introduce our new product");
-
-    await waitFor(() => {
-      expect(observedQueries).toStrictEqual([
-        { page: 1, pageSize: 24 },
-        { page: 2, pageSize: 24 },
-      ]);
-      expect(submittedTemplate).toStrictEqual({
-        type: "video",
-        selection: {
-          stylePresetId: avatarTemplateStylePresetId(selectedAvatar.id),
-          titleSnapshot: selectedAvatar.name,
-          previewUrl: selectedAvatar.coverUrl,
-        },
+    try {
+      detachedSetupPage({
+        context,
+        featureSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
+        path: `/chats/${THREAD_ID}`,
       });
-    });
+
+      await user.click(
+        await waitFor(() => {
+          return screen.getByLabelText("Template");
+        }),
+      );
+      await user.click(
+        await waitFor(() => {
+          return tabByText("Avatar");
+        }),
+      );
+
+      const dialog = screen.getByRole("dialog");
+      await within(dialog).findByLabelText("Select template Avatar 1");
+      await user.click(within(dialog).getByLabelText("Aspect ratio: 16:9"));
+      await waitFor(() => {
+        expect(observedQueries).toContainEqual({
+          page: 1,
+          pageSize: 24,
+          aspectRatio: "landscape",
+        });
+      });
+      await user.click(within(dialog).getByText("Filters"));
+      await user.click(screen.getByLabelText("Style: All"));
+      await user.click(screen.getByRole("option", { name: "Professional" }));
+      await user.keyboard("{Escape}");
+      await waitFor(() => {
+        expect(
+          dialog.querySelector("[data-avatar-template-skeleton-grid]"),
+        ).toBeInTheDocument();
+      });
+      avatarFilterReady.resolve();
+      await waitFor(() => {
+        expect(observedQueries).toContainEqual({
+          page: 1,
+          pageSize: 24,
+          aspectRatio: "landscape",
+          style: "professional",
+        });
+      });
+      const firstCard = within(dialog).getByLabelText(
+        "Select template Avatar 1",
+      );
+      const firstPreview = firstCard.querySelector(
+        "[data-avatar-template-preview]",
+      );
+      if (!(firstPreview instanceof HTMLElement)) {
+        throw new Error("Avatar preview not found");
+      }
+      const firstVideo = firstPreview.querySelector("video");
+      if (!(firstVideo instanceof HTMLVideoElement)) {
+        throw new Error("Avatar preview video not found");
+      }
+      expect(firstPreview).toHaveClass("aspect-video");
+      expect(firstVideo).toHaveAttribute("preload", "none");
+      expect(firstVideo).toHaveAttribute("poster", firstPage[0]?.coverUrl);
+      expect(firstVideo).toHaveAttribute("src", firstPage[0]?.videoUrl);
+      fireEvent.mouseEnter(firstCard);
+      expect(playSpy).toHaveBeenCalledTimes(1);
+      expect(firstVideo.preload).toBe("metadata");
+      firstVideo.currentTime = 3;
+      fireEvent.mouseLeave(firstCard);
+      expect(pauseSpy).toHaveBeenCalledTimes(1);
+      expect(firstVideo.currentTime).toBe(0);
+      const imageOnlyPreview = within(dialog)
+        .getByAltText("Avatar 2")
+        .closest("[data-avatar-template-preview]");
+      expect(imageOnlyPreview).not.toBeNull();
+      expect(imageOnlyPreview?.querySelector("video")).toBeNull();
+
+      expect(
+        within(dialog).queryByLabelText("Next page"),
+      ).not.toBeInTheDocument();
+      const avatarScroll = dialog.querySelector(
+        "[data-avatar-template-grid-scroll]",
+      );
+      if (!(avatarScroll instanceof HTMLElement)) {
+        throw new Error("Avatar catalog scroll area not found");
+      }
+      expect(avatarScroll).toHaveClass(
+        "overflow-y-auto",
+        "[scrollbar-width:none]",
+      );
+      expect(
+        avatarScroll.querySelector("[data-avatar-catalog-toolbar]"),
+      ).toHaveClass("sticky", "top-0");
+      Object.defineProperties(avatarScroll, {
+        scrollHeight: { configurable: true, value: 1200 },
+        clientHeight: { configurable: true, value: 500 },
+        scrollTop: { configurable: true, value: 500 },
+      });
+      fireEvent.scroll(avatarScroll);
+      await within(dialog).findByText("Loading");
+      avatarPageTwoReady.resolve();
+      const selectAvatar = await within(dialog).findByLabelText(
+        "Select template Ada",
+      );
+      const adaPreview = selectAvatar.querySelector(
+        "[data-avatar-template-preview]",
+      );
+      expect(adaPreview?.querySelector("video")).toHaveAttribute(
+        "poster",
+        selectedAvatar.coverUrl,
+      );
+      await user.click(selectAvatar);
+
+      await within(dialog).findByText("Choose a voice for Ada");
+      await expect(
+        within(dialog).findByLabelText("Preview avatar video Ada"),
+      ).resolves.toBeInTheDocument();
+      const selectedAvatarCard = dialog.querySelector(
+        "[data-selected-avatar-card]",
+      );
+      expect(selectedAvatarCard).toHaveClass("rounded-xl", "bg-card");
+      expect(selectedAvatarCard).not.toHaveClass(
+        "border-primary",
+        "ring-primary",
+      );
+      const voicePicker = dialog.querySelector("[data-avatar-voice-picker]");
+      const voiceScroll = dialog.querySelector(
+        "[data-avatar-voice-list-scroll]",
+      );
+      expect(voicePicker).toHaveClass("overflow-hidden");
+      expect(voiceScroll).toHaveClass(
+        "overflow-y-auto",
+        "[scrollbar-width:none]",
+      );
+      expect(voiceScroll?.contains(selectedAvatarCard)).toBeFalsy();
+      await waitFor(() => {
+        expect(observedVoiceQueries).toContainEqual({
+          page: 1,
+          pageSize: 24,
+          gender: "male",
+          age: "young",
+        });
+      });
+      const voiceFiltersButton = within(dialog).getByText("Filters", {
+        selector: "button",
+      });
+      expect(voiceFiltersButton).not.toHaveClass(
+        "border-primary/40",
+        "text-primary",
+      );
+      await user.click(voiceFiltersButton);
+      expect(screen.getByLabelText("Gender: Male")).toBeInTheDocument();
+      expect(screen.getByLabelText("Age: Young")).toBeInTheDocument();
+      await user.click(await screen.findByLabelText("Language: All"));
+      await user.click(screen.getByRole("option", { name: "English" }));
+      await user.keyboard("{Escape}");
+      await waitFor(() => {
+        expect(
+          dialog.querySelector("[data-avatar-voice-skeleton-grid]"),
+        ).toBeInTheDocument();
+      });
+      voiceFilterReady.resolve();
+      await waitFor(() => {
+        expect(observedVoiceQueries).toContainEqual({
+          page: 1,
+          pageSize: 24,
+          language: "english",
+          gender: "male",
+          age: "young",
+        });
+      });
+      if (!(voiceScroll instanceof HTMLElement)) {
+        throw new Error("Voice catalog scroll area not found");
+      }
+      Object.defineProperties(voiceScroll, {
+        scrollHeight: { configurable: true, value: 1200 },
+        clientHeight: { configurable: true, value: 500 },
+        scrollTop: { configurable: true, value: 500 },
+      });
+      fireEvent.scroll(voiceScroll);
+      await within(dialog).findByText("Loading");
+      voicePageTwoReady.resolve();
+      await within(dialog).findByLabelText("Select voice Ava");
+      const voicePreview = within(dialog).getByLabelText(
+        "Preview voice Christopher",
+      );
+      const voiceCard = within(dialog).getByLabelText(
+        "Select voice Christopher",
+      );
+      expect(voiceCard).not.toHaveClass("hover:-translate-y-px");
+      const voiceAudio = voiceCard.querySelector("audio");
+      expect(voiceAudio).toHaveAttribute("src", selectedVoice.sampleUrl);
+      expect(voiceAudio).toHaveAttribute("preload", "none");
+      expect(within(voiceCard).queryByText("Use")).not.toBeInTheDocument();
+      const playCallsBeforeVoicePreview = playSpy.mock.calls.length;
+      await user.click(voicePreview);
+      expect(playSpy).toHaveBeenCalledTimes(playCallsBeforeVoicePreview + 1);
+      expect(
+        within(dialog).getByText("Choose a voice for Ada"),
+      ).toBeInTheDocument();
+      await user.click(voiceCard);
+
+      await waitFor(() => {
+        expect(
+          screen.getByLabelText("Remove template Ada"),
+        ).toBeInTheDocument();
+      });
+      const editor = await findComposerEditor();
+      await sendMessageInUI(user, editor, "Introduce our new product");
+
+      await waitFor(() => {
+        expect(observedQueries).toStrictEqual([
+          { page: 1, pageSize: 24, aspectRatio: "portrait" },
+          { page: 1, pageSize: 24, aspectRatio: "landscape" },
+          {
+            page: 1,
+            pageSize: 24,
+            aspectRatio: "landscape",
+            style: "professional",
+          },
+          {
+            page: 2,
+            pageSize: 24,
+            aspectRatio: "landscape",
+            style: "professional",
+          },
+        ]);
+        expect(observedVoiceQueries).toStrictEqual(
+          expect.arrayContaining([
+            { page: 1, pageSize: 1 },
+            {
+              page: 1,
+              pageSize: 24,
+              gender: "male",
+              age: "young",
+            },
+            {
+              page: 1,
+              pageSize: 24,
+              language: "english",
+              gender: "male",
+              age: "young",
+            },
+            {
+              page: 2,
+              pageSize: 24,
+              language: "english",
+              gender: "male",
+              age: "young",
+            },
+          ]),
+        );
+        expect(submittedTemplate).toStrictEqual({
+          type: "video",
+          selection: {
+            stylePresetId: avatarTemplateStylePresetId(selectedAvatar.id),
+            titleSnapshot: selectedAvatar.name,
+            previewUrl: selectedAvatar.coverUrl,
+            voiceId: selectedVoice.id,
+            aspectRatio: "landscape",
+          },
+        });
+      });
+    } finally {
+      if (!avatarFilterReady.settled()) {
+        avatarFilterReady.resolve();
+      }
+      if (!avatarPageTwoReady.settled()) {
+        avatarPageTwoReady.resolve();
+      }
+      if (!voiceFilterReady.settled()) {
+        voiceFilterReady.resolve();
+      }
+      if (!voicePageTwoReady.settled()) {
+        voicePageTwoReady.resolve();
+      }
+      playSpy.mockRestore();
+      pauseSpy.mockRestore();
+    }
   });
 
   it("selects a presentation template from the picker", async () => {

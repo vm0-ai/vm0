@@ -5478,6 +5478,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, video.runId);
 
     const avatarId = 81;
+    const avatarVoiceId = "en-US-ChristopherNeural";
     const avatar = await sendChatRun(actor, {
       agentId,
       prompt: "make a presenter video",
@@ -5487,6 +5488,8 @@ describe("CHAT-02: generation templates and attachments", () => {
           stylePresetId: avatarTemplateStylePresetId(avatarId),
           titleSnapshot: "Do not inject this avatar name",
           previewUrl: "https://example.com/untrusted-avatar.jpg",
+          voiceId: avatarVoiceId,
+          aspectRatio: "landscape",
         },
       },
     });
@@ -5494,11 +5497,11 @@ describe("CHAT-02: generation templates and attachments", () => {
     const avatarPrompt = avatarRun.appendSystemPrompt ?? "";
     expect(avatarPrompt).toContain("# Artifact Template Context");
     expect(avatarPrompt).toContain(`Public JoggAI avatar ID: ${avatarId}`);
+    expect(avatarPrompt).toContain(`Public JoggAI voice ID: ${avatarVoiceId}`);
+    expect(avatarPrompt).toContain("Aspect ratio: landscape");
+    expect(avatarPrompt).not.toContain("--list-voices");
     expect(avatarPrompt).toContain(
-      "zero generate avatar-video --provider built-in --list-voices --json",
-    );
-    expect(avatarPrompt).toContain(
-      `zero generate avatar-video --provider built-in --avatar-id ${avatarId}`,
+      `zero generate avatar-video --provider built-in --avatar-id ${avatarId} --voice-id ${avatarVoiceId} --aspect-ratio landscape`,
     );
     expect(avatarPrompt).not.toContain("Do not inject this avatar name");
     expect(avatarPrompt).not.toContain("untrusted-avatar.jpg");

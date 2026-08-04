@@ -97,7 +97,10 @@ import type {
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroAvatarVideoAvatar } from "@vm0/api-contracts/contracts/zero-avatar-video";
+import type {
+  ZeroAvatarVideoAvatar,
+  ZeroAvatarVideoVoice,
+} from "@vm0/api-contracts/contracts/zero-avatar-video";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
@@ -4814,6 +4817,9 @@ function TemplatePickerDialog({
   const setIllustrationVariantIndex = useSet(
     signals.template.setIllustrationVariantIndex$,
   );
+  const clearAvatarVoiceSelection = useSet(
+    signals.template.clearAvatarTemplateVoiceSelection$,
+  );
   const previewItem =
     presentationItems.find((item) => {
       return item.slug === previewSlug;
@@ -4885,6 +4891,7 @@ function TemplatePickerDialog({
 
   const closeTemplatePicker = () => {
     releasePreviewResources(runtime);
+    clearAvatarVoiceSelection();
     setPresentationGridScrollTop(0);
     onClose();
   };
@@ -4902,8 +4909,12 @@ function TemplatePickerDialog({
     closeTemplatePicker();
   };
 
-  const handleSelectAvatar = (avatar: ZeroAvatarVideoAvatar) => {
-    onChange(toAvatarGenerationTemplate(avatar));
+  const handleSelectAvatar = (
+    avatar: ZeroAvatarVideoAvatar,
+    voice: ZeroAvatarVideoVoice,
+    aspectRatio: "portrait" | "landscape",
+  ) => {
+    onChange(toAvatarGenerationTemplate(avatar, voice, aspectRatio));
     closeTemplatePicker();
   };
 
@@ -5013,6 +5024,9 @@ function TemplatePickerDialog({
   };
 
   const handleCategoryChange = (nextCategory: string) => {
+    if (nextCategory !== "avatar") {
+      clearAvatarVoiceSelection();
+    }
     setCategory(nextCategory);
     if (!isPreviewing) {
       prewarmTemplatePreviewsForCategory(nextCategory);
@@ -5200,7 +5214,11 @@ function TemplatePickerCategoryContent({
   onSelectIllustration: (item: IllustrationTemplateItem) => void;
   onIllustrationVariantChange: (slug: string, index: number) => void;
   onSelectVideo: (item: VideoTemplateItem) => void;
-  onSelectAvatar: (avatar: ZeroAvatarVideoAvatar) => void;
+  onSelectAvatar: (
+    avatar: ZeroAvatarVideoAvatar,
+    voice: ZeroAvatarVideoVoice,
+    aspectRatio: "portrait" | "landscape",
+  ) => void;
   onWorkflowCategoryChange: (category: string) => void;
   onSelectWorkflow: (item: WorkflowTemplateItem) => void;
   runtime: TemplatePreviewRuntime;
@@ -5302,10 +5320,7 @@ function TemplatePickerCategoryContent({
 
   if (selectedCategory === "avatar" && hasAvatarTab) {
     return (
-      <div
-        data-avatar-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
-      >
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-4">
         <AvatarTemplatePickerContent
           signals={signals}
           value={value}

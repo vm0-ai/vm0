@@ -28,6 +28,8 @@ interface VideoGenerationTemplateInput {
   readonly type: "video";
   readonly selection: {
     readonly stylePresetId: string;
+    readonly voiceId?: string;
+    readonly aspectRatio?: "portrait" | "landscape" | "square";
   };
 }
 
@@ -274,7 +276,11 @@ function buildVideoGenerationTemplatePrompt(
     generationTemplate.selection.stylePresetId,
   );
   if (avatarId !== undefined) {
-    return buildAvatarGenerationTemplatePrompt(avatarId);
+    return buildAvatarGenerationTemplatePrompt(
+      avatarId,
+      generationTemplate.selection.voiceId,
+      generationTemplate.selection.aspectRatio,
+    );
   }
 
   const template = findVideoTemplate(
@@ -310,7 +316,21 @@ function buildVideoGenerationTemplatePrompt(
 
 function buildAvatarGenerationTemplatePrompt(
   avatarId: number,
+  voiceId: string | undefined,
+  aspectRatio: "portrait" | "landscape" | "square" | undefined,
 ): GenerationTemplatePromptResult {
+  const selectedVoiceLines = voiceId
+    ? [`- Public JoggAI voice ID: ${voiceId}`]
+    : [];
+  const voiceInstructionLines = voiceId
+    ? [
+        `- Keep voice ID ${voiceId} exactly; do not list voices or substitute a different voice.`,
+      ]
+    : [
+        "- List the available voices with `zero generate avatar-video --provider built-in --list-voices --json`, applying a voice-language filter when the user specifies a language, then choose a suitable voice.",
+      ];
+  const generationVoiceId = voiceId ?? "<voice-id>";
+  const generationAspectRatio = aspectRatio ?? "portrait";
   return {
     status: "resolved",
     prompt: [
@@ -318,12 +338,14 @@ function buildAvatarGenerationTemplatePrompt(
       "Selected talking-avatar template:",
       "- Artifact type: talking-avatar video",
       `- Public JoggAI avatar ID: ${avatarId}`,
+      ...selectedVoiceLines,
+      `- Aspect ratio: ${generationAspectRatio}`,
       "",
       "When you produce a talking-avatar video from the user's request:",
       `- Keep avatar ID ${avatarId} exactly; do not list avatars or substitute a different avatar.`,
       "- Run `zero generate avatar-video -h` to inspect the current supported flags.",
-      "- List the available voices with `zero generate avatar-video --provider built-in --list-voices --json`, applying a voice-language filter when the user specifies a language, then choose a suitable voice.",
-      `- Generate with \`zero generate avatar-video --provider built-in --avatar-id ${avatarId} --voice-id <voice-id> --script "<script>"\`.`,
+      ...voiceInstructionLines,
+      `- Generate with \`zero generate avatar-video --provider built-in --avatar-id ${avatarId} --voice-id ${generationVoiceId} --aspect-ratio ${generationAspectRatio} --script "<script>"\`.`,
       "- If the user provides a public audio URL, use `--audio-url` instead of `--script`.",
       "- Return the generated `/f/` video URL as the final deliverable.",
       "- Use a connector/provider only when the user explicitly requests one.",

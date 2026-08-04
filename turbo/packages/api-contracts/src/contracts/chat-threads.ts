@@ -8,6 +8,10 @@ import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
 import { triggerSourceSchema } from "./logs";
 import { requestedRunModelSchema } from "./model-providers";
+import {
+  avatarVideoAspectRatioSchema,
+  avatarVideoVoiceIdSchema,
+} from "./zero-avatar-video";
 
 const c = initContract();
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -300,6 +304,10 @@ const videoGenerationTemplateRequestSchema = z.object({
     titleSnapshot: z.string().trim().min(1).optional(),
     /** User-visible preview snapshot for API-backed avatar templates. */
     previewUrl: z.url().optional(),
+    /** Provider voice selected for API-backed avatar templates. */
+    voiceId: avatarVideoVoiceIdSchema.optional(),
+    /** Output frame selected for API-backed avatar templates. */
+    aspectRatio: avatarVideoAspectRatioSchema.optional(),
   }),
 });
 
