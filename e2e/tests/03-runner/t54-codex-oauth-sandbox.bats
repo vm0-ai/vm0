@@ -241,7 +241,7 @@ teardown_file() {
 
     run run_compose_fixture "$AGENT_NAME" \
         "Use Bash; return its output:
-curl -sS -m 10 -o /tmp/r -w 'HTTP_CODE=%{http_code} EXIT=%{exitcode}\n' https://auth.openai.com/oauth/token; cat /tmp/r 2>/dev/null || echo NO_BODY" \
+curl -sS -m 10 -w '\nHTTP_CODE=%{http_code} EXIT=%{exitcode}\n' https://auth.openai.com/oauth/token || true" \
         '{"modelProviderType":"codex-oauth-token","realAgentInPreview":true}'
 
     assert_success
