@@ -1,8 +1,43 @@
-import { command, computed, state } from "ccstate";
+import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { command, computed, state, type Computed } from "ccstate";
 
-import type { BrowserSessionSignals } from "../chat-page/browser-session-block.ts";
+import { accept } from "../../lib/accept.ts";
+import { zeroClient$ } from "../api-client.ts";
+import {
+  createBrowserSessionSignals,
+  type BrowserSessionSignals,
+} from "../chat-page/browser-session-block.ts";
+import { pageSignal$ } from "../page-signal.ts";
 
-const browserSessionPageSignalsState$ = state<BrowserSessionSignals | null>(
+export interface BrowserSessionPageSignals {
+  readonly browser: BrowserSessionSignals;
+  readonly threadAccessible$: Computed<Promise<boolean>>;
+}
+
+export function createBrowserSessionPageSignals(
+  threadId: string,
+): BrowserSessionPageSignals {
+  const browser = createBrowserSessionSignals(threadId);
+  const threadAccessible$ = computed(async (get): Promise<boolean> => {
+    const signal = get(pageSignal$);
+    const session = await get(browser.session$);
+    signal.throwIfAborted();
+    if (session) {
+      return true;
+    }
+    const response = await accept(
+      get(zeroClient$)(chatThreadByIdContract).get({
+        params: { id: threadId },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
+    );
+    return response.status === 200;
+  });
+  return { browser, threadAccessible$ };
+}
+
+const browserSessionPageSignalsState$ = state<BrowserSessionPageSignals | null>(
   null,
 );
 
@@ -11,7 +46,7 @@ export const browserSessionPageSignals$ = computed((get) => {
 });
 
 export const setBrowserSessionPageSignals$ = command(
-  ({ set }, value: BrowserSessionSignals | null) => {
+  ({ set }, value: BrowserSessionPageSignals | null) => {
     set(browserSessionPageSignalsState$, value);
   },
 );

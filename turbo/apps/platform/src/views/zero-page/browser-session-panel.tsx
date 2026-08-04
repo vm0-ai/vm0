@@ -194,6 +194,39 @@ export function BrowserSessionNotFound() {
   );
 }
 
+export function BrowserSessionLoading() {
+  const { t } = useTranslation();
+  return (
+    <PanelFrame>
+      <div role="status" className="flex flex-1 items-center justify-center">
+        <IconLoader2 className="animate-spin text-muted-foreground" size={20} />
+        <span className="sr-only">
+          {t(($) => {
+            return $.browserSession.status.starting;
+          })}
+        </span>
+      </div>
+    </PanelFrame>
+  );
+}
+
+export function BrowserSessionUnavailable() {
+  const { t } = useTranslation();
+  return (
+    <PanelFrame>
+      <PanelMessage
+        icon={<IconBrowserOff size={26} className="text-muted-foreground" />}
+        title={t(($) => {
+          return $.browserSession.unavailable.title;
+        })}
+        description={t(($) => {
+          return $.browserSession.unavailable.description;
+        })}
+      />
+    </PanelFrame>
+  );
+}
+
 function LiveBrowserFrame({
   liveUrl,
   title,
@@ -381,39 +414,10 @@ export function BrowserSessionPanel({
   const pageSignal = useGet(pageSignal$);
 
   if (sessionLoadable.state === "loading") {
-    return (
-      <PanelFrame>
-        <div role="status" className="flex flex-1 items-center justify-center">
-          <IconLoader2
-            className="animate-spin text-muted-foreground"
-            size={20}
-          />
-          <span className="sr-only">
-            {t(($) => {
-              return $.browserSession.status.starting;
-            })}
-          </span>
-        </div>
-      </PanelFrame>
-    );
+    return <BrowserSessionLoading />;
   }
   if (sessionLoadable.state === "hasError") {
-    return (
-      <PanelFrame>
-        <PanelMessage
-          icon={<IconBrowserOff size={26} className="text-muted-foreground" />}
-          title={t(($) => {
-            return $.browserSession.unavailable.title;
-          })}
-          description={t(($) => {
-            return $.browserSession.unavailable.description;
-          })}
-        />
-      </PanelFrame>
-    );
-  }
-  if (sessionLoadable.data === null) {
-    return <BrowserSessionNotFound />;
+    return <BrowserSessionUnavailable />;
   }
 
   const session = sessionLoadable.data;
