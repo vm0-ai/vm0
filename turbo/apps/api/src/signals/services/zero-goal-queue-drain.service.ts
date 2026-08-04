@@ -15,15 +15,14 @@ import {
 import {
   loadGoalQueueTarget,
   loadNextGoalQueueEvent,
-  rejectGoalQueueEvent,
   revokeGoalQueueEvent,
+  settleFailedGoalQueueEvent,
   type GoalQueueTarget,
   type PendingGoalQueueEvent,
 } from "./chat-goal-queue.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
 import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
-import { pauseActiveGoalForThread } from "./zero-goal.service";
 import type { ModelFirstPin } from "./zero-model-selection.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 
@@ -252,26 +251,6 @@ async function publishGoalQueueChanged(
   signal.throwIfAborted();
 }
 
-async function rejectGoalEvent(
-  db: Db,
-  event: PendingGoalQueueEvent,
-  reason: string,
-  signal: AbortSignal,
-): Promise<boolean> {
-  const rejected = await rejectGoalQueueEvent(db, {
-    chatThreadId: event.chatThreadId,
-    eventId: event.id,
-    orgId: event.orgId,
-    userId: event.userId,
-    reason,
-  });
-  signal.throwIfAborted();
-  if (rejected) {
-    await publishGoalQueueChanged(event, signal);
-  }
-  return rejected;
-}
-
 async function revokeGoalEvent(
   db: Db,
   event: PendingGoalQueueEvent,
@@ -464,36 +443,31 @@ export const drainGoalQueueForThread$ = command(
         return;
       }
 
-      const stillValid = await loadGoalQueueTarget(db, event);
-      signal.throwIfAborted();
-      if (!stillValid) {
-        await revokeGoalEvent(db, event, signal);
-        return;
-      }
       if (result.kind === "enqueued") {
+        const stillValid = await loadGoalQueueTarget(db, event);
+        signal.throwIfAborted();
+        if (!stillValid) {
+          await revokeGoalEvent(db, event, signal);
+        }
         return;
       }
 
-      const rejected = await rejectGoalEvent(
-        db,
+      const settlement = await settleFailedGoalQueueEvent(db, {
         event,
-        result.response.body.error.message,
-        signal,
-      );
-      const paused = rejected
-        ? await pauseActiveGoalForThread(db, {
-            orgId: stillValid.orgId,
-            userId: stillValid.userId,
-            threadId: stillValid.threadId,
-          })
-        : null;
+        reason: result.response.body.error.message,
+      });
       signal.throwIfAborted();
+      if (settlement.kind !== "not_pending") {
+        await publishGoalQueueChanged(event, signal);
+      }
       log.warn("Goal queue event failed to create a run", {
         eventId: event.id,
-        goalId: stillValid.goalId,
+        goalId:
+          settlement.kind === "rejected" ? settlement.goalId : event.goalId,
         code: result.response.body.error.code,
-        rejected,
-        pauseResult: paused?.kind ?? "not_paused",
+        rejected: settlement.kind === "rejected",
+        pauseResult: settlement.kind === "rejected" ? "ok" : "not_paused",
+        settlement: settlement.kind,
       });
       return;
     }

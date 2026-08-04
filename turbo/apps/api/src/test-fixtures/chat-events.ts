@@ -1087,6 +1087,7 @@ export async function holdChatThreadRowLockFixture(args: {
 }): Promise<{
   readonly release: () => void;
   readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
   readonly firstBlockedStatementKind: () => Promise<ChatThreadBlockedStatementKind | null>;
 }> {
   const started = createDeferredPromise<number>(args.signal);
@@ -1124,6 +1125,9 @@ export async function holdChatThreadRowLockFixture(args: {
       }
     },
     done,
+    blockedWaiterCount: async () => {
+      return await transitiveBlockedWaiterCount(holderPid);
+    },
     firstBlockedStatementKind: async () => {
       return await firstDirectBlockedStatementKind(holderPid);
     },

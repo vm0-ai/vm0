@@ -24,6 +24,7 @@ import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
+  holdChatThreadRowLockFixture,
   holdModelPolicyReadsFixture,
   insertQueuedSlackMissingContextFixture,
   readChatEventContextFixture,
@@ -1963,6 +1964,104 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     expect(paused.body.status).toBe("paused");
     modelPolicyReads.release();
     await modelPolicyReads.done;
+
+    const events = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return items.some((event) => {
+          return (
+            event.eventType === "control.revoke" &&
+            event.revokesEventId === goalEventId
+          );
+        });
+      },
+    );
+    expect(events.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "control.revoke",
+        revokesEventId: goalEventId,
+        content: null,
+      }),
+    );
+    expect(events.events).not.toContainEqual(
+      expect.objectContaining({
+        eventType: "input.rejected",
+        revokesEventId: goalEventId,
+      }),
+    );
+    const goal = await accept(
+      goalsClient().get({
+        headers: zeroGoalHeaders(actor, first.runId),
+      }),
+      [200],
+    );
+    expect(goal.body.status).toBe("paused");
+    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
+  }, 90_000);
+
+  it("revokes a goal invalidated at the final failed-launch boundary", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before the final goal failure settlement",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await createGoalForRun(
+      actor,
+      first.runId,
+      "revoke the goal invalidated at final settlement",
+    );
+    await misc.deleteOrgModelProvider(actor, "anthropic-api-key", [204]);
+    const modelPolicyReads = await holdModelPolicyReadsFixture({
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      modelPolicyReads.release();
+      await modelPolicyReads.done;
+    });
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before the final goal launch failure"),
+    ]);
+
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await expect
+      .poll(modelPolicyReads.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+
+    const [goalEventId] = await goalQueueEventIds(first.threadId);
+    expect(goalEventId).toBeDefined();
+    if (!goalEventId) {
+      throw new Error("Expected the final-boundary goal queue event");
+    }
+    const threadLock = await holdChatThreadRowLockFixture({
+      threadId: first.threadId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      threadLock.release();
+      await threadLock.done;
+    });
+
+    const pauseRequest = goalsClient().pause({
+      headers: zeroGoalHeaders(actor, first.runId),
+    });
+    await expect.poll(threadLock.firstBlockedStatementKind).toBe("update");
+
+    modelPolicyReads.release();
+    await modelPolicyReads.done;
+    await expect.poll(threadLock.blockedWaiterCount).toBeGreaterThanOrEqual(2);
+    threadLock.release();
+
+    const paused = await accept(pauseRequest, [200]);
+    expect(paused.body.status).toBe("paused");
+    await threadLock.done;
+    await flushWaitUntilForTest();
 
     const events = await waitForThreadMessages(
       actor,

@@ -5,6 +5,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq, gt, isNull, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
+import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import {
   listPendingChatQueueEvents,
@@ -18,7 +19,12 @@ import {
 } from "./zero-chat-event.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import {
+  appendGoalEventMarker,
+  hiddenGoalStateEvent,
+} from "./zero-chat-goal-marker.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import { lockGoalThread } from "./zero-goal-lock.service";
 
 const goalEventRevoker = alias(chatEvents, "goal_event_revoker");
 const laterGoalChange = alias(chatEvents, "later_goal_change");
@@ -45,6 +51,11 @@ export interface GoalQueueTarget {
   readonly objective: string;
   readonly objectiveBrief: string;
 }
+
+type FailedGoalQueueSettlement =
+  | { readonly kind: "not_pending" }
+  | { readonly kind: "revoked" }
+  | { readonly kind: "rejected"; readonly goalId: string };
 
 async function pendingGoalEventExists(
   db: Pick<Db, "select">,
@@ -248,24 +259,43 @@ export async function revokeGoalQueueEvent(
   });
 }
 
-/** Consume a failed goal trigger through the canonical reject edge. */
-export async function rejectGoalQueueEvent(
+/**
+ * Settle a failed launch against the final goal state. Goal lifecycle writers
+ * take the advisory lock before appending their queue marker, so this keeps
+ * validity, event transition, and the exact-goal pause in one serialization
+ * order and one transaction.
+ */
+export async function settleFailedGoalQueueEvent(
   db: Db,
   args: {
-    readonly chatThreadId: string;
-    readonly eventId: string;
-    readonly orgId: string;
-    readonly userId: string;
+    readonly event: PendingGoalQueueEvent;
     readonly reason: string;
   },
-): Promise<boolean> {
+): Promise<FailedGoalQueueSettlement> {
   return await db.transaction(async (tx) => {
-    if (!(await lockChatQueueThread(tx, args.chatThreadId))) {
-      return false;
+    await lockGoalThread(tx, args.event.chatThreadId);
+    if (!(await lockChatQueueThread(tx, args.event.chatThreadId))) {
+      return { kind: "not_pending" };
     }
-    if (!(await pendingGoalEventStillExists(tx, args))) {
-      return false;
+    if (
+      !(await pendingGoalEventStillExists(tx, {
+        chatThreadId: args.event.chatThreadId,
+        eventId: args.event.id,
+      }))
+    ) {
+      return { kind: "not_pending" };
     }
+
+    const goal = await loadGoalQueueTarget(tx, args.event);
+    if (!goal) {
+      const revoked = await revokeChatEvent(tx, args.event.id, {
+        chatThreadId: args.event.chatThreadId,
+        eventType: "control.revoke",
+        runId: null,
+      });
+      return revoked ? { kind: "revoked" } : { kind: "not_pending" };
+    }
+
     const [payload] = await tx
       .select({
         userMessage: chatEvents.userMessage,
@@ -275,28 +305,29 @@ export async function rejectGoalQueueEvent(
       .leftJoin(
         threadGoals,
         and(
+          eq(threadGoals.id, goal.goalId),
           eq(threadGoals.chatThreadId, chatEvents.chatThreadId),
-          eq(threadGoals.orgId, args.orgId),
-          eq(threadGoals.ownerUserId, args.userId),
+          eq(threadGoals.orgId, goal.orgId),
+          eq(threadGoals.ownerUserId, goal.userId),
         ),
       )
       .where(
         and(
-          eq(chatEvents.id, args.eventId),
-          eq(chatEvents.chatThreadId, args.chatThreadId),
+          eq(chatEvents.id, args.event.id),
+          eq(chatEvents.chatThreadId, args.event.chatThreadId),
         ),
       )
       .limit(1);
     if (!payload) {
-      return false;
+      return { kind: "not_pending" };
     }
     const goalPart = payload.userMessage?.parts.find((part) => {
       return part.type === "goal";
     });
     const objectiveBrief =
       goalPart?.goalBrief ?? payload.currentGoalObjectiveBrief ?? "Goal";
-    const rejected = await replaceChatEvent(tx, args.eventId, {
-      chatThreadId: args.chatThreadId,
+    const rejected = await replaceChatEvent(tx, args.event.id, {
+      chatThreadId: args.event.chatThreadId,
       eventType: "input.rejected",
       userMessage: createUserMessageDocument({
         text: null,
@@ -308,6 +339,30 @@ export async function rejectGoalQueueEvent(
       runId: null,
       error: args.reason,
     });
-    return rejected !== null;
+    if (!rejected) {
+      return { kind: "not_pending" };
+    }
+
+    const [paused] = await tx
+      .update(threadGoals)
+      .set({ status: "paused", updatedAt: nowDate() })
+      .where(
+        and(
+          eq(threadGoals.id, goal.goalId),
+          eq(threadGoals.chatThreadId, goal.threadId),
+          eq(threadGoals.orgId, goal.orgId),
+          eq(threadGoals.ownerUserId, goal.userId),
+          eq(threadGoals.status, "active"),
+        ),
+      )
+      .returning({ goalId: threadGoals.id });
+    if (!paused) {
+      throw new Error("Failed to pause the validated goal queue target");
+    }
+    await appendGoalEventMarker(tx, {
+      chatThreadId: goal.threadId,
+      event: hiddenGoalStateEvent("paused"),
+    });
+    return { kind: "rejected", goalId: paused.goalId };
   });
 }
