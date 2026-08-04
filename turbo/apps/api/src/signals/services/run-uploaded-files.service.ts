@@ -15,8 +15,8 @@ import { settle } from "../utils";
 import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
 import {
-  scheduleVideoArtifactPreviewRender$,
-  type VideoArtifactPreviewRenderArgs,
+  scheduleArtifactPreviewRender$,
+  type RenderArtifactPreviewArgs,
 } from "./artifact-preview.service";
 
 interface RecordWebUploadedFileArgs {
@@ -110,7 +110,7 @@ function videoArtifactPreviewArgs(
     readonly contentType: string | null;
   },
   row: RecordedUploadedFile | undefined,
-): VideoArtifactPreviewRenderArgs | null {
+): RenderArtifactPreviewArgs | null {
   if (
     !row ||
     row.previewImageUrl ||
@@ -312,7 +312,7 @@ export const recordWebUploadedFile$ = command(
     await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleVideoArtifactPreviewRender$,
+      scheduleArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
@@ -406,7 +406,7 @@ export const recordTelegramUploadedFile$ = command(
     await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleVideoArtifactPreviewRender$,
+      scheduleArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
@@ -538,7 +538,7 @@ export const recordGithubUploadedFile$ = command(
     await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleVideoArtifactPreviewRender$,
+      scheduleArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
@@ -610,7 +610,7 @@ export const recordFeishuUploadedFile$ = command(
     await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleVideoArtifactPreviewRender$,
+      scheduleArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
@@ -682,7 +682,7 @@ export const recordTeamsUploadedFile$ = command(
     await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleVideoArtifactPreviewRender$,
+      scheduleArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
@@ -765,7 +765,7 @@ export const recordAgentPhoneUploadedFile$ = command(
     await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleVideoArtifactPreviewRender$,
+      scheduleArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
@@ -848,7 +848,7 @@ export const recordSlackUploadedFile$ = command(
     await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
-      scheduleVideoArtifactPreviewRender$,
+      scheduleArtifactPreviewRender$,
       videoArtifactPreviewArgs(
         {
           runId: args.runId,
