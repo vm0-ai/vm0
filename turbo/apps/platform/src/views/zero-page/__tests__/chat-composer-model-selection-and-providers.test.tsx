@@ -84,12 +84,12 @@ beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
 
-function mockPreRolloutImageRecognitionApi(): void {
+function mockUnsupportedImageRecognitionApi(): void {
   context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
     return respond(200, {
       switches: {},
       effectiveSwitches: {},
-      supportsImageRecognition: true,
+      supportsImageRecognition: false,
     });
   });
 }
@@ -1913,11 +1913,11 @@ describe("chat composer models", () => {
     });
   });
 
-  it("keeps unsupported visual files out when the API has not completed rollout", async () => {
+  it("keeps unsupported visual files out when the API disables image recognition", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("glm-5.1");
     mockAgent();
-    mockPreRolloutImageRecognitionApi();
+    mockUnsupportedImageRecognitionApi();
     context.mocks.upload.success({
       id: "notes-upload",
       filename: "notes.txt",
@@ -2219,11 +2219,11 @@ describe("chat composer models", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("hides an accepted visual attachment against a pre-rollout API", async () => {
+  it("hides an accepted visual attachment when the API disables image recognition", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
-    mockPreRolloutImageRecognitionApi();
+    mockUnsupportedImageRecognitionApi();
     context.mocks.upload.success({
       id: "visual-model-switch",
       filename: "storyboard.png",
