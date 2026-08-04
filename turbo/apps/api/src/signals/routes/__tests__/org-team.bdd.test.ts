@@ -370,8 +370,9 @@ describe("ORG-01: org update and delete error matrix", () => {
       "Only admins can delete the organization",
     );
 
-    // Deleting a workspace is session-only: an admin's CLI PAT is refused
-    // before the handler runs, so an agent cannot destroy the workspace.
+    // Deleting a workspace is session-only. A CLI PAT was the one credential
+    // that still reached this route, so an admin's PAT must now be refused
+    // before the handler runs.
     const adminCliToken = await api.createCliToken(admin);
     api.mockClerkOrg(admin, { slug: baseSlug, name: "BDD R5 Org" });
     const patDelete = await api.requestDeleteOrgWithBearer(

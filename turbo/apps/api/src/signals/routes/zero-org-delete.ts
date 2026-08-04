@@ -41,8 +41,9 @@ export const zeroOrgDeleteRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        // Deleting a workspace is a session-only action: a PAT or an agent
-        // token must never be able to destroy the whole workspace.
+        // Deleting a workspace is a session-only action. Sandbox and zero
+        // tokens are already refused because this route declares no
+        // requiredCapability, so this closes the remaining hole: a CLI PAT.
         accept: ["session"],
       },
       deleteInner$,
