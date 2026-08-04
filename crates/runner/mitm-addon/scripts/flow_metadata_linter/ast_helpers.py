@@ -393,6 +393,7 @@ def _is_modeled_implicit_exception_operation(node: ast.AST) -> bool:
             ast.Await,
             ast.BinOp,
             ast.Call,
+            ast.FormattedValue,
             ast.Subscript,
             ast.UnaryOp,
             ast.YieldFrom,
