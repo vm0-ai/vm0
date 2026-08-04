@@ -3328,10 +3328,21 @@ function runGroupFoldGoalLabel(fold: RunGroupFold): string {
         .toLocaleLowerCase(i18n.resolvedLanguage);
 }
 
+function isRejectedGoalUserMessage(event: EnrichedChatEvent): boolean {
+  return (
+    event.eventType === "input.rejected" &&
+    eventNonContentPart(event)?.type === "goal"
+  );
+}
+
 function isGoalUserMessage(
   event: EnrichedChatEvent,
 ): event is EnrichedChatEvent & ChatInputEvent {
-  return isInputChatEvent(event) && eventNonContentPart(event)?.type === "goal";
+  return (
+    isInputChatEvent(event) &&
+    !isRejectedGoalUserMessage(event) &&
+    eventNonContentPart(event)?.type === "goal"
+  );
 }
 
 function isGoalRunGroupFold(fold: RunGroupFold): boolean {
@@ -7467,6 +7478,10 @@ function PagedUserMessage({
       Reason.DomCallback,
     );
   };
+
+  if (isRejectedGoalUserMessage(event)) {
+    return null;
+  }
 
   if (isWorkflowUserMessage(event)) {
     return <WorkflowUserMessage event={event} />;
