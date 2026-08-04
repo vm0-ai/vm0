@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.372.3](https://github.com/vm0-ai/vm0/compare/api-v1.372.2...api-v1.372.3) (2026-08-04)
+
+
+### Refactoring
+
+* **db:** drop goal context table ([#25046](https://github.com/vm0-ai/vm0/issues/25046)) ([27a2acc](https://github.com/vm0-ai/vm0/commit/27a2acc0a5415504871438ae2481373588cf170d))
+* stop showing org slugs and drop dead slug payloads ([#25008](https://github.com/vm0-ai/vm0/issues/25008)) ([9676511](https://github.com/vm0-ai/vm0/commit/9676511282db6694e300e1a8fa4a40bb5c5d1e41))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.2
+    * @vm0/core bumped to 8.509.1
+    * @vm0/db bumped to 1.163.14
+
 ## [1.372.2](https://github.com/vm0-ai/vm0/compare/api-v1.372.1...api-v1.372.2) (2026-08-04)
 
 
