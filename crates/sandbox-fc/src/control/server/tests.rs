@@ -14,7 +14,6 @@ use vsock_proto::{
 };
 
 use crate::control::client::send_exec;
-use crate::control::exec_response::read_raw_exec_response;
 use crate::control::{
     TerminateAction, TerminateRequest, TerminateResponse, TerminateStatus, send_terminate,
 };
@@ -114,7 +113,6 @@ fn empty_guest() -> GuestState {
 
 fn exec_request(command: &str) -> ExecRequest {
     ExecRequest {
-        response_format: ExecResponseFormat::RawV1,
         expected_run_id: None,
         command: command.into(),
         timeout_secs: 5,
@@ -370,39 +368,6 @@ async fn client_receives_raw_server_error() {
     };
     assert!(error.contains("not running"), "unexpected error: {error}");
     handle.shutdown().await;
-}
-
-#[tokio::test]
-async fn legacy_exec_request_is_rejected_before_guest_execution() {
-    let (exec_seen_tx, mut exec_seen_rx) = oneshot::channel();
-    let fixture =
-        VsockExecFixture::connect(|vsock_base| mock_guest_records_exec(vsock_base, exec_seen_tx))
-            .await;
-    let mut handle = fixture.spawn_server();
-    let mut stream = UnixStream::connect(&fixture.sock_path).await.unwrap();
-    let legacy_request = serde_json::json!({
-        "command": "must-not-run",
-        "timeout_secs": 5,
-        "sudo": false,
-    });
-
-    write_frame(&mut stream, &serde_json::to_vec(&legacy_request).unwrap())
-        .await
-        .unwrap();
-    let response = read_raw_exec_response(&mut stream).await.unwrap();
-
-    let ExecResult::Error { error } = response else {
-        panic!("legacy request should return a raw protocol error");
-    };
-    assert!(
-        error.contains("response_format"),
-        "unexpected error: {error}"
-    );
-    assert!(matches!(exec_seen_rx.try_recv(), Err(TryRecvError::Empty)));
-
-    handle.shutdown().await;
-    fixture.guest_task.abort();
-    let _ = fixture.guest_task.await;
 }
 
 // Terminate protocol behavior.
@@ -832,7 +797,6 @@ async fn control_server_shutdown_cancels_in_flight_vsock_exec() {
         let sock_path = fixture.sock_path.clone();
         async move {
             let request = ExecRequest {
-                response_format: ExecResponseFormat::RawV1,
                 expected_run_id: None,
                 command: "sleep 30".into(),
                 timeout_secs: 30,
@@ -912,7 +876,6 @@ async fn control_exec_rejects_zero_timeout_without_guest_exec() {
             .await;
     let mut handle = fixture.spawn_server();
     let request = ExecRequest {
-        response_format: ExecResponseFormat::RawV1,
         expected_run_id: None,
         command: "echo should-not-run".into(),
         timeout_secs: 0,

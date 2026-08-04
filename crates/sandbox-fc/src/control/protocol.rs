@@ -8,8 +8,6 @@ use tokio::net::UnixStream;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct ExecRequest {
-    /// Required wire marker for the raw exec response protocol.
-    pub(super) response_format: ExecResponseFormat,
     /// Full run identity that must still own the sandbox at guest admission.
     ///
     /// Missing means the caller intentionally selected sandbox scope.
@@ -33,13 +31,6 @@ pub(super) struct ExecRequest {
 
 fn default_timeout() -> u32 {
     30
-}
-
-/// Exec response representation required by the control protocol.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(super) enum ExecResponseFormat {
-    RawV1,
 }
 
 /// Host-side control action requested over the local control socket.
@@ -218,7 +209,6 @@ mod tests {
     #[tokio::test]
     async fn exec_request_round_trip() {
         let request = ExecRequest {
-            response_format: ExecResponseFormat::RawV1,
             expected_run_id: None,
             command: "echo hello".into(),
             timeout_secs: 10,
@@ -232,7 +222,6 @@ mod tests {
         assert_eq!(decoded.command, "echo hello");
         assert_eq!(decoded.timeout_secs, 10);
         assert!(!decoded.sudo);
-        assert_eq!(decoded.response_format, ExecResponseFormat::RawV1);
         assert!(
             serde_json::from_slice::<serde_json::Value>(&request_json)
                 .unwrap()
@@ -244,7 +233,6 @@ mod tests {
     #[test]
     fn guarded_exec_request_round_trips_run_identity() {
         let request = ExecRequest {
-            response_format: ExecResponseFormat::RawV1,
             expected_run_id: Some("run-full-id".into()),
             command: "true".into(),
             timeout_secs: 30,
@@ -260,33 +248,21 @@ mod tests {
     #[test]
     fn exec_request_default_timeout() {
         // timeout_secs has a serde default of 30
-        let json = r#"{"response_format":"raw_v1","command":"echo hi"}"#;
+        let json = r#"{"command":"echo hi"}"#;
         let req: ExecRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.expected_run_id, None);
         assert_eq!(req.command, "echo hi");
         assert_eq!(req.timeout_secs, 30);
         assert!(!req.sudo);
-        assert_eq!(req.response_format, ExecResponseFormat::RawV1);
     }
 
     #[test]
     fn exec_request_with_sudo() {
-        let json = r#"{"response_format":"raw_v1","command":"apt install curl","timeout_secs":60,"sudo":true}"#;
+        let json = r#"{"command":"apt install curl","timeout_secs":60,"sudo":true}"#;
         let req: ExecRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.command, "apt install curl");
         assert_eq!(req.timeout_secs, 60);
         assert!(req.sudo);
-    }
-
-    #[test]
-    fn exec_request_requires_raw_response_format() {
-        assert!(serde_json::from_str::<ExecRequest>(r#"{"command":"echo hi"}"#).is_err());
-        assert!(
-            serde_json::from_str::<ExecRequest>(
-                r#"{"response_format":"raw_v2","command":"echo hi"}"#,
-            )
-            .is_err()
-        );
     }
 
     #[test]

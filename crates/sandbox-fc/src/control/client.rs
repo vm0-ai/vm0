@@ -67,12 +67,10 @@ fn deadline_after(timeout: Duration) -> io::Result<tokio::time::Instant> {
 mod tests {
     use super::*;
 
-    use super::super::protocol::ExecResponseFormat;
     use tokio::net::UnixListener;
 
     fn exec_request(command: &str) -> ExecRequest {
         ExecRequest {
-            response_format: ExecResponseFormat::RawV1,
             expected_run_id: None,
             command: command.into(),
             timeout_secs: 5,

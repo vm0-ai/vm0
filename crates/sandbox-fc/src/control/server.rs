@@ -14,8 +14,8 @@ use tracing::{info, warn};
 use super::CONTROL_SOCKET_OVERHEAD_MS;
 use super::exec_response::{ExecResult, write_raw_exec_response};
 use super::protocol::{
-    ExecRequest, ExecResponseFormat, TerminateAction, TerminateRequest, TerminateResponse,
-    TerminateStatus, read_frame, write_frame,
+    ExecRequest, TerminateAction, TerminateRequest, TerminateResponse, TerminateStatus, read_frame,
+    write_frame,
 };
 use crate::exec_operation_result::{
     captured_exec_output_bytes, exec_termination_from_vsock_termination, reject_stream_overflow,
@@ -448,7 +448,6 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGat
     };
 
     let ExecRequest {
-        response_format: ExecResponseFormat::RawV1,
         expected_run_id,
         command,
         timeout_secs,

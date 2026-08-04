@@ -11,8 +11,7 @@ use super::CONTROL_SOCKET_OVERHEAD_MS;
 use super::client::{send_exec, send_terminate};
 use super::exec_response::ExecResult;
 use super::protocol::{
-    ExecRequest, ExecResponseFormat, TerminateAction, TerminateRequest, TerminateResponse,
-    TerminateStatus,
+    ExecRequest, TerminateAction, TerminateRequest, TerminateResponse, TerminateStatus,
 };
 use super::resolver::resolve_control_socket;
 use crate::paths::RuntimePaths;
@@ -42,7 +41,6 @@ impl SandboxControl for FirecrackerControl {
 
         let timeout_secs = request_timeout_secs(timeout);
         let request = ExecRequest {
-            response_format: ExecResponseFormat::RawV1,
             expected_run_id: target.expected_run_id().map(str::to_owned),
             command: command.to_owned(),
             timeout_secs,
