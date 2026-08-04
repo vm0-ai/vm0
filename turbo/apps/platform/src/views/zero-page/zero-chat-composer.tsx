@@ -5898,59 +5898,64 @@ function ComputerUseConnectorMenuSection({
   const { t } = useTranslation();
   return (
     <div className="shrink-0 border-t border-border/50 bg-gray-50 p-1 dark:bg-gray-100">
+      {computerUse.cloudBrowserAvailable && (
+        <>
+          <div
+            onClick={() => {
+              computerUse.onCloudBrowserChange(
+                !computerUse.cloudBrowserEnabled,
+              );
+            }}
+            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
+          >
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+              <IconWorld size={16} stroke={1.5} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm text-foreground">
+                {t(($) => {
+                  return $.chat.computerUse.cloudBrowser;
+                })}
+              </span>
+            </span>
+            <span
+              className="flex shrink-0 items-center"
+              onClick={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              <LoadingSwitch
+                checked={computerUse.cloudBrowserEnabled}
+                onCheckedChange={onDomEventFn((enabled) => {
+                  computerUse.onCloudBrowserChange(enabled);
+                })}
+                loading={false}
+                ariaLabel={
+                  computerUse.cloudBrowserEnabled
+                    ? t(($) => {
+                        return $.chat.computerUse.disableCloudBrowser;
+                      })
+                    : t(($) => {
+                        return $.chat.computerUse.enableCloudBrowser;
+                      })
+                }
+                size="sm"
+              />
+            </span>
+          </div>
+          <div className="mx-2 my-1 border-t border-border/50" />
+        </>
+      )}
       <div className="px-2 pb-1 pt-1 text-xs text-muted-foreground">
         {t(($) => {
           return $.chat.computerUse.yourComputer;
         })}
       </div>
-      {computerUse.cloudBrowserAvailable && (
-        <div
-          onClick={() => {
-            computerUse.onCloudBrowserChange(!computerUse.cloudBrowserEnabled);
-          }}
-          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
-        >
-          <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-            <IconWorld size={16} stroke={1.5} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm text-foreground">
-              {t(($) => {
-                return $.chat.computerUse.cloudBrowser;
-              })}
-            </span>
-          </span>
-          <span
-            className="flex shrink-0 items-center"
-            onClick={(event) => {
-              event.stopPropagation();
-            }}
-          >
-            <LoadingSwitch
-              checked={computerUse.cloudBrowserEnabled}
-              onCheckedChange={onDomEventFn((enabled) => {
-                computerUse.onCloudBrowserChange(enabled);
-              })}
-              loading={false}
-              ariaLabel={
-                computerUse.cloudBrowserEnabled
-                  ? t(($) => {
-                      return $.chat.computerUse.disableCloudBrowser;
-                    })
-                  : t(($) => {
-                      return $.chat.computerUse.enableCloudBrowser;
-                    })
-              }
-              size="sm"
-            />
-          </span>
-        </div>
-      )}
       {computerUse.loading ? (
         <div className="flex flex-col animate-pulse">
           {Array.from({ length: 2 }, (_, i) => {
             return (
-              <div key={i} className="flex items-center gap-2 px-2 py-2">
+              <div key={i} className="flex items-center gap-2 px-2 py-1.5">
                 <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
                 <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
                 <span className="h-3 w-6 rounded-full bg-muted/50" />
@@ -5960,7 +5965,7 @@ function ComputerUseConnectorMenuSection({
         </div>
       ) : computerUse.hosts.length > 0 ? (
         <div
-          className="flex max-h-[108px] flex-col overflow-y-auto"
+          className="flex max-h-[96px] flex-col overflow-y-auto"
           role="group"
           aria-label={t(($) => {
             return $.chat.computerUse.hosts;
@@ -5974,7 +5979,7 @@ function ComputerUseConnectorMenuSection({
                 onClick={() => {
                   computerUse.onChange(checked ? null : host.id);
                 }}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
               >
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
                   <IconDeviceDesktop size={16} stroke={1.5} />
@@ -6030,7 +6035,7 @@ function ComputerUseConnectorMenuSection({
           })}
         </div>
       ) : (
-        <div className="flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
           <IconDeviceDesktop
             size={16}
             stroke={1.5}
@@ -6044,7 +6049,7 @@ function ComputerUseConnectorMenuSection({
       <PopoverClose asChild>
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-foreground transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
           onClick={onOpenDownloadDialog}
         >
           <IconPlug
