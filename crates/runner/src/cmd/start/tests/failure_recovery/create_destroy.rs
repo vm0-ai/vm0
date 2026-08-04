@@ -299,16 +299,19 @@ async fn hard_cancelled_job_not_parked() {
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
         .await;
-    assert!(c.is_some(), "cancelled job should still complete");
+    assert!(c.is_some(), "hard-cancelled job should still complete");
     let c = c.unwrap();
-    assert_eq!(c.exit_code, 137, "cancellation yields synthetic SIGKILL");
+    assert_eq!(
+        c.exit_code, 137,
+        "hard cancellation yields synthetic SIGKILL"
+    );
     assert_eq!(c.error.as_deref(), Some("cancelled by user"));
 
     wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
     assert_eq!(
         idle_pool.lock().await.len(),
         0,
-        "cancelled job must not park"
+        "hard-cancelled job must not park"
     );
     assert_eq!(overrides.start_process_calls().len(), 1);
     assert_eq!(overrides.park_call_count(), 0);
