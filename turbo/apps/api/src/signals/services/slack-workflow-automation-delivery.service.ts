@@ -86,6 +86,11 @@ type SlackWorkflowAutomationDiscardReason =
   | "missing_message_identity"
   | "no_direct_user_mention";
 
+type SlackWorkflowDeliverySkipReason =
+  | "runtime_eligibility_changed"
+  | "terminal_slack_access_lost"
+  | "terminal_slack_file_unavailable";
+
 type SlackWorkflowAutomationMessageEligibility =
   | {
       readonly kind: "eligible";
@@ -432,13 +437,22 @@ class SlackWorkflowDeliveryError extends Error {
   readonly phase: string;
   readonly code: string;
   readonly rateLimited: boolean;
+  readonly terminalSkipReason: SlackWorkflowDeliverySkipReason | undefined;
 
-  constructor(phase: string, code: string, rateLimited = false) {
+  constructor(
+    phase: string,
+    code: string,
+    options: {
+      readonly rateLimited?: boolean;
+      readonly terminalSkipReason?: SlackWorkflowDeliverySkipReason;
+    } = {},
+  ) {
     super("Slack Workflow delivery processing failed");
     this.name = "SlackWorkflowDeliveryError";
     this.phase = phase;
     this.code = code;
-    this.rateLimited = rateLimited;
+    this.rateLimited = options.rateLimited ?? false;
+    this.terminalSkipReason = options.terminalSkipReason;
   }
 }
 
@@ -474,6 +488,32 @@ function isRateLimitCode(code: string): boolean {
   return code.includes("rate_limit") || code === "ratelimited";
 }
 
+function terminalSlackAccessSkipReason(
+  code: string,
+): SlackWorkflowDeliverySkipReason | undefined {
+  switch (code) {
+    case "account_inactive":
+    case "channel_not_found":
+    case "ekm_access_denied":
+    case "enterprise_is_restricted":
+    case "invalid_auth":
+    case "is_archived":
+    case "missing_scope":
+    case "no_permission":
+    case "not_allowed_token_type":
+    case "not_authed":
+    case "not_in_channel":
+    case "team_access_not_granted":
+    case "token_expired":
+    case "token_revoked": {
+      return "terminal_slack_access_lost";
+    }
+    default: {
+      return undefined;
+    }
+  }
+}
+
 async function requiredSlackPhase<T>(
   phase: string,
   operation: () => Promise<T>,
@@ -483,7 +523,10 @@ async function requiredSlackPhase<T>(
     return result.value;
   }
   const code = slackApiErrorCode(result.error);
-  throw new SlackWorkflowDeliveryError(phase, code, isRateLimitCode(code));
+  throw new SlackWorkflowDeliveryError(phase, code, {
+    rateLimited: isRateLimitCode(code),
+    terminalSkipReason: terminalSlackAccessSkipReason(code),
+  });
 }
 
 async function claimDelivery(
@@ -525,7 +568,8 @@ async function claimDelivery(
 async function skipClaimedDelivery(args: {
   readonly db: Db;
   readonly delivery: Delivery;
-  readonly reason: string;
+  readonly reason: SlackWorkflowDeliverySkipReason;
+  readonly error?: SlackWorkflowDeliveryError;
   readonly signal: AbortSignal;
 }): Promise<void> {
   const currentTime = nowDate();
@@ -551,7 +595,7 @@ async function skipClaimedDelivery(args: {
   }
   L.debug("Slack Workflow delivery skipped", {
     type: "slack_workflow_automation_delivery",
-    phase: "eligibility",
+    phase: args.error?.phase ?? "eligibility",
     outcome: "skipped",
     deliveryId: args.delivery.id,
     automationId: args.delivery.automationId,
@@ -560,6 +604,7 @@ async function skipClaimedDelivery(args: {
     subtype: args.delivery.subtype,
     attempt: args.delivery.attempts,
     reason: args.reason,
+    ...(args.error ? { errorClass: args.error.code } : {}),
   });
 }
 
@@ -766,6 +811,13 @@ function requireReadyDeliveryAssets(
     throw new SlackWorkflowDeliveryError(
       "files",
       failedAsset?.error?.code ?? "materialization_incomplete",
+      {
+        terminalSkipReason:
+          assets.length !== expectedCount ||
+          failedAsset?.error?.retryable === false
+            ? "terminal_slack_file_unavailable"
+            : undefined,
+      },
     );
   }
 }
@@ -804,7 +856,12 @@ async function loadDeliverySlackContent(
         throw new SlackWorkflowDeliveryError(
           "permalink",
           safeErrorCode(result.error),
-          isRateLimitCode(result.error),
+          {
+            rateLimited: isRateLimitCode(result.error),
+            terminalSkipReason: terminalSlackAccessSkipReason(
+              safeErrorCode(result.error),
+            ),
+          },
         );
       }
       return result.permalink;
@@ -907,20 +964,22 @@ const dispatchClaimedSlackWorkflowDelivery$ = command(
     );
     signal.throwIfAborted();
     const client = createSlackClient(botToken);
-    const assets = await set(
-      materializeCanonicalSlackInputAssets$,
-      {
-        userId: target.automation.ownerUserId,
-        orgId: target.automation.orgId,
-        chatThreadId,
-        workspaceId: delivery.workspaceId,
-        channelId: delivery.channelId,
-        messageTs: delivery.messageTs,
-        botToken,
-        files: delivery.files,
-      },
-      signal,
-    );
+    const assets = await requiredSlackPhase("files", async () => {
+      return await set(
+        materializeCanonicalSlackInputAssets$,
+        {
+          userId: target.automation.ownerUserId,
+          orgId: target.automation.orgId,
+          chatThreadId,
+          workspaceId: delivery.workspaceId,
+          channelId: delivery.channelId,
+          messageTs: delivery.messageTs,
+          botToken,
+          files: delivery.files,
+        },
+        signal,
+      );
+    });
     signal.throwIfAborted();
     requireReadyDeliveryAssets(assets, delivery.files.length);
     const [enriched, conversation, permalink] = await loadDeliverySlackContent(
@@ -1000,6 +1059,19 @@ export const processSlackWorkflowAutomationDelivery$ = command(
     );
     signal.throwIfAborted();
     if (result.ok) {
+      return true;
+    }
+    if (
+      result.error instanceof SlackWorkflowDeliveryError &&
+      result.error.terminalSkipReason
+    ) {
+      await skipClaimedDelivery({
+        db,
+        delivery,
+        reason: result.error.terminalSkipReason,
+        error: result.error,
+        signal,
+      });
       return true;
     }
     await markDeliveryFailed(db, delivery, result.error);

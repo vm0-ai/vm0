@@ -1935,6 +1935,7 @@ describe("zero workflow automations", () => {
         },
       ],
     });
+    integrations.clearSlackCallHistory();
     const body = JSON.stringify({
       type: "event_callback",
       team_id: installation.teamId,
@@ -2272,6 +2273,148 @@ describe("zero workflow automations", () => {
     expect(context.mocks.slack.conversations.replies.mock.calls).toHaveLength(
       2,
     );
+  });
+
+  it("skips terminal Slack access drift without replaying after access is restored", async () => {
+    runs.configureRunnerGroup();
+    const scenario = await setupFixture();
+    await setSlackUserMentionAutomationsEnabled(scenario, true);
+    integrations.configureSlackAppMocks();
+    const installation = await integrations.installSlackWorkspace(
+      scenario.actor,
+      { botScopes: REQUIRED_SLACK_BOT_SCOPES },
+    );
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
+    const channelId = "C_SLACK_WORKFLOW_ACCESS_DRIFT";
+    configureSlackConversations([{ id: channelId, name: "access-drift" }]);
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: channelId,
+          },
+        },
+      }),
+      [201],
+    );
+    integrations.clearSlackCallHistory();
+    context.mocks.slack.conversations.history.mockRejectedValueOnce(
+      Object.assign(new Error("provider detail must not persist"), {
+        data: { error: "not_in_channel" },
+      }),
+    );
+    const historicalMessageTs = "1720000003.000100";
+    await integrations.postSlackEvent(installation.teamId, {
+      type: "message",
+      channel_type: "channel",
+      user: "U_ACCESS_DRIFT_SENDER",
+      text: `<@${installation.installerSlackUserId}> do not replay after access drift`,
+      ts: historicalMessageTs,
+      channel: channelId,
+    });
+    await flushWaitUntilForTest();
+
+    const skipped = await integrations.readSlackTestState(installation.teamId);
+    expect(skipped.workflow_deliveries).toStrictEqual([
+      expect.objectContaining({
+        automationId: automation.body.id,
+        messageTs: historicalMessageTs,
+        status: "skipped",
+        attempts: 1,
+        lastError: null,
+        skipReason: "terminal_slack_access_lost",
+        processedAt: expect.any(String),
+      }),
+    ]);
+    expect(
+      skipped.recent_runs.filter((run) => {
+        return run.triggerSource === "workflow-event";
+      }),
+    ).toStrictEqual([]);
+    expect(context.mocks.slack.chat.postMessage).not.toHaveBeenCalled();
+    expect(context.mocks.slack.chat.postEphemeral).not.toHaveBeenCalled();
+
+    context.mocks.slack.conversations.history.mockResolvedValue({
+      ok: true,
+      messages: [],
+    });
+    mockEnv("CRON_SECRET", "slack-workflow-access-drift-cron-secret");
+    const cronResponse = await createApp({ signal: context.signal }).request(
+      "/api/cron/cleanup-sandboxes",
+      {
+        headers: {
+          authorization: "Bearer slack-workflow-access-drift-cron-secret",
+        },
+      },
+    );
+    expect(cronResponse.status).toBe(200);
+
+    const afterSweep = await integrations.readSlackTestState(
+      installation.teamId,
+    );
+    expect(afterSweep.workflow_deliveries).toStrictEqual([
+      expect.objectContaining({
+        automationId: automation.body.id,
+        messageTs: historicalMessageTs,
+        status: "skipped",
+        attempts: 1,
+        skipReason: "terminal_slack_access_lost",
+      }),
+    ]);
+    expect(
+      afterSweep.recent_runs.filter((run) => {
+        return run.triggerSource === "workflow-event";
+      }),
+    ).toStrictEqual([]);
+    expect(context.mocks.slack.conversations.history).toHaveBeenCalledTimes(1);
+
+    const futureMessageTs = "1720000003.000200";
+    await integrations.postSlackEvent(installation.teamId, {
+      type: "message",
+      channel_type: "channel",
+      user: "U_ACCESS_DRIFT_SENDER",
+      text: `<@${installation.installerSlackUserId}> process this new message`,
+      ts: futureMessageTs,
+      channel: channelId,
+    });
+    await flushWaitUntilForTest();
+
+    const recovered = await integrations.readSlackTestState(
+      installation.teamId,
+    );
+    expect(recovered.workflow_deliveries).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          automationId: automation.body.id,
+          messageTs: historicalMessageTs,
+          status: "skipped",
+          attempts: 1,
+          skipReason: "terminal_slack_access_lost",
+        }),
+        expect.objectContaining({
+          automationId: automation.body.id,
+          messageTs: futureMessageTs,
+          status: "processed",
+          attempts: 1,
+          skipReason: null,
+        }),
+      ]),
+    );
+    expect(
+      recovered.recent_runs.filter((run) => {
+        return run.triggerSource === "workflow-event";
+      }),
+    ).toHaveLength(1);
   });
 
   it("skips a retryable historical Slack delivery after the owner connection drifts", async () => {

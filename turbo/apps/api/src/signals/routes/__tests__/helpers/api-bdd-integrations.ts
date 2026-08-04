@@ -923,7 +923,8 @@ export function createBddIntegrationApi(context: TestContext) {
         options.teamId ??
         `T_BDD_${randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`;
       const installerSlackUserId =
-        options.installerSlackUserId ?? `U_INSTALL_${randomUUID().slice(0, 8)}`;
+        options.installerSlackUserId ??
+        `U_INSTALL_${randomUUID().slice(0, 8).toUpperCase()}`;
       const botUserId = `UBOT_${randomUUID().slice(0, 8)}`;
       if (actor && !actor.orgId) {
         throw new Error("Slack install actor must have an organization");
