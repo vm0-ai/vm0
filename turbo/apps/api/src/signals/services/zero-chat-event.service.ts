@@ -48,7 +48,6 @@ type ChatEventIdentity = Pick<
 type ChatEventDisplayContext =
   | {
       readonly slackContext: {
-        readonly messagePermalink: string | null;
         readonly channelId: string;
         readonly messageTs: string;
         readonly conversationContext: string;
@@ -424,7 +423,6 @@ type NewDisplayContext =
       readonly type: "slack";
       readonly id: string;
       readonly chatThreadId: string;
-      readonly messagePermalink: string | null;
       readonly channelId: string;
       readonly messageTs: string;
       readonly conversationContext: string;
@@ -594,7 +592,6 @@ function newDisplayContext(
       type: "slack",
       id: eventId,
       chatThreadId: values.chatThreadId,
-      messagePermalink: slackContext.messagePermalink,
       channelId: slackContext.channelId,
       messageTs: slackContext.messageTs,
       conversationContext: slackContext.conversationContext,
@@ -804,7 +801,6 @@ async function insertDisplayContext(
     await tx.insert(chatSlackContext).values({
       id: context.id,
       chatThreadId: context.chatThreadId,
-      messagePermalink: context.messagePermalink,
       channelId: context.channelId,
       messageTs: context.messageTs,
       conversationContext: context.conversationContext,

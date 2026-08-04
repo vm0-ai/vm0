@@ -64,7 +64,6 @@ interface ChatEventContextFixture {
   readonly workflowName: string | null;
   readonly workflowEventType: string | null;
   readonly workflowEventPayload: JsonObject | null;
-  readonly slackPermalink: string | null;
   readonly slackChannelId: string | null;
   readonly slackMessageTs: string | null;
   readonly slackConversationContext: string | null;
@@ -165,7 +164,6 @@ export async function readChatEventContextFixture(
       workflowName: chatAutomationContext.workflowName,
       workflowEventType: chatAutomationContext.eventType,
       workflowEventPayload: chatAutomationContext.eventPayload,
-      slackPermalink: chatSlackContext.messagePermalink,
       slackChannelId: chatSlackContext.channelId,
       slackMessageTs: chatSlackContext.messageTs,
       slackConversationContext: chatSlackContext.conversationContext,
@@ -272,10 +270,9 @@ const annotationProjectionInputs = [
   {
     text: "slack linked",
     triggerSource: "slack",
+    messagePermalink: "https://vm0.slack.com/archives/C123/p1753257600000100",
     context: {
       slackContext: {
-        messagePermalink:
-          "https://vm0.slack.com/archives/C123/p1753257600000100",
         channelId: "C123",
         messageTs: "1753257600.000100",
         conversationContext: "",
@@ -472,10 +469,10 @@ const annotationProjectionInputs = [
 function annotationProjectionSourcePart(
   input: (typeof annotationProjectionInputs)[number],
 ) {
-  if ("slackContext" in input.context) {
+  if ("messagePermalink" in input) {
     return createChatEventSourcePart({
       kind: "slack",
-      messagePermalink: input.context.slackContext.messagePermalink,
+      messagePermalink: input.messagePermalink,
     });
   }
   if ("feishuContext" in input.context) {
@@ -775,7 +772,6 @@ export async function insertQueuedSlackMissingContextFixture(args: {
       runId: null,
       triggerSource: "slack",
       slackContext: {
-        messagePermalink: null,
         channelId: "C_MONITOR_FAILURE",
         messageTs: "1.000001",
         conversationContext: "",
