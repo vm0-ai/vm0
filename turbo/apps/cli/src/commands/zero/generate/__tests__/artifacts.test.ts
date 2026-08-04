@@ -37,7 +37,12 @@ describe("zero generate source-backed artifact commands", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
+    vi.stubEnv(
+      "ZERO_TOKEN",
+      buildZeroToken({
+        [FeatureSwitchKey.HtmlResourceIndex]: false,
+      }),
+    );
   });
 
   afterEach(() => {
