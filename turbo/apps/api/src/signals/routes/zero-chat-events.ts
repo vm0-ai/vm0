@@ -301,7 +301,7 @@ async function resolveNormalSendAgentRunSource(params: {
     params.auth.tokenType === "zero" &&
     (await chatAgentRunContextSchemaAvailable(params.db));
   // Keep provenance aligned with the existing Zero chat messaging rollout,
-  // while allowing an API deployment to safely precede migration 0826.
+  // while allowing an API deployment to safely precede migration 0828.
   const source = sourceSchemaAvailable
     ? await resolveChatAgentRunSource(params.db, params.auth)
     : null;

@@ -7,7 +7,7 @@ export async function chatAgentRunContextSchemaAvailable(
   db: Db | ReadonlyDb,
 ): Promise<boolean> {
   // This probe keeps the current API safe when it deploys before migration
-  // 0826. Remove it after 0826 is guaranteed everywhere and rollback closes.
+  // 0828. Remove it after 0828 is guaranteed everywhere and rollback closes.
   const [state] = await db
     .select({
       available: sql`
