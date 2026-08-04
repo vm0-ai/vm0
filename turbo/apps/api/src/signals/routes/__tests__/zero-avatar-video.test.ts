@@ -16,6 +16,7 @@ import {
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { createDeferredPromise } from "../../utils";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { zeroAvatarVideoRoutes } from "../zero-avatar-video";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
@@ -289,8 +290,10 @@ describe("JoggAI built-in avatar video routes", () => {
     );
   });
 
-  it("generates, stores, and bills a talking-avatar video after its webhook", async () => {
+  it("acknowledges, stores, and bills a talking-avatar video webhook", async () => {
     const fixture = await seedAvatarVideoFixture();
+    const videoDownloadStarted = createDeferredPromise<void>(context.signal);
+    const releaseVideoDownload = createDeferredPromise<void>(context.signal);
     let observedBody: unknown = null;
     let observedApiKey: string | null = null;
     server.use(
@@ -303,7 +306,9 @@ describe("JoggAI built-in avatar video routes", () => {
           data: { video_id: "jogg-video-123" },
         });
       }),
-      http.get(GENERATED_VIDEO_URL, () => {
+      http.get(GENERATED_VIDEO_URL, async () => {
+        videoDownloadStarted.resolve(undefined);
+        await releaseVideoDownload.promise;
         return new HttpResponse(VIDEO_BYTES, {
           headers: { "content-type": "video/mp4" },
         });
@@ -369,6 +374,8 @@ describe("JoggAI built-in avatar video routes", () => {
       },
     );
     expect(webhookResponse.status).toBe(200);
+    await videoDownloadStarted.promise;
+    releaseVideoDownload.resolve(undefined);
     await flushWaitUntilForTest();
 
     const status = await app.request(

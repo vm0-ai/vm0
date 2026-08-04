@@ -6,9 +6,10 @@ import {
 } from "@vm0/api-contracts/contracts/webhooks";
 
 import { request$ } from "../context/hono";
+import { waitUntil } from "../context/wait-until";
 import { pathParamsOf, queryOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { safeJsonParse, safeSync } from "../utils";
+import { safeJsonParse, safeSync, tapError } from "../utils";
 import {
   downloadFalImage,
   getMissingImagePricing,
@@ -991,8 +992,19 @@ const postJoggAiBuiltInGenerationWebhook$ = command(
       return okResponse();
     }
 
-    await set(handleJoggAiAvatarVideoCompletion$, { job, payload }, signal);
-    L.debug("JoggAI built-in generation webhook processed", {
+    waitUntil(
+      tapError(
+        set(handleJoggAiAvatarVideoCompletion$, { job, payload }, signal),
+        (error) => {
+          L.error("JoggAI built-in generation webhook processing failed", {
+            generationId: job.id,
+            providerVideoId: payload.videoId,
+            error,
+          });
+        },
+      ),
+    );
+    L.debug("JoggAI built-in generation webhook accepted", {
       generationId: job.id,
       providerVideoId: payload.videoId,
     });
