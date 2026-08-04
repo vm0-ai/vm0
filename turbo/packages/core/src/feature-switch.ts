@@ -482,6 +482,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.RustZeroCli]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Use the runner-bundled Rust zero-cli entry point for Zero CLI commands.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",
     description:

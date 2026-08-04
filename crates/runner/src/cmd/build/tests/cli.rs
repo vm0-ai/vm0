@@ -57,17 +57,17 @@ fn build_help_describes_dry_run_and_warm_cache_output() {
 }
 
 #[test]
-fn guest_cli_flags_match_inventory() {
+fn delivered_binary_cli_flags_match_inventory() {
     let command = TestBuildCli::command();
-    let actual: BTreeSet<_> = command
-        .get_arguments()
-        .filter_map(|arg| arg.get_long())
-        .filter(|flag| flag.starts_with("guest-"))
-        .map(str::to_owned)
-        .collect();
     let expected: BTreeSet<_> = guest_definitions()
         .iter()
         .map(|definition| definition.name.to_string())
+        .collect();
+    let actual: BTreeSet<_> = command
+        .get_arguments()
+        .filter_map(|arg| arg.get_long())
+        .filter(|flag| expected.contains(*flag))
+        .map(str::to_owned)
         .collect();
 
     assert_eq!(actual, expected);

@@ -64,6 +64,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroMailReplyFollowUp, {})).toBe(
       false,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.RustZeroCli, {})).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {

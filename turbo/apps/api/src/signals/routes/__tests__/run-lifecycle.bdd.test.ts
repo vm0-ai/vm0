@@ -9837,6 +9837,50 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 });
 
 describe("RUN-01: zero runner context, queue promotion, and skills", () => {
+  it("selects the runner-bundled zero-cli only when its feature switch is enabled", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Zero CLI selection requires an organization");
+    }
+
+    const npmRun = await api.createRun(actor, {
+      agentId,
+      prompt: "use the default Zero CLI",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const npmClaim = await api.claimRunnerJob(npmRun.runId);
+    expect(npmClaim.appendSystemPrompt ?? "").toContain(
+      "Run commands with: `npx -p @vm0/cli zero <command>`",
+    );
+    expect(npmClaim.appendSystemPrompt ?? "").not.toContain(
+      "Run commands with: `zero-cli <command>`",
+    );
+    await api.requestCancelRun(actor, npmRun.runId, [200]);
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.RustZeroCli]: true },
+    );
+
+    const rustRun = await api.createRun(actor, {
+      agentId,
+      prompt: "use the runner-bundled Zero CLI",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const rustClaim = await api.claimRunnerJob(rustRun.runId);
+    expect(rustClaim.appendSystemPrompt ?? "").toContain(
+      "Run commands with: `zero-cli <command>`",
+    );
+    expect(rustClaim.appendSystemPrompt ?? "").not.toContain(
+      "Run commands with: `npx -p @vm0/cli zero <command>`",
+    );
+    await api.requestCancelRun(actor, rustRun.runId, [200]);
+  });
+
   it("injects agent identity, tool hints, and user info into the runner context", async () => {
     const appUrl = "https://app.example.test";
     mockEnv("APP_URL", appUrl);

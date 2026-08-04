@@ -47,5 +47,12 @@
     "pathEnv": "GUEST_MOCK_CODEX_PATH",
     "bundledEnv": "BUNDLED_GUEST_MOCK_CODEX",
     "destination": "/usr/local/bin/guest-mock-codex"
+  },
+  {
+    "package": "zero-cli",
+    "binary": "zero-cli",
+    "pathEnv": "GUEST_ZERO_CLI_PATH",
+    "bundledEnv": "BUNDLED_ZERO_CLI",
+    "destination": "/usr/local/bin/zero-cli"
   }
 ]
