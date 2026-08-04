@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.371.0](https://github.com/vm0-ai/vm0/compare/api-v1.370.7...api-v1.371.0) (2026-08-04)
+
+
+### Features
+
+* add runner-bundled rust zero cli foundation ([#24907](https://github.com/vm0-ai/vm0/issues/24907)) ([8cc6154](https://github.com/vm0-ai/vm0/commit/8cc6154eb9016e8b7a44d72177053c2224dd5d9a))
+* refine browser sidebar lifecycle ([#24852](https://github.com/vm0-ai/vm0/issues/24852)) ([498ecb5](https://github.com/vm0-ai/vm0/commit/498ecb5e1da3c3ff517b6322403b6eb59e06fe91))
+
+
+### Refactoring
+
+* **api:** add web queued launch loader ([#24945](https://github.com/vm0-ai/vm0/issues/24945)) ([3d900bd](https://github.com/vm0-ai/vm0/commit/3d900bd873a118a4cb0bb603ed45014d1e785bba))
+* retire goal context readers ([#24939](https://github.com/vm0-ai/vm0/issues/24939)) ([0c6d9da](https://github.com/vm0-ai/vm0/commit/0c6d9da9976507322ea555b7575c7fe15c442452))
+* retire zero run trigger agent provenance ([#24929](https://github.com/vm0-ai/vm0/issues/24929)) ([6eb4009](https://github.com/vm0-ai/vm0/commit/6eb400938c00f60f3b4da0b356ac3ff5b8402061))
+
+
+### Performance Improvements
+
+* **api:** attribute runner-claim baseline database latency ([#24928](https://github.com/vm0-ai/vm0/issues/24928)) ([730ea21](https://github.com/vm0-ai/vm0/commit/730ea21d783f3cfe0fe9dea6f3ad971bc8a19eab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.267.0
+    * @vm0/core bumped to 8.508.0
+    * @vm0/db bumped to 1.163.10
+
 ## [1.370.7](https://github.com/vm0-ai/vm0/compare/api-v1.370.6...api-v1.370.7) (2026-08-04)
 
 

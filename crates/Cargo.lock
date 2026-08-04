@@ -2604,7 +2604,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.154.3"
+version = "0.155.0"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2827,7 +2827,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.175"
+version = "0.37.176"
 dependencies = [
  "async-trait",
  "base64 0.23.0",
@@ -4245,7 +4245,7 @@ dependencies = [
 
 [[package]]
 name = "zero-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "tempfile",
 ]

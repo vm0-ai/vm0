@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.276.0](https://github.com/vm0-ai/vm0/compare/cli-v9.275.1...cli-v9.276.0) (2026-08-04)
+
+
+### Features
+
+* refine browser sidebar lifecycle ([#24852](https://github.com/vm0-ai/vm0/issues/24852)) ([498ecb5](https://github.com/vm0-ai/vm0/commit/498ecb5e1da3c3ff517b6322403b6eb59e06fe91))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.267.0
+    * @vm0/core bumped to 8.508.0
+
 ## [9.275.1](https://github.com/vm0-ai/vm0/compare/cli-v9.275.0...cli-v9.275.1) (2026-08-04)
 
 
