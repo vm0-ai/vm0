@@ -749,6 +749,15 @@ export function chatClipboardHtml(payload: {
   )}"></div>`;
 }
 
+export function oversizedFile(name: string, type: string): File {
+  const file = new File(["oversized"], name, { type });
+  Object.defineProperty(file, "size", {
+    configurable: true,
+    value: 1024 * 1024 * 1024 + 1,
+  });
+  return file;
+}
+
 export function composerElementFrom(textarea: HTMLElement): HTMLElement {
   const composer = textarea.closest(".zero-composer");
   if (!(composer instanceof HTMLElement)) {
