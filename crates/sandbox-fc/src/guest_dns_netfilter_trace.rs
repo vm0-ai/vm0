@@ -600,28 +600,25 @@ impl TracePacket {
 
     fn readiness_header(
         &self,
-        namespace: &str,
-        host_device: &str,
-        peer_ip: &str,
-        source_port: Option<u16>,
+        target: GuestDnsNetfilterTraceCaptureTarget<'_>,
+        probe_resolver: &str,
+        probe_destination_port: &str,
     ) -> Option<&TracePacketHeader> {
-        let resolver = DNS_PROBE_RESOLVER_IPV4.to_string();
-        let destination_port = DNS_PROBE_DESTINATION_PORT.to_string();
         let traces_udp_readiness_rule = self.steps.iter().any(|step| {
             step.table == "raw"
                 && step.chain == "PREROUTING"
                 && step.rule.as_deref().is_some_and(|rule| {
                     rule_has_option_value(rule, "-p", "udp")
-                        && rule_has_option_value(rule, "--dport", &destination_port)
+                        && rule_has_option_value(rule, "--dport", probe_destination_port)
                         && rule_has_exact_packet_length(rule, GUEST_DNS_PROBE_PACKET_BYTES)
-                        && rule_has_option_value(rule, "--comment", namespace)
+                        && rule_has_option_value(rule, "--comment", target.namespace)
                         && rule_has_option_value(rule, "-j", "TRACE")
                 })
         });
         self.headers.iter().find(|header| {
-            header.input.as_deref() == Some(host_device)
-                && header.source.as_deref() == Some(peer_ip)
-                && header.destination.as_deref() == Some(resolver.as_str())
+            header.input.as_deref() == Some(target.host_device)
+                && header.source.as_deref() == Some(target.peer_ip)
+                && header.destination.as_deref() == Some(probe_resolver)
                 && header.length == Some(GUEST_DNS_PROBE_PACKET_BYTES)
                 && (header
                     .protocol
@@ -629,25 +626,23 @@ impl TracePacket {
                     .is_some_and(|protocol| protocol.eq_ignore_ascii_case("udp"))
                     || traces_udp_readiness_rule)
                 && header.destination_port == Some(DNS_PROBE_DESTINATION_PORT)
-                && source_port.is_none_or(|source_port| header.source_port == Some(source_port))
+                && target
+                    .source_port
+                    .is_none_or(|source_port| header.source_port == Some(source_port))
         })
     }
 
     fn report(
         &self,
-        namespace: &str,
-        host_device: &str,
-        peer_ip: &str,
-        source_port: Option<u16>,
-        dns_port: u16,
+        target: GuestDnsNetfilterTraceCaptureTarget<'_>,
+        probe_resolver: &str,
+        probe_destination_port: &str,
     ) -> Option<TracePacketReport> {
         let original_header = self
-            .readiness_header(namespace, host_device, peer_ip, source_port)?
+            .readiness_header(target, probe_resolver, probe_destination_port)?
             .clone();
-        let dns_port_value = dns_port;
-        let dns_port = dns_port.to_string();
-        let probe_destination_port = DNS_PROBE_DESTINATION_PORT.to_string();
-        let resolver = DNS_PROBE_RESOLVER_IPV4.to_string();
+        let dns_port_value = target.dns_port;
+        let dns_port = target.dns_port.to_string();
         let nat_prerouting_reached = self
             .steps
             .iter()
@@ -657,8 +652,8 @@ impl TracePacket {
                 && step.chain == "PREROUTING"
                 && step.rule.as_deref().is_some_and(|rule| {
                     rule_has_option_value(rule, "-p", "udp")
-                        && rule_has_option_value(rule, "--dport", &probe_destination_port)
-                        && rule_has_option_value(rule, "--comment", namespace)
+                        && rule_has_option_value(rule, "--dport", probe_destination_port)
+                        && rule_has_option_value(rule, "--comment", target.namespace)
                         && rule_has_option_value(rule, "-j", "REDIRECT")
                         && (rule_has_option_value(rule, "--to-port", &dns_port)
                             || rule_has_option_value(rule, "--to-ports", &dns_port))
@@ -668,9 +663,9 @@ impl TracePacket {
             .headers
             .iter()
             .find(|header| {
-                header.input.as_deref() == Some(host_device)
-                    && header.source.as_deref() == Some(peer_ip)
-                    && header.destination.as_deref() != Some(resolver.as_str())
+                header.input.as_deref() == Some(target.host_device)
+                    && header.source.as_deref() == Some(target.peer_ip)
+                    && header.destination.as_deref() != Some(probe_resolver)
                     && header.destination_port == Some(dns_port_value)
             })
             .cloned();
@@ -682,8 +677,8 @@ impl TracePacket {
             .steps
             .iter()
             .any(|step| step.table == "filter" && step.chain == "INPUT");
-        let pool_input_comment =
-            parse_netns_name(namespace).map(|name| make_pool_dns_filter_comment(name.pool_index));
+        let pool_input_comment = parse_netns_name(target.namespace)
+            .map(|name| make_pool_dns_filter_comment(name.pool_index));
         let pool_input_rule_reached = self.steps.iter().any(|step| {
             step.table == "filter"
                 && step.chain == "INPUT"
@@ -1137,6 +1132,8 @@ impl GuestDnsNetfilterTraceReader {
         cursor: GuestDnsNetfilterTraceCursor,
         target: GuestDnsNetfilterTraceCaptureTarget<'_>,
     ) -> GuestDnsNetfilterTraceReport {
+        let probe_resolver = DNS_PROBE_RESOLVER_IPV4.to_string();
+        let probe_destination_port = DNS_PROBE_DESTINATION_PORT.to_string();
         let state = lock_state(&self.state);
         if cursor.monitor_id != state.monitor_id {
             return GuestDnsNetfilterTraceReport {
@@ -1156,15 +1153,7 @@ impl GuestDnsNetfilterTraceReader {
             .packets
             .iter()
             .filter(|packet| packet.sequence > cursor.sequence)
-            .filter_map(|packet| {
-                packet.report(
-                    target.namespace,
-                    target.host_device,
-                    target.peer_ip,
-                    target.source_port,
-                    target.dns_port,
-                )
-            })
+            .filter_map(|packet| packet.report(target, &probe_resolver, &probe_destination_port))
             .collect::<Vec<_>>();
         let matched_packets = matches.len();
         let first_reported = matched_packets.saturating_sub(MAX_REPORTED_PACKETS);
