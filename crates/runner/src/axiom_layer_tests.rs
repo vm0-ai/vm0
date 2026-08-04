@@ -206,6 +206,14 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
             target: BALLOON_SETTLE_AXIOM_TARGET,
             "balloon target below INFO"
         );
+        tracing::trace!(
+            target: BALLOON_SETTLE_AXIOM_TARGET,
+            "balloon target at TRACE"
+        );
+        tracing::info!(
+            target: "sandbox_fc::balloon_settle::detail",
+            "balloon sibling INFO target"
+        );
     }
 
     guard.shutdown().await;
@@ -246,6 +254,14 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
     assert!(
         !has_event_with_message(&events, "balloon target below INFO"),
         "balloon DEBUG event should not be ingested: {events:#?}",
+    );
+    assert!(
+        !has_event_with_message(&events, "balloon target at TRACE"),
+        "balloon TRACE event should not be ingested: {events:#?}",
+    );
+    assert!(
+        !has_event_with_message(&events, "balloon sibling INFO target"),
+        "only the exact balloon INFO target should be ingested: {events:#?}",
     );
 }
 
