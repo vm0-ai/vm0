@@ -175,6 +175,30 @@ describe("assistant markdown", () => {
     expect(screen.getByText("Diagram source")).toBeInTheDocument();
   });
 
+  it("shows every copy of a diagram that appears more than once", async () => {
+    const fence = "```mermaid\nflowchart TD\n  A --> B\n```";
+    mockThread(`${fence}\n\nand again\n\n${fence}`);
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
+
+    // Copies share one result entry. Mounting the second must not reset that
+    // entry to `rendering`, which would blank the first one.
+    const diagrams = await waitFor(() => {
+      const found = screen.getAllByAltText("Diagram");
+      expect(found).toHaveLength(2);
+      return found;
+    });
+    const [first, second] = diagrams;
+    if (!first || !second) {
+      throw new Error("Expected both diagrams to be rendered");
+    }
+    expect(renderedDiagramMarkup(first)).toBe(renderedDiagramMarkup(second));
+  });
+
   it("uses redux themes for light and dark diagrams", async () => {
     mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
 
