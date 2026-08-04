@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use tokio::fs;
 
 use super::super::fs::workspace_cache_path_allocated_bytes;
+use super::super::metadata::WorkspaceImageFileIdentity;
 use super::super::types::{
     WorkspaceSessionHistorySidecarMiss, WorkspaceSessionHistorySidecarPublication,
 };
@@ -382,7 +383,7 @@ async fn session_history_sidecar_preserve_keeps_existing_sidecar() {
 }
 
 #[tokio::test]
-async fn session_history_sidecar_failed_replacement_preserves_committed_sidecar() {
+async fn session_history_sidecar_body_rename_failure_preserves_committed_sidecar() {
     let (_dir, paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let cache_key = write_current_cache_entry(
@@ -439,6 +440,106 @@ async fn session_history_sidecar_failed_replacement_preserves_committed_sidecar(
     assert_eq!(still_committed.path, committed_a.path);
     assert_eq!(fs::read(still_committed.path).await.unwrap(), history_a);
     assert_eq!(fs::read(metadata_path).await.unwrap(), metadata_a);
+}
+
+#[tokio::test]
+async fn session_history_sidecar_metadata_commit_failure_rolls_back_replacement() {
+    let (_dir, paths, cache) = local_cache().await;
+    let run_id = RunId::new_v4();
+    let cache_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        "session-a",
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let history_a = br#"{"type":"message","content":"a"}"#;
+    let identity_a =
+        publish_test_session_history_sidecar(&cache, &cache_key, run_id, "session-a", history_a)
+            .await;
+    let committed_a = cache
+        .probe_session_history_sidecar(&cache_key, &identity_a)
+        .await
+        .unwrap();
+    let body_a = committed_a.path;
+    let body_a_identity =
+        WorkspaceImageFileIdentity::from_metadata(&fs::symlink_metadata(&body_a).await.unwrap());
+    let entry_dir = paths.workspace_image_cache_entry_dir(&cache_key);
+    let metadata_path = entry_dir.join("session-history.metadata.json");
+    let metadata_a = fs::read(&metadata_path).await.unwrap();
+
+    let failed_run_id = RunId::new_v4();
+    let history_b = br#"{"type":"message","content":"b"}"#;
+    let identity_b = test_restored_session_identity("session-b", history_b);
+    let failed_source = cache.workspace_image_cache_tmp_sidecar(&cache_key, failed_run_id);
+    let failed_metadata =
+        cache.workspace_image_cache_tmp_sidecar_metadata(&cache_key, failed_run_id);
+    let inactive_body = entry_dir.join("session-history.second.blob");
+    fs::write(&failed_source, history_b).await.unwrap();
+    let replacement = WorkspaceSessionHistorySidecarPromotionSource {
+        tmp_path: failed_source.clone(),
+        representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+        encoded_size: history_b.len() as u64,
+        restored_session_identity: identity_b.clone(),
+    };
+    cache.fail_next_session_history_sidecar_metadata_commit();
+
+    let error = cache
+        .publish_session_history_sidecar(
+            &cache_key,
+            failed_run_id,
+            WorkspaceSessionHistorySidecarPublication::Replace(&replacement),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("injected workspace session history sidecar metadata commit failure"),
+        "unexpected replacement error: {error}",
+    );
+    assert!(!failed_source.exists());
+    assert!(!failed_metadata.exists());
+    assert!(!inactive_body.exists());
+    assert_eq!(fs::read(&metadata_path).await.unwrap(), metadata_a);
+    let still_committed = cache
+        .probe_session_history_sidecar(&cache_key, &identity_a)
+        .await
+        .unwrap();
+    assert_eq!(still_committed.path, body_a);
+    assert_eq!(fs::read(&still_committed.path).await.unwrap(), history_a);
+    assert_eq!(
+        WorkspaceImageFileIdentity::from_metadata(
+            &fs::symlink_metadata(&still_committed.path).await.unwrap(),
+        ),
+        body_a_identity,
+    );
+    assert_eq!(
+        cache
+            .probe_session_history_sidecar(&cache_key, &identity_b)
+            .await
+            .unwrap_err(),
+        WorkspaceSessionHistorySidecarMiss::IdentityMismatch,
+    );
+
+    let retry_identity_b = publish_test_session_history_sidecar(
+        &cache,
+        &cache_key,
+        RunId::new_v4(),
+        "session-b",
+        history_b,
+    )
+    .await;
+    let committed_b = cache
+        .probe_session_history_sidecar(&cache_key, &retry_identity_b)
+        .await
+        .unwrap();
+    assert_eq!(committed_b.path, inactive_body);
+    assert!(!body_a.exists());
+    assert_eq!(fs::read(committed_b.path).await.unwrap(), history_b);
 }
 
 #[tokio::test]

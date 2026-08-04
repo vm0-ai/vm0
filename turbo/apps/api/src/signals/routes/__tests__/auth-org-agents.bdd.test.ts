@@ -363,7 +363,11 @@ describe("ORG-01 and ORG-02", () => {
     const orgs = await api.listOrgs(admin);
     expect(
       orgs.orgs.some((candidate) => {
-        return candidate.slug === nextSlug && candidate.role === "admin";
+        return (
+          candidate.id === admin.orgId &&
+          candidate.name === "BDD Org Updated" &&
+          candidate.role === "admin"
+        );
       }),
     ).toBeTruthy();
 
@@ -400,6 +404,7 @@ describe("ORG-01 and ORG-02", () => {
       membershipRequests: [{ id: requestId, actor: requester }],
     });
     const members = await api.listMembers(admin);
+    expect(members.name).toBe("BDD Org Updated");
     expect(members.role).toBe("admin");
     expect(
       members.members.some((candidate) => {

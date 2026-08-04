@@ -1912,12 +1912,10 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     expect(admittedContext).toMatchObject({
       contextType: null,
       contextId: null,
-      goalObjectiveBrief: null,
     });
     expect(rejectedContext).toMatchObject({
       contextType: null,
       contextId: null,
-      goalObjectiveBrief: null,
     });
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
   }, 90_000);

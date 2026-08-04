@@ -120,6 +120,13 @@
       "when": 1785836983732,
       "tag": "0824_clear_goal_context_pointers",
       "breakpoints": true
+    },
+    {
+      "idx": 825,
+      "version": "7",
+      "when": 1785841702570,
+      "tag": "0825_drop_chat_goal_context",
+      "breakpoints": true
     }
   ]
 }

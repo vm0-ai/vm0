@@ -14,11 +14,11 @@ export const listCommand = new Command()
 
       console.log(chalk.bold("Available organizations:"));
       for (const org of result.orgs) {
-        const isCurrent = org.slug === activeOrg;
+        const isCurrent = org.id === activeOrg;
         const marker = isCurrent ? chalk.green("* ") : "  ";
         const roleLabel = org.role ? ` (${org.role})` : "";
         const currentLabel = isCurrent ? chalk.dim(" ← current") : "";
-        console.log(`${marker}${org.slug}${roleLabel}${currentLabel}`);
+        console.log(`${marker}${org.name}${roleLabel}${currentLabel}`);
       }
     }),
   );

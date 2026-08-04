@@ -13,7 +13,10 @@ export const statusCommand = new Command()
         const org = await getZeroOrg();
 
         console.log(chalk.bold("Organization Information:"));
-        console.log(`  Slug: ${chalk.green(org.slug)}`);
+        console.log(`  Name: ${chalk.green(org.name)}`);
+        if (org.tier) {
+          console.log(`  Tier: ${org.tier}`);
+        }
       } catch (error) {
         if (error instanceof ApiRequestError && error.status === 404) {
           throw new Error("No organization configured", {

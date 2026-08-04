@@ -304,7 +304,7 @@ describe("zero chat thread IndexedDB fallback", () => {
       seqId: 1,
       createdAt: "2026-03-10T00:00:01Z",
     });
-    context.mocks.ably.rejectSubscribe(
+    const realtimeSubscriptionFailed = context.mocks.ably.rejectSubscribe(
       `chatThreadDetailChanged:${THREAD_ID}`,
       "channel attach failed",
     );
@@ -316,6 +316,7 @@ describe("zero chat thread IndexedDB fallback", () => {
 
     try {
       setupChatPage();
+      await realtimeSubscriptionFailed;
 
       await expect(
         screen.findByText("Cached while realtime is unavailable"),

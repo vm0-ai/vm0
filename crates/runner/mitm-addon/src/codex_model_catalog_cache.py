@@ -9,7 +9,7 @@ import secrets
 import time
 import urllib.parse
 from collections import OrderedDict
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from typing import NoReturn
 
@@ -79,6 +79,23 @@ class _CacheEntry:
     prefetched: bool
 
 
+@dataclass(frozen=True)
+class _ResponseValidationSnapshot:
+    status_code: int
+    header_fields: tuple[tuple[bytes, bytes], ...] = field(repr=False)
+    has_trailers: bool
+    body: bytes = field(repr=False)
+    upstream_encoding: str | None
+    compressed_content_length: int | None
+
+
+@dataclass(frozen=True)
+class _ValidatedResponse:
+    body: bytes = field(repr=False)
+    content_type: str
+    etag: str = field(repr=False)
+
+
 @dataclass
 class _FlowTelemetry:
     status: str
@@ -121,6 +138,8 @@ _in_flight: dict[_CacheKey, _InFlight] = {}
 _owned_body_bytes = 0
 _active_flow_states = 0
 _process_hmac_key = secrets.token_bytes(32)
+_validation_loop: asyncio.AbstractEventLoop | None = None
+_validation_semaphore: asyncio.Semaphore | None = None
 
 
 def _bounded_milliseconds(seconds: float) -> int:
@@ -627,27 +646,28 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> b
 
 
 def _response_headers_bypass_reason(
-    response: http.Response,
+    status_code: int,
+    headers: http.Headers,
     *,
     allow_brotli: bool = False,
 ) -> str | None:
-    if response.status_code != _HTTP_STATUS_OK:
+    if status_code != _HTTP_STATUS_OK:
         return "response_status"
-    encoding = _single_content_encoding(response.headers)
+    encoding = _single_content_encoding(headers)
     if encoding != _IDENTITY_ENCODING and not (allow_brotli and encoding == _BROTLI_ENCODING):
         return "response_encoding"
-    content_type = response.headers.get("Content-Type", "")
+    content_type = headers.get("Content-Type", "")
     if len(content_type.encode()) > _MAX_CONTENT_TYPE_BYTES or not _content_type_is_json(
         content_type
     ):
         return "response_content_type"
-    if _response_cache_control_is_unsafe(response.headers):
+    if _response_cache_control_is_unsafe(headers):
         return "response_cache_control"
-    if response.headers.get_all("Vary"):
+    if headers.get_all("Vary"):
         return "response_vary"
-    if _single_usable_etag(response.headers) is None:
+    if _single_usable_etag(headers) is None:
         return "response_etag"
-    parsed_content_length = _parse_content_length(response.headers)
+    parsed_content_length = _parse_content_length(headers)
     if parsed_content_length.kind not in ("missing", "valid"):
         return "response_size"
     return None
@@ -687,7 +707,10 @@ def handle_response_headers(flow: http.HTTPFlow) -> bool:
     encoding = _single_content_encoding(flow.response.headers)
     if encoding == _IDENTITY_ENCODING:
         state.upstream_encoding = _IDENTITY_ENCODING
-        bypass_reason = _response_headers_bypass_reason(flow.response)
+        bypass_reason = _response_headers_bypass_reason(
+            flow.response.status_code,
+            flow.response.headers,
+        )
         if bypass_reason is not None:
             _bypass_response(flow, state, bypass_reason)
         return True
@@ -696,7 +719,11 @@ def handle_response_headers(flow: http.HTTPFlow) -> bool:
         return True
 
     state.upstream_encoding = _BROTLI_ENCODING
-    bypass_reason = _response_headers_bypass_reason(flow.response, allow_brotli=True)
+    bypass_reason = _response_headers_bypass_reason(
+        flow.response.status_code,
+        flow.response.headers,
+        allow_brotli=True,
+    )
     if bypass_reason is not None:
         _bypass_response(flow, state, bypass_reason)
         return True
@@ -722,7 +749,8 @@ def wrap_response_stream(flow: http.HTTPFlow) -> None:
         or state.finalized
         or flow.response is None
         or _response_headers_bypass_reason(
-            flow.response,
+            flow.response.status_code,
+            flow.response.headers,
             allow_brotli=state.upstream_encoding == _BROTLI_ENCODING,
         )
         is not None
@@ -762,25 +790,41 @@ def _unwrap_response_stream(flow: http.HTTPFlow, state: _FlowState) -> None:
     state.downstream_stream = None
 
 
-def _validated_response_body(
-    response: http.Response,
-    state: _FlowState,
-) -> tuple[bytes, str, str] | str:
+def _validate_response_snapshot(
+    snapshot: _ResponseValidationSnapshot,
+) -> _ValidatedResponse | str:
+    headers = http.Headers(snapshot.header_fields)
+    body = snapshot.body
+    if snapshot.upstream_encoding == _BROTLI_ENCODING:
+        if (
+            snapshot.compressed_content_length is not None
+            and len(body) != snapshot.compressed_content_length
+        ) or snapshot.has_trailers:
+            return "response_body"
+        body, decode_error = body_decoding.decompress_json_usage_body(
+            body,
+            headers,
+            max_output=MAX_ENTRY_BYTES,
+            log_errors=False,
+        )
+        if decode_error == body_decoding.DECODED_BODY_LIMIT_EXCEEDED:
+            return "response_size"
+        if decode_error is not None:
+            return "response_encoding"
+
     bypass_reason = _response_headers_bypass_reason(
-        response,
-        allow_brotli=state.upstream_encoding == _BROTLI_ENCODING,
+        snapshot.status_code,
+        headers,
+        allow_brotli=snapshot.upstream_encoding == _BROTLI_ENCODING,
     )
     if bypass_reason is not None:
         return bypass_reason
-    if response.trailers:
+    if snapshot.has_trailers:
         return "response_body"
-    if state.capture is None or state.capture_overflow:
-        return "response_size"
 
-    body = bytes(state.capture)
-    parsed_content_length = _parse_content_length(response.headers)
+    parsed_content_length = _parse_content_length(headers)
     if (
-        state.upstream_encoding == _IDENTITY_ENCODING
+        snapshot.upstream_encoding == _IDENTITY_ENCODING
         and parsed_content_length.kind == "valid"
         and parsed_content_length.value != len(body)
     ):
@@ -801,89 +845,113 @@ def _validated_response_body(
         return "response_json"
     if not isinstance(payload, dict) or not isinstance(payload.get("models"), list):
         return "response_shape"
-    content_type = response.headers.get("Content-Type", "")
-    etag = _single_usable_etag(response.headers)
+    content_type = headers.get("Content-Type", "")
+    etag = _single_usable_etag(headers)
     if etag is None:
         return "response_etag"
-    return body, content_type, etag
+    return _ValidatedResponse(body=body, content_type=content_type, etag=etag)
 
 
-def _decode_captured_brotli_response(
-    response: http.Response,
+def _validation_semaphore_for_running_loop() -> asyncio.Semaphore:
+    global _validation_loop, _validation_semaphore
+    loop = asyncio.get_running_loop()
+    if _validation_loop is not loop or _validation_semaphore is None:
+        _validation_loop = loop
+        _validation_semaphore = asyncio.Semaphore(1)
+    return _validation_semaphore
+
+
+async def _validate_response_off_loop(
+    snapshot: _ResponseValidationSnapshot,
+) -> tuple[_ValidatedResponse | str, asyncio.CancelledError | None]:
+    semaphore = _validation_semaphore_for_running_loop()
+    async with semaphore:
+        loop = asyncio.get_running_loop()
+        validation = loop.run_in_executor(None, _validate_response_snapshot, snapshot)
+        cancellation: asyncio.CancelledError | None = None
+        while True:
+            try:
+                result = await asyncio.shield(validation)
+                return result, cancellation
+            except asyncio.CancelledError as error:
+                if cancellation is None:
+                    cancellation = error
+
+
+async def _finalize_response_snapshot(
+    flow: http.HTTPFlow,
     state: _FlowState,
-) -> str | None:
-    if state.upstream_encoding != _BROTLI_ENCODING:
-        return None
-    if state.capture is None or state.capture_overflow:
-        return "response_size"
-    compressed = bytes(state.capture)
-    if (
-        state.compressed_content_length is not None
-        and len(compressed) != state.compressed_content_length
-    ) or response.trailers:
-        return "response_body"
+    snapshot: _ResponseValidationSnapshot,
+) -> None:
+    try:
+        validated, cancellation = await _validate_response_off_loop(snapshot)
+        completed_at = time.monotonic()
+        if isinstance(validated, str):
+            _set_not_stored(flow, state, validated, now=completed_at)
+        else:
+            observed_etag = state.in_flight.observed_etag
+            if state.key in _entries or (
+                observed_etag is not None and observed_etag != validated.etag
+            ):
+                _set_not_stored(flow, state, "concurrent_change", now=completed_at)
+            else:
+                entry = _CacheEntry(
+                    body=validated.body,
+                    content_type=validated.content_type,
+                    etag=validated.etag,
+                    validated_at=completed_at,
+                    prefetched=state.prefetch_owner,
+                )
+                evictions = _replace_entry(state.key, entry)
+                _publish_result(state, entry)
+                _set_telemetry(
+                    flow,
+                    "model_catalog_cold_stored",
+                    entry_age_ms=state.entry_age_ms,
+                    validation_latency_ms=_bounded_milliseconds(
+                        completed_at - state.request_started_at
+                    ),
+                    eviction_count=evictions,
+                    upstream_encoding=state.upstream_encoding,
+                    prefetch_role="producer" if state.prefetch_owner else None,
+                )
+        if cancellation is not None:
+            raise cancellation
+    finally:
+        _release_flow_capacity(state)
 
-    decoded, decode_error = body_decoding.decompress_json_usage_body(
-        compressed,
-        response.headers,
-        max_output=MAX_ENTRY_BYTES,
-    )
-    if decode_error == body_decoding.DECODED_BODY_LIMIT_EXCEEDED:
-        return "response_size"
-    if decode_error is not None:
-        return "response_encoding"
 
-    state.capture = bytearray(decoded)
-    return None
-
-
-def finalize_response(flow: http.HTTPFlow) -> None:
-    """Normalize, validate, and install one complete catalog response."""
+def finalize_response(flow: http.HTTPFlow) -> Awaitable[None] | None:
+    """Start validation for one complete catalog response when eligible."""
     state = flow.metadata.get(_FLOW_STATE)
     if not isinstance(state, _FlowState) or state.finalized:
-        return
+        return None
     state.finalized = True
     try:
         _unwrap_response_stream(flow, state)
-        now = time.monotonic()
         response = flow.response
         if response is None:
-            _set_not_stored(flow, state, "response_missing", now=now)
-            return
-        decode_failure = _decode_captured_brotli_response(response, state)
-        if decode_failure is not None:
-            _set_not_stored(flow, state, decode_failure, now=now)
-            return
-        validated = _validated_response_body(response, state)
-        if isinstance(validated, str):
-            _set_not_stored(flow, state, validated, now=now)
-            return
-        body, content_type, etag = validated
-        observed_etag = state.in_flight.observed_etag
-        if state.key in _entries or (observed_etag is not None and observed_etag != etag):
-            _set_not_stored(flow, state, "concurrent_change", now=now)
-            return
-
-        entry = _CacheEntry(
+            _set_not_stored(flow, state, "response_missing")
+            _release_flow_capacity(state)
+            return None
+        if state.capture is None or state.capture_overflow:
+            _set_not_stored(flow, state, "response_size")
+            _release_flow_capacity(state)
+            return None
+        body = bytes(state.capture)
+        state.capture = None
+        snapshot = _ResponseValidationSnapshot(
+            status_code=response.status_code,
+            header_fields=tuple(response.headers.fields),
+            has_trailers=bool(response.trailers),
             body=body,
-            content_type=content_type,
-            etag=etag,
-            validated_at=now,
-            prefetched=state.prefetch_owner,
-        )
-        evictions = _replace_entry(state.key, entry)
-        _publish_result(state, entry)
-        _set_telemetry(
-            flow,
-            "model_catalog_cold_stored",
-            entry_age_ms=state.entry_age_ms,
-            validation_latency_ms=_bounded_milliseconds(now - state.request_started_at),
-            eviction_count=evictions,
             upstream_encoding=state.upstream_encoding,
-            prefetch_role="producer" if state.prefetch_owner else None,
+            compressed_content_length=state.compressed_content_length,
         )
-    finally:
+    except BaseException:
         _release_flow_capacity(state)
+        raise
+    return _finalize_response_snapshot(flow, state, snapshot)
 
 
 def handle_error(flow: http.HTTPFlow) -> None:
@@ -978,6 +1046,7 @@ def release_flow_state(flow: http.HTTPFlow) -> None:
 def reset_for_tests() -> None:
     """Reset process cache ownership between tests."""
     global _active_flow_states, _owned_body_bytes, _process_hmac_key
+    global _validation_loop, _validation_semaphore
     for in_flight in _in_flight.values():
         if not in_flight.future.done():
             in_flight.future.set_result(None)
@@ -986,3 +1055,5 @@ def reset_for_tests() -> None:
     _owned_body_bytes = 0
     _active_flow_states = 0
     _process_hmac_key = secrets.token_bytes(32)
+    _validation_loop = None
+    _validation_semaphore = None
