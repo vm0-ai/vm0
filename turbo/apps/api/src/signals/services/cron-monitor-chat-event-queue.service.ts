@@ -16,6 +16,7 @@ import {
   inArray,
   isNull,
   lt,
+  not,
   notExists,
   notInArray,
   or,
@@ -220,7 +221,11 @@ async function monitorChatEventQueue(
         or(
           and(
             isNull(chatEvents.contextType),
-            notInArray(chatEvents.triggerSource, ["web", "test", "agent"]),
+            not(chatEventTypeIn(["input.goal"])),
+            or(
+              isNull(chatEvents.triggerSource),
+              notInArray(chatEvents.triggerSource, ["web", "test", "agent"]),
+            ),
           ),
           missingChatIntegrationContextRowCondition(db),
           missingScheduledContextRowCondition(db),
