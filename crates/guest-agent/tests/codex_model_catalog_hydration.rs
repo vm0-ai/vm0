@@ -144,7 +144,7 @@ fn bundled_discovery_failure_preserves_existing_catalog_and_stops_cli_spawn() ->
     let main_marker = tmp.path().join("main-invoked");
     let runtime_dir = tmp.path().join("runtime");
     let codex_home = tmp.path().join(".codex");
-    let catalog_path = codex_home.join("vm0-codex-model-catalog.json");
+    let catalog_path = codex_home.join("codex-model-catalog.json");
     std::fs::create_dir_all(&bin_dir)?;
     std::fs::create_dir_all(&codex_home)?;
     std::fs::write(&catalog_path, b"existing catalog")?;
@@ -206,7 +206,7 @@ fn write_run_payload(
 }
 
 fn read_written_catalog(home: &Path) -> Result<Value, Box<dyn std::error::Error>> {
-    let path = home.join(".codex/vm0-codex-model-catalog.json");
+    let path = home.join(".codex/codex-model-catalog.json");
     Ok(serde_json::from_slice(&std::fs::read(path)?)?)
 }
 

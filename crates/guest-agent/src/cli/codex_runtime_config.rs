@@ -9,7 +9,7 @@ use std::process::Command;
 
 use crate::error::AgentError;
 
-const MODEL_CATALOG_FILENAME: &str = "vm0-codex-model-catalog.json";
+const MODEL_CATALOG_FILENAME: &str = "codex-model-catalog.json";
 
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -343,7 +343,7 @@ mod tests {
             overrides.contains(&r#"model_providers.minimax.supports_websockets=false"#.to_string())
         );
         assert!(overrides.contains(
-            &r#"model_catalog_json="/tmp/codex-home/vm0-codex-model-catalog.json""#.to_string()
+            &r#"model_catalog_json="/tmp/codex-home/codex-model-catalog.json""#.to_string()
         ));
     }
 
