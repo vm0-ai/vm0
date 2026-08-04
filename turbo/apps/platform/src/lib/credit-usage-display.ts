@@ -12,6 +12,11 @@ const USAGE_DISPLAY_NAMES = {
       return $.usage.displayNames.finance;
     });
   },
+  imageRecognize(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.imageRecognize;
+    });
+  },
   maps(): string {
     return i18n.t(($) => {
       return $.usage.displayNames.maps;
@@ -66,6 +71,7 @@ const MANAGED_USAGE_PROVIDER_DISPLAY_NAMES: Readonly<
 
 const MODEL_DISPLAY_NAMES: Readonly<Record<string, () => string>> = {
   "vm0-model": USAGE_DISPLAY_NAMES.auto,
+  "google/gemini-3.5-flash": USAGE_DISPLAY_NAMES.imageRecognize,
 };
 
 function titleCaseUsageToken(token: string): string {
