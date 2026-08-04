@@ -5,7 +5,12 @@ edition.workspace = true
 description = "Runner-bundled native entry point for the Zero CLI"
 
 [dev-dependencies]
+clap = { workspace = true, features = ["derive"] }
+nix = { workspace = true, features = ["term"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 tempfile.workspace = true
+uuid = { workspace = true }
 
 [lints]
 workspace = true

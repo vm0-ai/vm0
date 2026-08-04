@@ -4246,7 +4246,12 @@ dependencies = [
 name = "zero-cli"
 version = "0.2.0"
 dependencies = [
+ "clap",
+ "nix",
+ "serde",
+ "serde_json",
  "tempfile",
+ "uuid",
 ]
 
 [[package]]
