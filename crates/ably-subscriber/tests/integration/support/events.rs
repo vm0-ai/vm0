@@ -1,9 +1,14 @@
+use std::collections::VecDeque;
+use std::ops::AsyncFnMut;
 use std::time::Duration;
 
 use ably_subscriber::{Event, Subscription};
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 
 use super::TEST_IO_TIMEOUT;
+
+const EVENT_DIAGNOSTIC_LIMIT: usize = 8;
 
 pub(crate) async fn expect_event_with_timeout(
     sub: &mut Subscription,
@@ -19,6 +24,78 @@ pub(crate) async fn expect_event_with_timeout(
 
 pub(crate) async fn expect_event(sub: &mut Subscription, context: &str) -> Result<Event, String> {
     expect_event_with_timeout(sub, TEST_IO_TIMEOUT, context).await
+}
+
+pub(crate) async fn expect_event_matching_before(
+    mut next_event: impl AsyncFnMut() -> Option<Event>,
+    deadline: Instant,
+    expected: &str,
+    mut classify: impl FnMut(&Event) -> Result<bool, String>,
+) -> Result<Event, String> {
+    let mut event_count = 0;
+    let mut recent_events = VecDeque::with_capacity(EVENT_DIAGNOSTIC_LIMIT);
+    let result = tokio::time::timeout_at(deadline, async {
+        loop {
+            let event = next_event()
+                .await
+                .ok_or_else(|| format!("subscription ended while waiting for {expected}"))?;
+            event_count += 1;
+            if recent_events.len() == EVENT_DIAGNOSTIC_LIMIT {
+                recent_events.pop_front();
+            }
+            recent_events.push_back(format!("{event:?}"));
+
+            if classify(&event)? {
+                return Ok::<Event, String>(event);
+            }
+        }
+    })
+    .await;
+
+    match result {
+        Ok(Ok(event)) => Ok(event),
+        Ok(Err(error)) => Err(format!(
+            "{error} after {event_count} event(s); recent events: {recent_events:?}"
+        )),
+        Err(_) => Err(format!(
+            "timed out waiting for {expected} after {event_count} event(s); recent events: {recent_events:?}"
+        )),
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn event_match_deadline_is_not_reset_by_nonterminal_events() {
+    let expected = "Connected";
+    let mut nonterminal_count = 0;
+    let error = expect_event_matching_before(
+        async || {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            Some(Event::Disconnected {
+                reason: Some("retrying".to_string()),
+            })
+        },
+        Instant::now() + Duration::from_secs(1),
+        expected,
+        |event| match event {
+            Event::Connected => Ok(true),
+            Event::Disconnected { .. } => {
+                nonterminal_count += 1;
+                Ok(false)
+            }
+            other => Err(format!("expected Connected, got {other:?}")),
+        },
+    )
+    .await
+    .unwrap_err();
+
+    assert!(
+        nonterminal_count > 1,
+        "expected repeated nonterminal events, got {nonterminal_count}"
+    );
+    assert!(error.contains(&format!("timed out waiting for {expected}")));
+    assert!(error.contains(&format!("after {nonterminal_count} event(s)")));
+    assert!(error.contains("Disconnected"));
+    assert!(error.contains("retrying"));
 }
 
 pub(crate) async fn expect_connected(sub: &mut Subscription, context: &str) -> Result<(), String> {
@@ -57,6 +134,15 @@ pub(crate) async fn join_server_task(
             let _ = task.await;
             Err(format!("timed out waiting for {context} task"))
         }
+    }
+}
+
+pub(crate) async fn abort_server_task(task: JoinHandle<()>, context: &str) -> Result<(), String> {
+    task.abort();
+    match task.await {
+        Ok(()) => Ok(()),
+        Err(error) if error.is_cancelled() => Ok(()),
+        Err(error) => Err(format!("{context} task panicked: {error}")),
     }
 }
 
