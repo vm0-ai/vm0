@@ -57,7 +57,7 @@ use crate::host;
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkingGate};
 use crate::kmsg_log;
-use crate::lifecycle::RunnerMode;
+use crate::lifecycle::{LifecycleController, RunnerMode};
 use crate::lock;
 use crate::network_log_drain::{DrainableLineReaderExit, NetworkLogDrainCoordinator};
 use crate::network_log_manager::NetworkLogManager;
@@ -1206,6 +1206,89 @@ fn maybe_panic_outer_job(
     }
 }
 
+#[derive(Clone, Copy)]
+enum RequiredNetworkLogComponent {
+    Kmsg,
+    Dns,
+}
+
+impl RequiredNetworkLogComponent {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Kmsg => "kmsg",
+            Self::Dns => "dns",
+        }
+    }
+
+    fn stop_source(self) -> &'static str {
+        match self {
+            Self::Kmsg => "kmsg-monitor",
+            Self::Dns => "dns-monitor",
+        }
+    }
+
+    fn terminal_message(
+        self,
+        result: &Result<DrainableLineReaderExit, tokio::task::JoinError>,
+    ) -> String {
+        match self {
+            Self::Kmsg => match result {
+                Ok(exit) => format!("kmsg monitor exited unexpectedly: {exit:?}"),
+                Err(error) => format!("kmsg monitor task failed: {error}"),
+            },
+            Self::Dns => match result {
+                Ok(DrainableLineReaderExit::Cancelled) => {
+                    "dns monitor exited unexpectedly: Cancelled".to_string()
+                }
+                Ok(DrainableLineReaderExit::DrainChannelClosed) => {
+                    "dns monitor exited unexpectedly: DrainChannelClosed".to_string()
+                }
+                Ok(DrainableLineReaderExit::Eof { during_drain }) => {
+                    format!(
+                        "dns monitor exited unexpectedly: Eof {{ during_drain: {during_drain} }}"
+                    )
+                }
+                Ok(DrainableLineReaderExit::ReadError {
+                    during_drain,
+                    error,
+                }) => {
+                    format!(
+                        "dns monitor exited unexpectedly: ReadError {{ during_drain: {during_drain}, error: {error} }}"
+                    )
+                }
+                Err(error) => format!("dns monitor task failed: {error}"),
+            },
+        }
+    }
+}
+
+async fn handle_required_network_log_completion(
+    component: RequiredNetworkLogComponent,
+    result: Result<DrainableLineReaderExit, tokio::task::JoinError>,
+    reap_child: impl std::future::Future<Output = ()>,
+    cancel: &CancellationToken,
+    cancel_tokens: &RunCancellationRegistry,
+    lifecycle: &LifecycleController,
+) -> Option<RunnerError> {
+    let mode = lifecycle.current_mode();
+    let terminal_error = if matches!(mode, RunnerMode::Stopping | RunnerMode::Stopped) {
+        None
+    } else {
+        let message = component.terminal_message(&result);
+        error!(
+            component = component.label(),
+            ?mode,
+            result = ?result,
+            "required runner component exited"
+        );
+        handle_stopping_signal(component.stop_source(), cancel, cancel_tokens, lifecycle).await;
+        Some(RunnerError::Internal(message))
+    };
+
+    reap_child.await;
+    terminal_error
+}
+
 async fn run(config: RunConfig) -> RunnerResult<()> {
     let RunConfig {
         runner,
@@ -1648,68 +1731,28 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 ).await;
             }
             result = kmsg_handle.wait() => {
-                let mode = lifecycle.current_mode();
-                if !matches!(mode, RunnerMode::Stopping | RunnerMode::Stopped) {
-                    let message = match &result {
-                        Ok(exit) => format!("kmsg monitor exited unexpectedly: {exit:?}"),
-                        Err(error) => format!("kmsg monitor task failed: {error}"),
-                    };
-                    error!(
-                        component = "kmsg",
-                        ?mode,
-                        result = ?result,
-                        "required runner component exited"
-                    );
-                    terminal_error = Some(RunnerError::Internal(message));
-                    handle_stopping_signal(
-                        "kmsg-monitor",
-                        &provider_state.cancel,
-                        &provider_state.cancel_tokens,
-                        &lifecycle,
-                    ).await;
+                if let Some(error) = handle_required_network_log_completion(
+                    RequiredNetworkLogComponent::Kmsg,
+                    result,
+                    kmsg_handle.kill_and_reap_child(),
+                    &provider_state.cancel,
+                    &provider_state.cancel_tokens,
+                    &lifecycle,
+                ).await {
+                    terminal_error = Some(error);
                 }
-                kmsg_handle.kill_and_reap_child().await;
             }
             result = dns_handle.wait() => {
-                let mode = lifecycle.current_mode();
-                if !matches!(mode, RunnerMode::Stopping | RunnerMode::Stopped) {
-                    let message = match &result {
-                        Ok(DrainableLineReaderExit::Cancelled) => {
-                            "dns monitor exited unexpectedly: Cancelled".to_string()
-                        }
-                        Ok(DrainableLineReaderExit::DrainChannelClosed) => {
-                            "dns monitor exited unexpectedly: DrainChannelClosed".to_string()
-                        }
-                        Ok(DrainableLineReaderExit::Eof { during_drain }) => {
-                            format!(
-                                "dns monitor exited unexpectedly: Eof {{ during_drain: {during_drain} }}"
-                            )
-                        }
-                        Ok(DrainableLineReaderExit::ReadError {
-                            during_drain,
-                            error,
-                        }) => {
-                            format!(
-                                "dns monitor exited unexpectedly: ReadError {{ during_drain: {during_drain}, error: {error} }}"
-                            )
-                        }
-                        Err(error) => format!("dns monitor task failed: {error}"),
-                    };
-                    error!(
-                        component = "dns",
-                        ?mode,
-                        result = ?result,
-                        "required runner component exited"
-                    );
-                    terminal_error = Some(RunnerError::Internal(message));
-                    handle_stopping_signal(
-                        "dns-monitor",
-                        &provider_state.cancel,
-                        &provider_state.cancel_tokens,
-                        &lifecycle,
-                    ).await;
+                if let Some(error) = handle_required_network_log_completion(
+                    RequiredNetworkLogComponent::Dns,
+                    result,
+                    dns_handle.kill_and_reap_child(),
+                    &provider_state.cancel,
+                    &provider_state.cancel_tokens,
+                    &lifecycle,
+                ).await {
+                    terminal_error = Some(error);
                 }
-                dns_handle.kill_and_reap_child().await;
             }
             // Reap completed jobs promptly in all live modes. Without this,
             // normal Running mode can retain completed JoinSet entries and

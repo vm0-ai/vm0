@@ -30,6 +30,7 @@ mod lock;
 mod log_file;
 mod network_log_drain;
 mod network_log_manager;
+mod network_log_process;
 mod network_logs;
 mod paths;
 mod prefetch;
