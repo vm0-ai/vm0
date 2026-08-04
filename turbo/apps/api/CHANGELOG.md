@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.370.6](https://github.com/vm0-ai/vm0/compare/api-v1.370.5...api-v1.370.6) (2026-08-04)
+
+
+### Refactoring
+
+* **db:** drop teams context bot identity columns ([#24911](https://github.com/vm0-ai/vm0/issues/24911)) ([08e148e](https://github.com/vm0-ai/vm0/commit/08e148eb0166e1e0c85fc3a40d28b097c796945a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.163.8
+
 ## [1.370.5](https://github.com/vm0-ai/vm0/compare/api-v1.370.4...api-v1.370.5) (2026-08-04)
 
 
