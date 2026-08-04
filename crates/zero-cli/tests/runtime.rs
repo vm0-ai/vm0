@@ -34,10 +34,12 @@ impl NativeHandler for ExampleHandler {
     }
 }
 
+#[allow(clippy::unwrap_used)]
 fn example_registry() -> HandlerRegistry {
     HandlerRegistry::try_new(vec![Box::new(ExampleHandler) as Box<dyn NativeHandler>]).unwrap()
 }
 
+#[allow(clippy::unwrap_used)]
 fn build_zero_token(payload: Value) -> String {
     let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).unwrap());
     format!("vm0_sandbox_e30.{payload}.test-signature")
@@ -127,7 +129,6 @@ fn runtime_config_resolves_defaults_protocol_and_sandbox_context() {
         http_proxy: Some(" http://proxy-user:proxy-password@proxy.example:8080 ".into()),
         https_proxy: Some("https://secure-proxy.example:8443".into()),
         no_proxy: Some(" localhost,.vm0.ai ".into()),
-        ..RuntimeEnvironment::default()
     })
     .unwrap();
     let context = config.sandbox_context().unwrap();

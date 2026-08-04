@@ -17,6 +17,7 @@ use zero_cli::http::ApiClient;
 const TOKEN: &str = "sensitive-zero-token-value";
 const VERCEL_BYPASS: &str = "sensitive-vercel-bypass-value";
 
+#[allow(clippy::unwrap_used)]
 fn config(api_url: &str) -> RuntimeConfig {
     RuntimeConfig::from_environment(RuntimeEnvironment {
         zero_token: Some(TOKEN.into()),
@@ -27,10 +28,12 @@ fn config(api_url: &str) -> RuntimeConfig {
     .unwrap()
 }
 
+#[allow(clippy::unwrap_used)]
 fn header_name(value: &str) -> HeaderName {
     HeaderName::from_bytes(value.as_bytes()).unwrap()
 }
 
+#[allow(clippy::panic)]
 fn required_header<'a>(request: &'a reqwest::Request, name: &str) -> &'a HeaderValue {
     request
         .headers()

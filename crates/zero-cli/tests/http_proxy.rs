@@ -60,6 +60,7 @@ fn http_proxy_is_the_https_fallback_when_https_proxy_is_absent() {
     assert!(request.starts_with("CONNECT zero-cli.invalid:443 HTTP/1.1\r\n"));
 }
 
+#[allow(clippy::indexing_slicing, clippy::unwrap_used)]
 fn start_http_server() -> (SocketAddr, Receiver<Vec<u8>>, JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
@@ -91,6 +92,7 @@ fn start_http_server() -> (SocketAddr, Receiver<Vec<u8>>, JoinHandle<()>) {
     (address, request_receiver, server)
 }
 
+#[allow(clippy::unwrap_used)]
 fn run_child(
     api_url: &str,
     lowercase_proxy: &str,
@@ -128,6 +130,7 @@ fn run_child(
     command.output().unwrap()
 }
 
+#[allow(clippy::unwrap_used)]
 fn finish_http_server(
     output: &Output,
     address: SocketAddr,
