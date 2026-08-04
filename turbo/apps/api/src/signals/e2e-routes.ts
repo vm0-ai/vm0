@@ -15,6 +15,7 @@ import { testTelegramStateRoutes } from "./routes/test-telegram-state";
 import { testTeamsDispatchProbeRoutes } from "./routes/test-teams-dispatch-probe";
 import { testTeamsMockRoutes } from "./routes/test-teams-mock";
 import { testTeamsStateRoutes } from "./routes/test-teams-state";
+import { testUserConfigStateRoutes } from "./routes/test-user-config-state";
 import { testZeroAgentStateRoutes } from "./routes/test-zero-agent-state";
 
 /**
@@ -38,13 +39,19 @@ import { testZeroAgentStateRoutes } from "./routes/test-zero-agent-state";
  * - state routes and the Teams dispatch probe: fixture seeding and provider
  *   ingress used by `e2e/helpers/slack.bash`, `e2e/helpers/telegram.bash`,
  *   and `e2e/helpers/teams.bash`.
+ * - `test-user-config-state`: plain user secret and variable seeding. #25011
+ *   retired the write API without a replacement, so the deployed
+ *   variable-expansion boundary in `t31-zero-variable.bats` has no production
+ *   surface left to construct its fixture through.
  *
  * Every route here is gated by `isTestEndpointAllowed` (development or
  * preview-with-bypass only) and returns 404 in production.
  *
  * API integration tests (vitest) must NOT use these routes: construct state
  * through real production APIs, mock external providers with MSW, and assert
- * through product read surfaces instead.
+ * through product read surfaces instead. `test-user-config-state` is the one
+ * exception both suites share, because the data it seeds has no write API at
+ * all — see the justification on that route.
  */
 export const E2E_ROUTES: readonly RouteEntry[] = [
   ...cliAuthTestRoutes,
@@ -63,5 +70,6 @@ export const E2E_ROUTES: readonly RouteEntry[] = [
   ...testTeamsDispatchProbeRoutes,
   ...testTeamsMockRoutes,
   ...testTeamsStateRoutes,
+  ...testUserConfigStateRoutes,
   ...testZeroAgentStateRoutes,
 ];

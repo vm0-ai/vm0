@@ -512,24 +512,15 @@ export {
   type OrgTier,
 } from "./orgs";
 export {
-  secretNameSchema,
   secretTypeSchema,
   secretResponseSchema,
-  secretListResponseSchema,
-  setSecretRequestSchema,
   type SecretResponse,
-  type SecretListResponse,
-  type SetSecretRequest,
   type SecretType,
 } from "./secrets";
 export {
-  variableNameSchema,
   variableResponseSchema,
   variableListResponseSchema,
-  setVariableRequestSchema,
-  type VariableResponse,
   type VariableListResponse,
-  type SetVariableRequest,
 } from "./variables";
 export {
   modelProviderTypeSchema,
@@ -865,12 +856,6 @@ export {
   type UpdateFeatureSwitchesRequest,
 } from "./zero-feature-switches";
 export {
-  orgListItemSchema,
-  orgListResponseSchema,
-  type OrgListItem,
-  type OrgListResponse,
-} from "./org-list";
-export {
   orgRoleSchema,
   orgMemberSchema,
   orgPendingInvitationSchema,
@@ -1106,7 +1091,6 @@ export {
   type ZeroOrgLogoContract,
   type ZeroOrgLogoResponse,
 } from "./zero-org-logo";
-export { zeroOrgListContract, type ZeroOrgListContract } from "./zero-org-list";
 export {
   zeroOrgMembersContract,
   zeroOrgInviteContract,
@@ -1163,16 +1147,6 @@ export {
   zeroFeatureSwitchesContract,
   type ZeroFeatureSwitchesContract,
 } from "./zero-feature-switches";
-export {
-  zeroSecretsContract,
-  zeroSecretsByNameContract,
-  zeroVariablesContract,
-  zeroVariablesByNameContract,
-  type ZeroSecretsContract,
-  type ZeroSecretsByNameContract,
-  type ZeroVariablesContract,
-  type ZeroVariablesByNameContract,
-} from "./zero-secrets";
 export {
   zeroCustomConnectorsContract,
   zeroCustomConnectorByIdContract,
