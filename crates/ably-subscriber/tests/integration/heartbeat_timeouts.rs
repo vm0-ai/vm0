@@ -294,13 +294,11 @@ async fn reconnect_timeout_retries_until_suspended() {
 
         // For reconnect attempts: accept TCP but never complete WebSocket
         // handshake — forces reconnect_timeout to fire (not "connection refused").
-        let Ok((mut held_connection, _)) = ws.listener.accept().await else {
-            return;
-        };
-        while let Ok((tcp, _)) = ws.listener.accept().await {
-            held_connection = tcp;
+        let mut held_connection = None;
+        loop {
+            let (tcp, _) = ws.listener.accept().await.unwrap();
+            drop(held_connection.replace(tcp));
         }
-        drop(held_connection);
     });
 
     let mut timing = TimingConfig::default();
