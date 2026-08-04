@@ -68,16 +68,33 @@ async function withDatabaseClient<T>(
   return result;
 }
 
-async function applyMigrationsBefore0828(databaseUrl: string): Promise<void> {
+async function findAgentRunContextMigration(
+  journal: z.infer<typeof migrationJournalSchema>,
+): Promise<(typeof journal.entries)[number] | undefined> {
+  for (const migration of journal.entries) {
+    const migrationSql = await readFile(
+      `${migrationsDirectory}${migration.tag}.sql`,
+      "utf8",
+    );
+    if (migrationSql.includes('CREATE TABLE "chat_agent_run_context"')) {
+      return migration;
+    }
+  }
+  return undefined;
+}
+
+async function applyMigrationsBeforeAgentRunContext(
+  databaseUrl: string,
+): Promise<void> {
   const rawJournal = safeJsonParse(
     await readFile(`${migrationsDirectory}meta/_journal.json`, "utf8"),
   );
   const journal = migrationJournalSchema.parse(rawJournal);
-  const rolloutMigration = journal.entries.find((entry) => {
-    return entry.tag === "0828_wise_natasha_romanoff";
-  });
+  const rolloutMigration = await findAgentRunContextMigration(journal);
   if (!rolloutMigration) {
-    throw new Error("Expected migration 0828 in the migration journal");
+    throw new Error(
+      "Expected the chat agent-run context migration in the migration journal",
+    );
   }
 
   await withDatabaseClient(databaseUrl, async (client) => {
@@ -98,7 +115,7 @@ async function applyMigrationsBefore0828(databaseUrl: string): Promise<void> {
   });
 }
 
-async function createPre0828Database(
+async function createPreAgentRunContextDatabase(
   originalDatabaseUrl: string,
   databaseName: string,
 ): Promise<string> {
@@ -111,7 +128,7 @@ async function createPre0828Database(
     originalDatabaseUrl,
     databaseName,
   );
-  await applyMigrationsBefore0828(preMigrationUrl);
+  await applyMigrationsBeforeAgentRunContext(preMigrationUrl);
   return preMigrationUrl;
 }
 
@@ -127,11 +144,11 @@ async function dropDatabase(
   });
 }
 
-async function runPre0828RouteProbe(
+async function runPreAgentRunContextRouteProbe(
   originalDatabaseUrl: string,
   databaseName: string,
 ): Promise<void> {
-  const preMigrationUrl = await createPre0828Database(
+  const preMigrationUrl = await createPreAgentRunContextDatabase(
     originalDatabaseUrl,
     databaseName,
   );
@@ -156,7 +173,7 @@ async function runPre0828RouteProbe(
   await api.grantProEntitlement(actor);
   await api.ensureOrgModelProvider(actor);
   const agent = await bdd.createAgent(actor, {
-    displayName: "Pre-0828 rollout agent",
+    displayName: "Pre-agent-run-context rollout agent",
     visibility: "private",
   });
   await updateFeatureSwitchesForUser(
@@ -198,10 +215,10 @@ async function runPre0828RouteProbe(
         agentId: agent.agentId,
         clientEventId: targetEventId,
         threadId: target.id,
-        prompt: "pre-0828 delegated prompt",
+        prompt: "pre-migration delegated prompt",
         userMessage: {
           version: 1,
-          parts: [{ type: "text", text: "pre-0828 delegated prompt" }],
+          parts: [{ type: "text", text: "pre-migration delegated prompt" }],
         },
       },
     }),
@@ -224,22 +241,23 @@ async function runPre0828RouteProbe(
     triggerSource: "agent",
     userMessage: {
       version: 1,
-      parts: [{ type: "text", text: "pre-0828 delegated prompt" }],
+      parts: [{ type: "text", text: "pre-migration delegated prompt" }],
     },
   });
   if (delegatedEvent?.eventType !== "input.prompt") {
     throw new Error("Expected the delegated input event");
   }
   expect(delegatedEvent.userMessage.parts).toStrictEqual([
-    { type: "text", text: "pre-0828 delegated prompt" },
+    { type: "text", text: "pre-migration delegated prompt" },
   ]);
 
   // Production cannot synthesize a historical schema. This isolated
   // database query is the migration-boundary assertion that the normal
   // route left the polymorphic context pointer empty without migration
-  // 0828 or its source-context table. The client event is the visible origin;
-  // normal send appends a separate run-associated replacement, so the two
-  // persisted facts are related by their canonical thread here.
+  // the agent-run context migration or its source-context table. The client
+  // event is the visible origin; normal send appends a separate run-associated
+  // replacement, so the two persisted facts are related by their canonical
+  // thread here.
   const storageRows = await withDatabaseClient(
     preMigrationUrl,
     async (storage) => {
@@ -265,7 +283,7 @@ async function runPre0828RouteProbe(
   ]);
 }
 
-async function cleanupPre0828RouteProbe(
+async function cleanupPreAgentRunContextRouteProbe(
   originalDatabaseUrl: string,
   databaseName: string,
 ): Promise<void> {
@@ -275,7 +293,7 @@ async function cleanupPre0828RouteProbe(
 }
 
 describe("chat agent-run context rollout compatibility", () => {
-  it("routes an agent prompt safely against an isolated pre-0828 schema", async () => {
+  it("routes an agent prompt safely against an isolated pre-agent-run-context schema", async () => {
     await expect(
       readChatAgentRunContextSchemaAvailable(context),
     ).resolves.toBeTruthy();
@@ -283,11 +301,17 @@ describe("chat agent-run context rollout compatibility", () => {
     const originalDatabaseUrl = env("DATABASE_URL");
     const databaseName = `vm0_agent_context_${process.pid}_${randomUUID().replaceAll("-", "")}`;
     await onRejection(
-      runPre0828RouteProbe(originalDatabaseUrl, databaseName),
+      runPreAgentRunContextRouteProbe(originalDatabaseUrl, databaseName),
       () => {
-        return cleanupPre0828RouteProbe(originalDatabaseUrl, databaseName);
+        return cleanupPreAgentRunContextRouteProbe(
+          originalDatabaseUrl,
+          databaseName,
+        );
       },
     );
-    await cleanupPre0828RouteProbe(originalDatabaseUrl, databaseName);
+    await cleanupPreAgentRunContextRouteProbe(
+      originalDatabaseUrl,
+      databaseName,
+    );
   }, 90_000);
 });
