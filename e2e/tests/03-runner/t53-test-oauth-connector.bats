@@ -221,6 +221,10 @@ append_test_oauth_bypass_headers() {
     fi
 }
 
+test_oauth_echo_prompt() {
+    printf '%s' "printf ECHO_BODY=; curl -sS -w '\nECHO_STATUS=%{http_code}\n' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' -H 'x-vm0-test-endpoint-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${TEST_OAUTH_PROVIDER_URL}/api/test/oauth-provider/echo'"
+}
+
 header_location() {
     local header_file="$1"
     grep -i '^location:' "$header_file" | head -n1 | sed -E 's/^[Ll]ocation:[[:space:]]*//; s/\r$//'
@@ -333,7 +337,7 @@ EOF
     # without depending on Next external rewrites to preserve preview guard
     # headers. The web-to-api rewrite is covered by web rewrite tests.
     run run_zero_agent_via_chat "$COMPOSE_ID" \
-        "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' -H 'x-vm0-test-endpoint-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${TEST_OAUTH_PROVIDER_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
+        "$(test_oauth_echo_prompt)"
 
     echo "$output"
     assert_success
@@ -408,7 +412,7 @@ EOF
     assert_success
 
     run run_zero_agent_via_chat "$COMPOSE_ID" \
-        "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' -H 'x-vm0-test-endpoint-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${TEST_OAUTH_PROVIDER_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
+        "$(test_oauth_echo_prompt)"
 
     echo "$output"
     assert_success

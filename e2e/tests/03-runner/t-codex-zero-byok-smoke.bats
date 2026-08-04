@@ -102,7 +102,7 @@ teardown_file() {
     # LAST_THREAD_ID / LAST_RUN_ID would arrive empty. The helper returns
     # non-zero on failure, which fails the test naturally.
     run_codex_chat_with_capacity_retry "$AGENT_ID" \
-        "Compute 123+456 and reply with exactly: RESULT=<answer>" \
+        "123+456. Reply only RESULT=<answer>." \
         "gpt-5.5"
 
     # Assert: real codex produced the expected sentinel. The selected model's
@@ -115,7 +115,7 @@ teardown_file() {
 
 @test "t-codex-zero-byok-smoke-2: gpt-5.6-luna via zero web layer" {
     run_codex_chat_with_capacity_retry "$AGENT_ID" \
-        "Compute 234+567 and reply with exactly: LUNA_RESULT=<answer>" \
+        "234+567. Reply only LUNA_RESULT=<answer>." \
         "gpt-5.6-luna"
 
     [[ "$LAST_MSG_CONTENT" == *"LUNA_RESULT=801"* ]] \

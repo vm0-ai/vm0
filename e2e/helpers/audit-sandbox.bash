@@ -33,13 +33,12 @@ audit_chatgpt_oauth_sandbox_via_agent() {
     # Single quotes prevent shell expansion in the agent's literal Bash call.
     local prompt
     prompt=$(cat <<EOF
-Run this exact Bash command and include its output between '---AUDIT-START---' and '---AUDIT-END---' markers in your response. Do not modify the command, do not add commentary inside the markers:
-
+Run this command:
 bash $artifact_path '${CHATGPT_AUDIT_FORBIDDEN_ACCESS_TOKEN}' '${CHATGPT_AUDIT_FORBIDDEN_REFRESH_TOKEN}' '${CHATGPT_AUDIT_FORBIDDEN_ACCOUNT_ID}' '${CHATGPT_AUDIT_FORBIDDEN_ID_TOKEN}'
 
-After running, output exactly:
+Reply only, replacing <stdout> with the command's exact stdout:
 ---AUDIT-START---
-<paste the entire stdout above between the markers, on a single line>
+<stdout>
 ---AUDIT-END---
 EOF
 )
