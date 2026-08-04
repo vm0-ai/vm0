@@ -646,6 +646,7 @@ def test_tweet_create_with_url_stays_on_with_url_bucket(x_usage, tmp_path, real_
         "Unicode fullwidth mention \uff20éexample.com",
         "Fullwidth tag \uff03twitter.com",
         "Unicode fullwidth tag \uff03éexample.com",
+        "Unicode dot boundary .éexample.com",
         "Plus suffix example.com+tag",
         "Fullwidth terminal plus suffix example.\uff23\uff2f\uff2d+tag",
         "At suffix example.com@user",
