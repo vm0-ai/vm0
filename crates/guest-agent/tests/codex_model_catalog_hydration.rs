@@ -25,12 +25,18 @@ fn incomplete_catalog_inherits_bundled_defaults_before_cli_spawn() -> TestResult
     write_main_codex(&main_codex, &main_marker)?;
 
     let input_catalog = json!({
-        "models": [{
-            "slug": "deepseek-v3.2",
-            "display_name": "DeepSeek V3.2",
-            "context_window": 114_688,
-            "unknown_model_field": { "preserve": true }
-        }],
+        "models": [
+            {
+                "slug": "deepseek-v3.2",
+                "display_name": "DeepSeek V3.2",
+                "context_window": 114_688,
+                "unknown_model_field": { "preserve": true }
+            },
+            {
+                "slug": "deepseek-reasoner",
+                "model_messages": null
+            }
+        ],
         "unknown_catalog_field": "preserve"
     });
     let run_payload_path = write_run_payload(&runtime_dir, input_catalog)?;
@@ -46,8 +52,8 @@ fn incomplete_catalog_inherits_bundled_defaults_before_cli_spawn() -> TestResult
 
     assert_eq!(
         std::fs::read_to_string(&discovery_marker)?,
-        "debug\nmodels\n--bundled\n",
-        "setup should invoke exactly `codex debug models --bundled`"
+        "invocation\ndebug\nmodels\n--bundled\n",
+        "setup should invoke `codex debug models --bundled` exactly once"
     );
     assert!(
         main_marker.exists(),
@@ -68,6 +74,11 @@ fn incomplete_catalog_inherits_bundled_defaults_before_cli_spawn() -> TestResult
         written["models"][0]["unknown_model_field"],
         json!({ "preserve": true })
     );
+    assert_eq!(
+        written["models"][1]["base_instructions"],
+        "default instructions"
+    );
+    assert!(written["models"][1]["model_messages"].is_null());
     assert_eq!(written["unknown_catalog_field"], "preserve");
 
     Ok(())
@@ -161,7 +172,7 @@ fn bundled_discovery_failure_preserves_existing_catalog_and_stops_cli_spawn() ->
     );
     assert_eq!(
         std::fs::read_to_string(&discovery_marker)?,
-        "debug\nmodels\n--bundled\n"
+        "invocation\ndebug\nmodels\n--bundled\n"
     );
     let error_path = guest_contracts::runtime_paths::checkpoint_error_file(&runtime_dir);
     let error = std::fs::read_to_string(error_path)?;
@@ -268,7 +279,8 @@ fn write_successful_discovery_codex(path: &Path, marker: &Path) -> TestResult {
     write_executable(
         path,
         &format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > {}\nprintf '%s' {}\n",
+            "#!/bin/sh\nprintf 'invocation\\n' >> {}\nprintf '%s\\n' \"$@\" >> {}\nprintf '%s' {}\n",
+            quote_shell_arg(&marker),
             quote_shell_arg(&marker),
             quote_shell_arg(&bundled)
         ),
@@ -280,7 +292,8 @@ fn write_failing_discovery_codex(path: &Path, marker: &Path) -> TestResult {
     write_executable(
         path,
         &format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > {}\nexit 42\n",
+            "#!/bin/sh\nprintf 'invocation\\n' >> {}\nprintf '%s\\n' \"$@\" >> {}\nexit 42\n",
+            quote_shell_arg(&marker),
             quote_shell_arg(&marker)
         ),
     )
