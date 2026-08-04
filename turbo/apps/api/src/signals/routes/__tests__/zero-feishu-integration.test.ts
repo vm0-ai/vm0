@@ -2660,8 +2660,6 @@ describe("Feishu integration", () => {
     expect(claimedFeishuContext).toMatchObject({
       contextType: "feishu",
       contextId: expect.any(String),
-      feishuOpenUrl:
-        "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
       feishuMessageText: "do the Feishu task",
       feishuMessageFiles: [
         {
@@ -2687,8 +2685,6 @@ describe("Feishu integration", () => {
     expect(pendingFeishuContext).toMatchObject({
       contextType: "feishu",
       contextId: claimedFeishuContext?.contextId,
-      feishuOpenUrl:
-        "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
     });
     const completedReply = [...outboundMessages].reverse().find((message) => {
       return (

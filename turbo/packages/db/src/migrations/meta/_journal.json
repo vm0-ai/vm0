@@ -36,6 +36,13 @@
       "when": 1785763448631,
       "tag": "0812_tranquil_caretaker",
       "breakpoints": true
+    },
+    {
+      "idx": 813,
+      "version": "7",
+      "when": 1785811708107,
+      "tag": "0813_relax_feishu_chat_open_url",
+      "breakpoints": true
     }
   ]
 }

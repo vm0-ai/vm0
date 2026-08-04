@@ -359,7 +359,6 @@ async function persistCanonicalFeishuIngress(args: {
         runId: null,
         triggerSource: "feishu",
         feishuContext: {
-          chatOpenUrl,
           ...args.launchContext,
         },
         createdAt: args.ingress.createdAt,
