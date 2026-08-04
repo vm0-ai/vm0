@@ -516,7 +516,7 @@ mod tests {
     fn inherit_default_model_instructions_uses_highest_priority_visible_model() {
         let target = json!({
             "models": [{
-                "slug": "vm0-model",
+                "slug": "target-model",
                 "context_window": 1_000_000
             }]
         });
@@ -625,8 +625,8 @@ mod tests {
         let catalog_path = model_catalog_path(tmp.path());
         std::fs::write(&catalog_path, b"existing catalog").unwrap();
         let config = CodexRuntimeConfig {
-            provider_id: "vm0-model".to_string(),
-            name: "vm0 Model".to_string(),
+            provider_id: "test-provider".to_string(),
+            name: "Test Provider".to_string(),
             base_url: "https://example.test/v1".to_string(),
             env_key: "OPENAI_API_KEY".to_string(),
             http_headers: None,
