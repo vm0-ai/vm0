@@ -296,6 +296,10 @@ const videoGenerationTemplateRequestSchema = z.object({
   type: z.literal("video"),
   selection: z.object({
     stylePresetId: z.string().min(1),
+    /** User-visible snapshot for API-backed avatar templates. */
+    titleSnapshot: z.string().trim().min(1).optional(),
+    /** User-visible preview snapshot for API-backed avatar templates. */
+    previewUrl: z.url().optional(),
   }),
 });
 

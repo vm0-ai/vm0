@@ -32,6 +32,7 @@ function featureSwitchResponseBody(params: {
   readonly supportsCustomModelGateways: boolean;
   readonly supportsImageRecognition: boolean;
   readonly imageRecognitionRolloutComplete: true;
+  readonly supportsAvatarTemplates: boolean;
 }) {
   const registeredEffectiveSwitches = getAllFeatureStates({
     orgId: params.orgId,
@@ -56,6 +57,7 @@ function featureSwitchResponseBody(params: {
     supportsCustomModelGateways: params.supportsCustomModelGateways,
     supportsImageRecognition: params.supportsImageRecognition,
     imageRecognitionRolloutComplete: params.imageRecognitionRolloutComplete,
+    supportsAvatarTemplates: params.supportsAvatarTemplates,
   };
 }
 
@@ -78,6 +80,7 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       supportsCustomModelGateways,
       supportsImageRecognition: true,
       imageRecognitionRolloutComplete: true,
+      supportsAvatarTemplates: true,
     }),
   };
 });
@@ -119,6 +122,7 @@ const updateFeatureSwitchesInner$ = command(
         supportsCustomModelGateways,
         supportsImageRecognition: true,
         imageRecognitionRolloutComplete: true,
+        supportsAvatarTemplates: true,
       }),
     };
   },

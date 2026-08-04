@@ -645,6 +645,8 @@
     "templates": {
       "activeHtmlPreview": "{{title}} attivo HTML anteprima",
       "all": "Tutto",
+      "avatar": "Avatar",
+      "avatarWithId": "Avatar {{id}}",
       "categories": "Categorie di modelli",
       "category": "Categoria modello",
       "fullPreview": "{{title}} anteprima completa del sito web",

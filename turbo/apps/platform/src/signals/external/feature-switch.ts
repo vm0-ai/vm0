@@ -15,6 +15,7 @@ export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v3";
 const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
   localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
 const imageRecognitionGloballyAvailable$ = state(false);
+const avatarTemplatesApiSupported$ = state(false);
 
 // Pinned to the API backend: feature switches bootstrap before the platform API
 // client is available.
@@ -61,6 +62,13 @@ export const featureSwitch$ = computed((get) => {
 
 export const imageRecognitionAvailable$ = computed((get): boolean => {
   return get(imageRecognitionGloballyAvailable$);
+});
+
+export const avatarTemplatesEnabled$ = computed((get): boolean => {
+  return (
+    get(avatarTemplatesApiSupported$) &&
+    (get(featureSwitch$)[FeatureSwitchKey.JoggAiBuiltIn] ?? false)
+  );
 });
 
 export const artifactSidebarInlineOpenEnabled$ = computed((get): boolean => {
@@ -110,6 +118,7 @@ export const customConnectorPermissionsEnabled$ = computed((get): boolean => {
 export const reloadFeatureSwitch$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(imageRecognitionGloballyAvailable$, false);
+    set(avatarTemplatesApiSupported$, false);
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     if (!clerk.user || !clerk.organization) {
@@ -147,6 +156,10 @@ export const reloadFeatureSwitch$ = command(
 
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
     set(imageRecognitionGloballyAvailable$, imageRecognitionGloballyAvailable);
+    set(
+      avatarTemplatesApiSupported$,
+      result.body.supportsAvatarTemplates === true,
+    );
   },
 );
 

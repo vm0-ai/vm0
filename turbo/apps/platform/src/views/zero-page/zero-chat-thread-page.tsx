@@ -97,6 +97,7 @@ import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
 } from "../../signals/zero-page/user-message-document-codec.ts";
+import { avatarTemplateSelection } from "../../signals/zero-page/avatar-template-selection.ts";
 import type {
   ChatThreadWorkflowAutomation,
   ZeroWorkflowSchedule,
@@ -6396,6 +6397,11 @@ function generationTemplateTypeLabel(
   if (!value) {
     return null;
   }
+  if (avatarTemplateSelection(value)) {
+    return i18n.t(($) => {
+      return $.artifacts.templates.avatar;
+    });
+  }
   if (value.type === "video") {
     return i18n.t(($) => {
       return $.chat.templates.categories.video;
@@ -6590,6 +6596,9 @@ const STRUCTURED_INLINE_REFERENCE_CLASS =
 function templatePickerCategoryForReference(
   template: GenerationTemplateRequest,
 ): string {
+  if (avatarTemplateSelection(template)) {
+    return "avatar";
+  }
   return template.type === "presentation" ? "slides" : template.type;
 }
 

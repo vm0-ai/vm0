@@ -13,6 +13,11 @@ import type {
   GenerationTemplateRequest,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  zeroAvatarVideoContract,
+  type ZeroAvatarVideoAvatarsQuery,
+} from "@vm0/api-contracts/contracts/zero-avatar-video";
+import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
@@ -434,6 +439,11 @@ describe("chat composer templates", () => {
     expect(tabByText("Illustration")).toBeInTheDocument();
     expect(tabByText("Video")).toBeInTheDocument();
     expect(tabByText("Website")).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("tab").some((tab) => {
+        return tab.textContent === "Avatar";
+      }),
+    ).toBeFalsy();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
     expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
     expect(tabByText("Presentation")).toHaveClass("bg-gray-200");
@@ -502,6 +512,87 @@ describe("chat composer templates", () => {
         "aria-selected",
         "true",
       );
+    });
+  });
+
+  it("loads public avatars by page and sends the selected avatar template", async () => {
+    const user = userEvent.setup({ delay: null });
+    const observedQueries: ZeroAvatarVideoAvatarsQuery[] = [];
+    const firstPage = Array.from({ length: 24 }, (_, index) => {
+      const id = index + 1;
+      return {
+        id,
+        name: `Avatar ${String(id)}`,
+        coverUrl: `https://example.com/avatar-${String(id)}.jpg`,
+      };
+    });
+    const selectedAvatar = {
+      id: 81,
+      name: "Ada",
+      coverUrl: "https://example.com/ada.jpg",
+    };
+    context.mocks.api(zeroAvatarVideoContract.avatars, ({ query, respond }) => {
+      observedQueries.push(query);
+      return respond(200, {
+        avatars: query.page === 2 ? [selectedAvatar] : firstPage,
+      });
+    });
+    let submittedTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate(body) {
+        submittedTemplate = body.generationTemplate;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await user.click(
+      await waitFor(() => {
+        return tabByText("Avatar");
+      }),
+    );
+
+    const dialog = screen.getByRole("dialog");
+    await within(dialog).findByLabelText("Select template Avatar 1");
+    await user.click(within(dialog).getByLabelText("Next page"));
+    const selectAvatar = await within(dialog).findByLabelText(
+      "Select template Ada",
+    );
+    expect(within(dialog).getByAltText("Ada")).toHaveAttribute(
+      "src",
+      selectedAvatar.coverUrl,
+    );
+    await user.click(selectAvatar);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove template Ada")).toBeInTheDocument();
+    });
+    const editor = await findComposerEditor();
+    await sendMessageInUI(user, editor, "Introduce our new product");
+
+    await waitFor(() => {
+      expect(observedQueries).toStrictEqual([
+        { page: 1, pageSize: 24 },
+        { page: 2, pageSize: 24 },
+      ]);
+      expect(submittedTemplate).toStrictEqual({
+        type: "video",
+        selection: {
+          stylePresetId: avatarTemplateStylePresetId(selectedAvatar.id),
+          titleSnapshot: selectedAvatar.name,
+          previewUrl: selectedAvatar.coverUrl,
+        },
+      });
     });
   });
 

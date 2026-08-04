@@ -10,6 +10,7 @@ import {
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
+import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatEventsContract,
@@ -5475,6 +5476,33 @@ describe("CHAT-02: generation templates and attachments", () => {
       `zero generate video --provider built-in --template ${videoTemplate.id}`,
     );
     await cancelChatRun(actor, video.runId);
+
+    const avatarId = 81;
+    const avatar = await sendChatRun(actor, {
+      agentId,
+      prompt: "make a presenter video",
+      generationTemplate: {
+        type: "video",
+        selection: {
+          stylePresetId: avatarTemplateStylePresetId(avatarId),
+          titleSnapshot: "Do not inject this avatar name",
+          previewUrl: "https://example.com/untrusted-avatar.jpg",
+        },
+      },
+    });
+    const avatarRun = await api.readRun(actor, avatar.runId);
+    const avatarPrompt = avatarRun.appendSystemPrompt ?? "";
+    expect(avatarPrompt).toContain("# Artifact Template Context");
+    expect(avatarPrompt).toContain(`Public JoggAI avatar ID: ${avatarId}`);
+    expect(avatarPrompt).toContain(
+      "zero generate avatar-video --provider built-in --list-voices --json",
+    );
+    expect(avatarPrompt).toContain(
+      `zero generate avatar-video --provider built-in --avatar-id ${avatarId}`,
+    );
+    expect(avatarPrompt).not.toContain("Do not inject this avatar name");
+    expect(avatarPrompt).not.toContain("untrusted-avatar.jpg");
+    await cancelChatRun(actor, avatar.runId);
 
     const websiteTemplate = WEBSITE_TEMPLATE_ITEMS[0];
     if (!websiteTemplate) {
