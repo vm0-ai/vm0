@@ -165,6 +165,7 @@ async fn telemetry_flush_classifies_workspace_cache_finalization() {
     let file = tokio::fs::File::create(active_image).await.unwrap();
     file.set_len(16 * 1024 * 1024).await.unwrap();
     drop(file);
+    assert!(env.parking_gate.soft_drain());
     overrides.clear_wait_process_lifecycle_gate();
     wait_gate.release_one();
 

@@ -111,6 +111,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     file.set_len(16 * 1024 * 1024).await.unwrap();
     drop(file);
 
+    assert!(env.parking_gate.soft_drain());
     overrides.clear_wait_process_lifecycle_gate();
     wait_gate.release_one();
     let completion = env
@@ -122,7 +123,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     assert_eq!(
         env.idle_pool.lock().await.len(),
         0,
-        "nonzero job should not park a VM",
+        "soft-drained parking gate should prevent VM parking",
     );
 
     assert!(
@@ -137,6 +138,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
         .await,
         "immediate heartbeat should advertise the promoted workspace cache",
     );
+    assert!(env.parking_gate.open_after_soft_drain());
 
     let second_gate = sandbox_mock::MockLifecycleGate::new();
     overrides.set_wait_process_lifecycle_gate(second_gate.clone());
@@ -320,6 +322,7 @@ async fn reuse_take_preserves_cached_workspace_snapshot_state() {
     file.set_len(16 * 1024 * 1024).await.unwrap();
     drop(file);
 
+    assert!(env.parking_gate.soft_drain());
     overrides.clear_wait_process_lifecycle_gate();
     wait_gate.release_one();
     let cache_completion = env
@@ -340,6 +343,7 @@ async fn reuse_take_preserves_cached_workspace_snapshot_state() {
         .await,
         "workspace cache promotion should advertise the expected workspace before claim"
     );
+    assert!(env.parking_gate.open_after_soft_drain());
     let reuse_heartbeat_count = env.handle.heartbeat_count();
     let run_id = RunId::new_v4();
     push_job(
