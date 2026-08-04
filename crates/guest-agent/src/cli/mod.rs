@@ -24,6 +24,7 @@ mod codex_app_server_backend;
 mod codex_app_server_events;
 mod codex_runtime_config;
 mod codex_setup;
+mod codex_startup;
 mod command;
 mod diagnostics;
 mod event_delivery;
@@ -34,6 +35,7 @@ mod process_group;
 mod termination;
 
 pub use codex_setup::setup_codex_for_config;
+pub use codex_startup::CodexStartupTiming;
 pub use framework::{ClaudeResultStatus, ClaudeResultSummary};
 
 use crate::active_input::{ActiveInputController, ActiveInputWriter, ReplayUserEventAction};
@@ -503,16 +505,17 @@ enum ParsedEventAction {
     Skip,
 }
 
-struct CliEventIngestor {
+struct CliEventIngestor<'a> {
     seq: u32,
     api_start_time: String,
     last_read_event_at: Option<Instant>,
     session_metadata_capture: events::SessionMetadataCapture,
     failure_diagnostic: Option<CliFailureDiagnostic>,
+    codex_startup: Option<&'a CodexStartupTiming>,
 }
 
-impl CliEventIngestor {
-    fn new(runtime: &CliRuntimeConfig<'_>) -> Self {
+impl<'a> CliEventIngestor<'a> {
+    fn new(runtime: &CliRuntimeConfig<'_>, codex_startup: Option<&'a CodexStartupTiming>) -> Self {
         Self {
             seq: 0,
             api_start_time: runtime.api_start_time.to_string(),
@@ -524,6 +527,7 @@ impl CliEventIngestor {
                 runtime.session_history_path_file.as_ref(),
             ),
             failure_diagnostic: None,
+            codex_startup,
         }
     }
 
@@ -544,9 +548,18 @@ impl CliEventIngestor {
         masker: &SecretMasker,
         behavior: CliFrameworkBehavior,
     ) -> Result<ParsedEventAction, AgentError> {
+        let observed_at = Instant::now();
+        let is_stream_event =
+            event.get("type").and_then(serde_json::Value::as_str) == Some("stream_event");
+        if !is_stream_event
+            && behavior.is_codex_turn_started(event)
+            && let Some(codex_startup) = self.codex_startup
+        {
+            codex_startup.record_success_at(observed_at);
+        }
         Self::write_raw_line(log_file, raw_line).await;
 
-        if event.get("type").and_then(serde_json::Value::as_str) == Some("stream_event") {
+        if is_stream_event {
             return Ok(ParsedEventAction::Skip);
         }
         self.last_read_event_at = Some(Instant::now());
@@ -653,7 +666,7 @@ pub async fn execute_cli_with_active_input_for_config_started_at(
         masker,
         heartbeat_monitor,
         http,
-        CliExecutionControls::new(active_input, CancellationToken::new()),
+        CliExecutionControls::new(active_input, CancellationToken::new(), None),
         config,
         paths,
         execution_started_at,
@@ -662,18 +675,24 @@ pub async fn execute_cli_with_active_input_for_config_started_at(
 }
 
 /// Run-scoped controls observed while the inner CLI is executing.
-pub struct CliExecutionControls {
+pub struct CliExecutionControls<'a> {
     active_input: ActiveInputWriter,
     user_cancellation: CancellationToken,
+    codex_startup: Option<&'a CodexStartupTiming>,
 }
 
-impl CliExecutionControls {
-    /// Create controls for active input and explicit user cancellation.
+impl<'a> CliExecutionControls<'a> {
+    /// Create controls for active input, cancellation, and optional Codex startup timing.
     #[must_use]
-    pub fn new(active_input: ActiveInputWriter, user_cancellation: CancellationToken) -> Self {
+    pub fn new(
+        active_input: ActiveInputWriter,
+        user_cancellation: CancellationToken,
+        codex_startup: Option<&'a CodexStartupTiming>,
+    ) -> Self {
         Self {
             active_input,
             user_cancellation,
+            codex_startup,
         }
     }
 }
@@ -683,33 +702,20 @@ pub async fn execute_cli_with_controls_for_config_started_at(
     masker: &SecretMasker,
     heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
-    controls: CliExecutionControls,
+    controls: CliExecutionControls<'_>,
     config: &env::GuestConfig,
     paths: &paths::GuestPaths,
     execution_started_at: Instant,
 ) -> Result<CliExecutionResult, AgentError> {
-    let CliExecutionControls {
-        active_input,
-        user_cancellation,
-    } = controls;
     let runtime = CliRuntimeConfig::from_config(config, paths, execution_started_at)?;
-    execute_cli_inner(
-        masker,
-        heartbeat_monitor,
-        http,
-        active_input,
-        user_cancellation,
-        &runtime,
-    )
-    .await
+    execute_cli_inner(masker, heartbeat_monitor, http, controls, &runtime).await
 }
 
 async fn execute_cli_inner(
     masker: &SecretMasker,
     mut heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
-    active_input: ActiveInputWriter,
-    user_cancellation: CancellationToken,
+    controls: CliExecutionControls<'_>,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
     if matches!(runtime.framework, env::Framework::Codex) && runtime.use_codex_app_server_backend {
@@ -717,12 +723,17 @@ async fn execute_cli_inner(
             masker,
             heartbeat_monitor,
             http,
-            active_input,
-            user_cancellation,
+            controls,
             runtime,
         )
         .await;
     }
+
+    let CliExecutionControls {
+        active_input,
+        user_cancellation,
+        codex_startup,
+    } = controls;
 
     let behavior = CliFrameworkBehavior::new(runtime.framework);
     let replay_user_messages = active_input.is_enabled();
@@ -939,7 +950,7 @@ async fn execute_cli_inner(
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut post_result_cleanup_result = None;
-    let mut event_ingestor = CliEventIngestor::new(runtime);
+    let mut event_ingestor = CliEventIngestor::new(runtime, codex_startup);
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             () = user_cancellation.cancelled(), if !user_cancellation_handled && cli_status.is_none() => {

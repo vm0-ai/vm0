@@ -6,6 +6,7 @@
 mod common;
 
 use guest_contracts::diagnostics::{FailureClass, FailureDiagnostic};
+use serde_json::Value;
 use shell_quote::quote_shell_arg;
 use std::path::Path;
 use std::process::{Command, Output};
@@ -59,6 +60,25 @@ fn codex_setup_failure_exits_before_cli_spawn() -> TestResult {
     let diagnostic_path = guest_contracts::runtime_paths::failure_diagnostic_file(&runtime_dir);
     let diagnostic: FailureDiagnostic = serde_json::from_slice(&std::fs::read(diagnostic_path)?)?;
     assert_eq!(diagnostic.failure_class, FailureClass::CliExecutionError);
+
+    let sandbox_ops_path = guest_contracts::runtime_paths::sandbox_ops_log_file(&runtime_dir);
+    let sandbox_ops = std::fs::read_to_string(sandbox_ops_path)?;
+    let startup = sandbox_ops
+        .lines()
+        .map(serde_json::from_str::<Value>)
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|operation| {
+            operation.get("action_type").and_then(Value::as_str) == Some("codex_startup")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(startup.len(), 1);
+    let startup = startup
+        .first()
+        .ok_or(std::io::Error::other("missing Codex startup operation"))?;
+    assert_eq!(startup.get("success").and_then(Value::as_bool), Some(false));
+    assert!(startup.get("duration_ms").and_then(Value::as_u64).is_some());
+    assert!(startup.get("error").is_none());
 
     Ok(())
 }
