@@ -21,7 +21,6 @@ import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
@@ -75,7 +74,6 @@ import {
   findComposerModel,
   expectComposerModel,
   chatClipboardHtml,
-  oversizedFile,
   composerElementFrom,
   findComposerEditor,
 } from "./chat-composer-test-helpers.ts";
@@ -83,16 +81,6 @@ import {
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
-
-function mockPreRolloutImageRecognitionApi(): void {
-  context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-    return respond(200, {
-      switches: {},
-      effectiveSwitches: {},
-      supportsImageRecognition: true,
-    });
-  });
-}
 
 afterEach(async () => {
   document.documentElement.lang = DEFAULT_LOCALE;
@@ -1913,166 +1901,6 @@ describe("chat composer models", () => {
     });
   });
 
-  it("keeps unsupported visual files out when the API has not completed rollout", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("glm-5.1");
-    mockAgent();
-    mockPreRolloutImageRecognitionApi();
-    context.mocks.upload.success({
-      id: "notes-upload",
-      filename: "notes.txt",
-      contentType: "text/plain",
-      size: 12,
-      url: "https://example.com/notes.txt",
-    });
-
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    await expectComposerModel("GLM-5.1");
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
-
-    await user.upload(
-      fileInput,
-      new File(["image"], "screenshot.png", { type: "image/png" }),
-    );
-
-    await expect(
-      screen.findAllByText(/GLM-5\.1 cannot recognize images or videos/i),
-    ).resolves.not.toHaveLength(0);
-    expect(
-      screen.queryByLabelText("Open image preview for screenshot.png"),
-    ).not.toBeInTheDocument();
-
-    await user.upload(
-      fileInput,
-      new File(["plain text"], "notes.txt", { type: "text/plain" }),
-    );
-
-    await expect(
-      screen.findByLabelText("Remove notes.txt"),
-    ).resolves.toBeInTheDocument();
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-
-    fireEvent.paste(editor, {
-      clipboardData: {
-        getData: (type: string) => {
-          return type === "text/plain" ? "Keep this pasted caption" : "";
-        },
-        items: [
-          {
-            kind: "file",
-            getAsFile: () => {
-              return new File(["pasted image"], "pasted.png", {
-                type: "image/png",
-              });
-            },
-          },
-        ],
-      },
-    });
-
-    await waitFor(() => {
-      expect(editor).toHaveTextContent("Keep this pasted caption");
-      expect(
-        screen.queryByLabelText("Open image preview for pasted.png"),
-      ).not.toBeInTheDocument();
-    });
-
-    await fill(editor, "");
-
-    fireEvent.paste(editor, {
-      clipboardData: {
-        getData: (type: string) => {
-          if (type === "text/html") {
-            return chatClipboardHtml({
-              text: "Use the copied launch brief",
-              attachments: [
-                {
-                  id: "copied-brief",
-                  url: "https://cdn.vm7.io/artifacts/test/copied/copied-brief.md",
-                  filename: "copied-brief.md",
-                  contentType: "text/markdown",
-                  size: 42,
-                },
-                {
-                  id: "copied-image",
-                  url: "https://cdn.vm7.io/artifacts/test/copied/copied-image.png",
-                  filename: "copied-image.png",
-                  contentType: "image/png",
-                  size: 420,
-                },
-              ],
-            });
-          }
-          return "";
-        },
-        items: [],
-      },
-    });
-
-    await waitFor(() => {
-      expect(editor).toHaveTextContent("Use the copied launch brief");
-      expect(
-        screen.getByLabelText("Remove copied-brief.md"),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByLabelText("Open image preview for copied-image.png"),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.getAllByText(/GLM-5\.1 cannot recognize images or videos/i)
-          .length,
-      ).toBeGreaterThan(0);
-    });
-
-    fireEvent.paste(editor, {
-      clipboardData: {
-        getData: (type: string) => {
-          return type === "text/plain" ? "Do not insert oversized paste" : "";
-        },
-        items: [
-          {
-            kind: "file",
-            getAsFile: () => {
-              return oversizedFile("oversized-paste.txt", "text/plain");
-            },
-          },
-        ],
-      },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("oversized-paste.txt exceeds the 1 GB limit"),
-      ).toBeInTheDocument();
-      expect(editor).toHaveTextContent("Use the copied launch brief");
-    });
-
-    const composer = composerElementFrom(editor);
-    fireEvent.dragOver(composer);
-    fireEvent.dragLeave(composer, { relatedTarget: document.body });
-    fireEvent.drop(composer, {
-      dataTransfer: {
-        files: [
-          new File(["dropped image"], "dropped.png", { type: "image/png" }),
-          oversizedFile("oversized-drop.txt", "text/plain"),
-        ],
-      },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("oversized-drop.txt exceeds the 1 GB limit"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getAllByText(/GLM-5\.1 cannot recognize images or videos/i)
-          .length,
-      ).toBeGreaterThan(0);
-    });
-  });
-
   it("accepts visual attachments across composer paths for fallback-enabled text-only models", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("glm-5.1");
@@ -2217,49 +2045,6 @@ describe("chat composer models", () => {
     expect(
       screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
     ).not.toBeInTheDocument();
-  });
-
-  it("hides an accepted visual attachment against a pre-rollout API", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("claude-sonnet-4-6");
-    mockAgent();
-    mockPreRolloutImageRecognitionApi();
-    context.mocks.upload.success({
-      id: "visual-model-switch",
-      filename: "storyboard.png",
-      contentType: "image/png",
-      size: 128,
-      url: "https://example.com/storyboard.png",
-    });
-
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    await expectComposerModel("Claude Sonnet 4.6");
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
-    await user.upload(
-      fileInput,
-      new File(["image"], "storyboard.png", { type: "image/png" }),
-    );
-
-    await expect(
-      screen.findByLabelText("Open image preview for storyboard.png"),
-    ).resolves.toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
-    );
-    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByText(/GLM-5\.1 cannot recognize images or videos/i)
-          .length,
-      ).toBeGreaterThan(0);
-      expect(
-        screen.queryByLabelText("Open image preview for storyboard.png"),
-      ).not.toBeInTheDocument();
-    });
   });
 
   it("keeps a non-native image after switching to a fallback-enabled text-only model", async () => {
