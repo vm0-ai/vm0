@@ -70,7 +70,7 @@ async def _wait_for_hash_start(
         if started_task in done and started_task.result():
             return
         if request_task in done:
-            await request_task
+            _ = await request_task
             raise AssertionError("request finished before SigV4 body hashing started")
         raise AssertionError("SigV4 body hashing did not start before timeout")
     finally:
@@ -385,7 +385,7 @@ async def test_payload_dependent_sigv4_hashing_allows_event_loop_progress(
             assert not request_task.done()
 
             hasher.release.set()
-            await request_task
+            _ = await request_task
 
             assert (
                 f"Credential={RESOLVED_AWS_ACCESS_KEY_ID}/" in flow.request.headers["authorization"]
@@ -441,7 +441,7 @@ async def test_payload_dependent_sigv4_cancellation_waits_for_hash_completion(
 
             hasher.release.set()
             with pytest.raises(asyncio.CancelledError):
-                await request_task
+                _ = await request_task
         finally:
             hasher.release.set()
             await cancel_pending_task(request_task)
@@ -482,7 +482,7 @@ async def test_payload_dependent_sigv4_revalidates_upstream_after_hashing(
             flow.server_conn.state = connection.ConnectionState.CLOSED
             mitm_addon.server_disconnected(SimpleNamespace(server=flow.server_conn))
             hasher.release.set()
-            await request_task
+            _ = await request_task
 
             assert flow.response is not None
             assert flow.response.status_code == 403
