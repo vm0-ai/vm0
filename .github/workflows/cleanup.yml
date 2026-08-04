@@ -9,6 +9,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Keep this deletion-only drain until all legacy app preview domains have
+  # closed after the preview gateway rollout.
   cleanup-okou-pages-domain:
     runs-on: ubuntu-latest
     steps:

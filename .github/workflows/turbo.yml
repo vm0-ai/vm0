@@ -1248,6 +1248,8 @@ jobs:
   # Build the canonical Cloudflare app artifact independently of Vercel, then
   # deploy the verified R2 artifact to a Pages preview branch. Release PRs keep
   # the provider preview but do not receive a custom preview domain.
+  # CF_PREVIEW_GATEWAY_MODE defaults to legacy; canary and enabled skip only
+  # the custom-domain lifecycle after the gateway route is ready.
   deploy-app:
     needs: [detect-release]
     runs-on: ubuntu-latest
@@ -1298,6 +1300,19 @@ jobs:
             "$MERGE_GROUP_HEAD_REF")"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve app preview ingress mode
+        id: preview-ingress
+        env:
+          CANARY_REF: ${{ vars.CF_PREVIEW_GATEWAY_CANARY_REF }}
+          CONFIGURED_MODE: ${{ vars.CF_PREVIEW_GATEWAY_MODE || 'legacy' }}
+          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
+        run: |
+          target_ref="${PAGES_BRANCH%-app}"
+          mode="$(bash .github/scripts/resolve-app-preview-ingress-mode.sh \
+            "$CONFIGURED_MODE" "$CANARY_REF" "$target_ref")"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "App preview ingress: ${mode}" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Resolve Cloudflare Pages custom preview domain
         id: pages-custom-domain
         if: needs.detect-release.outputs.skip != 'true' || github.event_name == 'push'
@@ -1310,7 +1325,7 @@ jobs:
 
       - name: Begin Cloudflare Pages custom preview domain validation
         id: pages-domain-validation
-        if: steps.pages-custom-domain.outputs.domain != ''
+        if: steps.preview-ingress.outputs.mode == 'legacy' && steps.pages-custom-domain.outputs.domain != ''
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
@@ -1584,7 +1599,7 @@ jobs:
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
 
       - name: Finalize Cloudflare Pages custom preview domain
-        if: steps.pages-custom-domain.outputs.domain != ''
+        if: steps.preview-ingress.outputs.mode == 'legacy' && steps.pages-custom-domain.outputs.domain != ''
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
@@ -1714,6 +1729,29 @@ jobs:
           done
 
           echo "::error::Cloudflare Pages preview assets did not become ready"
+          exit 1
+
+      - name: Smoke test app preview gateway
+        if: steps.preview-ingress.outputs.mode == 'gateway' && steps.pages-custom-domain.outputs.url != ''
+        env:
+          PAGES_CUSTOM_URL: ${{ steps.pages-custom-domain.outputs.url }}
+        run: |
+          set -euo pipefail
+          response_headers="$(mktemp)"
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error \
+              --dump-header "$response_headers" \
+              --output /dev/null \
+              "${PAGES_CUSTOM_URL}/" && \
+              grep -Eiq '^x-vm0-preview-gateway:[[:space:]]*1[[:space:]]*$' \
+                "$response_headers"; then
+              echo "App preview gateway is ready"
+              exit 0
+            fi
+            echo "::warning::App preview gateway is not ready (attempt ${attempt}/12)"
+            sleep 5
+          done
+          echo "::error::${PAGES_CUSTOM_URL} did not use vm0-preview-gateway"
           exit 1
 
       - name: Record Cloudflare Pages preview
