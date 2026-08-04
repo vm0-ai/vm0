@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.157.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.157.1...runner-rs-v0.157.2) (2026-08-04)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** reduce balloon settle detection latency ([#25069](https://github.com/vm0-ai/vm0/issues/25069)) ([16893fa](https://github.com/vm0-ai/vm0/commit/16893fa7ffa416a8859a112119a8082229da2d88))
+
 ## [0.157.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.157.0...runner-rs-v0.157.1) (2026-08-04)
 
 
