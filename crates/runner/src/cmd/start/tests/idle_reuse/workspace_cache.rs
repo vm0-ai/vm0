@@ -25,17 +25,25 @@ async fn wait_heartbeat_with_workspace_after(
     mut cursor: usize,
     reuse_key: &str,
     expected_workspace: &WorkspaceCacheCapability,
+    absent_sandbox_reuse_key: Option<&str>,
     timeout: Duration,
 ) -> bool {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         {
             let heartbeats = handle.heartbeats.lock().unwrap_or_else(|e| e.into_inner());
-            if heartbeats[cursor..].iter().any(|state| {
-                state.held_workspace_states.iter().any(|state| {
+            if heartbeats[cursor..].iter().any(|heartbeat| {
+                let has_expected_workspace = heartbeat.held_workspace_states.iter().any(|state| {
                     state.reuse_key == reuse_key
                         && state.workspace_caches.contains(expected_workspace)
-                })
+                });
+                let omits_claimed_sandbox = absent_sandbox_reuse_key.is_none_or(|reuse_key| {
+                    heartbeat
+                        .held_sandbox_states
+                        .iter()
+                        .all(|state| state.reuse_key != reuse_key)
+                });
+                has_expected_workspace && omits_claimed_sandbox
             }) {
                 return true;
             }
@@ -123,6 +131,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
             before,
             reuse_key,
             &expected_workspace,
+            None,
             Duration::from_secs(5),
         )
         .await,
@@ -325,6 +334,7 @@ async fn reuse_take_preserves_cached_workspace_snapshot_state() {
             promotion_heartbeat_count,
             "sess-cached",
             &expected_workspace,
+            None,
             Duration::from_secs(5),
         )
         .await,
@@ -348,6 +358,7 @@ async fn reuse_take_preserves_cached_workspace_snapshot_state() {
             reuse_heartbeat_count,
             "sess-cached",
             &expected_workspace,
+            Some("sess-refresh"),
             Duration::from_secs(5),
         )
         .await,
