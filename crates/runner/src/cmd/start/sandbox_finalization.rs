@@ -275,7 +275,7 @@ async fn finalize_sandbox_for_completion_inner(
     };
     let cancelled = cancel.is_cancelled();
     let hard_cancelled = cancel.is_hard_cancelled();
-    if cancelled {
+    if hard_cancelled {
         telemetry.record_outcome("runner_host_finalization_cancelled", "cancelled");
     }
     let terminal_status = workspace_terminal_status(exit_code, cancelled);

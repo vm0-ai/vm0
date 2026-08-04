@@ -1126,6 +1126,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cooperative_cancellation_reuse_does_not_record_hard_cancellation_marker() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let session_id = "sess-cooperative-cancellation";
+        let cleanup_state = RunCleanupState::new();
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            session_id,
+            lease,
+            cleanup_state.clone(),
+        );
+        finalization
+            .cancel
+            .request_cooperative_user_cancellation()
+            .await;
+        let mut executor_result = executor_phase_outcome(run_id, "cooperative-cancellation", None);
+        executor_result.outcome.sandbox_reuse_disposition =
+            executor::SandboxReuseDisposition::Eligible(
+                executor::SandboxReuseTerminal::CooperativeCancellation,
+            );
+
+        let finalized = finalization.finalize(executor_result).await;
+
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_finalization_reusable_sandbox",
+        );
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_terminal_sandbox_reuse_eligible_cooperative_cancellation",
+        );
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_finalization_cancelled");
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::IdlePoolOwned,
+        );
+        assert!(fixture.idle_pool.lock().await.take(session_id).is_some());
+    }
+
+    #[tokio::test]
     async fn finalization_records_identity_park_missing_when_parked_without_restored_identity() {
         let fixture = FinalizationTelemetryFixture::new().await;
         let (_budget, lease) = test_budget_lease();
