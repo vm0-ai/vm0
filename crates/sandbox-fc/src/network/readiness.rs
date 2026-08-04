@@ -16,21 +16,10 @@ use tracing::{info, warn};
 use serde::Serialize;
 
 use crate::duration::duration_ms;
-
-/// Local-only hostname used to validate a namespace's DNS redirect path.
-pub const DNS_READINESS_HOSTNAME: &str = "vm0-readiness.invalid";
-
-/// Local-only hostname reserved for post-failure namespace diagnostics.
-pub const DNS_DIAGNOSTIC_HOSTNAME: &str = "vm0-vethprobe.invalid";
-
-/// TEST-NET address returned for the readiness and diagnostic hostnames.
-pub const DNS_READINESS_IPV4: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
-
-pub(crate) const DNS_READINESS_RESOLVER_IPV4: Ipv4Addr = Ipv4Addr::new(8, 8, 8, 8);
-/// Fixed diagnostic port outside Linux's default ephemeral range, used to correlate one query.
-pub(crate) const DNS_DIAGNOSTIC_SOURCE_PORT: u16 = 30_053;
-
-const _: () = assert!(DNS_DIAGNOSTIC_HOSTNAME.len() == DNS_READINESS_HOSTNAME.len());
+use crate::guest_dns_probe::{
+    DNS_DIAGNOSTIC_HOSTNAME, DNS_DIAGNOSTIC_SOURCE_PORT, DNS_PROBE_DESTINATION_PORT,
+    DNS_PROBE_RESOLVER_IPV4, DNS_READINESS_HOSTNAME, DNS_READINESS_IPV4,
+};
 
 pub(super) const DNS_READINESS_OPERATION_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -38,7 +27,6 @@ pub(super) type DnsReadinessFuture =
     Pin<Box<dyn Future<Output = Result<u16, DnsReadinessError>> + Send>>;
 pub(super) type DnsReadinessProbe = Arc<dyn Fn(String) -> DnsReadinessFuture + Send + Sync>;
 
-const DNS_PORT: u16 = 53;
 const DNS_RESPONSE_MAX_BYTES: usize = 512;
 const DNS_QUERY_FLAGS_RECURSION_DESIRED: u16 = 0x0100;
 const DNS_RESPONSE_FLAG: u16 = 0x8000;
@@ -342,7 +330,7 @@ fn probe_namespace_dns_diagnostic_blocking(
     }
 
     let mut report = probe_dns_endpoint_once(
-        SocketAddrV4::new(DNS_READINESS_RESOLVER_IPV4, DNS_PORT),
+        SocketAddrV4::new(DNS_PROBE_RESOLVER_IPV4, DNS_PROBE_DESTINATION_PORT),
         DNS_DIAGNOSTIC_SOURCE_PORT,
         probe_timeout,
         DNS_DIAGNOSTIC_HOSTNAME,
@@ -455,7 +443,7 @@ fn probe_namespace_dns_blocking(
         .map_err(|errno| DnsReadinessError::errno(DnsReadinessStage::EnterNamespace, errno))?;
 
     let result = probe_dns_endpoint(
-        SocketAddrV4::new(DNS_READINESS_IPV4, DNS_PORT),
+        SocketAddrV4::new(DNS_READINESS_IPV4, DNS_PROBE_DESTINATION_PORT),
         probe_timeout,
         hostname,
     );
@@ -678,6 +666,10 @@ mod tests {
     fn query_uses_readiness_name_and_a_record() {
         let query = build_dns_query(0x1234, DNS_READINESS_HOSTNAME).unwrap();
 
+        assert_eq!(
+            query.len(),
+            crate::guest_dns_probe::GUEST_DNS_PROBE_QUERY_BYTES
+        );
         assert_eq!(query.get(..2).unwrap(), &0x1234_u16.to_be_bytes());
         assert_eq!(
             query.get(2..4).unwrap(),
@@ -695,6 +687,10 @@ mod tests {
     fn diagnostic_query_uses_distinct_fixed_name() {
         let query = build_dns_query(0x1234, DNS_DIAGNOSTIC_HOSTNAME).unwrap();
 
+        assert_eq!(
+            query.len(),
+            crate::guest_dns_probe::GUEST_DNS_PROBE_QUERY_BYTES
+        );
         assert!(
             query
                 .windows("vm0-vethprobe".len())

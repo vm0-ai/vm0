@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use clap::Args;
 use nix::fcntl::Flock;
 use sandbox::SnapshotProvider;
+use sandbox_fc::DNS_PROBE_RESOLVER_IPV4;
 
 use crate::ca;
 use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
@@ -29,7 +30,6 @@ use local_publish::LocalFilePublish;
 use scripts::{RootfsScripts, rootfs_script_command, run_rootfs_script};
 use sizes::file_sizes;
 
-const ROOTFS_DNS_NAMESERVER: &str = "8.8.8.8";
 const TEMPLATE_FILE: &str = "template.ext4";
 const TEMPLATE_DOWNLOAD_FILE: &str = "downloaded-template.ext4";
 const TEMPLATE_WARM_DIR_PREFIX: &str = "template-warm-";
@@ -102,6 +102,15 @@ pub struct BuildArgs {
         arg(long, help = "Path to guest-write-file binary (required)")
     )]
     guest_write_file: Option<PathBuf>,
+    #[cfg_attr(
+        bundled_guests,
+        arg(long, help = "Path to zero-cli binary [default: bundled]")
+    )]
+    #[cfg_attr(
+        not(bundled_guests),
+        arg(long, help = "Path to zero-cli binary (required)")
+    )]
+    zero_cli: Option<PathBuf>,
     /// Profile to build (determines VM resources and disk sizes)
     #[arg(long)]
     pub profile: String,
@@ -123,6 +132,7 @@ impl BuildArgs {
             "guest-mock-codex" => self.guest_mock_codex.take(),
             "guest-reseed" => self.guest_reseed.take(),
             "guest-write-file" => self.guest_write_file.take(),
+            "zero-cli" => self.zero_cli.take(),
             _ => None,
         }
     }
@@ -1091,7 +1101,7 @@ async fn customize_rootfs_staging(
         .arg("--ca-dir")
         .arg(&ca_dir)
         .arg("--dns-nameserver")
-        .arg(ROOTFS_DNS_NAMESERVER);
+        .arg(DNS_PROBE_RESOLVER_IPV4.to_string());
     for guest in input.guests.iter() {
         cmd.arg("--guest")
             .arg(&guest.path)

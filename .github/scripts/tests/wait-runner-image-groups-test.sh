@@ -136,7 +136,8 @@ make_manifest() {
         "guest-mock-claude": "guest-mock-claude-sha",
         "guest-mock-codex": "guest-mock-codex-sha",
         "guest-reseed": "guest-reseed-sha",
-        "guest-write-file": "guest-write-file-sha"
+        "guest-write-file": "guest-write-file-sha",
+        "zero-cli": "zero-cli-sha"
       },
       hosts: $hosts
     }' >"$file"

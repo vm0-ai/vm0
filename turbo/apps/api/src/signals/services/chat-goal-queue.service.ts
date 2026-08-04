@@ -1,5 +1,4 @@
 import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -242,17 +241,10 @@ export async function rejectGoalQueueEvent(
     }
     const [payload] = await tx
       .select({
-        goalObjectiveBrief: chatGoalContext.objectiveBrief,
+        userMessage: chatEvents.userMessage,
         currentGoalObjectiveBrief: threadGoals.objectiveBrief,
       })
       .from(chatEvents)
-      .leftJoin(
-        chatGoalContext,
-        and(
-          eq(chatEvents.contextType, "goal"),
-          eq(chatGoalContext.id, chatEvents.contextId),
-        ),
-      )
       .leftJoin(
         threadGoals,
         and(
@@ -271,8 +263,11 @@ export async function rejectGoalQueueEvent(
     if (!payload) {
       return false;
     }
+    const goalPart = payload.userMessage?.parts.find((part) => {
+      return part.type === "goal";
+    });
     const objectiveBrief =
-      payload.goalObjectiveBrief ?? payload.currentGoalObjectiveBrief ?? "Goal";
+      goalPart?.goalBrief ?? payload.currentGoalObjectiveBrief ?? "Goal";
     const rejected = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.chatThreadId,
       eventType: "input.rejected",
