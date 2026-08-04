@@ -920,15 +920,21 @@ describe("settings dialog", () => {
     });
   });
 
-  it("hides model settings for limited-free-1 workspaces", async () => {
+  it.each([
+    {
+      name: "model capabilities",
+      response: billingStatus("limited-free-1", {
+        supportByok: false,
+        restrictedVm0Models: true,
+      }),
+    },
+    {
+      name: "legacy tier-only response",
+      response: billingStatus("limited-free-1"),
+    },
+  ])("hides model settings with $name", async ({ response }) => {
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-      return respond(
-        200,
-        billingStatus("limited-free-1", {
-          supportByok: false,
-          restrictedVm0Models: true,
-        }),
-      );
+      return respond(200, response);
     });
 
     await openDialog("admin", "model");
