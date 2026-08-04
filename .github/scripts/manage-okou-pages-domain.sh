@@ -144,25 +144,32 @@ begin_domain_validation() {
 
 finish_domain_validation() {
   local domain_state
-  local verification_status
 
-  domain_state="$(cloudflare_request "${pages_domains_url}/${domain}")"
+  domain_state="$(pages_domain_state)"
+  if ! pages_domain_missing <<< "$domain_state"; then
+    require_cloudflare_success <<< "$domain_state"
+  fi
+
   if ! domain_is_active "$domain_state"; then
     upsert_cname "${project_name}.pages.dev"
-    verification_status="$(jq -r '.result.verification_data.status' <<< "$domain_state")"
 
     # A newly-created Pages custom domain can take longer than a minute to
-    # publish ownership verification even after its CNAME is visible.
+    # become readable and publish ownership verification even after its CNAME
+    # is visible.
     for _ in {1..90}; do
-      domain_state="$(cloudflare_request "${pages_domains_url}/${domain}")"
-      verification_status="$(jq -r '.result.verification_data.status' <<< "$domain_state")"
-      if [[ "$verification_status" == "active" ]]; then
+      domain_state="$(pages_domain_state)"
+      if pages_domain_missing <<< "$domain_state"; then
+        sleep 2
+        continue
+      fi
+      require_cloudflare_success <<< "$domain_state"
+      if domain_is_active "$domain_state"; then
         break
       fi
       sleep 2
     done
 
-    if [[ "$verification_status" != "active" ]]; then
+    if ! domain_is_active "$domain_state"; then
       echo "Cloudflare Pages did not verify ${domain}" >&2
       exit 1
     fi

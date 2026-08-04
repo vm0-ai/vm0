@@ -49,7 +49,16 @@ case "$url" in
     fi
     ;;
   */pages/projects/okou-app/domains/pr-22239-app.omby.ai)
-    if [[ -n "${MOCK_PAGES_PENDING_RESPONSES:-}" ]]; then
+    if [[ -n "${MOCK_PAGES_MISSING_RESPONSES:-}" ]]; then
+      request_count="$(<"$MOCK_PAGES_STATE_FILE")"
+      request_count="$((request_count + 1))"
+      printf '%s\n' "$request_count" > "$MOCK_PAGES_STATE_FILE"
+      if (( request_count <= MOCK_PAGES_MISSING_RESPONSES )); then
+        printf '{"success":false,"errors":[{"code":8000021,"message":"domain does not exist"}],"result":null}\n'
+      else
+        printf '{"success":true,"result":{"status":"active","verification_data":{"status":"active"}}}\n'
+      fi
+    elif [[ -n "${MOCK_PAGES_PENDING_RESPONSES:-}" ]]; then
       request_count="$(<"$MOCK_PAGES_STATE_FILE")"
       request_count="$((request_count + 1))"
       printf '%s\n' "$request_count" > "$MOCK_PAGES_STATE_FILE"
@@ -153,16 +162,21 @@ test "$(grep -c '/pages/projects/okou-app/domains/pr-22239-app.omby.ai' "$reques
 
 : > "$request_log"
 export MOCK_PAGES_DUPLICATE_CREATE="true"
+printf '0\n' > "$pages_state_file"
+export MOCK_PAGES_MISSING_RESPONSES="3"
+export MOCK_PAGES_STATE_FILE="$pages_state_file"
 export MOCK_DNS_CONTENT="pr-22239-app.okou-app.pages.dev"
 status="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
   begin account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
 test "$status" = "pending"
+test "$(<"$pages_state_file")" = "1"
 grep -q -- '--request POST' "$request_log"
 grep -q 'okou-app.pages.dev' "$request_log"
 output="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
   finish account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
 grep -q 'Cloudflare Pages custom branch domain configured' <<< "$output"
-unset MOCK_PAGES_DUPLICATE_CREATE
+test "$(<"$pages_state_file")" = "4"
+unset MOCK_PAGES_DUPLICATE_CREATE MOCK_PAGES_MISSING_RESPONSES MOCK_PAGES_STATE_FILE
 
 : > "$request_log"
 export MOCK_PAGES_CREATE_ERROR="true"
