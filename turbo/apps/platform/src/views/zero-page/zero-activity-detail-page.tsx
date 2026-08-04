@@ -279,7 +279,6 @@ export function ActivityHeaderCard({
   displayName,
   status,
   triggerSource,
-  triggerAgentName,
   detail,
   logDetail,
   duration,
@@ -291,7 +290,6 @@ export function ActivityHeaderCard({
   displayName: string;
   status: LogStatus;
   triggerSource: TriggerSource | null;
-  triggerAgentName: string | null;
   detail: {
     id: string;
     modelProvider?: string | null;
@@ -337,7 +335,7 @@ export function ActivityHeaderCard({
                   })}
                 </span>
                 <span className="text-foreground whitespace-nowrap">
-                  {getTriggerSourceLabel(triggerSource, triggerAgentName)}
+                  {getTriggerSourceLabel(triggerSource)}
                 </span>
               </div>
               <span
@@ -897,7 +895,6 @@ function ActivityDetailContent({
             displayName={displayName}
             status={status}
             triggerSource={detail.triggerSource ?? null}
-            triggerAgentName={detail.triggerAgentName ?? null}
             detail={detail}
             logDetail={detail}
             duration={duration}
@@ -1152,7 +1149,6 @@ function downloadJson(
       displayName: detail.displayName,
       status: detail.status,
       triggerSource: detail.triggerSource,
-      triggerAgentName: detail.triggerAgentName,
       modelProvider: detail.modelProvider,
       selectedModel: detail.selectedModel,
       framework: runtimeFramework ?? detail.framework,

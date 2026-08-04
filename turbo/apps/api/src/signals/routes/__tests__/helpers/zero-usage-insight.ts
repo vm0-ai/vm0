@@ -48,7 +48,6 @@ interface InsertUsageEventArgs {
   readonly category?: string;
   readonly quantity?: number;
   readonly status?: string;
-  readonly grossCredits?: number | null;
   readonly creditsCharged?: number;
   readonly idempotencyKey?: string;
   readonly billingError?: string | null;
@@ -71,7 +70,6 @@ interface UsageCompactionStorageCounts {
 interface UsageEventState {
   readonly id: string;
   readonly status: string;
-  readonly grossCredits: number | null;
   readonly creditsCharged: number | null;
   readonly billingError: string | null;
 }
@@ -289,7 +287,6 @@ export const insertUsageEvent$ = command(
       category: args.category,
       quantity: args.quantity,
       status: args.status,
-      gross_credits: args.grossCredits,
       credits_charged: args.creditsCharged,
       idempotency_key: args.idempotencyKey,
       billing_error: args.billingError,
@@ -379,7 +376,6 @@ export const readUsageEventState$ = command(
     if (
       !response.usage_event_id ||
       !response.usage_event_status ||
-      response.usage_event_gross_credits === undefined ||
       response.usage_event_credits_charged === undefined ||
       response.usage_event_billing_error === undefined
     ) {
@@ -388,7 +384,6 @@ export const readUsageEventState$ = command(
     return {
       id: response.usage_event_id,
       status: response.usage_event_status,
-      grossCredits: response.usage_event_gross_credits,
       creditsCharged: response.usage_event_credits_charged,
       billingError: response.usage_event_billing_error,
     };

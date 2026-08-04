@@ -43,7 +43,7 @@ describe("POST /api/test/usage-settlement/process", () => {
     await expect(response.text()).resolves.toBe("Not found");
   });
 
-  it("uses precomputed credits only for historical model events", async () => {
+  it("prices every usage event from server-side pricing", async () => {
     const fixture = await store.set(
       seedUsageInsightFixture$,
       undefined,
@@ -55,9 +55,18 @@ describe("POST /api/test/usage-settlement/process", () => {
     const modelIdempotencyKey = randomUUID();
     const browserIdempotencyKey = randomUUID();
     const connectorIdempotencyKey = randomUUID();
+    const modelProvider = `settlement-model-${randomUUID()}`;
     const connectorProvider = `settlement-test-${randomUUID()}`;
+    const browserProvider = `settlement-browser-${randomUUID()}`;
 
     await seedUsagePricingRows([
+      {
+        kind: "model",
+        provider: modelProvider,
+        category: "tokens.input",
+        unitPrice: 19,
+        unitSize: 100,
+      },
       {
         kind: "connector",
         provider: connectorProvider,
@@ -67,6 +76,11 @@ describe("POST /api/test/usage-settlement/process", () => {
       },
     ]);
     onTestFinished(async () => {
+      await deleteUsagePricingRows({
+        kind: "model",
+        provider: modelProvider,
+        categories: ["tokens.input"],
+      });
       await deleteUsagePricingRows({
         kind: "connector",
         provider: connectorProvider,
@@ -79,10 +93,9 @@ describe("POST /api/test/usage-settlement/process", () => {
       {
         ...fixture,
         kind: "model",
-        provider: "historical-model",
+        provider: modelProvider,
         category: "tokens.input",
         quantity: 100,
-        grossCredits: 19,
         idempotencyKey: modelIdempotencyKey,
       },
       context.signal,
@@ -95,7 +108,6 @@ describe("POST /api/test/usage-settlement/process", () => {
         provider: connectorProvider,
         category: "request",
         quantity: 2,
-        grossCredits: 97,
         idempotencyKey: connectorIdempotencyKey,
       },
       context.signal,
@@ -105,10 +117,9 @@ describe("POST /api/test/usage-settlement/process", () => {
       {
         ...fixture,
         kind: "browser",
-        provider: "browser-use",
+        provider: browserProvider,
         category: "provider_cost_usd_micros",
         quantity: 100,
-        grossCredits: 23,
         idempotencyKey: browserIdempotencyKey,
       },
       context.signal,
@@ -133,7 +144,6 @@ describe("POST /api/test/usage-settlement/process", () => {
     ).resolves.toStrictEqual({
       id: expect.any(String),
       status: "processed",
-      grossCredits: 19,
       creditsCharged: 19,
       billingError: null,
     });
@@ -142,7 +152,6 @@ describe("POST /api/test/usage-settlement/process", () => {
     ).resolves.toStrictEqual({
       id: expect.any(String),
       status: "processed",
-      grossCredits: 23,
       creditsCharged: 0,
       billingError: "missing_pricing",
     });
@@ -151,7 +160,6 @@ describe("POST /api/test/usage-settlement/process", () => {
     ).resolves.toStrictEqual({
       id: expect.any(String),
       status: "processed",
-      grossCredits: 97,
       creditsCharged: 10,
       billingError: null,
     });

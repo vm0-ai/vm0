@@ -8,22 +8,8 @@ import { i18n } from "../../i18n/index.ts";
 // Re-export from core contract to stay in sync with the API schema
 export type { LogStatus, TriggerSource };
 
-/**
- * Build a display label for a trigger source.
- * For "agent" sources with a known parent agent name, returns "Agent (name)".
- */
-export function getTriggerSourceLabel(
-  source: TriggerSource,
-  triggerAgentName?: string | null,
-): string {
-  if (source === "agent" && triggerAgentName) {
-    return i18n.t(
-      ($) => {
-        return $.activity.sources.agentWithName;
-      },
-      { name: triggerAgentName },
-    );
-  }
+/** Build a display label for a trigger source. */
+export function getTriggerSourceLabel(source: TriggerSource): string {
   switch (source) {
     case "web": {
       return i18n.t(($) => {
@@ -101,7 +87,6 @@ export interface LogEntry {
   displayName: string | null;
   framework: string | null;
   triggerSource: TriggerSource | null;
-  triggerAgentName: string | null;
   status: LogStatus;
   prompt: string;
   createdAt: string;
@@ -124,7 +109,6 @@ export interface LogDetail {
   modelProvider: string | null;
   selectedModel: string | null;
   triggerSource: TriggerSource | null;
-  triggerAgentName: string | null;
   status: LogStatus;
   prompt: string;
   appendSystemPrompt: string | null;

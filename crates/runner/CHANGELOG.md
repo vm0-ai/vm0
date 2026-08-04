@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.156.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.155.1...runner-rs-v0.156.0) (2026-08-04)
+
+
+### Features
+
+* **contracts:** add native zero cli rust bindings ([#24994](https://github.com/vm0-ai/vm0/issues/24994)) ([519c1f6](https://github.com/vm0-ai/vm0/commit/519c1f631e9759eecd25d929c26cbba84989d434))
+
+
+### Bug Fixes
+
+* **python:** revalidate firewall authorization after auth waits ([#24973](https://github.com/vm0-ai/vm0/issues/24973)) ([2437299](https://github.com/vm0-ai/vm0/commit/2437299c9af55cceaf1048ed7c2c4d07df75f5ec))
+
+## [0.155.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.155.0...runner-rs-v0.155.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **python:** revalidate buffered requests before dispatch ([#24966](https://github.com/vm0-ai/vm0/issues/24966)) ([4cf228b](https://github.com/vm0-ai/vm0/commit/4cf228bd3fcf2e8ecc23a72fabec4a78fe16403b))
+
+
+### Performance Improvements
+
+* measure pre-park successor handoff ([#24938](https://github.com/vm0-ai/vm0/issues/24938)) ([6e7c0aa](https://github.com/vm0-ai/vm0/commit/6e7c0aa73c51d7916efaa354f6ce1ba32b83090f))
+
 ## [0.155.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.154.3...runner-rs-v0.155.0) (2026-08-04)
 
 

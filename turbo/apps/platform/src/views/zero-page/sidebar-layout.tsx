@@ -16,7 +16,7 @@ import {
   currentLeftThread$,
   currentRightThread$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
-import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
+import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
 import {
@@ -85,7 +85,7 @@ function InviteButtonLeaf() {
   );
 }
 
-function MobileArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
+function MobileArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
   const sidebarTarget = useGet(thread.sidebar.target$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const openThreadArtifacts = useOpenThreadArtifacts(thread);

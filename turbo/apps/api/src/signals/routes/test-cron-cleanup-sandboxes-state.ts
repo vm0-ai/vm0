@@ -392,10 +392,9 @@ async function seedRunOwnershipForAction(
     orgId: run.orgId,
     userId: run.userId,
     kind: "model",
-    provider: "cleanup-test",
+    provider: `cleanup-test-${runId}`,
     category: "tokens.input",
     quantity: 1,
-    grossCredits: 9,
     status: "pending",
   });
   signal.throwIfAborted();

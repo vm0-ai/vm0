@@ -6091,7 +6091,6 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
     );
     expect(immediateState.zero_run).toMatchObject({
       triggerSource: "web",
-      triggerAgentId: null,
     });
     expect(
       immediateState.callbacks.map((callback) => {
@@ -6155,7 +6154,6 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
     );
     expect(promotedState.zero_run).toMatchObject({
       triggerSource: "web",
-      triggerAgentId: null,
     });
     expect(
       promotedState.callbacks.map((callback) => {

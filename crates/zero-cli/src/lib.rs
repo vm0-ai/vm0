@@ -16,3 +16,6 @@ pub mod output;
 pub mod runtime;
 pub mod secret;
 pub mod token;
+
+/// Version of the native Zero CLI binary built from this crate.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");

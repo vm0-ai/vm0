@@ -32,9 +32,8 @@ import { agentRuns } from "./agent-run";
  *   video     fal-ai/veo3.1/fast           output_video_seconds.audio
  *   video     bytedance/seedance-2.0       output_video_tokens
  *
- * Charging is applied by the billing processor. Historical model events may
- * retain runner-calculated `grossCredits`; other events use the
- * `(kind, provider, category)` pricing-table lookup. The processor applies
+ * Charging is applied by the billing processor, which looks up the
+ * `(kind, provider, category)` pricing-table entry. The processor applies
  * allowances to the gross amount and writes `creditsCharged`.
  *
  * `billingError` is a short code naming a billing-time problem on the
@@ -71,6 +70,7 @@ export const usageEvent = pgTable(
     provider: varchar("provider", { length: 100 }).notNull(),
     category: varchar("category", { length: 100 }).notNull(),
     quantity: bigint("quantity", { mode: "number" }).notNull(),
+    // Remove with the physical column after this code-only rollout drains.
     grossCredits: bigint("gross_credits", { mode: "number" }),
     creditsCharged: bigint("credits_charged", { mode: "number" }),
     status: varchar("status", { length: 20 }).notNull().default("pending"),

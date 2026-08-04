@@ -13,6 +13,7 @@ use api_contracts::generated::{
         NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     routes,
+    types::runners::zero_cli::CompatibilityDescriptor,
 };
 use reqwest::{Response, StatusCode};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -49,6 +50,7 @@ use sandbox::SandboxId;
 struct ClaimRequestBody<'a> {
     runner_identity: ClaimRunnerIdentity<'a>,
     telemetry: ClaimRequestTelemetry,
+    zero_cli: CompatibilityDescriptor,
 }
 
 #[derive(Serialize)]
@@ -1180,6 +1182,27 @@ fn claim_request_body<'a>(
                 .map(claim_telemetry_duration_ms),
             poll_reason: candidate.poll_reason().map(String::from),
         },
+        zero_cli: bundled_zero_cli_compatibility(),
+    }
+}
+
+fn bundled_zero_cli_compatibility() -> CompatibilityDescriptor {
+    match (
+        option_env!("BUNDLED_ZERO_CLI_VERSION"),
+        option_env!("BUNDLED_ZERO_CLI_SHA256"),
+    ) {
+        (Some(version), Some(checksum_sha256)) => CompatibilityDescriptor {
+            available: true,
+            version: Some(version.to_owned()),
+            build_id: Some(concat!("runner-rs@", env!("CARGO_PKG_VERSION")).to_owned()),
+            checksum_sha256: Some(checksum_sha256.to_owned()),
+        },
+        _ => CompatibilityDescriptor {
+            available: false,
+            version: None,
+            build_id: None,
+            checksum_sha256: None,
+        },
     }
 }
 
@@ -2085,6 +2108,26 @@ mod tests {
         assert_eq!(body["telemetry"]["pollDueToJobDiscoveredMs"], 19);
         assert_eq!(body["telemetry"]["pollHttpRequestMs"], 11);
         assert_eq!(body["telemetry"]["pollReason"], "deferred");
+        match (
+            option_env!("BUNDLED_ZERO_CLI_VERSION"),
+            option_env!("BUNDLED_ZERO_CLI_SHA256"),
+        ) {
+            (Some(version), Some(checksum_sha256)) => {
+                assert_eq!(body["zeroCli"]["available"], true);
+                assert_eq!(body["zeroCli"]["version"], version);
+                assert_eq!(
+                    body["zeroCli"]["buildId"],
+                    concat!("runner-rs@", env!("CARGO_PKG_VERSION"))
+                );
+                assert_eq!(body["zeroCli"]["checksumSha256"], checksum_sha256);
+            }
+            _ => {
+                assert_eq!(body["zeroCli"]["available"], false);
+                assert!(body["zeroCli"].get("version").is_none());
+                assert!(body["zeroCli"].get("buildId").is_none());
+                assert!(body["zeroCli"].get("checksumSha256").is_none());
+            }
+        }
         assert!(body.get("runnerPreference").is_none());
         assert!(!body.to_string().contains("rawSizeBytes"));
         assert!(!body.to_string().contains("sessionId"));
@@ -2092,6 +2135,8 @@ mod tests {
         assert!(!body.to_string().contains("cacheKey"));
         assert!(!body.to_string().contains("path"));
         assert!(body.get("capabilities").is_none());
+        assert!(!body.to_string().contains("commandArguments"));
+        assert!(!body.to_string().contains("token"));
     }
 
     #[test]

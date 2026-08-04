@@ -28,11 +28,10 @@ interface ChatThreadScrollSignals {
   >;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   readonly awayFromBottom$: Computed<boolean>;
-  readonly captureThreadScrollPosition$: Command<
+  readonly readRenderedThreadScrollPosition$: Command<
     ThreadScrollPosition | null,
     []
   >;
-  readonly followTail$: Command<void, []>;
   readonly autoScroll$: Command<
     Promise<void>,
     [ThreadScrollPosition | null, AbortSignal]
@@ -212,7 +211,7 @@ function createInternalScrollSignals(threadId: string) {
       }
     },
   );
-  const captureThreadScrollPosition$ = command(({ get, set }) => {
+  const readRenderedThreadScrollPosition$ = command(({ get }) => {
     const currentPosition = get(threadScrollPosition$);
     if (currentPosition === null) {
       return null;
@@ -222,15 +221,9 @@ function createInternalScrollSignals(threadId: string) {
       return currentPosition;
     }
     if (isAtBottom(container)) {
-      set(clearThreadScrollPosition$);
       return null;
     }
-    const position = captureScrollPosition(container);
-    if (position) {
-      set(setThreadScrollPosition$, position);
-      return position;
-    }
-    return currentPosition;
+    return captureScrollPosition(container) ?? currentPosition;
   });
   const bindScrollContainer$ = command(
     ({ set }, container: HTMLElement): void => {
@@ -249,7 +242,7 @@ function createInternalScrollSignals(threadId: string) {
     scrollContainer$,
     threadScrollPosition$,
     awayFromBottom$,
-    captureThreadScrollPosition$,
+    readRenderedThreadScrollPosition$,
     syncThreadScrollPosition$,
     clearThreadScrollPosition$,
     bindScrollContainer$,
@@ -594,8 +587,7 @@ export function createChatThreadScrollSignals(
     scrollContentOnRef$,
     threadScrollPosition$: scroll.threadScrollPosition$,
     awayFromBottom$: scroll.awayFromBottom$,
-    captureThreadScrollPosition$: scroll.captureThreadScrollPosition$,
-    followTail$: scroll.clearThreadScrollPosition$,
+    readRenderedThreadScrollPosition$: scroll.readRenderedThreadScrollPosition$,
     autoScroll$: render.autoScroll$,
     scrollTo$: navigation.scrollTo$,
     scrollToTop$: navigation.scrollToTop$,

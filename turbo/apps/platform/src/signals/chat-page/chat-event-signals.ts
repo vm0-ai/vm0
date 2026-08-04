@@ -373,7 +373,9 @@ function createChatEventSetup({
 }
 
 export interface ChatEventSignals {
+  readonly threadId: string;
   readonly chatEvents$: Computed<ChatEvent[]>;
+  readonly hasOptimisticUserMessage$: Computed<boolean>;
   readonly initialRemoteEventsResolved$: Computed<boolean>;
   readonly setup$: Command<Promise<void>, [AbortSignal]>;
   readonly catchUp$: Command<Promise<void>, [AbortSignal]>;
@@ -408,7 +410,9 @@ export function createChatEventSignals(threadId: string): ChatEventSignals {
     return get(events.initialRemoteEventsResolved$);
   });
   return {
+    threadId,
     chatEvents$: events.chatEvents$,
+    hasOptimisticUserMessage$: events.hasOptimisticUserMessage$,
     initialRemoteEventsResolved$,
     ...setup,
     sendEvent$,

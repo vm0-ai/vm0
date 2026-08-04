@@ -7,7 +7,11 @@ use shell_quote::quote_shell_arg;
 use std::path::Path;
 use std::process::{Command, Output};
 
-type TestResult = Result<(), Box<dyn std::error::Error>>;
+type TestError = Box<dyn std::error::Error>;
+type TestResult = Result<(), TestError>;
+
+const MODEL_CATALOG_PREPARE_ACTION: &str = "codex_model_catalog_prepare";
+const MODEL_CATALOG_BUNDLED_LOAD_ACTION: &str = "codex_model_catalog_bundled_load";
 
 #[test]
 fn incomplete_catalog_inherits_bundled_defaults_before_cli_spawn() -> TestResult {
@@ -80,6 +84,16 @@ fn incomplete_catalog_inherits_bundled_defaults_before_cli_spawn() -> TestResult
     );
     assert!(written["models"][1]["model_messages"].is_null());
     assert_eq!(written["unknown_catalog_field"], "preserve");
+    let operations = read_catalog_operations(&runtime_dir)?;
+    assert_eq!(operations.len(), 2);
+    let prepare = single_catalog_operation(&operations, MODEL_CATALOG_PREPARE_ACTION)?;
+    let bundled_load = single_catalog_operation(&operations, MODEL_CATALOG_BUNDLED_LOAD_ACTION)?;
+    assert_catalog_operation_result(prepare, true);
+    assert_catalog_operation_result(bundled_load, true);
+    assert!(
+        operation_duration_ms(prepare)? >= operation_duration_ms(bundled_load)?,
+        "total catalog preparation must contain bundled loading: {operations:?}"
+    );
 
     Ok(())
 }
@@ -128,6 +142,19 @@ fn complete_catalog_bypasses_bundled_discovery() -> TestResult {
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(read_written_catalog(tmp.path())?, input_catalog);
+    let operations = read_catalog_operations(&runtime_dir)?;
+    assert_eq!(operations.len(), 1);
+    assert_catalog_operation_result(
+        single_catalog_operation(&operations, MODEL_CATALOG_PREPARE_ACTION)?,
+        true,
+    );
+    assert!(
+        operations.iter().all(|operation| {
+            operation.get("action_type").and_then(Value::as_str)
+                != Some(MODEL_CATALOG_BUNDLED_LOAD_ACTION)
+        }),
+        "complete catalogs must not emit bundled-load telemetry: {operations:?}"
+    );
 
     Ok(())
 }
@@ -178,6 +205,16 @@ fn bundled_discovery_failure_preserves_existing_catalog_and_stops_cli_spawn() ->
     let error = std::fs::read_to_string(error_path)?;
     assert!(error.contains("Codex setup failed"));
     assert!(error.contains("failed to read the bundled Codex model catalog"));
+    let operations = read_catalog_operations(&runtime_dir)?;
+    assert_eq!(operations.len(), 2);
+    let prepare = single_catalog_operation(&operations, MODEL_CATALOG_PREPARE_ACTION)?;
+    let bundled_load = single_catalog_operation(&operations, MODEL_CATALOG_BUNDLED_LOAD_ACTION)?;
+    assert_catalog_operation_result(prepare, false);
+    assert_catalog_operation_result(bundled_load, false);
+    assert!(
+        operation_duration_ms(prepare)? >= operation_duration_ms(bundled_load)?,
+        "failed total catalog preparation must contain bundled loading: {operations:?}"
+    );
 
     Ok(())
 }
@@ -208,6 +245,67 @@ fn write_run_payload(
 fn read_written_catalog(home: &Path) -> Result<Value, Box<dyn std::error::Error>> {
     let path = home.join(".codex/codex-model-catalog.json");
     Ok(serde_json::from_slice(&std::fs::read(path)?)?)
+}
+
+fn read_catalog_operations(runtime_dir: &Path) -> Result<Vec<Value>, TestError> {
+    let path = guest_contracts::runtime_paths::sandbox_ops_log_file(runtime_dir);
+    let mut operations = Vec::new();
+    for line in std::fs::read_to_string(path)?.lines() {
+        let operation: Value = serde_json::from_str(line)?;
+        let action_type = operation.get("action_type").and_then(Value::as_str);
+        if action_type == Some(MODEL_CATALOG_PREPARE_ACTION)
+            || action_type == Some(MODEL_CATALOG_BUNDLED_LOAD_ACTION)
+        {
+            operations.push(operation);
+        }
+    }
+    Ok(operations)
+}
+
+fn single_catalog_operation<'a>(
+    operations: &'a [Value],
+    action_type: &str,
+) -> Result<&'a Value, TestError> {
+    let mut matching = operations.iter().filter(|operation| {
+        operation.get("action_type").and_then(Value::as_str) == Some(action_type)
+    });
+    let operation = matching.next().ok_or_else(|| {
+        std::io::Error::other(format!("missing {action_type} operation: {operations:?}"))
+    })?;
+    if matching.next().is_some() {
+        return Err(std::io::Error::other(format!(
+            "duplicate {action_type} operation: {operations:?}"
+        ))
+        .into());
+    }
+    Ok(operation)
+}
+
+fn assert_catalog_operation_result(operation: &Value, expected_success: bool) {
+    assert_eq!(
+        operation.get("success").and_then(Value::as_bool),
+        Some(expected_success)
+    );
+    assert!(
+        operation
+            .get("duration_ms")
+            .and_then(Value::as_u64)
+            .is_some(),
+        "operation must include duration_ms: {operation:?}"
+    );
+    assert!(
+        operation.get("error").is_none(),
+        "catalog timing must not emit an error dimension: {operation:?}"
+    );
+}
+
+fn operation_duration_ms(operation: &Value) -> Result<u64, TestError> {
+    operation
+        .get("duration_ms")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            std::io::Error::other("catalog operation duration must be an unsigned integer").into()
+        })
 }
 
 struct GuestAgentInvocation<'a> {

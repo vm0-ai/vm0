@@ -1,0 +1,61 @@
+{
+  "$schema": "../schema.json",
+  "schemaVersion": 1,
+  "name": "variable-set-body",
+  "description": "JSON request body, content headers, and successful process output",
+  "argv": [
+    "variable",
+    "set",
+    "PARITY_VALUE",
+    "two words",
+    "--description",
+    "fixture description"
+  ],
+  "environment": {
+    "ZERO_TOKEN": "parity-test-token"
+  },
+  "stdin": "",
+  "workingDirectory": ".",
+  "terminalMode": "pipe",
+  "timeoutMs": 10000,
+  "mockHttp": {
+    "captureHeaders": [
+      "authorization",
+      "content-type",
+      "x-client-request-id",
+      "x-client-session-id",
+      "x-client-type",
+      "x-client-version"
+    ],
+    "exchanges": [
+      {
+        "request": {
+          "method": "POST",
+          "path": "/api/zero/variables",
+          "query": "",
+          "body": "{\"name\":\"PARITY_VALUE\",\"value\":\"two words\",\"description\":\"fixture description\"}"
+        },
+        "response": {
+          "status": 201,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "body": "{\"id\":\"00000000-0000-4000-8000-000000000001\",\"name\":\"PARITY_VALUE\",\"value\":\"two words\",\"description\":\"fixture description\",\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\"}"
+        }
+      }
+    ]
+  },
+  "filesystem": {
+    "seed": []
+  },
+  "normalizations": [
+    {
+      "kind": "uuid-http-header",
+      "header": "x-client-session-id"
+    },
+    {
+      "kind": "uuid-http-header",
+      "header": "x-client-request-id"
+    }
+  ]
+}

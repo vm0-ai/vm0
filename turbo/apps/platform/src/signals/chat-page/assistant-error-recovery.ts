@@ -10,7 +10,7 @@ import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { personalModelProviders$ } from "../external/personal-model-providers.ts";
 import { resetPersonalCodexSubscriptionUsage$ } from "../zero-page/settings/personal-model-providers.ts";
 import type { ChatEventGroup, EnrichedChatEvent } from "./chat-event.ts";
-import type { SendMessageOptions } from "./chat-thread-signals.ts";
+import type { SendMessageOptions } from "./chat-panel-signals.ts";
 
 export type AssistantErrorRecoveryKind = "usage-limit" | "model-capacity";
 export type AssistantErrorRecoveryScope = "framework" | "model";

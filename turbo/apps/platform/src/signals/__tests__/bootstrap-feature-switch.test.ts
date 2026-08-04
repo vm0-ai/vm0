@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
 import {
   featureSwitch$,
-  zeroImageRecognitionEnabled$,
+  imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
 import { testContext } from "./test-helpers.ts";
 
@@ -77,16 +77,15 @@ describe("bootstrap feature switch hydration", () => {
     ).toBeFalsy();
   });
 
-  it("keeps image recognition disabled when the API lacks support", async () => {
+  it("keeps image recognition disabled against a pre-rollout API", async () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
-        switches: { [FeatureSwitchKey.ZeroImageRecognition]: true },
-        effectiveSwitches: {
-          [FeatureSwitchKey.ZeroImageRecognition]: true,
-        },
+        switches: {},
+        effectiveSwitches: {},
         supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
         supportsCustomModelGateways: true,
+        supportsImageRecognition: true,
       });
     });
 
@@ -96,35 +95,31 @@ describe("bootstrap feature switch hydration", () => {
       withoutRender: true,
     });
 
-    expect(context.store.get(zeroImageRecognitionEnabled$)).toBeFalsy();
+    expect(context.store.get(imageRecognitionAvailable$)).toBeFalsy();
   });
 
-  it("waits for current API support before trusting cached image recognition", async () => {
+  it("waits for the current API to confirm global image recognition", async () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
-        switches: { [FeatureSwitchKey.ZeroImageRecognition]: true },
-        effectiveSwitches: {
-          [FeatureSwitchKey.ZeroImageRecognition]: true,
-        },
+        switches: {},
+        effectiveSwitches: {},
         supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
         supportsCustomModelGateways: true,
         supportsImageRecognition: true,
+        imageRecognitionRolloutComplete: true,
       });
     });
 
     detachedSetupPage({
       context,
       path: "/error",
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
       withoutRender: true,
     });
 
-    expect(context.store.get(zeroImageRecognitionEnabled$)).toBeFalsy();
+    expect(context.store.get(imageRecognitionAvailable$)).toBeFalsy();
     await waitFor(() => {
-      expect(context.store.get(zeroImageRecognitionEnabled$)).toBeTruthy();
+      expect(context.store.get(imageRecognitionAvailable$)).toBeTruthy();
     });
   });
 

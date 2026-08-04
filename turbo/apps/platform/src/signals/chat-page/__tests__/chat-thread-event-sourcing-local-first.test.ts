@@ -31,7 +31,7 @@ import {
   touchOptimisticChatThreadSort$,
 } from "../chat-thread-event-sourcing.ts";
 import { loadIndexedDbChatEvents$ } from "../chat-event-indexed-db.ts";
-import { createRemoteChatThreadDataSource } from "../remote-chat-thread-data-source.ts";
+import { createRemoteChatThreadDraft } from "../chat-thread-remote-signals.ts";
 import { listEventsAfter$ } from "../remote-chat-event-data-source.ts";
 import { openChatIdb } from "../../external/chat-idb-store.ts";
 import { createIdbChatThreadEventStores } from "../../external/idb-chat-thread-event-store.ts";
@@ -691,10 +691,8 @@ describe("chat thread event sourcing local-first list", () => {
       return respond(200, { events: [] });
     });
 
-    const dataSource = createRemoteChatThreadDataSource(OPTIMISTIC_THREAD_ID);
-    await expect(
-      context.store.get(dataSource.threadDraft$),
-    ).resolves.toBeNull();
+    const threadDraft$ = createRemoteChatThreadDraft(OPTIMISTIC_THREAD_ID);
+    await expect(context.store.get(threadDraft$)).resolves.toBeNull();
     await expect(
       context.store.set(
         loadIndexedDbChatEvents$,
@@ -710,9 +708,7 @@ describe("chat thread event sourcing local-first list", () => {
       events: [{ ...createdEvent, seqId: EVENT_SEQ_ID }],
     });
 
-    await expect(
-      context.store.get(dataSource.threadDraft$),
-    ).resolves.toStrictEqual({
+    await expect(context.store.get(threadDraft$)).resolves.toStrictEqual({
       draftUserMessage: null,
       draftAttachments: null,
     });
