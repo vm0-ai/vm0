@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.63.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.6...guest-agent-v0.63.7) (2026-08-04)
+
+## [0.63.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.5...guest-agent-v0.63.6) (2026-08-04)
+
+
+### Performance Improvements
+
+* **guest-agent:** measure codex catalog setup ([#24996](https://github.com/vm0-ai/vm0/issues/24996)) ([8f78d8d](https://github.com/vm0-ai/vm0/commit/8f78d8dd548bf1d8ce547f6d0e571db0775e89fb))
+
+## [0.63.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.4...guest-agent-v0.63.5) (2026-08-04)
+
+
+### Refactoring
+
+* **guest-agent:** hydrate codex catalogs structurally ([#24957](https://github.com/vm0-ai/vm0/issues/24957)) ([7520643](https://github.com/vm0-ai/vm0/commit/75206430a93a6f4fcdb1dfec1f43f93499ef85ba))
+
 ## [0.63.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.3...guest-agent-v0.63.4) (2026-08-04)
 
 

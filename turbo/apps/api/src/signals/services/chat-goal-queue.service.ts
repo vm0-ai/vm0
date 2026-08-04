@@ -95,7 +95,6 @@ export async function admitGoalQueueEvent(
           goalBrief: args.objectiveBrief,
         },
       }),
-      goalBrief: args.objectiveBrief,
     });
     if (!inserted) {
       throw new Error("Goal queue event insert returned no row");

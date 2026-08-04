@@ -1053,7 +1053,7 @@ describe("deepseek-codex Responses provider", () => {
 
   it("configures the VM0-owned DeepSeek Responses model catalog", () => {
     expect(getModelProviderCodexRuntimeConfig("deepseek-codex")).toMatchObject({
-      providerId: "vm0-model",
+      providerId: "deepseek-codex",
       name: "DeepSeek",
       baseUrl: "https://api.deepseek.com",
       envKey: "OPENAI_API_KEY",

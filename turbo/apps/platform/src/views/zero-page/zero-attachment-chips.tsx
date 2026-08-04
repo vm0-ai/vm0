@@ -25,7 +25,7 @@ import type {
   ChatThreadArtifactRun,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroChatAttachment } from "../../signals/chat-page/chat-event.ts";
-import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
+import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import {
   currentLeftThread$,
   currentRightThread$,
@@ -983,9 +983,9 @@ function ArtifactPreviewDialogThreadResolver({
   preview,
   thread,
 }: {
-  fallbackThread?: ChatThreadSignals;
+  fallbackThread?: ChatPanelSignals;
   preview: AttachmentLightboxState;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const loadable = useLastLoadable(thread.artifacts$);
   const agentId = useGet(thread.agentId$);

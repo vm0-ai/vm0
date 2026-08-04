@@ -15,7 +15,7 @@ import {
   setAblyMessageLoop$,
   setAblyPayloadLoop$,
 } from "../realtime.ts";
-import { createRemoteChatThreadDataSource } from "../chat-page/remote-chat-thread-data-source.ts";
+import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-signals.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
@@ -701,13 +701,11 @@ describe("realtime signals", () => {
   it("propagates ready catch-up failures without aborting subscriptions", async () => {
     mockSignedInUser();
     const threadId = "test-thread-ready-catchup-failure";
-    const dataSource = createRemoteChatThreadDataSource(threadId);
-
     await context.store.set(setupRealtime$, context.signal);
 
     await expect(
       context.store.set(
-        dataSource.subscribeRealtime$,
+        subscribeChatThreadRealtime$,
         {
           threadId,
           handlers: {

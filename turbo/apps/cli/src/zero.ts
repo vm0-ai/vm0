@@ -81,7 +81,6 @@ const COMMAND_FEATURE_SWITCH_MAP: Readonly<
   Partial<Record<string, FeatureSwitchKey>>
 > = {
   browser: FeatureSwitchKey.ZeroBrowser,
-  recognize: FeatureSwitchKey.ZeroImageRecognition,
 };
 
 const RUN_ONLY_COMMANDS = new Set(["recognize"]);
@@ -155,20 +154,6 @@ export const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
-    name: "preference",
-    description: "View or update user preferences (timezone, notifications)",
-    load: async () => {
-      return (await import("./commands/zero/preference")).zeroPreferenceCommand;
-    },
-  },
-  {
-    name: "secret",
-    description: "Read or write secrets (API keys, tokens)",
-    load: async () => {
-      return (await import("./commands/zero/secret")).zeroSecretCommand;
-    },
-  },
-  {
     name: "github",
     description: "Upload and download GitHub files",
     load: async () => {
@@ -211,13 +196,6 @@ export const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "Send AgentPhone messages, upload files, and download media",
     load: async () => {
       return (await import("./commands/zero/phone")).zeroPhoneCommand;
-    },
-  },
-  {
-    name: "variable",
-    description: "Read or write non-sensitive configuration values",
-    load: async () => {
-      return (await import("./commands/zero/variable")).zeroVariableCommand;
     },
   },
   {

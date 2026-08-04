@@ -9,6 +9,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use guest_contracts::exec_terminal::{
+    EXEC_PROCESS_CONTAINMENT_KILL_EMPTY_TIMEOUT, EXEC_PROCESS_CONTAINMENT_REMOVE_TIMEOUT,
+    EXEC_PROCESS_CONTAINMENT_TERM_GRACE,
+};
 use guest_contracts::process_containment::{EXEC_CGROUP_BASE_PATH, EXEC_CGROUP_NAME_PREFIX};
 
 use crate::log::log;
@@ -17,9 +21,6 @@ const CGROUP_EVENTS_FILE: &str = "cgroup.events";
 const CGROUP_KILL_FILE: &str = "cgroup.kill";
 const CGROUP_PROCS_FILE: &str = "cgroup.procs";
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
-const TERM_GRACE: Duration = Duration::from_millis(500);
-const KILL_EMPTY_TIMEOUT: Duration = Duration::from_secs(1);
-const REMOVE_TIMEOUT: Duration = Duration::from_millis(250);
 
 static NEXT_CGROUP_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -307,7 +308,7 @@ fn cleanup_cgroup(
             }
         }
 
-        if let Err(error) = wait_until_empty(group_path, TERM_GRACE) {
+        if let Err(error) = wait_until_empty(group_path, EXEC_PROCESS_CONTAINMENT_TERM_GRACE) {
             log(
                 "WARN",
                 &format!(
@@ -337,7 +338,7 @@ fn cleanup_cgroup(
         fs::write(group_path.join(CGROUP_KILL_FILE), b"1")
             .map_err(|error| ProcessContainmentError::new("write cgroup.kill", error))?;
         cgroup_kill_used = true;
-        if !wait_until_empty(group_path, KILL_EMPTY_TIMEOUT)? {
+        if !wait_until_empty(group_path, EXEC_PROCESS_CONTAINMENT_KILL_EMPTY_TIMEOUT)? {
             return Err(ProcessContainmentError::new(
                 "wait for cgroup.kill",
                 io::Error::new(
@@ -521,7 +522,7 @@ fn wait_until_empty(group_path: &Path, timeout: Duration) -> Result<bool, Proces
 }
 
 fn remove_empty_cgroup(group_path: &Path) -> Result<(), ProcessContainmentError> {
-    let deadline = Instant::now() + REMOVE_TIMEOUT;
+    let deadline = Instant::now() + EXEC_PROCESS_CONTAINMENT_REMOVE_TIMEOUT;
     loop {
         match fs::remove_dir(group_path) {
             Ok(()) => return Ok(()),

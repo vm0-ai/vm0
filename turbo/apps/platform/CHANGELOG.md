@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.679.3](https://github.com/vm0-ai/vm0/compare/app-v0.679.2...app-v0.679.3) (2026-08-04)
+
+
+### Bug Fixes
+
+* **platform:** make browser session viewer full page ([#25006](https://github.com/vm0-ai/vm0/issues/25006)) ([00f8660](https://github.com/vm0-ai/vm0/commit/00f86603a3e5b4f03588057a47d9788ea5044b71))
+
+
+### Refactoring
+
+* **org:** confirm workspace deletion with a literal and drop the cli delete command ([#25002](https://github.com/vm0-ai/vm0/issues/25002)) ([1a21a62](https://github.com/vm0-ai/vm0/commit/1a21a628d642e86840ee3739ccb86fcbffd8dd02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.1
+    * @vm0/core bumped to 8.509.0
+
+## [0.679.2](https://github.com/vm0-ai/vm0/compare/app-v0.679.1...app-v0.679.2) (2026-08-04)
+
+
+### Bug Fixes
+
+* **platform:** preserve connector access spacing ([#24960](https://github.com/vm0-ai/vm0/issues/24960)) ([02c3cc1](https://github.com/vm0-ai/vm0/commit/02c3cc1871bfa102c4749f18d29f955dc7861049))
+
+
+### Refactoring
+
+* **platform:** compose chat panels from shared event signals ([#24954](https://github.com/vm0-ai/vm0/issues/24954)) ([472b7bc](https://github.com/vm0-ai/vm0/commit/472b7bca63366d4fe90c519691dd1eb8b41cfd81))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.0
+    * @vm0/core bumped to 8.508.2
+
+## [0.679.1](https://github.com/vm0-ai/vm0/compare/app-v0.679.0...app-v0.679.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **platform:** wait for voice input before sending ([#24956](https://github.com/vm0-ai/vm0/issues/24956)) ([97e4fc1](https://github.com/vm0-ai/vm0/commit/97e4fc1f62553d20b7c577ec4a2910aa643f6d14))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.268.0
+    * @vm0/core bumped to 8.508.1
+
 ## [0.679.0](https://github.com/vm0-ai/vm0/compare/app-v0.678.5...app-v0.679.0) (2026-08-04)
 
 

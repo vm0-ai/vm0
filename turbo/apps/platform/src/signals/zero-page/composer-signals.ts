@@ -4,16 +4,20 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { foldActiveChatGoalObjective } from "@vm0/api-contracts/contracts/chat-events";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef, withCleanup } from "../utils.ts";
 import {
   isVisualAttachment,
   shouldExcludeVisualAttachmentsForModel,
 } from "../chat-page/resolve-draft-attachments.ts";
-import { zeroImageRecognitionEnabled$ } from "../external/feature-switch.ts";
+import {
+  featureSwitch$,
+  imageRecognitionAvailable$,
+} from "../external/feature-switch.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ZeroChatAttachment } from "./chat-draft.ts";
-import type { ComposerFeedbackModel } from "./chat-feedback.ts";
+import { createComposerFeedbackModel } from "./chat-feedback.ts";
 import type { ChatEvent } from "../chat-page/chat-event-types.ts";
 import {
   deriveRunIndicatorStateFromChatEvents,
@@ -123,6 +127,7 @@ interface ComposerWorkflowSignals extends ComposerWorkflowEditorSignals {
 }
 
 interface ComposerDraftSignals extends ComposerDraftUiSignals {
+  readonly seed$: DraftSignals["seed$"];
   readonly setDraftInput$: Command<void, [string]>;
   readonly attachments$: Computed<ZeroChatAttachment[]>;
   readonly attachmentUploadsReady$: Computed<boolean | Promise<boolean>>;
@@ -223,8 +228,6 @@ interface CreateComposerSignalsOptions {
   };
   readonly chatEvents$: Computed<ChatEvent[]>;
   readonly threadId?: string;
-  readonly feedbackModel?: ComposerFeedbackModel;
-  readonly inlineTemplatesEnabled: boolean;
   readonly generationTemplate$?: ComposerTemplateSignals["generationTemplate$"];
   readonly setGenerationTemplate$?: ComposerTemplateSignals["setGenerationTemplate$"];
   readonly singleLineOnMobile: boolean;
@@ -436,17 +439,24 @@ export function createComposerSignals(
   const agentId$ = computed(async (get): Promise<string | null> => {
     return (await get(options.agent$)).agentId;
   });
+  const feedback = createComposerFeedbackModel(options.threadId);
+  const inlineTemplatesEnabled$ = computed((get): boolean => {
+    return (
+      get(featureSwitch$)[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
+      false
+    );
+  });
   const workflowComposer = createWorkflowComposerSignals(
     draft,
     agentId$,
-    options.inlineTemplatesEnabled,
+    inlineTemplatesEnabled$,
     {
       // Existing threads must not steal selection while cached events hydrate.
       // Empty new chats live in the agent composer, which still auto-focuses.
       autoFocus: options.threadId === undefined,
       singleLineOnMobile: options.singleLineOnMobile,
     },
-    options.feedbackModel,
+    feedback,
   );
   const submission = createComposerSubmissionSignals(
     options,
@@ -472,6 +482,7 @@ export function createComposerSignals(
     connector: createComposerConnectorSignals(options.agent$),
     draft: {
       ...ui.draft,
+      seed$: draft.seed$,
       setDraftInput$: draft.setInput$,
       attachments$: draft.attachments$,
       attachmentUploadsReady$: draft.attachmentUploadsReady$,
@@ -620,7 +631,7 @@ function createComposerSubmissionSignals(
       let hasContent = get(workflowComposer.hasInput$);
       if (!hasContent && attachments.length > 0) {
         const modelSelection = await get(options.modelSelection$);
-        const imageRecognitionEnabled = get(zeroImageRecognitionEnabled$);
+        const imageRecognitionEnabled = get(imageRecognitionAvailable$);
         hasContent = hasVisibleAttachment(
           modelSelection,
           attachments,
@@ -674,7 +685,7 @@ function createComposerSubmissionSignals(
             }
             const modelSelection = await get(options.modelSelection$);
             signal.throwIfAborted();
-            const imageRecognitionEnabled = get(zeroImageRecognitionEnabled$);
+            const imageRecognitionEnabled = get(imageRecognitionAvailable$);
             if (
               !hasVisibleAttachment(
                 modelSelection,

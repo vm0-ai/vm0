@@ -10,6 +10,7 @@ pub mod codex_thread_id;
 pub mod diagnostics;
 pub mod env;
 pub mod exec_limits;
+pub mod exec_terminal;
 pub mod process_containment;
 pub mod reuse_preparation;
 pub mod runtime_paths;

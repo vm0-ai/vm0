@@ -409,10 +409,12 @@ impl VsockHost {
 
     /// Write multiple ordinary files on the guest in one request.
     ///
-    /// Every file uses non-sudo create-parent and truncate semantics. The
-    /// caller must use [`write_file`](Self::write_file) for private, sudo,
-    /// append, or larger individual writes. Empty batches are accepted as a
-    /// no-op to match the higher-level sandbox trait default.
+    /// Every file uses non-sudo create-parent and truncate semantics. Use
+    /// [`write_private_file`](Self::write_private_file) for private runtime
+    /// files and [`write_file`](Self::write_file) for sudo or individual writes
+    /// that exceed the batch content limit. No public [`VsockHost`] write method
+    /// exposes caller-requested append semantics. Empty batches are accepted as
+    /// a no-op to match the higher-level sandbox trait default.
     pub async fn write_files(&self, files: &[WriteFileEntry<'_>]) -> io::Result<()> {
         self.write_files_with_write_observer(files, FrameWriteObserver::default())
             .await

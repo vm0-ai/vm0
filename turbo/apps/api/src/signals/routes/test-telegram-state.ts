@@ -1182,7 +1182,6 @@ async function getTelegramPostRunStateForAction(
       .select({
         id: zeroRuns.id,
         triggerSource: zeroRuns.triggerSource,
-        triggerAgentId: zeroRuns.triggerAgentId,
         chatThreadId: zeroRuns.chatThreadId,
         modelProvider: zeroRuns.modelProvider,
         selectedModel: zeroRuns.selectedModel,

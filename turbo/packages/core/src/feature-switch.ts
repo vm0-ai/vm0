@@ -116,17 +116,23 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.GoogleContactsConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Google Contacts connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.GoogleFormsConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Google Forms connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.JoggAiConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the JoggAI video generation connector",
     enabled: true,
+  },
+  [FeatureSwitchKey.JoggAiBuiltIn]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable vm0-managed JoggAI talking-avatar video generation",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -466,13 +472,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Advertise zero chat create, send, and cancel in the agent system prompt without gating the CLI commands or API.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ZeroImageRecognition]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable managed image recognition for Zero runs whose selected model does not support image input.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

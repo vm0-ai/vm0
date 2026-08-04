@@ -1102,7 +1102,7 @@ pub async fn execute_cli_with_cancellation_for_runtime(
         masker,
         heartbeat,
         runtime.http.clone(),
-        guest_agent::cli::CliExecutionControls::new(active_input.into_writer(), cancellation),
+        guest_agent::cli::CliExecutionControls::new(active_input.into_writer(), cancellation, None),
         &runtime.config,
         &runtime.paths,
         Instant::now(),

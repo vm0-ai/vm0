@@ -346,7 +346,6 @@
     "sources": {
       "agent": "Agente",
       "agentphone": "AgentPhone",
-      "agentWithName": "Agente ({{name}})",
       "email": "Correo electrónico",
       "feishu": "Feishu",
       "github": "GitHub",
@@ -1033,7 +1032,7 @@
     "fitAction": "Ajustar",
     "fitWindow": "Ajustar el navegador a la ventana",
     "iframeTitle": "Navegador en vivo: {{name}}",
-    "invalidLink": "Enlace del navegador inválido",
+    "notFound": "Navegador no encontrado",
     "open": "Abrir navegador de {{name}}",
     "openAction": "Abrir",
     "openNewPage": "Abre este navegador en una página nueva",
@@ -4494,7 +4493,7 @@
       "danger": {
         "delete": {
           "button": "Eliminar espacio de trabajo",
-          "confirmDescription": "Esto eliminará permanentemente {{workspace}} y todos sus datos. Esta acción no puede deshacerse. Escribe el nombre del espacio de trabajo para confirmarlo.",
+          "confirmDescription": "Esto eliminará permanentemente este espacio de trabajo y todos sus datos. Esta acción no puede deshacerse. Escribe confirm para continuar.",
           "description": "Elimina permanentemente este espacio de trabajo y todos sus datos. Esta acción no puede deshacerse.",
           "progress": "Eliminando...",
           "title": "Eliminar espacio de trabajo",

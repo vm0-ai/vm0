@@ -6,8 +6,10 @@ use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 const GUEST_BINARIES_FILE: &str = "guest-binaries.json";
+const ZERO_CLI_BINARY: &str = "zero-cli";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -92,6 +94,16 @@ fn main() {
                 .unwrap_or_else(|| panic!("non-UTF-8 path: {}", abs.display()));
             println!("cargo::rustc-env={}={abs_str}", guest.bundled_env);
             println!("cargo::rerun-if-changed={abs_str}");
+            if guest.binary == ZERO_CLI_BINARY {
+                let bytes = fs::read(&abs)
+                    .unwrap_or_else(|e| panic!("read bundled Zero CLI {}: {e}", abs.display()));
+                let checksum = hex::encode(Sha256::digest(bytes));
+                println!(
+                    "cargo::rustc-env=BUNDLED_ZERO_CLI_VERSION={}",
+                    zero_cli::VERSION
+                );
+                println!("cargo::rustc-env=BUNDLED_ZERO_CLI_SHA256={checksum}");
+            }
         }
     }
 }

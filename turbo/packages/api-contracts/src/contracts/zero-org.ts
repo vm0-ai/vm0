@@ -34,10 +34,9 @@ export const zeroOrgContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
-      409: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Update org slug (zero proxy)",
+    summary: "Update org profile (zero proxy)",
   },
 });
 
@@ -74,7 +73,7 @@ export const zeroOrgDeleteContract = c.router({
     method: "POST",
     path: "/api/zero/org/delete",
     headers: authHeadersSchema,
-    body: z.object({ slug: z.string() }),
+    body: z.object({ confirm: z.literal("confirm") }),
     responses: {
       200: orgMessageResponseSchema,
       400: apiErrorSchema,

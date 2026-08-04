@@ -99,6 +99,27 @@
       "when": 1785828330559,
       "tag": "0821_military_pretty_boy",
       "breakpoints": true
+    },
+    {
+      "idx": 822,
+      "version": "7",
+      "when": 1785832563486,
+      "tag": "0822_add_joggai_avatar_video_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 823,
+      "version": "7",
+      "when": 1785834536586,
+      "tag": "0823_military_zaran",
+      "breakpoints": true
+    },
+    {
+      "idx": 824,
+      "version": "7",
+      "when": 1785836983732,
+      "tag": "0824_clear_goal_context_pointers",
+      "breakpoints": true
     }
   ]
 }

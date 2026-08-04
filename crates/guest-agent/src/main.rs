@@ -360,12 +360,18 @@ async fn execute(
     }
     record_sandbox_op("working_dir_setup", wd_start.elapsed(), true, None);
 
+    let codex_startup =
+        matches!(config.framework, env::Framework::Codex).then(cli::CodexStartupTiming::start);
+
     // Codex setup must complete before the CLI starts. On reused sandboxes,
     // continuing after a setup failure can inherit stale auth or runtime state
     // from an earlier run.
     if matches!(config.framework, env::Framework::Codex)
         && let Err(e) = cli::setup_codex_for_config(masker, config).await
     {
+        if let Some(codex_startup) = codex_startup.as_ref() {
+            codex_startup.record_failure();
+        }
         let msg = format!("Codex setup failed: {}", masker.mask_string(&e.to_string()));
         log_error!(LOG_TAG, "{msg}");
         failure_diagnostics::write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
@@ -395,6 +401,19 @@ async fn execute(
     let cli_start = Instant::now();
     let mut last_event_sequence = None;
     let mut event_delivery_failure = None;
+    let cli_result = cli::execute_cli_with_controls_for_config_started_at(
+        masker,
+        heartbeat_monitor,
+        http.clone(),
+        cli::CliExecutionControls::new(active_input, cli_cancellation, codex_startup.as_ref()),
+        config,
+        runtime_paths,
+        start,
+    )
+    .await;
+    if let Some(codex_startup) = codex_startup.as_ref() {
+        codex_startup.record_failure();
+    }
     let (
         cli_exit_code,
         mut exit_code,
@@ -402,17 +421,7 @@ async fn execute(
         skip_recovery_checkpoint_for_no_history,
         mut failure_diagnostic,
         cli_execution_succeeded,
-    ) = match cli::execute_cli_with_controls_for_config_started_at(
-        masker,
-        heartbeat_monitor,
-        http.clone(),
-        cli::CliExecutionControls::new(active_input, cli_cancellation),
-        config,
-        runtime_paths,
-        start,
-    )
-    .await
-    {
+    ) = match cli_result {
         Ok(cli_result) => {
             last_event_sequence = cli_result.last_event_sequence;
             if let Some(event_delivery) = cli_result.event_delivery.clone() {

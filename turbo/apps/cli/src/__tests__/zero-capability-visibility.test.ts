@@ -24,16 +24,13 @@ function buildCommands(): Command[] {
     new Command("logs"),
     new Command("chat"),
     new Command("resource"),
-    new Command("preference"),
     new Command("schedule"),
-    new Command("secret"),
     new Command("github"),
     new Command("slack"),
     new Command("feishu"),
     new Command("teams"),
     new Command("telegram"),
     new Command("phone"),
-    new Command("variable"),
     new Command("whoami"),
     new Command("browser"),
     new Command("generate"),
@@ -156,7 +153,7 @@ describe("registerZeroCommands", () => {
     vi.stubEnv("ZERO_TOKEN", undefined);
 
     const prog = buildProgram();
-    expect(hiddenCommandNames(prog)).toEqual([]);
+    expect(hiddenCommandNames(prog)).toEqual(["recognize"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(registeredCommandNames(prog)).not.toContain("browser");
   });
@@ -186,39 +183,37 @@ describe("registerZeroCommands", () => {
       "credit",
       "logs",
       "chat",
-      "preference",
       "schedule",
-      "secret",
       "github",
       "slack",
       "feishu",
       "teams",
       "telegram",
       "phone",
-      "variable",
       "host",
       "maps",
       "weather",
       "scrape",
       "people-search",
       "web-search",
+      "recognize",
       "finance",
       "banking",
       "goal",
     ]);
   });
 
-  it("should keep default-disabled feature commands unregistered with malformed token", () => {
+  it("should hide run-only commands and keep feature commands unregistered with malformed token", () => {
     vi.stubEnv("ZERO_TOKEN", "not-a-valid-token");
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual([]);
+    expect(hiddenCommandNames(prog)).toEqual(["recognize"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(registeredCommandNames(prog)).not.toContain("browser");
   });
 
-  it("should keep default-disabled feature commands unregistered outside zero scope", () => {
+  it("should hide run-only commands and keep feature commands unregistered outside zero scope", () => {
     const token = buildZeroToken({
       scope: "sandbox",
       capabilities: ["agent:read"],
@@ -227,7 +222,7 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual([]);
+    expect(hiddenCommandNames(prog)).toEqual(["recognize"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(registeredCommandNames(prog)).not.toContain("browser");
   });
@@ -733,9 +728,7 @@ describe("registerZeroCommands", () => {
 
   it("should expose recognition only to eligible Zero runs", () => {
     vi.stubEnv("ZERO_TOKEN", undefined);
-    const noTokenProgram = buildProgram({
-      [FeatureSwitchKey.ZeroImageRecognition]: true,
-    });
+    const noTokenProgram = buildProgram();
     expect(registeredCommandNames(noTokenProgram)).toContain("recognize");
     expect(hiddenCommandNames(noTokenProgram)).toContain("recognize");
 
@@ -744,9 +737,6 @@ describe("registerZeroCommands", () => {
       userId: "user-1",
       orgId: "org-1",
       capabilities: [],
-      featureSwitchOverrides: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
     });
     vi.stubEnv("ZERO_TOKEN", missingCapabilityToken);
     expect(hiddenCommandNames(buildProgram())).toContain("recognize");
@@ -756,9 +746,6 @@ describe("registerZeroCommands", () => {
       userId: "user-1",
       orgId: "org-1",
       capabilities: ["image-recognition:write"],
-      featureSwitchOverrides: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
     });
     vi.stubEnv("ZERO_TOKEN", eligibleToken);
     expect(visibleCommandNames(buildProgram())).toContain("recognize");

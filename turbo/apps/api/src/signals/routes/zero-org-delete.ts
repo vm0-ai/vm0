@@ -22,7 +22,6 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       orgId: auth.orgId,
       callerRole: auth.orgRole,
-      slug: body.data.slug,
     },
     signal,
   );
@@ -39,7 +38,14 @@ export const zeroOrgDeleteRoutes: readonly RouteEntry[] = [
   {
     route: zeroOrgDeleteContract.delete,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        // Deleting a workspace is a session-only action. Sandbox and zero
+        // tokens are already refused because this route declares no
+        // requiredCapability, so this closes the remaining hole: a CLI PAT.
+        accept: ["session"],
+      },
       deleteInner$,
     ),
   },

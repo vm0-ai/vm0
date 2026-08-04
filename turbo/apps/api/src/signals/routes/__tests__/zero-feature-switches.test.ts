@@ -83,6 +83,7 @@ describe("/api/zero/feature-switches", () => {
       ],
     ).toBeTruthy();
     expect(updated.body.supportsImageRecognition).toBeTruthy();
+    expect(updated.body.imageRecognitionRolloutComplete).toBeTruthy();
 
     const current = await accept(client().get({ headers }), [200]);
     expect(current.body.switches).toStrictEqual({
@@ -91,6 +92,8 @@ describe("/api/zero/feature-switches", () => {
     expect(current.body.supportsCustomConnectorOAuth2).toBeTruthy();
     expect(current.body.supportsCustomModelGateways).toBeTruthy();
     expect(current.body.supportsImageRecognition).toBeTruthy();
+    expect(current.body.imageRecognitionRolloutComplete).toBeTruthy();
+    expect(current.body.effectiveSwitches.zeroImageRecognition).toBeTruthy();
     expect(
       current.body.effectiveSwitches[
         FeatureSwitchKey.StructuredPromptInlineTemplates

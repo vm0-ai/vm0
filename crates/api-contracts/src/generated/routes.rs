@@ -6,6 +6,16 @@
 //! Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.
 //! Route descriptions are generated from TypeScript contract summaries.
 
+/// Generated route bindings under `build_info`.
+pub mod build_info {
+    /// Get API build information.
+    /// Route contract: `GET /api/build-info`.
+    pub const GET: crate::Route = crate::Route {
+        method: crate::Method::Get,
+        path: "/api/build-info",
+    };
+}
+
 /// Generated route bindings under `runners`.
 pub mod runners {
     /// Generated route bindings under `runners::builtin_firewalls`.
@@ -219,5 +229,28 @@ pub mod webhooks {
                 path: "/api/webhooks/agent/telemetry",
             };
         }
+    }
+}
+
+/// Generated route bindings under `zero`.
+pub mod zero {
+    /// Generated route bindings under `zero::model_policies`.
+    pub mod model_policies {
+        /// List org model-first policies.
+        /// Route contract: `GET /api/zero/model-policies`.
+        pub const LIST: crate::Route = crate::Route {
+            method: crate::Method::Get,
+            path: "/api/zero/model-policies",
+        };
+    }
+
+    /// Generated route bindings under `zero::user_model_preference`.
+    pub mod user_model_preference {
+        /// Get current user's model-first preference.
+        /// Route contract: `GET /api/zero/user-model-preference`.
+        pub const GET: crate::Route = crate::Route {
+            method: crate::Method::Get,
+            path: "/api/zero/user-model-preference",
+        };
     }
 }

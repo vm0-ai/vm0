@@ -332,7 +332,6 @@
     "sources": {
       "agent": "Agent",
       "agentphone": "AgentPhone",
-      "agentWithName": "Agent ({{name}})",
       "email": "E-Mail",
       "feishu": "Feishu",
       "github": "GitHub",
@@ -1011,7 +1010,7 @@
     "fitAction": "Anpassen",
     "fitWindow": "Browser an Fenster anpassen",
     "iframeTitle": "Live-Browser: {{name}}",
-    "invalidLink": "Ungültiger Browser-Link",
+    "notFound": "Browser nicht gefunden",
     "open": "Öffnen Sie den Browser {{name}}",
     "openAction": "Offen",
     "openNewPage": "Öffnen Sie diesen Browser auf einer neuen Seite",
@@ -4425,7 +4424,7 @@
       "danger": {
         "delete": {
           "button": "Arbeitsbereich löschen",
-          "confirmDescription": "Dadurch werden {{workspace}} und alle seine Daten dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden. Geben Sie zur Bestätigung den Namen des Arbeitsbereichs ein.",
+          "confirmDescription": "Dadurch werden dieser Arbeitsbereich und alle seine Daten dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden. Geben Sie confirm ein, um fortzufahren.",
           "description": "Löschen Sie diesen Arbeitsbereich und alle seine Daten dauerhaft. Diese Aktion kann nicht rückgängig gemacht werden.",
           "progress": "Löschen...",
           "title": "Arbeitsbereich löschen",

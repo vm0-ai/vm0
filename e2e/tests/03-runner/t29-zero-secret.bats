@@ -2,9 +2,9 @@
 
 load '../../helpers/setup'
 
-# CLI validation and CRUD behavior is covered by command integration tests.
-# These runner tests retain the deployed secret-masking boundary without
-# passing the E2E user credential to the agent-facing Zero CLI.
+# Secret CRUD is covered by API integration tests. These runner tests retain
+# the deployed secret-masking boundary without passing the E2E user credential
+# to the agent-facing Zero CLI.
 
 setup_file() {
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"

@@ -2,7 +2,6 @@ import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import {
   zeroOrgContract,
   zeroOrgLeaveContract,
-  zeroOrgDeleteContract,
 } from "@vm0/api-contracts/contracts/zero-org";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import {
@@ -28,25 +27,6 @@ export async function getZeroOrg(): Promise<OrgResponse> {
   }
 
   handleError(result, "Failed to get organization");
-}
-
-/**
- * Update org slug via zero API
- */
-export async function updateZeroOrg(body: {
-  slug: string;
-  force?: boolean;
-}): Promise<OrgResponse> {
-  const config = await getClientConfig();
-  const client = initClient(zeroOrgContract, config);
-
-  const result = await client.update({ body });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to update organization");
 }
 
 /**
@@ -136,22 +116,4 @@ export async function leaveZeroOrg(): Promise<void> {
   }
 
   handleError(result, "Failed to leave organization");
-}
-
-/**
- * Delete the current org via zero API
- */
-export async function deleteZeroOrg(slug: string): Promise<void> {
-  const config = await getClientConfig();
-  const client = initClient(zeroOrgDeleteContract, config);
-
-  const result = await client.delete({
-    body: { slug },
-  });
-
-  if (result.status === 200) {
-    return;
-  }
-
-  handleError(result, "Failed to delete organization");
 }

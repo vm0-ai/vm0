@@ -1,5 +1,73 @@
 # Changelog
 
+## [1.372.2](https://github.com/vm0-ai/vm0/compare/api-v1.372.1...api-v1.372.2) (2026-08-04)
+
+
+### Refactoring
+
+* **org:** confirm workspace deletion with a literal and drop the cli delete command ([#25002](https://github.com/vm0-ai/vm0/issues/25002)) ([1a21a62](https://github.com/vm0-ai/vm0/commit/1a21a628d642e86840ee3739ccb86fcbffd8dd02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.1
+    * @vm0/core bumped to 8.509.0
+    * @vm0/db bumped to 1.163.13
+
+## [1.372.1](https://github.com/vm0-ai/vm0/compare/api-v1.372.0...api-v1.372.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **api:** use active subscription billing periods ([#24981](https://github.com/vm0-ai/vm0/issues/24981)) ([c5d7b0a](https://github.com/vm0-ai/vm0/commit/c5d7b0ae4a7f17585e48d0e3482efb91bdee2095))
+
+
+### Refactoring
+
+* **api:** stop reading usage event gross credits ([#24999](https://github.com/vm0-ai/vm0/issues/24999)) ([96cf1f2](https://github.com/vm0-ai/vm0/commit/96cf1f2092578a8ed5a7441e73c829ead32e8584))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.0
+    * @vm0/core bumped to 8.508.2
+    * @vm0/db bumped to 1.163.12
+
+## [1.372.0](https://github.com/vm0-ai/vm0/compare/api-v1.371.0...api-v1.372.0) (2026-08-04)
+
+
+### Features
+
+* **chat:** prioritize goal continuation over automation ([#24978](https://github.com/vm0-ai/vm0/issues/24978)) ([c4b92d6](https://github.com/vm0-ai/vm0/commit/c4b92d69430ec89798a71cc70b82e2bb560fba43))
+
+
+### Bug Fixes
+
+* **api:** monitor null-trigger pointerless queue events ([#24952](https://github.com/vm0-ai/vm0/issues/24952)) ([85956c7](https://github.com/vm0-ai/vm0/commit/85956c775245fe22a174ecfcc8aff85a71b3f5b0))
+
+
+### Refactoring
+
+* stop writing goal contexts ([#24984](https://github.com/vm0-ai/vm0/issues/24984)) ([74e53cf](https://github.com/vm0-ai/vm0/commit/74e53cf246cacdf0c5eaabba449782a95c509927))
+
+
+### Performance Improvements
+
+* measure pre-park successor handoff ([#24938](https://github.com/vm0-ai/vm0/issues/24938)) ([6e7c0aa](https://github.com/vm0-ai/vm0/commit/6e7c0aa73c51d7916efaa354f6ce1ba32b83090f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.268.0
+    * @vm0/core bumped to 8.508.1
+    * @vm0/db bumped to 1.163.11
+
 ## [1.371.0](https://github.com/vm0-ai/vm0/compare/api-v1.370.7...api-v1.371.0) (2026-08-04)
 
 

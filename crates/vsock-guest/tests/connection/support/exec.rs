@@ -5,7 +5,6 @@ use vsock_proto::{
     MSG_EXEC_CANCEL, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START,
 };
 
-pub(crate) const DRAIN_DEADLINE_SECS: u64 = 5;
 pub(crate) const LONG_RUNNING_EXEC_TIMEOUT_MS: u32 = 60_000;
 pub(crate) const LARGE_ENV_COMMAND: &str =
     "printf '%s:%s:%s:%s:%s\\n' \"$SMALL\" \"${#BIG_A}\" \"${#BIG_B}\" \"${#BIG_C}\" \"${#BIG_D}\"";

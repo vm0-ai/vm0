@@ -1,5 +1,4 @@
 export const internalRunCallbackKinds = [
-  "agent",
   "agentphone:chat",
   "chat",
   "github:chat",
@@ -38,7 +37,6 @@ function isInternalRunCallbackKind(
   value: string | null,
 ): value is InternalRunCallbackKind {
   switch (value) {
-    case "agent":
     case "agentphone:chat":
     case "chat":
     case "github:chat":

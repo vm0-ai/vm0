@@ -64,7 +64,7 @@ sudo "$BIN_DIR/runner" service start \
   --config "$RUNNER_DIR/runner.yaml" \
   --local
 
-PROMPT='This is a CI smoke test for Claude Code active input. The initial prompt token is ci-initial-5k2. Before your final answer, run Bash command `sleep 1` so two follow-up user messages can arrive, each containing one token. After the command and after reading both follow-up messages, reply with exactly RESULT=ci-initial-5k2+FIRST+SECOND, replacing FIRST and SECOND with the exact text of the first and second follow-up messages. If either follow-up message is missing, reply exactly RESULT=missing. Do not include any other text.'
+PROMPT='Run `sleep 1` with Bash, then read both follow-up messages. Reply only RESULT=ci-initial-5k2+FIRST+SECOND, replacing FIRST and SECOND with their exact text in order. If either is missing, reply only RESULT=missing.'
 EXPECTED_RESULT='RESULT=ci-initial-5k2+ci-active-one-7f3+ci-active-two-9q4'
 
 echo "--- Submitting active-input smoke job ---"

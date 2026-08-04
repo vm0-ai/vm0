@@ -140,6 +140,11 @@ impl CliFrameworkBehavior {
                 )
             )
     }
+
+    pub(super) fn is_codex_turn_started(self, event: &serde_json::Value) -> bool {
+        matches!(self.framework, env::Framework::Codex)
+            && event.get("type").and_then(serde_json::Value::as_str) == Some("turn.started")
+    }
 }
 
 #[cfg(test)]

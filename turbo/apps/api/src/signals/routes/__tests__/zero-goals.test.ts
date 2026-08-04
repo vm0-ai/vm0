@@ -304,14 +304,14 @@ describe("zero goals", () => {
       claimedGoalEvent.id,
     );
     expect(admittedContext).toMatchObject({
-      contextType: "goal",
-      contextId: expect.any(String),
-      goalObjectiveBrief: "bootstrap autonomously",
+      contextType: null,
+      contextId: null,
+      goalObjectiveBrief: null,
     });
     expect(claimedContext).toMatchObject({
-      contextType: "goal",
-      contextId: admittedContext?.contextId,
-      goalObjectiveBrief: "bootstrap autonomously",
+      contextType: null,
+      contextId: null,
+      goalObjectiveBrief: null,
     });
     expect(state.runIds).toHaveLength(1);
 
@@ -388,6 +388,13 @@ describe("zero goals", () => {
       },
       seqId: expect.any(Number),
       createdAt: expect.any(String),
+    });
+    await expect(
+      readChatEventContextFixture(admission.eventId),
+    ).resolves.toMatchObject({
+      contextType: null,
+      contextId: null,
+      goalObjectiveBrief: null,
     });
     await expect(
       chat.getThreadEvent(fixture.actor, fixture.threadId, admission.eventId),

@@ -26,15 +26,12 @@ describe("zero CLI program", () => {
       "search",
       "chat",
       "resource",
-      "preference",
-      "secret",
       "workflow",
       "goal",
       "slack",
       "telegram",
       "github",
       "phone",
-      "variable",
       "whoami",
       "intro",
       "developer-support",
@@ -48,6 +45,7 @@ describe("zero CLI program", () => {
       "scrape",
       "web-search",
       "people-search",
+      "recognize",
       "finance",
       "banking",
     ];
@@ -63,6 +61,9 @@ describe("zero CLI program", () => {
       "volume",
       "artifact",
       "run",
+      "preference",
+      "secret",
+      "variable",
 
       "init",
       "info",
@@ -72,7 +73,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 39 commands", () => {
-    expect(commandNames).toHaveLength(39);
+  it("should have exactly 37 commands", () => {
+    expect(commandNames).toHaveLength(37);
   });
 });

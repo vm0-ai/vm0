@@ -236,6 +236,7 @@ export {
   webhookStripeContract,
   webhookBuiltInGenerationFalContract,
   webhookBuiltInGenerationBytePlusContract,
+  webhookBuiltInGenerationJoggAiContract,
   webhookCompleteContract,
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
@@ -265,6 +266,7 @@ export {
   type WebhookGoogleWorkspaceEventsContract,
   type WebhookStripeContract,
   type WebhookBuiltInGenerationFalContract,
+  type WebhookBuiltInGenerationJoggAiContract,
 } from "./webhooks";
 export {
   cliAuthDeviceContract,
@@ -501,7 +503,6 @@ export {
   type CronTelegramCleanupContract,
 } from "./cron";
 export {
-  orgSlugSchema,
   orgResponseSchema,
   updateOrgRequestSchema,
   orgTierSchema,
@@ -1635,6 +1636,26 @@ export {
   pushSubscriptionsContract,
   type PushSubscriptionsContract,
 } from "./push-subscriptions";
+export {
+  avatarVideoAspectRatioSchema,
+  avatarVideoScreenStyleSchema,
+  zeroAvatarVideoAvatarSchema,
+  zeroAvatarVideoAvatarsQuerySchema,
+  zeroAvatarVideoAvatarsResponseSchema,
+  zeroAvatarVideoContract,
+  zeroAvatarVideoGenerateRequestSchema,
+  zeroAvatarVideoGenerateResponseSchema,
+  zeroAvatarVideoVoiceSchema,
+  zeroAvatarVideoVoicesQuerySchema,
+  zeroAvatarVideoVoicesResponseSchema,
+  type ZeroAvatarVideoAvatar,
+  type ZeroAvatarVideoAvatarsQuery,
+  type ZeroAvatarVideoContract,
+  type ZeroAvatarVideoGenerateRequest,
+  type ZeroAvatarVideoGenerateResponse,
+  type ZeroAvatarVideoVoice,
+  type ZeroAvatarVideoVoicesQuery,
+} from "./zero-avatar-video";
 export {
   zeroImageIoGenerateContract,
   zeroImageIoGenerateRequestSchema,

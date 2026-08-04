@@ -125,6 +125,7 @@ suites before committing the upgrade.
 | `test_request_handler_registry_admission.py`            | Request-hook proxy-registry availability and VM entry admission                                                      |
 | `test_request_handler_firewall_dispatch.py`             | Core firewall dispatch, permission blocks, malformed config/policy handling, block responses, and unsafe-path blocks |
 | `test_request_handler_firewall_auth.py`                 | Request-hook firewall auth identity, credential guards, upstream-binding lifetime, and cancellation                  |
+| `test_request_handler_firewall_auth_revalidation.py`    | Registry authorization revalidation across request and requestheaders firewall-auth waits                            |
 | `test_request_handler_public_destination.py`            | Request-hook public destination validation and revalidation                                                          |
 | `test_request_handler_connector_diagnostics.py`         | Request-hook connector diagnostics and inactive built-in connector diagnostics                                       |
 | `test_request_handler_auth_base_body.py`                | Request-hook auth-base body admission and cleanup                                                                    |

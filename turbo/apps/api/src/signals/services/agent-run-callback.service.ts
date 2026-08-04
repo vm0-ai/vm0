@@ -13,7 +13,6 @@ import { settle, tapError } from "../utils";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { handleAgentInternalCallback$ } from "./internal-agent-run-callback.service";
 import {
   handleChatInternalCallback$,
   handleChatInternalCallbackWithoutCcstate,
@@ -125,10 +124,6 @@ const dispatchInternalCallback$ = command(
     signal: AbortSignal,
   ): Promise<InternalRunCallbackDispatchResult> => {
     switch (input.kind) {
-      case "agent": {
-        await set(handleAgentInternalCallback$, input.envelope, signal);
-        return { success: true };
-      }
       case "agentphone:chat": {
         return {
           success: false,
@@ -547,9 +542,6 @@ async function dispatchInternalCallbackWithoutCcstate(
   kind: InternalRunCallbackKind,
 ): Promise<InternalRunCallbackDispatchResult> {
   switch (kind) {
-    case "agent": {
-      return { success: true };
-    }
     case "agentphone:chat": {
       return {
         success: false,

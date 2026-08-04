@@ -964,7 +964,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async requestUpdateOrg(
       actor: ApiTestUser | null,
       body: UpdateOrgRequest,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroOrgContract,
@@ -1026,7 +1026,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async requestUpdateOrgWithBearer(
       token: string,
       body: UpdateOrgRequest,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroOrgContract,
@@ -1247,15 +1247,15 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async deleteOrg(
-      actor: ApiTestUser,
-      slug: string,
-    ): Promise<OrgMessageResponse> {
+    async deleteOrg(actor: ApiTestUser): Promise<OrgMessageResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroOrgDeleteContract,
       );
       const response = await accept(
-        client.delete({ headers: authenticate(actor), body: { slug } }),
+        client.delete({
+          headers: authenticate(actor),
+          body: { confirm: "confirm" },
+        }),
         [200],
       );
       return response.body;
@@ -1263,16 +1263,43 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
 
     async requestDeleteOrg(
       actor: ApiTestUser | null,
-      slug: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroOrgDeleteContract,
       );
       return await accept(
-        client.delete({ headers: authenticate(actor), body: { slug } }),
+        client.delete({
+          headers: authenticate(actor),
+          body: { confirm: "confirm" },
+        }),
         statuses,
       );
+    },
+
+    async requestDeleteOrgWithBearer(
+      bearer: string,
+      statuses: readonly number[],
+    ): Promise<RawJsonResponse> {
+      const response = await testApp().request("/api/zero/org/delete", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${bearer}`,
+        },
+        body: JSON.stringify({ confirm: "confirm" }),
+      });
+      const responseBody: unknown = await response.json();
+      if (!statuses.includes(response.status)) {
+        throw new Error(
+          `Expected POST /api/zero/org/delete status to be one of ${statuses.join(
+            ", ",
+          )}, received ${response.status}. Body: ${JSON.stringify(
+            responseBody,
+          )}`,
+        );
+      }
+      return { status: response.status, body: responseBody };
     },
 
     async listTeam(actor: ApiTestUser): Promise<readonly TeamComposeItem[]> {
