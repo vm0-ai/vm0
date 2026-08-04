@@ -45,6 +45,7 @@ export enum FeatureSwitchKey {
   ZeroChatMessaging = "zeroChatMessaging",
   ZeroImageRecognition = "zeroImageRecognition",
   ZeroMailReplyFollowUp = "zeroMailReplyFollowUp",
+  RustZeroCli = "rustZeroCli",
   Banking = "banking",
   Lab = "lab",
   NotionWorkflowAutomations = "notionWorkflowAutomations",

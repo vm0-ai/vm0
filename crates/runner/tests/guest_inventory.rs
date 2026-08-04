@@ -128,17 +128,17 @@ fn delivered_guests_match_cargo_and_release_contracts() {
         .iter()
         .map(|guest| guest.package.as_str())
         .collect();
-    let runner_guest_dev_dependencies: BTreeSet<_> = runner
+    let runner_delivered_binary_dev_dependencies: BTreeSet<_> = runner
         .dependencies
         .iter()
         .filter(|dependency| {
             dependency.kind.as_deref() == Some("dev")
                 && dependency.path.is_some()
-                && dependency.name.starts_with("guest-")
+                && inventory_packages.contains(dependency.name.as_str())
         })
         .map(|dependency| dependency.name.as_str())
         .collect();
-    assert_eq!(runner_guest_dev_dependencies, inventory_packages);
+    assert_eq!(runner_delivered_binary_dev_dependencies, inventory_packages);
 
     for guest in &inventory {
         let package = metadata

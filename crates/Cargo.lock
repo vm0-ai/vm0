@@ -2656,6 +2656,7 @@ dependencies = [
  "uuid",
  "vsock-proto",
  "which",
+ "zero-cli",
  "zstd",
 ]
 
@@ -4240,6 +4241,13 @@ dependencies = [
  "quote",
  "syn 2.0.119",
  "synstructure",
+]
+
+[[package]]
+name = "zero-cli"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
 ]
 
 [[package]]
