@@ -1878,6 +1878,77 @@ describe("zero workflow automations", () => {
     ).toHaveLength(3);
   });
 
+  it("admits fallback-text mentions for W-prefixed Enterprise owners", async () => {
+    runs.configureRunnerGroup();
+    const scenario = await setupFixture();
+    await setSlackUserMentionAutomationsEnabled(scenario, true);
+    integrations.configureSlackAppMocks();
+    const ownerSlackUserId = "W123ABC456";
+    const installation = await integrations.installSlackWorkspace(
+      scenario.actor,
+      {
+        botScopes: REQUIRED_SLACK_BOT_SCOPES,
+        installerSlackUserId: ownerSlackUserId,
+      },
+    );
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
+    const channelId = "C_SLACK_WORKFLOW_ENTERPRISE";
+    configureSlackConversations([{ id: channelId, name: "enterprise" }]);
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: channelId,
+          },
+        },
+      }),
+      [201],
+    );
+    integrations.clearSlackCallHistory();
+    const messageTs = "1720000000.000050";
+    await integrations.postSlackEvent(installation.teamId, {
+      type: "message",
+      channel_type: "channel",
+      user: "U987DEF654",
+      text: `<@${ownerSlackUserId}> process this Enterprise mention`,
+      ts: messageTs,
+      channel: channelId,
+    });
+    await flushWaitUntilForTest();
+
+    const state = await integrations.readSlackTestState(installation.teamId);
+    expect(state.workflow_deliveries).toStrictEqual([
+      expect.objectContaining({
+        automationId: automation.body.id,
+        workspaceId: installation.teamId,
+        channelId,
+        messageTs,
+        ownerSlackUserId,
+        normalizedText: `<@${ownerSlackUserId}> process this Enterprise mention`,
+        status: "processed",
+        attempts: 1,
+      }),
+    ]);
+    expect(
+      state.recent_runs.filter((run) => {
+        return run.triggerSource === "workflow-event";
+      }),
+    ).toHaveLength(1);
+    expect(context.mocks.slack.users.info).toHaveBeenCalledWith({
+      user: ownerSlackUserId,
+    });
+  });
+
   it("fans out, deduplicates concurrent Slack retries, and serializes Workflow runs", async () => {
     const runnerGroup = runs.configureRunnerGroup();
     const scenario = await setupFixture();

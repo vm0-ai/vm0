@@ -368,7 +368,7 @@ export function normalizeSlackMessageContent(args: {
 }): NormalizedSlackMessageContent {
   const ids = new Set<string>();
   addMentionedUserIdsFromBlocks(args.blocks, ids);
-  for (const match of (args.text ?? "").matchAll(/<@(U[A-Z0-9_]+)>/g)) {
+  for (const match of (args.text ?? "").matchAll(/<@([UW][A-Z0-9_]+)>/g)) {
     const userId = match[1];
     if (userId) {
       ids.add(userId);
