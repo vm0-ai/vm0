@@ -586,12 +586,12 @@ describe("works page", () => {
         name: "Feishu Permissions & Scopes page with the Batch import/export scopes menu highlighted",
       }),
     ).toBeInTheDocument();
-    click(getRole("button", "Show next Feishu guide image"));
     expect(
       screen.getByRole("img", {
         name: "Feishu Batch import/export scopes dialog with the imported JSON and review button highlighted",
       }),
     ).toBeInTheDocument();
+    expect(queryRole("button", "Show next Feishu guide image")).toBeNull();
     expect(screen.getByText("User token scope JSON")).toBeInTheDocument();
     expect(
       JSON.parse(
@@ -609,6 +609,21 @@ describe("works page", () => {
 
     click(getRole("button", "Next"));
     expect(screen.getByText("Publish the app")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Feishu Version Management page with the Create a version button highlighted",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Feishu version details page with the availability settings edit action highlighted",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Feishu availability settings with All members selected",
+      }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Default agent")).toBeDisabled();
 
     click(getRole("button", "Done"));
@@ -767,12 +782,12 @@ describe("works page", () => {
         name: "Feishu Event Configuration screen with the subscription mode edit control highlighted",
       }),
     ).toBeInTheDocument();
-    click(getRole("button", "Show next Feishu guide image"));
     expect(
       screen.getByRole("img", {
         name: "Feishu Event Configuration screen with the Request URL field highlighted",
       }),
     ).toBeInTheDocument();
+    expect(queryRole("button", "Show next Feishu guide image")).toBeNull();
 
     await waitFor(() => {
       expect(screen.getAllByText("Waiting for callback")).not.toHaveLength(0);
