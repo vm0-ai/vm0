@@ -217,6 +217,7 @@ interface PreparedNormalSend {
   readonly thread: ResolvedThread;
   readonly body: RuntimeNormalSendBody;
   readonly userMessageInlineTemplatesEnabled: boolean;
+  readonly chatSteerEnabled: boolean;
   readonly generationTemplatePrompt: string;
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
@@ -242,6 +243,7 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly artifactKeyV2Enabled: boolean;
+  readonly chatSteerEnabled: boolean;
   readonly codexFastModeEnabled: boolean;
   readonly userMessageInlineTemplatesEnabled: boolean;
 }
@@ -780,6 +782,7 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.ArtifactKeyV2,
       context,
     ),
+    chatSteerEnabled: isFeatureEnabled(FeatureSwitchKey.ChatSteer, context),
     codexFastModeEnabled: isFeatureEnabled(
       FeatureSwitchKey.CodexFastMode,
       context,
@@ -2211,6 +2214,7 @@ const prepareNormalSend$ = command(
       body: runtimeBody,
       userMessageInlineTemplatesEnabled:
         featureSwitches.userMessageInlineTemplatesEnabled,
+      chatSteerEnabled: featureSwitches.chatSteerEnabled,
       generationTemplatePrompt,
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
@@ -3074,7 +3078,7 @@ export const sendNormalEvent$ = command(
       return badRequestMessage("Client thread id is already in use");
     }
 
-    if (args.body.revokesEventId) {
+    if (args.body.revokesEventId && !prepared.chatSteerEnabled) {
       const hasActiveRun = await measureApiDispatchTiming(
         args.timing,
         "api_dispatch_pre_create_zero_web_chat_check_active_run",
@@ -3156,6 +3160,15 @@ const sendQueueFirstNormalEvent$ = command(
     signal.throwIfAborted();
     if (dispatch === "wait") {
       await publishChatEventCreated(args.userId, threadId);
+      signal.throwIfAborted();
+      await set(
+        drainChatThreadQueueForThread$,
+        {
+          chatThreadId: threadId,
+          dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+        },
+        signal,
+      );
       signal.throwIfAborted();
       return response;
     }

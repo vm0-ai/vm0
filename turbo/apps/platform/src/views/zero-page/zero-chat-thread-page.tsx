@@ -2568,7 +2568,12 @@ function ChatThreadRenderedEventGroups({
   );
   const runGroupVisibleGroups =
     runGroupFolding?.visibleGroups ?? renderedActiveGroups;
-  const completedWorkFolding = buildCompletedWorkFolding(runGroupVisibleGroups);
+  const chatSteerEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatSteer] ?? false;
+  const completedWorkFolding = buildCompletedWorkFolding(
+    runGroupVisibleGroups,
+    chatSteerEnabled,
+  );
   const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
   const effectiveCompletedWorkExpandedKeys =
     completedWorkExpandedKeysForScrollTarget(
@@ -3032,6 +3037,7 @@ function terminatedRunIdsForCompletedWork(
 
 function buildCompletedWorkFolding(
   groups: readonly ChatEventGroup[],
+  chatSteerEnabled: boolean,
 ): CompletedWorkFolding | null {
   const usageByRunId = usageByRunIdFromGroups(groups);
   const events = groups.flatMap((group) => {
@@ -3086,13 +3092,20 @@ function buildCompletedWorkFolding(
         !isThinkingOnlyAssistantEvent(event)
       );
     });
+    const userEvents = (chatSteerEnabled ? runEvents : precedingEvents).filter(
+      (event) => {
+        return chatEventCompatibilityRole(event.eventType) === "user";
+      },
+    );
     const trailingEvents =
       finalEventIndex >= 0 ? runEvents.slice(finalEventIndex + 1) : [];
-    const trailingEventsAreMarkers = trailingEvents.every((event) => {
+    const trailingEventsCanFold = trailingEvents.every((event) => {
+      const role = chatEventCompatibilityRole(event.eventType);
       return (
-        chatEventCompatibilityRole(event.eventType) === "assistant" &&
-        (!isRenderableAssistantEvent(event) ||
-          event.eventType === "run.completed")
+        (chatSteerEnabled && role === "user") ||
+        (role === "assistant" &&
+          (!isRenderableAssistantEvent(event) ||
+            event.eventType === "run.completed"))
       );
     });
     const visibleTrailingEvents = trailingEvents.filter((event) => {
@@ -3101,15 +3114,9 @@ function buildCompletedWorkFolding(
     if (
       finalEvent !== undefined &&
       hiddenEvents.length > 0 &&
-      trailingEventsAreMarkers
+      trailingEventsCanFold
     ) {
-      visibleEvents.push(
-        ...precedingEvents.filter((event) => {
-          return chatEventCompatibilityRole(event.eventType) === "user";
-        }),
-        finalEvent,
-        ...visibleTrailingEvents,
-      );
+      visibleEvents.push(...userEvents, finalEvent, ...visibleTrailingEvents);
       folds.push({
         key: `${runId}:${finalEvent.id}`,
         finalEventId: finalEvent.id,

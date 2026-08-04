@@ -37,9 +37,7 @@ async fn codex_app_server_backend_fails_visible_when_no_active_turn()
     );
     let payload = common::active_input_payload("no-active-turn follow-up prompt")?;
     assert_eq!(
-        active_input
-            .controller()
-            .handle_control_payload("active-msg-no-turn", &payload),
+        active_input.controller().handle_control_payload(&payload),
         ActiveInputControlOutcome::Accepted
     );
 
