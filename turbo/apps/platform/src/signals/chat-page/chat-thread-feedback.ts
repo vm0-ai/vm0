@@ -11,9 +11,8 @@ import { isEditableTarget, matchShortcut } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
 import {
-  createComposerFeedbackModel,
-  type ComposerFeedbackModel,
-  type FeedbackItem,
+  clearComposerFeedbackHighlights$,
+  type ComposerFeedbackSignals,
   type FeedbackSource,
 } from "../zero-page/chat-feedback.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
@@ -110,54 +109,6 @@ function resolveFeedbackSource(source: Element): FeedbackSource | undefined {
   }
   return { type, id, status, ...(sentId ? { sentId } : {}) };
 }
-
-const FEEDBACK_HIGHLIGHT_NAME = "zero-feedback";
-const feedbackRangesByThread$ = state<
-  ReadonlyMap<string, ReadonlyMap<number, Range>>
->(new Map());
-
-function highlightRegistry(): HighlightRegistry | null {
-  if (
-    typeof CSS === "undefined" ||
-    typeof Highlight === "undefined" ||
-    !CSS.highlights
-  ) {
-    return null;
-  }
-  return CSS.highlights;
-}
-
-function applyFeedbackHighlight(
-  feedbackRangesByThread: ReadonlyMap<string, ReadonlyMap<number, Range>>,
-): void {
-  const registry = highlightRegistry();
-  if (!registry) {
-    return;
-  }
-  const activeRanges = Array.from(feedbackRangesByThread.values()).flatMap(
-    (threadRanges) => {
-      return Array.from(threadRanges.values());
-    },
-  );
-  if (activeRanges.length === 0) {
-    registry.delete(FEEDBACK_HIGHLIGHT_NAME);
-    return;
-  }
-  registry.set(FEEDBACK_HIGHLIGHT_NAME, new Highlight(...activeRanges));
-}
-
-const setFeedbackHighlight$ = command(
-  ({ get, set }, threadId: string, ranges: ReadonlyMap<number, Range>) => {
-    const rangesByThread = new Map(get(feedbackRangesByThread$));
-    if (ranges.size === 0) {
-      rangesByThread.delete(threadId);
-    } else {
-      rangesByThread.set(threadId, ranges);
-    }
-    set(feedbackRangesByThread$, rangesByThread);
-    applyFeedbackHighlight(rangesByThread);
-  },
-);
 
 function hasVisibleArea(rect: DOMRectReadOnly): boolean {
   return rect.width > 0 && rect.height > 0;
@@ -284,83 +235,20 @@ function createSelectionState(threadId: string) {
   };
 }
 
-function createUpdateRanges(
-  ranges: State<ReadonlyMap<number, Range>>,
-  threadId: string,
-) {
-  return command(
-    (
-      { get, set },
-      update: (current: ReadonlyMap<number, Range>) => Map<number, Range>,
-    ) => {
-      const next = update(get(ranges));
-      set(ranges, next);
-      set(setFeedbackHighlight$, threadId, next);
-    },
-  );
-}
-
-function createThreadComposerFeedback(
-  threadId: string,
-  ranges$: State<ReadonlyMap<number, Range>>,
-): ComposerFeedbackModel {
-  const base = createComposerFeedbackModel();
-  const updateRanges$ = createUpdateRanges(ranges$, threadId);
-  // Composer mutations remain editor-only. This thread-owned decoration keeps
-  // the corresponding source ranges in sync without exposing Range to it.
-  const remove$ = command(({ set }, id: number) => {
-    set(updateRanges$, (ranges) => {
-      const next = new Map(ranges);
-      next.delete(id);
-      return next;
-    });
-    set(base.signals.remove$, id);
-  });
-  const replaceFromEditor$ = command(
-    ({ set }, items: readonly FeedbackItem[]) => {
-      const retainedIds = new Set(
-        items.map((item) => {
-          return item.id;
-        }),
-      );
-      set(updateRanges$, (ranges) => {
-        return new Map(
-          Array.from(ranges).filter(([id]) => {
-            return retainedIds.has(id);
-          }),
-        );
-      });
-      set(base.replaceFromEditor$, items);
-    },
-  );
-  return {
-    ...base,
-    signals: { add$: base.signals.add$, remove$ },
-    replaceFromEditor$,
-  };
-}
-
 function createStartFeedback(
   selection$: State<CapturedFeedbackSelection | null>,
   close$: Command<void, []>,
-  ranges$: State<ReadonlyMap<number, Range>>,
-  threadId: string,
-  composer: ComposerFeedbackModel,
+  feedback: ComposerFeedbackSignals,
 ) {
-  const updateRanges$ = createUpdateRanges(ranges$, threadId);
   return command(({ get, set }) => {
     const selection = get(selection$);
     if (!selection) {
       return;
     }
-    const id = set(composer.signals.add$, {
+    set(feedback.add$, {
       quote: selection.text,
+      sourceRange: selection.range,
       ...(selection.source ? { source: selection.source } : {}),
-    });
-    set(updateRanges$, (ranges) => {
-      const next = new Map(ranges);
-      next.set(id, selection.range);
-      return next;
     });
     set(close$);
   });
@@ -492,7 +380,7 @@ function createListenersRef({
       signal.addEventListener(
         "abort",
         () => {
-          set(setFeedbackHighlight$, threadId, new Map());
+          set(clearComposerFeedbackHighlights$, threadId);
         },
         { once: true },
       );
@@ -500,19 +388,15 @@ function createListenersRef({
   );
 }
 
-export function createChatThreadFeedbackSignals(threadId: string): {
-  readonly signals: ChatThreadFeedbackSignals;
-  readonly composer: ComposerFeedbackModel;
-} {
+export function createChatThreadFeedbackSignals(
+  threadId: string,
+  feedback: ComposerFeedbackSignals,
+): ChatThreadFeedbackSignals {
   const selection = createSelectionState(threadId);
-  const ranges$ = state<ReadonlyMap<number, Range>>(new Map());
-  const composer = createThreadComposerFeedback(threadId, ranges$);
   const start$ = createStartFeedback(
     selection.internalSelection$,
     selection.close$,
-    ranges$,
-    threadId,
-    composer,
+    feedback,
   );
   const setToolbarRef$ = createToolbarRef({
     resetToolbarSignal$: selection.resetToolbarSignal$,
@@ -528,14 +412,11 @@ export function createChatThreadFeedbackSignals(threadId: string): {
     dismissOnScroll$: selection.dismissOnScroll$,
   });
   return {
-    composer,
-    signals: {
-      selection$: selection.selection$,
-      start$,
-      close$: selection.close$,
-      copy$: selection.copy$,
-      setListenersRef$,
-      setToolbarRef$,
-    },
+    selection$: selection.selection$,
+    start$,
+    close$: selection.close$,
+    copy$: selection.copy$,
+    setListenersRef$,
+    setToolbarRef$,
   };
 }

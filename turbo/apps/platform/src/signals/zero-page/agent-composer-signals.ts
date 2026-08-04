@@ -1,11 +1,10 @@
 import { command, computed } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { currentChatAgent$, currentChatAgentId$ } from "../agent-chat.ts";
 import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
-import { updateUserModelPreference$ } from "../external/user-model-preference.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
+import { updateUserModelPreference$ } from "../external/user-model-preference.ts";
 import { queueCurrentAgentDraftSync$ } from "./agent-draft.ts";
 import { talkDraft$ } from "./chat-draft.ts";
 import {
@@ -152,8 +151,9 @@ const openActiveGoal$ = command((): void => {
 });
 
 export const agentChatComposerSignals$ = computed((get) => {
+  // Recreate the editor when delayed feature-switch bootstrap changes its semantics.
+  get(featureSwitch$);
   const draft = get(talkDraft$);
-  const features = get(featureSwitch$);
 
   return createComposerSignals({
     agent$,
@@ -162,8 +162,6 @@ export const agentChatComposerSignals$ = computed((get) => {
       save$: queueCurrentAgentDraftSync$,
     },
     chatEvents$,
-    inlineTemplatesEnabled:
-      features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false,
     generationTemplate$: newThreadGenerationTemplate$,
     setGenerationTemplate$: setNewThreadGenerationTemplate$,
     singleLineOnMobile: false,
