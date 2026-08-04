@@ -4657,6 +4657,7 @@
     },
     "displayNames": {
       "finance": "Finance",
+      "imageRecognize": "Reconnaissance d'images",
       "maps": "Cartes",
       "peopleSearch": "Recherche de personnes",
       "usage": "Utilisation",

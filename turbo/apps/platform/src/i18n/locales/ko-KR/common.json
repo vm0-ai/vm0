@@ -4584,6 +4584,7 @@
     },
     "displayNames": {
       "finance": "금융",
+      "imageRecognize": "이미지 인식",
       "maps": "지도",
       "peopleSearch": "사람 검색",
       "usage": "사용량",

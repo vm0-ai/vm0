@@ -23,6 +23,8 @@ const interpretMarksBody$ = bodyResultOf(
   zeroImageIoInterpretMarksContract.post,
 );
 
+const INTERPRET_MARKS_OPERATION = "image-interpret-marks";
+
 // Compatibility for browser bundles shipped before image editing was retired.
 // Remove this route after the frontend rollout and rollback window complete.
 const postInterpretMarksInner$ = command(
@@ -49,7 +51,10 @@ const postInterpretMarksInner$ = command(
 
       const missingPricing = await set(
         checkOpenRouterUsagePricing$,
-        { provider: INTERPRET_MARKS_MODEL },
+        {
+          provider: INTERPRET_MARKS_MODEL,
+          operation: INTERPRET_MARKS_OPERATION,
+        },
         signal,
       );
       signal.throwIfAborted();
@@ -75,7 +80,7 @@ const postInterpretMarksInner$ = command(
           userId: auth.userId,
           runId: "runId" in auth ? auth.runId : undefined,
           provider: INTERPRET_MARKS_MODEL,
-          operation: "image-interpret-marks",
+          operation: INTERPRET_MARKS_OPERATION,
           operationId,
           usage: result.usage,
         },
