@@ -770,6 +770,9 @@ function expectClaimRouteResponseTimingActions(args: {
     );
     expect(event?.duration_ms).toStrictEqual(expect.any(Number));
     expect(Number(event?.duration_ms)).toBeGreaterThanOrEqual(0);
+    if (actionType !== "claim_route_response_network_policy_refresh") {
+      expect(event).not.toHaveProperty("policy_refresh_path");
+    }
     for (const forbiddenKey of FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS) {
       expect(event).not.toHaveProperty(forbiddenKey);
     }
