@@ -329,7 +329,8 @@ describe("chat event action cards", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps sent mail card height stable while draft data loads", async () => {
+  it("keeps sent mail card height stable without exposing follow-up", async () => {
+    const user = userEvent.setup({ delay: null });
     const threadId = `${THREAD_ID}-mail-loading-height`;
     const mailDraftId = "c0000000-0000-4000-a000-000000000091";
     const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
@@ -403,12 +404,18 @@ describe("chat event action cards", () => {
     });
     resolveDraft();
 
-    await screen.findByText(MAIL_DRAFT_SUBJECT);
-    const mailCard = document.querySelector("[data-mail-draft-card]");
+    const mailCard = await screen.findByLabelText(
+      `Open sent email: ${MAIL_DRAFT_SUBJECT}`,
+    );
     expect(mailCard).toHaveClass("h-[76px]");
     expect(
       screen.queryByTestId("mail-draft-card-loading"),
     ).not.toBeInTheDocument();
+    expect(queryButtonByText("Follow up", document)).toBeNull();
+
+    await user.click(mailCard);
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    expect(queryButtonByText("Follow up", sidebar)).toBeNull();
   });
 
   it("opens a shared mail draft without reloading and refreshes after sending", async () => {
