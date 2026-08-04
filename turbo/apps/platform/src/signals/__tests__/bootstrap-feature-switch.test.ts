@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
 import {
+  avatarTemplatesEnabled$,
   featureSwitch$,
   imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
@@ -164,6 +165,45 @@ describe("bootstrap feature switch hydration", () => {
     });
 
     expect(context.store.get(imageRecognitionAvailable$)).toBeFalsy();
+  });
+
+  it("keeps avatar templates disabled when the API lacks support", async () => {
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, {
+        switches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
+        effectiveSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
+      });
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+    });
+
+    expect(context.store.get(avatarTemplatesEnabled$)).toBeFalsy();
+  });
+
+  it("waits for current API support before trusting cached avatar templates", async () => {
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, {
+        switches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
+        effectiveSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
+        supportsAvatarTemplates: true,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/error",
+      featureSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
+      withoutRender: true,
+    });
+
+    expect(context.store.get(avatarTemplatesEnabled$)).toBeFalsy();
+    await waitFor(() => {
+      expect(context.store.get(avatarTemplatesEnabled$)).toBeTruthy();
+    });
   });
 
   it("skips feature switch hydration without an authenticated organization", async () => {

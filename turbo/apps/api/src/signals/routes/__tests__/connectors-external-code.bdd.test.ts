@@ -77,8 +77,8 @@ const NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN =
   "bdd-switch-parental-controls-session-token";
 const NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN =
   "bdd-switch-parental-controls-replacement-session-token";
-const NINTENDO_SWITCH_PARENTAL_CONTROLS_SYNCHRONIZED_UNLOCK_CODE =
-  "bdd-synchronized-unlock-code-must-not-leak";
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_UNLOCK_CODE =
+  "bdd-switch-parental-controls-unlock-code-must-not-leak";
 
 async function awsActor(): Promise<ApiTestUser> {
   const bdd = createBddApi(context);
@@ -262,7 +262,7 @@ function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
                 device: {
                   serialNumber: "bdd-serial-must-not-leak",
                   synchronizedUnlockCode:
-                    NINTENDO_SWITCH_PARENTAL_CONTROLS_SYNCHRONIZED_UNLOCK_CODE,
+                    NINTENDO_SWITCH_PARENTAL_CONTROLS_UNLOCK_CODE,
                 },
               },
             ],
@@ -769,7 +769,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     expectNoVisibleSecret(complete, "bdd-serial-must-not-leak");
     expectNoVisibleSecret(
       complete,
-      NINTENDO_SWITCH_PARENTAL_CONTROLS_SYNCHRONIZED_UNLOCK_CODE,
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_UNLOCK_CODE,
     );
 
     const listed = await connectorsApi.listConnectors(actor);

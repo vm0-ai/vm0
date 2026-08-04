@@ -245,6 +245,7 @@ runs:
         add_secret OPENROUTER_API_KEY OPENROUTER_API_KEY
         add_secret OPENAI_API_KEY OPENAI_API_KEY
         add_secret FAL_KEY FAL_KEY
+        add_secret JOGGAI_API_KEY JOGGAI_API_KEY
         add_secret BYTEPLUS_API_KEY BYTEPLUS_API_KEY
         add_secret BYTEPLUS_STT_API_KEY BYTEPLUS_STT_API_KEY
         add_secret UNSPLASH_ACCESS_KEY UNSPLASH_ACCESS_KEY

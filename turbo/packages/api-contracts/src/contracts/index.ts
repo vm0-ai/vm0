@@ -1638,6 +1638,7 @@ export {
 export {
   avatarVideoAspectRatioSchema,
   avatarVideoScreenStyleSchema,
+  avatarVideoVoiceIdSchema,
   zeroAvatarVideoAvatarSchema,
   zeroAvatarVideoAvatarsQuerySchema,
   zeroAvatarVideoAvatarsResponseSchema,
