@@ -161,6 +161,72 @@ def test_writer_rate_limits_append_failures_until_stable_recovery(tmp_path, mitm
     assert not jsonl_writer._flush_waiters_by_path
 
 
+def test_writer_does_not_recover_from_mixed_path_batch(tmp_path, mitm_ctx):
+    initial_failure_path = tmp_path / "initial-missing" / "network.jsonl"
+    gate_path = tmp_path / "gate.jsonl"
+    healthy_path = tmp_path / "healthy.jsonl"
+    mixed_failure_path = tmp_path / "mixed-missing" / "network.jsonl"
+    gate_started = threading.Event()
+    release_gate = threading.Event()
+    mixed_batch_started = threading.Event()
+    release_mixed_batch = threading.Event()
+    original_append_lines = jsonl_writer._append_lines
+    now = 0.0
+
+    def monotonic() -> float:
+        return now
+
+    def write_and_flush(path: str, line: bytes) -> None:
+        jsonl_writer.write_jsonl_line(path, line, "network")
+        assert jsonl_writer.flush_log_path(path)
+
+    def append_lines(path: str, lines: list[bytes]) -> None:
+        if path == str(gate_path):
+            gate_started.set()
+            release_gate.wait()
+        elif path == str(healthy_path):
+            mixed_batch_started.set()
+            release_mixed_batch.wait()
+        original_append_lines(path, lines)
+
+    with (
+        patch.object(jsonl_writer.time, "monotonic", side_effect=monotonic),
+        mitm_ctx() as log,
+    ):
+        write_and_flush(str(initial_failure_path), b"{}\n")
+        assert log.warn.call_count == 1
+
+        now = 59.0
+        with patch.object(jsonl_writer, "_append_lines", side_effect=append_lines):
+            try:
+                jsonl_writer.write_jsonl_line(str(gate_path), b"gate\n", "network")
+                assert gate_started.wait(timeout=1)
+
+                jsonl_writer.write_jsonl_line(str(healthy_path), b"healthy\n", "network")
+                jsonl_writer.write_jsonl_line(str(mixed_failure_path), b"{}\n", "network")
+                release_gate.set()
+                assert mixed_batch_started.wait(timeout=1)
+
+                now = 60.0
+                release_mixed_batch.set()
+                assert jsonl_writer.flush_log_path(str(healthy_path))
+                assert jsonl_writer.flush_log_path(str(mixed_failure_path))
+            finally:
+                release_gate.set()
+                release_mixed_batch.set()
+
+        assert gate_path.read_bytes() == b"gate\n"
+        assert healthy_path.read_bytes() == b"healthy\n"
+        assert log.warn.call_count == 2
+        mixed_failure_warning = log.warn.call_args_list[1].args[0]
+        assert mixed_failure_warning.startswith("Failed to write network log: FileNotFoundError: ")
+        assert str(mixed_failure_path) in mixed_failure_warning
+
+        now = 120.0
+        write_and_flush(str(healthy_path), b"recovered\n")
+        assert log.warn.call_args_list[2].args == ("JSONL log writes recovered",)
+
+
 def test_writer_publishes_backlog_completion_once_per_batch(tmp_path):
     class ObservedCondition:
         def __init__(self) -> None:
