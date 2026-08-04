@@ -372,7 +372,7 @@ async fn metadata_validation_rejects_replaced_current_image() {
     assert!(err.to_string().contains("current image identity mismatch"));
     assert!(
         cache.held_workspace_states().await.is_empty(),
-        "stale metadata/current pairs must not be advertised for affinity",
+        "stale metadata/current pairs must not be advertised as reusable workspace caches",
     );
 }
 
@@ -435,7 +435,7 @@ async fn metadata_validation_rejects_symlink_current_image() {
     assert!(err.to_string().contains("current image is not a file"));
     assert!(
         cache.held_workspace_states().await.is_empty(),
-        "symlink current image entries must not be advertised for affinity",
+        "symlink current image entries must not be advertised as reusable workspace caches",
     );
 
     let freed = cache.gc(false).await.unwrap();

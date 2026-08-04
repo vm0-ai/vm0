@@ -48,12 +48,12 @@ fn local_completed_at() -> String {
     chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
-fn mark_session_affinity_refresh(
+fn mark_reuse_state_refresh(
     completion_ready: CompletionReady,
-    session_affinity_changed: bool,
+    reuse_state_changed: bool,
 ) -> CompletionReady {
-    if session_affinity_changed {
-        completion_ready.with_session_affinity_changed()
+    if reuse_state_changed {
+        completion_ready.with_reuse_state_changed()
     } else {
         completion_ready
     }
@@ -188,7 +188,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         .as_ref()
         .map(|promotion| promotion.reuse_key().to_owned());
 
-    let mut session_affinity_changed = false;
+    let mut reuse_state_changed = false;
     let budget = if let Some(reuse_key) = parkable_reuse_key {
         let reuse_key_fingerprint = crate::paths::short_digest(&reuse_key);
         let reuse_kind = reuse_key_kind(&reuse_key);
@@ -256,7 +256,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         destroy_result.workspace_cache_promoted,
                     );
                     record_destroy_result(destroy_result.outcome, destroy_bookkeeping);
-                    return mark_session_affinity_refresh(
+                    return mark_reuse_state_refresh(
                         CompletionReady::new(
                             completion_payload,
                             BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(
@@ -300,7 +300,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         &completed_at,
                         destroy_result.workspace_cache_promoted,
                     );
-                    return mark_session_affinity_refresh(
+                    return mark_reuse_state_refresh(
                         CompletionReady::new(completion_payload, destroy_result.budget),
                         workspace_cache_promoted,
                     );
@@ -324,7 +324,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 destroy_bookkeeping,
             )
             .await;
-            session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
+            reuse_state_changed |= mark_workspace_cache_snapshot_promoted(
                 &workspace_cache_snapshot,
                 Some(&reuse_key),
                 &profile_name,
@@ -350,7 +350,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 destroy_bookkeeping,
             )
             .await;
-            session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
+            reuse_state_changed |= mark_workspace_cache_snapshot_promoted(
                 &workspace_cache_snapshot,
                 Some(&reuse_key),
                 &profile_name,
@@ -394,7 +394,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                             &completed_at,
                             destroy_result.workspace_cache_promoted,
                         );
-                        return mark_session_affinity_refresh(
+                        return mark_reuse_state_refresh(
                             CompletionReady::new(completion_payload, destroy_result.budget),
                             workspace_cache_promoted,
                         );
@@ -426,7 +426,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         &completed_at,
                         destroy_result.workspace_cache_promoted,
                     );
-                    return mark_session_affinity_refresh(
+                    return mark_reuse_state_refresh(
                         CompletionReady::new(completion_payload, destroy_result.budget),
                         workspace_cache_promoted,
                     );
@@ -463,7 +463,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         ownership
                             .publish_idle_status_after_pool_transfer(snapshot)
                             .await;
-                        session_affinity_changed = true;
+                        reuse_state_changed = true;
                         reuse_state_notify.notify_one();
                         BudgetOwnership::idle_owned()
                     }
@@ -488,7 +488,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         ownership
                             .publish_idle_status_after_pool_transfer(snapshot)
                             .await;
-                        session_affinity_changed = true;
+                        reuse_state_changed = true;
                         reuse_state_notify.notify_one();
                         // The replaced VM was park()ed when it entered the
                         // pool; destroying a parked sandbox is safe — Drop
@@ -520,7 +520,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                             destroy_bookkeeping,
                         )
                         .await;
-                        session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
+                        reuse_state_changed |= mark_workspace_cache_snapshot_promoted(
                             &workspace_cache_snapshot,
                             Some(&reuse_key),
                             &profile_name,
@@ -550,7 +550,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             },
         )
         .await;
-        session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
+        reuse_state_changed |= mark_workspace_cache_snapshot_promoted(
             &workspace_cache_snapshot,
             workspace_promotion_reuse_key.as_deref(),
             &profile_name,
@@ -561,9 +561,9 @@ pub(super) async fn finalize_sandbox_for_completion(
         BudgetOwnership::active(active_lease)
     };
 
-    mark_session_affinity_refresh(
+    mark_reuse_state_refresh(
         CompletionReady::new(completion_payload, budget),
-        session_affinity_changed,
+        reuse_state_changed,
     )
 }
 
@@ -2207,7 +2207,7 @@ mod tests {
             workspace_cache_snapshot
                 .current_held_workspace_states(&active_reuse_keys, None)
                 .is_empty(),
-            "failed post-freeze stop must not advertise session affinity"
+            "failed post-freeze stop must not advertise reusable state"
         );
     }
 

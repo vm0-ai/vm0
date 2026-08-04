@@ -12,7 +12,7 @@ interface RunnerJobQueueTimestamps {
  * Capture the closest safe persisted approximation of queue availability.
  * The row is committed before notification, so this is insertion time rather
  * than commit, notification, or runner discovery time. The API clock owns the
- * telemetry/affinity boundary, while the database clock owns queue expiry.
+ * telemetry/reuse-preference boundary, while the database clock owns queue expiry.
  */
 export function runnerJobQueueTimestamps(): RunnerJobQueueTimestamps {
   return {

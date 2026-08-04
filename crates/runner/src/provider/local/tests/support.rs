@@ -127,7 +127,7 @@ pub(super) fn write_job_with_session(
     );
 }
 
-pub(super) fn write_job_with_affinity(
+pub(super) fn write_job_with_reuse_metadata(
     dir: &std::path::Path,
     job_id: RunId,
     prompt: &str,

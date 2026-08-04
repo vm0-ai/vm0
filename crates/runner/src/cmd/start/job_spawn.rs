@@ -69,7 +69,7 @@ pub(super) struct SpawnContext {
     /// spawn-time mode snapshot.
     pub(super) parking_gate: ParkingGate,
     /// Notifies the main loop to send an immediate heartbeat after reusable
-    /// affinity state changes. This eliminates the up-to-10s blind spot where
+    /// state changes. This eliminates the up-to-10s blind spot where
     /// the server does not know which runner holds a reusable sandbox or
     /// workspace image cache.
     pub(super) reuse_state_notify: Arc<tokio::sync::Notify>,
@@ -355,14 +355,12 @@ impl FinalizationPhase {
         .await;
         let finalization_duration = finalization_started.elapsed();
         let disposition = cleanup_state_after_finalize.disposition();
-        let session_affinity_changed = completion_ready.session_affinity_changed();
+        let reuse_state_changed = completion_ready.reuse_state_changed();
         let (finalization_action, finalization_success, finalization_error) = match disposition {
             RunCleanupDisposition::IdlePoolOwned => {
                 ("runner_host_finalization_reusable_sandbox", true, None)
             }
-            _ if session_affinity_changed => {
-                ("runner_host_finalization_workspace_cache", true, None)
-            }
+            _ if reuse_state_changed => ("runner_host_finalization_workspace_cache", true, None),
             RunCleanupDisposition::DestroyCompleted | RunCleanupDisposition::StatusRemoved => {
                 ("runner_host_finalization_no_resource", true, None)
             }
@@ -435,7 +433,7 @@ impl CompletionPhase {
         // Structural guarantee: claim (in provider) is always paired with complete.
         signal_usage_flush(run_id, &usage_flush_tx);
         let ownership = OwnershipTransitions::new(status.as_ref());
-        let session_affinity_changed = completion_ready.session_affinity_changed();
+        let reuse_state_changed = completion_ready.reuse_state_changed();
         let provider_completion_duration = completion_ready
             .complete_and_release(provider.as_ref(), &ownership, &cleanup_state)
             .await;
@@ -453,7 +451,7 @@ impl CompletionPhase {
                 None,
             );
         }
-        if session_affinity_changed {
+        if reuse_state_changed {
             reuse_state_notify.notify_one();
         }
     }

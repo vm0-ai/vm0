@@ -8,16 +8,16 @@ use super::super::support::{
 use crate::types::SandboxReuseResult;
 
 // -----------------------------------------------------------------------
-// Test 13: Session affinity reuses idle VM
+// Test 13: Same-thread work reuses an idle VM
 // -----------------------------------------------------------------------
 
 #[tokio::test(start_paused = true)]
-async fn session_affinity_reuses_idle_vm() {
+async fn same_thread_reuses_idle_vm() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
 
-    // Pre-seed: park a VM for session "sess-reuse" with matching profile.
+    // Pre-seed: park a VM for reuse key "sess-reuse" with matching profile.
     let seeded_sandbox_id =
         seed_idle_pool(&idle_pool, &budget, "sess-reuse", "vm0/default", 2, 4096).await;
     assert_eq!(budget.allocated().2, 1, "seeded entry holds budget");
