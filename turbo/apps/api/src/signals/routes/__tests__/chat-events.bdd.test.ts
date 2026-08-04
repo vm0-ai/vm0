@@ -841,8 +841,8 @@ async function upsertOrgModelProvider(
   body: {
     readonly type:
       | "anthropic-api-key"
-      | "deepseek-codex"
-      | "deepseek-api-key"
+      | "deepseek"
+      | "moonshot-api-key"
       | "openai-api-key"
       | "openrouter-api-key"
       | "vercel-ai-gateway"
@@ -2448,24 +2448,24 @@ describe("CHAT-02: model-first provider policies", () => {
   it("routes model policy providers into the runner claim", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const { providerId: deepseekId } = await upsertOrgModelProvider(actor, {
-      type: "deepseek-api-key",
-      secret: "selected-deepseek-key",
+    const { providerId: moonshotId } = await upsertOrgModelProvider(actor, {
+      type: "moonshot-api-key",
+      secret: "selected-moonshot-key",
     });
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "deepseek-v4-pro",
+        model: "kimi-k2.7-code",
         isDefault: true,
-        defaultProviderType: "deepseek-api-key",
+        defaultProviderType: "moonshot-api-key",
         credentialScope: "org",
-        modelProviderId: deepseekId,
+        modelProviderId: moonshotId,
       },
     ]);
 
     const run = await sendChatRun(actor, {
       agentId,
-      prompt: "run with the selected deepseek provider",
-      model: "deepseek-v4-pro",
+      prompt: "run with the selected Moonshot provider",
+      model: "kimi-k2.7-code",
     });
 
     const { claim, sandboxHeaders } = await claimChatRun(
@@ -2474,12 +2474,12 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     const environment = claimEnvironment(claim);
     expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
-      modelProviderSecretPlaceholder("deepseek-api-key", "DEEPSEEK_API_KEY"),
+      modelProviderSecretPlaceholder("moonshot-api-key", "MOONSHOT_API_KEY"),
     );
     expect(environment.ANTHROPIC_BASE_URL).toBe(
-      "https://api.deepseek.com/anthropic",
+      "https://api.moonshot.ai/anthropic",
     );
-    expect(environment.ANTHROPIC_MODEL).toBe("deepseek-v4-pro");
+    expect(environment.ANTHROPIC_MODEL).toBe("kimi-k2.7-code");
     expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
     expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
 
@@ -2497,14 +2497,14 @@ describe("CHAT-02: model-first provider policies", () => {
       expect.objectContaining({
         kind: "created",
         chatThreadId: run.threadId,
-        selectedModel: "deepseek-v4-pro",
+        selectedModel: "kimi-k2.7-code",
       }),
     );
     expect(threadEvents.body.events).not.toContainEqual(
       expect.objectContaining({
         kind: "model_selection_updated",
         chatThreadId: run.threadId,
-        selectedModel: "deepseek-v4-pro",
+        selectedModel: "kimi-k2.7-code",
       }),
     );
 
@@ -2523,12 +2523,12 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     const followUpEnvironment = claimEnvironment(followUpClaim);
     expect(followUpEnvironment.ANTHROPIC_AUTH_TOKEN).toBe(
-      modelProviderSecretPlaceholder("deepseek-api-key", "DEEPSEEK_API_KEY"),
+      modelProviderSecretPlaceholder("moonshot-api-key", "MOONSHOT_API_KEY"),
     );
     expect(followUpEnvironment.ANTHROPIC_BASE_URL).toBe(
-      "https://api.deepseek.com/anthropic",
+      "https://api.moonshot.ai/anthropic",
     );
-    expect(followUpEnvironment.ANTHROPIC_MODEL).toBe("deepseek-v4-pro");
+    expect(followUpEnvironment.ANTHROPIC_MODEL).toBe("kimi-k2.7-code");
     await cancelChatRun(actor, followUp.runId);
 
     // A vm0 provider pin in an entitled org passes the spendable-credits
@@ -2573,14 +2573,14 @@ describe("CHAT-02: model-first provider policies", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const { providerId } = await upsertOrgModelProvider(actor, {
-      type: "deepseek-codex",
+      type: "deepseek",
       secret: "selected-deepseek-responses-key",
     });
     await api.updateOrgModelPolicies(actor, [
       {
         model: "deepseek-v4-flash",
         isDefault: true,
-        defaultProviderType: "deepseek-codex",
+        defaultProviderType: "deepseek",
         credentialScope: "org",
         modelProviderId: providerId,
       },
@@ -2599,15 +2599,15 @@ describe("CHAT-02: model-first provider policies", () => {
 
     expect(claim.cliAgentType).toBe("codex");
     expect(environment.OPENAI_API_KEY).toBe(
-      modelProviderSecretPlaceholder("deepseek-codex", "DEEPSEEK_API_KEY"),
+      modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
     );
-    expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com");
+    expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com/");
     expect(environment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     expect(environment.ANTHROPIC_MODEL).toBeUndefined();
     expect(claim.codexRuntimeConfig).toMatchObject({
-      providerId: "deepseek-codex",
+      providerId: "deepseek",
       name: "DeepSeek",
-      baseUrl: "https://api.deepseek.com",
+      baseUrl: "https://api.deepseek.com/",
       envKey: "OPENAI_API_KEY",
       requiresOpenaiAuth: false,
       wireApi: "responses",
@@ -2639,12 +2639,12 @@ describe("CHAT-02: model-first provider policies", () => {
     const followUpEnvironment = claimEnvironment(followUpClaim);
     expect(followUpClaim.cliAgentType).toBe("codex");
     expect(followUpClaim.resumeSession?.sessionId).toBe(`bdd-cli-${run.runId}`);
-    expect(followUpClaim.codexRuntimeConfig?.providerId).toBe("deepseek-codex");
+    expect(followUpClaim.codexRuntimeConfig?.providerId).toBe("deepseek");
     expect(followUpEnvironment.OPENAI_API_KEY).toBe(
-      modelProviderSecretPlaceholder("deepseek-codex", "DEEPSEEK_API_KEY"),
+      modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
     );
     expect(followUpEnvironment.OPENAI_BASE_URL).toBe(
-      "https://api.deepseek.com",
+      "https://api.deepseek.com/",
     );
     expect(followUpEnvironment.OPENAI_MODEL).toBe("deepseek-v4-flash");
 
@@ -4817,9 +4817,7 @@ describe("CHAT-02: run-level model overrides", () => {
       [400],
     );
     expectApiError(invalidModel.body);
-    expect(invalidModel.body.error.message).toBe(
-      "model: Invalid model selection",
-    );
+    expect(invalidModel.body.error.message).toBe("Invalid input");
     await chat.requestReadThread(actor, vm0ThreadId, [404]);
 
     const unavailableThreadId = randomUUID();
@@ -4858,7 +4856,7 @@ describe("CHAT-02: run-level model overrides", () => {
       expectApiError(removed.body);
       expect(removed.body.error).toMatchObject({
         code: "BAD_REQUEST",
-        message: "model: Invalid model selection",
+        message: "Invalid input",
       });
       await chat.requestReadThread(actor, removedThreadId, [404]);
     }

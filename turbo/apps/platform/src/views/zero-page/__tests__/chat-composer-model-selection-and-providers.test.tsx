@@ -287,8 +287,8 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000915",
-        model: "deepseek-v4-pro",
-        modelLabel: "DeepSeek V4 Pro",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),

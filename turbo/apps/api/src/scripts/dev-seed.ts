@@ -445,12 +445,6 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.0028), 1_000_000],
     ["tokens.cache_creation", 0, 1_000_000],
   ]),
-  ...usageGroup("model", "deepseek-v4-pro", [
-    ["tokens.input", usd(1.74), 1_000_000],
-    ["tokens.output", usd(3.48), 1_000_000],
-    ["tokens.cache_read", usd(0.145), 1_000_000],
-    ["tokens.cache_creation", 0, 1_000_000],
-  ]),
   // OpenAI API pricing retrieved 2026-07-31 from:
   // https://developers.openai.com/api/docs/pricing
   ...usageGroup(

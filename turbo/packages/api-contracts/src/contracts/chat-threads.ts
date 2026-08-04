@@ -7,7 +7,7 @@ import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
 import { triggerSourceSchema } from "./logs";
-import { requestedRunModelSchema } from "./model-providers";
+import { supportedRunModelSchema } from "./model-providers";
 import {
   avatarVideoAspectRatioSchema,
   avatarVideoVoiceIdSchema,
@@ -748,7 +748,7 @@ const chatThreadDraftSchema = z
   })
   .superRefine(requireUserMessageForDraftAttachments);
 
-const selectedModelRequestSchema = requestedRunModelSchema;
+const selectedModelRequestSchema = supportedRunModelSchema;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

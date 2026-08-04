@@ -145,8 +145,8 @@
     {
       "idx": 828,
       "version": "7",
-      "when": 1785844907868,
-      "tag": "0828_revoke_invalidated_goal_continuations",
+      "when": 1785847164447,
+      "tag": "0828_migrate_legacy_deepseek_state",
       "breakpoints": true
     }
   ]

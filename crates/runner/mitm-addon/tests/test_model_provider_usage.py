@@ -592,7 +592,7 @@ class TestReportModelProviderUsage:
                 "tokens.input": 10,
             },
             "resp_ws_2": {
-                "model": "gpt-5.4",
+                "model": "gpt-5.6-luna",
                 "message_id": "resp_ws_2",
                 "tokens.input": 3,
             },
@@ -610,7 +610,7 @@ class TestReportModelProviderUsage:
             for event in usage_body["events"]
         } == {
             ("gpt-5.5", "tokens.input"): 10,
-            ("gpt-5.4", "tokens.input"): 3,
+            ("gpt-5.6-luna", "tokens.input"): 3,
         }
 
     def test_source_dedupe_skips_malformed_model_provider_usage_sources(
@@ -624,7 +624,7 @@ class TestReportModelProviderUsage:
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {
             "resp_invalid": "invalid",
             "": {"model": "gpt-5.5", "tokens.input": 10},
-            42: {"model": "gpt-5.4", "tokens.input": 3},
+            42: {"model": "gpt-5.6-luna", "tokens.input": 3},
         }
 
         with usage_webhook_api() as webhook:
