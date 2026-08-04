@@ -601,6 +601,7 @@ async fn run_firewall_restore(
         Err(error) => {
             return Err(CommandError {
                 command: command.to_string(),
+                exit_code: None,
                 detail: format!("failed to create firewall restore input: {error}"),
             });
         }
@@ -608,12 +609,14 @@ async fn run_firewall_restore(
     if let Err(error) = file.write_all(payload.as_bytes()) {
         return Err(CommandError {
             command: command.to_string(),
+            exit_code: None,
             detail: format!("failed to write firewall restore input: {error}"),
         });
     }
     let Some(path) = file.path().to_str() else {
         return Err(CommandError {
             command: command.to_string(),
+            exit_code: None,
             detail: format!(
                 "firewall restore input path is not UTF-8: {}",
                 file.path().display()
