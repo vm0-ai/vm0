@@ -2696,22 +2696,19 @@ function loadQueuedMessageSessionState(
     "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
     "nested",
     async () => {
-      const [sessionResolution, featureSwitchContext] = await Promise.all([
-        resolveChatThreadSession({
-          db: args.db,
-          threadId: args.threadId,
-          userId: args.userId,
-          orgId: args.agent.orgId,
-          agentComposeId: args.agent.id,
-          route: {
-            selectedModel: modelRoute.modelPin.selectedModel,
-            modelProvider: modelRoute.effectiveModelProvider ?? null,
-            modelProviderId: modelRoute.modelPin.modelProviderId,
-            cliAgentType: modelRoute.cliAgentType,
-          },
-        }),
-        loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
-      ]);
+      const sessionResolution = await resolveChatThreadSession({
+        db: args.db,
+        threadId: args.threadId,
+        userId: args.userId,
+        orgId: args.agent.orgId,
+        agentComposeId: args.agent.id,
+        route: {
+          selectedModel: modelRoute.modelPin.selectedModel,
+          modelProvider: modelRoute.effectiveModelProvider ?? null,
+          modelProviderId: modelRoute.modelPin.modelProviderId,
+          cliAgentType: modelRoute.cliAgentType,
+        },
+      });
       const incompleteContext =
         args.queuedMessage.triggerSource === "web"
           ? await loadWebChatIncompleteContext(args.db, args.threadId)
@@ -2719,7 +2716,6 @@ function loadQueuedMessageSessionState(
       return [
         sessionResolution.action === "rotated",
         incompleteContext,
-        featureSwitchContext,
       ] as const;
     },
   );
@@ -2748,6 +2744,7 @@ interface QueuedLaunchLoaderArgs {
   readonly chatThreadId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly userMessageProjection: ReturnType<typeof projectUserMessage>;
   readonly resolveSignedUrls: (keys: {
     readonly inputKey: string;
     readonly outputKey: string;
@@ -2758,6 +2755,20 @@ type LaunchLoader = (
   db: Db,
   args: QueuedLaunchLoaderArgs,
 ) => Promise<QueuedLaunchMaterial | null>;
+
+/**
+ * Web is the only trigger source with no context table: the user typed the
+ * message, so `chat_events.user_message` *is* the durable original fact rather
+ * than a display copy of something stored elsewhere. This is the one place a
+ * launch loader reads it, and it is deliberate.
+ */
+const loadWebQueuedLaunchMaterial: LaunchLoader = (_db, args) => {
+  return Promise.resolve({
+    prompt: args.userMessageProjection.agentPrompt,
+    appendSystemPrompt: buildWebChatPrompt(),
+    delivery: {},
+  });
+};
 
 type NativeQueuedLaunchMaterial =
   | SlackQueuedLaunchMaterial
@@ -2789,13 +2800,16 @@ function launchLoader<Material extends NativeQueuedLaunchMaterial>(
 }
 
 async function resolveQueuedLaunchMaterial(
-  args: CreateQueuedChatRunInputArgs,
-): Promise<QueuedLaunchMaterial | null> {
+  args: CreateQueuedChatRunInputArgs & {
+    readonly userMessageProjection: ReturnType<typeof projectUserMessage>;
+  },
+): Promise<QueuedLaunchMaterial> {
   const triggerSource = args.queuedMessage.triggerSource;
   let load: LaunchLoader;
   switch (triggerSource) {
     case "web": {
-      return null;
+      load = loadWebQueuedLaunchMaterial;
+      break;
     }
     case "slack": {
       load = launchLoader(loadSlackQueuedLaunchMaterial, (material) => {
@@ -2855,6 +2869,7 @@ async function resolveQueuedLaunchMaterial(
     chatThreadId: args.threadId,
     orgId: args.agent.orgId,
     userId: args.userId,
+    userMessageProjection: args.userMessageProjection,
     resolveSignedUrls: (keys) => {
       return args.resolveMorningBriefSignedUrls(keys, args.signal);
     },
@@ -2866,9 +2881,9 @@ async function resolveQueuedLaunchMaterial(
 }
 
 function queuedIntegrationDeliveries(
-  launchMaterial: QueuedLaunchMaterial | null,
+  launchMaterial: QueuedLaunchMaterial,
 ): QueuedIntegrationDeliveries {
-  return launchMaterial?.delivery ?? {};
+  return launchMaterial.delivery;
 }
 
 function unreachableQueuedTriggerSource(triggerSource: never): never {
@@ -2889,7 +2904,7 @@ function requiredQueuedDelivery<Delivery>(
 
 function queuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
-  launchMaterial: QueuedLaunchMaterial | null,
+  launchMaterial: QueuedLaunchMaterial,
   error: QueuedMessageModelRouteError,
 ): QueuedMessageAdmissionFailure {
   const common = {
@@ -2910,7 +2925,7 @@ function queuedMessageAdmissionFailure(
         kind: "slack_admission_failure",
         ...common,
         slackDelivery: requiredQueuedDelivery(
-          launchMaterial?.delivery.slackDelivery,
+          launchMaterial.delivery.slackDelivery,
           triggerSource,
         ),
       };
@@ -2920,7 +2935,7 @@ function queuedMessageAdmissionFailure(
         kind: "feishu_admission_failure",
         ...common,
         feishuDelivery: requiredQueuedDelivery(
-          launchMaterial?.delivery.feishuDelivery,
+          launchMaterial.delivery.feishuDelivery,
           triggerSource,
         ),
       };
@@ -2930,7 +2945,7 @@ function queuedMessageAdmissionFailure(
         kind: "teams_admission_failure",
         ...common,
         teamsDelivery: requiredQueuedDelivery(
-          launchMaterial?.delivery.teamsDelivery,
+          launchMaterial.delivery.teamsDelivery,
           triggerSource,
         ),
       };
@@ -2940,7 +2955,7 @@ function queuedMessageAdmissionFailure(
         kind: "telegram_admission_failure",
         ...common,
         telegramDelivery: requiredQueuedDelivery(
-          launchMaterial?.delivery.telegramDelivery,
+          launchMaterial.delivery.telegramDelivery,
           triggerSource,
         ),
       };
@@ -2950,7 +2965,7 @@ function queuedMessageAdmissionFailure(
         kind: "agentphone_admission_failure",
         ...common,
         agentphoneDelivery: requiredQueuedDelivery(
-          launchMaterial?.delivery.agentphoneDelivery,
+          launchMaterial.delivery.agentphoneDelivery,
           triggerSource,
         ),
       };
@@ -2960,7 +2975,7 @@ function queuedMessageAdmissionFailure(
         kind: "github_admission_failure",
         ...common,
         githubDelivery: requiredQueuedDelivery(
-          launchMaterial?.delivery.githubDelivery,
+          launchMaterial.delivery.githubDelivery,
           triggerSource,
         ),
       };
@@ -2970,7 +2985,7 @@ function queuedMessageAdmissionFailure(
         kind: "morning_brief_admission_failure",
         ...common,
         morningBriefDelivery: requiredQueuedDelivery(
-          launchMaterial?.delivery.morningBriefDelivery,
+          launchMaterial.delivery.morningBriefDelivery,
           triggerSource,
         ),
         error,
@@ -2983,16 +2998,15 @@ function queuedMessageAdmissionFailure(
 }
 
 function queuedMessagePrompt(args: {
-  readonly launchMaterial: QueuedLaunchMaterial | null;
-  readonly projectedPrompt: string;
+  readonly launchMaterial: QueuedLaunchMaterial;
 }): string {
-  return args.launchMaterial?.prompt ?? args.projectedPrompt;
+  return args.launchMaterial.prompt;
 }
 
 function queuedIntegrationPrompt(args: {
-  readonly launchMaterial: QueuedLaunchMaterial | null;
+  readonly launchMaterial: QueuedLaunchMaterial;
 }): string {
-  return args.launchMaterial?.appendSystemPrompt ?? buildWebChatPrompt();
+  return args.launchMaterial.appendSystemPrompt;
 }
 
 function resolveQueuedMessageGenerationTemplatePrompt(args: {
@@ -3019,7 +3033,11 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
   );
 }
 
-async function loadQueuedRunMaterial(args: CreateQueuedChatRunInputArgs) {
+async function loadQueuedRunMaterial(
+  args: CreateQueuedChatRunInputArgs & {
+    readonly userMessageProjection: ReturnType<typeof projectUserMessage>;
+  },
+) {
   return await resolveQueuedLaunchMaterial(args);
 }
 
@@ -3039,26 +3057,38 @@ function queuedUserMessageProjection(
   });
 }
 
-function queuedIntegrationLaunchFields(
-  launchMaterial: QueuedLaunchMaterial | null,
-) {
+function queuedIntegrationLaunchFields(launchMaterial: QueuedLaunchMaterial) {
   return {
     ...queuedIntegrationDeliveries(launchMaterial),
-    userInfoExtras: launchMaterial?.userInfoExtras,
+    userInfoExtras: launchMaterial.userInfoExtras,
   };
 }
 
 async function buildCreateQueuedChatRunInput(
   args: CreateQueuedChatRunInputArgs,
 ): Promise<CreateQueuedChatRunInput | QueuedMessageAdmissionFailure> {
-  const launchMaterial = await loadQueuedRunMaterial(args);
-  const modelRouteResolution = await resolveQueuedMessageModelRoute({
-    db: args.db,
-    threadId: args.threadId,
-    userId: args.userId,
-    orgId: args.agent.orgId,
-    triggerSource: args.queuedMessage.triggerSource,
-    timing: args.timing,
+  const [featureSwitchContext, modelRouteResolution] = await Promise.all([
+    loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
+    resolveQueuedMessageModelRoute({
+      db: args.db,
+      threadId: args.threadId,
+      userId: args.userId,
+      orgId: args.agent.orgId,
+      triggerSource: args.queuedMessage.triggerSource,
+      timing: args.timing,
+    }),
+  ]);
+  const inlineTemplatesEnabled = isFeatureEnabled(
+    FeatureSwitchKey.StructuredPromptInlineTemplates,
+    featureSwitchContext,
+  );
+  const userMessageProjection = queuedUserMessageProjection(
+    args.queuedMessage.userMessage,
+    inlineTemplatesEnabled,
+  );
+  const launchMaterial = await loadQueuedRunMaterial({
+    ...args,
+    userMessageProjection,
   });
   if ("error" in modelRouteResolution) {
     return queuedMessageAdmissionFailure(
@@ -3069,7 +3099,7 @@ async function buildCreateQueuedChatRunInput(
   }
   const modelRoute = modelRouteResolution.route;
 
-  const [startNewSession, loadedIncompleteContext, featureSwitchContext] =
+  const [startNewSession, loadedIncompleteContext] =
     await loadQueuedMessageSessionState(args, modelRoute);
   const attachFileMetadata = await args.resolveAttachFileMetadata(
     args.userId,
@@ -3077,14 +3107,6 @@ async function buildCreateQueuedChatRunInput(
     args.signal,
   );
   args.signal.throwIfAborted();
-  const inlineTemplatesEnabled = isFeatureEnabled(
-    FeatureSwitchKey.StructuredPromptInlineTemplates,
-    featureSwitchContext,
-  );
-  const userMessageProjection = queuedUserMessageProjection(
-    args.queuedMessage.userMessage,
-    inlineTemplatesEnabled,
-  );
   const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
     args.timing,
@@ -3122,7 +3144,6 @@ async function buildCreateQueuedChatRunInput(
   );
   const prompt = queuedMessagePrompt({
     launchMaterial,
-    projectedPrompt: userMessageProjection.agentPrompt,
   });
 
   return {

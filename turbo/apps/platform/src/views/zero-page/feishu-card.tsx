@@ -4,7 +4,6 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconArrowLeft,
   IconArrowRight,
-  IconChevronLeft,
   IconChevronRight,
   IconCircleCheck,
   IconCopy,
@@ -73,16 +72,13 @@ import {
   feishuDialogExisting$,
   feishuDialogInstallationId$,
   feishuDialogOpen$,
-  feishuGuideImageIndex$,
   feishuInstallations$,
   feishuOrgData$,
   feishuSetupForm$,
   feishuSetupStep$,
   feishuUninstallInstallationId$,
   goBackFeishuSetupStep$,
-  moveFeishuGuideImage$,
   openFeishuDialog$,
-  setFeishuGuideImageIndex$,
   setFeishuUninstallInstallationId$,
   setupFeishuOrg$,
   updateFeishuInstallationAgent$,
@@ -174,91 +170,29 @@ function FeishuGuideImage({ src, alt }: { src: string; alt: string }) {
   );
 }
 
-interface FeishuGuideCarouselImage {
+interface FeishuGuideImageItem {
   readonly src: string;
   readonly alt: string;
   readonly label: string;
 }
 
-function FeishuGuideCarousel({
+function FeishuGuideImages({
   images,
 }: {
-  images: readonly [FeishuGuideCarouselImage, ...FeishuGuideCarouselImage[]];
+  images: readonly [FeishuGuideImageItem, ...FeishuGuideImageItem[]];
 }) {
-  const { t } = useTranslation();
-  const activeIndex = useGet(feishuGuideImageIndex$);
-  const moveImage = useSet(moveFeishuGuideImage$);
-  const setActiveIndex = useSet(setFeishuGuideImageIndex$);
-  const activeImage = images[activeIndex] ?? images[0];
-  const move = (offset: number): void => {
-    moveImage(offset, images.length);
-  };
-
   return (
-    <div className="space-y-2">
-      <div className="relative overflow-hidden rounded-lg border border-border bg-white">
-        <img
-          src={activeImage.src}
-          alt={activeImage.alt}
-          loading="lazy"
-          className="aspect-video w-full object-contain"
-        />
-        <button
-          type="button"
-          className="absolute left-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-sm"
-          aria-label={t(($) => {
-            return $.connectors.providerSettings.feishu.guide.previous;
-          })}
-          onClick={() => {
-            move(-1);
-          }}
-        >
-          <IconChevronLeft size={20} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className="absolute right-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/90 text-foreground shadow-sm"
-          aria-label={t(($) => {
-            return $.connectors.providerSettings.feishu.guide.next;
-          })}
-          onClick={() => {
-            move(1);
-          }}
-        >
-          <IconChevronRight size={20} aria-hidden="true" />
-        </button>
-      </div>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs text-muted-foreground">
-          {activeImage.label}
-        </span>
-        <div className="flex items-center gap-1.5">
-          {images.map((image, index) => {
-            const active = index === activeIndex;
-            return (
-              <button
-                key={image.src}
-                type="button"
-                aria-label={t(
-                  ($) => {
-                    return $.connectors.providerSettings.feishu.guide.show;
-                  },
-                  { number: index + 1 },
-                )}
-                aria-current={active ? "true" : undefined}
-                className={
-                  active
-                    ? "h-1.5 w-4 rounded-full bg-foreground"
-                    : "h-1.5 w-1.5 rounded-full bg-muted-foreground/35"
-                }
-                onClick={() => {
-                  setActiveIndex(index);
-                }}
-              />
-            );
-          })}
-        </div>
-      </div>
+    <div className="space-y-4">
+      {images.map((image) => {
+        return (
+          <figure key={image.src} className="space-y-2">
+            <FeishuGuideImage src={image.src} alt={image.alt} />
+            <figcaption className="text-xs text-muted-foreground">
+              {image.label}
+            </figcaption>
+          </figure>
+        );
+      })}
     </div>
   );
 }
@@ -717,7 +651,7 @@ function FeishuEventsStep({ data }: { data: FeishuDialogData | null }) {
           ).
         </p>
         <div className="mt-4">
-          <FeishuGuideCarousel
+          <FeishuGuideImages
             images={[
               {
                 src: platformFeishuEventSubscriptionModeImg,
@@ -802,6 +736,12 @@ function FeishuRedirectStep({ data }: { data: FeishuDialogData | null }) {
           )}
         </p>
       </div>
+      <FeishuGuideImage
+        src={platformFeishuSecuritySettingsRedirectUrlImg}
+        alt={t(($) => {
+          return $.connectors.providerSettings.feishu.redirect.imageAlt;
+        })}
+      />
       <div className="flex gap-2">
         <Input value={data?.oauthRedirectUrl ?? ""} readOnly />
         {data?.oauthRedirectUrl ? (
@@ -813,12 +753,6 @@ function FeishuRedirectStep({ data }: { data: FeishuDialogData | null }) {
           />
         ) : null}
       </div>
-      <FeishuGuideImage
-        src={platformFeishuSecuritySettingsRedirectUrlImg}
-        alt={t(($) => {
-          return $.connectors.providerSettings.feishu.redirect.imageAlt;
-        })}
-      />
     </div>
   );
 }
@@ -850,7 +784,7 @@ function FeishuPermissionsStep({ data }: { data: FeishuDialogData | null }) {
           })}
         </p>
         <div className="mt-4">
-          <FeishuGuideCarousel
+          <FeishuGuideImages
             images={[
               {
                 src: platformFeishuPermissionsScopesBatchImportMenuImg,
@@ -902,12 +836,15 @@ function FeishuPermissionsStep({ data }: { data: FeishuDialogData | null }) {
             {scopeImportJson}
           </code>
         </div>
+        <p
+          role="note"
+          className="mt-3 text-sm text-amber-600 dark:text-amber-400"
+        >
+          {t(($) => {
+            return $.connectors.providerSettings.feishu.permissions.hint;
+          })}
+        </p>
       </div>
-      <p className="text-sm text-muted-foreground">
-        {t(($) => {
-          return $.connectors.providerSettings.feishu.permissions.hint;
-        })}
-      </p>
     </div>
   );
 }
@@ -946,7 +883,7 @@ function FeishuPublishStep({
           })}
         </p>
         <div className="mt-4">
-          <FeishuGuideCarousel
+          <FeishuGuideImages
             images={[
               {
                 src: platformFeishuVersionManagementCreateVersionImg,

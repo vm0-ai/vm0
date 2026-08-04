@@ -174,6 +174,18 @@ struct BlockingRemoveDirCleanup {
     removed_notify: Arc<tokio::sync::Notify>,
     release: Arc<AtomicBool>,
     release_notify: Arc<tokio::sync::Notify>,
+    task_aborts: Arc<Mutex<Vec<tokio::task::AbortHandle>>>,
+}
+
+struct BlockingRemoveDirCleanupScope {
+    cleanup: BlockingRemoveDirCleanup,
+}
+
+impl Drop for BlockingRemoveDirCleanupScope {
+    fn drop(&mut self) {
+        self.cleanup.release();
+        self.cleanup.abort_tasks();
+    }
 }
 
 impl BlockingRemoveDirCleanup {
@@ -217,19 +229,56 @@ impl BlockingRemoveDirCleanup {
         }
     }
 
-    async fn wait_removed(&self, expected: usize) {
-        loop {
-            let notified = self.removed_notify.notified();
-            if self.removed.load(Ordering::SeqCst) >= expected {
-                return;
+    async fn wait_removed(&self, expected: usize, fixture: &WorkspaceSockFixture) {
+        let wait = async {
+            loop {
+                let notified = self.removed_notify.notified();
+                if self.removed.load(Ordering::SeqCst) >= expected {
+                    return;
+                }
+                notified.await;
             }
-            notified.await;
-        }
+        };
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_secs(1), wait)
+                .await
+                .is_ok(),
+            "timed out waiting for create rollback filesystem cleanup: expected_removals={expected}, observed_removals={}, events={:?}, workspace_exists={}, sock_dir_exists={}",
+            self.removed.load(Ordering::SeqCst),
+            self.events(),
+            fixture.workspace.exists(),
+            fixture.sock_dir.exists(),
+        );
     }
 
     fn release(&self) {
         self.release.store(true, Ordering::SeqCst);
         self.release_notify.notify_waiters();
+    }
+
+    fn scope(&self) -> BlockingRemoveDirCleanupScope {
+        BlockingRemoveDirCleanupScope {
+            cleanup: self.clone(),
+        }
+    }
+
+    fn lock_task_aborts(&self) -> std::sync::MutexGuard<'_, Vec<tokio::task::AbortHandle>> {
+        match self.task_aborts.lock() {
+            Ok(task_aborts) => task_aborts,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn track_task<T>(&self, task: &tokio::task::JoinHandle<T>) {
+        self.lock_task_aborts().push(task.abort_handle());
+    }
+
+    fn abort_tasks(&self) {
+        let task_aborts = std::mem::take(&mut *self.lock_task_aborts());
+        for task_abort in task_aborts {
+            task_abort.abort();
+        }
     }
 
     async fn wait_until_released(&self) {
@@ -350,6 +399,7 @@ impl CreateRollbackCleanup for BlockingRemoveDirCleanup {
                 runner.run_filesystem_cleanup_step(step);
             }
         });
+        self.track_task(&task);
         CreateRollbackFilesystemCleanupWaiter::new(async move {
             let _ = task.await;
         })
@@ -1066,12 +1116,14 @@ async fn create_transaction_rollback_continues_after_waiter_abort() {
     fixture.track_on(&mut tx);
 
     let cleanup = BlockingRemoveDirCleanup::default();
+    let _cleanup_scope = cleanup.scope();
     let cleanup_group = Arc::new(FactoryCleanupGroup::new());
     let rollback_group = Arc::clone(&cleanup_group);
     let rollback_cleanup = cleanup.clone();
     let waiter = tokio::spawn(async move {
         rollback_create_transaction(tx, rollback_cleanup, &rollback_group).await;
     });
+    cleanup.track_task(&waiter);
 
     tokio::time::timeout(std::time::Duration::from_secs(1), cleanup.wait_entered(1))
         .await
@@ -1083,6 +1135,7 @@ async fn create_transaction_rollback_continues_after_waiter_abort() {
     let shutdown_task = tokio::spawn(async move {
         shutdown_group.shutdown().await;
     });
+    cleanup.track_task(&shutdown_task);
     tokio::task::yield_now().await;
     assert!(!shutdown_task.is_finished());
 
@@ -1091,7 +1144,7 @@ async fn create_transaction_rollback_continues_after_waiter_abort() {
         .await
         .unwrap()
         .unwrap();
-    cleanup.wait_removed(2).await;
+    cleanup.wait_removed(2, &fixture).await;
 
     assert!(!fixture.sock_dir.exists());
     assert!(!fixture.workspace.exists());
@@ -1109,6 +1162,7 @@ async fn create_transaction_rollback_filesystem_cleanup_survives_task_abort() {
     fixture.track_on(&mut tx);
 
     let cleanup = BlockingRemoveDirCleanup::default();
+    let _cleanup_scope = cleanup.scope();
     let cleanup_group = FactoryCleanupGroup::new();
     let rollback_cleanup = cleanup.clone();
     let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
@@ -1136,7 +1190,7 @@ async fn create_transaction_rollback_filesystem_cleanup_survives_task_abort() {
     assert!(fixture.sock_dir.exists());
 
     cleanup.release();
-    cleanup.wait_removed(2).await;
+    cleanup.wait_removed(2, &fixture).await;
 
     assert!(!fixture.workspace.exists());
     assert!(!fixture.sock_dir.exists());

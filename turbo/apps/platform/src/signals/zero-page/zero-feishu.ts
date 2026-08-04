@@ -17,7 +17,6 @@ const internalDialogExisting$ = state(false);
 const internalDialogInstallationId$ = state<string | null>(null);
 const internalUninstallInstallationId$ = state<string | null>(null);
 const internalSetupStep$ = state<FeishuSetupStep>("create");
-const internalGuideImageIndex$ = state(0);
 const internalSetupForm$ = state<FeishuSetupInput>({
   appId: "",
   appSecret: "",
@@ -150,10 +149,6 @@ export const feishuSetupStep$ = computed((get) => {
   return get(internalSetupStep$);
 });
 
-export const feishuGuideImageIndex$ = computed((get) => {
-  return get(internalGuideImageIndex$);
-});
-
 export const feishuDialogExisting$ = computed((get) => {
   return get(internalDialogExisting$);
 });
@@ -183,7 +178,6 @@ export const openFeishuDialog$ = command(
     set(internalDialogExisting$, installationId !== undefined);
     set(internalDialogInstallationId$, installationId ?? null);
     set(internalSetupStep$, step);
-    set(internalGuideImageIndex$, 0);
     set(internalSetupForm$, {
       ...formDefaults,
       appSecret: "",
@@ -198,7 +192,6 @@ export const closeFeishuDialog$ = command(({ set }) => {
   set(internalDialogExisting$, false);
   set(internalDialogInstallationId$, null);
   set(internalSetupStep$, "create");
-  set(internalGuideImageIndex$, 0);
   set(internalSetupForm$, (previous) => {
     return {
       ...previous,
@@ -214,7 +207,6 @@ export const advanceFeishuSetupStep$ = command(({ set }) => {
     const index = FEISHU_SETUP_STEP_ORDER.indexOf(step);
     return FEISHU_SETUP_STEP_ORDER[index + 1] ?? step;
   });
-  set(internalGuideImageIndex$, 0);
 });
 
 export const goBackFeishuSetupStep$ = command(({ set }) => {
@@ -222,22 +214,7 @@ export const goBackFeishuSetupStep$ = command(({ set }) => {
     const index = FEISHU_SETUP_STEP_ORDER.indexOf(step);
     return index > 0 ? (FEISHU_SETUP_STEP_ORDER[index - 1] ?? step) : step;
   });
-  set(internalGuideImageIndex$, 0);
 });
-
-export const setFeishuGuideImageIndex$ = command(
-  ({ set }, imageIndex: number) => {
-    set(internalGuideImageIndex$, imageIndex);
-  },
-);
-
-export const moveFeishuGuideImage$ = command(
-  ({ set }, offset: number, imageCount: number) => {
-    set(internalGuideImageIndex$, (imageIndex) => {
-      return (imageIndex + offset + imageCount) % imageCount;
-    });
-  },
-);
 
 export const updateFeishuSetupForm$ = command(
   ({ set }, update: Partial<FeishuSetupInput>) => {

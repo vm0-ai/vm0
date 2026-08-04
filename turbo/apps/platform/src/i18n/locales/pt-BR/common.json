@@ -2254,19 +2254,14 @@
           "challengeQuestion": "Por que o Feishu mostra \"Challenge code didn't get a response\"?",
           "title": "Perguntas frequentes sobre a configuração"
         },
-        "guide": {
-          "next": "Mostrar a próxima imagem do guia do Feishu",
-          "previous": "Mostrar a imagem anterior do guia do Feishu",
-          "show": "Mostrar a imagem {{number}} do guia do Feishu"
-        },
         "loadError": "Não foi possível carregar as configurações do Feishu.",
         "manage": "Gerenciar",
         "manageDialogTitle": "Gerenciar bot do Feishu",
         "moreOptions": "Mais opções para {{bot}}",
         "pageDescription": "Gerencie o encaminhamento dos bots neste workspace",
         "permissions": {
-          "description": "No console de desenvolvedor do Feishu, abra Permissions & Scopes, escolha Batch Import/Export > Import e cole o JSON abaixo. Isso importa todos os escopos do conector gerenciado em User identity.",
-          "hint": "Confirme as permissões importadas de User identity e depois crie e publique uma nova versão do app para que a tela de consentimento OAuth possa concedê-las.",
+          "description": "No console de desenvolvedor do Feishu, abra Permissions & Scopes, escolha Batch Import/Export > Import e cole o JSON abaixo. Isso importa todos os escopos do conector gerenciado em User identity. Essas são as permissões mínimas necessárias para que a integração funcione.",
+          "hint": "Mantenha todas as permissões importadas de User identity e depois crie e publique uma nova versão do app para que a tela de consentimento OAuth possa concedê-las. Remover qualquer permissão impedirá o funcionamento da integração, e talvez seja necessária a aprovação de um administrador do Feishu.",
           "label": "JSON de escopos do token de usuário",
           "menuAlt": "Página Permissões e escopos do Feishu com o menu de importação/exportação em lote de escopos destacado",
           "menuLabel": "Abrir importação/exportação em lote de escopos",
