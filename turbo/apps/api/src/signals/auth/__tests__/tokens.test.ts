@@ -242,11 +242,9 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(eligibleToken)?.capabilities).toContain(
       "image-recognition:write",
     );
-    expect(decodeZeroTokenPayloadForTest(eligibleToken)).toMatchObject({
-      featureSwitchOverrides: {
-        zeroImageRecognition: true,
-      },
-    });
+    expect(decodeZeroTokenPayloadForTest(eligibleToken)).not.toHaveProperty(
+      "featureSwitchOverrides",
+    );
   });
 
   it("gates browser capabilities on both the rollout and thread access", () => {
