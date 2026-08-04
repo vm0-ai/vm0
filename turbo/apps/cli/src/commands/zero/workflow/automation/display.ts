@@ -75,6 +75,10 @@ type WorkflowGoogleCalendarAutomationSummary = Extract<
       | "google-calendar-event-cancelled";
   }
 >;
+type WorkflowSlackUserMentionedAutomationSummary = Extract<
+  ZeroWorkflowAutomationSummary,
+  { readonly kind: "event"; readonly eventType: "slack-user-mentioned" }
+>;
 
 function isWebhookAutomation(
   automation: ZeroWorkflowAutomationSummary,
@@ -128,6 +132,15 @@ function isGoogleCalendarAutomation(
     (automation.eventType === "google-calendar-event-created" ||
       automation.eventType === "google-calendar-event-updated" ||
       automation.eventType === "google-calendar-event-cancelled")
+  );
+}
+
+function isSlackUserMentionedAutomation(
+  automation: ZeroWorkflowAutomationSummary,
+): automation is WorkflowSlackUserMentionedAutomationSummary {
+  return (
+    automation.kind === "event" &&
+    automation.eventType === "slack-user-mentioned"
   );
 }
 
@@ -262,29 +275,17 @@ function formatWorkflowAutomationEntry(
       automation.eventConfig.filters.subject,
     )}, actor ${automation.eventConfig.filters.actor.type})`;
   }
-  if (
-    automation.kind === "event" &&
-    automation.eventType === "google-calendar-event-created"
-  ) {
-    return `Google Calendar event created: ${automation.eventConfig.calendarId}`;
-  }
-  if (
-    automation.kind === "event" &&
-    automation.eventType === "google-calendar-event-updated"
-  ) {
-    return `Google Calendar event updated: ${automation.eventConfig.calendarId}`;
-  }
-  if (
-    automation.kind === "event" &&
-    automation.eventType === "google-calendar-event-cancelled"
-  ) {
-    return `Google Calendar event cancelled: ${automation.eventConfig.calendarId}`;
+  if (isGoogleCalendarAutomation(automation)) {
+    return `${googleCalendarAutomationKindLabel(automation)}: ${automation.eventConfig.calendarId}`;
   }
   if (
     automation.kind === "event" &&
     automation.eventType === "google-meet-transcript-generated"
   ) {
     return "Google Meet transcript ready: meetings you organize";
+  }
+  if (isSlackUserMentionedAutomation(automation)) {
+    return `Slack user mentioned: #${automation.eventConfig.channel.name} (${automation.eventConfig.channel.id})`;
   }
   if (isWebhookAutomation(automation)) {
     return formatWebhookAutomationEntry(automation);
@@ -497,6 +498,14 @@ function automationUpdateGuidance(automation: ZeroWorkflowAutomationSummary): {
   readonly label: string;
   readonly command: readonly string[];
 } {
+  if (isSlackUserMentionedAutomation(automation)) {
+    return {
+      label: "Change channel",
+      command: [
+        `zero workflow automation update ${automation.id} --channel <name-or-id>`,
+      ],
+    };
+  }
   if (automation.kind !== "schedule") {
     return {
       label: "Edit automation",
@@ -533,6 +542,20 @@ function automationUpdateGuidance(automation: ZeroWorkflowAutomationSummary): {
         ],
       };
   }
+}
+
+function printSlackChannelDetails(
+  automation: ZeroWorkflowAutomationSummary,
+): void {
+  if (!isSlackUserMentionedAutomation(automation)) {
+    return;
+  }
+  console.log(
+    `${"Channel:".padEnd(14)}#${automation.eventConfig.channel.name}`,
+  );
+  console.log(
+    `${"Channel ID:".padEnd(14)}${automation.eventConfig.channel.id}`,
+  );
 }
 
 function printManagementCommands(
@@ -668,6 +691,7 @@ export function printWorkflowAutomationDetails(
       `${"Calendar:".padEnd(14)}${automation.eventConfig.calendarId}`,
     );
   }
+  printSlackChannelDetails(automation);
   if (isNotionChildPageAutomation(automation)) {
     console.log(
       `${"Parent page:".padEnd(14)}${formatNotionParentPage(automation)}`,

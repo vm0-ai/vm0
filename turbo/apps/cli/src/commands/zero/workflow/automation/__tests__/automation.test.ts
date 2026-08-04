@@ -24,6 +24,8 @@ const AUTOMATION_ID = "33333333-3333-4333-8333-333333333333";
 const THREAD_ID = "44444444-4444-4444-8444-444444444444";
 const MODEL_ID = "gpt-5.6-sol";
 const STRAPI_INTEGRATION_ID = "55555555-5555-4555-8555-555555555556";
+const SLACK_CHANNEL_ID = "C0123456789";
+const SLACK_CHANNEL_NAME = "product";
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const THREAD_METADATA_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/metadata`;
 const MODEL_POLICIES_URL = "http://localhost:3000/api/zero/model-policies";
@@ -290,8 +292,8 @@ const slackUserMentionedAutomation = {
     provider: "slack",
     event: "user_mentioned",
     channel: {
-      id: "C0123456789",
-      name: "product",
+      id: SLACK_CHANNEL_ID,
+      name: SLACK_CHANNEL_NAME,
     },
   },
   schedule: null,
@@ -310,6 +312,11 @@ describe("zero workflow automation commands", () => {
   const mockConsoleWarn = vi
     .spyOn(console, "warn")
     .mockImplementation(() => {});
+  const mockStdoutWrite = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => {
+      return true;
+    });
   const tempDirs: string[] = [];
 
   beforeEach(() => {
@@ -333,6 +340,7 @@ describe("zero workflow automation commands", () => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     mockConsoleWarn.mockClear();
+    mockStdoutWrite.mockClear();
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -1134,6 +1142,62 @@ describe("zero workflow automation commands", () => {
       );
     });
 
+    it.each([
+      { description: "name", selector: SLACK_CHANNEL_NAME },
+      { description: "#name", selector: `#${SLACK_CHANNEL_NAME}` },
+      { description: "stable ID", selector: SLACK_CHANNEL_ID },
+    ])(
+      "should add a Slack user-mentioned automation by $description",
+      async ({ selector }) => {
+        const captured = captureCreateAutomation(slackUserMentionedAutomation);
+
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "slack-user-mentioned",
+          "--channel",
+          selector,
+        ]);
+
+        expect(captured.workflowId).toBe(WORKFLOW_ID);
+        expect(captured.body).toEqual({
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: selector,
+          },
+        });
+      },
+    );
+
+    it("should trim a Slack channel selector", async () => {
+      const captured = captureCreateAutomation(slackUserMentionedAutomation);
+
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "slack-user-mentioned",
+        "--channel",
+        `  #${SLACK_CHANNEL_NAME}  `,
+      ]);
+
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "slack-user-mentioned",
+        eventConfig: {
+          provider: "slack",
+          event: "user_mentioned",
+          channel: `#${SLACK_CHANNEL_NAME}`,
+        },
+      });
+    });
+
     it("should add a webhook automation", async () => {
       const captured = captureCreateAutomation(webhookAutomation);
 
@@ -1217,6 +1281,128 @@ describe("zero workflow automation commands", () => {
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
+
+    it.each([
+      { description: "a missing selector", channelArgs: [] },
+      { description: "a blank selector", channelArgs: ["--channel", "   "] },
+    ])(
+      "should reject a Slack user-mentioned automation with $description",
+      async ({ channelArgs }) => {
+        await expect(async () => {
+          await automationCommand.parseAsync([
+            "node",
+            "cli",
+            "add",
+            WORKFLOW_ID,
+            "slack-user-mentioned",
+            ...channelArgs,
+          ]);
+        }).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "slack-user-mentioned automations require --channel <name-or-id>",
+          ),
+        );
+        expect(mockExit).toHaveBeenCalledWith(1);
+      },
+    );
+
+    it.each([
+      {
+        description: "schedule",
+        kind: "cron",
+        kindArgs: ["--expr", "0 9 * * *"],
+      },
+      {
+        description: "non-Slack event",
+        kind: "gmail-new-message",
+        kindArgs: [],
+      },
+    ])(
+      "should reject --channel on a $description automation",
+      async ({ kind, kindArgs }) => {
+        await expect(async () => {
+          await automationCommand.parseAsync([
+            "node",
+            "cli",
+            "add",
+            WORKFLOW_ID,
+            kind,
+            ...kindArgs,
+            "--channel",
+            SLACK_CHANNEL_NAME,
+          ]);
+        }).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "--channel only applies to slack-user-mentioned automations",
+          ),
+        );
+        expect(mockExit).toHaveBeenCalledWith(1);
+      },
+    );
+
+    it.each([
+      {
+        description: "schedule",
+        otherArgs: ["--expr", "0 9 * * *"],
+        error:
+          "--expr, --at, --every, and --timezone only apply to schedule automations",
+      },
+      {
+        description: "Gmail",
+        otherArgs: ["--from-contains", "@example.com"],
+        error: "Only --channel applies to slack-user-mentioned automations",
+      },
+      {
+        description: "GitHub",
+        otherArgs: ["--repository", "vm0-ai/vm0"],
+        error: "Only --channel applies to slack-user-mentioned automations",
+      },
+      {
+        description: "Google Calendar",
+        otherArgs: ["--calendar-id", "primary"],
+        error: "Only --channel applies to slack-user-mentioned automations",
+      },
+      {
+        description: "Notion",
+        otherArgs: ["--page-url", "https://www.notion.so/product"],
+        error: "Only --channel applies to slack-user-mentioned automations",
+      },
+      {
+        description: "Strapi",
+        otherArgs: ["--integration-id", STRAPI_INTEGRATION_ID],
+        error: "Only --channel applies to slack-user-mentioned automations",
+      },
+      {
+        description: "chat-run-finished",
+        otherArgs: ["--chat-thread-id", THREAD_ID],
+        error: "Only --channel applies to slack-user-mentioned automations",
+      },
+    ])(
+      "should reject $description flags on a Slack user-mentioned automation",
+      async ({ otherArgs, error }) => {
+        await expect(async () => {
+          await automationCommand.parseAsync([
+            "node",
+            "cli",
+            "add",
+            WORKFLOW_ID,
+            "slack-user-mentioned",
+            "--channel",
+            SLACK_CHANNEL_NAME,
+            ...otherArgs,
+          ]);
+        }).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining(error),
+        );
+        expect(mockExit).toHaveBeenCalledWith(1);
+      },
+    );
 
     it("should reject a Notion child page automation without a parent page URL", async () => {
       await expect(async () => {
@@ -1624,6 +1810,141 @@ describe("zero workflow automation commands", () => {
       });
     });
 
+    it("should update a Slack user-mentioned automation channel", async () => {
+      const updated = {
+        ...slackUserMentionedAutomation,
+        eventConfig: {
+          ...slackUserMentionedAutomation.eventConfig,
+          channel: {
+            id: "C9876543210",
+            name: "alerts",
+          },
+        },
+      };
+      const captured = captureUpdateAutomation(
+        updated,
+        slackUserMentionedAutomation,
+      );
+
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "update",
+        AUTOMATION_ID,
+        "--channel",
+        "#alerts",
+      ]);
+
+      expect(captured.id).toBe(AUTOMATION_ID);
+      expect(captured.body).toEqual({
+        eventConfig: {
+          provider: "slack",
+          event: "user_mentioned",
+          channel: "#alerts",
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(`Automation ${AUTOMATION_ID} updated`);
+      expect(logCalls).toContain("Slack user mentioned");
+      expect(logCalls).toContain("Channel:      #alerts");
+      expect(logCalls).toContain("Channel ID:   C9876543210");
+    });
+
+    it.each([
+      { description: "a missing selector", channelArgs: [] },
+      { description: "a blank selector", channelArgs: ["--channel", "   "] },
+    ])(
+      "should reject updating a Slack user-mentioned automation with $description",
+      async ({ channelArgs }) => {
+        mockExistingAutomation(slackUserMentionedAutomation);
+
+        await expect(async () => {
+          await automationCommand.parseAsync([
+            "node",
+            "cli",
+            "update",
+            AUTOMATION_ID,
+            ...channelArgs,
+          ]);
+        }).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "slack-user-mentioned automations require --channel <name-or-id>",
+          ),
+        );
+        expect(mockExit).toHaveBeenCalledWith(1);
+      },
+    );
+
+    it.each([
+      { description: "schedule", existing: cronAutomation },
+      { description: "non-Slack event", existing: gmailAutomation },
+    ])(
+      "should reject --channel when updating a $description automation",
+      async ({ existing }) => {
+        mockExistingAutomation(existing);
+
+        await expect(async () => {
+          await automationCommand.parseAsync([
+            "node",
+            "cli",
+            "update",
+            AUTOMATION_ID,
+            "--channel",
+            SLACK_CHANNEL_NAME,
+          ]);
+        }).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "--channel only applies to slack-user-mentioned automations",
+          ),
+        );
+        expect(mockExit).toHaveBeenCalledWith(1);
+      },
+    );
+
+    it.each([
+      {
+        description: "schedule",
+        otherArgs: ["--expr", "0 9 * * *"],
+        error: "Use either schedule flags or event automation options",
+      },
+      {
+        description: "Gmail",
+        otherArgs: ["--from-contains", "@example.com"],
+        error: "Only --channel applies to slack-user-mentioned automations",
+      },
+      {
+        description: "GitHub",
+        otherArgs: ["--repository", "vm0-ai/vm0"],
+        error: "Only --channel applies to slack-user-mentioned automations",
+      },
+    ])(
+      "should reject $description flags when updating a Slack user-mentioned automation",
+      async ({ otherArgs, error }) => {
+        mockExistingAutomation(slackUserMentionedAutomation);
+
+        await expect(async () => {
+          await automationCommand.parseAsync([
+            "node",
+            "cli",
+            "update",
+            AUTOMATION_ID,
+            "--channel",
+            SLACK_CHANNEL_NAME,
+            ...otherArgs,
+          ]);
+        }).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining(error),
+        );
+        expect(mockExit).toHaveBeenCalledWith(1);
+      },
+    );
+
     it("should update a Gmail new message automation from a config file", async () => {
       const configPath = writeGmailConfig({
         match: {
@@ -1708,6 +2029,43 @@ describe("zero workflow automation commands", () => {
     });
   });
 
+  describe("help", () => {
+    it("should document Slack user-mentioned add options and examples", async () => {
+      await expect(async () => {
+        await automationCommand.parseAsync(["node", "cli", "add", "--help"]);
+      }).rejects.toThrow("process.exit called");
+
+      const output = mockStdoutWrite.mock.calls.flat().map(String).join("\n");
+      expect(output).toContain("slack-user-mentioned");
+      expect(output).toContain("--channel <name-or-id>");
+      expect(output).toContain('slack-user-mentioned --channel "#product"');
+      expect(output).toContain("Slack channels resolve exactly on the server");
+      expect(mockExit).toHaveBeenCalledWith(0);
+    });
+
+    it("should document Slack user-mentioned update options and examples", async () => {
+      await expect(async () => {
+        await automationCommand.parseAsync(["node", "cli", "update", "--help"]);
+      }).rejects.toThrow("process.exit called");
+
+      const output = mockStdoutWrite.mock.calls.flat().map(String).join("\n");
+      expect(output).toContain("--channel <name-or-id>");
+      expect(output).toContain("--channel C0123456789");
+      expect(mockExit).toHaveBeenCalledWith(0);
+    });
+
+    it("should document Slack user-mentioned management from root help", async () => {
+      await expect(async () => {
+        await automationCommand.parseAsync(["node", "cli", "--help"]);
+      }).rejects.toThrow("process.exit called");
+
+      const output = mockStdoutWrite.mock.calls.flat().map(String).join("\n");
+      expect(output).toContain("slack-user-mentioned --channel <name-or-id>");
+      expect(output).toContain("update <automation-id> --channel <name-or-id>");
+      expect(mockExit).toHaveBeenCalledWith(0);
+    });
+  });
+
   describe("list", () => {
     it("should display workflow automations", async () => {
       server.use(
@@ -1746,7 +2104,9 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("Product notes");
       expect(logCalls).toContain("New Notion database item");
       expect(logCalls).toContain("Bug Bash");
-      expect(logCalls).toContain("Slack user mentioned");
+      expect(logCalls).toContain(
+        `Slack user mentioned: #${SLACK_CHANNEL_NAME} (${SLACK_CHANNEL_ID})`,
+      );
       expect(logCalls).toContain(
         "Strapi entry published: api::article.article, en",
       );
@@ -1806,6 +2166,41 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("Resume automation:");
       expect(logCalls).toContain("zero workflow automation enable");
       expect(logCalls).toContain("zero workflow automation update --help");
+    });
+
+    it("should display resolved Slack channel details and update guidance", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/zero/workflow-automations/:id",
+          () => {
+            return HttpResponse.json(slackUserMentionedAutomation);
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/workflow-automations", () => {
+          return HttpResponse.json([
+            {
+              workflow: workflowSummary,
+              automation: slackUserMentionedAutomation,
+            },
+          ]);
+        }),
+      );
+
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "show",
+        AUTOMATION_ID,
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Slack user mentioned");
+      expect(logCalls).toContain(`Channel:      #${SLACK_CHANNEL_NAME}`);
+      expect(logCalls).toContain(`Channel ID:   ${SLACK_CHANNEL_ID}`);
+      expect(logCalls).toContain("Change channel:");
+      expect(logCalls).toContain(
+        `zero workflow automation update ${AUTOMATION_ID} --channel <name-or-id>`,
+      );
     });
 
     it("should display an automation owned by another user on a visible workflow", async () => {

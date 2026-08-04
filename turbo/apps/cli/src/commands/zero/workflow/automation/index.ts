@@ -6,6 +6,7 @@ import type {
   GithubLabelAppliedSubjectFilter,
   GithubPullRequestReviewState,
   GithubWorkflowRunConclusion,
+  SlackUserMentionedEventCreateConfig,
   ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -84,6 +85,7 @@ interface AddOptions extends GmailAutomationOptions {
   readonly chatThreadId?: string;
   readonly runStatus?: string;
   readonly outputPattern?: string;
+  readonly channel?: string;
 }
 
 interface UpdateOptions extends GmailAutomationOptions {
@@ -112,6 +114,7 @@ interface UpdateOptions extends GmailAutomationOptions {
   readonly creator?: string;
   readonly app?: string;
   readonly commentPrefix?: string;
+  readonly channel?: string;
 }
 
 const SCHEDULE_KINDS = ["cron", "once", "loop"] as const;
@@ -126,6 +129,7 @@ const EVENT_KINDS = [
   "notion-child-page-created",
   "notion-database-item-created",
   "notion-page-content-updated",
+  "slack-user-mentioned",
   "webhook",
 ] as const;
 const GITHUB_WEBHOOK_EVENT_KINDS = [
@@ -226,7 +230,7 @@ function githubWebhookEventKind(
   });
 }
 const EXACTLY_ONE_FLAG_MESSAGE =
-  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, --calendar-id, --page-url, --parent-page-url, or --database-url";
+  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, --calendar-id, --page-url, --parent-page-url, --database-url, or --channel";
 
 function addGmailAutomationOptions(command: Command): Command {
   return command
@@ -656,7 +660,13 @@ function hasChatRunFinishedAutomationOptions(options: AddOptions): boolean {
   );
 }
 
-function hasEventAddOptions(options: AddOptions): boolean {
+function hasSlackAutomationOptions(
+  options: AddOptions | UpdateOptions,
+): boolean {
+  return options.channel !== undefined;
+}
+
+function hasNonSlackEventAddOptions(options: AddOptions): boolean {
   return (
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||
@@ -665,6 +675,12 @@ function hasEventAddOptions(options: AddOptions): boolean {
     hasNotionAutomationOptions(options) ||
     hasStrapiAutomationOptions(options) ||
     hasChatRunFinishedAutomationOptions(options)
+  );
+}
+
+function hasEventAddOptions(options: AddOptions): boolean {
+  return (
+    hasNonSlackEventAddOptions(options) || hasSlackAutomationOptions(options)
   );
 }
 
@@ -705,6 +721,16 @@ function assertNoStrapiAutomationOptions(options: AddOptions): void {
   if (hasStrapiAutomationOptions(options)) {
     throw new Error(
       "Strapi automation flags only apply to Strapi event automations",
+    );
+  }
+}
+
+function assertNoSlackAutomationOptions(
+  options: AddOptions | UpdateOptions,
+): void {
+  if (hasSlackAutomationOptions(options)) {
+    throw new Error(
+      "--channel only applies to slack-user-mentioned automations",
     );
   }
 }
@@ -1601,6 +1627,38 @@ function buildStrapiEntryPublishedCreateRequest(
   };
 }
 
+function buildSlackUserMentionedEventConfig(
+  options: AddOptions | UpdateOptions,
+): SlackUserMentionedEventCreateConfig {
+  const channel = options.channel?.trim();
+  if (!channel) {
+    throw new Error(
+      "slack-user-mentioned automations require --channel <name-or-id>",
+    );
+  }
+  return {
+    provider: "slack",
+    event: "user_mentioned",
+    channel,
+  };
+}
+
+function buildSlackUserMentionedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasNonSlackEventAddOptions(options)) {
+    throw new Error(
+      "Only --channel applies to slack-user-mentioned automations",
+    );
+  }
+  return {
+    kind: "event",
+    eventType: "slack-user-mentioned",
+    eventConfig: buildSlackUserMentionedEventConfig(options),
+  };
+}
+
 function buildScheduleCreateRequest(
   kind: string,
   options: AddOptions,
@@ -1615,6 +1673,9 @@ function buildCreateRequest(
   kind: string,
   options: AddOptions,
 ): ZeroWorkflowAutomationCreateRequest {
+  if (kind !== "slack-user-mentioned") {
+    assertNoSlackAutomationOptions(options);
+  }
   switch (kind) {
     case "gmail-new-message":
       return buildGmailNewMessageCreateRequest(options);
@@ -1644,6 +1705,8 @@ function buildCreateRequest(
       return buildNotionDatabaseItemCreatedCreateRequest(options);
     case "notion-page-content-updated":
       return buildNotionPageContentUpdatedCreateRequest(options);
+    case "slack-user-mentioned":
+      return buildSlackUserMentionedCreateRequest(options);
     case "strapi-entry-published":
       return buildStrapiEntryPublishedCreateRequest(options);
     case "chat-run-finished":
@@ -1653,6 +1716,23 @@ function buildCreateRequest(
     default:
       return buildScheduleCreateRequest(kind, options);
   }
+}
+
+function buildSlackUserMentionedUpdateRequest(
+  options: UpdateOptions,
+): ZeroWorkflowAutomationUpdateRequest {
+  if (
+    hasGmailAutomationOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubAutomationOptions(options)
+  ) {
+    throw new Error(
+      "Only --channel applies to slack-user-mentioned automations",
+    );
+  }
+  return {
+    eventConfig: buildSlackUserMentionedEventConfig(options),
+  };
 }
 
 function buildGithubWorkflowEventUpdate(
@@ -1790,6 +1870,11 @@ function buildEventUpdate(
   const hasLabelOption = hasGmailLabelOption(options);
   const hasGithubOptions = hasGithubAutomationOptions(options);
 
+  if (existing.eventType === "slack-user-mentioned") {
+    return buildSlackUserMentionedUpdateRequest(options);
+  }
+  assertNoSlackAutomationOptions(options);
+
   if (
     existing.eventType === "google-calendar-event-created" ||
     existing.eventType === "google-calendar-event-updated" ||
@@ -1887,7 +1972,8 @@ function buildUpdate(
   const hasEventOptions =
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||
-    hasGithubAutomationOptions(options);
+    hasGithubAutomationOptions(options) ||
+    hasSlackAutomationOptions(options);
   if (hasScheduleUpdateOptions(options) && hasEventOptions) {
     throw new Error("Use either schedule flags or event automation options");
   }
@@ -1907,6 +1993,7 @@ function buildUpdate(
       "GitHub automation flags only apply to GitHub event automations",
     );
   }
+  assertNoSlackAutomationOptions(options);
   return buildScheduleUpdate(options);
 }
 
@@ -1966,6 +2053,10 @@ const addCommand = addGithubAutomationOptions(
     "--output-pattern <pattern>",
     "Optional * wildcard matched against the finished run's final assistant text",
   )
+  .option(
+    "--channel <name-or-id>",
+    "Slack channel name, #name, or ID for slack-user-mentioned automations",
+  )
   .option("--agent <id>", "Agent ID for resolving a workflow name")
   .addHelpText(
     "after",
@@ -1986,6 +2077,7 @@ Examples:
   zero workflow automation add research-notes --agent <agent-id> notion-database-item-created --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
   zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
   zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
+  zero workflow automation add triage --agent <agent-id> slack-user-mentioned --channel "#product"
   zero workflow automation add deploy-blog --agent <agent-id> strapi-entry-published --integration-id <uuid> --content-type-uid api::article.article
   zero workflow automation add triage --agent <agent-id> webhook
   zero workflow automation add follow-up --agent <agent-id> chat-run-finished --chat-thread-id <thread-uuid> --run-status completed,failed --output-pattern "*deploy failed*"
@@ -1995,6 +2087,7 @@ Notes:
   - Gmail automations match all inbound messages when no text match rules are provided
   - GitHub automations require the GitHub App installation in the workspace
   - GitHub workflow run filters accept comma-separated values; omit a filter to match any value
+  - Slack channels resolve exactly on the server from a name, optional #name, or stable ID
   - Webhook automations print the signing secret only once after creation
   - Use the workflow ID when a name is ambiguous`,
   )
@@ -2061,6 +2154,10 @@ const updateCommand = addGithubAutomationOptions(
       .option("-z, --timezone <tz>", "IANA timezone for --expr / --at"),
   ),
 )
+  .option(
+    "--channel <name-or-id>",
+    "New Slack channel name, #name, or ID for a slack-user-mentioned automation",
+  )
   .addHelpText(
     "after",
     `
@@ -2073,7 +2170,8 @@ Examples:
   zero workflow automation update 22222222-2222-4222-8222-222222222222 --label "Support"
   zero workflow automation update 22222222-2222-4222-8222-222222222222 --actor anyone
   zero workflow automation update 22222222-2222-4222-8222-222222222222 --conclusion failure,timed_out --branch main
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --actor any`,
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --actor any
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --channel C0123456789`,
   )
   .action(
     withErrorHandler(async (id: string, options: UpdateOptions) => {
@@ -2204,8 +2302,10 @@ export const automationCommand = new Command()
 Examples:
   Add an automation:     zero workflow automation add <workflow-id> cron --expr "0 9 * * *"
   Add a Notion page:     zero workflow automation add <workflow-id> notion-child-page-created --parent-page-url "https://www.notion.so/..."
+  Add a Slack mention:   zero workflow automation add <workflow-id> slack-user-mentioned --channel <name-or-id>
   Add a webhook:         zero workflow automation add <workflow-id> webhook
   Update a schedule:     zero workflow automation update <automation-id> --every 10m
+  Update Slack channel:  zero workflow automation update <automation-id> --channel <name-or-id>
   List automations:      zero workflow automation list <workflow-id>
   Inspect an automation: zero workflow automation show <automation-id>
   Pause one automation:  zero workflow automation disable <automation-id>`,
