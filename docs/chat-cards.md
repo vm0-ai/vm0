@@ -304,8 +304,9 @@ the browser lease.
 
 Starting or resuming appends a payload-free `browser.open` chat event; clicking
 the sidebar close button appends a payload-free `browser.close` event without
-stopping the provider instance. Automatic reclamation does not append a chat
-event. The frontend supplies each mutation's event UUID so it can optimistically
+stopping the provider instance. Automatic reclamation for an existing thread
+also appends `browser.close` without inspecting the current sidebar state. The
+frontend supplies each mutation's event UUID so it can optimistically
 project the same event without duplicating it when the server response or
 realtime delivery arrives. Folding these events in order yields the thread's
 browser sidebar state. Opening a thread waits for the authoritative initial
