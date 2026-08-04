@@ -108,8 +108,7 @@ pub(super) fn write_model_catalog(
     let Some(model_catalog) = &config.model_catalog else {
         return Ok(());
     };
-    let started_at = Instant::now();
-    let result = (|| {
+    record_catalog_operation(MODEL_CATALOG_PREPARE_ACTION, || {
         let hydrated_model_catalog = if model_catalog_needs_default_instructions(model_catalog)? {
             Some(inherit_default_model_instructions(
                 model_catalog,
@@ -123,14 +122,7 @@ pub(super) fn write_model_catalog(
         let path = model_catalog_path(codex_home);
         write_model_catalog_json_atomic(codex_home, &path, &serde_json::to_vec(model_catalog)?)?;
         Ok(())
-    })();
-    record_sandbox_op(
-        MODEL_CATALOG_PREPARE_ACTION,
-        started_at.elapsed(),
-        result.is_ok(),
-        None,
-    );
-    result
+    })
 }
 
 fn model_catalog_needs_default_instructions(
@@ -159,8 +151,7 @@ fn model_catalog_needs_default_instructions(
 }
 
 fn load_bundled_model_catalog() -> Result<BundledModelCatalog, AgentError> {
-    let started_at = Instant::now();
-    let result = (|| {
+    record_catalog_operation(MODEL_CATALOG_BUNDLED_LOAD_ACTION, || {
         let output = Command::new("codex")
             .args(["debug", "models", "--bundled"])
             .output()?;
@@ -170,13 +161,16 @@ fn load_bundled_model_catalog() -> Result<BundledModelCatalog, AgentError> {
             ));
         }
         Ok(serde_json::from_slice(&output.stdout)?)
-    })();
-    record_sandbox_op(
-        MODEL_CATALOG_BUNDLED_LOAD_ACTION,
-        started_at.elapsed(),
-        result.is_ok(),
-        None,
-    );
+    })
+}
+
+fn record_catalog_operation<T>(
+    action_type: &str,
+    operation: impl FnOnce() -> Result<T, AgentError>,
+) -> Result<T, AgentError> {
+    let started_at = Instant::now();
+    let result = operation();
+    record_sandbox_op(action_type, started_at.elapsed(), result.is_ok(), None);
     result
 }
 
