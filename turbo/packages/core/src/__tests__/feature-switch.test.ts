@@ -29,6 +29,9 @@ describe("isFeatureEnabled", () => {
       true,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.HtmlResourceIndex, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.PwaChatKeyboardGestures, {})).toBe(
+      true,
+    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -130,7 +133,7 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
   });
 
-  it("should reflect the current staff org rollout matrix", () => {
+  it("should reflect the current feature rollout matrix", () => {
     const staffOrgStates = getAllFeatureStates({
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
@@ -172,9 +175,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(
-      false,
-    );
+    expect(otherOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       false,
     );
