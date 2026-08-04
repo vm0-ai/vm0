@@ -11,6 +11,12 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.GoogleContactsConnector, {})).toBe(
+      true,
+    );
+    expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
+      true,
+    );
     expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.CustomConnectorCliCreate, {}),
@@ -37,12 +43,6 @@ describe("isFeatureEnabled", () => {
   it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.GoogleContactsConnector, {})).toBe(
-      false,
-    );
-    expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
-      false,
-    );
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
     );

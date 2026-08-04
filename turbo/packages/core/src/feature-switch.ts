@@ -116,12 +116,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.GoogleContactsConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Google Contacts connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.GoogleFormsConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Google Forms connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.JoggAiConnector]: {
     maintainer: "yuma@vm0.ai",
