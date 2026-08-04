@@ -7,7 +7,10 @@ import {
   isSupportedRunModel,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
-import type { ChatTeamsMessageFile } from "@vm0/db/jsonb-contracts/chat-teams-context";
+import type {
+  ChatTeamsMessageFile,
+  ChatTeamsMessageFiles,
+} from "@vm0/db/jsonb-contracts/chat-teams-context";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -136,7 +139,7 @@ interface TeamsModelPickerOption {
   readonly isDefault: boolean;
 }
 
-type TeamsPromptFile = ChatTeamsMessageFile;
+type TeamsPromptFile = Omit<ChatTeamsMessageFile, "inCurrentMessage">;
 
 interface TeamsAttachmentDownload {
   readonly url: string;
@@ -1497,7 +1500,7 @@ interface CanonicalTeamsLaunchContext {
   readonly connectionId: string;
   readonly threadContext: string;
   readonly messageText: string;
-  readonly messageFiles: readonly TeamsPromptFile[];
+  readonly messageFiles: ChatTeamsMessageFiles;
 }
 
 function canonicalTeamsLaunchContext(args: {
@@ -1505,7 +1508,7 @@ function canonicalTeamsLaunchContext(args: {
   readonly connectionId: string;
   readonly threadId: string;
   readonly threadContext: string;
-  readonly messageFiles: readonly TeamsPromptFile[];
+  readonly messageFiles: ChatTeamsMessageFiles;
 }): CanonicalTeamsLaunchContext {
   return {
     tenantId: args.activity.tenantId,
@@ -1583,7 +1586,14 @@ async function persistTeamsChatMessage(args: {
     connectionId: args.connection.id,
     threadId,
     threadContext: args.promptContext.text,
-    messageFiles: [...args.promptFiles, ...args.promptContext.files],
+    messageFiles: [
+      ...args.promptFiles.map((file) => {
+        return { ...file, inCurrentMessage: true };
+      }),
+      ...args.promptContext.files.map((file) => {
+        return { ...file, inCurrentMessage: false };
+      }),
+    ],
   });
   const chatEventId = teamsChatMessageId(args.activity, args.connection.id);
   const inserted = await args.db.transaction(async (tx) => {

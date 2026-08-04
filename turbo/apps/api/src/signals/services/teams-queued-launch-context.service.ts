@@ -36,8 +36,6 @@ type TeamsLaunchContextRow = Pick<
   | "activityId"
   | "serviceUrl"
   | "teamsAppId"
-  | "botId"
-  | "botName"
   | "senderUserId"
   | "senderDisplayName"
   | "senderPrincipalName"
@@ -46,7 +44,6 @@ type TeamsLaunchContextRow = Pick<
   | "messageText"
   | "messageFiles"
 > & {
-  readonly userMessage: typeof chatEvents.$inferSelect.userMessage;
   readonly installationBotId: string | null;
   readonly installationBotName: string | null;
 };
@@ -60,8 +57,7 @@ function requiredTeamsLaunchContext(row: TeamsLaunchContextRow | undefined) {
     row.connectionId === null ||
     row.threadContext === null ||
     row.messageText === null ||
-    row.messageFiles === null ||
-    row.userMessage === null
+    row.messageFiles === null
   ) {
     return null;
   }
@@ -74,7 +70,6 @@ function requiredTeamsLaunchContext(row: TeamsLaunchContextRow | undefined) {
     threadContext: row.threadContext,
     messageText: row.messageText,
     messageFiles: row.messageFiles,
-    userMessage: row.userMessage,
   };
 }
 
@@ -100,8 +95,6 @@ async function loadTeamsLaunchContext(
       activityId: chatTeamsContext.activityId,
       serviceUrl: chatTeamsContext.serviceUrl,
       teamsAppId: chatTeamsContext.teamsAppId,
-      botId: chatTeamsContext.botId,
-      botName: chatTeamsContext.botName,
       senderUserId: chatTeamsContext.senderUserId,
       senderDisplayName: chatTeamsContext.senderDisplayName,
       senderPrincipalName: chatTeamsContext.senderPrincipalName,
@@ -109,7 +102,6 @@ async function loadTeamsLaunchContext(
       threadContext: chatTeamsContext.threadContext,
       messageText: chatTeamsContext.messageText,
       messageFiles: chatTeamsContext.messageFiles,
-      userMessage: chatEvents.userMessage,
       installationBotId: teamsOrgInstallations.botId,
       installationBotName: teamsOrgInstallations.botName,
     })
@@ -165,17 +157,11 @@ function promptFiles(context: {
   readonly messageFiles: NonNullable<
     typeof chatTeamsContext.$inferSelect.messageFiles
   >;
-  readonly userMessage: NonNullable<typeof chatEvents.$inferSelect.userMessage>;
 }) {
   // messageFiles also retains fetched context files for delivery. Only the
-  // current message's file parts belonged to the legacy agent prompt.
-  const promptFileIds = new Set(
-    context.userMessage.parts.flatMap((part) => {
-      return part.type === "file" ? [part.fileId] : [];
-    }),
-  );
+  // current message's files belong to the agent prompt.
   return context.messageFiles.filter((file) => {
-    return promptFileIds.has(file.fileId);
+    return file.inCurrentMessage;
   });
 }
 
@@ -207,8 +193,8 @@ export async function loadTeamsQueuedLaunchMaterial(
   if (!context) {
     return null;
   }
-  const botId = context.botId ?? context.installationBotId;
-  const botName = context.botName ?? context.installationBotName;
+  const botId = context.installationBotId;
+  const botName = context.installationBotName;
   return {
     prompt: appendTeamsFilesToPrompt(context.messageText, promptFiles(context)),
     appendSystemPrompt: buildTeamsPrompt({

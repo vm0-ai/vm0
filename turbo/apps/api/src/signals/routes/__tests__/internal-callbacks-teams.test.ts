@@ -623,7 +623,7 @@ afterEach(async () => {
 });
 
 describe("Teams chat callbacks", () => {
-  it("claims Teams launch material from context with a legacy fallback", async () => {
+  it("claims Teams launch material from context", async () => {
     const teams = await setupConnectedTeamsActor();
     teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
     const firstRunId = await dispatchTeamsPersonalRun({
@@ -636,7 +636,7 @@ describe("Teams chat callbacks", () => {
       runId: firstRunId,
     });
 
-    const queuedPrompt = "claim Teams launch context";
+    const queuedPrompt = `claim Teams launch context ${teams.fixture.teamsTenantId}`;
     await postTeamsPersonalMessage({
       fixture: teams.fixture,
       activityId: "activity-queue-params-second",
@@ -706,7 +706,7 @@ describe("Teams chat callbacks", () => {
     });
   });
 
-  it("falls back to installation bot identity when the activity omits it", async () => {
+  it("uses installation bot identity when the activity omits it", async () => {
     const teams = await setupConnectedTeamsActor();
     teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
     const firstRunId = await dispatchTeamsPersonalRun({
@@ -719,7 +719,7 @@ describe("Teams chat callbacks", () => {
       runId: firstRunId,
     });
 
-    const queuedPrompt = "claim without an activity recipient";
+    const queuedPrompt = `claim without an activity recipient ${teams.fixture.teamsTenantId}`;
     await postTeamsPersonalMessage({
       fixture: teams.fixture,
       activityId: "activity-bot-fallback-second",
