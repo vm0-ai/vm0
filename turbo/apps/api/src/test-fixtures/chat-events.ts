@@ -101,8 +101,6 @@ interface ChatEventContextFixture {
   readonly teamsThreadId: string | null;
   readonly teamsServiceUrl: string | null;
   readonly teamsAppId: string | null;
-  readonly teamsBotId: string | null;
-  readonly teamsBotName: string | null;
   readonly teamsSenderUserId: string | null;
   readonly teamsSenderDisplayName: string | null;
   readonly teamsSenderPrincipalName: string | null;
@@ -201,8 +199,6 @@ export async function readChatEventContextFixture(
       teamsThreadId: chatTeamsContext.threadId,
       teamsServiceUrl: chatTeamsContext.serviceUrl,
       teamsAppId: chatTeamsContext.teamsAppId,
-      teamsBotId: chatTeamsContext.botId,
-      teamsBotName: chatTeamsContext.botName,
       teamsSenderUserId: chatTeamsContext.senderUserId,
       teamsSenderDisplayName: chatTeamsContext.senderDisplayName,
       teamsSenderPrincipalName: chatTeamsContext.senderPrincipalName,
@@ -326,8 +322,6 @@ const annotationProjectionInputs = [
         threadId: "activity-1",
         serviceUrl: "https://smba.trafficmanager.net/amer/",
         teamsAppId: "teams-app-1",
-        botId: "28:bot-1",
-        botName: "Okou",
         senderUserId: "29:user-1",
         senderDisplayName: "Ada Lovelace",
         senderPrincipalName: "ada@example.com",
@@ -354,8 +348,6 @@ const annotationProjectionInputs = [
         threadId: "direct-message:agent-1:default",
         serviceUrl: "https://smba.trafficmanager.net/amer/",
         teamsAppId: "teams-app-1",
-        botId: null,
-        botName: null,
         senderUserId: "29:user-1",
         senderDisplayName: null,
         senderPrincipalName: null,
