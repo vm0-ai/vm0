@@ -2,7 +2,6 @@ import { computed, type Computed } from "ccstate";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgCache } from "@vm0/db/schema/org-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
@@ -82,7 +81,6 @@ interface SlackOrgStatusResult {
   readonly installUrl: string | null;
   readonly connectUrl: string | null;
   readonly defaultAgentName: string | null;
-  readonly agentOrgSlug: string | null;
   readonly scopeMismatch: boolean | null;
   readonly reinstallUrl: string | null;
 }
@@ -103,21 +101,13 @@ export function zeroSlackOrgStatus(args: {
 
     const isAdmin = args.orgRole === "admin";
     let defaultAgentName: string | null = null;
-    let agentOrgSlug: string | null = null;
 
     if (installation) {
-      const [[orgMeta], [orgCacheRow]] = await Promise.all([
-        db
-          .select({ defaultAgentId: orgMetadata.defaultAgentId })
-          .from(orgMetadata)
-          .where(eq(orgMetadata.orgId, args.orgId))
-          .limit(1),
-        db
-          .select({ slug: orgCache.slug })
-          .from(orgCache)
-          .where(eq(orgCache.orgId, args.orgId))
-          .limit(1),
-      ]);
+      const [orgMeta] = await db
+        .select({ defaultAgentId: orgMetadata.defaultAgentId })
+        .from(orgMetadata)
+        .where(eq(orgMetadata.orgId, args.orgId))
+        .limit(1);
 
       if (orgMeta?.defaultAgentId) {
         const [agent] = await db
@@ -129,10 +119,6 @@ export function zeroSlackOrgStatus(args: {
           .where(eq(zeroAgents.id, orgMeta.defaultAgentId))
           .limit(1);
         defaultAgentName = agent?.displayName ?? agent?.name ?? null;
-      }
-
-      if (orgCacheRow?.slug) {
-        agentOrgSlug = orgCacheRow.slug;
       }
     }
 
@@ -169,7 +155,6 @@ export function zeroSlackOrgStatus(args: {
         installUrl,
         connectUrl: null,
         defaultAgentName,
-        agentOrgSlug,
         scopeMismatch: null,
         reinstallUrl: null,
       };
@@ -204,7 +189,6 @@ export function zeroSlackOrgStatus(args: {
         installUrl: null,
         connectUrl,
         defaultAgentName,
-        agentOrgSlug,
         ...scopeFields,
       };
     }
@@ -219,7 +203,6 @@ export function zeroSlackOrgStatus(args: {
       installUrl: null,
       connectUrl: null,
       defaultAgentName,
-      agentOrgSlug,
       ...scopeFields,
     };
   });

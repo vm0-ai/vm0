@@ -99,11 +99,6 @@ const MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS: Partial<
   },
 };
 
-/**
- * The org slug authorized to use the VM0 managed provider.
- */
-export const VM0_ORG_SLUG = "vm0";
-
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "claude-fable-5",
   "claude-opus-5",
