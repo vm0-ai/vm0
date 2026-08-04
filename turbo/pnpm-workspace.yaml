@@ -65,7 +65,7 @@ overrides:
   follow-redirects: ">=1.16.0"
   form-data: ">=4.0.6"
   glob: ">=10.5.0"
-  hono: 4.12.34
+  hono: 4.13.0
   ip-address: 10.4.0
   "jayson>uuid": 11.1.1
   js-cookie: ">=3.0.7"
