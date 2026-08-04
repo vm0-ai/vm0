@@ -20,6 +20,46 @@ import {
 
 const expectedBindings = [
   {
+    rustModulePath: ["build_info"],
+    rustTypeName: "Response",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["models"],
+    rustTypeName: "ModelProviderCredentialScope",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["models"],
+    rustTypeName: "ModelProviderType",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["models"],
+    rustTypeName: "SupportedRunModel",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["models", "policies"],
+    rustTypeName: "OrgModelPolicyRouteStatus",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["models", "policies"],
+    rustTypeName: "Policy",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["models", "policies"],
+    rustTypeName: "Response",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["models", "preference"],
+    rustTypeName: "Response",
+    direction: "response",
+  },
+  {
     rustModulePath: ["runners", "storage"],
     rustTypeName: "ArtifactEntryMissingRootPolicy",
     direction: "response",
@@ -28,6 +68,11 @@ const expectedBindings = [
     rustModulePath: ["runners", "storage"],
     rustTypeName: "StorageMountEntry",
     direction: "response",
+  },
+  {
+    rustModulePath: ["runners", "zero_cli"],
+    rustTypeName: "CompatibilityDescriptor",
+    direction: "request",
   },
   {
     rustModulePath: ["webhooks", "agent", "checkpoints"],
@@ -226,6 +271,18 @@ describe("Rust type bindings", () => {
     expect(firstRender.match(/pub archive_size: Option<u64>,/g)).toHaveLength(
       1,
     );
+    expect(firstRender).toContain("pub enum SupportedRunModel {");
+    expect(firstRender).toContain("Gpt56Sol,");
+    expect(firstRender).toContain("pub enum ModelProviderType {");
+    expect(firstRender).toContain("CodexOauthToken,");
+    expect(firstRender).toContain("pub struct Policy {");
+    expect(firstRender).toContain("pub policies: Vec<Policy>,");
+    expect(firstRender).toContain(
+      "pub workspace_default_model: Option<super::SupportedRunModel>,",
+    );
+    expect(firstRender).toContain("pub struct CompatibilityDescriptor {");
+    expect(firstRender).toContain("pub available: bool,");
+    expect(firstRender).toContain("pub checksum_sha256: Option<String>,");
   });
 
   it("keeps canonical Storage mount override aligned with its schema", () => {

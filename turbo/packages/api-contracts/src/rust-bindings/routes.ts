@@ -1,3 +1,4 @@
+import { buildInfoContract } from "../contracts/build-info";
 import { runnerRealtimeTokenContract } from "../contracts/realtime";
 import {
   runnersNetworkPolicyRefreshContract,
@@ -16,6 +17,8 @@ import {
   webhookStoragesPrepareContract,
   webhookTelemetryContract,
 } from "../contracts/webhooks";
+import { zeroModelPoliciesMainContract } from "../contracts/zero-model-policies";
+import { zeroUserModelPreferenceContract } from "../contracts/zero-user-model-preference";
 
 export interface RouteLike {
   readonly method?: unknown;
@@ -30,6 +33,21 @@ export interface RustRouteBinding {
 }
 
 export const rustRouteBindings = [
+  {
+    route: buildInfoContract.get,
+    rustModulePath: ["build_info"],
+    rustConstName: "GET",
+  },
+  {
+    route: zeroModelPoliciesMainContract.list,
+    rustModulePath: ["zero", "model_policies"],
+    rustConstName: "LIST",
+  },
+  {
+    route: zeroUserModelPreferenceContract.get,
+    rustModulePath: ["zero", "user_model_preference"],
+    rustConstName: "GET",
+  },
   {
     route: runnersPollContract.poll,
     rustModulePath: ["runners", "poll"],

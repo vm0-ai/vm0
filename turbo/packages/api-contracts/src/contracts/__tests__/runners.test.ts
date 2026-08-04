@@ -987,6 +987,53 @@ describe("runner claim request contract", () => {
 
     expect(body.telemetry).toEqual({});
   });
+
+  it("accepts an optional non-sensitive bundled Zero CLI descriptor", () => {
+    const body = runnersJobClaimContract.claim.body.parse({
+      zeroCli: {
+        available: true,
+        version: "1.2.3",
+        buildId: "runner-rs@1.2.3",
+        checksumSha256: "a".repeat(64),
+        token: "must-not-survive",
+        commandArguments: ["secret"],
+      },
+    });
+
+    expect(body).toEqual({
+      zeroCli: {
+        available: true,
+        version: "1.2.3",
+        buildId: "runner-rs@1.2.3",
+        checksumSha256: "a".repeat(64),
+      },
+    });
+  });
+
+  it("keeps old and new runner claim generations compatible", () => {
+    const previousClaimBodySchema = runnersJobClaimContract.claim.body.omit({
+      zeroCli: true,
+    });
+    const newRunnerBody = {
+      zeroCli: {
+        available: false,
+      },
+    };
+
+    expect(runnersJobClaimContract.claim.body.parse({})).toEqual({});
+    expect(previousClaimBodySchema.parse(newRunnerBody)).toEqual({});
+  });
+
+  it("rejects malformed bundled Zero CLI checksums", () => {
+    expect(
+      runnersJobClaimContract.claim.body.safeParse({
+        zeroCli: {
+          available: true,
+          checksumSha256: "not-a-sha256",
+        },
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("runner poll request contract", () => {

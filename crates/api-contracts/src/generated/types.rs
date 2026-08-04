@@ -4,7 +4,226 @@
 
 //! Generated Rust DTOs for selected `@vm0/api-contracts` request and response bodies.
 //! Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.
-//! These types preserve the TypeScript wire contract for Rust runner and guest-agent code.
+//! These types preserve the TypeScript wire contract for Rust runner, native Zero CLI, and guest-agent code.
+
+/// API build identity returned to native clients.
+pub mod build_info {
+    /// Build identity reported by the current API deployment.
+    #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Response {
+        /// Optional source commit SHA for the API deployment.
+        pub commit_sha: Option<String>,
+        /// Optional release version for the API deployment.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub version: Option<String>,
+    }
+}
+
+/// Model and model-provider discovery DTOs for native clients.
+pub mod models {
+    /// Ownership scope for model-provider credentials.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    pub enum ModelProviderCredentialScope {
+        /// Credentials owned by the organization.
+        #[serde(rename = "org")]
+        Org,
+        /// Credentials owned by the current member.
+        #[serde(rename = "member")]
+        Member,
+    }
+
+    /// Canonical model-provider credential and runtime types.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    pub enum ModelProviderType {
+        /// Model-provider type `claude-code-oauth-token`.
+        #[serde(rename = "claude-code-oauth-token")]
+        ClaudeCodeOauthToken,
+        /// Model-provider type `anthropic-api-key`.
+        #[serde(rename = "anthropic-api-key")]
+        AnthropicApiKey,
+        /// Model-provider type `openrouter-api-key`.
+        #[serde(rename = "openrouter-api-key")]
+        OpenrouterApiKey,
+        /// Model-provider type `moonshot-api-key`.
+        #[serde(rename = "moonshot-api-key")]
+        MoonshotApiKey,
+        /// Model-provider type `minimax-api-key`.
+        #[serde(rename = "minimax-api-key")]
+        MinimaxApiKey,
+        /// Model-provider type `deepseek-api-key`.
+        #[serde(rename = "deepseek-api-key")]
+        DeepseekApiKey,
+        /// Model-provider type `deepseek-codex`.
+        #[serde(rename = "deepseek-codex")]
+        DeepseekCodex,
+        /// Model-provider type `zai-api-key`.
+        #[serde(rename = "zai-api-key")]
+        ZaiApiKey,
+        /// Model-provider type `vercel-ai-gateway`.
+        #[serde(rename = "vercel-ai-gateway")]
+        VercelAiGateway,
+        /// Model-provider type `openrouter-codex`.
+        #[serde(rename = "openrouter-codex")]
+        OpenrouterCodex,
+        /// Model-provider type `vercel-ai-gateway-codex`.
+        #[serde(rename = "vercel-ai-gateway-codex")]
+        VercelAiGatewayCodex,
+        /// Model-provider type `openai-api-key`.
+        #[serde(rename = "openai-api-key")]
+        OpenaiApiKey,
+        /// Model-provider type `codex-oauth-token`.
+        #[serde(rename = "codex-oauth-token")]
+        CodexOauthToken,
+        /// Model-provider type `azure-foundry`.
+        #[serde(rename = "azure-foundry")]
+        AzureFoundry,
+        /// Model-provider type `aws-bedrock`.
+        #[serde(rename = "aws-bedrock")]
+        AwsBedrock,
+        /// Model-provider type `vm0`.
+        #[serde(rename = "vm0")]
+        Vm0,
+    }
+
+    /// Canonical model identifiers accepted for new runs.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    pub enum SupportedRunModel {
+        /// Model identifier `claude-fable-5`.
+        #[serde(rename = "claude-fable-5")]
+        ClaudeFable5,
+        /// Model identifier `claude-opus-5`.
+        #[serde(rename = "claude-opus-5")]
+        ClaudeOpus5,
+        /// Model identifier `gpt-5.6-sol`.
+        #[serde(rename = "gpt-5.6-sol")]
+        Gpt56Sol,
+        /// Model identifier `gpt-5.6-terra`.
+        #[serde(rename = "gpt-5.6-terra")]
+        Gpt56Terra,
+        /// Model identifier `gpt-5.6-luna`.
+        #[serde(rename = "gpt-5.6-luna")]
+        Gpt56Luna,
+        /// Model identifier `gpt-5.5`.
+        #[serde(rename = "gpt-5.5")]
+        Gpt55,
+        /// Model identifier `claude-opus-4-8`.
+        #[serde(rename = "claude-opus-4-8")]
+        ClaudeOpus48,
+        /// Model identifier `claude-opus-4-7`.
+        #[serde(rename = "claude-opus-4-7")]
+        ClaudeOpus47,
+        /// Model identifier `claude-opus-4-6`.
+        #[serde(rename = "claude-opus-4-6")]
+        ClaudeOpus46,
+        /// Model identifier `claude-sonnet-5`.
+        #[serde(rename = "claude-sonnet-5")]
+        ClaudeSonnet5,
+        /// Model identifier `claude-sonnet-4-6`.
+        #[serde(rename = "claude-sonnet-4-6")]
+        ClaudeSonnet46,
+        /// Model identifier `deepseek-v4-pro`.
+        #[serde(rename = "deepseek-v4-pro")]
+        DeepseekV4Pro,
+        /// Model identifier `deepseek-v4-flash`.
+        #[serde(rename = "deepseek-v4-flash")]
+        DeepseekV4Flash,
+        /// Model identifier `kimi-k3`.
+        #[serde(rename = "kimi-k3")]
+        KimiK3,
+        /// Model identifier `kimi-k2.7-code`.
+        #[serde(rename = "kimi-k2.7-code")]
+        KimiK27Code,
+        /// Model identifier `MiniMax-M3`.
+        #[serde(rename = "MiniMax-M3")]
+        MiniMaxM3,
+        /// Model identifier `glm-5.2`.
+        #[serde(rename = "glm-5.2")]
+        Glm52,
+        /// Model identifier `glm-5.1`.
+        #[serde(rename = "glm-5.1")]
+        Glm51,
+        /// Model identifier `mimo-v2.5`.
+        #[serde(rename = "mimo-v2.5")]
+        MimoV25,
+        /// Model identifier `hy3-preview`.
+        #[serde(rename = "hy3-preview")]
+        Hy3Preview,
+    }
+
+    /// Workspace model routing policies visible to native clients.
+    pub mod policies {
+        /// Resolution status for a workspace model route.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum OrgModelPolicyRouteStatus {
+            /// The model route can resolve a usable provider.
+            #[serde(rename = "valid")]
+            Valid,
+            /// The model route has no usable provider.
+            #[serde(rename = "missing_provider")]
+            MissingProvider,
+            /// The configured model route is invalid.
+            #[serde(rename = "invalid")]
+            Invalid,
+        }
+
+        /// Resolved model routing policy visible to the current user.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct Policy {
+            /// Stable identifier for the model policy.
+            pub id: String,
+            /// Canonical model selected by the policy.
+            pub model: super::SupportedRunModel,
+            /// Display label for the model.
+            pub model_label: String,
+            /// Whether this policy is the workspace default.
+            pub is_default: bool,
+            /// Provider type selected when no explicit provider is configured.
+            pub default_provider_type: super::ModelProviderType,
+            /// Ownership scope for the provider credentials.
+            pub credential_scope: super::ModelProviderCredentialScope,
+            /// Optional configured model-provider identifier.
+            pub model_provider_id: Option<String>,
+            /// Optional configured model-provider surface identifier.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub model_provider_surface_id: Option<String>,
+            /// Current provider resolution status.
+            pub route_status: OrgModelPolicyRouteStatus,
+            /// Optional explanation when the provider route is unavailable.
+            pub route_status_reason: Option<String>,
+            /// Timestamp when the policy was created.
+            pub created_at: String,
+            /// Timestamp when the policy was last updated.
+            pub updated_at: String,
+        }
+
+        /// Workspace model policies available to the current user.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct Response {
+            /// Resolved workspace model routing policies.
+            pub policies: Vec<Policy>,
+            /// Optional workspace default model.
+            pub workspace_default_model: Option<super::SupportedRunModel>,
+            /// Optional identifier for the workspace default policy.
+            pub workspace_default_policy_id: Option<String>,
+        }
+    }
+
+    /// Current user's selected model preference.
+    pub mod preference {
+        /// Current user's selected model preference.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct Response {
+            /// Optional model explicitly selected by the user.
+            pub selected_model: Option<super::SupportedRunModel>,
+            /// Optional timestamp of the last preference update.
+            pub updated_at: Option<String>,
+        }
+    }
+}
 
 /// Runner-facing DTOs generated from TypeScript API contracts.
 pub mod runners {
@@ -51,6 +270,26 @@ pub mod runners {
             /// Whether changed contents are written back to the same Storage.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub writeback: Option<bool>,
+        }
+    }
+
+    /// Bundled Zero CLI availability and build identity reported by runners.
+    pub mod zero_cli {
+        /// Bundled Zero CLI availability and non-sensitive build identity reported by a runner.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct CompatibilityDescriptor {
+            /// Whether the runner embeds the native Zero CLI binary.
+            pub available: bool,
+            /// Optional native Zero CLI crate version.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub version: Option<String>,
+            /// Optional runner build containing the native CLI binary.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub build_id: Option<String>,
+            /// Optional lowercase SHA-256 checksum of the embedded CLI bytes.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub checksum_sha256: Option<String>,
         }
     }
 }
