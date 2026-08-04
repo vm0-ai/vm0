@@ -585,16 +585,24 @@ describe("chat composer templates", () => {
         if (query.page === 1 && query.language === "english") {
           await voiceFilterReady.promise;
         }
-        if (query.page === 2) {
+        if (query.pageSize === 24 && query.page === 2) {
           await voicePageTwoReady.promise;
         }
+        const loadingFilterOptions = query.pageSize === 100;
         return respond(200, {
           voices: query.page === 2 ? [secondVoice] : [selectedVoice],
-          hasMore: query.pageSize === 24 && query.page === 1,
-          filterOptions: {
-            languages: ["english", "spanish"],
-            useCases: ["narrative_story", "social_media"],
-          },
+          hasMore:
+            query.page === 1 && (query.pageSize === 24 || loadingFilterOptions),
+          filterOptions:
+            loadingFilterOptions && query.page === 2
+              ? {
+                  languages: ["spanish"],
+                  useCases: ["social_media"],
+                }
+              : {
+                  languages: ["english"],
+                  useCases: ["narrative_story"],
+                },
         });
       },
     );
@@ -759,6 +767,9 @@ describe("chat composer templates", () => {
       expect(screen.getByLabelText("Gender: Male")).toBeInTheDocument();
       expect(screen.getByLabelText("Age: Young")).toBeInTheDocument();
       await user.click(await screen.findByLabelText("Language: All"));
+      expect(
+        screen.getByRole("option", { name: "Spanish" }),
+      ).toBeInTheDocument();
       await user.click(screen.getByRole("option", { name: "English" }));
       await user.keyboard("{Escape}");
       await waitFor(() => {
@@ -834,7 +845,8 @@ describe("chat composer templates", () => {
         ]);
         expect(observedVoiceQueries).toStrictEqual(
           expect.arrayContaining([
-            { page: 1, pageSize: 1 },
+            { page: 1, pageSize: 100 },
+            { page: 2, pageSize: 100 },
             {
               page: 1,
               pageSize: 24,

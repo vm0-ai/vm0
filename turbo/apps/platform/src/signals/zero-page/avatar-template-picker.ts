@@ -12,6 +12,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { onRejection } from "../utils.ts";
 
 const AVATAR_TEMPLATE_PAGE_SIZE = 24;
+const AVATAR_TEMPLATE_FILTER_OPTIONS_PAGE_SIZE = 100;
 
 interface AvatarTemplateCatalogPage {
   readonly avatars: readonly ZeroAvatarVideoAvatar[];
@@ -319,20 +320,39 @@ function createAvatarTemplateVoiceCatalogSignals() {
     },
   );
   const avatarTemplateVoiceFilterOptions$ = computed(
-    async (get): Promise<AvatarTemplateVoiceFilterOptions> => {
+    async (get, { signal }): Promise<AvatarTemplateVoiceFilterOptions> => {
       const client = get(zeroClient$)(zeroAvatarVideoContract, {
         apiBase: "api",
       });
-      const result = await accept(
-        client.voices({ query: { page: 1, pageSize: 1 } }),
-        [200],
-      );
-      return (
-        result.body.filterOptions ?? {
-          languages: [],
-          useCases: [],
+      const languages = new Set<string>();
+      const useCases = new Set<string>();
+      let page = 1;
+      let hasMore: boolean;
+      do {
+        const result = await accept(
+          client.voices({
+            query: {
+              page,
+              pageSize: AVATAR_TEMPLATE_FILTER_OPTIONS_PAGE_SIZE,
+            },
+            fetchOptions: { signal },
+          }),
+          [200],
+          signal,
+        );
+        for (const language of result.body.filterOptions?.languages ?? []) {
+          languages.add(language);
         }
-      );
+        for (const useCase of result.body.filterOptions?.useCases ?? []) {
+          useCases.add(useCase);
+        }
+        hasMore = result.body.hasMore;
+        page += 1;
+      } while (hasMore);
+      return {
+        languages: Array.from(languages).sort(),
+        useCases: Array.from(useCases).sort(),
+      };
     },
   );
   const avatarTemplateVoiceCatalogPage$ = computed(
