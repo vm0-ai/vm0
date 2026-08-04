@@ -18,7 +18,7 @@ use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 
-use crate::telemetry::PRE_PARK_HANDOFF_AXIOM_TARGET;
+use crate::telemetry::{PRE_PARK_HANDOFF_AXIOM_TARGET, RESERVED_REUSE_CLAIM_AXIOM_TARGET};
 
 #[derive(Clone, Debug)]
 struct RecordedEvent {
@@ -194,6 +194,24 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
             "allowlisted target below INFO"
         );
         tracing::info!(
+            target: RESERVED_REUSE_CLAIM_AXIOM_TARGET,
+            measurement = "reserved_reuse_claim",
+            outcome = "claimed",
+            run_id = "00000000-0000-0000-0000-000000000001",
+            duration_ms = 42_u64,
+            preference_reason = "none",
+            timezone_state = "absent",
+            "reserved reusable claim observed"
+        );
+        tracing::debug!(
+            target: RESERVED_REUSE_CLAIM_AXIOM_TARGET,
+            "reserved reuse target below INFO"
+        );
+        tracing::info!(
+            target: "runner::reserved_reuse_claim::detail",
+            "reserved reuse sibling INFO target"
+        );
+        tracing::info!(
             target: BALLOON_SETTLE_AXIOM_TARGET,
             measurement = "balloon_settle",
             outcome = "target_reached",
@@ -236,6 +254,13 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
     let measurement = event_with_message(&events, "allowlisted measurement");
     assert_eq!(measurement["level"], json!("info"));
     assert_eq!(measurement["outcome"], json!("retained"));
+    let reserved_reuse = event_with_message(&events, "reserved reusable claim observed");
+    assert_eq!(reserved_reuse["level"], json!("info"));
+    assert_eq!(reserved_reuse["measurement"], json!("reserved_reuse_claim"));
+    assert_eq!(reserved_reuse["outcome"], json!("claimed"));
+    assert_eq!(reserved_reuse["duration_ms"], json!(42));
+    assert_eq!(reserved_reuse["preference_reason"], json!("none"));
+    assert_eq!(reserved_reuse["timezone_state"], json!("absent"));
     let balloon = event_with_message(&events, "balloon settle completed");
     assert_eq!(balloon["level"], json!("info"));
     assert_eq!(balloon["measurement"], json!("balloon_settle"));
@@ -250,6 +275,14 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
     assert!(
         !has_event_with_message(&events, "allowlisted target below INFO"),
         "allowlisted DEBUG event should not be ingested: {events:#?}",
+    );
+    assert!(
+        !has_event_with_message(&events, "reserved reuse target below INFO"),
+        "reserved-reuse DEBUG event should not be ingested: {events:#?}",
+    );
+    assert!(
+        !has_event_with_message(&events, "reserved reuse sibling INFO target"),
+        "reserved-reuse sibling INFO event should not be ingested: {events:#?}",
     );
     assert!(
         !has_event_with_message(&events, "balloon target below INFO"),
