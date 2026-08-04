@@ -940,6 +940,83 @@ describe("chat lifecycle", () => {
     }
   });
 
+  it("waits for active voice input before sending", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000778";
+    const transcriptionRequested = context.mocks.deferred<void>();
+    const transcriptionReady = context.mocks.deferred<void>();
+    const submissionRequested = context.mocks.deferred<void>();
+    const sentPrompts: string[] = [];
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockChatLifecycle(context, {
+      threadId,
+      onRunCreate: (body) => {
+        if (body.prompt !== undefined) {
+          sentPrompts.push(body.prompt);
+        }
+        submissionRequested.resolve(undefined);
+      },
+    });
+    context.mocks.http.post("*/api/zero/voice-io/stt", async () => {
+      transcriptionRequested.resolve(undefined);
+      await transcriptionReady.promise;
+      return new Response(JSON.stringify({ text: "completed voice input" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+      const composer = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER);
+      });
+      await fill(composer, "Typed introduction");
+      const sendButton = screen.getByLabelText("Send");
+      await waitFor(() => {
+        expect(sendButton).toBeEnabled();
+      });
+      await user.click(await screen.findByLabelText("Voice input"));
+      await waitFor(() => {
+        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+      });
+
+      const firstRequest = Promise.race([
+        (async () => {
+          await transcriptionRequested.promise;
+          return "transcription" as const;
+        })(),
+        (async () => {
+          await submissionRequested.promise;
+          return "submission" as const;
+        })(),
+      ]);
+      await user.click(sendButton);
+
+      await expect(firstRequest).resolves.toBe("transcription");
+      expect(sentPrompts).toStrictEqual([]);
+
+      await user.click(screen.getByLabelText("Send"));
+      expect(submissionRequested.settled()).toBeFalsy();
+
+      transcriptionReady.resolve(undefined);
+
+      await waitFor(() => {
+        expect(sentPrompts).toHaveLength(1);
+      });
+      expect(sentPrompts[0]).toContain("Typed introduction");
+      expect(sentPrompts[0]).toContain("completed voice input");
+      expect(sentPrompts[0]?.match(/completed voice input/g)).toHaveLength(1);
+      await waitFor(() => {
+        expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+      });
+    } finally {
+      if (!transcriptionReady.settled()) {
+        transcriptionReady.resolve(undefined);
+      }
+    }
+  });
+
   it("transcribes a voice input segment after silence while recording", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "voice-input-segment-thread";

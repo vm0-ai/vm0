@@ -6667,15 +6667,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
       return;
     }
     if (recording) {
-      detach(
-        (async () => {
-          const text = await stopAndTranscribe(signal);
-          if (text) {
-            onTranscribed(text);
-          }
-        })(),
-        Reason.DomCallback,
-      );
+      detach(stopAndTranscribe(signal), Reason.DomCallback);
       return;
     }
     if (!quota) {
@@ -7049,11 +7041,13 @@ function useComposerPrimaryAction(
 function startComposerSubmission({
   action,
   activate,
+  completeVoiceInput,
   ensurePushSubscription,
   signal,
 }: {
   action: ComposerPrimaryAction;
   activate: (signal: AbortSignal) => Promise<boolean>;
+  completeVoiceInput: (signal: AbortSignal) => Promise<void>;
   ensurePushSubscription: (signal: AbortSignal) => Promise<void>;
   signal: AbortSignal;
 }): void {
@@ -7063,7 +7057,13 @@ function startComposerSubmission({
   if (action === "send") {
     detach(ensurePushSubscription(signal), Reason.DomCallback);
   }
-  detach(activate(signal), Reason.DomCallback);
+  detach(
+    (async () => {
+      await completeVoiceInput(signal);
+      await activate(signal);
+    })(),
+    Reason.DomCallback,
+  );
 }
 
 function useComposerFileUpload(
@@ -7110,6 +7110,7 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
   const templatePicker = useComposerTemplatePicker(signals);
   const primaryAction = useComposerPrimaryAction(signals);
   const submitCurrentInput = useSet(signals.submission.submitCurrentInput$);
+  const completeVoiceInput = useSet(stopAndTranscribe$);
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
   const sendModeLoadable = useLastLoadable(sendMode$);
@@ -7168,6 +7169,7 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
       activate: (signal) => {
         return submitCurrentInput(primaryAction, signal);
       },
+      completeVoiceInput,
       ensurePushSubscription,
       signal: rootSignal,
     });
@@ -7252,6 +7254,7 @@ function ComposerSendControl({ signals }: { signals: ComposerSignals }) {
   const activatePrimaryAction = useSet(
     signals.submission.activatePrimaryAction$,
   );
+  const completeVoiceInput = useSet(stopAndTranscribe$);
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
   const activate = () => {
@@ -7264,6 +7267,7 @@ function ComposerSendControl({ signals }: { signals: ComposerSignals }) {
       activate: (signal) => {
         return activatePrimaryAction(action, signal);
       },
+      completeVoiceInput,
       ensurePushSubscription,
       signal: rootSignal,
     });
