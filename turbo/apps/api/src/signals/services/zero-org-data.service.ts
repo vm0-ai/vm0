@@ -79,7 +79,6 @@ type OrgUpdateErrorResponse =
   | typeof forbiddenAccess;
 
 type OrgDeleteErrorResponse =
-  | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof notFound>
   | typeof orgDeleteForbidden;
 
@@ -110,7 +109,6 @@ interface LeaveZeroOrgArgs {
 interface DeleteZeroOrgArgs {
   readonly orgId: string;
   readonly callerRole: OrgRole | undefined;
-  readonly slug: string;
 }
 
 interface RemoveZeroOrgMemberArgs {
@@ -155,30 +153,26 @@ function isClerkNotFound(error: unknown): boolean {
   );
 }
 
-async function getOrgIdentityForDelete(args: {
+/**
+ * Deleting an org only needs to know that the org still exists; a fresh cache
+ * row is pointless for something we are about to remove.
+ */
+async function orgExistsForDelete(args: {
   readonly db: ReadonlyDb;
-  readonly writeDb: Db;
   readonly client: ReturnType<typeof clerk$.read>;
   readonly orgId: string;
-}): Promise<OrgIdentity | null> {
+}): Promise<boolean> {
   const [cached] = await args.db
-    .select({
-      slug: orgCache.slug,
-      name: orgCache.name,
-      createdBy: orgCache.createdBy,
-      cachedAt: orgCache.cachedAt,
-    })
+    .select({ cachedAt: orgCache.cachedAt })
     .from(orgCache)
     .where(eq(orgCache.orgId, args.orgId))
     .limit(1);
 
-  const now = nowDate();
-  if (cached && now.getTime() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
-    return {
-      slug: cached.slug,
-      name: cached.name,
-      createdBy: cached.createdBy,
-    };
+  if (
+    cached &&
+    nowDate().getTime() - cached.cachedAt.getTime() < CACHE_TTL_MS
+  ) {
+    return true;
   }
 
   const clerkOrgSettled = await settle(
@@ -186,41 +180,12 @@ async function getOrgIdentityForDelete(args: {
   );
   if (!clerkOrgSettled.ok) {
     if (isClerkNotFound(clerkOrgSettled.error)) {
-      return null;
+      return false;
     }
     throw clerkOrgSettled.error;
   }
-  const clerkOrg = clerkOrgSettled.value;
 
-  const parsed = clerkOrgIdentitySchema.parse(clerkOrg);
-  if (!parsed.slug) {
-    throw new Error(`Clerk organization ${args.orgId} has no slug`);
-  }
-
-  await args.writeDb
-    .insert(orgCache)
-    .values({
-      orgId: args.orgId,
-      slug: parsed.slug,
-      name: parsed.name ?? "",
-      createdBy: parsed.createdBy ?? null,
-      cachedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: orgCache.orgId,
-      set: {
-        slug: parsed.slug,
-        name: parsed.name ?? "",
-        createdBy: parsed.createdBy ?? null,
-        cachedAt: now,
-      },
-    });
-
-  return {
-    slug: parsed.slug,
-    name: parsed.name ?? "",
-    createdBy: parsed.createdBy ?? null,
-  };
+  return true;
 }
 
 interface ZeroOrgDetailArgs {
@@ -562,20 +527,15 @@ export const deleteZeroOrg$ = command(
     const db = get(db$);
     const writeDb = set(writeDb$);
     const client = get(clerk$);
-    const identity = await getOrgIdentityForDelete({
+    const exists = await orgExistsForDelete({
       db,
-      writeDb,
       client,
       orgId: args.orgId,
     });
     signal.throwIfAborted();
 
-    if (!identity) {
+    if (!exists) {
       return notFound("Resource not found");
-    }
-
-    if (args.slug !== identity.slug) {
-      return badRequestMessage("Organization name does not match");
     }
 
     const memberships =

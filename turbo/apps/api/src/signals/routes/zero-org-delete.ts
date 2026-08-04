@@ -22,7 +22,6 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       orgId: auth.orgId,
       callerRole: auth.orgRole,
-      slug: body.data.slug,
     },
     signal,
   );
@@ -39,7 +38,13 @@ export const zeroOrgDeleteRoutes: readonly RouteEntry[] = [
   {
     route: zeroOrgDeleteContract.delete,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        // Deleting a workspace is a session-only action: a PAT or an agent
+        // token must never be able to destroy the whole workspace.
+        accept: ["session"],
+      },
       deleteInner$,
     ),
   },

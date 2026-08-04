@@ -4425,7 +4425,7 @@
       "danger": {
         "delete": {
           "button": "Hapus ruang kerja",
-          "confirmDescription": "Ini akan menghapus {{workspace}} dan semua datanya secara permanen. Tindakan ini tidak dapat dibatalkan. Ketik nama ruang kerja untuk mengonfirmasi.",
+          "confirmDescription": "Ini akan menghapus ruang kerja ini dan semua datanya secara permanen. Tindakan ini tidak dapat dibatalkan. Ketik confirm untuk melanjutkan.",
           "description": "Hapus ruang kerja ini dan semua datanya secara permanen. Tindakan ini tidak dapat dibatalkan.",
           "progress": "Menghapus...",
           "title": "Hapus ruang kerja",

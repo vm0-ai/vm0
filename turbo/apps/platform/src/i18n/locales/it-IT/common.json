@@ -4494,7 +4494,7 @@
       "danger": {
         "delete": {
           "button": "Elimina l'area di lavoro",
-          "confirmDescription": "Questa operazione eliminerà definitivamente {{workspace}} e tutti i suoi dati. Non può essere annullata. Digita il nome dell'area di lavoro per confermare.",
+          "confirmDescription": "Questa operazione eliminerà definitivamente quest'area di lavoro e tutti i suoi dati. Non può essere annullata. Digita confirm per continuare.",
           "description": "Elimina definitivamente questa area di lavoro e tutti i suoi dati. L'operazione non può essere annullata.",
           "progress": "Eliminazione...",
           "title": "Elimina l'area di lavoro",

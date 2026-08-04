@@ -508,7 +508,7 @@ describe("ORG-01 and ORG-02", () => {
       name: "BDD Org Updated",
       members: [{ actor: admin, role: "org:admin" }],
     });
-    await expect(api.deleteOrg(admin, nextSlug)).resolves.toStrictEqual({
+    await expect(api.deleteOrg(admin)).resolves.toStrictEqual({
       message: "Organization deleted",
     });
   });

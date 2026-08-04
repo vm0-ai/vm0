@@ -74,7 +74,7 @@ export const zeroOrgDeleteContract = c.router({
     method: "POST",
     path: "/api/zero/org/delete",
     headers: authHeadersSchema,
-    body: z.object({ slug: z.string() }),
+    body: z.object({ confirm: z.literal("confirm") }),
     responses: {
       200: orgMessageResponseSchema,
       400: apiErrorSchema,

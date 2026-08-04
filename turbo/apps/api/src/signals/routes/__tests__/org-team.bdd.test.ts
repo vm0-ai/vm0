@@ -358,31 +358,36 @@ describe("ORG-01: org update and delete error matrix", () => {
       "Admins cannot leave the organization",
     );
 
-    // Delete failure arms: member caller, slug mismatch, invalid body, and
-    // an org whose identity is gone on the Clerk side.
+    // Delete failure arms: member caller, CLI PAT caller, a confirmation that
+    // is not the literal, and an org whose identity is gone on the Clerk side.
     const memberCaller = api.user({
       orgId: admin.orgId,
       orgRole: "org:member",
     });
-    const memberDelete = await api.requestDeleteOrg(
-      memberCaller,
-      baseSlug,
-      [403],
-    );
+    const memberDelete = await api.requestDeleteOrg(memberCaller, [403]);
     expectApiError(memberDelete.body);
     expect(memberDelete.body.error.message).toBe(
       "Only admins can delete the organization",
     );
 
-    const wrongSlug = await api.requestDeleteOrg(
+    // Deleting a workspace is session-only: an admin's CLI PAT is refused
+    // before the handler runs, so an agent cannot destroy the workspace.
+    const adminCliToken = await api.createCliToken(admin);
+    api.mockClerkOrg(admin, { slug: baseSlug, name: "BDD R5 Org" });
+    const patDelete = await api.requestDeleteOrgWithBearer(
+      adminCliToken.token,
+      [403],
+    );
+    expect(patDelete.body).toMatchObject({ error: { code: "FORBIDDEN" } });
+
+    const wrongConfirm = await api.requestRawJson(
       admin,
-      slug("bdd-r5-wrong"),
+      "/api/zero/org/delete",
+      "POST",
+      { confirm: "delete" },
       [400],
     );
-    expectApiError(wrongSlug.body);
-    expect(wrongSlug.body.error.message).toBe(
-      "Organization name does not match",
-    );
+    expect(wrongConfirm.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
 
     const rawDelete = await api.requestRawJson(
       admin,
@@ -399,11 +404,7 @@ describe("ORG-01: org update and delete error matrix", () => {
     context.mocks.clerk.organizations.getOrganization.mockRejectedValue({
       statusCode: 404,
     });
-    const missingIdentity = await api.requestDeleteOrg(
-      orphanAdmin,
-      slug("bdd-r5-missing"),
-      [404],
-    );
+    const missingIdentity = await api.requestDeleteOrg(orphanAdmin, [404]);
     expect(missingIdentity.body).toStrictEqual({
       error: { message: "Resource not found", code: "NOT_FOUND" },
     });
@@ -780,17 +781,16 @@ describe("ORG-02: member cleanup detaches Slack connections", () => {
       [200],
     );
     expect(thirdConnected.body).toMatchObject({ isConnected: true });
-    const deleteSlug = slug("bdd-r5-del");
     api.mockClerkOrg(secondAdmin, {
-      slug: deleteSlug,
+      slug: slug("bdd-r5-del"),
       members: [
         { actor: secondAdmin, role: "org:admin" },
         { actor: thirdMember, role: "org:member" },
       ],
     });
-    await expect(api.deleteOrg(secondAdmin, deleteSlug)).resolves.toStrictEqual(
-      { message: "Organization deleted" },
-    );
+    await expect(api.deleteOrg(secondAdmin)).resolves.toStrictEqual({
+      message: "Organization deleted",
+    });
     const afterDelete = await integrations.requestSlackConnectStatus(
       thirdMember,
       [200],
