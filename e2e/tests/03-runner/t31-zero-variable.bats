@@ -68,8 +68,8 @@ EOF
 }
 
 teardown_file() {
-    delete_e2e_variable "$VAR_NAME_EXPAND" 2>/dev/null || true
-    delete_e2e_variable "$VAR_NAME_OVERRIDE" 2>/dev/null || true
+    # Variable names embed UNIQUE_ID and preview databases are torn down with
+    # the deployment, so the retired delete API needs no fixture replacement.
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi

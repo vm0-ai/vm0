@@ -3,11 +3,7 @@ import chalk from "chalk";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
 
-import {
-  createZeroCreditCheckout,
-  getZeroBillingStatus,
-  getZeroOrgMembers,
-} from "../../lib/api";
+import { createZeroCreditCheckout, getZeroBillingStatus } from "../../lib/api";
 import { withErrorHandler } from "../../lib/command";
 import { decodeZeroTokenPayload } from "../../lib/api/zero-token";
 import { getPlatformOrigin } from "./doctor/platform-url";
@@ -136,16 +132,7 @@ async function buyCredits(
     "buying credits requires billing:write capability",
   );
   const autoRecharge = autoRechargeConfiguration(options);
-  const members = await getZeroOrgMembers();
-  if (members.role !== "admin") {
-    console.log(
-      chalk.yellow(
-        "Only organization admins can buy credits. Run `zero doctor credit` to see the current credit status and org admins.",
-      ),
-    );
-    return;
-  }
-
+  // Only workspace admins can buy credits; the checkout route enforces it.
   const billing = currentTokenCanReadBilling()
     ? await getZeroBillingStatus()
     : null;

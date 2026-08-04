@@ -37,10 +37,6 @@ function slug(prefix: string): string {
   return `${prefix}-${shortId()}`;
 }
 
-function upperName(prefix: string): string {
-  return `${prefix}_${shortId().toUpperCase()}`;
-}
-
 async function onboardAdmin(
   admin: ApiTestUser,
   options: {
@@ -190,72 +186,9 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
 });
 
 describe("AUTH-03", () => {
-  it("manages user-owned secrets, variables, and preferences through safe visible reads", async () => {
+  it("manages user preferences through safe visible reads", async () => {
     const admin = api.user();
     await onboardAdmin(admin, { slug: slug("bdd-config") });
-
-    const secretName = upperName("BDD_SECRET");
-    const secret = await api.setSecret(admin, {
-      name: secretName,
-      value: "super-secret-value",
-      description: "BDD secret",
-    });
-    expect(secret).toMatchObject({
-      name: secretName,
-      description: "BDD secret",
-      type: "user",
-    });
-    await api.setSecret(admin, {
-      name: "GITHUB_ACCESS_TOKEN",
-      value: "github-user-secret-value",
-    });
-
-    const invalidSecret = await api.requestSetSecret(
-      admin,
-      { name: "bad-name", value: "value" },
-      [400],
-    );
-    expectApiError(invalidSecret.body);
-
-    const secrets = await api.listSecrets(admin);
-    const listedSecret = secrets.secrets.find((candidate) => {
-      return candidate.name === secretName;
-    });
-    expect(listedSecret).toMatchObject({ connectorDisplay: null });
-    expect(
-      secrets.secrets.find((candidate) => {
-        return candidate.name === "GITHUB_ACCESS_TOKEN";
-      }),
-    ).toMatchObject({
-      type: "user",
-      connectorDisplay: {
-        label: "GitHub",
-        environmentNames: ["GH_TOKEN", "GITHUB_TOKEN"],
-      },
-    });
-    expect(JSON.stringify(secrets)).not.toContain("super-secret-value");
-    expect(JSON.stringify(secrets)).not.toContain("github-user-secret-value");
-
-    const variableName = upperName("BDD_VARIABLE");
-    const variable = await api.setVariable(admin, {
-      name: variableName,
-      value: "visible-variable-value",
-      description: "BDD variable",
-    });
-    expect(variable).toMatchObject({
-      name: variableName,
-      value: "visible-variable-value",
-      description: "BDD variable",
-    });
-    const variables = await api.listVariables(admin);
-    expect(
-      variables.variables.some((candidate) => {
-        return (
-          candidate.name === variableName &&
-          candidate.value === "visible-variable-value"
-        );
-      }),
-    ).toBeTruthy();
 
     const preferences = await api.updatePreferences(admin, {
       timezone: "UTC",
@@ -270,25 +203,6 @@ describe("AUTH-03", () => {
     });
     const readBack = await api.readPreferences(admin);
     expect(readBack).toStrictEqual(preferences);
-
-    await api.deleteSecret(admin, secretName);
-    await api.deleteSecret(admin, "GITHUB_ACCESS_TOKEN");
-    await api.deleteVariable(admin, variableName);
-    const afterSecretDelete = await api.listSecrets(admin);
-    expect(
-      afterSecretDelete.secrets.some((candidate) => {
-        return (
-          candidate.name === secretName ||
-          candidate.name === "GITHUB_ACCESS_TOKEN"
-        );
-      }),
-    ).toBeFalsy();
-    const afterVariableDelete = await api.listVariables(admin);
-    expect(
-      afterVariableDelete.variables.some((candidate) => {
-        return candidate.name === variableName;
-      }),
-    ).toBeFalsy();
   });
 });
 
@@ -359,17 +273,6 @@ describe("ORG-01 and ORG-02", () => {
       slug: nextSlug,
       name: "BDD Org Updated",
     });
-
-    const orgs = await api.listOrgs(admin);
-    expect(
-      orgs.orgs.some((candidate) => {
-        return (
-          candidate.id === admin.orgId &&
-          candidate.name === "BDD Org Updated" &&
-          candidate.role === "admin"
-        );
-      }),
-    ).toBeTruthy();
 
     api.mockClerkOrg(member, {
       slug: nextSlug,

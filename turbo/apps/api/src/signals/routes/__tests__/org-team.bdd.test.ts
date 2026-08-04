@@ -872,7 +872,7 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
 });
 
 describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
-  it("serves org and member reads to a claimed run's zero token and rejects org writes [ORG-TOKEN-G]", async () => {
+  it("serves the org read to a claimed run's zero token and rejects member reads and org writes [ORG-TOKEN-G]", async () => {
     const runs = createRunsApi(context);
     const admin = api.user();
     api.acceptAgentStorageWrites();
@@ -912,16 +912,18 @@ describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
       role: "admin",
     });
 
-    const membersRead = await api.requestListMembersWithBearer(
+    // Member listing is deliberately not an agent surface (#25011): the route
+    // declares no capability, so a sandbox token is rejected like the writes.
+    const membersRejected = await api.requestListMembersWithBearer(
       zeroToken,
-      [200],
+      [403],
     );
-    expect(membersRead.body.role).toBe("admin");
-    expect(
-      membersRead.body.members.some((candidate) => {
-        return candidate.userId === admin.userId;
-      }),
-    ).toBeTruthy();
+    expect(membersRejected.body).toStrictEqual({
+      error: {
+        message: "This endpoint is not available for sandbox tokens",
+        code: "FORBIDDEN",
+      },
+    });
 
     // Representative sandbox-token write rejections (the remaining org
     // routes share the same authRoute statement).

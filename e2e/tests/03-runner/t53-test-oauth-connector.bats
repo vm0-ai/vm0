@@ -72,9 +72,6 @@ cleanup_tracked_test_oauth_agents() {
 teardown_file() {
     cleanup_tracked_test_oauth_agents
 
-    delete_e2e_secret TEST_OAUTH_ACCESS_TOKEN 2>/dev/null || true
-    delete_e2e_secret TEST_OAUTH_REFRESH_TOKEN 2>/dev/null || true
-
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi

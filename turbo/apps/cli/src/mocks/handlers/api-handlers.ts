@@ -321,9 +321,8 @@ export const apiHandlers = [
       {
         id: "org-default",
         slug: "user-default",
-        displayName: null,
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: "2025-01-01T00:00:00Z",
+        name: "Default Workspace",
+        tier: "free",
       },
       { status: 200 },
     );

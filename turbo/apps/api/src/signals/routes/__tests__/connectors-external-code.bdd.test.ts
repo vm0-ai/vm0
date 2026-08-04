@@ -20,7 +20,7 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
-import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
+import { readUserSecrets } from "./helpers/user-config-state";
 import {
   awsVerificationCode,
   createConnectorBddApi,
@@ -30,7 +30,6 @@ import {
 
 const context = testContext();
 const connectorsApi = createConnectorBddApi(context);
-const authOrgApi = createAuthOrgAgentsBddApi(context);
 
 const AWS_REDIRECT_URI =
   "https://us-east-1.signin.aws.amazon.com/v1/sessions/confirmation";
@@ -420,8 +419,11 @@ describe("CONN-02: external-code session lifecycle", () => {
       );
     }
 
-    const secretList = await authOrgApi.listSecrets(actor);
-    const connectorSecretNames = secretList.secrets
+    const storedSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const connectorSecretNames = storedSecrets
       .filter((secret) => {
         return secret.type === "connector";
       })
@@ -435,8 +437,8 @@ describe("CONN-02: external-code session lifecycle", () => {
       "AWS_SECRET_ACCESS_KEY",
       "AWS_SESSION_TOKEN",
     ]);
-    expectNoVisibleSecret(secretList, "aws-secret-access-key");
-    expectNoVisibleSecret(secretList, "aws-login-refresh-token");
+    expectNoVisibleSecret(storedSecrets, "aws-secret-access-key");
+    expectNoVisibleSecret(storedSecrets, "aws-login-refresh-token");
 
     const replay = await connectorsApi.completeExternalCode(actor, "aws", {
       sessionId: session.sessionId,
@@ -460,9 +462,12 @@ describe("CONN-02: external-code session lifecycle", () => {
     expectApiError(afterDelete.body);
     expect(afterDelete.body.error.code).toBe("NOT_FOUND");
 
-    const secretsAfterDelete = await authOrgApi.listSecrets(actor);
+    const secretsAfterDelete = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(
-      secretsAfterDelete.secrets.filter((secret) => {
+      secretsAfterDelete.filter((secret) => {
         return secret.type === "connector";
       }),
     ).toStrictEqual([]);
@@ -663,8 +668,11 @@ describe("CONN-02: external-code session lifecycle", () => {
         name: "NINTENDO_STORE_LOCALE",
       }),
     );
-    const secretList = await authOrgApi.listSecrets(actor);
-    const connectorSecretNames = secretList.secrets
+    const storedSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const connectorSecretNames = storedSecrets
       .filter((secret) => {
         return secret.type === "connector";
       })
@@ -676,8 +684,8 @@ describe("CONN-02: external-code session lifecycle", () => {
       "NINTENDO_STORE_ID_TOKEN",
       "NINTENDO_STORE_SESSION_TOKEN",
     ]);
-    expectNoVisibleSecret(secretList, "bdd-nintendo-session-token");
-    expectNoVisibleSecret(secretList, "bdd-nintendo-access-token");
+    expectNoVisibleSecret(storedSecrets, "bdd-nintendo-session-token");
+    expectNoVisibleSecret(storedSecrets, "bdd-nintendo-access-token");
 
     await connectorsApi.deleteConnectorBySlug(actor, "nintendo-store");
   });
@@ -795,8 +803,11 @@ describe("CONN-02: external-code session lifecycle", () => {
       );
     }
 
-    const secretList = await authOrgApi.listSecrets(actor);
-    const connectorSecretNames = secretList.secrets
+    const storedSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
+    const connectorSecretNames = storedSecrets
       .filter((secret) => {
         return secret.type === "connector";
       })

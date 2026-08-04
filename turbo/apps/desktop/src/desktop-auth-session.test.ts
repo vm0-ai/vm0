@@ -310,7 +310,7 @@ describe("DesktopAuthSession", () => {
     expect(await session.getAuthState()).toEqual({
       status: "signed_in",
       user: { userId: "u1", email: "u@example.com" },
-      organization: { id: "o1", name: "Org One", slug: "org-one" },
+      organization: { id: "o1", name: "Org One" },
     });
   });
 
@@ -359,7 +359,7 @@ describe("DesktopAuthSession", () => {
     expect(await session.getAuthState()).toEqual({
       status: "signed_in",
       user: { userId: "u1", email: "u@example.com" },
-      organization: { id: "o1", name: "Org One", slug: "org-one" },
+      organization: { id: "o1", name: "Org One" },
     });
     expect(observedAuthorization).toStrictEqual(["Bearer stale", null, null]);
     expect(observedClientHeaders).toStrictEqual([
@@ -413,7 +413,7 @@ describe("DesktopAuthSession", () => {
     expect(await session.getAuthState()).toEqual({
       status: "signed_in",
       user: { userId: "u1", email: "u@example.com" },
-      organization: { id: "o1", name: "Org One", slug: "org-one" },
+      organization: { id: "o1", name: "Org One" },
     });
     expect(runAuthWindow).toHaveBeenCalledWith({
       url: TOKEN_URL,

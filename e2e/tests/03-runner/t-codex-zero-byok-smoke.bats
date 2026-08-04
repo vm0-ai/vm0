@@ -3,7 +3,7 @@
 # BYOK codex via zero web layer — full integration smoke.
 #
 # Validates the chain added by epic #11520:
-#   feature-switch on  →  zero org model-provider setup --type openai-api-key
+#   feature-switch on  →  an openai-api-key org model provider
 #   →  model policy routes the selected Codex model to that BYOK provider
 #   →  compose fixture API  →
 #   POST /api/zero/chat/events (the same unified create-thread + run endpoint

@@ -1,16 +1,6 @@
 import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
-import {
-  zeroOrgContract,
-  zeroOrgLeaveContract,
-} from "@vm0/api-contracts/contracts/zero-org";
-import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
-import {
-  zeroOrgInviteContract,
-  zeroOrgMembersContract,
-} from "@vm0/api-contracts/contracts/zero-org-members";
-import type { OrgMembersResponse } from "@vm0/api-contracts/contracts/org-members";
+import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
-import type { OrgListResponse } from "@vm0/api-contracts/contracts/org-list";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 /**
@@ -27,93 +17,4 @@ export async function getZeroOrg(): Promise<OrgResponse> {
   }
 
   handleError(result, "Failed to get organization");
-}
-
-/**
- * List all accessible orgs.
- */
-export async function listZeroOrgs(): Promise<OrgListResponse> {
-  const config = await getClientConfig();
-  const client = initClient(zeroOrgListContract, config);
-
-  const result = await client.list({ headers: {} });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to list organizations");
-}
-
-/**
- * Get org members via zero API
- */
-export async function getZeroOrgMembers(): Promise<OrgMembersResponse> {
-  const config = await getClientConfig();
-  const client = initClient(zeroOrgMembersContract, config);
-
-  const result = await client.members({ headers: {} });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to get organization members");
-}
-
-/**
- * Invite a member to the org via zero API
- */
-export async function inviteZeroOrgMember(
-  email: string,
-  role: "member" | "admin" = "member",
-): Promise<void> {
-  const config = await getClientConfig();
-  const client = initClient(zeroOrgInviteContract, config);
-
-  const result = await client.invite({
-    body: { email, role },
-  });
-
-  if (result.status === 200) {
-    return;
-  }
-
-  handleError(result, "Failed to invite member");
-}
-
-/**
- * Remove a member from the org via zero API
- */
-export async function removeZeroOrgMember(email: string): Promise<void> {
-  const config = await getClientConfig();
-  const client = initClient(zeroOrgMembersContract, config);
-
-  const result = await client.removeMember({
-    body: { email },
-  });
-
-  if (result.status === 200) {
-    return;
-  }
-
-  handleError(result, "Failed to remove member");
-}
-
-/**
- * Leave the current org via zero API
- */
-export async function leaveZeroOrg(): Promise<void> {
-  const config = await getClientConfig();
-  const client = initClient(zeroOrgLeaveContract, config);
-
-  const result = await client.leave({
-    body: {},
-  });
-
-  if (result.status === 200) {
-    return;
-  }
-
-  handleError(result, "Failed to leave organization");
 }
