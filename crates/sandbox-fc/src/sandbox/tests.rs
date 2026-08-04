@@ -3821,6 +3821,65 @@ fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
     assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
 }
 
+fn captured_message_count(events: &[CapturedEvent], message: &str) -> usize {
+    events
+        .iter()
+        .filter(|event| {
+            event
+                .fields
+                .get("message")
+                .is_some_and(|actual| actual == message)
+        })
+        .count()
+}
+
+fn assert_balloon_settle_summary(
+    events: &[CapturedEvent],
+    outcome: &str,
+    sample_count: u32,
+    admission_action: &str,
+) {
+    let summaries: Vec<_> = events
+        .iter()
+        .filter(|event| {
+            event
+                .fields
+                .get("message")
+                .is_some_and(|message| message == "balloon settle completed")
+        })
+        .collect();
+    assert_eq!(
+        summaries.len(),
+        1,
+        "expected exactly one balloon settle summary; events={events:#?}"
+    );
+
+    let summary = summaries[0];
+    assert_eq!(summary.level, Level::INFO);
+    assert_eq!(
+        summary
+            .fields
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        [
+            "admission_action",
+            "elapsed_ms",
+            "measurement",
+            "message",
+            "outcome",
+            "sample_count",
+        ],
+        "canonical summary must remain bounded and identifier-free"
+    );
+    assert_event_field(summary, "measurement", "balloon_settle");
+    assert_event_field(summary, "outcome", outcome);
+    assert_event_field(summary, "sample_count", &sample_count.to_string());
+    assert_event_field(summary, "admission_action", admission_action);
+    assert_eq!(summary.field_kinds.get("elapsed_ms"), Some(&"u64"));
+    assert_eq!(summary.field_kinds.get("sample_count"), Some(&"u64"));
+}
+
 #[test]
 fn exec_capture_request_preserves_stable_operation_label() {
     let stdin = [1, 2, 3];
@@ -4019,6 +4078,157 @@ fn balloon_statistics(target_mib: u32, actual_mib: u32) -> BalloonStatistics {
 }
 
 #[tokio::test]
+async fn wait_for_balloon_rechecks_after_initial_25_ms_delay() {
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let mut api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, 0)),
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, target_mib)),
+        ]),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    let wait = wait_for_balloon(&client, target_mib, "fast-start");
+    tokio::pin!(wait);
+
+    loop {
+        if captured_message_count(&captured.entries(), "waiting for balloon") == 1 {
+            break;
+        }
+        tokio::select! {
+            outcome = &mut wait => {
+                panic!("balloon wait completed before the first deficient sample: {outcome:?}");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+    }
+
+    let mut requests = api.drain_requests();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.method == "GET" && request.path == "/balloon/statistics")
+            .count(),
+        1
+    );
+
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_millis(24)).await;
+    assert!(
+        api.drain_requests().is_empty(),
+        "the second statistics GET must not begin before 25 ms"
+    );
+
+    tokio::time::advance(Duration::from_millis(1)).await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    drop(guard);
+
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
+    requests.extend(api.drain_requests());
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.method == "GET" && request.path == "/balloon/statistics")
+            .count(),
+        2
+    );
+    assert_balloon_settle_summary(&captured.entries(), "target_reached", 2, "reuse");
+}
+
+#[tokio::test]
+async fn wait_for_balloon_caps_adaptive_polling_at_14_samples() {
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let mut api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
+            target_mib, 0,
+        ))]),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    let wait = wait_for_balloon(&client, target_mib, "bounded-schedule");
+    tokio::pin!(wait);
+
+    loop {
+        let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
+        if sample_count == 1 {
+            break;
+        }
+        tokio::select! {
+            outcome = &mut wait => {
+                panic!("balloon wait completed before the first deficient sample: {outcome:?}");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+    }
+
+    tokio::time::pause();
+    for (index, delay_ms) in [
+        25_u64, 50, 100, 200, 400, 500, 500, 500, 500, 500, 500, 500, 500,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        tokio::time::advance(Duration::from_millis(delay_ms - 1)).await;
+        assert!(
+            futures_util::poll!(wait.as_mut()).is_pending(),
+            "balloon wait completed before the scheduled sample {}",
+            index + 2
+        );
+        assert_eq!(
+            captured_message_count(&captured.entries(), "waiting for balloon"),
+            index + 1,
+            "statistics GET began before the scheduled delay of {delay_ms} ms"
+        );
+        tokio::time::advance(Duration::from_millis(1)).await;
+        tokio::time::resume();
+        let expected_sample_count = index + 2;
+        loop {
+            let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
+            if sample_count == expected_sample_count {
+                break;
+            }
+            tokio::select! {
+                outcome = &mut wait => {
+                    panic!(
+                        "balloon wait completed after {sample_count} samples, expected {expected_sample_count}; outcome={outcome:?}"
+                    );
+                }
+                () = tokio::task::yield_now() => {}
+            }
+        }
+        tokio::time::pause();
+    }
+
+    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    drop(guard);
+
+    assert_eq!(
+        outcome,
+        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
+    );
+    let requests = api.drain_requests();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.method == "GET" && request.path == "/balloon/statistics")
+            .count(),
+        14
+    );
+    assert_balloon_settle_summary(&captured.entries(), "deadline", 14, "reject_and_destroy");
+}
+
+#[tokio::test]
 async fn wait_for_balloon_near_target_logs_summary_without_timeout() {
     let target_mib = 4096 - balloon::MIN_GUEST_MIB;
     let api = MockLifecycleApi::with_stats(
@@ -4053,6 +4263,7 @@ async fn wait_for_balloon_near_target_logs_summary_without_timeout() {
     assert_event_field(event, "first_actual_mib", "Some(3545)");
     assert_event_field(event, "max_actual_mib", "Some(3545)");
     assert_event_field(event, "actual_delta_mib", "Some(0)");
+    assert_balloon_settle_summary(&events, "within_tolerance", 1, "reuse");
 }
 
 #[tokio::test]
@@ -4087,6 +4298,7 @@ async fn wait_for_balloon_timeout_logs_actual_stalled_reason() {
     assert_event_field(event, "actual_delta_mib", "Some(0)");
     assert_event_field(event, "reason", "actual_stalled");
     assert_event_field(event, "admission_action", "reuse");
+    assert_balloon_settle_summary(&events, "deadline", 1, "reuse");
 }
 
 #[tokio::test]
@@ -4121,6 +4333,7 @@ async fn wait_for_balloon_accepts_pressure_limited_partial_reclaim() {
     assert_event_field(event, "reported_free_mib", "Some(64)");
     assert_event_field(event, "reported_available_mib", "Some(128)");
     assert_event_field(event, "reason", "pressure_limited_partial_reclaim");
+    assert_balloon_settle_summary(&events, "pressure_limited", 1, "reuse");
 }
 
 #[test]
@@ -4208,6 +4421,7 @@ async fn wait_for_balloon_timeout_logs_target_not_observed_reason() {
     assert_event_field(event, "target_observed", "false");
     assert_event_field(event, "observed_target_mib", "Some(1024)");
     assert_event_field(event, "reason", "target_not_observed");
+    assert_balloon_settle_summary(&events, "deadline", 1, "reuse");
 }
 
 #[tokio::test]
@@ -4254,6 +4468,7 @@ async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
     assert_event_field(event, "reason", "stats_unavailable");
     assert_event_field(event, "actual", "None");
     assert_event_field(event, "deficit_mib", "None");
+    assert_balloon_settle_summary(&events, "deadline", 0, "reuse");
 }
 
 #[tokio::test]
@@ -4285,6 +4500,7 @@ async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
     assert_event_field(event, "reported_total_mib", "Some(2048)");
     assert_event_field(event, "reason", "severe_deficit");
     assert_event_field(event, "admission_action", "reject_and_destroy");
+    assert_balloon_settle_summary(&events, "deadline", 1, "reject_and_destroy");
 }
 
 #[tokio::test]
@@ -4313,6 +4529,7 @@ async fn park_pauses_when_balloon_stats_are_unavailable() {
     assert_event_field(event, "deficit_mib", "None");
     assert_event_field(event, "sample_count", "0");
     assert_event_field(event, "reason", "stats_unavailable");
+    assert_balloon_settle_summary(&events, "stats_unavailable", 0, "reuse");
 
     let reqs = api.drain_requests();
     let ps = patches(&reqs);
@@ -4556,15 +4773,15 @@ async fn park_small_vm_skips_balloon_but_pauses_vcpus() {
     let mut controller = Some(original_controller);
     let mut is_parked = false;
 
-    park_inner(
+    let (result, events) = capture_async_log_events(park_inner(
         &mut is_parked,
         512,
         &mut controller,
         api.socket_path(),
         "test-park-small",
-    )
-    .await
-    .unwrap();
+    ))
+    .await;
+    result.unwrap();
 
     assert!(is_parked, "is_parked should be set");
     let still_there = controller.as_ref().expect("controller must be preserved");
@@ -4579,6 +4796,7 @@ async fn park_small_vm_skips_balloon_but_pauses_vcpus() {
     assert_eq!(ps.len(), 1, "expected only vm pause, no balloon PATCH");
     assert_eq!(ps[0].path, "/vm");
     assert!(ps[0].body.contains("Paused"));
+    assert_balloon_settle_summary(&events, "skipped_zero_target", 0, "reuse");
 }
 
 #[tokio::test]
@@ -4890,13 +5108,13 @@ async fn park_balloon_failure_leaves_flag_false() {
     let mut controller = Some(test_balloon_controller());
     let mut is_parked = false;
 
-    let result = park_inner(
+    let (result, events) = capture_async_log_events(park_inner(
         &mut is_parked,
         2048,
         &mut controller,
         api.socket_path(),
         "test-park-fail",
-    )
+    ))
     .await;
 
     assert_idle_transition(result, SandboxIdleTransition::Park);
@@ -4907,6 +5125,10 @@ async fn park_balloon_failure_leaves_flag_false() {
     let ps = patches(&reqs);
     assert_eq!(ps.len(), 1, "only balloon inflate should be attempted");
     assert_eq!(ps[0].path, "/balloon");
+    assert!(
+        !has_captured_event(&events, "balloon settle completed"),
+        "PATCH failure occurs before settlement and must not emit a completed summary"
+    );
 
     // A follow-up unpark must be a clean no-op because is_parked is false.
     let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
@@ -5038,13 +5260,13 @@ async fn park_pause_http_400_propagates_as_idle_transition() {
     let mut controller = Some(test_balloon_controller());
     let mut is_parked = false;
 
-    let result = park_inner(
+    let (result, events) = capture_async_log_events(park_inner(
         &mut is_parked,
         2048,
         &mut controller,
         api.socket_path(),
         "pause-fail",
-    )
+    ))
     .await;
 
     assert_idle_transition_message(
@@ -5061,6 +5283,7 @@ async fn park_pause_http_400_propagates_as_idle_transition() {
     assert_eq!(ps.len(), 2);
     assert_eq!(ps[0].path, "/balloon");
     assert_eq!(ps[1].path, "/vm");
+    assert_balloon_settle_summary(&events, "stats_unavailable", 1, "reject_and_destroy");
 }
 
 #[tokio::test]
@@ -5424,13 +5647,13 @@ async fn park_small_vm_pause_failure_preserves_controller() {
     let mut controller = Some(original_controller);
     let mut is_parked = false;
 
-    let result = park_inner(
+    let (result, events) = capture_async_log_events(park_inner(
         &mut is_parked,
         512,
         &mut controller,
         api.socket_path(),
         "small-fail",
-    )
+    ))
     .await;
 
     assert_idle_transition(result, SandboxIdleTransition::Park);
@@ -5443,4 +5666,5 @@ async fn park_small_vm_pause_failure_preserves_controller() {
         original_id,
         "controller must not be replaced or aborted"
     );
+    assert_balloon_settle_summary(&events, "skipped_zero_target", 0, "reuse");
 }
