@@ -225,6 +225,9 @@ impl PreparedCowSlot {
 
     /// Transfers this one-shot COW slot into the caller-owned `target_workspace`.
     ///
+    /// `target_workspace` must already exist and remain exclusively owned by
+    /// the caller throughout transfer and rollback.
+    ///
     /// Checkout performs these synchronous mutations in order:
     ///
     /// 1. Moves `cow.img` into `target_workspace`.
@@ -233,8 +236,8 @@ impl PreparedCowSlot {
     /// 4. Updates the connected device's recorded COW path.
     /// 5. Disarms source-workspace cleanup and returns the prepared device.
     ///
-    /// On success, the returned device owns its device lifecycle while the
-    /// caller retains cleanup ownership of `target_workspace` and its files.
+    /// On success, the prepared device transfers to the caller while
+    /// `target_workspace` remains under the caller's cleanup ownership.
     ///
     /// # Errors
     ///
