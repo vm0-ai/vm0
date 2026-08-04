@@ -5,7 +5,10 @@ import json
 
 import pytest
 
-from usage import extract_openai_responses_usage_with_error_from_json
+from usage import (
+    create_openai_responses_json_usage_extractor,
+    extract_openai_responses_usage_with_error_from_json,
+)
 
 
 class TestExtractOpenAIResponsesUsageWithErrorFromJson:
@@ -206,3 +209,37 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
             "tokens.output": 9,
             "tokens.cache_read": 6,
         }
+
+    def test_protocol_shaped_output_with_many_items_stays_within_work_limit(self):
+        output_item = (
+            b'{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}'
+        )
+        body = (
+            b'{"id":"resp_many","model":"gpt-5.6-sol","output":['
+            + b",".join([output_item] * 700)
+            + b'],"usage":{"input_tokens":20,"output_tokens":9}}'
+        )
+
+        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+
+        assert error is None
+        assert result == {
+            "message_id": "resp_many",
+            "model": "gpt-5.6-sol",
+            "tokens.input": 20,
+            "tokens.output": 9,
+        }
+
+    def test_work_limit_accumulates_across_chunks_without_partial_usage(self):
+        extractor = create_openai_responses_json_usage_extractor()
+        dense_array = b",".join([b"0"] * 40_000)
+        extractor.feed(
+            b'{"id":"resp_partial","model":"gpt-5.6-sol",'
+            b'"usage":{"input_tokens":20,"output_tokens":9},"padding":['
+        )
+        midpoint = len(dense_array) // 2
+        extractor.feed(dense_array[:midpoint])
+        extractor.feed(dense_array[midpoint:])
+        extractor.feed(b"]}")
+
+        assert extractor.finish() == (None, "work limit exceeded")
