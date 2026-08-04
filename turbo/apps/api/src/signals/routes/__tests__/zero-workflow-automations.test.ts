@@ -1862,9 +1862,18 @@ describe("zero workflow automations", () => {
     const threadEvents = await wf.readThreadEvents(
       automation.body.chatThreadId,
     );
+    const revokedEventIds = new Set(
+      threadEvents.flatMap((event) => {
+        return event.revokesEventId ? [event.revokesEventId] : [];
+      }),
+    );
     expect(
       threadEvents.filter((event) => {
-        return event.eventType === "input.automation" && !event.runId;
+        return (
+          event.eventType === "input.automation" &&
+          !event.runId &&
+          !revokedEventIds.has(event.id)
+        );
       }),
     ).toHaveLength(3);
   });
@@ -2163,9 +2172,18 @@ describe("zero workflow automations", () => {
     );
 
     const threadEvents = await wf.readThreadEvents(chatThreadId);
+    const revokedEventIds = new Set(
+      threadEvents.flatMap((event) => {
+        return event.revokesEventId ? [event.revokesEventId] : [];
+      }),
+    );
     expect(
       threadEvents.filter((event) => {
-        return event.eventType === "input.automation" && !event.runId;
+        return (
+          event.eventType === "input.automation" &&
+          !event.runId &&
+          !revokedEventIds.has(event.id)
+        );
       }),
     ).toHaveLength(1);
   });

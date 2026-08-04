@@ -1,6 +1,11 @@
 import { zeroWorkflowEventTypeSchema } from "@vm0/api-contracts/contracts/zero-workflows";
 import { z } from "zod";
 
+import {
+  createUserMessageDocument,
+  projectUserMessage,
+} from "./zero-chat-user-message.service";
+
 export const workflowAutomationEventTypeSchema = zeroWorkflowEventTypeSchema.or(
   z.enum(["schedule", "manual"]),
 );
@@ -500,15 +505,55 @@ export function storedWorkflowAutomationContext(args: {
   };
 }
 
+function slackWorkflowFilePrompt(
+  payload: WorkflowAutomationEventPayload,
+): string | null {
+  const files = payload.files;
+  if (!Array.isArray(files)) {
+    throw new Error(
+      'Workflow automation event payload field "files" must be an array',
+    );
+  }
+  if (files.length === 0) {
+    return null;
+  }
+  const document = createUserMessageDocument({
+    text: null,
+    files: files.map((file) => {
+      if (typeof file !== "object" || file === null || !isEventPayload(file)) {
+        throw new Error(
+          'Workflow automation event payload field "files" must contain objects',
+        );
+      }
+      return {
+        id: stringField(file, "assetId"),
+        filename: stringField(file, "filename"),
+        contentType: stringField(file, "contentType"),
+      };
+    }),
+  });
+  return projectUserMessage(document).agentPrompt;
+}
+
 /**
  * The visible user turn. Without the trigger line, consecutive firings of the
  * same automation produce byte-identical user turns.
  */
-export function workflowAutomationPrompt(args: {
-  readonly workflowName: string;
-  readonly trigger: string;
-}): string {
-  return [`/${args.workflowName}`, `Trigger: ${args.trigger}`].join("\n");
+export function workflowAutomationPrompt(
+  context: Pick<
+    WorkflowAutomationContext,
+    "workflowName" | "eventType" | "trigger" | "event"
+  >,
+): string {
+  const filePrompt =
+    context.eventType === "slack-user-mentioned"
+      ? slackWorkflowFilePrompt(context.event)
+      : null;
+  return [
+    `/${context.workflowName}`,
+    `Trigger: ${context.trigger}`,
+    ...(filePrompt === null ? [] : ["", filePrompt]),
+  ].join("\n");
 }
 
 export function workflowAutomationAppendSystemPrompt(

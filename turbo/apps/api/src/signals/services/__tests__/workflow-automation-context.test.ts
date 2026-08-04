@@ -403,6 +403,40 @@ describe("workflow automation context lookup contracts", () => {
     },
   );
 
+  it("projects canonical Slack input assets into the visible run prompt", () => {
+    const eventPayload = {
+      deliveryId: "slack-delivery-123",
+      workspaceId: "T_WORKSPACE",
+      channelId: "C_CHANNEL",
+      ownerSlackUserId: "U_OWNER",
+      messageTs: "1720000000.000100",
+      files: [
+        {
+          assetId: "asset-123",
+          position: 0,
+          filename: "notes.txt",
+          contentType: "text/plain",
+          size: 12,
+        },
+      ],
+    };
+    const context = storedWorkflowAutomationContext({
+      workflowName: "workflow-context-test",
+      eventType: "slack-user-mentioned",
+      eventPayload,
+    });
+
+    expect(workflowAutomationPrompt(context)).toBe(
+      [
+        "/workflow-context-test",
+        "Trigger: Slack user U_OWNER was directly mentioned in channel C_CHANNEL (Slack message 1720000000.000100, delivery slack-delivery-123).",
+        "",
+        "[Web file] notes.txt (text/plain)",
+        "   [ID] asset-123",
+      ].join("\n"),
+    );
+  });
+
   it.each([
     {
       payload: {
