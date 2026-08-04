@@ -4250,10 +4250,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const queueInsertedAt = requestStartedAt + 5000;
     mockNow(requestStartedAt);
     const admissionLockRequest = holdOrgAdmissionLock(context, actor.orgId);
+    const cleanupRequests: Promise<unknown>[] = [admissionLockRequest];
     onTestFinished(async () => {
       clearMockNow();
-      await releaseOrgAdmissionLock(context);
-      await admissionLockRequest;
+      const cleanupResults = await Promise.allSettled([
+        releaseOrgAdmissionLock(context),
+        ...cleanupRequests,
+      ]);
+      const cleanupFailure = cleanupResults.find((result) => {
+        return result.status === "rejected";
+      });
+      if (cleanupFailure?.status === "rejected") {
+        throw cleanupFailure.reason;
+      }
     });
     await expect
       .poll(async () => {
@@ -4267,6 +4276,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       threadId: first.threadId,
       prompt: "continue affinity-protected session",
     });
+    cleanupRequests.push(protectedFollowUpRequest);
     await expect
       .poll(async () => {
         return (await readOrgAdmissionLockState(context)).waiting;
