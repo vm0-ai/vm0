@@ -21,6 +21,9 @@ import { singleton } from "../../lib/singleton";
 
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
+// Previous runner-bundled Zero CLIs gate `recognize` with this key. Keep the
+// positive token override until those runners have drained after global rollout.
+const LEGACY_IMAGE_RECOGNITION_SWITCH = "zeroImageRecognition";
 // Covers the runner's two-hour execution budget plus claim, startup,
 // finalization, and terminal report time.
 const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
@@ -30,7 +33,6 @@ const CONDITIONAL_CAPABILITIES = [
   ["browser:read", FeatureSwitchKey.ZeroBrowser],
   ["browser:write", FeatureSwitchKey.ZeroBrowser],
   ["connector:write", FeatureSwitchKey.CustomConnectorCliCreate],
-  ["image-recognition:write", FeatureSwitchKey.ZeroImageRecognition],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
@@ -334,6 +336,13 @@ export function generateZeroToken(
       capabilities.push(capability);
     }
   }
+  const featureSwitchOverrides =
+    options?.imageRecognitionAvailable === true
+      ? {
+          ...overrides,
+          [LEGACY_IMAGE_RECOGNITION_SWITCH]: true,
+        }
+      : overrides;
 
   const payload: z.infer<typeof zeroTokenPayloadSchema> = {
     scope: "zero",
@@ -341,7 +350,7 @@ export function generateZeroToken(
     runId,
     orgId,
     capabilities,
-    ...(overrides === undefined ? {} : { featureSwitchOverrides: overrides }),
+    ...(featureSwitchOverrides === undefined ? {} : { featureSwitchOverrides }),
     ...(capabilities.includes("computer-use:write") &&
     options?.computerUseHostId
       ? { computerUseHostId: options.computerUseHostId }

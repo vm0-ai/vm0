@@ -767,9 +767,6 @@ describe("chat run queue", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
     });
 
     await waitFor(() => {

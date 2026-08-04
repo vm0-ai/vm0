@@ -75,7 +75,6 @@ const COMMAND_FEATURE_SWITCH_MAP: Readonly<
   Partial<Record<string, FeatureSwitchKey>>
 > = {
   browser: FeatureSwitchKey.ZeroBrowser,
-  recognize: FeatureSwitchKey.ZeroImageRecognition,
 };
 
 const RUN_ONLY_COMMANDS = new Set(["recognize"]);

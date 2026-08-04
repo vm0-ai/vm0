@@ -27,6 +27,12 @@ export const featureSwitchesResponseSchema = z.object({
    * Older API deployments omit this field.
    */
   supportsImageRecognition: z.boolean().optional(),
+  /**
+   * Optional handshake indicating managed image recognition is globally
+   * available without a feature switch. Older API deployments omit this field.
+   * Remove after APIs with the pre-rollout semantics are no longer reachable.
+   */
+  imageRecognitionRolloutComplete: z.literal(true).optional(),
 });
 
 export type FeatureSwitchesResponse = z.infer<
