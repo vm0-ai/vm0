@@ -663,6 +663,11 @@ function createWorkflowAutomationSummaryForRequest(
       databaseUrl: body.eventConfig.databaseUrl,
     });
   }
+  if (body.eventType === "slack-user-mentioned") {
+    throw new Error(
+      "Slack user-mentioned automations are unsupported by the Platform mock handler",
+    );
+  }
   return passthroughEventAutomationSummaryForRequest(base, body);
 }
 
@@ -778,6 +783,11 @@ function workflowAutomationUpdateHandlers() {
     mockApi(
       zeroWorkflowAutomationsContract.update,
       ({ body, params, respond }) => {
+        if ("eventConfig" in body && body.eventConfig.provider === "slack") {
+          throw new Error(
+            "Slack user-mentioned automations are unsupported by the Platform mock handler",
+          );
+        }
         const updatedChatAutomation = updateChatThreadAutomation(
           params.id,
           (automation) => {

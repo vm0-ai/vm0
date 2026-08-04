@@ -150,6 +150,9 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.SlackUserMentionAutomations]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.JoggAiBuiltIn]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
@@ -182,6 +185,9 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.SlackUserMentionAutomations]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.JoggAiBuiltIn]).toBe(false);
   });
 

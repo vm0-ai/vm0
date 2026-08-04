@@ -29,7 +29,7 @@ export const SLACK_BOT_SCOPES: readonly string[] = [
   "files:write",
 ];
 
-function hasAllBotScopes(storedScopes: string | null): boolean {
+export function hasAllSlackBotScopes(storedScopes: string | null): boolean {
   if (storedScopes === null) {
     return false;
   }
@@ -41,7 +41,7 @@ function hasAllBotScopes(storedScopes: string | null): boolean {
   });
 }
 
-function buildSlackInstallUrl(args: {
+export function buildSlackInstallUrl(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly reinstall: boolean;
@@ -59,7 +59,7 @@ function buildSlackInstallUrl(args: {
   return url.toString();
 }
 
-function buildSlackConnectUrl(args: {
+export function buildSlackConnectUrl(args: {
   readonly orgId: string;
   readonly userId: string;
 }): string | null {
@@ -128,7 +128,7 @@ export function zeroSlackOrgStatus(args: {
       if (!isAdmin) {
         return { scopeMismatch: null, reinstallUrl: null };
       }
-      const scopeMismatch = !hasAllBotScopes(installationRow.botScopes);
+      const scopeMismatch = !hasAllSlackBotScopes(installationRow.botScopes);
       const reinstallUrl = scopeMismatch
         ? buildSlackInstallUrl({
             orgId: args.orgId,

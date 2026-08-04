@@ -117,6 +117,7 @@ export const zeroWorkflowEventTypeSchema = z.enum([
   "notion-child-page-created",
   "notion-database-item-created",
   "notion-page-content-updated",
+  "slack-user-mentioned",
   "strapi-entry-published",
   "webhook-received",
 ]);
@@ -607,6 +608,36 @@ export type NotionPageContentUpdatedEventConfig = z.infer<
   typeof notionPageContentUpdatedEventConfigSchema
 >;
 
+export const slackChannelReferenceSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+  })
+  .strict();
+export type SlackChannelReference = z.infer<typeof slackChannelReferenceSchema>;
+
+export const slackUserMentionedEventConfigSchema = z
+  .object({
+    provider: z.literal("slack"),
+    event: z.literal("user_mentioned"),
+    channel: slackChannelReferenceSchema,
+  })
+  .strict();
+export type SlackUserMentionedEventConfig = z.infer<
+  typeof slackUserMentionedEventConfigSchema
+>;
+
+export const slackUserMentionedEventCreateConfigSchema = z
+  .object({
+    provider: z.literal("slack"),
+    event: z.literal("user_mentioned"),
+    channel: z.string().trim().min(1).max(255),
+  })
+  .strict();
+export type SlackUserMentionedEventCreateConfig = z.infer<
+  typeof slackUserMentionedEventCreateConfigSchema
+>;
+
 export const notionPageContentUpdatedEventCreateConfigSchema = z
   .object({
     provider: z.literal("notion"),
@@ -835,6 +866,15 @@ export const zeroWorkflowNotionPageContentUpdatedAutomationSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const zeroWorkflowSlackUserMentionedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("slack-user-mentioned"),
+    eventConfig: slackUserMentionedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const zeroWorkflowStrapiEntryPublishedAutomationSummarySchema =
   zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -877,6 +917,7 @@ export const zeroWorkflowEventAutomationSummarySchema = z.discriminatedUnion(
     zeroWorkflowNotionChildPageCreatedAutomationSummarySchema,
     zeroWorkflowNotionDatabaseItemCreatedAutomationSummarySchema,
     zeroWorkflowNotionPageContentUpdatedAutomationSummarySchema,
+    zeroWorkflowSlackUserMentionedAutomationSummarySchema,
     zeroWorkflowStrapiEntryPublishedAutomationSummarySchema,
     zeroWorkflowWebhookReceivedAutomationSummarySchema,
   ],
@@ -1056,6 +1097,15 @@ export const chatThreadWorkflowNotionPageContentUpdatedAutomationSchema =
     scheduleSummary: z.null(),
   });
 
+export const chatThreadWorkflowSlackUserMentionedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("slack-user-mentioned"),
+    eventConfig: slackUserMentionedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const chatThreadWorkflowStrapiEntryPublishedAutomationSchema =
   chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
@@ -1090,6 +1140,7 @@ export const chatThreadWorkflowAutomationSchema = z.union([
   chatThreadWorkflowNotionChildPageCreatedAutomationSchema,
   chatThreadWorkflowNotionDatabaseItemCreatedAutomationSchema,
   chatThreadWorkflowNotionPageContentUpdatedAutomationSchema,
+  chatThreadWorkflowSlackUserMentionedAutomationSchema,
   chatThreadWorkflowStrapiEntryPublishedAutomationSchema,
   chatThreadWorkflowWebhookReceivedAutomationSchema,
 ]);
@@ -1255,6 +1306,14 @@ export const zeroWorkflowNotionPageContentUpdatedAutomationCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
+export const zeroWorkflowSlackUserMentionedAutomationCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("slack-user-mentioned"),
+    eventConfig: slackUserMentionedEventCreateConfigSchema,
+    enabled: z.boolean().optional(),
+  });
+
 export const zeroWorkflowStrapiEntryPublishedAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
@@ -1289,6 +1348,7 @@ export const zeroWorkflowAutomationCreateRequestSchema = z.union([
   zeroWorkflowNotionChildPageCreatedAutomationCreateRequestSchema,
   zeroWorkflowNotionDatabaseItemCreatedAutomationCreateRequestSchema,
   zeroWorkflowNotionPageContentUpdatedAutomationCreateRequestSchema,
+  zeroWorkflowSlackUserMentionedAutomationCreateRequestSchema,
   zeroWorkflowStrapiEntryPublishedAutomationCreateRequestSchema,
   zeroWorkflowWebhookReceivedAutomationCreateRequestSchema,
 ]);
@@ -1308,10 +1368,16 @@ export const zeroWorkflowGithubEventAutomationUpdateRequestSchema = z.object({
   eventConfig: githubWorkflowEventConfigSchema,
 });
 
+export const zeroWorkflowSlackUserMentionedAutomationUpdateRequestSchema =
+  z.object({
+    eventConfig: slackUserMentionedEventCreateConfigSchema,
+  });
+
 export const zeroWorkflowAutomationUpdateRequestSchema = z.union([
   zeroWorkflowScheduleAutomationUpdateRequestSchema,
   zeroWorkflowGmailEventAutomationUpdateRequestSchema,
   zeroWorkflowGithubEventAutomationUpdateRequestSchema,
+  zeroWorkflowSlackUserMentionedAutomationUpdateRequestSchema,
 ]);
 export type ZeroWorkflowAutomationUpdateRequest = z.infer<
   typeof zeroWorkflowAutomationUpdateRequestSchema

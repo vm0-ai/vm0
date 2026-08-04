@@ -282,6 +282,23 @@ const strapiAutomation = {
   nextRunAt: null,
 };
 
+const slackUserMentionedAutomation = {
+  ...automationBase,
+  kind: "event",
+  eventType: "slack-user-mentioned",
+  eventConfig: {
+    provider: "slack",
+    event: "user_mentioned",
+    channel: {
+      id: "C0123456789",
+      name: "product",
+    },
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+};
+
 describe("zero workflow automation commands", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -1706,6 +1723,7 @@ describe("zero workflow automation commands", () => {
               notionAutomation,
               notionDatabaseAutomation,
               notionContentUpdatedAutomation,
+              slackUserMentionedAutomation,
               strapiAutomation,
             ]);
           },
@@ -1728,6 +1746,7 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("Product notes");
       expect(logCalls).toContain("New Notion database item");
       expect(logCalls).toContain("Bug Bash");
+      expect(logCalls).toContain("Slack user mentioned");
       expect(logCalls).toContain(
         "Strapi entry published: api::article.article, en",
       );

@@ -7,10 +7,125 @@ import {
   googleMeetTranscriptGeneratedEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
+  slackUserMentionedEventConfigSchema,
+  chatThreadWorkflowAutomationSchema,
   zeroWorkflowConnectorReadinessResponseSchema,
   zeroWorkflowUpdateRequestSchema,
   zeroWorkflowAutomationCreateRequestSchema,
+  zeroWorkflowAutomationSummarySchema,
+  zeroWorkflowAutomationUpdateRequestSchema,
 } from "../zero-workflows";
+
+describe("Slack user-mentioned workflow automation contract", () => {
+  const persistedEventConfig = {
+    provider: "slack",
+    event: "user_mentioned",
+    channel: { id: "C0123456789", name: "product" },
+  } as const;
+
+  it("keeps create input separate from persisted channel metadata", () => {
+    expect(
+      zeroWorkflowAutomationCreateRequestSchema.parse({
+        kind: "event",
+        eventType: "slack-user-mentioned",
+        eventConfig: {
+          provider: "slack",
+          event: "user_mentioned",
+          channel: "#product",
+        },
+      }),
+    ).toStrictEqual({
+      kind: "event",
+      eventType: "slack-user-mentioned",
+      eventConfig: {
+        provider: "slack",
+        event: "user_mentioned",
+        channel: "#product",
+      },
+    });
+    expect(
+      zeroWorkflowAutomationCreateRequestSchema.safeParse({
+        kind: "event",
+        eventType: "slack-user-mentioned",
+        eventConfig: persistedEventConfig,
+      }).success,
+    ).toBe(false);
+    expect(
+      zeroWorkflowAutomationCreateRequestSchema.safeParse({
+        kind: "event",
+        eventType: "slack-user-mentioned",
+        eventConfig: {
+          provider: "slack",
+          event: "user_mentioned",
+          channel: "product",
+          mentionedUserId: "U0123456789",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires resolved channel metadata for persisted configs", () => {
+    expect(
+      slackUserMentionedEventConfigSchema.parse(persistedEventConfig),
+    ).toStrictEqual(persistedEventConfig);
+    expect(
+      slackUserMentionedEventConfigSchema.safeParse({
+        provider: "slack",
+        event: "user_mentioned",
+        channel: "product",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts only raw channel selectors on update", () => {
+    expect(
+      zeroWorkflowAutomationUpdateRequestSchema.safeParse({
+        eventConfig: {
+          provider: "slack",
+          event: "user_mentioned",
+          channel: "C0123456789",
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      zeroWorkflowAutomationUpdateRequestSchema.safeParse({
+        eventConfig: persistedEventConfig,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("exposes resolved channel metadata in detail and chat summaries", () => {
+    const summary = {
+      id: "automation-1",
+      ownerUserId: "user-1",
+      enabled: true,
+      chatThreadId: "thread-1",
+      nextRunAt: null,
+      lastRunAt: null,
+      kind: "event",
+      eventType: "slack-user-mentioned",
+      eventConfig: persistedEventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    } as const;
+    expect(zeroWorkflowAutomationSummarySchema.safeParse(summary).success).toBe(
+      true,
+    );
+    expect(
+      chatThreadWorkflowAutomationSchema.safeParse({
+        ...summary,
+        id: "00000000-0000-4000-a000-000000000001",
+        workflow: {
+          id: "00000000-0000-4000-a000-000000000002",
+          agentId: "00000000-0000-4000-a000-000000000003",
+          name: "slack-mention",
+          displayName: "Slack mention",
+          description: null,
+        },
+      }).success,
+    ).toBe(true);
+  });
+});
 
 describe("Gmail new message workflow automation contract", () => {
   it("accepts only explicit text match fields", () => {

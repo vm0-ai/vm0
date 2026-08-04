@@ -188,6 +188,7 @@ interface ForwardedInternalCallback {
 interface SlackAppInstallOptions {
   readonly teamId?: string;
   readonly installerSlackUserId?: string;
+  readonly botScopes?: readonly string[];
 }
 
 interface SlackAppInstallation {
@@ -936,7 +937,7 @@ export function createBddIntegrationApi(context: TestContext) {
         bot_user_id: botUserId,
         team: { id: teamId, name: `BDD Slack App ${teamId}` },
         authed_user: { id: installerSlackUserId },
-        scope: SLACK_APP_BOT_SCOPES,
+        scope: options.botScopes?.join(",") ?? SLACK_APP_BOT_SCOPES,
       });
       const client = setupApp({ context })(zeroSlackOauthContract);
       await accept(

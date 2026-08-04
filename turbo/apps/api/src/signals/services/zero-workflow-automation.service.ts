@@ -16,6 +16,8 @@ import {
   notionChildPageCreatedEventConfigSchema,
   notionDatabaseItemCreatedEventConfigSchema,
   notionPageContentUpdatedEventConfigSchema,
+  slackUserMentionedEventConfigSchema,
+  slackUserMentionedEventCreateConfigSchema,
   strapiEntryPublishedEventConfigSchema,
   webhookReceivedEventConfigSchema,
   type ChatRunFinishedEventConfig,
@@ -31,6 +33,8 @@ import {
   type NotionPageContentUpdatedEventConfig,
   type NotionPageContentUpdatedEventCreateConfig,
   type NotionWorkflowEventConfig,
+  type SlackUserMentionedEventConfig,
+  type SlackUserMentionedEventCreateConfig,
   type StrapiEntryPublishedEventConfig,
   type WebhookReceivedEventConfig,
   type ZeroWorkflowEventType,
@@ -88,6 +92,7 @@ import {
   prepareNotionPageContentUpdatedEventConfigForPersist,
 } from "./notion-workflow-event.service";
 import { notionWorkflowAutomationCreationEnabledForOwner } from "./notion-workflow-automation-feature-switch.service";
+import { prepareSlackUserMentionedEventConfigForPersist } from "./slack-workflow-automation.service";
 import { lockWorkflowWebhookAutomationTierEligibleForOrg } from "./workflow-webhook-automation-entitlement.service";
 import {
   buildWorkflowWebhookSummaryFields,
@@ -156,6 +161,10 @@ type NotionWorkflowEventType = Extract<
 type StrapiWorkflowEventType = Extract<
   ZeroWorkflowEventType,
   "strapi-entry-published"
+>;
+type SlackUserMentionedWorkflowEventType = Extract<
+  ZeroWorkflowEventType,
+  "slack-user-mentioned"
 >;
 
 /**
@@ -414,6 +423,7 @@ function supportedWorkflowEventType(
     eventType === "notion-child-page-created" ||
     eventType === "notion-database-item-created" ||
     eventType === "notion-page-content-updated" ||
+    eventType === "slack-user-mentioned" ||
     eventType === "strapi-entry-published" ||
     eventType === "webhook-received"
   );
@@ -487,6 +497,12 @@ function supportedStrapiEventType(
   eventType: string | null,
 ): eventType is StrapiWorkflowEventType {
   return eventType === "strapi-entry-published";
+}
+
+function supportedSlackUserMentionedEventType(
+  eventType: string | null,
+): eventType is SlackUserMentionedWorkflowEventType {
+  return eventType === "slack-user-mentioned";
 }
 
 function rowSummaryBase(row: AutomationRow, chatThreadId: string | null) {
@@ -730,6 +746,16 @@ function eventRowToSummary(
   }
   if (row.eventType === "notion-page-content-updated") {
     return notionPageContentUpdatedRowSummary(row, chatThreadId);
+  }
+  if (row.eventType === "slack-user-mentioned") {
+    return {
+      ...rowSummaryBase(row, chatThreadId),
+      kind: "event",
+      eventType: "slack-user-mentioned",
+      eventConfig: slackUserMentionedEventConfigSchema.parse(row.eventConfig),
+      schedule: null,
+      scheduleSummary: null,
+    };
   }
   if (row.eventType === "strapi-entry-published") {
     return {
@@ -1310,6 +1336,23 @@ interface CreateStrapiEventAutomationInput {
   readonly autonomyBudget?: number;
 }
 
+interface CreateSlackUserMentionedEventAutomationInput {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly workflowId: string;
+  readonly eventType: SlackUserMentionedWorkflowEventType;
+  readonly eventConfig: SlackUserMentionedEventCreateConfig;
+  readonly enabled: boolean;
+  readonly autonomyBudget?: number;
+}
+
+type PersistedSlackUserMentionedEventAutomationInput = Omit<
+  CreateSlackUserMentionedEventAutomationInput,
+  "eventConfig"
+> & {
+  readonly eventConfig: SlackUserMentionedEventConfig;
+};
+
 interface CreateWebhookEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
@@ -1328,6 +1371,7 @@ type CreateAutomationInput =
   | CreateGoogleCalendarEventAutomationInput
   | CreateGoogleMeetEventAutomationInput
   | CreateNotionEventAutomationInput
+  | CreateSlackUserMentionedEventAutomationInput
   | CreateStrapiEventAutomationInput
   | CreateWebhookEventAutomationInput;
 type CreateEventAutomationInput = Exclude<
@@ -1386,6 +1430,12 @@ function automationCreateInputIsStrapi(
   return supportedStrapiEventType(args.eventType);
 }
 
+function automationCreateInputIsSlackUserMentioned(
+  args: CreateEventAutomationInput,
+): args is CreateSlackUserMentionedEventAutomationInput {
+  return supportedSlackUserMentionedEventType(args.eventType);
+}
+
 async function insertWorkflowEventAutomation(
   db: Db,
   args: {
@@ -1395,6 +1445,7 @@ async function insertWorkflowEventAutomation(
       | CreateGithubEventAutomationInput
       | CreateGoogleCalendarEventAutomationInput
       | CreateGoogleMeetEventAutomationInput
+      | PersistedSlackUserMentionedEventAutomationInput
       | (CreateNotionEventAutomationInput & {
           readonly eventConfig: NotionWorkflowEventConfig;
         });
@@ -2000,6 +2051,40 @@ async function createStrapiEventAutomationForWorkflow(args: {
   return { kind: "ok", summary };
 }
 
+async function createSlackUserMentionedEventAutomationForWorkflow(args: {
+  readonly context: CreateEventAutomationWorkflowContext;
+  readonly input: CreateSlackUserMentionedEventAutomationInput;
+  readonly signal: AbortSignal;
+}): Promise<AutomationResult> {
+  const eventConfig = slackUserMentionedEventCreateConfigSchema.parse(
+    args.input.eventConfig,
+  );
+  const preparedConfig = await prepareSlackUserMentionedEventConfigForPersist(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      isAdmin: args.input.member.role === "admin",
+      eventConfig,
+      signal: args.signal,
+    },
+  );
+  args.signal.throwIfAborted();
+  if (preparedConfig.kind !== "ok") {
+    return preparedConfig;
+  }
+
+  const summary = await insertWorkflowEventAutomation(args.context.db, {
+    input: { ...args.input, eventConfig: preparedConfig.eventConfig },
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  return { kind: "ok", summary };
+}
+
 async function createChatRunFinishedEventAutomationForWorkflow(args: {
   readonly context: {
     readonly db: Db;
@@ -2115,6 +2200,14 @@ const createEventAutomationForWorkflow$ = command(
       }
 
       return await createNotionEventAutomationForWorkflow({
+        context: args,
+        input,
+        signal,
+      });
+    }
+
+    if (automationCreateInputIsSlackUserMentioned(input)) {
+      return await createSlackUserMentionedEventAutomationForWorkflow({
         context: args,
         input,
         signal,
@@ -2318,14 +2411,20 @@ interface UpdateAutomationInput {
   readonly member: WorkflowMember;
   readonly automationId: string;
   readonly schedule?: ZeroWorkflowSchedule;
-  readonly eventConfig?: GmailWorkflowEventConfig | GithubWorkflowEventConfig;
+  readonly eventConfig?:
+    | GmailWorkflowEventConfig
+    | GithubWorkflowEventConfig
+    | SlackUserMentionedEventCreateConfig;
 }
 
 async function updateAutomationEventConfig(
   db: Db,
   args: {
     readonly automationId: string;
-    readonly eventConfig: GmailWorkflowEventConfig | GithubWorkflowEventConfig;
+    readonly eventConfig:
+      | GmailWorkflowEventConfig
+      | GithubWorkflowEventConfig
+      | SlackUserMentionedEventConfig;
     readonly signal: AbortSignal;
   },
 ): Promise<ZeroWorkflowAutomationSummary> {
@@ -2427,7 +2526,8 @@ const updateEventAutomationForWorkflow$ = command(
       readonly automation: AutomationRow;
       readonly eventConfig?:
         | GmailWorkflowEventConfig
-        | GithubWorkflowEventConfig;
+        | GithubWorkflowEventConfig
+        | SlackUserMentionedEventCreateConfig;
     },
     signal: AbortSignal,
   ): Promise<AutomationResult> => {
@@ -2453,6 +2553,37 @@ const updateEventAutomationForWorkflow$ = command(
       return {
         kind: "bad-request",
         message: "eventConfig is required for event automations",
+      };
+    }
+    if (supportedSlackUserMentionedEventType(args.automation.eventType)) {
+      const parsedConfig = slackUserMentionedEventCreateConfigSchema.safeParse(
+        args.eventConfig,
+      );
+      if (!parsedConfig.success) {
+        return {
+          kind: "bad-request",
+          message: "eventConfig must be a Slack user-mentioned event config",
+        };
+      }
+      const preparedConfig =
+        await prepareSlackUserMentionedEventConfigForPersist(args.db, {
+          orgId: args.orgId,
+          userId: args.member.userId,
+          isAdmin: args.member.role === "admin",
+          eventConfig: parsedConfig.data,
+          signal,
+        });
+      signal.throwIfAborted();
+      if (preparedConfig.kind !== "ok") {
+        return preparedConfig;
+      }
+      return {
+        kind: "ok",
+        summary: await updateAutomationEventConfig(args.db, {
+          automationId: args.automation.id,
+          eventConfig: preparedConfig.eventConfig,
+          signal,
+        }),
       };
     }
     if (supportedGithubEventType(args.automation.eventType)) {
@@ -2796,6 +2927,26 @@ const ensureEventAutomationCanBeEnabled$ = command(
         return { kind: "bad-request", message: watchResult.message };
       }
       return null;
+    }
+
+    if (supportedSlackUserMentionedEventType(args.automation.eventType)) {
+      const storedConfig = slackUserMentionedEventConfigSchema.parse(
+        args.automation.eventConfig,
+      );
+      const preparedConfig =
+        await prepareSlackUserMentionedEventConfigForPersist(args.db, {
+          orgId: args.orgId,
+          userId: args.member.userId,
+          isAdmin: args.member.role === "admin",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: storedConfig.channel.id,
+          },
+          signal,
+        });
+      signal.throwIfAborted();
+      return preparedConfig.kind === "ok" ? null : preparedConfig;
     }
 
     if (supportedGithubEventType(args.automation.eventType)) {

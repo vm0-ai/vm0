@@ -116,7 +116,7 @@ export async function listConversations(
     );
 
     for (const ch of result.channels ?? []) {
-      if (ch.is_member && ch.id && ch.name) {
+      if (!ch.is_archived && ch.is_member && ch.id && ch.name) {
         channels.push({ id: ch.id, name: ch.name });
       }
     }

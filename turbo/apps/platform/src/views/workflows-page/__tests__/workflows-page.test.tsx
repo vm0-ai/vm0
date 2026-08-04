@@ -995,6 +995,11 @@ function mockCreateWorkflowAutomation(
           },
         });
       }
+      if (body.eventConfig.provider === "slack") {
+        throw new Error(
+          "Slack user-mentioned automations are unsupported by this Platform test mock",
+        );
+      }
       if (
         body.eventConfig.provider === "github" ||
         body.eventConfig.provider === "strapi" ||
@@ -1025,6 +1030,11 @@ function mockUpdateWorkflowAutomation(
     ({ params, body, respond }) => {
       onUpdate(params.id, body);
       if ("eventConfig" in body) {
+        if (body.eventConfig.provider === "slack") {
+          throw new Error(
+            "Slack user-mentioned automations are unsupported by this Platform test mock",
+          );
+        }
         if (body.eventConfig.provider === "github") {
           if (body.eventConfig.event === "workflow_run_completed") {
             return respond(200, {

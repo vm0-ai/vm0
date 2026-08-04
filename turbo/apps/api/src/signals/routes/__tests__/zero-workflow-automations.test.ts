@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowsDetailContract,
+  type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -26,6 +27,7 @@ import {
 import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import {
   createWorkflowsBddApi,
   mockGoogleCalendarConnectorOAuth,
@@ -42,6 +44,25 @@ const connectorsApi = createConnectorBddApi(context);
 const gh = createGithubBddApi(context);
 const runs = createRunsApi(context);
 const webhookCallbacks = createWebhookCallbackApi(context);
+const integrations = createBddIntegrationApi(context);
+
+const SLACK_CONVERSATIONS_URL = "https://slack.com/api/conversations.list";
+const REQUIRED_SLACK_BOT_SCOPES = [
+  "app_mentions:read",
+  "chat:write",
+  "channels:read",
+  "channels:history",
+  "groups:read",
+  "groups:history",
+  "im:history",
+  "im:write",
+  "commands",
+  "users:read",
+  "users:read.email",
+  "reactions:write",
+  "files:read",
+  "files:write",
+] as const;
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -57,6 +78,23 @@ function detailClient() {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+type SlackUserMentionedAutomationSummary = Extract<
+  ZeroWorkflowAutomationSummary,
+  { readonly kind: "event"; readonly eventType: "slack-user-mentioned" }
+>;
+
+function requireSlackUserMentionedAutomation(
+  automation: ZeroWorkflowAutomationSummary,
+): SlackUserMentionedAutomationSummary {
+  if (
+    automation.kind !== "event" ||
+    automation.eventType !== "slack-user-mentioned"
+  ) {
+    throw new Error("Expected a Slack user-mentioned automation");
+  }
+  return automation;
 }
 
 function sandboxOperationEventsForRun(
@@ -304,6 +342,39 @@ function configureNotionDatabaseMock(args?: {
   );
 }
 
+interface SlackConversationFixture {
+  readonly id: string;
+  readonly name: string;
+  readonly isMember?: boolean;
+  readonly isArchived?: boolean;
+}
+
+function configureSlackConversations(
+  channels: readonly SlackConversationFixture[],
+): void {
+  server.use(
+    http.get(SLACK_CONVERSATIONS_URL, ({ request }) => {
+      const url = new URL(request.url);
+      expect(url.searchParams.get("types")).toBe(
+        "public_channel,private_channel",
+      );
+      expect(url.searchParams.get("exclude_archived")).toBe("true");
+      return HttpResponse.json({
+        ok: true,
+        channels: channels.map((channel) => {
+          return {
+            id: channel.id,
+            name: channel.name,
+            is_member: channel.isMember ?? true,
+            is_archived: channel.isArchived ?? false,
+          };
+        }),
+        response_metadata: { next_cursor: "" },
+      });
+    }),
+  );
+}
+
 describe("zero workflow automations", () => {
   async function setupFixture(
     tier: "pro" | "team" = "pro",
@@ -416,6 +487,20 @@ describe("zero workflow automations", () => {
       "org:member",
     );
     return connector.id;
+  }
+
+  async function setSlackUserMentionAutomationsEnabled(
+    scenario: AutomationScenario,
+    enabled: boolean,
+  ): Promise<void> {
+    await updateFeatureSwitchesForUser(context, scenario.fixture, {
+      [FeatureSwitchKey.SlackUserMentionAutomations]: enabled,
+    });
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
   }
 
   it("creates a cron automation and eagerly binds a chat thread", async () => {
@@ -1116,6 +1201,532 @@ describe("zero workflow automations", () => {
       webhookUrl: created.body.webhookUrl,
       webhookSecret: created.body.webhookSecret,
     });
+  });
+
+  it("gates Slack user-mentioned automation creation without writing a row", async () => {
+    const scenario = await setupFixture();
+
+    const rejected = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "general",
+          },
+        },
+      }),
+      [400],
+    );
+    expect(rejected.body.error.message).toBe(
+      "Slack user-mentioned automations are not enabled",
+    );
+
+    const listed = await accept(
+      automationsClient().list({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+      }),
+      [200],
+    );
+    expect(listed.body).toStrictEqual([]);
+  });
+
+  it("requires an installed Slack app and only gives admins an install action", async () => {
+    const scenario = await setupFixture();
+    await setSlackUserMentionAutomationsEnabled(scenario, true);
+    integrations.configureSlackAppMocks();
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:admin",
+    );
+
+    const rejected = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "general",
+          },
+        },
+      }),
+      [400],
+    );
+    expect(rejected.body.error.message).toContain(
+      "Install the Zero Slack App before using a Slack user-mentioned automation.",
+    );
+    expect(rejected.body.error.message).toContain(
+      "Install Slack: https://www.vm0.test/api/zero/slack/oauth/install",
+    );
+
+    const listed = await accept(
+      automationsClient().list({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+      }),
+      [200],
+    );
+    expect(listed.body).toStrictEqual([]);
+  });
+
+  it("requires the automation owner's personal Slack connection", async () => {
+    const scenario = await setupFixture();
+    await setSlackUserMentionAutomationsEnabled(scenario, true);
+    integrations.configureSlackAppMocks();
+    const installer = integrations.user({
+      userId: `user_${randomUUID()}`,
+      orgId: scenario.fixture.orgId,
+      orgRole: "org:admin",
+    });
+    await integrations.installSlackWorkspace(installer, {
+      botScopes: REQUIRED_SLACK_BOT_SCOPES,
+    });
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
+
+    const rejected = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "general",
+          },
+        },
+      }),
+      [400],
+    );
+    expect(rejected.body.error.message).toContain(
+      "Connect your Slack account before using a Slack user-mentioned automation.",
+    );
+    expect(rejected.body.error.message).toContain(
+      "Connect Slack: https://www.vm0.test/api/zero/slack/oauth/connect",
+    );
+
+    const listed = await accept(
+      automationsClient().list({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+      }),
+      [200],
+    );
+    expect(listed.body).toStrictEqual([]);
+  });
+
+  it("validates stored Slack scopes for every owner but limits reinstall actions to admins", async () => {
+    const scenario = await setupFixture();
+    await setSlackUserMentionAutomationsEnabled(scenario, true);
+    integrations.configureSlackAppMocks();
+    await integrations.installSlackWorkspace(scenario.actor, {
+      botScopes: ["chat:write"],
+    });
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
+
+    const memberRejected = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "general",
+          },
+        },
+      }),
+      [400],
+    );
+    expect(memberRejected.body.error.message).toBe(
+      "A workspace admin must update Slack permissions before you can use a Slack user-mentioned automation.",
+    );
+    expect(memberRejected.body.error.message).not.toContain("reinstall=1");
+
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:admin",
+    );
+    const adminRejected = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "general",
+          },
+        },
+      }),
+      [400],
+    );
+    expect(adminRejected.body.error.message).toContain(
+      "Update Slack permissions before using a Slack user-mentioned automation.",
+    );
+    expect(adminRejected.body.error.message).toContain("reinstall=1");
+
+    const listed = await accept(
+      automationsClient().list({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+      }),
+      [200],
+    );
+    expect(listed.body).toStrictEqual([]);
+  });
+
+  it("resolves exact Slack channel IDs and names to persisted channel metadata", async () => {
+    const scenario = await setupFixture();
+    await setSlackUserMentionAutomationsEnabled(scenario, true);
+    integrations.configureSlackAppMocks();
+    await integrations.installSlackWorkspace(scenario.actor, {
+      botScopes: REQUIRED_SLACK_BOT_SCOPES,
+    });
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
+    configureSlackConversations([
+      { id: "C_GENERAL", name: "general" },
+      { id: "C_ARCHIVED", name: "archived", isArchived: true },
+      { id: "C_NOT_MEMBER", name: "not-member", isMember: false },
+      { id: "duplicate", name: "id-wins" },
+      { id: "C_DUPLICATE_1", name: "ambiguous" },
+      { id: "C_DUPLICATE_2", name: "ambiguous" },
+    ]);
+
+    const byName = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "general",
+          },
+        },
+      }),
+      [201],
+    );
+    const byHashName = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "#general",
+          },
+        },
+      }),
+      [201],
+    );
+    const byId = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "C_GENERAL",
+          },
+        },
+      }),
+      [201],
+    );
+    const idBeforeName = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "duplicate",
+          },
+        },
+      }),
+      [201],
+    );
+    for (const created of [byName, byHashName, byId]) {
+      expect(created.body).toMatchObject({
+        kind: "event",
+        eventType: "slack-user-mentioned",
+        eventConfig: {
+          provider: "slack",
+          event: "user_mentioned",
+          channel: { id: "C_GENERAL", name: "general" },
+        },
+      });
+    }
+    expect(idBeforeName.body).toMatchObject({
+      eventType: "slack-user-mentioned",
+      eventConfig: {
+        channel: { id: "duplicate", name: "id-wins" },
+      },
+    });
+
+    for (const channel of ["gener", "archived", "C_ARCHIVED", "not-member"]) {
+      const rejected = await accept(
+        automationsClient().create({
+          headers: authHeaders(),
+          params: { workflowId: scenario.workflowId },
+          body: {
+            kind: "event",
+            eventType: "slack-user-mentioned",
+            eventConfig: {
+              provider: "slack",
+              event: "user_mentioned",
+              channel,
+            },
+          },
+        }),
+        [400],
+      );
+      expect(rejected.body.error.message).toContain("is unavailable");
+    }
+    const ambiguous = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "ambiguous",
+          },
+        },
+      }),
+      [400],
+    );
+    expect(ambiguous.body.error.message).toBe(
+      'Multiple Slack channels are named "ambiguous". Use the channel ID instead.',
+    );
+
+    const listed = await accept(
+      automationsClient().list({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+      }),
+      [200],
+    );
+    expect(listed.body).toHaveLength(4);
+    if (byName.body.chatThreadId === null) {
+      throw new Error("Expected Slack automation to bind a chat thread");
+    }
+    const chatAutomations = await accept(
+      automationsClient().listForChatThread({
+        headers: authHeaders(),
+        params: { threadId: byName.body.chatThreadId },
+      }),
+      [200],
+    );
+    expect(chatAutomations.body).toContainEqual(
+      expect.objectContaining({
+        id: byName.body.id,
+        eventType: "slack-user-mentioned",
+        eventConfig: {
+          provider: "slack",
+          event: "user_mentioned",
+          channel: { id: "C_GENERAL", name: "general" },
+        },
+      }),
+    );
+  });
+
+  it("validates Slack updates before writing and revalidates enable without rewriting the summary", async () => {
+    const scenario = await setupFixture();
+    await setSlackUserMentionAutomationsEnabled(scenario, true);
+    integrations.configureSlackAppMocks();
+    await integrations.installSlackWorkspace(scenario.actor, {
+      botScopes: REQUIRED_SLACK_BOT_SCOPES,
+    });
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
+    configureSlackConversations([
+      { id: "C_OLD", name: "old-channel" },
+      { id: "C_NEW", name: "new-channel" },
+    ]);
+
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "slack-user-mentioned",
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "old-channel",
+          },
+          enabled: false,
+        },
+      }),
+      [201],
+    );
+    const originalConfig = {
+      provider: "slack",
+      event: "user_mentioned",
+      channel: { id: "C_OLD", name: "old-channel" },
+    } as const;
+    const createdAutomation = requireSlackUserMentionedAutomation(created.body);
+    expect(createdAutomation.eventConfig).toStrictEqual(originalConfig);
+
+    const rejectedUpdate = await accept(
+      automationsClient().update({
+        headers: authHeaders(),
+        params: { id: createdAutomation.id },
+        body: {
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "missing-channel",
+          },
+        },
+      }),
+      [400],
+    );
+    expect(rejectedUpdate.body.error.message).toContain("is unavailable");
+    const afterRejectedUpdate = await accept(
+      automationsClient().get({
+        headers: authHeaders(),
+        params: { id: createdAutomation.id },
+      }),
+      [200],
+    );
+    expect(
+      requireSlackUserMentionedAutomation(afterRejectedUpdate.body).eventConfig,
+    ).toStrictEqual(originalConfig);
+
+    const updated = await accept(
+      automationsClient().update({
+        headers: authHeaders(),
+        params: { id: createdAutomation.id },
+        body: {
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "#new-channel",
+          },
+        },
+      }),
+      [200],
+    );
+    const replacementConfig = {
+      provider: "slack",
+      event: "user_mentioned",
+      channel: { id: "C_NEW", name: "new-channel" },
+    } as const;
+    expect(
+      requireSlackUserMentionedAutomation(updated.body).eventConfig,
+    ).toStrictEqual(replacementConfig);
+
+    await setSlackUserMentionAutomationsEnabled(scenario, false);
+    const gatedUpdate = await accept(
+      automationsClient().update({
+        headers: authHeaders(),
+        params: { id: createdAutomation.id },
+        body: {
+          eventConfig: {
+            provider: "slack",
+            event: "user_mentioned",
+            channel: "old-channel",
+          },
+        },
+      }),
+      [400],
+    );
+    expect(gatedUpdate.body.error.message).toBe(
+      "Slack user-mentioned automations are not enabled",
+    );
+    const gatedEnable = await accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: createdAutomation.id },
+      }),
+      [400],
+    );
+    expect(gatedEnable.body.error.message).toBe(
+      "Slack user-mentioned automations are not enabled",
+    );
+    await setSlackUserMentionAutomationsEnabled(scenario, true);
+
+    configureSlackConversations([]);
+    const inaccessibleEnable = await accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: createdAutomation.id },
+      }),
+      [400],
+    );
+    expect(inaccessibleEnable.body.error.message).toContain("is unavailable");
+    const afterRejectedEnable = await accept(
+      automationsClient().get({
+        headers: authHeaders(),
+        params: { id: createdAutomation.id },
+      }),
+      [200],
+    );
+    const disabledAutomation = requireSlackUserMentionedAutomation(
+      afterRejectedEnable.body,
+    );
+    expect(disabledAutomation.enabled).toBeFalsy();
+    expect(disabledAutomation.eventConfig).toStrictEqual(replacementConfig);
+
+    configureSlackConversations([{ id: "C_NEW", name: "renamed-channel" }]);
+    const enabled = await accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: createdAutomation.id },
+      }),
+      [200],
+    );
+    const enabledAutomation = requireSlackUserMentionedAutomation(enabled.body);
+    expect(enabledAutomation.enabled).toBeTruthy();
+    expect(enabledAutomation.eventConfig).toStrictEqual(replacementConfig);
   });
 
   it("requires a connected Gmail account for Gmail event automations", async () => {

@@ -453,6 +453,11 @@ export function mockWorkflowAutomationUpdate(
           }),
         );
       }
+      if (body.eventConfig.provider === "slack") {
+        throw new Error(
+          "Slack user-mentioned automations are unsupported by this Platform test mock",
+        );
+      }
       return respond(
         200,
         createMockWorkflowAutomation({

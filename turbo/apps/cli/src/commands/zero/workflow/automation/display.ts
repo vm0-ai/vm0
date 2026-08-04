@@ -65,6 +65,16 @@ type WorkflowStrapiAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "strapi-entry-published" }
 >;
+type WorkflowGoogleCalendarAutomationSummary = Extract<
+  ZeroWorkflowAutomationSummary,
+  {
+    readonly kind: "event";
+    readonly eventType:
+      | "google-calendar-event-created"
+      | "google-calendar-event-updated"
+      | "google-calendar-event-cancelled";
+  }
+>;
 
 function isWebhookAutomation(
   automation: ZeroWorkflowAutomationSummary,
@@ -112,22 +122,26 @@ function formatStrapiAutomation(
 
 function isGoogleCalendarAutomation(
   automation: ZeroWorkflowAutomationSummary,
-): automation is Extract<
-  ZeroWorkflowAutomationSummary,
-  {
-    readonly kind: "event";
-    readonly eventType:
-      | "google-calendar-event-created"
-      | "google-calendar-event-updated"
-      | "google-calendar-event-cancelled";
-  }
-> {
+): automation is WorkflowGoogleCalendarAutomationSummary {
   return (
     automation.kind === "event" &&
     (automation.eventType === "google-calendar-event-created" ||
       automation.eventType === "google-calendar-event-updated" ||
       automation.eventType === "google-calendar-event-cancelled")
   );
+}
+
+function googleCalendarAutomationKindLabel(
+  automation: WorkflowGoogleCalendarAutomationSummary,
+): string {
+  switch (automation.eventType) {
+    case "google-calendar-event-created":
+      return "Google Calendar event created";
+    case "google-calendar-event-updated":
+      return "Google Calendar event updated";
+    case "google-calendar-event-cancelled":
+      return "Google Calendar event cancelled";
+  }
 }
 
 function quote(value: string): string {
@@ -301,6 +315,9 @@ function workflowAutomationKindLabel(
   if (automation.kind !== "event") {
     return formatWorkflowAutomationEntry(automation);
   }
+  if (isGoogleCalendarAutomation(automation)) {
+    return googleCalendarAutomationKindLabel(automation);
+  }
   switch (automation.eventType) {
     case "chat-run-finished":
       return chatRunFinishedKindLabel(automation.eventConfig);
@@ -320,12 +337,6 @@ function workflowAutomationKindLabel(
       return "GitHub workflow job completed";
     case "github-workflow-run-completed":
       return "GitHub workflow completed";
-    case "google-calendar-event-created":
-      return "Google Calendar event created";
-    case "google-calendar-event-updated":
-      return "Google Calendar event updated";
-    case "google-calendar-event-cancelled":
-      return "Google Calendar event cancelled";
     case "google-meet-transcript-generated":
       return "Google Meet transcript ready";
     case "notion-child-page-created":
@@ -334,6 +345,8 @@ function workflowAutomationKindLabel(
       return `New Notion database item: ${formatNotionDatabase(automation)}`;
     case "notion-page-content-updated":
       return `Notion page content updated: ${formatNotionContentUpdatedScope(automation)}`;
+    case "slack-user-mentioned":
+      return "Slack user mentioned";
     case "strapi-entry-published":
       return formatStrapiAutomation(automation);
     case "webhook-received":
