@@ -124,8 +124,8 @@
     {
       "idx": 825,
       "version": "7",
-      "when": 1785841450355,
-      "tag": "0825_migrate_legacy_deepseek_state",
+      "when": 1785841702570,
+      "tag": "0825_drop_chat_goal_context",
       "breakpoints": true
     }
   ]

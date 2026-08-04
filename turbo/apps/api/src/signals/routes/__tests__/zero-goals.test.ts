@@ -306,12 +306,10 @@ describe("zero goals", () => {
     expect(admittedContext).toMatchObject({
       contextType: null,
       contextId: null,
-      goalObjectiveBrief: null,
     });
     expect(claimedContext).toMatchObject({
       contextType: null,
       contextId: null,
-      goalObjectiveBrief: null,
     });
     expect(state.runIds).toHaveLength(1);
 
@@ -394,7 +392,6 @@ describe("zero goals", () => {
     ).resolves.toMatchObject({
       contextType: null,
       contextId: null,
-      goalObjectiveBrief: null,
     });
     await expect(
       chat.getThreadEvent(fixture.actor, fixture.threadId, admission.eventId),
