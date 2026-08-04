@@ -4153,6 +4153,7 @@ async fn wait_for_balloon_caps_adaptive_polling_at_14_samples() {
             stats: MockBalloonStats::new(target_mib, 0),
         })
         .take(14)
+        .chain(std::iter::once(MockBalloonStatsReply::Status(500)))
         .collect(),
     );
     let client = ApiClient::new(api.socket_path()).unwrap();
