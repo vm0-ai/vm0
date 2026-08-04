@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.157.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.156.2...runner-rs-v0.157.0) (2026-08-04)
+
+
+### Features
+
+* **chat:** add feature-gated inline steering ([#24941](https://github.com/vm0-ai/vm0/issues/24941)) ([f705e9d](https://github.com/vm0-ai/vm0/commit/f705e9d8d1a1038055d62839ce0bb3725edbd2e3))
+
 ## [0.156.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.156.1...runner-rs-v0.156.2) (2026-08-04)
 
 
