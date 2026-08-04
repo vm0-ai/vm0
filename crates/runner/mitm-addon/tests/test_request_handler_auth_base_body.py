@@ -11,6 +11,7 @@ import auth
 import auth_base_forwarder
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import request_classification
 import upstream_destination_binding
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
@@ -472,6 +473,49 @@ async def test_auth_base_requestheaders_admission_released_after_success(
     assert flow.response.status_code == 202
     assert flow.response.content == b"accepted"
     assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
+async def test_auth_base_buffered_request_revalidates_registry_before_auth(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    declared_size = mitm_addon.STREAM_BUFFER_LIMIT + 1
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("X-Client", "original"),
+            ("Content-Length", str(declared_size)),
+        ),
+        request_body=b"body",
+    )
+    original_headers = tuple(flow.request.headers.fields)
+    get_headers = AsyncMock()
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
+            1,
+            declared_size,
+        )
+        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
+
+        reg_path.unlink()
+        await mitm_addon.request(flow)
+
+    get_headers.assert_not_awaited()
+    assert flow.response is not None
+    assert flow.response.status_code == 503
+    assert json.loads(flow.response.content)["error"] == "registry_unavailable"
+    assert tuple(flow.request.headers.fields) == original_headers
     assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
 
