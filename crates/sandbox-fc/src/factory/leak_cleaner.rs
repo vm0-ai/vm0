@@ -185,12 +185,20 @@ async fn wait_for_leak_cleaner_shutdown(
     shutdown
 }
 
-async fn cleanup_leaked_resource(leaked: LeakedResources, netns_pool: &NetnsPoolHandle) {
-    let cow_cleanup_outcome = match leaked.cow_device {
+async fn cleanup_leaked_resource(mut leaked: LeakedResources, netns_pool: &NetnsPoolHandle) {
+    let cow_cleanup_outcome = match leaked.cow_device.take() {
         Some(cow_device) => destroy_cow_device_with_retries(&leaked.sandbox_id, cow_device).await,
         None => CowCleanupOutcome::BackingFilesSafeToDelete,
     };
 
+    cleanup_leaked_resource_after_cow_cleanup(leaked, netns_pool, cow_cleanup_outcome).await;
+}
+
+async fn cleanup_leaked_resource_after_cow_cleanup(
+    leaked: LeakedResources,
+    netns_pool: &NetnsPoolHandle,
+    cow_cleanup_outcome: CowCleanupOutcome,
+) {
     if let Some(network) = leaked.network {
         let mut network = Some(network);
         let outcome = netns_pool.release(&mut network).await;
@@ -236,30 +244,69 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn cleanup_leaked_resource_respects_workspace_preservation() {
+    async fn leaked_resource_with_paths(
+        delete_workspace: bool,
+    ) -> (tempfile::TempDir, LeakedResources) {
         let tmp = tempfile::tempdir().unwrap();
         let sock_dir = tmp.path().join("sock");
         let workspace = tmp.path().join("workspace");
         tokio::fs::create_dir_all(&sock_dir).await.unwrap();
         tokio::fs::create_dir_all(&workspace).await.unwrap();
-        let netns_pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
 
-        cleanup_leaked_resource(
+        (
+            tmp,
             LeakedResources {
                 sandbox_id: "sandbox".into(),
                 cow_device: None,
                 network: None,
-                sock_dir: sock_dir.clone(),
-                workspace: workspace.clone(),
-                delete_workspace: false,
+                sock_dir,
+                workspace,
+                delete_workspace,
             },
+        )
+    }
+
+    #[tokio::test]
+    async fn safe_cow_cleanup_deletes_workspace() {
+        let (tmp, leaked) = leaked_resource_with_paths(true).await;
+        let netns_pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
+
+        cleanup_leaked_resource(leaked, &netns_pool).await;
+
+        assert!(!tmp.path().join("sock").exists());
+        assert!(!tmp.path().join("workspace").exists());
+    }
+
+    #[tokio::test]
+    async fn unsafe_cow_cleanup_preserves_workspace() {
+        let (tmp, leaked) = leaked_resource_with_paths(true).await;
+        let netns_pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
+
+        cleanup_leaked_resource_after_cow_cleanup(
+            leaked,
             &netns_pool,
+            CowCleanupOutcome::DeviceMayStillReferenceBackingFiles,
         )
         .await;
 
-        assert!(!sock_dir.exists());
-        assert!(workspace.exists());
+        assert!(!tmp.path().join("sock").exists());
+        assert!(tmp.path().join("workspace").exists());
+    }
+
+    #[tokio::test]
+    async fn disabled_workspace_deletion_preserves_workspace_after_safe_cow_cleanup() {
+        let (tmp, leaked) = leaked_resource_with_paths(false).await;
+        let netns_pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
+
+        cleanup_leaked_resource_after_cow_cleanup(
+            leaked,
+            &netns_pool,
+            CowCleanupOutcome::BackingFilesSafeToDelete,
+        )
+        .await;
+
+        assert!(!tmp.path().join("sock").exists());
+        assert!(tmp.path().join("workspace").exists());
     }
 
     #[tokio::test]
