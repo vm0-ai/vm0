@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.374.0](https://github.com/vm0-ai/vm0/compare/api-v1.373.2...api-v1.374.0) (2026-08-04)
+
+
+### Features
+
+* annotate cross-thread agent prompts and bound autonomous delegation depth ([#24934](https://github.com/vm0-ai/vm0/issues/24934)) ([2f2c72a](https://github.com/vm0-ai/vm0/commit/2f2c72af84481a07844bda1eb78fc73612cec3f2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.272.0
+    * @vm0/connectors bumped to 1.202.8
+    * @vm0/core bumped to 8.511.0
+    * @vm0/db bumped to 1.165.0
+
 ## [1.373.2](https://github.com/vm0-ai/vm0/compare/api-v1.373.1...api-v1.373.2) (2026-08-04)
 
 
