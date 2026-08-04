@@ -1008,6 +1008,7 @@
     "cardTitle": "Browser cloud",
     "close": "Tutup browser live",
     "documentTitle": "Browser live",
+    "fitAction": "Sesuaikan",
     "fitWindow": "Sesuaikan browser ke jendela",
     "iframeTitle": "Browser live: {{name}}",
     "invalidLink": "Tautan browser tidak valid",
@@ -1027,7 +1028,6 @@
       "starting": "Memulai",
       "stopped": "Berhenti"
     },
-    "stop": "Hentikan browser",
     "title": "Browser live",
     "unavailable": {
       "description": "Browser ini bukan milik chat ini atau telah dihapus.",

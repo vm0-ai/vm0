@@ -1008,6 +1008,7 @@
     "cardTitle": "Cloud browser",
     "close": "Close live browser",
     "documentTitle": "Live browser",
+    "fitAction": "Fit",
     "fitWindow": "Fit browser to window",
     "iframeTitle": "Live browser: {{name}}",
     "invalidLink": "Invalid browser link",
@@ -1027,7 +1028,6 @@
       "starting": "Starting",
       "stopped": "Stopped"
     },
-    "stop": "Stop browser",
     "title": "Live browser",
     "unavailable": {
       "description": "This browser does not belong to this chat or has been removed.",

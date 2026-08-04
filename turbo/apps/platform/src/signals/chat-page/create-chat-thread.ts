@@ -1834,7 +1834,7 @@ function createPagedEventResources(
 
 interface BrowserLifecycleOptimisticEvent {
   readonly eventId: string;
-  readonly eventType: "browser.started" | "browser.stopped";
+  readonly eventType: "browser.open" | "browser.close";
 }
 
 function createPagedEventProjections({

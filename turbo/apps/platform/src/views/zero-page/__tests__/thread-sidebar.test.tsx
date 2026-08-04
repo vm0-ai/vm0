@@ -361,43 +361,33 @@ describe("thread-owned utility sidebar", () => {
     expect(button).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("optimistically starts and stops the thread browser with caller event IDs", async () => {
+  it("optimistically opens the browser and records sidebar close with caller event IDs", async () => {
     context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
       return respond(404, {
         error: { code: "NOT_FOUND", message: "Browser not found" },
       });
     });
     let startEventId: string | null = null;
-    context.mocks.api(
-      zeroBrowserContract.start,
-      ({ body, params, respond }) => {
-        expect(params.threadId).toBe(THREAD_ID);
-        startEventId = body.eventId;
-        return respond(200, {
-          browser: browserSession(),
-          lifecycleEventId: body.eventId,
-        });
-      },
-    );
+    context.mocks.api(zeroBrowserContract.open, ({ body, params, respond }) => {
+      expect(params.threadId).toBe(THREAD_ID);
+      startEventId = body.eventId;
+      return respond(200, {
+        browser: browserSession(),
+        lifecycleEventId: body.eventId,
+      });
+    });
     context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
       return respond(200, { browser: browserSession({ liveUrl: null }) });
     });
-    const finishStop = context.mocks.deferred<void>();
-    let stopEventId: string | null = null;
+    const finishClose = context.mocks.deferred<void>();
+    let closeEventId: string | null = null;
     context.mocks.api(
-      zeroBrowserContract.stop,
+      zeroBrowserContract.close,
       async ({ body, params, respond }) => {
         expect(params.threadId).toBe(THREAD_ID);
-        stopEventId = body.eventId;
-        await finishStop.promise;
+        closeEventId = body.eventId;
+        await finishClose.promise;
         return respond(200, {
-          browser: browserSession({
-            status: "suspended",
-            liveUrl: null,
-            idleExpiresAt: null,
-            suspendedAt: "2026-03-10T00:05:00.000Z",
-            suspensionReason: "user",
-          }),
           lifecycleEventId: body.eventId,
         });
       },
@@ -409,13 +399,14 @@ describe("thread-owned utility sidebar", () => {
     await screen.findByTitle("Live browser: Thread browser");
     expect(startEventId).toBeTypeOf("string");
 
-    click(screen.getByLabelText("Stop browser"));
-    await expect(
-      screen.findByText("Browser not live"),
-    ).resolves.toBeInTheDocument();
-    expect(stopEventId).toBeTypeOf("string");
-    expect(stopEventId).not.toBe(startEventId);
-    finishStop.resolve();
+    expect(screen.queryByLabelText("Stop browser")).not.toBeInTheDocument();
+    click(screen.getByLabelText("Close live browser"));
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Live browser")).not.toBeInTheDocument();
+      expect(closeEventId).toBeTypeOf("string");
+    });
+    expect(closeEventId).not.toBe(startEventId);
+    finishClose.resolve();
   });
 
   it("opens the thread-scoped catalog list", async () => {
@@ -753,7 +744,7 @@ describe("thread-owned utility sidebar", () => {
     expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
   });
 
-  it("auto-opens the thread browser while its latest lifecycle event is started", async () => {
+  it("auto-opens the thread browser while its latest lifecycle event is open", async () => {
     const liveUrl = "https://live.browser-use.com/?wss=auto-open-browser";
     const requestStarted = context.mocks.deferred<void>();
     const releaseResponse = context.mocks.deferred<void>();
@@ -799,7 +790,7 @@ describe("thread-owned utility sidebar", () => {
       messages: [
         {
           id: "c0000000-0000-4000-a000-000000000051",
-          eventType: "browser.started",
+          eventType: "browser.open",
           content: null,
           seqId: 1,
           createdAt: "2026-03-10T00:00:00Z",
@@ -830,19 +821,27 @@ describe("thread-owned utility sidebar", () => {
         height: 900,
       }),
     );
-    const fitWindow = queryAllByRoleFast("button").find((button) => {
-      return button.getAttribute("aria-label") === "Fit browser to window";
+    window.dispatchEvent(new Event("resize"));
+    const fitWindow = await waitFor(() => {
+      const button = queryAllByRoleFast("button").find((candidate) => {
+        return candidate.getAttribute("aria-label") === "Fit browser to window";
+      });
+      expect(button).toBeDefined();
+      expect(button).toBeVisible();
+      return button;
     });
     if (!(fitWindow instanceof HTMLButtonElement)) {
       throw new Error("Expected the fit browser button");
     }
+    expect(fitWindow).toHaveTextContent("Fit");
+    expect(fitWindow.closest("[data-browser-session-viewport]")).toBe(viewport);
     expect(fitWindow).toBeEnabled();
     click(fitWindow);
 
     await waitFor(() => {
       expect(leaseRequests).toBeGreaterThan(0);
       expect(resizeAspectRatios).toStrictEqual([0.8]);
-      expect(fitWindow).toBeEnabled();
+      expect(screen.getByLabelText("Fit browser to window")).not.toBeVisible();
       expect(
         screen.getByTitle("Live browser: Auto-open browser"),
       ).toHaveAttribute("src", liveUrl);
@@ -872,7 +871,7 @@ describe("thread-owned utility sidebar", () => {
       messages: [
         {
           id: "c0000000-0000-4000-a000-000000000058",
-          eventType: "browser.started",
+          eventType: "browser.open",
           content: null,
           seqId: 1,
           createdAt: "2026-03-10T00:00:00Z",
@@ -914,7 +913,7 @@ describe("thread-owned utility sidebar", () => {
       messages: [
         {
           id: "c0000000-0000-4000-a000-000000000054",
-          eventType: "browser.started",
+          eventType: "browser.open",
           content: null,
           seqId: 51,
           createdAt: "2026-03-10T00:00:00Z",
@@ -947,7 +946,7 @@ describe("thread-owned utility sidebar", () => {
       historyMessages: [
         {
           id: "c0000000-0000-4000-a000-000000000055",
-          eventType: "browser.started",
+          eventType: "browser.open",
           content: null,
           seqId: 1,
           createdAt: "2026-03-10T00:00:00Z",
@@ -971,7 +970,7 @@ describe("thread-owned utility sidebar", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("does not auto-open when the latest browser lifecycle event is stopped", async () => {
+  it("does not auto-open when the latest browser lifecycle event is close", async () => {
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
@@ -981,14 +980,14 @@ describe("thread-owned utility sidebar", () => {
       messages: [
         {
           id: "c0000000-0000-4000-a000-000000000052",
-          eventType: "browser.started",
+          eventType: "browser.open",
           content: null,
           seqId: 1,
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
           id: "c0000000-0000-4000-a000-000000000053",
-          eventType: "browser.stopped",
+          eventType: "browser.close",
           content: null,
           seqId: 2,
           createdAt: "2026-03-10T00:00:01Z",
@@ -1157,7 +1156,7 @@ describe("thread-owned utility sidebar", () => {
     fixture.publishMessages([
       {
         id: "c0000000-0000-4000-a000-000000000054",
-        eventType: "browser.started",
+        eventType: "browser.open",
         content: null,
         seqId: 1,
         createdAt: "2026-03-10T00:00:03Z",
@@ -1202,7 +1201,7 @@ describe("thread-owned utility sidebar", () => {
       messages: [
         {
           id: "c0000000-0000-4000-a000-000000000055",
-          eventType: "browser.started",
+          eventType: "browser.open",
           content: null,
           seqId: 1,
           createdAt: "2026-03-10T00:00:00Z",
@@ -1257,7 +1256,7 @@ describe("thread-owned utility sidebar", () => {
     fixture.publishMessages([
       {
         id: "c0000000-0000-4000-a000-000000000056",
-        eventType: "browser.started",
+        eventType: "browser.open",
         content: null,
         seqId: 1,
         createdAt: "2026-03-10T00:00:00Z",
@@ -1300,7 +1299,7 @@ describe("thread-owned utility sidebar", () => {
       messages: [
         {
           id: "c0000000-0000-4000-a000-000000000057",
-          eventType: "browser.started",
+          eventType: "browser.open",
           content: null,
           seqId: 1,
           createdAt: "2026-03-10T00:00:00Z",

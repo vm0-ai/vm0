@@ -15,17 +15,17 @@ export function createThreadSidebarAutoOpenCandidate(
   rawEvents$: Computed<readonly RawChatEventProjection[]>,
 ): Computed<ThreadSidebarAutoOpenCandidate | null> {
   return computed((get) => {
-    let activeStartEventId: string | null = null;
+    let activeOpenEventId: string | null = null;
     for (const { event } of get(rawEvents$)) {
-      if (event.eventType === "browser.started") {
-        activeStartEventId = event.id;
-      } else if (event.eventType === "browser.stopped") {
-        activeStartEventId = null;
+      if (event.eventType === "browser.open") {
+        activeOpenEventId = event.id;
+      } else if (event.eventType === "browser.close") {
+        activeOpenEventId = null;
       }
     }
-    return activeStartEventId === null
+    return activeOpenEventId === null
       ? null
-      : { type: "browser", resourceKey: activeStartEventId };
+      : { type: "browser", resourceKey: activeOpenEventId };
   });
 }
 

@@ -1,4 +1,5 @@
 import {
+  canonicalChatEvent,
   chatEventsContract,
   chatThreadEventsContract,
   type ChatEvent,
@@ -47,5 +48,5 @@ export async function listChatEvents(
     [200],
     signal,
   );
-  return result.body.events;
+  return result.body.events.map(canonicalChatEvent);
 }

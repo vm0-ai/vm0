@@ -68,7 +68,7 @@ export interface SendInterruptChatEvent {
 export interface SendBrowserLifecycleChatEvent {
   readonly kind: "browser-lifecycle";
   readonly eventId: string;
-  readonly eventType: "browser.started" | "browser.stopped";
+  readonly eventType: "browser.open" | "browser.close";
 }
 
 export type SendChatEventInput =

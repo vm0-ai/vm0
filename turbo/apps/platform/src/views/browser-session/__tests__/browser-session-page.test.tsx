@@ -131,18 +131,15 @@ describe("browser session page", () => {
       });
     });
     let startRequests = 0;
-    context.mocks.api(
-      zeroBrowserContract.start,
-      ({ body, params, respond }) => {
-        expect(params.threadId).toBe(threadId);
-        expect(body.eventId).toBeTypeOf("string");
-        startRequests += 1;
-        return respond(200, {
-          browser: browserSession(),
-          lifecycleEventId: body.eventId,
-        });
-      },
-    );
+    context.mocks.api(zeroBrowserContract.open, ({ body, params, respond }) => {
+      expect(params.threadId).toBe(threadId);
+      expect(body.eventId).toBeTypeOf("string");
+      startRequests += 1;
+      return respond(200, {
+        browser: browserSession(),
+        lifecycleEventId: body.eventId,
+      });
+    });
     context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
       return respond(200, { browser: browserSession() });
     });

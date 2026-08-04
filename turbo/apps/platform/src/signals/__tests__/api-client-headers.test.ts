@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { HttpResponse } from "msw";
 import {
   addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
   CLIENT_CAPABILITY_ES_ES_LOCALE,
   CLIENT_CAPABILITY_FR_FR_LOCALE,
   CLIENT_CAPABILITY_HI_IN_LOCALE,
@@ -61,8 +62,11 @@ const EXPECTED_CLIENT_VERSION_WITHOUT_HINDI = addClientCapabilityToVersion(
   CLIENT_CAPABILITY_FR_FR_LOCALE,
 );
 const EXPECTED_CLIENT_VERSION = addClientCapabilityToVersion(
-  EXPECTED_CLIENT_VERSION_WITHOUT_HINDI,
-  CLIENT_CAPABILITY_HI_IN_LOCALE,
+  addClientCapabilityToVersion(
+    EXPECTED_CLIENT_VERSION_WITHOUT_HINDI,
+    CLIENT_CAPABILITY_HI_IN_LOCALE,
+  ),
+  CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
 );
 
 interface ObservedClientHeaders {

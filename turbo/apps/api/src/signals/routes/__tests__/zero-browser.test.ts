@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron";
 import {
+  CLIENT_TYPE_APP,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
+import {
   zeroBrowserAuthorizationRequestsContract,
   zeroBrowserContract,
 } from "@vm0/api-contracts/contracts/zero-browser";
@@ -20,6 +25,7 @@ import { browserUseCdpHandler } from "../../../__tests__/mocks";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { mockNow, withMockNowForTest } from "../../../lib/time";
+import webClientCompatibility from "../../../lib/web-client-compatibility.json";
 import { server } from "../../../mocks/server";
 import { deleteAgentRunRootFixture } from "../../../test-fixtures/run-deletion";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -1391,7 +1397,7 @@ describe("zero browser route", () => {
     // The viewer can restore a reclaimed browser without a live run.
     context.mocks.ably.publish.mockClear();
     const resumed = await accept(
-      client().start({
+      client().open({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId },
         body: { eventId: randomUUID() },
@@ -1489,7 +1495,7 @@ describe("zero browser route", () => {
 
     const failedResume = await createApp({
       signal: context.signal,
-    }).request(`/api/zero/chat-threads/${threadId}/browser/start`, {
+    }).request(`/api/zero/chat-threads/${threadId}/browser/open`, {
       method: "POST",
       headers: {
         authorization: "Bearer clerk-session",
@@ -1646,7 +1652,7 @@ describe("zero browser route", () => {
     });
     routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const resumed = await accept(
-      client().start({
+      client().open({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId },
         body: { eventId: randomUUID() },
@@ -1679,7 +1685,7 @@ describe("zero browser route", () => {
     await flushWaitUntilForTest();
   }, 120_000);
 
-  it("captures the foreground tab during viewer leases and keeps the latest screenshot", async () => {
+  it("captures the foreground tab during browser reconciliation and keeps the latest screenshot", async () => {
     const { routeMocks, runs, chat, actor, agent } =
       await setupBrowserScenario();
     const current = await createClaimedChatRun(
@@ -1792,6 +1798,22 @@ describe("zero browser route", () => {
     );
     expect(firstLease.body.browser.screenshotUrl).toBeNull();
     await flushWaitUntilForTest();
+    expect(captureCount).toBe(0);
+
+    const afterViewerLease = await accept(
+      client().get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: current.threadId },
+      }),
+      [200],
+    );
+    expect(afterViewerLease.body.browser.screenshotUrl).toBeNull();
+
+    const firstReconcile = await reconcileBrowsers();
+    expect(firstReconcile.body).toMatchObject({
+      errors: 0,
+    });
+    await flushWaitUntilForTest();
 
     const afterFirstCapture = await accept(
       client().get({
@@ -1819,6 +1841,13 @@ describe("zero browser route", () => {
     );
     expect(secondLease.body.browser.screenshotUrl).toBe(firstScreenshotUrl);
     await flushWaitUntilForTest();
+    expect(captureCount).toBe(1);
+
+    const secondReconcile = await reconcileBrowsers();
+    expect(secondReconcile.body).toMatchObject({
+      errors: 0,
+    });
+    await flushWaitUntilForTest();
 
     const afterSecondCapture = await accept(
       client().get({
@@ -1827,12 +1856,12 @@ describe("zero browser route", () => {
       }),
       [200],
     );
-    const finalScreenshotUrl = afterSecondCapture.body.browser.screenshotUrl;
-    expect(finalScreenshotUrl).not.toBe(firstScreenshotUrl);
-    if (!finalScreenshotUrl) {
+    const secondScreenshotUrl = afterSecondCapture.body.browser.screenshotUrl;
+    expect(secondScreenshotUrl).not.toBe(firstScreenshotUrl);
+    if (!secondScreenshotUrl) {
       throw new Error("Expected the second browser screenshot URL");
     }
-    const finalScreenshotKey = new URL(finalScreenshotUrl).pathname.slice(1);
+    const secondScreenshotKey = new URL(secondScreenshotUrl).pathname.slice(1);
     expect(captureCount).toBe(2);
     expect(
       context.mocks.browserUseCdp.command.mock.calls
@@ -1891,10 +1920,7 @@ describe("zero browser route", () => {
     ).toHaveLength(1);
     const retriedCleanup = await reconcileBrowsers();
     expect(retriedCleanup.body).toMatchObject({
-      checked: 2,
-      stopped: 1,
       errors: 0,
-      healthy: 1,
     });
     expect(
       context.mocks.s3.send.mock.calls.filter(([command]) => {
@@ -1904,6 +1930,30 @@ describe("zero browser route", () => {
         );
       }),
     ).toHaveLength(2);
+    await flushWaitUntilForTest();
+
+    const afterThirdCapture = await accept(
+      client().get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: current.threadId },
+      }),
+      [200],
+    );
+    const finalScreenshotUrl = afterThirdCapture.body.browser.screenshotUrl;
+    expect(finalScreenshotUrl).not.toBe(secondScreenshotUrl);
+    if (!finalScreenshotUrl) {
+      throw new Error("Expected the third browser screenshot URL");
+    }
+    const finalScreenshotKey = new URL(finalScreenshotUrl).pathname.slice(1);
+    expect(captureCount).toBe(3);
+    expect(
+      context.mocks.s3.send.mock.calls.filter(([command]) => {
+        const input = commandInput(command);
+        return (JSON.stringify(input.Delete) ?? "").includes(
+          secondScreenshotKey,
+        );
+      }),
+    ).toHaveLength(1);
 
     await chat.deleteThread(actor, current.threadId);
     await flushWaitUntilForTest();
@@ -1917,8 +1967,6 @@ describe("zero browser route", () => {
 
     const reconciled = await reconcileBrowsers();
     expect(reconciled.body).toMatchObject({
-      checked: 1,
-      stopped: 1,
       errors: 0,
     });
     expect(context.mocks.s3.send).toHaveBeenCalledWith(
@@ -1930,7 +1978,7 @@ describe("zero browser route", () => {
     );
   }, 120_000);
 
-  it("reuses one thread browser and records start-stop lifecycle events", async () => {
+  it("reuses one thread browser and records open-close UI lifecycle events", async () => {
     const { routeMocks, runs, chat, actor, agent } =
       await setupBrowserScenario();
     const first = await createClaimedChatRun(
@@ -1969,9 +2017,16 @@ describe("zero browser route", () => {
         return HttpResponse.json(providerBrowser(String(params.id)));
       }),
       http.patch(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
-        providerStops += 1;
+        const providerId = String(params.id);
+        if (
+          providerIds.some((id) => {
+            return id === providerId;
+          })
+        ) {
+          providerStops += 1;
+        }
         return HttpResponse.json(
-          providerBrowser(String(params.id), { status: "stopped" }),
+          providerBrowser(providerId, { status: "stopped" }),
         );
       }),
     );
@@ -1984,7 +2039,6 @@ describe("zero browser route", () => {
     mockNow(STARTED_AT_MS + 11 * MINUTE_MS);
     const reclaimed = await reconcileBrowsers();
     expect(reclaimed.body).toMatchObject({
-      stopped: 1,
       errors: 0,
     });
     await flushWaitUntilForTest();
@@ -2005,7 +2059,7 @@ describe("zero browser route", () => {
     routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const noOpEventId = randomUUID();
     const alreadyActive = await accept(
-      client().start({
+      client().open({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: first.threadId },
         body: { eventId: noOpEventId },
@@ -2017,25 +2071,28 @@ describe("zero browser route", () => {
       browser: { threadId: first.threadId, status: "active" },
     });
 
-    const stopEventId = randomUUID();
-    const stopped = await accept(
-      client().stop({
+    const closeEventId = randomUUID();
+    const closed = await accept(
+      client().close({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: first.threadId },
-        body: { eventId: stopEventId },
+        body: { eventId: closeEventId },
       }),
       [200],
     );
-    expect(stopped.body).toMatchObject({
-      lifecycleEventId: stopEventId,
-      browser: {
-        threadId: first.threadId,
-        status: "suspended",
-        suspensionReason: "user",
-      },
+    expect(closed.body).toStrictEqual({
+      lifecycleEventId: closeEventId,
     });
     await flushWaitUntilForTest();
-    expect(providerStops).toBe(2);
+    expect(providerStops).toBe(1);
+    const stillActive = await accept(
+      client().get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: first.threadId },
+      }),
+      [200],
+    );
+    expect(stillActive.body.browser.status).toBe("active");
 
     const events = await accept(
       chatThreadEventsClient().list({
@@ -2047,8 +2104,8 @@ describe("zero browser route", () => {
     );
     expect(
       events.body.events.flatMap((event) => {
-        return event.eventType === "browser.started" ||
-          event.eventType === "browser.stopped"
+        return event.eventType === "browser.open" ||
+          event.eventType === "browser.close"
           ? [
               {
                 id: event.id,
@@ -2061,21 +2118,17 @@ describe("zero browser route", () => {
     ).toStrictEqual([
       {
         id: firstStart.body.lifecycleEventId,
-        eventType: "browser.started",
+        eventType: "browser.open",
         content: null,
       },
-      expect.objectContaining({
-        eventType: "browser.stopped",
-        content: null,
-      }),
       {
         id: resumed.body.lifecycleEventId,
-        eventType: "browser.started",
+        eventType: "browser.open",
         content: null,
       },
       {
-        id: stopEventId,
-        eventType: "browser.stopped",
+        id: closeEventId,
+        eventType: "browser.close",
         content: null,
       },
     ]);
@@ -2085,26 +2138,79 @@ describe("zero browser route", () => {
       }),
     ).toBeFalsy();
 
+    const legacyEventsResponse = await createApp({
+      signal: context.signal,
+    }).request(`/api/zero/chat-threads/${first.threadId}/events?limit=50`, {
+      headers: {
+        authorization: "Bearer clerk-session",
+        [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+        [CLIENT_VERSION_HEADER]: webClientCompatibility.minimumSupportedVersion,
+      },
+    });
+    expect(legacyEventsResponse.status).toBe(200);
+    const legacyEvents = (await legacyEventsResponse.json()) as {
+      events: { id: string; eventType: string }[];
+    };
+    expect(
+      legacyEvents.events
+        .filter((event) => {
+          return [
+            firstStart.body.lifecycleEventId,
+            resumed.body.lifecycleEventId,
+            closeEventId,
+          ].includes(event.id);
+        })
+        .map((event) => {
+          return event.eventType;
+        }),
+    ).toStrictEqual(["browser.started", "browser.started", "browser.stopped"]);
+
     const collided = await createApp({
       signal: context.signal,
-    }).request(`/api/zero/chat-threads/${first.threadId}/browser/start`, {
+    }).request(`/api/zero/chat-threads/${first.threadId}/browser/close`, {
       method: "POST",
       headers: {
         authorization: "Bearer clerk-session",
         "content-type": "application/json",
       },
-      body: JSON.stringify({ eventId: stopEventId }),
+      body: JSON.stringify({ eventId: closeEventId }),
     });
     expect(collided.status).toBe(409);
     await expect(collided.json()).resolves.toMatchObject({
       error: { code: "BROWSER_EVENT_ID_CONFLICT" },
     });
-    expect(providerCreates).toBe(3);
+    expect(providerCreates).toBe(2);
     await flushWaitUntilForTest();
-    expect(providerStops).toBe(3);
+    expect(providerStops).toBe(1);
+
+    const legacyStart = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: first.threadId },
+        body: { eventId: randomUUID() },
+      }),
+      [200],
+    );
+    expect(legacyStart.body.lifecycleEventId).toBeNull();
+
+    const legacyStopEventId = randomUUID();
+    const legacyStop = await accept(
+      client().stop({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: first.threadId },
+        body: { eventId: legacyStopEventId },
+      }),
+      [200],
+    );
+    expect(legacyStop.body).toMatchObject({
+      lifecycleEventId: legacyStopEventId,
+      browser: { status: "suspended" },
+    });
+    await flushWaitUntilForTest();
+    expect(providerStops).toBe(2);
 
     await chat.deleteThread(actor, first.threadId);
     await flushWaitUntilForTest();
-    expect(providerStops).toBe(3);
+    expect(providerStops).toBe(2);
   }, 120_000);
 });
