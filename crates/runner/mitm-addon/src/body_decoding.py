@@ -446,7 +446,11 @@ def _decompress_brotli_bounded(data: bytes, max_output: int) -> bytes:
 
 
 def _decompress_zlib_json_usage_body(
-    data: bytes, encoding: Literal["gzip", "deflate"], max_output: int
+    data: bytes,
+    encoding: Literal["gzip", "deflate"],
+    max_output: int,
+    *,
+    log_errors: bool,
 ) -> tuple[bytes, str | None]:
     if max_output <= 0:
         return b"", DECODED_BODY_LIMIT_EXCEEDED if data else None
@@ -465,9 +469,10 @@ def _decompress_zlib_json_usage_body(
             try:
                 decoded = obj.decompress(member_data, max_length=remaining_output + 1)
             except zlib.error as exc:
-                with contextlib.suppress(AttributeError):
-                    # ctx.log unavailable outside mitmproxy runtime
-                    ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
+                if log_errors:
+                    with contextlib.suppress(AttributeError):
+                        # ctx.log unavailable outside mitmproxy runtime
+                        ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
                 return b"", INVALID_COMPRESSED_BODY
 
             if len(decoded) > remaining_output:
@@ -523,7 +528,12 @@ def _validate_complete_zstd_frames(data: bytes, max_output: int) -> str | None:
     return None
 
 
-def _decompress_zstd_json_usage_body(data: bytes, max_output: int) -> tuple[bytes, str | None]:
+def _decompress_zstd_json_usage_body(
+    data: bytes,
+    max_output: int,
+    *,
+    log_errors: bool,
+) -> tuple[bytes, str | None]:
     if max_output <= 0:
         return b"", DECODED_BODY_LIMIT_EXCEEDED if data else None
 
@@ -533,9 +543,10 @@ def _decompress_zstd_json_usage_body(data: bytes, max_output: int) -> tuple[byte
             # Force validation of any trailing frame without accumulating it.
             extra = reader.read(1)
     except zstandard.ZstdError as exc:
-        with contextlib.suppress(AttributeError):
-            # ctx.log unavailable outside mitmproxy runtime
-            ctx.log.debug(f"Decompression failed (zstd): {exc}")
+        if log_errors:
+            with contextlib.suppress(AttributeError):
+                # ctx.log unavailable outside mitmproxy runtime
+                ctx.log.debug(f"Decompression failed (zstd): {exc}")
         return b"", INVALID_COMPRESSED_BODY
 
     if extra:
@@ -544,10 +555,19 @@ def _decompress_zstd_json_usage_body(data: bytes, max_output: int) -> tuple[byte
 
 
 def _decode_supported_body_with_complete_status(
-    data: bytes, encoding: str, max_output: int
+    data: bytes,
+    encoding: str,
+    max_output: int,
+    *,
+    log_errors: bool = True,
 ) -> tuple[bytes, str | None]:
     if encoding in ("gzip", "deflate"):
-        return _decompress_zlib_json_usage_body(data, encoding, max_output)
+        return _decompress_zlib_json_usage_body(
+            data,
+            encoding,
+            max_output,
+            log_errors=log_errors,
+        )
     if encoding == "br":
         try:
             body, finished, limited = _decompress_brotli_bounded_with_status(
@@ -556,9 +576,10 @@ def _decode_supported_body_with_complete_status(
                 validate_complete_input=True,
             )
         except brotli.error as exc:
-            with contextlib.suppress(AttributeError):
-                # ctx.log unavailable outside mitmproxy runtime
-                ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
+            if log_errors:
+                with contextlib.suppress(AttributeError):
+                    # ctx.log unavailable outside mitmproxy runtime
+                    ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
             return b"", INVALID_COMPRESSED_BODY
         if limited:
             return body, DECODED_BODY_LIMIT_EXCEEDED
@@ -566,7 +587,7 @@ def _decode_supported_body_with_complete_status(
             return body, INCOMPLETE_COMPRESSED_BODY
         return body, None
     if encoding == "zstd":
-        return _decompress_zstd_json_usage_body(data, max_output)
+        return _decompress_zstd_json_usage_body(data, max_output, log_errors=log_errors)
     raise ValueError(f"unsupported content encoding: {encoding}")
 
 
@@ -596,7 +617,11 @@ def decode_request_body_for_network_log_capture(
 
 
 def decompress_json_usage_body(
-    data: bytes, headers: http.Headers, max_output: int = LARGE_RESPONSE_DECOMPRESS_LIMIT
+    data: bytes,
+    headers: http.Headers,
+    max_output: int = LARGE_RESPONSE_DECOMPRESS_LIMIT,
+    *,
+    log_errors: bool = True,
 ) -> tuple[bytes, str | None]:
     """Decompress a JSON usage response body with an observable empty-prefix error.
 
@@ -605,10 +630,18 @@ def decompress_json_usage_body(
     from stream metadata. JSON usage fallback only has the final buffer, so it
     needs to distinguish a valid compressed empty response from an incomplete
     compressed frame that produced no JSON bytes.
+
+    Set ``log_errors`` to ``False`` when decoding on a worker thread where the
+    mitmproxy logging context must not be accessed.
     """
     encoding = headers.get("content-encoding", "").strip().lower()
     if encoding in _SUPPORTED_ONE_SHOT_BODY_ENCODINGS:
-        return _decode_supported_body_with_complete_status(data, encoding, max_output)
+        return _decode_supported_body_with_complete_status(
+            data,
+            encoding,
+            max_output,
+            log_errors=log_errors,
+        )
     if encoding and encoding != "identity" and data:
         return b"", "unsupported content encoding"
     return decompress_body(data, headers, max_output=max_output), None
