@@ -458,8 +458,13 @@ mod tests {
 
         let written = std::fs::read_to_string(model_catalog_path(tmp.path())).unwrap();
         assert_eq!(
-            written,
-            r#"{"models":[{"base_instructions":"","slug":"MiniMax-M3"}]}"#
+            serde_json::from_str::<serde_json::Value>(&written).unwrap(),
+            json!({
+                "models": [{
+                    "slug": "MiniMax-M3",
+                    "base_instructions": ""
+                }]
+            })
         );
     }
 
@@ -507,8 +512,13 @@ mod tests {
         );
         let written = std::fs::read_to_string(model_catalog_path(&codex_home)).unwrap();
         assert_eq!(
-            written,
-            r#"{"models":[{"base_instructions":"","slug":"MiniMax-M3"}]}"#
+            serde_json::from_str::<serde_json::Value>(&written).unwrap(),
+            json!({
+                "models": [{
+                    "slug": "MiniMax-M3",
+                    "base_instructions": ""
+                }]
+            })
         );
     }
 
