@@ -4,7 +4,8 @@ import { z } from "zod";
  * Org list item schema
  */
 export const orgListItemSchema = z.object({
-  slug: z.string(),
+  id: z.string(),
+  name: z.string(),
   role: z.string(),
 });
 export type OrgListItem = z.infer<typeof orgListItemSchema>;
@@ -14,6 +15,5 @@ export type OrgListItem = z.infer<typeof orgListItemSchema>;
  */
 export const orgListResponseSchema = z.object({
   orgs: z.array(orgListItemSchema),
-  active: z.string().optional(),
 });
 export type OrgListResponse = z.infer<typeof orgListResponseSchema>;
