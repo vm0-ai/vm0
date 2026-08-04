@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
 
 const MERCURY_ENDPOINTS = {
@@ -256,7 +257,7 @@ async function fetchMercuryUserInfo(
   const firstAccount = data.accounts?.[0];
 
   return {
-    id: firstAccount?.id ?? "",
+    id: requireConnectorGrantUserId(firstAccount?.id, "Mercury"),
     username: firstAccount?.name ?? firstAccount?.legalBusinessName ?? null,
     email: null,
   };

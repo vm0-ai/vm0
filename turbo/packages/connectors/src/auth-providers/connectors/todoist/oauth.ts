@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
 
 const TODOIST_TOKEN_URL = "https://todoist.com/oauth/access_token";
@@ -122,7 +123,7 @@ async function fetchTodoistUserInfo(accessToken: string): Promise<{
     .parse(await response.json());
 
   return {
-    id: data.id ?? "",
+    id: requireConnectorGrantUserId(data.id, "Todoist"),
     username: data.full_name ?? null,
     email: data.email ?? null,
   };
