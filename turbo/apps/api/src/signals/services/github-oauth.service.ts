@@ -293,7 +293,7 @@ function githubConnectSignaturePayload(args: {
   ].join(":");
 }
 
-export function signGithubConnectParams(args: {
+function signGithubConnectParams(args: {
   readonly installationId: string;
   readonly githubUserId: string;
   readonly timestamp: number;

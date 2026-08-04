@@ -63,6 +63,7 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import {
+  chatSteerEnabled$,
   chatThreadSidebarAutoOpenEnabled$,
   codexFastModeEnabled$,
   featureSwitch$,
@@ -1226,18 +1227,21 @@ type SemanticChatEventGroup = SemanticChatGroups["activeGroups"][number];
 function semanticTranscriptEventsFromRaw(
   raw: readonly ChatEventProjectionEntry[],
   chatEvents: readonly ChatEvent[],
+  chatSteerEnabled: boolean,
 ): SemanticChatEvent[] {
   const blocksByEventId = new Map(
     raw.map((entry) => {
       return [entry.event.id, entry.blocks] as const;
     }),
   );
-  return semanticChatEventsFromChatEvents(chatEvents).map((entry) => {
-    return {
-      ...entry,
-      blocks: blocksByEventId.get(entry.event.id) ?? [],
-    };
-  });
+  return semanticChatEventsFromChatEvents(chatEvents, chatSteerEnabled).map(
+    (entry) => {
+      return {
+        ...entry,
+        blocks: blocksByEventId.get(entry.event.id) ?? [],
+      };
+    },
+  );
 }
 
 function isRenderableAssistantSemanticEvent(entry: SemanticChatEvent): boolean {
@@ -1841,7 +1845,11 @@ function createPagedEventProjections({
   const rawEvents$ = createRawEventsComputed(registeredEvents$);
   const historyBackfillPending$ = createEventHistoryBackfillPending(rawEvents$);
   const semanticEvents$ = computed((get): SemanticChatEvent[] => {
-    return semanticTranscriptEventsFromRaw(get(rawEvents$), get(chatEvents$));
+    return semanticTranscriptEventsFromRaw(
+      get(rawEvents$),
+      get(chatEvents$),
+      get(chatSteerEnabled$),
+    );
   });
   const eventRunIndicatorState$ = createEventRunIndicatorState(chatEvents$);
   return {
@@ -2730,11 +2738,12 @@ function createRecallMessage(deps: RecallMessageDeps) {
   const { agentId$, chatEvents$, draft, queueDraftSync$, sendEvent$ } = deps;
 
   return command(async ({ get, set }, eventId: string, signal: AbortSignal) => {
-    const event = queuedEventsFromChatEvents(get(chatEvents$)).find(
-      (candidate) => {
-        return candidate.id === eventId;
-      },
-    );
+    const event = queuedEventsFromChatEvents(
+      get(chatEvents$),
+      get(featureSwitch$)[FeatureSwitchKey.ChatSteer] ?? false,
+    ).find((candidate) => {
+      return candidate.id === eventId;
+    });
     if (!event || event.eventType !== "input.prompt") {
       return;
     }
@@ -2790,14 +2799,14 @@ function createSkipAutomationEvent({
       eventId: string,
       signal: AbortSignal,
     ): Promise<void> => {
-      const event = queuedEventsFromChatEvents(get(chatEvents$)).find(
-        (candidate) => {
-          return (
-            candidate.id === eventId &&
-            candidate.eventType === "input.automation"
-          );
-        },
-      );
+      const event = queuedEventsFromChatEvents(
+        get(chatEvents$),
+        get(featureSwitch$)[FeatureSwitchKey.ChatSteer] ?? false,
+      ).find((candidate) => {
+        return (
+          candidate.id === eventId && candidate.eventType === "input.automation"
+        );
+      });
       const agentId = get(agentId$);
       if (!event || !agentId) {
         return;
@@ -2865,11 +2874,12 @@ function createCancelRunWithQueuedRecall({
     }
 
     const chatEvents = get(chatEvents$);
-    const queuedEvents = queuedEventsFromChatEvents(chatEvents).filter(
-      (event) => {
-        return event.eventType === "input.prompt";
-      },
-    );
+    const queuedEvents = queuedEventsFromChatEvents(
+      chatEvents,
+      get(featureSwitch$)[FeatureSwitchKey.ChatSteer] ?? false,
+    ).filter((event) => {
+      return event.eventType === "input.prompt";
+    });
     await Promise.all([
       ...liveRunIdsFromChatEvents(chatEvents).map((runId) => {
         return set(

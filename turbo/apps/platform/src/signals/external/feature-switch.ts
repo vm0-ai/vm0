@@ -87,6 +87,10 @@ export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });
 
+export const chatSteerEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ChatSteer] ?? false;
+});
+
 export const composerUploadPopoverEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerUploadPopover] ?? false;
 });

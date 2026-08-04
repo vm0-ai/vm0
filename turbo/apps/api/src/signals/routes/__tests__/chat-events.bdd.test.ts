@@ -24,6 +24,7 @@ import {
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
+import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   getModelProviderFirewall,
@@ -1405,6 +1406,133 @@ describe("CHAT-02: interrupting active chat runs", () => {
 });
 
 describe("CHAT-02: queueing and recalling messages", () => {
+  it("lets a running runner claim pending input prompts for steer", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.ChatSteer]: true,
+      },
+    );
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor active input run",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(active.runId);
+    expect(claim.featureFlags?.[FeatureSwitchKey.ChatSteer]).toBeTruthy();
+
+    const firstPendingEventId = randomUUID();
+    const secondPendingEventId = randomUUID();
+    context.mocks.ably.publish.mockClear();
+    const firstPending = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "first steer message",
+        clientEventId: firstPendingEventId,
+      },
+      [201],
+    );
+    const secondPending = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "second steer message",
+        clientEventId: secondPendingEventId,
+      },
+      [201],
+    );
+    if (firstPending.status !== 201 || secondPending.status !== 201) {
+      throw new Error("Expected both pending sends to be accepted");
+    }
+    expect(firstPending.body.runId).toBeNull();
+    expect(secondPending.body.runId).toBeNull();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("active-input", {
+      runId: active.runId,
+    });
+
+    await expect(
+      api.listRunnerActiveInputs(claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([firstPendingEventId, secondPendingEventId]);
+    await expect(
+      api.claimRunnerActiveInputs(claim.sandboxToken, active.runId, [
+        secondPendingEventId,
+        firstPendingEventId,
+      ]),
+    ).resolves.toBe("first steer message\n\nsecond steer message");
+    await expect(
+      api.listRunnerActiveInputs(claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([]);
+
+    const events = await chat.listThreadEvents(actor, active.threadId);
+    for (const pendingEventId of [firstPendingEventId, secondPendingEventId]) {
+      expect(userMessages(events.events)).toContainEqual(
+        expect.objectContaining({
+          runId: active.runId,
+          revokesEventId: pendingEventId,
+        }),
+      );
+    }
+
+    const oversizedPendingEventId = randomUUID();
+    const oversizedPending = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "x".repeat(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES),
+        clientEventId: oversizedPendingEventId,
+      },
+      [201],
+    );
+    if (oversizedPending.status !== 201) {
+      throw new Error("Expected the oversized pending send to be accepted");
+    }
+    expect(oversizedPending.body.runId).toBeNull();
+    const oversizedConflict = await api.claimRunnerActiveInputsConflict(
+      claim.sandboxToken,
+      active.runId,
+      [oversizedPendingEventId],
+    );
+    expectApiError(oversizedConflict);
+    expect(oversizedConflict.error.message).toBe(
+      "Active input batch exceeds runner control payload limit",
+    );
+    await expect(
+      api.listRunnerActiveInputs(claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([oversizedPendingEventId]);
+
+    const afterOversizedClaim = await chat.listThreadEvents(
+      actor,
+      active.threadId,
+    );
+    expect(
+      userMessages(afterOversizedClaim.events).some((event) => {
+        return event.revokesEventId === oversizedPendingEventId;
+      }),
+    ).toBeFalsy();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        revokesEventId: oversizedPendingEventId,
+      },
+      [201],
+    );
+
+    await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
   it("queues, retries, and recalls messages behind an active run", async () => {
     const { actor, agentId, providerId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -4983,6 +5111,22 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     expect(appended).toContain("Assistant: Assistant migration answer");
     expect(appended).toContain("- RELATIVE_INDEX: 0");
     expect(appended).not.toContain("follow-up question");
+
+    const blockedRecommendedFollowup = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "do not queue this recommended follow-up",
+        revokesEventId: recommender.id,
+        clientEventId: randomUUID(),
+      },
+      [400],
+    );
+    expectApiError(blockedRecommendedFollowup.body);
+    expect(blockedRecommendedFollowup.body.error.message).toBe(
+      "Recommended follow-up cannot be queued",
+    );
 
     await cancelChatRun(actor, second.runId);
 

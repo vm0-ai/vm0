@@ -1,6 +1,7 @@
 import { buildInfoContract } from "../contracts/build-info";
 import { runnerRealtimeTokenContract } from "../contracts/realtime";
 import {
+  runnersActiveInputsContract,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -56,6 +57,16 @@ export const rustRouteBindings = [
   {
     route: runnersJobClaimContract.claim,
     rustModulePath: ["runners", "jobs", "by_id", "claim"],
+    rustConstName: "CLAIM",
+  },
+  {
+    route: runnersActiveInputsContract.list,
+    rustModulePath: ["runners", "runs", "by_run_id", "active_inputs"],
+    rustConstName: "LIST",
+  },
+  {
+    route: runnersActiveInputsContract.claim,
+    rustModulePath: ["runners", "runs", "by_run_id", "active_inputs", "claim"],
     rustConstName: "CLAIM",
   },
   {
