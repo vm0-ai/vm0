@@ -211,6 +211,7 @@ impl ExecutorInvocation {
                 ExecutorPhaseOutcome {
                     outcome: executor::ExecuteOutcome {
                         failure: Some(failure),
+                        sandbox_reuse_disposition: executor::SandboxReuseDisposition::default(),
                         sandbox: None,
                         source_ip: String::new(),
                         network_log_session: None,
@@ -295,6 +296,7 @@ impl FinalizationPhase {
         } = executor_result;
         let executor::ExecuteOutcome {
             failure: _,
+            sandbox_reuse_disposition,
             sandbox,
             source_ip,
             network_log_session,
@@ -344,6 +346,7 @@ impl FinalizationPhase {
                 parking_gate,
                 network_log_drain,
                 exit_code,
+                sandbox_reuse_disposition,
                 cancel,
                 cleanup_state,
                 #[cfg(test)]
@@ -356,6 +359,14 @@ impl FinalizationPhase {
         let finalization_duration = finalization_started.elapsed();
         let disposition = cleanup_state_after_finalize.disposition();
         let reuse_state_changed = completion_ready.reuse_state_changed();
+        if had_sandbox {
+            telemetry.record(
+                sandbox_reuse_disposition.telemetry_action(),
+                Duration::ZERO,
+                true,
+                None,
+            );
+        }
         let (finalization_action, finalization_success, finalization_error) = match disposition {
             RunCleanupDisposition::IdlePoolOwned => {
                 ("runner_host_finalization_reusable_sandbox", true, None)
@@ -517,10 +528,10 @@ impl DeferredUploadPhase {
 /// If `reuse_entry` is `Some`, the job reuses an existing idle sandbox.
 /// Otherwise it creates a new one via the factory.
 ///
-/// A sandbox is considered for idle parking only after a successful, uncancelled
-/// execution while parking is open and a reuse key is available. Park failure,
-/// cancellation before idle-pool transfer, or pool rejection falls back to
-/// destruction.
+/// A sandbox is considered for idle parking only after execution supplies a
+/// positive reuse disposition while parking is open, no hard cancellation is
+/// active, and a reuse key is available. Park failure, hard cancellation before
+/// idle-pool transfer, or pool rejection falls back to destruction.
 ///
 /// The completion state returned by finalization carries
 /// [`BudgetOwnership`](super::job_lifecycle::BudgetOwnership). Non-accepted paths
@@ -945,6 +956,9 @@ mod tests {
         ExecutorPhaseOutcome {
             outcome: executor::ExecuteOutcome {
                 failure: None,
+                sandbox_reuse_disposition: executor::SandboxReuseDisposition::Eligible(
+                    executor::SandboxReuseTerminal::Success,
+                ),
                 sandbox: Some(Box::new(mock_sandbox_ready_for_idle_reuse(sandbox_name))),
                 source_ip: "10.0.0.1".into(),
                 network_log_session: None,
@@ -962,6 +976,7 @@ mod tests {
         ExecutorPhaseOutcome {
             outcome: executor::ExecuteOutcome {
                 failure: None,
+                sandbox_reuse_disposition: executor::SandboxReuseDisposition::default(),
                 sandbox: None,
                 source_ip: String::new(),
                 network_log_session: None,
@@ -1040,6 +1055,10 @@ mod tests {
         assert_telemetry_action(
             &finalized.telemetry,
             "runner_host_finalization_reusable_sandbox",
+        );
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_terminal_sandbox_reuse_eligible_success",
         );
         assert_telemetry_action(&finalized.telemetry, "session_history_identity_parked");
         assert_eq!(

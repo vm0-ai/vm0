@@ -1,4 +1,5 @@
 use super::*;
+use crate::executor::{SandboxReuseDisposition, SandboxReuseRejection};
 
 fn capture_proxy_register_events(action: impl FnOnce()) -> Vec<CapturedEvent> {
     let captured = CapturedEvents::default();
@@ -210,4 +211,8 @@ async fn execute_inner_proxy_unregister_failure_marks_successful_run_failed() {
     assert!(outcome.sandbox.is_some());
     assert!(outcome.network_log_session.is_some());
     assert!(outcome.discovered_cli_agent_session_id.is_none());
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::PostJobCleanupFailure),
+    );
 }

@@ -173,6 +173,10 @@ impl RunCancellationHandle {
         self.inner.token.is_cancelled()
     }
 
+    pub(crate) fn is_hard_cancelled(&self) -> bool {
+        self.inner.hard_token.is_cancelled()
+    }
+
     pub(crate) fn signals(&self) -> RunCancellationSignals {
         RunCancellationSignals {
             any: self.inner.token.clone(),
@@ -305,10 +309,12 @@ mod tests {
         assert!(signals.any().is_cancelled());
         assert!(signals.cooperative_user().is_cancelled());
         assert!(!signals.hard().is_cancelled());
+        assert!(!handle.is_hard_cancelled());
 
         assert!(handle.request_hard_cancellation().await);
         assert!(!handle.request_hard_cancellation().await);
         assert!(signals.hard().is_cancelled());
+        assert!(handle.is_hard_cancelled());
     }
 
     #[tokio::test]

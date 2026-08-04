@@ -1,4 +1,5 @@
 use super::*;
+use crate::executor::{SandboxReuseDisposition, SandboxReuseRejection, SandboxReuseTerminal};
 use guest_contracts::diagnostics::{
     EventDeliveryAcceptanceOutcome, EventDeliveryAttemptFailureKind,
     EventDeliveryCompletedAttemptDiagnostic, EventDeliveryDiagnostic,
@@ -211,6 +212,10 @@ async fn execute_inner_appends_stream_limit_marker_after_oom_rewrite() {
     let failure = outcome.failure.as_ref().expect("expected OOM failure");
     assert_eq!(outcome.exit_code(), 1);
     assert_eq!(failure.error.as_str(), "Agent process killed by OOM killer");
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure),
+    );
     assert_eq!(
         failure
             .resource_diagnostics
@@ -537,6 +542,10 @@ async fn execute_inner_marks_stdout_incomplete_on_wait_process_error() {
         }
         ExecutionFailureKind::Generic => panic!("expected runner job timeout failure kind"),
     }
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::RunnerJobTimeout),
+    );
     assert!(
         outcome.sandbox.is_some(),
         "sandbox must be returned on post-start execution failure"
@@ -649,6 +658,10 @@ async fn execute_inner_non_exited_zero_code_is_failure() {
     assert_eq!(failure.exit_code, 1);
     assert_eq!(failure.error, "Agent exited with code 1");
     assert_eq!(failure.kind, ExecutionFailureKind::Generic);
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain),
+    );
     assert!(outcome.discovered_cli_agent_session_id.is_none());
     assert!(
         overrides
@@ -714,6 +727,10 @@ async fn execute_inner_guest_process_timeout_marks_failure_kind() {
         }
         ExecutionFailureKind::Generic => panic!("expected runner job timeout failure kind"),
     }
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::RunnerJobTimeout),
+    );
 }
 
 #[tokio::test]
@@ -1268,6 +1285,10 @@ async fn execute_inner_nonzero_records_agent_execute_error() {
     .unwrap();
 
     assert_eq!(outcome.exit_code(), 7);
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit),
+    );
     let ops = telemetry.pending_ops_snapshot();
     let agent_execute = ops
         .iter()

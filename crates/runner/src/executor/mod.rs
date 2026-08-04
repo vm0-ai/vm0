@@ -238,16 +238,99 @@ impl ExecutionHooks {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SandboxReuseDisposition {
+    Eligible(SandboxReuseTerminal),
+    Ineligible(SandboxReuseRejection),
+}
+
+impl SandboxReuseDisposition {
+    #[must_use]
+    pub(crate) fn is_eligible(self) -> bool {
+        matches!(self, Self::Eligible(_))
+    }
+
+    #[must_use]
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Eligible(SandboxReuseTerminal::Success) => "eligible_success",
+            Self::Eligible(SandboxReuseTerminal::NonzeroExit) => "eligible_nonzero_exit",
+            Self::Eligible(SandboxReuseTerminal::CooperativeCancellation) => {
+                "eligible_cooperative_cancellation"
+            }
+            Self::Ineligible(SandboxReuseRejection::ExecutionUncertain) => "execution_uncertain",
+            Self::Ineligible(SandboxReuseRejection::HardCancellation) => "hard_cancellation",
+            Self::Ineligible(SandboxReuseRejection::RunnerJobTimeout) => "runner_job_timeout",
+            Self::Ineligible(SandboxReuseRejection::ResourceFailure) => "resource_failure",
+            Self::Ineligible(SandboxReuseRejection::PostJobCleanupFailure) => {
+                "post_job_cleanup_failure"
+            }
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn telemetry_action(self) -> &'static str {
+        match self {
+            Self::Eligible(SandboxReuseTerminal::Success) => {
+                "runner_terminal_sandbox_reuse_eligible_success"
+            }
+            Self::Eligible(SandboxReuseTerminal::NonzeroExit) => {
+                "runner_terminal_sandbox_reuse_eligible_nonzero_exit"
+            }
+            Self::Eligible(SandboxReuseTerminal::CooperativeCancellation) => {
+                "runner_terminal_sandbox_reuse_eligible_cooperative_cancellation"
+            }
+            Self::Ineligible(SandboxReuseRejection::ExecutionUncertain) => {
+                "runner_terminal_sandbox_reuse_rejected_execution_uncertain"
+            }
+            Self::Ineligible(SandboxReuseRejection::HardCancellation) => {
+                "runner_terminal_sandbox_reuse_rejected_hard_cancellation"
+            }
+            Self::Ineligible(SandboxReuseRejection::RunnerJobTimeout) => {
+                "runner_terminal_sandbox_reuse_rejected_runner_job_timeout"
+            }
+            Self::Ineligible(SandboxReuseRejection::ResourceFailure) => {
+                "runner_terminal_sandbox_reuse_rejected_resource_failure"
+            }
+            Self::Ineligible(SandboxReuseRejection::PostJobCleanupFailure) => {
+                "runner_terminal_sandbox_reuse_rejected_post_job_cleanup_failure"
+            }
+        }
+    }
+}
+
+impl Default for SandboxReuseDisposition {
+    fn default() -> Self {
+        Self::Ineligible(SandboxReuseRejection::ExecutionUncertain)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SandboxReuseTerminal {
+    Success,
+    NonzeroExit,
+    CooperativeCancellation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SandboxReuseRejection {
+    ExecutionUncertain,
+    HardCancellation,
+    RunnerJobTimeout,
+    ResourceFailure,
+    PostJobCleanupFailure,
+}
+
 /// Outcome of a job execution and ownership of any sandbox still alive afterward.
 pub struct ExecuteOutcome {
     pub failure: Option<ExecutionFailure>,
+    pub(crate) sandbox_reuse_disposition: SandboxReuseDisposition,
     /// Sandbox ownership after execution.
     ///
     /// `Some` transfers a still-live sandbox to the caller for finalization; it
-    /// does not imply the sandbox is eligible for reuse. Finalization considers
-    /// parking only when the exit code is zero, cancellation is not active, the
-    /// parking gate is open, and a reuse key is available. Cancellation before
-    /// ownership transfer or an unsuccessful park still destroys the sandbox.
+    /// does not imply the sandbox is eligible for reuse. Finalization consumes
+    /// `sandbox_reuse_disposition` and still enforces hard cancellation, the
+    /// parking gate, a reuse key, reuse preparation, and ownership transfer.
     ///
     /// `None` means no live sandbox ownership is returned, either because no
     /// sandbox was created or because executor-side cleanup already consumed
@@ -272,6 +355,7 @@ impl ExecuteOutcome {
     ) -> Self {
         Self {
             failure: Some(failure),
+            sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             sandbox: Some(sandbox),
             source_ip,
             network_log_session: None,
@@ -507,6 +591,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     ) {
         ExecuteOutcome {
             failure: Some(ExecutionFailure::from_error(error)),
+            sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             sandbox: None,
             source_ip: String::new(),
             network_log_session: None,
@@ -534,6 +619,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             Ok(outcome) => outcome,
             Err(e) => ExecuteOutcome {
                 failure: Some(ExecutionFailure::from_error(e.to_string())),
+                sandbox_reuse_disposition: SandboxReuseDisposition::default(),
                 sandbox: None,
                 source_ip: String::new(),
                 network_log_session: None,

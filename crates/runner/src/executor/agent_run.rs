@@ -60,7 +60,8 @@ use super::workspace_session_history_materializer::{
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
     JOB_TIMEOUT_EXIT_CODE, ResourceFailureDiagnostics, ResourceFailureKind, RunnerError,
-    RunnerResult, SandboxReuseResult, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
+    RunnerResult, SandboxReuseDisposition, SandboxReuseRejection, SandboxReuseResult,
+    SandboxReuseTerminal, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
     USER_ENV_FILE_ENV_KEY, agent_exit_failure_message, guest_runtime_dir, guest_runtime_path,
     job_supervisor_timeout, job_terminal_wait_timeout, normalize_failure_exit_code,
 };
@@ -685,19 +686,12 @@ pub(super) struct ProcessCancelTimeouts {
 
 pub(super) struct AgentExecutionResult {
     pub(super) failure: Option<ExecutionFailure>,
+    pub(super) sandbox_reuse_disposition: SandboxReuseDisposition,
     pub(super) stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
     pub(super) reusable_session_identity: Option<RestoredSessionIdentity>,
 }
 
 impl AgentExecutionResult {
-    pub(super) fn success() -> Self {
-        Self {
-            failure: None,
-            stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
-            reusable_session_identity: None,
-        }
-    }
-
     pub(super) fn failure(
         exit_code: i32,
         error: impl Into<String>,
@@ -705,6 +699,7 @@ impl AgentExecutionResult {
     ) -> Self {
         Self {
             failure: Some(ExecutionFailure::new(exit_code, error, diagnostic)),
+            sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
             reusable_session_identity: None,
         }
@@ -717,6 +712,7 @@ impl AgentExecutionResult {
     pub(super) fn cancelled() -> Self {
         Self {
             failure: Some(ExecutionFailure::cancelled()),
+            sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
             reusable_session_identity: None,
         }
@@ -730,18 +726,14 @@ impl AgentExecutionResult {
         self
     }
 
-    pub(super) fn with_reusable_session_identity(
-        mut self,
-        reusable_session_identity: Option<RestoredSessionIdentity>,
-    ) -> Self {
-        self.reusable_session_identity = reusable_session_identity;
-        self
-    }
-
     pub(super) fn with_resource_diagnostics(
         mut self,
         resource_diagnostics: Option<ResourceFailureDiagnostics>,
     ) -> Self {
+        if resource_diagnostics.is_some_and(|diagnostics| diagnostics.failure_kind.is_some()) {
+            self.sandbox_reuse_disposition =
+                SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure);
+        }
         if let Some(failure) = self.failure.take() {
             self.failure = Some(failure.with_resource_diagnostics(resource_diagnostics));
         }
@@ -750,6 +742,8 @@ impl AgentExecutionResult {
 
     #[must_use]
     pub(super) fn with_resource_failure_kind(mut self, kind: ResourceFailureKind) -> Self {
+        self.sandbox_reuse_disposition =
+            SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure);
         if let Some(failure) = self.failure.take() {
             self.failure = Some(failure.with_resource_diagnostics(Some(
                 ResourceFailureDiagnostics::from_failure_kind(kind),
@@ -1079,6 +1073,42 @@ fn diagnostic_is_agent_execution_timeout(diagnostic: Option<&FailureDiagnostic>)
     diagnostic
         .and_then(|diagnostic| diagnostic.cli_termination.as_ref())
         .is_some_and(|termination| termination.reason == CliTerminationReason::ExecutionTimeout)
+}
+
+fn sandbox_reuse_disposition_for_process_exit(
+    exit: &sandbox::ProcessExit,
+    cancellation: CancellationDisposition,
+    failure: Option<&ExecutionFailure>,
+) -> SandboxReuseDisposition {
+    if cancellation == CancellationDisposition::HardFallback {
+        return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::HardCancellation);
+    }
+    if failure.is_some_and(|failure| {
+        failure
+            .resource_diagnostics
+            .is_some_and(|diagnostics| diagnostics.failure_kind.is_some())
+    }) {
+        return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure);
+    }
+    if failure.is_some_and(|failure| {
+        matches!(
+            failure.kind,
+            super::ExecutionFailureKind::RunnerJobTimeout { .. }
+        )
+    }) {
+        return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::RunnerJobTimeout);
+    }
+
+    let ExecTermination::Exited { exit_code } = exit.termination else {
+        return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain);
+    };
+    if cancellation == CancellationDisposition::Cooperative {
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::CooperativeCancellation)
+    } else if exit_code == 0 {
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::Success)
+    } else {
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit)
+    }
 }
 
 fn process_exit_oom_candidate(exit: &sandbox::ProcessExit) -> bool {
@@ -2317,6 +2347,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                         t.elapsed(),
                         None,
                     )),
+                    sandbox_reuse_disposition: SandboxReuseDisposition::Ineligible(
+                        SandboxReuseRejection::RunnerJobTimeout,
+                    ),
                     stdout_stream_diagnostics: stdout_stream_diagnostics_on_wait_error,
                     reusable_session_identity: None,
                 });
@@ -2556,15 +2589,21 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         None
     };
 
+    let sandbox_reuse_disposition =
+        sandbox_reuse_disposition_for_process_exit(&exit, cancellation, failure.as_ref());
     let agent_result = match failure {
         Some(failure) => AgentExecutionResult {
             failure: Some(failure),
+            sandbox_reuse_disposition,
             stdout_stream_diagnostics,
             reusable_session_identity: None,
         },
-        None => AgentExecutionResult::success()
-            .with_stdout_stream_diagnostics(stdout_stream_diagnostics)
-            .with_reusable_session_identity(reusable_session_identity),
+        None => AgentExecutionResult {
+            failure: None,
+            sandbox_reuse_disposition,
+            stdout_stream_diagnostics,
+            reusable_session_identity,
+        },
     };
     telemetry.record(
         "agent_execute",
