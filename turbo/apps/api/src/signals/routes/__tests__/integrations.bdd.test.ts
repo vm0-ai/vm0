@@ -2717,7 +2717,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(titlePrompts).toHaveLength(1);
   });
 
-  it("binds agent and model choices when canonical Slack threads are created", async () => {
+  it("uses default launch bindings for canonical Slack threads", async () => {
     const actor = bdd.user();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
@@ -2730,9 +2730,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     if (!onboarding.defaultAgentId) {
       throw new Error("Expected onboarding to configure a default agent");
     }
-    const agentB = await bdd.createAgent(actor, {
-      displayName: "BDD Slack Switch Agent",
-    });
     const slackUserId = uniqueSlackUserId();
     const { teamId } = await integrations.installSlackWorkspace(actor, {
       installerSlackUserId: slackUserId,
@@ -2815,6 +2812,51 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run2 = await runs.readRun(actor, run2Id);
     expect(run2.result?.agentSessionId).toBe(session1);
+  });
+
+  it("pins agent choices to canonical Slack threads", async () => {
+    const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    integrations.configureSlackAppMocks();
+    integrations.acceptSlackSessionHistoryDownloads();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await integrations.configureSlackRunModelPolicies(actor);
+    const onboarding = await bdd.readOnboardingStatus(actor);
+    if (!onboarding.defaultAgentId) {
+      throw new Error("Expected onboarding to configure a default agent");
+    }
+    const agentB = await bdd.createAgent(actor, {
+      displayName: "BDD Slack Switch Agent",
+    });
+    const slackUserId = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUserId,
+    });
+    integrations.clearSlackCallHistory();
+
+    const channelId = "C_BDD_AGENT_BINDING";
+    const threadTs = "3050.000100";
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUserId,
+      text: "establish the original thread agent",
+      ts: threadTs,
+      channel: channelId,
+    });
+    const seedRunId = await pollSlackRun(runnerGroup);
+    const seedClaim = await runs.claimRunnerJob(seedRunId);
+    await completeSlackTriggeredRun({
+      runId: seedRunId,
+      sandboxToken: seedClaim.sandboxToken,
+      cliAgentType: seedClaim.cliAgentType,
+    });
+    const seedRun = await runs.readRun(actor, seedRunId);
+    const seedSessionId = seedRun.result?.agentSessionId;
+    if (!seedSessionId) {
+      throw new Error("Expected the original Slack run to expose its session");
+    }
 
     const switched = await integrations.postSlackInteractive(
       integrations.agentPickerSubmission({
@@ -2837,22 +2879,24 @@ describe("INT-01: Slack app deep webhook flows", () => {
       type: "app_mention",
       user: slackUserId,
       text: "keep the existing thread agent",
-      ts: "3000.000300",
+      ts: "3050.000200",
       thread_ts: threadTs,
       channel: channelId,
     });
-    const run3Id = await pollSlackRun(runnerGroup);
-    const claim3 = await runs.claimRunnerJob(run3Id);
-    expect(claim3.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run2Id}`);
+    const continuationRunId = await pollSlackRun(runnerGroup);
+    const continuationClaim = await runs.claimRunnerJob(continuationRunId);
+    expect(continuationClaim.resumeSession?.sessionId).toBe(
+      `bdd-slack-cli-${seedRunId}`,
+    );
     await completeSlackTriggeredRun({
-      runId: run3Id,
-      sandboxToken: claim3.sandboxToken,
-      cliAgentType: claim3.cliAgentType,
+      runId: continuationRunId,
+      sandboxToken: continuationClaim.sandboxToken,
+      cliAgentType: continuationClaim.cliAgentType,
     });
-    const run3 = await runs.readRun(actor, run3Id);
-    expect(run3.result?.agentSessionId).toBe(session1);
+    const continuationRun = await runs.readRun(actor, continuationRunId);
+    expect(continuationRun.result?.agentSessionId).toBe(seedSessionId);
 
-    const overrideThreadTs = "3050.000100";
+    const overrideThreadTs = "3051.000100";
     await integrations.postSlackEvent(teamId, {
       type: "app_mention",
       user: slackUserId,
@@ -2893,7 +2937,23 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: overrideClaim.sandboxToken,
       cliAgentType: overrideClaim.cliAgentType,
     });
+  });
 
+  it("pins model choices to canonical Slack threads", async () => {
+    const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    integrations.configureSlackAppMocks();
+    integrations.acceptSlackSessionHistoryDownloads();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await integrations.configureSlackRunModelPolicies(actor);
+    const slackUserId = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUserId,
+    });
+
+    const channelId = "C_BDD_MODEL_BINDING";
     await integrations.postSlackInteractive(
       integrations.agentPickerSubmission({
         workspaceId: teamId,
@@ -2911,21 +2971,21 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ts: gptThreadTs,
       channel: channelId,
     });
-    const run4Id = await pollSlackRun(runnerGroup);
-    const claim4 = await runs.claimRunnerJob(run4Id);
-    expect(claim4.cliAgentType).toBe("codex");
-    expect(claim4.environment).toMatchObject({
+    const gptRunId = await pollSlackRun(runnerGroup);
+    const gptClaim = await runs.claimRunnerJob(gptRunId);
+    expect(gptClaim.cliAgentType).toBe("codex");
+    expect(gptClaim.environment).toMatchObject({
       OPENAI_API_KEY: expect.stringMatching(/.+/),
       OPENAI_MODEL: "gpt-5.6-sol",
     });
     await completeSlackTriggeredRun({
-      runId: run4Id,
-      sandboxToken: claim4.sandboxToken,
+      runId: gptRunId,
+      sandboxToken: gptClaim.sandboxToken,
       cliAgentType: "codex",
     });
-    const run4 = await runs.readRun(actor, run4Id);
-    const session4 = run4.result?.agentSessionId;
-    if (!session4) {
+    const gptRun = await runs.readRun(actor, gptRunId);
+    const gptSessionId = gptRun.result?.agentSessionId;
+    if (!gptSessionId) {
       throw new Error("Expected GPT Slack run to expose its session");
     }
 
@@ -2938,20 +2998,22 @@ describe("INT-01: Slack app deep webhook flows", () => {
       thread_ts: gptThreadTs,
       channel: channelId,
     });
-    const run5Id = await pollSlackRun(runnerGroup);
-    const claim5 = await runs.claimRunnerJob(run5Id);
-    expect(claim5.cliAgentType).toBe("codex");
-    expect(claim5.environment).toMatchObject({
+    const continuationRunId = await pollSlackRun(runnerGroup);
+    const continuationClaim = await runs.claimRunnerJob(continuationRunId);
+    expect(continuationClaim.cliAgentType).toBe("codex");
+    expect(continuationClaim.environment).toMatchObject({
       OPENAI_MODEL: "gpt-5.6-sol",
     });
-    expect(claim5.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run4Id}`);
+    expect(continuationClaim.resumeSession?.sessionId).toBe(
+      `bdd-slack-cli-${gptRunId}`,
+    );
     await completeSlackTriggeredRun({
-      runId: run5Id,
-      sandboxToken: claim5.sandboxToken,
+      runId: continuationRunId,
+      sandboxToken: continuationClaim.sandboxToken,
       cliAgentType: "codex",
     });
-    const run5 = await runs.readRun(actor, run5Id);
-    expect(run5.result?.agentSessionId).toBe(session4);
+    const continuationRun = await runs.readRun(actor, continuationRunId);
+    expect(continuationRun.result?.agentSessionId).toBe(gptSessionId);
   });
 
   it("prompts disconnected Slack users and filters non-actionable messages", async () => {
