@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.28.128](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.127...desktop-v0.28.128) (2026-08-04)
+
+
+### Refactoring
+
+* retire the zero org command group and unreachable secret and variable apis ([#25039](https://github.com/vm0-ai/vm0/issues/25039)) ([305ca0d](https://github.com/vm0-ai/vm0/commit/305ca0dc0a3a6b149c118b9d8559b233abfffef5)), closes [#25011](https://github.com/vm0-ai/vm0/issues/25011)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.271.0
+
 ## [0.28.127](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.126...desktop-v0.28.127) (2026-08-04)
 
 
