@@ -47,8 +47,11 @@ zstd = { workspace = true, features = ["zstdmt"] }
 vsock-proto = { workspace = true }
 
 [build-dependencies]
+hex = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
+zero-cli = { workspace = true }
 
 # These dev-dependencies exist solely for release-please version tracking:
 # cargo-workspace plugin includes dev-dependencies in its dependency graph,
@@ -66,7 +69,6 @@ guest-mock-claude = { workspace = true }
 guest-mock-codex = { workspace = true }
 guest-reseed = { workspace = true }
 guest-write-file = { workspace = true }
-zero-cli = { workspace = true }
 httpmock = { workspace = true }
 sandbox-mock = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }

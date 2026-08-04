@@ -3,6 +3,24 @@ import { type RustRouteBinding, rustRouteBindings } from "../routes";
 
 const expectedBindings = [
   {
+    method: "GET",
+    path: "/api/build-info",
+    rustModulePath: ["build_info"],
+    rustConstName: "GET",
+  },
+  {
+    method: "GET",
+    path: "/api/zero/model-policies",
+    rustModulePath: ["zero", "model_policies"],
+    rustConstName: "LIST",
+  },
+  {
+    method: "GET",
+    path: "/api/zero/user-model-preference",
+    rustModulePath: ["zero", "user_model_preference"],
+    rustConstName: "GET",
+  },
+  {
     method: "POST",
     path: "/api/runners/poll",
     rustModulePath: ["runners", "poll"],
@@ -133,7 +151,9 @@ describe("Rust route bindings", () => {
 
     expect(secondRender).toBe(firstRender);
     for (const binding of expectedBindings) {
-      expect(firstRender).toContain("crate::Method::Post");
+      const methodVariant =
+        binding.method === "GET" ? "crate::Method::Get" : "crate::Method::Post";
+      expect(firstRender).toContain(methodVariant);
       expect(firstRender).toContain(`"${binding.path}"`);
     }
   });
