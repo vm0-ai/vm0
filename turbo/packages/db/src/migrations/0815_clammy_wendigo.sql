@@ -1,0 +1,1 @@
+ALTER TABLE "chat_slack_context" DROP COLUMN "message_permalink";
