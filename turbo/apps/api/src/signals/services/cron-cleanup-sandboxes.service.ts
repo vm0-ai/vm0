@@ -30,6 +30,7 @@ import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainStaleChatThreadQueues$ } from "./chat-thread-queue-drain.service";
 import type { QueueMarkerRevokeNotification } from "./zero-chat-queue-marker.service";
 import { drainStaleCanonicalSlackIngress$ } from "./canonical-slack-ingress-processor.service";
+import { drainStaleSlackWorkflowAutomationDeliveries$ } from "./slack-workflow-automation-delivery.service";
 import { drainStaleCanonicalFeishuIngress$ } from "./canonical-feishu-ingress-processor.service";
 import { retryPendingFeishuConnectWelcomes$ } from "./zero-feishu-welcome.service";
 import {
@@ -498,6 +499,20 @@ function logQueueMaintenance(args: {
   L.debug("Queue maintenance completed", args);
 }
 
+const drainSlackWorkflowDeliveriesSafely$ = command(
+  async ({ set }, signal: AbortSignal): Promise<void> => {
+    await tapError(
+      set(drainStaleSlackWorkflowAutomationDeliveries$, signal),
+      (error) => {
+        L.error("Failed to drain Slack Workflow automation deliveries", {
+          errorClass:
+            error instanceof Error ? error.constructor.name : typeof error,
+        });
+      },
+    );
+  },
+);
+
 export const cleanupSandboxes$ = command(
   async ({ set }, signal: AbortSignal): Promise<CleanupSandboxesResult> => {
     const db = set(writeDb$);
@@ -568,6 +583,8 @@ export const cleanupSandboxes$ = command(
     await tapError(set(drainStaleCanonicalSlackIngress$, signal), (error) => {
       L.error("Failed to drain stale canonical Slack ingress", { error });
     });
+    signal.throwIfAborted();
+    await set(drainSlackWorkflowDeliveriesSafely$, signal);
     signal.throwIfAborted();
     await tapError(set(drainStaleCanonicalFeishuIngress$, signal), (error) => {
       L.error("Failed to drain stale canonical Feishu ingress", { error });

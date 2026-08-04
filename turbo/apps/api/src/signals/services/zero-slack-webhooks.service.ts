@@ -38,7 +38,10 @@ import {
   buildSuccessMessage,
   buildWelcomeMessage,
 } from "../../lib/slack-webhook-blocks";
-import type { SlackFile } from "../../lib/slack-webhook-context";
+import type {
+  SlackFile,
+  SlackRichTextBlock,
+} from "../../lib/slack-webhook-context";
 import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import {
@@ -65,6 +68,10 @@ import {
   slackSessionThreadTs,
 } from "./slack-chat-ingress.service";
 import { processCanonicalSlackIngress$ } from "./canonical-slack-ingress-processor.service";
+import {
+  admitSlackWorkflowAutomationCallback,
+  processSlackWorkflowAutomationDelivery$,
+} from "./slack-workflow-automation-delivery.service";
 import { onRejection, safeJsonParse, tapError } from "../utils";
 
 const L = logger("ZeroSlackWebhooks");
@@ -86,6 +93,7 @@ interface SlackEventCallback {
   readonly type: "event_callback";
   readonly team_id: string;
   readonly event_id?: string;
+  readonly is_ext_shared_channel?: boolean;
   readonly event:
     | SlackAppMentionEvent
     | SlackDirectMessageEvent
@@ -134,6 +142,9 @@ interface SlackChannelMessageEvent {
   readonly thread_ts?: string;
   readonly subtype?: string;
   readonly bot_id?: string;
+  readonly app_id?: string;
+  readonly bot_profile?: unknown;
+  readonly blocks?: readonly SlackRichTextBlock[];
   readonly files?: readonly SlackFile[];
 }
 
@@ -1625,6 +1636,88 @@ const handleEventCallback$ = command(
   },
 );
 
+const admitSlackWorkflowCallback$ = command(
+  async (
+    { set },
+    args: {
+      readonly db: Db;
+      readonly payload: SlackEventCallback;
+      readonly retryNum: string | undefined;
+    },
+    signal: AbortSignal,
+  ): Promise<"missing_event_id" | "schema_unavailable" | null> => {
+    const admission = await onRejection(
+      admitSlackWorkflowAutomationCallback({
+        db: args.db,
+        workspaceId: args.payload.team_id,
+        eventId: args.payload.event_id,
+        sharedChannel: args.payload.is_ext_shared_channel === true,
+        event: args.payload.event,
+        signal,
+      }),
+      (error) => {
+        L.error("Slack Workflow automation admission failed", {
+          type: "slack_workflow_automation_delivery",
+          phase: "admission",
+          outcome: "failed",
+          workspaceId: args.payload.team_id,
+          subtype:
+            "subtype" in args.payload.event
+              ? (args.payload.event.subtype ?? null)
+              : null,
+          errorClass:
+            error instanceof Error ? error.constructor.name : typeof error,
+        });
+      },
+    );
+    signal.throwIfAborted();
+    if (admission.kind === "retry_later") {
+      L.warn("Slack Workflow automation admission must retry", {
+        type: "slack_workflow_automation_delivery",
+        phase: "admission",
+        outcome: "retry_later",
+        reason: admission.reason,
+        workspaceId: args.payload.team_id,
+        isRetry: Boolean(args.retryNum),
+      });
+      return admission.reason;
+    }
+    if (admission.kind !== "admitted") {
+      return null;
+    }
+    for (const deliveryId of admission.deliveryIds) {
+      const backgroundSignal = new AbortController().signal;
+      waitUntil(
+        tapError(
+          set(
+            processSlackWorkflowAutomationDelivery$,
+            { deliveryId },
+            backgroundSignal,
+          ),
+          (error) => {
+            L.error("Slack Workflow automation background processing failed", {
+              type: "slack_workflow_automation_delivery",
+              phase: "background",
+              outcome: "failed",
+              deliveryId,
+              errorClass:
+                error instanceof Error ? error.constructor.name : typeof error,
+            });
+          },
+        ),
+      );
+    }
+    return null;
+  },
+);
+
+function slackWorkflowAdmissionRetryResponse(): Response {
+  return jsonResponse(
+    { error: "Slack Workflow automation admission is temporarily unavailable" },
+    503,
+  );
+}
+
 export const handleZeroSlackEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const request = get(request$);
@@ -1646,6 +1739,16 @@ export const handleZeroSlackEvents$ = command(
 
     if (payload.type === "event_callback") {
       const retryNum = request.header("x-slack-retry-num");
+      const db = set(writeDb$);
+      const workflowRetryReason = await set(
+        admitSlackWorkflowCallback$,
+        { db, payload, retryNum },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (workflowRetryReason) {
+        return slackWorkflowAdmissionRetryResponse();
+      }
       const agentEvent = slackAgentMessageEvent(payload.event);
       if (agentEvent) {
         if (!payload.event_id) {
@@ -1660,7 +1763,6 @@ export const handleZeroSlackEvents$ = command(
             400,
           );
         }
-        const db = set(writeDb$);
         const channelType =
           agentEvent.type === "app_mention"
             ? slackAppMentionChannelType(agentEvent)
@@ -1742,7 +1844,7 @@ export const handleZeroSlackEvents$ = command(
         return textResponse("OK");
       }
       set(handleEventCallback$, {
-        db: set(writeDb$),
+        db,
         payload,
         signal,
       });

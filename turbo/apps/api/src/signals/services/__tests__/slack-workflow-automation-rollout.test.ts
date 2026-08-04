@@ -6,10 +6,30 @@ import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { db } from "../../../lib/db";
-import { slackUserMentionedAutomationSchemaAvailable } from "../slack-workflow-automation-schema.service";
+import {
+  slackUserMentionedAutomationSchemaAvailable,
+  slackWorkflowAutomationDeliverySchemaAvailable,
+} from "../slack-workflow-automation-schema.service";
 import { prepareSlackUserMentionedEventConfigForPersist } from "../slack-workflow-automation.service";
 
 describe("Slack workflow automation rollout compatibility", () => {
+  it("detects delivery-table availability across the deployment window", async () => {
+    const rollback = new Error("rollback Slack delivery rollout fixture");
+    await expect(
+      db().transaction(async (tx) => {
+        await expect(
+          slackWorkflowAutomationDeliverySchemaAvailable(tx),
+        ).resolves.toBeTruthy();
+
+        await tx.execute(sql`SET LOCAL search_path TO pg_temp`);
+        await expect(
+          slackWorkflowAutomationDeliverySchemaAvailable(tx),
+        ).resolves.toBeFalsy();
+        throw rollback;
+      }),
+    ).rejects.toBe(rollback);
+  });
+
   it("blocks preparation until the automation constraint supports Slack", async () => {
     const rollback = new Error("rollback Slack automation rollout fixture");
 

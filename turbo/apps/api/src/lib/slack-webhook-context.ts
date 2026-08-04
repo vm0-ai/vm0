@@ -26,7 +26,7 @@ interface RichTextStyle {
   readonly code?: boolean;
 }
 
-interface RichTextElement {
+export interface SlackRichTextElement {
   readonly type: string;
   readonly text?: string;
   readonly url?: string;
@@ -40,12 +40,12 @@ interface RichTextElement {
   readonly indent?: number;
   readonly offset?: number;
   readonly language?: string;
-  readonly elements?: readonly RichTextElement[];
+  readonly elements?: readonly SlackRichTextElement[];
 }
 
-interface SlackBlock {
+export interface SlackRichTextBlock {
   readonly type: string;
-  readonly elements?: readonly RichTextElement[];
+  readonly elements?: readonly SlackRichTextElement[];
 }
 
 interface SlackMessage {
@@ -55,7 +55,7 @@ interface SlackMessage {
   readonly bot_id?: string;
   readonly files?: readonly SlackFile[];
   readonly attachments?: readonly SlackAttachment[];
-  readonly blocks?: readonly SlackBlock[];
+  readonly blocks?: readonly SlackRichTextBlock[];
 }
 
 type SlackConversationContextPhase =
@@ -144,7 +144,7 @@ function applyTextStyle(
   return result;
 }
 
-function formatInlineElement(element: RichTextElement): string {
+function formatInlineElement(element: SlackRichTextElement): string {
   switch (element.type) {
     case "text": {
       return applyTextStyle(element.text ?? "", element.style);
@@ -181,11 +181,13 @@ function formatInlineElement(element: RichTextElement): string {
   }
 }
 
-function inlineElementsToText(elements: readonly RichTextElement[]): string {
+function inlineElementsToText(
+  elements: readonly SlackRichTextElement[],
+): string {
   return elements.map(formatInlineElement).join("");
 }
 
-function formatRichTextList(section: RichTextElement): string[] {
+function formatRichTextList(section: SlackRichTextElement): string[] {
   const indent = "  ".repeat(section.indent ?? 0);
   const listStyle =
     typeof section.style === "string" ? section.style : undefined;
@@ -201,7 +203,7 @@ function formatRichTextList(section: RichTextElement): string[] {
   return parts;
 }
 
-function formatRichTextSection(section: RichTextElement): string[] {
+function formatRichTextSection(section: SlackRichTextElement): string[] {
   switch (section.type) {
     case "rich_text_section": {
       return [inlineElementsToText(section.elements ?? [])];
@@ -231,7 +233,7 @@ function formatRichTextSection(section: RichTextElement): string[] {
 }
 
 function extractTextFromBlocks(
-  blocks: readonly SlackBlock[] | undefined,
+  blocks: readonly SlackRichTextBlock[] | undefined,
 ): string | undefined {
   if (!blocks || blocks.length === 0) {
     return undefined;
@@ -318,21 +320,16 @@ export function resolveUserMentions(
 function extractMentionedUserIds(messages: readonly SlackMessage[]): string[] {
   const ids = new Set<string>();
   for (const message of messages) {
-    addMentionedUserIdsFromBlocks(message.blocks, ids);
-    if (message.text) {
-      for (const match of message.text.matchAll(/<@(\w+)>/g)) {
-        const userId = match[1];
-        if (userId) {
-          ids.add(userId);
-        }
-      }
+    for (const userId of normalizeSlackMessageContent(message)
+      .directlyMentionedUserIds) {
+      ids.add(userId);
     }
   }
   return [...ids];
 }
 
 function addMentionedUserIdsFromBlocks(
-  blocks: readonly SlackBlock[] | undefined,
+  blocks: readonly SlackRichTextBlock[] | undefined,
   ids: Set<string>,
 ): void {
   for (const block of blocks ?? []) {
@@ -343,14 +340,44 @@ function addMentionedUserIdsFromBlocks(
 }
 
 function addMentionedUserIdsFromElements(
-  elements: readonly RichTextElement[] | undefined,
+  elements: readonly SlackRichTextElement[] | undefined,
   ids: Set<string>,
 ): void {
   for (const element of elements ?? []) {
     if (element.type === "user" && element.user_id) {
       ids.add(element.user_id);
     }
+    addMentionedUserIdsFromElements(element.elements, ids);
   }
+}
+
+interface NormalizedSlackMessageContent {
+  readonly text: string;
+  readonly directlyMentionedUserIds: readonly string[];
+}
+
+/**
+ * Normalize one Slack message for every verified ingress consumer. Rich-text
+ * user elements are authoritative when present, while Slack's textual user
+ * token remains a fallback. Broadcasts and user-group elements are deliberately
+ * excluded from the returned direct-user set.
+ */
+export function normalizeSlackMessageContent(args: {
+  readonly text?: string;
+  readonly blocks?: readonly SlackRichTextBlock[];
+}): NormalizedSlackMessageContent {
+  const ids = new Set<string>();
+  addMentionedUserIdsFromBlocks(args.blocks, ids);
+  for (const match of (args.text ?? "").matchAll(/<@(U[A-Z0-9_]+)>/g)) {
+    const userId = match[1];
+    if (userId) {
+      ids.add(userId);
+    }
+  }
+  return {
+    text: extractTextFromBlocks(args.blocks) ?? args.text ?? "",
+    directlyMentionedUserIds: [...ids],
+  };
 }
 
 function formatMessageWithMetadata(

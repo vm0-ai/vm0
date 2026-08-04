@@ -31,6 +31,7 @@ import type {
   WorkflowAutomationEventPayload,
   WorkflowAutomationEventType,
 } from "./workflow-automation-context.service";
+import { attachCanonicalAssetsToEvent } from "./canonical-asset.service";
 
 const automationEventRevoker = alias(chatEvents, "automation_event_revoker");
 
@@ -114,6 +115,10 @@ interface WorkflowQueueAdmissionArgs {
   readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | undefined;
   readonly coalescePendingScheduleRun: boolean;
+  readonly eventAssets?: readonly {
+    readonly assetId: string;
+    readonly position: number;
+  }[];
   /**
    * Atomically transitions a provider-owned source event only after its
    * workflow queue item has been inserted. Throwing rolls back both writes.
@@ -163,6 +168,7 @@ async function attemptWorkflowQueueAdmission(
     if (!inserted) {
       throw new Error("Workflow queue event insert returned no row");
     }
+    await attachCanonicalAssetsToEvent(tx, inserted.id, args.eventAssets ?? []);
     await args.persistSourceTransition?.(tx);
     return { kind: "inserted", eventId: inserted.id };
   });

@@ -87,6 +87,11 @@ export interface RunWorkflowAutomationNowArgs {
   // Automated schedule ticks coalesce while pending. Explicit manual runs set
   // this false so every user action remains a distinct queue item.
   readonly coalescePendingScheduleRun?: boolean;
+  /** Canonical input assets attached atomically to the admitted queue event. */
+  readonly eventAssets?: readonly {
+    readonly assetId: string;
+    readonly position: number;
+  }[];
   /**
    * Admission-only source transition. This callback is never serialized into
    * the durable workflow queue payload.

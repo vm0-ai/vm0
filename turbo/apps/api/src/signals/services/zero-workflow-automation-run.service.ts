@@ -62,6 +62,7 @@ export const runWorkflowAutomationNow$ = command(
           triggerSource: args.triggerSource ?? "workflow-schedule",
           triggerBrief: args.triggerBrief,
           coalescePendingScheduleRun: args.coalescePendingScheduleRun !== false,
+          eventAssets: args.eventAssets,
           persistSourceTransition: args.persistSourceTransition,
         });
       },

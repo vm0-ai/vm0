@@ -24,11 +24,21 @@ import { slackChatIngress } from "@vm0/db/schema/slack-chat-ingress";
 import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { slackWorkflowAutomationDeliveries } from "@vm0/db/schema/slack-workflow-automation-delivery";
 import { variables } from "@vm0/db/schema/variable";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, desc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  notExists,
+  sql,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { pgTextDecoder } from "../../lib/db-structured-result";
@@ -564,6 +574,35 @@ function slackChatIngressRows(db: ReadonlyDb, teamId: string) {
     .where(eq(slackOrgConnections.slackWorkspaceId, teamId));
 }
 
+function slackWorkflowDeliveryRows(db: ReadonlyDb, teamId: string) {
+  return db
+    .select()
+    .from(slackWorkflowAutomationDeliveries)
+    .where(eq(slackWorkflowAutomationDeliveries.workspaceId, teamId))
+    .orderBy(asc(slackWorkflowAutomationDeliveries.createdAt));
+}
+
+function slackWorkflowDeliveryRowsForLookup(
+  db: ReadonlyDb,
+  teamId: string,
+  hasTeamIdLookup: boolean,
+) {
+  return hasTeamIdLookup
+    ? slackWorkflowDeliveryRows(db, teamId)
+    : Promise.resolve([]);
+}
+
+function serializedSlackWorkflowDelivery(
+  delivery: Awaited<ReturnType<typeof slackWorkflowDeliveryRows>>[number],
+) {
+  return {
+    ...delivery,
+    processedAt: delivery.processedAt ? isoString(delivery.processedAt) : null,
+    createdAt: isoString(delivery.createdAt),
+    updatedAt: isoString(delivery.updatedAt),
+  };
+}
+
 function slackPendingChatEventRows(db: ReadonlyDb, teamId: string) {
   return db
     .select({
@@ -836,6 +875,11 @@ const getSlackState$ = computed(async (get) => {
   const chatIngress = hasTeamIdLookup
     ? await slackChatIngressRows(db, teamId)
     : [];
+  const workflowDeliveries = await slackWorkflowDeliveryRowsForLookup(
+    db,
+    teamId,
+    hasTeamIdLookup,
+  );
   const pendingChatEvents = hasTeamIdLookup
     ? await slackPendingChatEventRows(db, teamId)
     : [];
@@ -875,6 +919,9 @@ const getSlackState$ = computed(async (get) => {
           updatedAt: isoString(ingress.updatedAt),
         };
       }),
+      workflow_deliveries: workflowDeliveries.map(
+        serializedSlackWorkflowDelivery,
+      ),
       pending_chat_events: pendingChatEvents.map((item) => {
         return { ...item, createdAt: isoString(item.createdAt) };
       }),

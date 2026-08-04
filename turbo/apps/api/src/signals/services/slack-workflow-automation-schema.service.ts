@@ -26,3 +26,21 @@ export async function slackUserMentionedAutomationSchemaAvailable(
     .limit(1);
   return state?.available ?? false;
 }
+
+export async function slackWorkflowAutomationDeliverySchemaAvailable(
+  db: Pick<Db | ReadonlyDb, "select">,
+): Promise<boolean> {
+  // Admission can observe API-before-migration during a rolling deploy. Probe
+  // explicitly so matching Slack callbacks remain retryable instead of being
+  // acknowledged and lost.
+  const [state] = await db
+    .select({
+      available:
+        sql`to_regclass('slack_workflow_automation_deliveries') IS NOT NULL`.mapWith(
+          pgBooleanDecoder,
+        ),
+    })
+    .from(sql`(SELECT 1) AS schema_probe`)
+    .limit(1);
+  return state?.available ?? false;
+}
