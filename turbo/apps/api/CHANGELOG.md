@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.370.4](https://github.com/vm0-ai/vm0/compare/api-v1.370.3...api-v1.370.4) (2026-08-04)
+
+
+### Refactoring
+
+* **api:** read Teams launch context from canonical sources ([#24863](https://github.com/vm0-ai/vm0/issues/24863)) ([0f30583](https://github.com/vm0-ai/vm0/commit/0f3058355b9f5c07a26e3e84f2984b744497d9e9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.163.6
+
 ## [1.370.3](https://github.com/vm0-ai/vm0/compare/api-v1.370.2...api-v1.370.3) (2026-08-04)
 
 
