@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.154.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.154.1...runner-rs-v0.154.2) (2026-08-04)
+
+
+### Bug Fixes
+
+* **runner:** clear removed namespaces during doctor rechecks ([#24859](https://github.com/vm0-ai/vm0/issues/24859)) ([873fa85](https://github.com/vm0-ai/vm0/commit/873fa85ccd18d251025a879760896048b8b11619))
+* **runner:** guard run controls across sandbox reuse ([#24849](https://github.com/vm0-ai/vm0/issues/24849)) ([bb1d90c](https://github.com/vm0-ai/vm0/commit/bb1d90c15df373b43a8653dcd85f9a47e3fb6042))
+
+
+### Documentation
+
+* **python:** clarify request stream ownership contract ([#24853](https://github.com/vm0-ai/vm0/issues/24853)) ([8ff1a83](https://github.com/vm0-ai/vm0/commit/8ff1a831d20251a45dda92c811bdb14b77e36f37))
+
+
+### Refactoring
+
+* **runner:** centralize network log process lifecycle ([#24861](https://github.com/vm0-ai/vm0/issues/24861)) ([ae01c93](https://github.com/vm0-ai/vm0/commit/ae01c9340a2673fb370c7df41e51465286b31dfe))
+
+
+### Performance Improvements
+
+* **mitm-addon:** avoid quadratic x url candidate scanning ([#24854](https://github.com/vm0-ai/vm0/issues/24854)) ([08e9a07](https://github.com/vm0-ai/vm0/commit/08e9a07217d906cae130668bdebb2a7573eedcb4))
+
 ## [0.154.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.154.0...runner-rs-v0.154.1) (2026-08-04)
 
 
