@@ -1169,6 +1169,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn hard_cancellation_records_finalization_cancellation_marker() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cleanup_state = RunCleanupState::new();
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            "sess-hard-cancellation",
+            lease,
+            cleanup_state.clone(),
+        );
+        finalization.cancel.request_hard_cancellation().await;
+        let mut executor_result = executor_phase_outcome(run_id, "hard-cancellation", None);
+        executor_result.outcome.sandbox_reuse_disposition =
+            executor::SandboxReuseDisposition::Ineligible(
+                executor::SandboxReuseRejection::HardCancellation,
+            );
+
+        let finalized = finalization.finalize(executor_result).await;
+
+        assert_failed_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_finalization_cancelled",
+            "cancelled",
+        );
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_terminal_sandbox_reuse_rejected_hard_cancellation",
+        );
+        assert_telemetry_action(&finalized.telemetry, "runner_host_finalization_no_resource");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_reuse_preparation");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_physical_park");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_idle_publication");
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::DestroyCompleted,
+        );
+    }
+
+    #[tokio::test]
     async fn finalization_records_identity_park_missing_when_parked_without_restored_identity() {
         let fixture = FinalizationTelemetryFixture::new().await;
         let (_budget, lease) = test_budget_lease();
