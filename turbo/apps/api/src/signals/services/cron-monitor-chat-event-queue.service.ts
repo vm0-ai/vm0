@@ -3,11 +3,11 @@ import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
-import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
+import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { command } from "ccstate";
 import {
   and,
@@ -153,20 +153,6 @@ function missingScheduledContextRowCondition(db: Db) {
       ),
     ),
     and(
-      eq(chatEvents.contextType, "goal"),
-      notExists(
-        db
-          .select({ id: chatGoalContext.id })
-          .from(chatGoalContext)
-          .where(
-            and(
-              eq(chatGoalContext.id, chatEvents.contextId),
-              eq(chatGoalContext.chatThreadId, chatEvents.chatThreadId),
-            ),
-          ),
-      ),
-    ),
-    and(
       eq(chatEvents.contextType, "morning_brief"),
       notExists(
         db
@@ -183,6 +169,23 @@ function missingScheduledContextRowCondition(db: Db) {
   );
 }
 
+function missingGoalRowCondition(db: Db) {
+  return and(
+    chatEventTypeIn(["input.goal"]),
+    notExists(
+      db
+        .select({ id: threadGoals.id })
+        .from(threadGoals)
+        .where(
+          and(
+            eq(threadGoals.id, chatEvents.runGroupId),
+            eq(threadGoals.chatThreadId, chatEvents.chatThreadId),
+          ),
+        ),
+    ),
+  );
+}
+
 async function monitorChatEventQueue(
   db: Db,
   signal: AbortSignal,
@@ -194,7 +197,11 @@ async function monitorChatEventQueue(
       nullableDriverValueDecoder(pgTextDecoder),
     );
   const results = await db
-    .select({ source: orphanedSource, orphanedMessages: count() })
+    .select({
+      eventType: chatEvents.eventType,
+      source: orphanedSource,
+      orphanedMessages: count(),
+    })
     .from(chatEvents)
     .where(
       and(
@@ -213,24 +220,26 @@ async function monitorChatEventQueue(
         or(
           and(
             isNull(chatEvents.contextType),
-            or(
-              chatEventTypeIn(["input.goal"]),
-              notInArray(chatEvents.triggerSource, ["web", "test", "agent"]),
-            ),
+            notInArray(chatEvents.triggerSource, ["web", "test", "agent"]),
           ),
           missingChatIntegrationContextRowCondition(db),
           missingScheduledContextRowCondition(db),
+          missingGoalRowCondition(db),
         ),
       ),
     )
-    .groupBy(orphanedSource);
+    .groupBy(orphanedSource, chatEvents.eventType);
   signal.throwIfAborted();
 
-  const orphanedMessagesBySource = Object.fromEntries(
-    results.map((result) => {
-      return [result.source ?? "(unknown)", result.orphanedMessages];
-    }),
-  );
+  const orphanedMessagesBySource: Record<string, number> = {};
+  for (const result of results) {
+    const source =
+      result.eventType === "input.goal"
+        ? "goal"
+        : (result.source ?? "(unknown)");
+    orphanedMessagesBySource[source] =
+      (orphanedMessagesBySource[source] ?? 0) + result.orphanedMessages;
+  }
   const orphanedMessages = Object.values(orphanedMessagesBySource).reduce(
     (total, sourceCount) => {
       return total + sourceCount;

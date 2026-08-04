@@ -9,6 +9,8 @@ const fixtureKindSchema = z.enum([
   "failed-message",
   "orphan",
   "orphaned-automation",
+  "orphaned-goal",
+  "paused-goal",
   "queued-integration",
   "queued-message",
   "revoked-message",
