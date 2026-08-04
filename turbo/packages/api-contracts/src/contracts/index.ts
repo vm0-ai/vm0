@@ -535,7 +535,6 @@ export {
   orgModelPoliciesResponseSchema,
   updateOrgModelPoliciesRequestSchema,
   supportedRunModelSchema,
-  requestedRunModelSchema,
   modelProviderCredentialScopeSchema,
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,

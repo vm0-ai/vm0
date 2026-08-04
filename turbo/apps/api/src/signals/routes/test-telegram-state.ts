@@ -916,7 +916,7 @@ async function seedTelegramPostModelKeys(
     },
     {
       vendor: "deepseek",
-      model: "deepseek-v4-pro",
+      model: "deepseek-v4-flash",
       apiKey: `vm0-key-deepseek-${seed.composeId}`,
       label: seed.composeId,
     },
@@ -1471,7 +1471,7 @@ async function seedModelPoliciesForAction(
     },
     {
       orgId: required.org_id!,
-      model: "deepseek-v4-pro",
+      model: "deepseek-v4-flash",
       defaultProviderType: "vm0",
       credentialScope: "org",
       createdByUserId: required.user_id!,

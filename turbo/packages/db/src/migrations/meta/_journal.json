@@ -145,8 +145,15 @@
     {
       "idx": 828,
       "version": "7",
-      "when": 1785849792464,
-      "tag": "0828_wise_natasha_romanoff",
+      "when": 1785847164447,
+      "tag": "0828_migrate_legacy_deepseek_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 829,
+      "version": "7",
+      "when": 1785852810934,
+      "tag": "0829_tearful_grandmaster",
       "breakpoints": true
     }
   ]

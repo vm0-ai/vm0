@@ -99,31 +99,6 @@ describe("bootstrap feature switch hydration", () => {
     expect(context.store.get(imageRecognitionAvailable$)).toBeTruthy();
   });
 
-  it("accepts image recognition when the temporary marker is present", async () => {
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-      return respond(200, {
-        switches: {},
-        effectiveSwitches: {},
-        supportsStructuredInlineTemplates: true,
-        supportsCustomConnectorOAuth2: true,
-        supportsCustomModelGateways: true,
-        supportsImageRecognition: true,
-        imageRecognitionRolloutComplete: true,
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/error",
-      withoutRender: true,
-    });
-
-    expect(context.store.get(imageRecognitionAvailable$)).toBeFalsy();
-    await waitFor(() => {
-      expect(context.store.get(imageRecognitionAvailable$)).toBeTruthy();
-    });
-  });
-
   it("keeps image recognition unavailable when the API omits support", async () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
@@ -132,7 +107,6 @@ describe("bootstrap feature switch hydration", () => {
         supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
         supportsCustomModelGateways: true,
-        imageRecognitionRolloutComplete: true,
       });
     });
 
@@ -154,7 +128,6 @@ describe("bootstrap feature switch hydration", () => {
         supportsCustomConnectorOAuth2: true,
         supportsCustomModelGateways: true,
         supportsImageRecognition: false,
-        imageRecognitionRolloutComplete: true,
       });
     });
 

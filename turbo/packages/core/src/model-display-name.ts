@@ -24,11 +24,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "anthropic/claude-opus-4.5": "Claude Opus 4.5",
   "anthropic/claude-haiku-4.5": "Claude Haiku 4.5",
   // DeepSeek (native)
-  "deepseek-v4-pro": "DeepSeek V4 Pro",
   "deepseek-v4-flash": "DeepSeek V4 Flash",
-  // DeepSeek via OpenRouter
-  "deepseek/deepseek-v4-pro": "DeepSeek V4 Pro",
-  "deepseek/deepseek-v4-flash": "DeepSeek V4 Flash",
   // MiniMax
   "MiniMax-M3": "MiniMax M3",
   "MiniMax-M2.7": "MiniMax M2.7",
@@ -59,8 +55,6 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "gpt-5.6-terra": "GPT 5.6 Terra",
   "gpt-5.6-luna": "GPT 5.6 Luna",
   "gpt-5.5": "GPT 5.5",
-  "gpt-5.4": "GPT-5.4",
-  "gpt-5.4-mini": "GPT-5.4 Mini",
   "gpt-5.3-codex": "GPT-5.3 Codex",
   "gpt-5.2": "GPT-5.2",
   // Built-in image generation

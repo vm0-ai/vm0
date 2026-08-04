@@ -440,7 +440,7 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
-            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
         };
 
         let json = serde_json::to_value(&payload).unwrap();
@@ -450,7 +450,7 @@ mod tests {
         assert_eq!(json["secretValues"], "secret");
         assert_eq!(json["disallowedTools"], "WebFetch");
         assert_eq!(json["featureFlags"], r#"{"flag":true}"#);
-        assert_eq!(json["codexRuntimeConfig"], r#"{"providerId":"minimax"}"#);
+        assert_eq!(json["codexRuntimeConfig"], r#"{"providerId":"deepseek"}"#);
     }
 
     #[test]
@@ -464,7 +464,7 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
-            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
         };
 
         let fields = payload.fields();
@@ -506,7 +506,7 @@ mod tests {
                 },
                 RunPayloadField {
                     name: CODEX_RUNTIME_CONFIG_ENV,
-                    value: r#"{"providerId":"minimax"}"#
+                    value: r#"{"providerId":"deepseek"}"#
                 },
             ]
         );
@@ -533,7 +533,7 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
-            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
         };
 
         assert_eq!(payload.first_nul_field(), None);

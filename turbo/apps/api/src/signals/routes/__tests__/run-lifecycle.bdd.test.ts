@@ -5864,30 +5864,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).toHaveLength(0);
     expect(queue.body.concurrency.active).toBe(0);
-
-    const retiredAuto = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        prompt: "legacy Auto request",
-        model: "vm0-model",
-      },
-      [201],
-    );
-    if (retiredAuto.status !== 201 || retiredAuto.body.runId === null) {
-      throw new Error("Expected retired Auto to normalize to Luna");
-    }
-    await api.heartbeatRunner(runnerGroup);
-    const retiredAutoClaim = await api.claimRunnerJob(retiredAuto.body.runId);
-    expect(retiredAutoClaim.environment).toMatchObject({
-      OPENAI_MODEL: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-    });
-    expect(retiredAutoClaim.environment).not.toHaveProperty("OPENAI_BASE_URL");
-    expect(retiredAutoClaim.codexRuntimeConfig).toBeNull();
-    expect(retiredAutoClaim.modelUsageProvider).toBe(
-      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-    );
-    await api.requestCancelRun(actor, retiredAuto.body.runId, [200]);
   });
 
   it("claims vm0 runs with billable model firewall and usage provider", async () => {
@@ -6025,18 +6001,15 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
     expect(claim.cliAgentType).toBe("codex");
     expect(claim.environment).toMatchObject({
-      OPENAI_API_KEY: modelProviderPlaceholder(
-        "deepseek-codex",
-        "DEEPSEEK_API_KEY",
-      ),
-      OPENAI_BASE_URL: "https://api.deepseek.com",
+      OPENAI_API_KEY: modelProviderPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
+      OPENAI_BASE_URL: "https://api.deepseek.com/",
       OPENAI_MODEL: selectedModel,
     });
     expect(claim.environment).not.toHaveProperty("ANTHROPIC_MODEL");
     expect(claim.codexRuntimeConfig).toMatchObject({
-      providerId: "deepseek-codex",
+      providerId: "deepseek",
       name: "DeepSeek",
-      baseUrl: "https://api.deepseek.com",
+      baseUrl: "https://api.deepseek.com/",
       envKey: "OPENAI_API_KEY",
       wireApi: "responses",
       supportsWebsockets: false,
@@ -6053,8 +6026,8 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       claim.firewalls?.map((firewall) => {
         return firewallEntryName(firewall);
       }),
-    ).toContain("model-provider:deepseek-codex");
-    expect(claim.billableFirewalls).toContain("model-provider:deepseek-codex");
+    ).toContain("model-provider:deepseek");
+    expect(claim.billableFirewalls).toContain("model-provider:deepseek");
     expect(claim.modelUsageProvider).toBe(selectedModel);
 
     await api.requestCancelRun(actor, sent.body.runId, [200]);
@@ -6072,7 +6045,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const { providerId: deepseekProviderId } = await api.createOrgModelProvider(
       actor,
       {
-        type: "deepseek-codex",
+        type: "deepseek",
         secret: "recognition-deepseek-key",
       },
     );
@@ -6088,7 +6061,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       {
         model: unsupportedModel,
         isDefault: true,
-        defaultProviderType: "deepseek-codex",
+        defaultProviderType: "deepseek",
         credentialScope: "org",
         modelProviderId: deepseekProviderId,
       },

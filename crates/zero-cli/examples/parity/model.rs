@@ -9,7 +9,7 @@ use crate::{HarnessError, Result};
 
 const CASE_SCHEMA_REFERENCE: &str = "../schema.json";
 const CASE_SCHEMA_VERSION: u32 = 1;
-const RESERVED_ENVIRONMENT_KEYS: [&str; 8] = [
+const RESERVED_ENVIRONMENT_KEYS: [&str; 10] = [
     "HOME",
     "NO_COLOR",
     "PATH",
@@ -17,7 +17,9 @@ const RESERVED_ENVIRONMENT_KEYS: [&str; 8] = [
     "TMPDIR",
     "VM0_API_BACKEND_URL",
     "XDG_CACHE_HOME",
+    "ZERO_CLI_PARITY_NPX_MARKER",
     "ZERO_CLI_PARITY_NPX_TARGET",
+    "ZERO_CLI_PARITY_RUST_EXECUTION",
 ];
 
 #[derive(Clone, Debug, Deserialize)]
@@ -33,10 +35,27 @@ pub struct Case {
     pub stdin: String,
     pub working_directory: PathBuf,
     pub terminal_mode: TerminalMode,
+    pub rust_execution: RustExecution,
     pub timeout_ms: u64,
     pub mock_http: MockHttp,
     pub filesystem: Filesystem,
     pub normalizations: Vec<Normalization>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum RustExecution {
+    Native,
+    Fallback,
+}
+
+impl RustExecution {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Native => "native",
+            Self::Fallback => "fallback",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]

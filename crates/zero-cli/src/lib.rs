@@ -11,6 +11,7 @@ pub mod dispatch;
 pub mod error;
 pub mod fallback;
 pub mod handlers;
+mod help;
 pub mod http;
 pub mod output;
 pub mod runtime;

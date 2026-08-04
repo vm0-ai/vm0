@@ -1290,7 +1290,6 @@
 
 ### Bug Fixes
 
-* retire gpt-5.4 models ([#22923](https://github.com/vm0-ai/vm0/issues/22923)) ([0e5de85](https://github.com/vm0-ai/vm0/commit/0e5de85debf5ae6eb58e3a56a598ca2d21e506a0))
 
 
 ### Dependencies
