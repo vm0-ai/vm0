@@ -75,7 +75,6 @@ export enum FeatureSwitchKey {
   ArtifactKeyV2 = "artifactKeyV2",
   HostedArtifactVersions = "hostedArtifactVersions",
   HtmlResourceIndex = "htmlResourceIndex",
-  VideoArtifactPosters = "videoArtifactPosters",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
   ComposerConnectorPermissions = "composerConnectorPermissions",
   ThreeColumnNav = "threeColumnNav",

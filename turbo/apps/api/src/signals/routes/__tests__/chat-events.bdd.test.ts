@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -13,6 +14,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatEventsContract,
   chatThreadEventsContract,
+  chatThreadsContract,
   type AttachFile,
   type ChatRunOptionsRequest,
   type ChatThreadEvent,
@@ -58,6 +60,7 @@ import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { readAgentRunState$ } from "./helpers/agent-run-callback";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import {
   clearThreadSessionBinding,
@@ -111,6 +114,7 @@ const connectors = createConnectorBddApi(context);
 const cu = createComputerUseBddApi(context);
 const misc = createMiscRoutesApi(context);
 const routeMocks = createZeroRouteMocks(context);
+const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
@@ -790,6 +794,10 @@ function modelProviderConnectionsByIdClient() {
 
 function chatEventsClient() {
   return setupApp({ context })(chatEventsContract);
+}
+
+function chatThreadsClient() {
+  return setupApp({ context })(chatThreadsContract);
 }
 
 function chatThreadEventsClient() {
@@ -6018,6 +6026,145 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     );
     expect(followUp.prompt).toContain(`[ID] ${secondFileId}`);
     await cancelChatRun(actor, promoted.runId);
+  }, 90_000);
+});
+
+describe("CHAT-02: run-scoped Zero-token chat launches", () => {
+  it("keeps immediate and queued runs web-scoped without agent provenance", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const caller = await sendChatRun(actor, {
+      agentId,
+      prompt: "launch chat work from this run",
+    });
+    const zeroToken = api.zeroTokenForRunWithCapabilities(actor, caller.runId, [
+      "chat-thread:read",
+      "chat-thread:write",
+      "chat-event:read",
+      "chat-event:write",
+    ]);
+
+    const createdThread = await accept(
+      chatThreadsClient().create({
+        headers: { authorization: `Bearer ${zeroToken}` },
+        body: { agentId, title: "Run-scoped handoff" },
+      }),
+      [201],
+    );
+    const immediate = await requestSendEventWithBearer(
+      zeroToken,
+      {
+        agentId,
+        threadId: createdThread.body.id,
+        prompt: "immediate run-scoped handoff",
+      },
+      [201],
+    );
+    if (immediate.status !== 201) {
+      throw new Error("Expected the run-scoped handoff request to succeed");
+    }
+    if (!immediate.body.runId) {
+      throw new Error("Expected the run-scoped handoff to launch immediately");
+    }
+
+    await expect(
+      api.readRun(actor, immediate.body.runId),
+    ).resolves.toMatchObject({
+      runId: immediate.body.runId,
+      prompt: "immediate run-scoped handoff",
+    });
+    // Neither callback internals nor retired provenance are public API fields.
+    // The test-only state route is the only boundary that can prove their
+    // absence without importing database schemas or production services.
+    const immediateState = await runStateStore.set(
+      readAgentRunState$,
+      {
+        orgId: actor.orgId,
+        userId: actor.userId,
+        runId: immediate.body.runId,
+      },
+      context.signal,
+    );
+    expect(immediateState.zero_run).toMatchObject({
+      triggerSource: "web",
+      triggerAgentId: null,
+    });
+    expect(
+      immediateState.callbacks.map((callback) => {
+        return callback.internalKind;
+      }),
+    ).toStrictEqual(["chat"]);
+
+    const queuedEventId = randomUUID();
+    const queued = await requestSendEventWithBearer(
+      zeroToken,
+      {
+        agentId,
+        clientEventId: queuedEventId,
+        threadId: createdThread.body.id,
+        prompt: "queued run-scoped handoff",
+      },
+      [201],
+    );
+    if (queued.status !== 201) {
+      throw new Error("Expected the queued run-scoped request to succeed");
+    }
+    expect(queued.body.runId).toBeNull();
+
+    await cancelChatRun(actor, immediate.body.runId);
+    const promotedMessages = await waitForThreadMessages(
+      actor,
+      createdThread.body.id,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === queuedEventId &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const promoted = userMessages(promotedMessages.events).find(
+      (message): message is PromptMessage => {
+        return (
+          message.eventType === "input.prompt" &&
+          message.revokesEventId === queuedEventId
+        );
+      },
+    );
+    if (!promoted?.runId) {
+      throw new Error("Expected the queued run-scoped handoff to promote");
+    }
+
+    await expect(api.readRun(actor, promoted.runId)).resolves.toMatchObject({
+      runId: promoted.runId,
+      prompt: "queued run-scoped handoff",
+    });
+    const promotedState = await runStateStore.set(
+      readAgentRunState$,
+      {
+        orgId: actor.orgId,
+        userId: actor.userId,
+        runId: promoted.runId,
+      },
+      context.signal,
+    );
+    expect(promotedState.zero_run).toMatchObject({
+      triggerSource: "web",
+      triggerAgentId: null,
+    });
+    expect(
+      promotedState.callbacks.map((callback) => {
+        return callback.internalKind;
+      }),
+    ).toStrictEqual(["chat"]);
+
+    await cancelChatRun(actor, promoted.runId);
+    await cancelChatRun(actor, caller.runId);
   }, 90_000);
 });
 

@@ -441,12 +441,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Use target-specific static indexes for HTML generation resource selection.",
     enabled: true,
   },
-  [FeatureSwitchKey.VideoArtifactPosters]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Generate poster images asynchronously when video artifacts are recorded.",
-    enabled: true,
-  },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {
     maintainer: "lancy@vm0.ai",
     description:

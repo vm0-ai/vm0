@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.678.5](https://github.com/vm0-ai/vm0/compare/app-v0.678.4...app-v0.678.5) (2026-08-04)
+
+
+### Bug Fixes
+
+* **platform:** render mermaid diagrams only once their fence closes ([#24659](https://github.com/vm0-ai/vm0/issues/24659)) ([a91d7d7](https://github.com/vm0-ai/vm0/commit/a91d7d7caab8103c64556ddb78c650150784f161))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.266.1
+    * @vm0/core bumped to 8.507.1
+
 ## [0.678.4](https://github.com/vm0-ai/vm0/compare/app-v0.678.3...app-v0.678.4) (2026-08-04)
 
 

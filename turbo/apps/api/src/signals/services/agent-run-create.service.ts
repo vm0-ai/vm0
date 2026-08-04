@@ -402,7 +402,6 @@ interface PreparedAdditionalVolumes {
 }
 
 interface ZeroRunMetadata {
-  readonly triggerAgentId?: string;
   // Run provenance for workflow schedule automations.
   readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
@@ -5146,7 +5145,6 @@ function launchZeroRunValues(
     triggerBrief: metadata.triggerBrief ?? null,
     runGroupId: metadata.goalId ?? null,
     goalId: metadata.goalId ?? null,
-    triggerAgentId: metadata.triggerAgentId ?? null,
     ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
     chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),

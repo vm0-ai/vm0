@@ -32,8 +32,10 @@ from auth_base_forwarder import (
     take_forward_request_admission_from_flow,
 )
 from aws_sigv4 import (
+    AwsSigV4BodyHash,
     AwsSigV4Credentials,
     AwsSigV4SigningError,
+    hash_request_body,
     request_requires_body_for_signing,
     sign_request,
 )
@@ -440,6 +442,8 @@ def _request_path_query(flow: http.HTTPFlow) -> str:
 def _sign_flow_request_with_aws_sigv4(
     flow: http.HTTPFlow,
     credentials: AwsSigV4Credentials,
+    *,
+    precomputed_body_hash: AwsSigV4BodyHash | None = None,
 ) -> None:
     signed_url, signed_headers = sign_request(
         method=flow.request.method,
@@ -447,11 +451,45 @@ def _sign_flow_request_with_aws_sigv4(
         headers=header_pairs(flow.request.headers),
         body=flow.request.raw_content,
         credentials=credentials,
+        precomputed_body_hash=precomputed_body_hash,
     )
     flow.request.url = signed_url
     flow.request.headers = http.Headers(
         [(name.encode(), value.encode()) for name, value in signed_headers]
     )
+
+
+async def _precompute_aws_sigv4_body_hash(
+    flow: http.HTTPFlow,
+    *,
+    context: _FirewallAuthContext,
+    token_meta: dict,
+) -> AwsSigV4BodyHash | None:
+    if context.auth_request.auth_base is not None or context.auth_request.auth_aws_sigv4 is None:
+        return None
+    if not isinstance(token_meta.get("aws_sigv4"), AwsSigV4Credentials):
+        return None
+    if not aws_sigv4_request_requires_body_for_signing(flow):
+        return None
+
+    hash_future = asyncio.get_running_loop().run_in_executor(
+        None,
+        hash_request_body,
+        flow.request.raw_content,
+    )
+    try:
+        return await asyncio.shield(hash_future)
+    except asyncio.CancelledError:
+        while not hash_future.done():
+            try:
+                await asyncio.shield(hash_future)
+            except asyncio.CancelledError:
+                continue
+            except Exception:
+                break
+        if not hash_future.cancelled():
+            hash_future.exception()
+        raise
 
 
 def _set_url_rewrite_forward_failed(
@@ -1088,6 +1126,7 @@ async def _apply_resolved_firewall_auth(
     context: _FirewallAuthContext,
     token_meta: dict,
     auth_base_client_headers: list[tuple[str, str]] | None,
+    aws_sigv4_body_hash: AwsSigV4BodyHash | None,
 ) -> FirewallAuthHandlingResult:
     """Apply resolved firewall auth and return request ownership outcome."""
     headers = token_meta["headers"]
@@ -1144,7 +1183,11 @@ async def _apply_resolved_firewall_auth(
                 ValueError("resolved AWS SigV4 credentials are missing"),
             )
         try:
-            _sign_flow_request_with_aws_sigv4(flow, aws_sigv4)
+            _sign_flow_request_with_aws_sigv4(
+                flow,
+                aws_sigv4,
+                precomputed_body_hash=aws_sigv4_body_hash,
+            )
         except AwsSigV4SigningError as e:
             _set_matched_firewall_failure_response(
                 flow,
@@ -1256,6 +1299,12 @@ async def handle_firewall_request(
         else:
             token_meta = _empty_firewall_auth_metadata()
 
+        aws_sigv4_body_hash = await _precompute_aws_sigv4_body_hash(
+            flow,
+            context=context,
+            token_meta=token_meta,
+        )
+
         if (
             context.auth_request.auth_base is None
             and auth_config_injects_ordinary_upstream_credentials(
@@ -1273,6 +1322,7 @@ async def handle_firewall_request(
             context=context,
             token_meta=token_meta,
             auth_base_client_headers=auth_base_client_headers,
+            aws_sigv4_body_hash=aws_sigv4_body_hash,
         )
         if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
             return _finish_firewall_auth_result(flow, auth_result)
