@@ -251,7 +251,7 @@ async def test_registry_change_during_auth_blocks_old_authorization(
             await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
             _mutate_registry(registry_path, tmp_path, registry_mutation)
             release_auth_resolution.set()
-            await hook_task
+            await asyncio.gather(hook_task)
         finally:
             release_auth_resolution.set()
             await cancel_pending_task(hook_task)
@@ -327,7 +327,7 @@ async def test_unrelated_same_run_policy_change_keeps_equivalent_authorization(
                 vm_info=_registry_vm(tmp_path, allow_unrelated_orgs=True),
             )
             release_auth_resolution.set()
-            await hook_task
+            await asyncio.gather(hook_task)
         finally:
             release_auth_resolution.set()
             await cancel_pending_task(hook_task)
@@ -381,7 +381,7 @@ async def test_different_same_run_allow_decision_fails_closed_without_old_creden
                 ),
             )
             release_auth_resolution.set()
-            await request_task
+            await asyncio.gather(request_task)
         finally:
             release_auth_resolution.set()
             await cancel_pending_task(request_task)
