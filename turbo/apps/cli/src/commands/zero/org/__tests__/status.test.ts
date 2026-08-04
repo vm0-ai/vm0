@@ -29,6 +29,8 @@ describe("zero org status command", () => {
         return HttpResponse.json({
           id: "test-id",
           slug: "testuser",
+          name: "Test Workspace",
+          tier: "pro",
           createdAt: "2024-01-01T00:00:00Z",
           updatedAt: "2024-01-01T00:00:00Z",
         });
@@ -41,8 +43,9 @@ describe("zero org status command", () => {
       expect.stringContaining("Organization Information"),
     );
     expect(mockConsoleLog).toHaveBeenCalledWith(
-      expect.stringContaining("testuser"),
+      expect.stringContaining("Test Workspace"),
     );
+    expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("pro"));
   });
 
   it("should show helpful message when user has no organization", async () => {

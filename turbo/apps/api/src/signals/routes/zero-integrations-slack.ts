@@ -182,7 +182,6 @@ const getSlackStatusInner$ = computed(async (get) => {
     ? {
         workspaceName: status.workspaceName,
         defaultAgentName: status.defaultAgentName,
-        agentOrgSlug: status.agentOrgSlug,
         environment: await get(getSlackEnvironment$),
       }
     : {

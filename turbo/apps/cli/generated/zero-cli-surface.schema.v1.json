@@ -1,0 +1,367 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "zero-cli-surface.schema.v1.json",
+  "title": "Zero CLI surface inventory v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "extractionContext", "commands"],
+  "properties": {
+    "$schema": {
+      "const": "./zero-cli-surface.schema.v1.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "extractionContext": {
+      "$ref": "#/$defs/extractionContext"
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/command"
+      }
+    }
+  },
+  "$defs": {
+    "jsonValue": {
+      "oneOf": [
+        {
+          "type": ["string", "number", "boolean", "null"]
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        }
+      ]
+    },
+    "defaultValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["present", "value", "description"],
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "value": {
+          "$ref": "#/$defs/jsonValue"
+        },
+        "description": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "argument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description",
+        "required",
+        "variadic",
+        "choices",
+        "default"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "variadic": {
+          "type": "boolean"
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "default": {
+          "$ref": "#/$defs/defaultValue"
+        }
+      }
+    },
+    "option": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "flags",
+        "name",
+        "attributeName",
+        "short",
+        "long",
+        "aliases",
+        "description",
+        "valueRequirement",
+        "mandatory",
+        "variadic",
+        "negated",
+        "hidden",
+        "implicit",
+        "choices",
+        "default"
+      ],
+      "properties": {
+        "flags": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "attributeName": {
+          "type": "string"
+        },
+        "short": {
+          "type": ["string", "null"]
+        },
+        "long": {
+          "type": ["string", "null"]
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": {
+          "type": "string"
+        },
+        "valueRequirement": {
+          "enum": ["none", "required", "optional"]
+        },
+        "mandatory": {
+          "type": "boolean"
+        },
+        "variadic": {
+          "type": "boolean"
+        },
+        "negated": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "implicit": {
+          "type": "boolean"
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "default": {
+          "$ref": "#/$defs/defaultValue"
+        }
+      }
+    },
+    "implicitHelpCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "aliases", "description", "arguments"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/argument"
+          }
+        }
+      }
+    },
+    "capabilityGate": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "const": "always"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "capabilities"],
+          "properties": {
+            "mode": {
+              "const": "anyOf"
+            },
+            "capabilities": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "const": "hidden"
+            }
+          }
+        }
+      ]
+    },
+    "visibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capabilityGate", "featureSwitch", "runOnly"],
+      "properties": {
+        "capabilityGate": {
+          "$ref": "#/$defs/capabilityGate"
+        },
+        "featureSwitch": {
+          "type": ["string", "null"]
+        },
+        "runOnly": {
+          "type": "boolean"
+        }
+      }
+    },
+    "extractionContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["helpWidth", "environment"],
+      "properties": {
+        "helpWidth": {
+          "const": 100
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ZERO_TOKEN", "ZERO_CHAT_THREAD_ID", "ZERO_AGENT_ID"],
+          "properties": {
+            "ZERO_TOKEN": {
+              "const": "unset"
+            },
+            "ZERO_CHAT_THREAD_ID": {
+              "const": "unset"
+            },
+            "ZERO_AGENT_ID": {
+              "const": "unset"
+            }
+          }
+        }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "name",
+        "aliases",
+        "description",
+        "listingDescription",
+        "summary",
+        "usage",
+        "hidden",
+        "arguments",
+        "options",
+        "implicitHelpCommand",
+        "helpText",
+        "visibility"
+      ],
+      "properties": {
+        "path": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": {
+          "type": "string"
+        },
+        "listingDescription": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "usage": {
+          "type": "string"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "arguments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/argument"
+          }
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/option"
+          }
+        },
+        "implicitHelpCommand": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/implicitHelpCommand"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "helpText": {
+          "type": "string"
+        },
+        "visibility": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/visibility"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

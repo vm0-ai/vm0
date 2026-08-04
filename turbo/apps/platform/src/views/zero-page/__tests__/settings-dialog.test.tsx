@@ -38,7 +38,7 @@ async function openDialog(
     role,
   });
   context.mocks.data.orgMembers({
-    slug: "test-org",
+    name: "Test Org",
     role,
     members: [],
     pendingInvitations: [],

@@ -23,7 +23,7 @@ describe("zero org members command", () => {
     server.use(
       http.get("http://localhost:3000/api/zero/org/members", () => {
         return HttpResponse.json({
-          slug: "my-org",
+          name: "My Org",
           role: "admin",
           createdAt: "2024-01-01T00:00:00Z",
           members: [
@@ -38,7 +38,7 @@ describe("zero org members command", () => {
     await membersCommand.parseAsync(["node", "cli"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("my-org");
+    expect(logCalls).toContain("My Org");
     expect(logCalls).toContain("admin@example.com");
     expect(logCalls).toContain("member@example.com");
   });

@@ -488,7 +488,7 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ]),
 
   // Managed image tasks — billed under task-scoped kinds at the backing
-  // model's token rates (see migration 0825).
+  // model's token rates (see migration 0826).
   ...usageGroup("image-recognition", "google/gemini-3.5-flash", [
     ["tokens.input", usd(1.5), 1_000_000],
     ["tokens.cache_read", usd(0.15), 1_000_000],
