@@ -75,6 +75,17 @@ def _connected_verified_tls_destination_endpoint(
     port: int,
     extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
 ) -> tuple[str, int] | None:
+    """Return verified live endpoint evidence for the exact TLS destination.
+
+    After the caller establishes that ``server`` remains connected, a non-``None`` result supplies
+    the remaining evidence for the ``connected_address`` trust precondition of
+    ``upstream_destination_binding.refresh_server_binding_connected_address_if_matching()``. The
+    upstream TLS connection is verified for normalized SNI ``host``, carries certificate evidence
+    without a connection error, and has authoritative connected endpoint evidence for ``port``.
+
+    The fail-closed ``without_verified_tls`` and positive ``after_retargeting`` integration cases
+    in ``tests/test_request_handler_connector_admission.py`` exercise this contract.
+    """
     if bool(getattr(getattr(ctx, "options", object()), "ssl_insecure", False)):
         return None
     if not bool(getattr(server, "tls_established", False)):
