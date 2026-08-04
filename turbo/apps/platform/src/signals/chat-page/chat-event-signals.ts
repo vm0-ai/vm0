@@ -1,4 +1,10 @@
-import { command, type Command, type Computed, type State } from "ccstate";
+import {
+  command,
+  computed,
+  type Command,
+  type Computed,
+  type State,
+} from "ccstate";
 import type {
   AttachFile,
   ChatPromptEvent,
@@ -324,7 +330,10 @@ function createChatEventSetup({
     [PersistedChatEvent[], AbortSignal]
   >;
   readonly syncRemoteEvents$: Command<Promise<void>, [AbortSignal]>;
-}): Command<Promise<void>, [AbortSignal]> {
+}): {
+  readonly setup$: Command<Promise<void>, [AbortSignal]>;
+  readonly catchUp$: Command<Promise<void>, [AbortSignal]>;
+} {
   const receive$ = command(
     async (
       { set },
@@ -342,21 +351,32 @@ function createChatEventSetup({
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
 
-  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    set(registerActiveChatEventSignals$, threadId, receive$, signal);
-    await set(initializeIndexedDbEvents$, signal);
-    signal.throwIfAborted();
-    if (get(optimisticCreateUnsettled$)) {
-      set(initialRemoteEventsResolved$, true);
-      return;
-    }
-    await set(syncRemoteEvents$, signal);
-  });
+  const setup$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      set(registerActiveChatEventSignals$, threadId, receive$, signal);
+      await set(initializeIndexedDbEvents$, signal);
+      signal.throwIfAborted();
+    },
+  );
+  const catchUp$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      signal.throwIfAborted();
+      if (get(optimisticCreateUnsettled$)) {
+        set(initialRemoteEventsResolved$, true);
+        return;
+      }
+      await set(syncRemoteEvents$, signal);
+    },
+  );
+
+  return { setup$, catchUp$ };
 }
 
 export interface ChatEventSignals {
   readonly chatEvents$: Computed<ChatEvent[]>;
+  readonly initialRemoteEventsResolved$: Computed<boolean>;
   readonly setup$: Command<Promise<void>, [AbortSignal]>;
+  readonly catchUp$: Command<Promise<void>, [AbortSignal]>;
   readonly sendEvent$: Command<
     Promise<SendChatEventResult>,
     [SendChatEventInput, AbortSignal]
@@ -377,16 +397,20 @@ export function createChatEventSignals(threadId: string): ChatEventSignals {
     appendOptimisticEvent$: events.appendOptimisticEvent$,
     syncRemoteEvents$: events.syncRemoteEvents$,
   });
-  const setup$ = createChatEventSetup({
+  const setup = createChatEventSetup({
     threadId,
     initialRemoteEventsResolved$: events.initialRemoteEventsResolved$,
     initializeIndexedDbEvents$: events.initializeIndexedDbEvents$,
     mergePersistentEvents$: events.mergePersistentEvents$,
     syncRemoteEvents$: events.syncRemoteEvents$,
   });
+  const initialRemoteEventsResolved$ = computed((get): boolean => {
+    return get(events.initialRemoteEventsResolved$);
+  });
   return {
     chatEvents$: events.chatEvents$,
-    setup$,
+    initialRemoteEventsResolved$,
+    ...setup,
     sendEvent$,
   };
 }

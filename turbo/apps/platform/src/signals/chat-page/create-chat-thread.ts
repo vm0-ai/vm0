@@ -2013,9 +2013,11 @@ function createChatThreadMessagePipeline({
     projections,
     resources.syncRegisteredEvents$,
   );
-  const setupCompleted$ = state(false);
   const chatSkeletonVisible$ = computed((get): boolean => {
-    return !get(setupCompleted$) && get(projections.rawEvents$).length === 0;
+    return (
+      !get(chatEvents.initialRemoteEventsResolved$) &&
+      get(projections.rawEvents$).length === 0
+    );
   });
   const setup$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
@@ -2029,7 +2031,6 @@ function createChatThreadMessagePipeline({
       set(effects.sidebar.enableEntryAnimations$);
       await set(chatEvents.setup$, signal);
       signal.throwIfAborted();
-      set(setupCompleted$, true);
     },
   );
   const renderWindow = createChatRenderWindow({
@@ -2102,6 +2103,7 @@ function createEventRunIndicatorState(chatEvents$: Computed<ChatEvent[]>) {
 interface RunTrackingDeps {
   threadId: string;
   setupChatEvents$: Command<Promise<void>, [AbortSignal]>;
+  catchUpChatEvents$: Command<Promise<void>, [AbortSignal]>;
   reloadArtifacts$: Command<void, []>;
   reloadMailDrafts$: Command<void, []>;
   subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
@@ -2291,14 +2293,14 @@ function createChatRenderWindow({
 
 function createOnSubscribedCommand({
   threadId,
-  setupChatEvents$,
+  catchUpChatEvents$,
   reloadArtifacts$,
   reloadMailDrafts$,
   dataSource,
 }: Pick<
   RunTrackingDeps,
   | "threadId"
-  | "setupChatEvents$"
+  | "catchUpChatEvents$"
   | "reloadArtifacts$"
   | "reloadMailDrafts$"
   | "dataSource"
@@ -2316,7 +2318,7 @@ function createOnSubscribedCommand({
     await Promise.all([
       get(dataSource.cancellationRecoveryPending$),
       set(reloadMountedComposerWorkflows$, signal),
-      set(setupChatEvents$, signal),
+      set(catchUpChatEvents$, signal),
     ]);
     signal.throwIfAborted();
     L.debug("subscribeChatThread$ catchup done", { threadId });
@@ -2326,6 +2328,7 @@ function createOnSubscribedCommand({
 function createRunTracking({
   threadId,
   setupChatEvents$,
+  catchUpChatEvents$,
   reloadArtifacts$,
   reloadMailDrafts$,
   subscribeBrowserSessions$,
@@ -2334,7 +2337,7 @@ function createRunTracking({
 }: RunTrackingDeps) {
   const onSubscribed$ = createOnSubscribedCommand({
     threadId,
-    setupChatEvents$,
+    catchUpChatEvents$,
     reloadArtifacts$,
     reloadMailDrafts$,
     dataSource,
@@ -2342,6 +2345,9 @@ function createRunTracking({
 
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ start", { threadId });
+    await set(setupChatEvents$, signal);
+    signal.throwIfAborted();
+
     const onThreadDetailChanged$ = command(({ set }) => {
       L.debug("onThreadDetailChanged$ fired", { threadId });
       set(dataSource.reloadCancellationRecoveryPending$);
@@ -3541,6 +3547,7 @@ export function createChatThreadSignals(
   const runTracking = createRunTracking({
     threadId,
     setupChatEvents$: messages.setup$,
+    catchUpChatEvents$: chatEvents.catchUp$,
     reloadArtifacts$: messages.reloadArtifacts$,
     reloadMailDrafts$: messages.reloadMailDrafts$,
     subscribeBrowserSessions$: messages.subscribeBrowserSessions$,
