@@ -17,7 +17,6 @@ import {
 } from "@vm0/db/schema/chat-event";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
-import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
@@ -241,7 +240,6 @@ type InputGoalEvent = ChatEventIdentity &
     readonly eventType: "input.goal";
     readonly content?: null;
     readonly runGroupId: string;
-    readonly goalBrief: string;
   };
 
 type InputRejectedEvent = ChatEventIdentity &
@@ -532,12 +530,6 @@ type NewDisplayContext =
       readonly triggerBrief: string | null;
     }
   | {
-      readonly type: "goal";
-      readonly id: string;
-      readonly chatThreadId: string;
-      readonly objectiveBrief: string;
-    }
-  | {
       readonly type: "morning_brief";
       readonly id: string;
       readonly chatThreadId: string;
@@ -669,16 +661,6 @@ function newDisplayContext(
   const automationContext = newAutomationDisplayContext(eventId, values);
   if (automationContext !== undefined) {
     return automationContext;
-  }
-
-  const goalBrief = "goalBrief" in values ? values.goalBrief : undefined;
-  if (goalBrief !== undefined) {
-    return {
-      type: "goal",
-      id: eventId,
-      chatThreadId: values.chatThreadId,
-      objectiveBrief: goalBrief,
-    };
   }
 
   return undefined;
@@ -894,12 +876,6 @@ async function insertDisplayContext(
   if (context.type === "morning_brief") {
     return insertMorningBriefContext(tx, context, createdAt);
   }
-  await tx.insert(chatGoalContext).values({
-    id: context.id,
-    chatThreadId: context.chatThreadId,
-    objectiveBrief: context.objectiveBrief,
-    createdAt,
-  });
 }
 
 function persistedChatEventValues(
@@ -908,12 +884,8 @@ function persistedChatEventValues(
     Pick<ChatEventInsert, "id" | "contextType" | "contextId">
   >,
 ): PersistedChatEvent {
-  const { goalBrief: _goalBrief, ...persistedValues } = {
-    goalBrief: undefined,
-    ...values,
-  };
   return {
-    ...persistedValues,
+    ...values,
     ...overrides,
     ...(values.eventType === "input.prompt" ||
     values.eventType === "input.rejected" ||
