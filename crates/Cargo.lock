@@ -2539,6 +2539,7 @@ dependencies = [
  "rustls-platform-verifier 0.7.0",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",
@@ -3041,6 +3042,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bafc8d0c5330cecff10f16b459b479fd9acaa5b4acd7167301414e21b0057012"
 dependencies = [
  "regex",
+ "serde",
+]
+
+[[package]]
+name = "serde_urlencoded"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3491c14715ca2294c4d6a88f15e84739788c1d030eed8c110436aafdaa2f3fd"
+dependencies = [
+ "form_urlencoded",
+ "itoa",
+ "ryu",
  "serde",
 ]
 
@@ -4246,7 +4259,20 @@ dependencies = [
 name = "zero-cli"
 version = "0.2.0"
 dependencies = [
+ "api-contracts",
+ "async-trait",
+ "base64 0.23.0",
+ "clap",
+ "httpmock",
+ "libc",
+ "reqwest",
+ "serde",
+ "serde_json",
  "tempfile",
+ "thiserror 2.0.19",
+ "tokio",
+ "url",
+ "uuid",
 ]
 
 [[package]]
