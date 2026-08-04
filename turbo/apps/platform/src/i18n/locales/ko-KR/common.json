@@ -5287,6 +5287,12 @@
     "connectedWithDetail": "연결됨 ({{detail}})",
     "documentTitle": "작업",
     "feishuConnected": "Feishu가 성공적으로 연결되었습니다",
+    "github": {
+      "adminInstall": "조직 관리자에게 GitHub 앱 설치를 요청하세요",
+      "description": "GitHub 이벤트로 워크플로 자동화 실행",
+      "install": "GitHub 앱 설치",
+      "title": "GitHub"
+    },
     "header": {
       "description": "{{displayName}}와(과) 다음 채널을 통해 연결됨",
       "title": "{{displayName}}가(이) 작동하는 곳"

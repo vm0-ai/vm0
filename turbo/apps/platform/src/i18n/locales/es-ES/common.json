@@ -5367,6 +5367,12 @@
     "connectedWithDetail": "Conectado ({{detail}})",
     "documentTitle": "Integraciones",
     "feishuConnected": "Feishu conectado con éxito",
+    "github": {
+      "adminInstall": "Pide a un administrador de la organización que instale la aplicación de GitHub",
+      "description": "Activa automatizaciones de flujo de trabajo con eventos de GitHub",
+      "install": "Instalar la aplicación de GitHub",
+      "title": "GitHub"
+    },
     "header": {
       "description": "Conecta con {{displayName}} a través de estos canales",
       "title": "Dónde trabaja {{displayName}}"

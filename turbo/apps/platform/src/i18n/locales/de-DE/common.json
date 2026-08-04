@@ -5287,6 +5287,12 @@
     "connectedWithDetail": "Verbunden ({{detail}})",
     "documentTitle": "Funktioniert",
     "feishuConnected": "Feishu hat erfolgreich eine Verbindung hergestellt",
+    "github": {
+      "adminInstall": "Bitten Sie einen Organisationsadministrator, die GitHub-App zu installieren",
+      "description": "Workflow-Automatisierungen durch GitHub-Ereignisse auslösen",
+      "install": "GitHub-App installieren",
+      "title": "GitHub"
+    },
     "header": {
       "description": "Verbinden Sie sich über diese Kanäle mit {{displayName}}",
       "title": "Wo {{displayName}} funktioniert"
