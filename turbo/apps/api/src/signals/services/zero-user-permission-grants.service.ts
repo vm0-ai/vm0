@@ -105,6 +105,10 @@ type BaselineNetworkPolicyRefreshResolution =
     }
   | { readonly kind: "incompatible" };
 
+type BaselineNetworkPolicyDatabaseMeasure = <T>(
+  operation: () => Promise<T>,
+) => Promise<T>;
+
 interface UserPermissionGrantBaseScope {
   readonly orgId: string;
   readonly userId: string;
@@ -454,6 +458,7 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
   baseline: StoredConnectorPermissionBaseline,
+  measureDatabase: BaselineNetworkPolicyDatabaseMeasure,
   checkedAt: Date = nowDate(),
 ): Promise<BaselineNetworkPolicyRefreshResolution> {
   const connectorSlugs = Object.keys(baseline.connectors);
@@ -469,52 +474,54 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
     return { kind: "incompatible" };
   }
 
-  const rows = await db
-    .select({
-      identity: {
-        schemaVersion: connectorCatalogActiveSnapshot.schemaVersion,
-        catalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
-        catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
-      },
-      grant: {
-        connectorSlug: userPermissionGrants.connectorSlug,
-        permission: userPermissionGrants.permission,
-        action: userPermissionGrants.action,
-        expiresAt: userPermissionGrants.expiresAt,
-      },
-    })
-    .from(connectorCatalogActiveSnapshot)
-    .innerJoin(
-      connectorCatalogCompatibilityEvaluation,
-      connectorCatalogIdentityJoin(),
-    )
-    .leftJoin(
-      userPermissionGrants,
-      and(
-        eq(userPermissionGrants.orgId, scope.orgId),
-        eq(userPermissionGrants.userId, scope.userId),
-        eq(userPermissionGrants.agentId, scope.agentId),
-        inArray(userPermissionGrants.connectorSlug, connectorSlugs),
-        activeUserPermissionGrantCondition(checkedAt),
-      ),
-    )
-    .where(
-      and(
-        eq(connectorCatalogActiveSnapshot.sourceId, current.sourceId),
-        eq(
-          connectorCatalogActiveSnapshot.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+  const rows = await measureDatabase(async () => {
+    return await db
+      .select({
+        identity: {
+          schemaVersion: connectorCatalogActiveSnapshot.schemaVersion,
+          catalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
+          catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
+        },
+        grant: {
+          connectorSlug: userPermissionGrants.connectorSlug,
+          permission: userPermissionGrants.permission,
+          action: userPermissionGrants.action,
+          expiresAt: userPermissionGrants.expiresAt,
+        },
+      })
+      .from(connectorCatalogActiveSnapshot)
+      .innerJoin(
+        connectorCatalogCompatibilityEvaluation,
+        connectorCatalogIdentityJoin(),
+      )
+      .leftJoin(
+        userPermissionGrants,
+        and(
+          eq(userPermissionGrants.orgId, scope.orgId),
+          eq(userPermissionGrants.userId, scope.userId),
+          eq(userPermissionGrants.agentId, scope.agentId),
+          inArray(userPermissionGrants.connectorSlug, connectorSlugs),
+          activeUserPermissionGrantCondition(checkedAt),
         ),
-        eq(
-          connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
-          current.capabilityDigest,
+      )
+      .where(
+        and(
+          eq(connectorCatalogActiveSnapshot.sourceId, current.sourceId),
+          eq(
+            connectorCatalogActiveSnapshot.schemaVersion,
+            SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+          ),
+          eq(
+            connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
+            current.capabilityDigest,
+          ),
         ),
-      ),
-    )
-    .orderBy(
-      asc(userPermissionGrants.connectorSlug),
-      asc(userPermissionGrants.permission),
-    );
+      )
+      .orderBy(
+        asc(userPermissionGrants.connectorSlug),
+        asc(userPermissionGrants.permission),
+      );
+  });
 
   const first = rows[0];
   if (

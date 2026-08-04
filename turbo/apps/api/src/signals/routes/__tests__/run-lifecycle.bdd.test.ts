@@ -164,6 +164,7 @@ const CLAIM_ROUTE_PREPARED_PATH_OMITTED_ACTION_TYPES = [
 const CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES = [
   "claim_route_response_resume_session",
   "claim_route_response_network_policy_refresh",
+  "claim_route_response_network_policy_refresh_baseline_database",
 ] as const;
 type ClaimRouteResponseTimingActionType =
   (typeof CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES)[number];
@@ -769,6 +770,9 @@ function expectClaimRouteResponseTimingActions(args: {
     );
     expect(event?.duration_ms).toStrictEqual(expect.any(Number));
     expect(Number(event?.duration_ms)).toBeGreaterThanOrEqual(0);
+    expect(Object.hasOwn(event ?? {}, "policy_refresh_path")).toBe(
+      actionType === "claim_route_response_network_policy_refresh",
+    );
     for (const forbiddenKey of FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS) {
       expect(event).not.toHaveProperty(forbiddenKey);
     }
@@ -9083,6 +9087,21 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expect(claim.networkPolicies?.slack?.deny).toContain("chat:write");
       expect(claim).not.toHaveProperty("connectorPermissionBaseline");
       expectClaimNetworkPolicyRefreshPath(run.runId, fallbackCase.path);
+      expectClaimRouteResponseTimingActions({
+        runId: run.runId,
+        expectedActionTypes:
+          fallbackCase.mode === "catalog-mismatch"
+            ? [
+                "claim_route_response_network_policy_refresh",
+                "claim_route_response_network_policy_refresh_baseline_database",
+              ]
+            : ["claim_route_response_network_policy_refresh"],
+        forbiddenValues: [
+          `fallback ${fallbackCase.mode}`,
+          "slack",
+          claim.sandboxToken,
+        ],
+      });
       await api.requestCancelRun(actor, run.runId, [200]);
     }
   });
@@ -9201,7 +9220,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const granted = grantedContext.policy;
     expectClaimRouteResponseTimingActions({
       runId: grantedContext.claim.runId,
-      expectedActionTypes: ["claim_route_response_network_policy_refresh"],
+      expectedActionTypes: [
+        "claim_route_response_network_policy_refresh",
+        "claim_route_response_network_policy_refresh_baseline_database",
+      ],
       forbiddenValues: [
         "granted permissions",
         "slack",
@@ -9568,6 +9590,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expectedActionTypes: [
         "claim_route_response_resume_session",
         "claim_route_response_network_policy_refresh",
+        "claim_route_response_network_policy_refresh_baseline_database",
       ],
       forbiddenValues: [
         firstPrompt,
