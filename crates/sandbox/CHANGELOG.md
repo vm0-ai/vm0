@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.37](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.36...sandbox-v0.19.37) (2026-08-04)
+
+
+### Performance Improvements
+
+* measure pre-park successor handoff ([#24938](https://github.com/vm0-ai/vm0/issues/24938)) ([6e7c0aa](https://github.com/vm0-ai/vm0/commit/6e7c0aa73c51d7916efaa354f6ce1ba32b83090f))
+
 ## [0.19.36](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.35...sandbox-v0.19.36) (2026-08-04)
 
 

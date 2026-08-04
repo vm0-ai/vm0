@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.63.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.4...guest-agent-v0.63.5) (2026-08-04)
+
+
+### Refactoring
+
+* **guest-agent:** hydrate codex catalogs structurally ([#24957](https://github.com/vm0-ai/vm0/issues/24957)) ([7520643](https://github.com/vm0-ai/vm0/commit/75206430a93a6f4fcdb1dfec1f43f93499ef85ba))
+
 ## [0.63.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.3...guest-agent-v0.63.4) (2026-08-04)
 
 
