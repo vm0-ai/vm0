@@ -1,0 +1,20 @@
+{
+  "$schema": "../schema.json",
+  "schemaVersion": 1,
+  "name": "intro",
+  "description": "agent-facing Zero introduction output",
+  "argv": ["intro"],
+  "environment": {},
+  "stdin": "",
+  "workingDirectory": ".",
+  "terminalMode": "pipe",
+  "timeoutMs": 10000,
+  "mockHttp": {
+    "captureHeaders": [],
+    "exchanges": []
+  },
+  "filesystem": {
+    "seed": []
+  },
+  "normalizations": []
+}

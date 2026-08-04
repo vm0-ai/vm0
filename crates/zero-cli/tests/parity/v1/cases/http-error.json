@@ -1,0 +1,53 @@
+{
+  "$schema": "../schema.json",
+  "schemaVersion": 1,
+  "name": "http-error",
+  "description": "HTTP request construction and API error process forwarding",
+  "argv": ["model", "ls"],
+  "environment": {
+    "ZERO_TOKEN": "parity-test-token"
+  },
+  "stdin": "",
+  "workingDirectory": ".",
+  "terminalMode": "pipe",
+  "timeoutMs": 10000,
+  "mockHttp": {
+    "captureHeaders": [
+      "authorization",
+      "x-client-request-id",
+      "x-client-session-id",
+      "x-client-type",
+      "x-client-version"
+    ],
+    "exchanges": [
+      {
+        "request": {
+          "method": "GET",
+          "path": "/api/zero/model-policies",
+          "query": "",
+          "body": ""
+        },
+        "response": {
+          "status": 500,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "body": "{\"error\":{\"code\":\"PARITY_FIXTURE_ERROR\",\"message\":\"fixture failure\"}}"
+        }
+      }
+    ]
+  },
+  "filesystem": {
+    "seed": []
+  },
+  "normalizations": [
+    {
+      "kind": "uuid-http-header",
+      "header": "x-client-session-id"
+    },
+    {
+      "kind": "uuid-http-header",
+      "header": "x-client-request-id"
+    }
+  ]
+}
