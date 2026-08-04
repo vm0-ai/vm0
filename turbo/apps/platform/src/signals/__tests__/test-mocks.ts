@@ -294,7 +294,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       triggerReconnect: triggerAblyReconnect,
       triggerReauth: triggerAblyReauth,
       triggerConnectionClosed: triggerAblyConnectionClosed,
-      rejectSubscribe: rejectAblySubscribe,
+      rejectSubscribe: (topic: string, message: string) => {
+        return rejectAblySubscribe(topic, message, getSignal());
+      },
       rejectNextSubscribe: rejectNextAblySubscribe,
       hasChannelSubscription,
       hasSubscription,
