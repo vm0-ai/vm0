@@ -90,7 +90,12 @@ import {
   replaceChatEvent,
 } from "../services/zero-chat-event.service";
 import { chatThreadAdmissionBlocked } from "../services/zero-chat-active-run.service";
-import { projectUserMessage } from "../services/zero-chat-user-message.service";
+import {
+  hasAgentRunSourceAnnotation,
+  projectUserMessage,
+  withAgentRunSourceAnnotation,
+  type ChatAgentRunSourceAnnotation,
+} from "../services/zero-chat-user-message.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
   discardUnclaimedUserMessage,
@@ -227,6 +232,94 @@ interface PreparedNormalSend {
   readonly preflightClientEventConflict:
     | ReturnType<typeof duplicateClientEventIdResponse>
     | undefined;
+  readonly triggerSource: "web" | "agent";
+  readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
+}
+
+function normalSendTriggerSource(
+  auth: OrganizationAuthContext,
+): "web" | "agent" {
+  return auth.tokenType === "zero" ? "agent" : "web";
+}
+
+async function resolveChatAgentRunSource(
+  db: Db,
+  auth: OrganizationAuthContext,
+): Promise<ChatAgentRunSourceAnnotation | null> {
+  if (auth.tokenType !== "zero") {
+    return null;
+  }
+  const [source] = await db
+    .select({
+      runId: zeroRuns.id,
+      threadId: chatThreads.id,
+      agentId: chatThreads.agentComposeId,
+      title: chatThreads.title,
+    })
+    .from(zeroRuns)
+    .innerJoin(
+      agentRuns,
+      and(
+        eq(agentRuns.id, zeroRuns.id),
+        eq(agentRuns.userId, auth.userId),
+        eq(agentRuns.orgId, auth.orgId),
+      ),
+    )
+    .innerJoin(
+      chatThreads,
+      and(
+        eq(chatThreads.id, zeroRuns.chatThreadId),
+        eq(chatThreads.userId, auth.userId),
+      ),
+    )
+    .where(eq(zeroRuns.id, auth.runId))
+    .limit(1);
+  if (!source) {
+    return null;
+  }
+  return {
+    runId: source.runId,
+    threadId: source.threadId,
+    agentId: source.agentId,
+    titleSnapshot: source.title?.trim() || "New thread",
+  };
+}
+
+async function resolveNormalSendAgentRunSource(params: {
+  readonly db: Db;
+  readonly auth: OrganizationAuthContext;
+  readonly userMessage: UserMessageDocument;
+  readonly enabled: boolean;
+}): Promise<
+  | { readonly source: ChatAgentRunSourceAnnotation | null }
+  | { readonly response: ReturnType<typeof badRequestMessage> }
+> {
+  // Keep provenance aligned with the existing Zero chat messaging rollout.
+  // Migration 0825 must be present before the API version that writes it.
+  const source = params.enabled
+    ? await resolveChatAgentRunSource(params.db, params.auth)
+    : null;
+  if (hasAgentRunSourceAnnotation(params.userMessage) && source === null) {
+    return {
+      response: badRequestMessage(
+        "Agent source annotations are server-managed",
+      ),
+    };
+  }
+  return { source };
+}
+
+function normalSendBodyWithAgentRunSource(
+  body: NormalSendBody,
+  source: ChatAgentRunSourceAnnotation | null,
+): NormalSendBody {
+  if (source === null) {
+    return body;
+  }
+  return {
+    ...body,
+    userMessage: withAgentRunSourceAnnotation(body.userMessage, source),
+  };
 }
 
 function shouldTouchThreadSortFromNormalSend(
@@ -242,6 +335,7 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly artifactKeyV2Enabled: boolean;
+  readonly zeroChatMessagingEnabled: boolean;
   readonly codexFastModeEnabled: boolean;
   readonly userMessageInlineTemplatesEnabled: boolean;
 }
@@ -778,6 +872,10 @@ async function resolveNormalSendFeatureSwitches(
   return {
     artifactKeyV2Enabled: isFeatureEnabled(
       FeatureSwitchKey.ArtifactKeyV2,
+      context,
+    ),
+    zeroChatMessagingEnabled: isFeatureEnabled(
+      FeatureSwitchKey.ZeroChatMessaging,
       context,
     ),
     codexFastModeEnabled: isFeatureEnabled(
@@ -1323,6 +1421,8 @@ function appendUnassociatedUserMessage(params: {
   readonly userMessage: UserMessageDocument;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly revokesEventId: string | undefined;
+  readonly triggerSource: "web" | "agent";
+  readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
 }): Promise<ClientEventIdResolution> {
   return params.db.transaction(async (tx) => {
     await tx
@@ -1347,7 +1447,16 @@ function appendUnassociatedUserMessage(params: {
       eventType: "input.prompt",
       userMessage: params.userMessage,
       runId: null,
-      triggerSource: "web",
+      triggerSource: params.triggerSource,
+      ...(params.agentRunSource
+        ? {
+            agentRunContext: {
+              sourceRunId: params.agentRunSource.runId,
+              sourceChatThreadId: params.agentRunSource.threadId,
+              sourceAgentId: params.agentRunSource.agentId,
+            },
+          }
+        : {}),
       attachFiles: fileIds,
       generationTemplate: params.generationTemplate,
     };
@@ -2132,8 +2241,20 @@ const prepareNormalSend$ = command(
       db,
     );
     signal.throwIfAborted();
+    const agentRunSourceResult = await resolveNormalSendAgentRunSource({
+      db,
+      auth: args.auth,
+      userMessage: args.body.userMessage,
+      enabled: featureSwitches.zeroChatMessagingEnabled,
+    });
+    signal.throwIfAborted();
+    if ("response" in agentRunSourceResult) {
+      return agentRunSourceResult.response;
+    }
+    const agentRunSource = agentRunSourceResult.source;
+
     const runtimeBody = resolveRuntimeNormalSendBody(
-      args.body,
+      normalSendBodyWithAgentRunSource(args.body, agentRunSource),
       featureSwitches.userMessageInlineTemplatesEnabled,
     );
     const generationTemplateError = validateGenerationTemplatePrompt(
@@ -2219,6 +2340,8 @@ const prepareNormalSend$ = command(
       runConfiguration,
       clientEventPrechecked,
       preflightClientEventConflict: preflightClientEventResponse,
+      triggerSource: normalSendTriggerSource(args.auth),
+      agentRunSource,
     };
   },
 );
@@ -2250,6 +2373,8 @@ async function queueUnassociatedNormalEvent(params: {
     userMessage: params.body.userMessage,
     generationTemplate: params.body.generationTemplate,
     revokesEventId: params.body.revokesEventId,
+    triggerSource: params.prepared.triggerSource,
+    agentRunSource: params.prepared.agentRunSource,
   });
   if (resolution.kind === "queued" && resolution.inserted) {
     waitUntil(
@@ -2774,7 +2899,7 @@ function buildCreateZeroRunArgs(params: {
         : {}),
       ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
     },
-    triggerSource: "web" as const,
+    triggerSource: prepared.triggerSource,
     dispatchFailedCallbacks: dispatchFailedRunCallbacks,
     ...(prepared.thread.isNewThread
       ? {

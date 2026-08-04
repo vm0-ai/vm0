@@ -298,17 +298,24 @@ def _request_classification_for_flow(
     )
 
 
+def _admit_platform_api_request(flow: http.HTTPFlow) -> bool:
+    if not upstream_admission.ensure_bound_destination(
+        flow,
+        kind="api_allow",
+        api_url=get_api_url(),
+    ):
+        return False
+    platform_api.add_vercel_bypass_header(flow.request.headers)
+    return True
+
+
 def _prebind_requestheaders_upstream_destination(
     flow: http.HTTPFlow,
     classification: request_classification.RequestClassification,
 ) -> None:
     """Bind privileged upstreams while requestheaders can still retarget."""
     if classification.kind == "api_allow":
-        upstream_admission.ensure_bound_destination(
-            flow,
-            kind="api_allow",
-            api_url=get_api_url(),
-        )
+        _admit_platform_api_request(flow)
         return
     if classification.kind != "firewall_allow":
         return
@@ -350,11 +357,7 @@ def _prebind_bounded_requestheaders_upstream_destination(
                 defer_unresolved_public_destination=True,
             )
             if classification.kind == "api_allow":
-                upstream_admission.ensure_bound_destination(
-                    flow,
-                    kind="api_allow",
-                    api_url=api_url,
-                )
+                _admit_platform_api_request(flow)
             return classification
         if upstream_admission.has_bound_destination(
             flow,
@@ -872,11 +875,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         | request_classification.FirewallPolicyAllow
         | request_classification.Allow,
     ) and request_classification.should_stream_capture_request(classification):
-        if classification.kind == "api_allow" and not upstream_admission.ensure_bound_destination(
-            flow,
-            kind="api_allow",
-            api_url=get_api_url(),
-        ):
+        if classification.kind == "api_allow" and not _admit_platform_api_request(flow):
             _restore_request_headers_probe_metadata(flow, metadata_snapshot)
             return None
         if classification.kind == "allow":
@@ -1324,11 +1323,7 @@ async def request(flow: http.HTTPFlow) -> None:
             _block_authority_validation_error(flow, classification.authority_error)
             return
         if classification.kind == "api_allow":
-            if not upstream_admission.ensure_bound_destination(
-                flow,
-                kind="api_allow",
-                api_url=get_api_url(),
-            ):
+            if not _admit_platform_api_request(flow):
                 _block_upstream_destination_unbound(flow, reason="api_allow")
                 return
             flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")

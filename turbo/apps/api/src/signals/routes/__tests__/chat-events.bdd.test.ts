@@ -88,6 +88,7 @@ import {
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
+  readChatEventContextFixture,
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
@@ -6030,7 +6031,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
 });
 
 describe("CHAT-02: run-scoped Zero-token chat launches", () => {
-  it("keeps immediate and queued runs web-scoped without agent provenance", async () => {
+  it("keeps immediate and queued runs agent-scoped without retired provenance", async () => {
     const { actor, agentId } = await entitledChatActor();
     if (!actor.orgId) {
       throw new Error("Expected an organization-scoped chat actor");
@@ -6090,7 +6091,7 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
       context.signal,
     );
     expect(immediateState.zero_run).toMatchObject({
-      triggerSource: "web",
+      triggerSource: "agent",
     });
     expect(
       immediateState.callbacks.map((callback) => {
@@ -6153,7 +6154,7 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
       context.signal,
     );
     expect(promotedState.zero_run).toMatchObject({
-      triggerSource: "web",
+      triggerSource: "agent",
     });
     expect(
       promotedState.callbacks.map((callback) => {
@@ -6547,6 +6548,230 @@ describe("CHAT-02: shared user message queue", () => {
     }
 
     await cancelChatRun(actor, runId);
+  }, 90_000);
+
+  it("persists agent-run provenance for messages sent across chat threads", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ZeroChatMessaging]: true },
+    );
+
+    const firstTargetThread = await chat.createThread(actor, { agentId });
+    const secondTargetThread = await chat.createThread(actor, { agentId });
+
+    const source = await sendChatRun(actor, {
+      agentId,
+      prompt: "delegate work to other chat threads",
+    });
+    const { claim: sourceClaim, sandboxHeaders: sourceSandboxHeaders } =
+      await claimChatRun(runnerGroup, source.runId);
+    const sourceToken = zeroTokenFromClaim(sourceClaim);
+
+    const firstEventId = randomUUID();
+    const firstSend = await requestSendEventWithBearer(
+      sourceToken,
+      {
+        agentId,
+        clientEventId: firstEventId,
+        threadId: firstTargetThread.id,
+        prompt: "first delegated prompt",
+      },
+      [201],
+    );
+    if (firstSend.status !== 201) {
+      throw new Error("Expected the first delegated prompt to be accepted");
+    }
+    if (!firstSend.body.runId) {
+      throw new Error("Expected the first delegated prompt to launch a run");
+    }
+    const firstTargetRunId = firstSend.body.runId;
+    const firstMessages = await waitForThreadMessages(
+      actor,
+      firstTargetThread.id,
+      (events) => {
+        return userMessages(events).some((event) => {
+          return event.id === firstEventId;
+        });
+      },
+    );
+    const firstInput = userMessages(firstMessages.events).find(
+      (event): event is PromptMessage => {
+        return event.eventType === "input.prompt" && event.id === firstEventId;
+      },
+    );
+    expect(firstInput).toMatchObject({
+      eventType: "input.prompt",
+      triggerSource: "agent",
+      userMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: "first delegated prompt" },
+          {
+            type: "source",
+            kind: "agent",
+            runId: source.runId,
+            threadId: source.threadId,
+            agentId,
+            titleSnapshot: "New thread",
+            href: `/chats/${source.threadId}#run-${source.runId}`,
+          },
+        ],
+      },
+    });
+    expect(firstInput?.runId).toBeUndefined();
+    if (!firstInput) {
+      throw new Error("Expected the first delegated input event");
+    }
+    await expect(
+      readChatEventContextFixture(firstInput.id),
+    ).resolves.toMatchObject({
+      contextType: "agent_run",
+      contextId: source.runId,
+      agentRunSourceChatThreadId: source.threadId,
+      agentRunSourceAgentId: agentId,
+    });
+
+    const legacyFirstMessages = await chat.listThreadEvents(
+      actor,
+      firstTargetThread.id,
+      {},
+      "0.636.1",
+    );
+    const legacyFirstInput = userMessages(legacyFirstMessages.events).find(
+      (event): event is PromptMessage => {
+        return event.eventType === "input.prompt" && event.id === firstEventId;
+      },
+    );
+    expect(legacyFirstInput?.userMessage.parts).toStrictEqual([
+      { type: "text", text: "first delegated prompt" },
+    ]);
+    const legacyFirstById = await chat.getThreadEvent(
+      actor,
+      firstTargetThread.id,
+      firstEventId,
+      "0.636.1",
+    );
+    expect(
+      legacyFirstById.eventType === "input.prompt"
+        ? legacyFirstById.userMessage.parts
+        : null,
+    ).toStrictEqual([{ type: "text", text: "first delegated prompt" }]);
+
+    await chat.renameThread(actor, source.threadId, "Delegation source");
+    const secondEventId = randomUUID();
+    const secondSend = await requestSendEventWithBearer(
+      sourceToken,
+      {
+        agentId,
+        clientEventId: secondEventId,
+        threadId: secondTargetThread.id,
+        prompt: "second delegated prompt",
+      },
+      [201],
+    );
+    if (secondSend.status !== 201) {
+      throw new Error("Expected the second delegated prompt to be accepted");
+    }
+    if (!secondSend.body.runId) {
+      throw new Error("Expected the second delegated prompt to queue a run");
+    }
+    const secondTargetRunId = secondSend.body.runId;
+    expect(secondSend.body.status).toBe("queued");
+    const secondMessages = await waitForThreadMessages(
+      actor,
+      secondTargetThread.id,
+      (events) => {
+        return userMessages(events).some((event) => {
+          return event.id === secondEventId;
+        });
+      },
+    );
+    const secondInput = userMessages(secondMessages.events).find(
+      (event): event is PromptMessage => {
+        return event.eventType === "input.prompt" && event.id === secondEventId;
+      },
+    );
+    expect(secondInput?.userMessage.parts).toContainEqual({
+      type: "source",
+      kind: "agent",
+      runId: source.runId,
+      threadId: source.threadId,
+      agentId,
+      titleSnapshot: "Delegation source",
+      href: `/chats/${source.threadId}#run-${source.runId}`,
+    });
+    if (!secondInput) {
+      throw new Error("Expected the second delegated input event");
+    }
+    await expect(
+      readChatEventContextFixture(secondInput.id),
+    ).resolves.toMatchObject({
+      contextType: "agent_run",
+      contextId: source.runId,
+      agentRunSourceChatThreadId: source.threadId,
+      agentRunSourceAgentId: agentId,
+    });
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ZeroChatMessaging]: false },
+    );
+    const gatedTargetThread = await chat.createThread(actor, { agentId });
+    const gatedEventId = randomUUID();
+    const gatedSend = await requestSendEventWithBearer(
+      sourceToken,
+      {
+        agentId,
+        clientEventId: gatedEventId,
+        threadId: gatedTargetThread.id,
+        prompt: "provenance rollout disabled",
+      },
+      [201],
+    );
+    if (gatedSend.status !== 201) {
+      throw new Error("Expected the gated delegated prompt to be accepted");
+    }
+    if (!gatedSend.body.runId) {
+      throw new Error("Expected the gated delegated prompt to queue a run");
+    }
+    const gatedTargetRunId = gatedSend.body.runId;
+    expect(gatedSend.body.status).toBe("queued");
+    const gatedMessages = await waitForThreadMessages(
+      actor,
+      gatedTargetThread.id,
+      (events) => {
+        return userMessages(events).some((event) => {
+          return event.id === gatedEventId;
+        });
+      },
+    );
+    expect(
+      userMessages(gatedMessages.events).find((event) => {
+        return event.id === gatedEventId;
+      }),
+    ).toMatchObject({
+      eventType: "input.prompt",
+      triggerSource: "agent",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "provenance rollout disabled" }],
+      },
+    });
+    await expect(
+      readChatEventContextFixture(gatedEventId),
+    ).resolves.toMatchObject({ contextType: null, contextId: null });
+
+    await cancelChatRun(actor, gatedTargetRunId);
+    await cancelChatRun(actor, secondTargetRunId);
+    await cancelChatRun(actor, firstTargetRunId);
+    await cancelChatRun(actor, source.runId, sourceSandboxHeaders);
   }, 90_000);
 
   it("derives real-agent preview mode when queued messages are claimed", async () => {

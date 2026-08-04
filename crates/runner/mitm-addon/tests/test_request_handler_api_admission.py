@@ -7,6 +7,7 @@ from mitmproxy import connection
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import platform_api
 import registry
 import request_classification
 import upstream_destination_binding
@@ -93,6 +94,41 @@ async def test_matching_sni_and_host_retargets_unconnected_vm0_api_auto_allow(
     assert binding.host == "api.vm0.ai"
     assert binding.kinds == frozenset(("api_allow",))
     assert binding.original_address == ("203.0.113.10", 443)
+
+
+async def test_vm0_api_auto_allow_injects_runner_preview_bypass(
+    registry_file, real_flow, mitm_ctx, monkeypatch
+):
+    flow = real_flow(
+        with_response=False,
+        host="preview-api.vm6.ai",
+        path="/api/zero/chat-threads/thread-id/metadata",
+    )
+    monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "preview-secret")
+
+    with mitm_ctx(
+        registry_path=str(registry_file),
+        api_url="https://preview-api.vm6.ai",
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.request.headers["x-vercel-protection-bypass"] == "preview-secret"
+
+
+async def test_non_api_request_does_not_receive_runner_preview_bypass(
+    registry_file, real_flow, mitm_ctx, monkeypatch
+):
+    flow = real_flow(with_response=False, host="example.com", path="/resource")
+    monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "preview-secret")
+
+    with mitm_ctx(
+        registry_path=str(registry_file),
+        api_url="https://preview-api.vm6.ai",
+    ):
+        await mitm_addon.request(flow)
+
+    assert "x-vercel-protection-bypass" not in flow.request.headers
 
 
 async def test_matching_sni_and_host_allows_bound_vm0_api_auto_allow(

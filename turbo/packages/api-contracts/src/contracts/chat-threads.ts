@@ -368,25 +368,44 @@ const feedbackNotePartSchema = z.discriminatedUnion("type", [
   userMessageTemplatePartSchema,
 ]);
 
+const userMessageExternalSourcePartSchema = z
+  .object({
+    type: z.literal("source"),
+    kind: z.enum([
+      "slack",
+      "feishu",
+      "teams",
+      "telegram",
+      "github",
+      "agentphone",
+    ]),
+    href: z.string().url().optional(),
+  })
+  .strict();
+
+const userMessageAgentSourcePartSchema = z
+  .object({
+    type: z.literal("source"),
+    kind: z.literal("agent"),
+    runId: z.string().uuid(),
+    threadId: z.string().uuid(),
+    agentId: z.string().uuid(),
+    titleSnapshot: z.string().min(1),
+    href: z.string().min(1),
+  })
+  .strict();
+
+const userMessageSourcePartSchema = z.discriminatedUnion("kind", [
+  userMessageExternalSourcePartSchema,
+  userMessageAgentSourcePartSchema,
+]);
+
 const userMessagePartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
   userMessageChatThreadPartSchema,
   userMessageAgentPartSchema,
   userMessageTemplatePartSchema,
-  z
-    .object({
-      type: z.literal("source"),
-      kind: z.enum([
-        "slack",
-        "feishu",
-        "teams",
-        "telegram",
-        "github",
-        "agentphone",
-      ]),
-      href: z.string().url().optional(),
-    })
-    .strict(),
+  userMessageSourcePartSchema,
   z
     .object({
       type: z.literal("automation"),
