@@ -92,6 +92,13 @@
       "when": 1785823781263,
       "tag": "0820_nebulous_wallop",
       "breakpoints": true
+    },
+    {
+      "idx": 821,
+      "version": "7",
+      "when": 1785828330559,
+      "tag": "0821_military_pretty_boy",
+      "breakpoints": true
     }
   ]
 }
