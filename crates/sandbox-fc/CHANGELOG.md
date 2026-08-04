@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.37.176](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.175...sandbox-fc-v0.37.176) (2026-08-04)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** verify conntrack reset outcomes ([#24933](https://github.com/vm0-ai/vm0/issues/24933)) ([d1f7711](https://github.com/vm0-ai/vm0/commit/d1f77112c4b11024fe1e8164a3f00141b6d288b4))
+
+
+### Refactoring
+
+* **runner:** centralize guest dns probe signature ([#24936](https://github.com/vm0-ai/vm0/issues/24936)) ([6fbb873](https://github.com/vm0-ai/vm0/commit/6fbb87342944fc9292ae4c6dfa99d7302caf8acc))
+
 ## [0.37.175](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.174...sandbox-fc-v0.37.175) (2026-08-04)
 
 
