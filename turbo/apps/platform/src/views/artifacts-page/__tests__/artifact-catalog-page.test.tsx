@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import {
+  ARTIFACT_CATALOG_KINDS,
   artifactCatalogContract,
   type ArtifactSummary,
 } from "@vm0/api-contracts/contracts/artifact-catalog";
@@ -86,6 +87,11 @@ describe("artifact catalog page", () => {
               url: "https://cdn.vm0.io/artifacts/test/preview.webp",
             },
           }),
+          artifact({
+            id: "a0000000-0000-4000-a000-000000000003",
+            kind: "avatar",
+            title: "avatar-video.mp4",
+          }),
         ],
         nextCursor: null,
       });
@@ -98,6 +104,9 @@ describe("artifact catalog page", () => {
     expect(
       screen.getByTestId("artifact-catalog-kind-icon-hosted-site"),
     ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("artifact-catalog-kind-icon-avatar"),
+    ).toBeInTheDocument();
     expect(site.querySelector("img")).toHaveAttribute(
       "src",
       "https://cdn.vm0.io/cdn-cgi/image/width=640,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/test/preview.webp",
@@ -108,15 +117,16 @@ describe("artifact catalog page", () => {
     const requestedKinds: (string | undefined)[] = [];
     context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
       requestedKinds.push(query.kind);
-      const imageSelected = query.kind === "image";
+      const avatarSelected = query.kind === "avatar";
       return respond(200, {
         artifacts: [
           artifact({
-            kind: imageSelected ? "image" : "presentation",
-            title: imageSelected ? "generated.png" : "launch-deck",
+            kind: avatarSelected ? "avatar" : "presentation",
+            title: avatarSelected ? "avatar-video.mp4" : "launch-deck",
           }),
         ],
         nextCursor: null,
+        supportedKinds: [...ARTIFACT_CATALOG_KINDS],
       });
     });
 
@@ -134,7 +144,14 @@ describe("artifact catalog page", () => {
       kindFilters.map((button) => {
         return button.textContent;
       }),
-    ).toStrictEqual(["Presentations", "Websites", "Images", "Videos", "Files"]);
+    ).toStrictEqual([
+      "Presentations",
+      "Websites",
+      "Images",
+      "Videos",
+      "Avatars",
+      "Files",
+    ]);
     expect(buttonByLabel("Show all artifacts")).toBeUndefined();
     expect(buttonByLabel("Show presentation artifacts")).toHaveAttribute(
       "aria-pressed",
@@ -142,14 +159,14 @@ describe("artifact catalog page", () => {
     );
     expect(requestedKinds).toStrictEqual(["presentation"]);
 
-    const imageFilter = buttonByLabel("Show image artifacts");
-    if (!imageFilter) {
-      throw new Error("Expected an image kind filter");
+    const avatarFilter = buttonByLabel("Show avatar artifacts");
+    if (!avatarFilter) {
+      throw new Error("Expected an avatar kind filter");
     }
-    await click(imageFilter);
+    await click(avatarFilter);
 
-    await findCard("generated.png");
-    expect(requestedKinds).toStrictEqual(["presentation", "image"]);
+    await findCard("avatar-video.mp4");
+    expect(requestedKinds).toStrictEqual(["presentation", "avatar"]);
   });
 
   it("localizes the catalog and filters without changing artifact titles", async () => {
@@ -165,6 +182,7 @@ describe("artifact catalog page", () => {
           }),
         ],
         nextCursor: null,
+        supportedKinds: [...ARTIFACT_CATALOG_KINDS],
       });
     });
 
@@ -189,6 +207,7 @@ describe("artifact catalog page", () => {
       "Sites",
       "Imagens",
       "Vídeos",
+      "Avatares",
       "Arquivos",
     ]);
 
@@ -482,6 +501,42 @@ describe("artifact catalog page", () => {
       ]);
     });
     await expect(screen.findByText("launch plan")).resolves.toBeInTheDocument();
+  });
+
+  it("opens an avatar artifact as a video preview", async () => {
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [artifact({ kind: "avatar", title: "avatar-video.mp4" })],
+        nextCursor: null,
+        supportedKinds: [...ARTIFACT_CATALOG_KINDS],
+      });
+    });
+    context.mocks.api(artifactCatalogContract.get, ({ respond }) => {
+      return respond(200, {
+        ...artifact({ kind: "avatar", title: "avatar-video.mp4" }),
+        kind: "avatar",
+        file: {
+          id: "f0000000-0000-4000-a000-000000000004",
+          filename: "avatar-video.mp4",
+          contentType: "video/mp4",
+          size: 4096,
+          url: "https://artifacts.example.com/avatar-video.mp4",
+          previewImageUrl: null,
+        },
+        model: "joggai-talking-avatar",
+        durationSeconds: 12,
+      });
+    });
+
+    setupArtifactCatalogPage();
+    await click(await findCard("avatar-video.mp4"));
+
+    await expect(
+      screen.findByLabelText("Video preview for avatar-video.mp4"),
+    ).resolves.toHaveAttribute(
+      "src",
+      "https://artifacts.example.com/avatar-video.mp4",
+    );
   });
 
   it("downloads a generic binary when its card is opened", async () => {
