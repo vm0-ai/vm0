@@ -7490,6 +7490,31 @@ function resolvePagedUserMessageRendering({
   };
 }
 
+function visibleSourceAnnotationPart({
+  userMessage,
+  inputEvent,
+}: {
+  userMessage: UserMessageDocument | undefined;
+  inputEvent: ChatInputEvent | undefined;
+}) {
+  const part = userMessageNonContentPart(userMessage);
+  if (
+    part?.type !== "source" ||
+    (part.kind === "agent" &&
+      (inputEvent?.eventType !== "input.prompt" ||
+        inputEvent.triggerSource !== "agent"))
+  ) {
+    return undefined;
+  }
+  return part;
+}
+
+function inputPromptRunAnchor(inputEvent: ChatInputEvent | undefined) {
+  return inputEvent?.eventType === "input.prompt" && inputEvent.runId
+    ? `run-${inputEvent.runId}`
+    : undefined;
+}
+
 function PagedUserMessage({
   event,
   thread,
@@ -7558,19 +7583,13 @@ function PagedUserMessage({
     return <GoalUserMessage event={event} />;
   }
 
-  const nonContentPart = userMessageNonContentPart(userMessage);
-  const sourceAnnotationVisible =
-    nonContentPart?.type === "source" &&
-    (nonContentPart.kind !== "agent" ||
-      (inputEvent?.eventType === "input.prompt" &&
-        inputEvent.triggerSource === "agent"));
+  const sourceAnnotationPart = visibleSourceAnnotationPart({
+    userMessage,
+    inputEvent,
+  });
   return (
     <div
-      id={
-        inputEvent?.eventType === "input.prompt" && inputEvent.runId
-          ? `run-${inputEvent.runId}`
-          : undefined
-      }
+      id={inputPromptRunAnchor(inputEvent)}
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
       className="group"
@@ -7578,9 +7597,9 @@ function PagedUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          {sourceAnnotationVisible ? (
+          {sourceAnnotationPart ? (
             <MessageAnnotation
-              part={nonContentPart}
+              part={sourceAnnotationPart}
               agentReferenceSignalsForId={thread.agentReferenceSignalsForId}
             />
           ) : null}
