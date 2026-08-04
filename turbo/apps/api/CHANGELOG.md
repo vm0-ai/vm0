@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.372.1](https://github.com/vm0-ai/vm0/compare/api-v1.372.0...api-v1.372.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **api:** use active subscription billing periods ([#24981](https://github.com/vm0-ai/vm0/issues/24981)) ([c5d7b0a](https://github.com/vm0-ai/vm0/commit/c5d7b0ae4a7f17585e48d0e3482efb91bdee2095))
+
+
+### Refactoring
+
+* **api:** stop reading usage event gross credits ([#24999](https://github.com/vm0-ai/vm0/issues/24999)) ([96cf1f2](https://github.com/vm0-ai/vm0/commit/96cf1f2092578a8ed5a7441e73c829ead32e8584))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.0
+    * @vm0/core bumped to 8.508.2
+    * @vm0/db bumped to 1.163.12
+
 ## [1.372.0](https://github.com/vm0-ai/vm0/compare/api-v1.371.0...api-v1.372.0) (2026-08-04)
 
 

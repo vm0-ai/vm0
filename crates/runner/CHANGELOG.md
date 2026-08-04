@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.156.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.155.1...runner-rs-v0.156.0) (2026-08-04)
+
+
+### Features
+
+* **contracts:** add native zero cli rust bindings ([#24994](https://github.com/vm0-ai/vm0/issues/24994)) ([519c1f6](https://github.com/vm0-ai/vm0/commit/519c1f631e9759eecd25d929c26cbba84989d434))
+
+
+### Bug Fixes
+
+* **python:** revalidate firewall authorization after auth waits ([#24973](https://github.com/vm0-ai/vm0/issues/24973)) ([2437299](https://github.com/vm0-ai/vm0/commit/2437299c9af55cceaf1048ed7c2c4d07df75f5ec))
+
 ## [0.155.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.155.0...runner-rs-v0.155.1) (2026-08-04)
 
 
