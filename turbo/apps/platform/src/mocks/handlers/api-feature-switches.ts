@@ -22,6 +22,7 @@ export const apiFeatureSwitchesHandlers = [
       effectiveSwitches: DEFAULT_SWITCH_OVERRIDES,
       supportsCustomConnectorOAuth2: true,
       supportsImageRecognition: true,
+      supportsAvatarTemplates: true,
     });
   }),
 
@@ -31,6 +32,7 @@ export const apiFeatureSwitchesHandlers = [
       effectiveSwitches: body.switches,
       supportsCustomConnectorOAuth2: true,
       supportsImageRecognition: true,
+      supportsAvatarTemplates: true,
     });
   }),
 

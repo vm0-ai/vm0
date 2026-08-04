@@ -777,6 +777,248 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("keeps every steered user message outside completed work", async () => {
+    const threadId = "thread-work-folding-steered-users";
+    const runId = "run-work-folding-steered-users";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          role: "user",
+          content: "Prepare the launch plan",
+          runId,
+          createdAt: "2026-08-04T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Reviewing the launch notes.",
+          runId,
+          createdAt: "2026-08-04T10:00:10Z",
+        },
+        {
+          role: "user",
+          content: "Also include the rollback steps",
+          runId,
+          createdAt: "2026-08-04T10:00:20Z",
+        },
+        {
+          role: "user",
+          content: "Keep the rollback checklist concise",
+          runId,
+          createdAt: "2026-08-04T10:00:25Z",
+        },
+        {
+          role: "assistant",
+          content: "Adding the rollback steps.",
+          runId,
+          createdAt: "2026-08-04T10:00:30Z",
+        },
+        {
+          role: "assistant",
+          content: "The launch and rollback plan is ready.",
+          runId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-08-04T10:00:40Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatSteer]: true },
+    });
+
+    const expandButton = await screen.findByLabelText("Expand work history");
+    const messageContainer = expandButton.closest(
+      "[data-message-container]",
+    ) as HTMLElement | null;
+    expect(messageContainer).not.toBeNull();
+    expect(screen.getAllByText("Prepare the launch plan")).toHaveLength(1);
+    expect(screen.getAllByText("Also include the rollback steps")).toHaveLength(
+      1,
+    );
+    expect(
+      screen.getAllByText("Keep the rollback checklist concise"),
+    ).toHaveLength(1);
+    expect(screen.queryByText("Reviewing the launch notes.")).toBeNull();
+    expect(screen.queryByText("Adding the rollback steps.")).toBeNull();
+    expectTextBefore(
+      messageContainer!,
+      "Prepare the launch plan",
+      "Also include the rollback steps",
+    );
+    expectTextBefore(
+      messageContainer!,
+      "Also include the rollback steps",
+      "Keep the rollback checklist concise",
+    );
+    expectTextBefore(
+      messageContainer!,
+      "Keep the rollback checklist concise",
+      "Worked for 40s",
+    );
+    expectTextBefore(
+      messageContainer!,
+      "Worked for 40s",
+      "The launch and rollback plan is ready.",
+    );
+
+    click(expandButton);
+    await waitFor(() => {
+      expect(
+        screen.getByText("Reviewing the launch notes."),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Adding the rollback steps."),
+      ).toBeInTheDocument();
+      expect(screen.getAllByText("Prepare the launch plan")).toHaveLength(1);
+      expect(
+        screen.getAllByText("Also include the rollback steps"),
+      ).toHaveLength(1);
+      expect(
+        screen.getAllByText("Keep the rollback checklist concise"),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("keeps a trailing steered user message outside completed work", async () => {
+    const threadId = "thread-work-folding-trailing-steered-user";
+    const runId = "run-work-folding-trailing-steered-user";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          role: "user",
+          content: "Prepare the launch plan",
+          runId,
+          createdAt: "2026-08-04T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Reviewing the launch notes.",
+          runId,
+          createdAt: "2026-08-04T10:00:10Z",
+        },
+        {
+          role: "assistant",
+          content: "The launch plan is ready.",
+          runId,
+          createdAt: "2026-08-04T10:00:20Z",
+        },
+        {
+          role: "user",
+          content: "Also include the rollback steps",
+          runId,
+          createdAt: "2026-08-04T10:00:30Z",
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-08-04T10:00:40Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatSteer]: true },
+    });
+
+    const expandButton = await screen.findByLabelText("Expand work history");
+    const messageContainer = expandButton.closest(
+      "[data-message-container]",
+    ) as HTMLElement | null;
+    expect(messageContainer).not.toBeNull();
+    expect(screen.queryByText("Reviewing the launch notes.")).toBeNull();
+    expectTextBefore(
+      messageContainer!,
+      "Prepare the launch plan",
+      "Also include the rollback steps",
+    );
+    expectTextBefore(
+      messageContainer!,
+      "Also include the rollback steps",
+      "Worked for 40s",
+    );
+    expectTextBefore(
+      messageContainer!,
+      "Worked for 40s",
+      "The launch plan is ready.",
+    );
+
+    click(expandButton);
+    await waitFor(() => {
+      expect(
+        screen.getByText("Reviewing the launch notes."),
+      ).toBeInTheDocument();
+      expect(screen.getAllByText("Prepare the launch plan")).toHaveLength(1);
+      expect(
+        screen.getAllByText("Also include the rollback steps"),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("keeps the legacy trailing-user layout when chat steer is disabled", async () => {
+    const threadId = "thread-work-folding-trailing-user-disabled";
+    const runId = "run-work-folding-trailing-user-disabled";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          role: "user",
+          content: "Prepare the disabled-switch launch plan",
+          runId,
+          createdAt: "2026-08-04T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Reviewing the disabled-switch launch notes.",
+          runId,
+          createdAt: "2026-08-04T10:00:10Z",
+        },
+        {
+          role: "assistant",
+          content: "The disabled-switch launch plan is ready.",
+          runId,
+          createdAt: "2026-08-04T10:00:20Z",
+        },
+        {
+          role: "user",
+          content: "Add disabled-switch rollback steps",
+          runId,
+          createdAt: "2026-08-04T10:00:30Z",
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-08-04T10:00:40Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatSteer]: false },
+    });
+
+    await expect(
+      screen.findByText("Reviewing the disabled-switch launch notes."),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Expand work history")).toBeNull();
+    expectTextBefore(
+      document.body,
+      "The disabled-switch launch plan is ready.",
+      "Add disabled-switch rollback steps",
+    );
+  });
+
   it("keeps the established completed-run layout across container sizes", async () => {
     const finalReply = "The launch plan is ready.";
     const followupPrompt = "Turn it into a presentation";

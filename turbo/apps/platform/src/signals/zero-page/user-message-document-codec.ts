@@ -5,7 +5,6 @@ import {
   userMessageDocumentSchema,
   type FeedbackNotePart,
   type GenerationTemplateRequest,
-  type GenerationTemplateType,
   type PersistedAttachment,
   type UserMessageDocument,
   type UserMessagePart,
@@ -14,6 +13,7 @@ import {
 import { i18n } from "../../i18n/index.ts";
 import { formatFeedbackPrompt, type FeedbackSource } from "./chat-feedback.ts";
 import { serializeChatThreadMention } from "./chat-thread-suggestion-domain.ts";
+import { avatarTemplateSelection } from "./avatar-template-selection.ts";
 import {
   serializeAgentMention,
   splitAgentMentionSegments,
@@ -101,7 +101,7 @@ function legacyTemplatePart(
   const title: unknown = node.attrs.title;
   if (
     generationTemplate === undefined ||
-    templateType !== generationTemplate.type ||
+    templateType !== templateAttachmentType(generationTemplate) ||
     typeof title !== "string"
   ) {
     return null;
@@ -404,26 +404,32 @@ export function textToMessageDocument(
   return parsed.success ? parsed.data : null;
 }
 
-function templateCategory(type: GenerationTemplateType): string {
+function templateAttachmentType(template: GenerationTemplateRequest): string {
+  return avatarTemplateSelection(template) ? "avatar" : template.type;
+}
+
+function templateCategory(template: GenerationTemplateRequest): string {
+  const type = templateAttachmentType(template);
   return type === "presentation" ? "slides" : type;
 }
 
 function templatePreviewImageUrl(
   template: GenerationTemplateRequest,
 ): string | null {
-  return template.type === "presentation"
-    ? (template.selection.previewUrl ?? null)
-    : null;
+  if (template.type === "presentation") {
+    return template.selection.previewUrl ?? null;
+  }
+  return avatarTemplateSelection(template)?.previewUrl ?? null;
 }
 
 function templateNode(part: Extract<UserMessagePart, { type: "template" }>) {
   return {
     type: INLINE_TEMPLATE_NODE_NAME,
     attrs: {
-      templateType: part.template.type,
+      templateType: templateAttachmentType(part.template),
       template: part.template,
       title: part.titleSnapshot,
-      category: templateCategory(part.template.type),
+      category: templateCategory(part.template),
       previewImageUrl: templatePreviewImageUrl(part.template),
     },
   } satisfies JSONContent;
@@ -435,9 +441,9 @@ function legacyTemplateNode(
   return {
     type: TEMPLATE_ATTACHMENT_NODE_NAME,
     attrs: {
-      templateType: part.template.type,
+      templateType: templateAttachmentType(part.template),
       title: part.titleSnapshot,
-      category: templateCategory(part.template.type),
+      category: templateCategory(part.template),
       previewImageUrl: templatePreviewImageUrl(part.template),
     },
   } satisfies JSONContent;

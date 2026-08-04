@@ -96,6 +96,15 @@ function isQueuedChatEvent(event: ChatEvent): event is QueuedChatEvent {
   );
 }
 
+function isTemporarilyQueuedMorningBrief(event: ChatEvent): boolean {
+  // Morning Brief is the only scheduled input still represented as a prompt;
+  // scheduled workflow inputs already use input.automation.
+  return (
+    event.eventType === "input.prompt" &&
+    event.triggerSource === "workflow-schedule"
+  );
+}
+
 export interface SemanticChatEventGroup<
   T extends SemanticChatEventState = SemanticChatEventState,
 > {
@@ -112,6 +121,7 @@ export interface SemanticChatGroups<
 
 export function semanticChatEventsFromChatEvents(
   events: readonly ChatEvent[],
+  chatSteerEnabled = false,
 ): SemanticChatEventState[] {
   const interruptedRunIds = new Set(
     events.flatMap((event) => {
@@ -170,8 +180,9 @@ export function semanticChatEventsFromChatEvents(
     const isQueued =
       isUnassociatedUser &&
       optimisticAssociation !== "run" &&
-      (event.eventType === "input.prompt" ||
-        event.eventType === "input.automation");
+      (event.eventType === "input.automation" ||
+        (event.eventType === "input.prompt" &&
+          (!chatSteerEnabled || isTemporarilyQueuedMorningBrief(event))));
     return [{ event, isQueued, isOptimisticRun }];
   });
 }
@@ -290,9 +301,10 @@ export function queuedEventsFromSemanticEvents(
 
 export function queuedEventsFromChatEvents(
   events: readonly ChatEvent[],
+  chatSteerEnabled = false,
 ): QueuedChatEvent[] {
   return queuedEventsFromSemanticEvents(
-    semanticChatEventsFromChatEvents(events),
+    semanticChatEventsFromChatEvents(events, chatSteerEnabled),
   );
 }
 

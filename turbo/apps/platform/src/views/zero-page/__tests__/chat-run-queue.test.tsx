@@ -93,6 +93,14 @@ function buildProvider(
   };
 }
 
+function expectTextBefore(firstText: string, secondText: string): void {
+  const first = screen.getByText(firstText);
+  const second = screen.getByText(secondText);
+  expect(
+    first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+}
+
 async function startActiveRun(
   user: ReturnType<typeof userEvent.setup>,
 ): Promise<HTMLElement> {
@@ -206,6 +214,125 @@ function mockCancellationRecoveryQueue(options?: {
 }
 
 describe("chat run queue", () => {
+  it("renders pending prompts inline when chat steer is enabled", async () => {
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      activeRunIds: ["run-active"],
+      chatEvents: [
+        {
+          id: `${THREAD_ID}-active-user`,
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-08-04T10:00:00Z",
+        },
+        {
+          id: `${THREAD_ID}-active-assistant`,
+          role: "assistant",
+          content: "Working on the first request.",
+          runId: "run-active",
+          createdAt: "2026-08-04T10:00:01Z",
+        },
+        {
+          id: `${THREAD_ID}-pending-prompt`,
+          role: "user",
+          content: "Steer this follow-up",
+          runId: undefined,
+          createdAt: "2026-08-04T10:00:02Z",
+        },
+        {
+          id: `${THREAD_ID}-pending-morning-brief`,
+          role: "user",
+          content: "Keep the morning brief queued",
+          triggerSource: "workflow-schedule",
+          runId: undefined,
+          createdAt: "2026-08-04T10:00:03Z",
+        },
+        {
+          id: `${THREAD_ID}-pending-automation`,
+          eventType: "input.automation",
+          content: null,
+          triggerSource: "workflow-event",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "automation",
+                workflowName: "queued-workflow",
+                automationBrief: "Keep this automation queued",
+              },
+            ],
+          },
+          runId: undefined,
+          createdAt: "2026-08-04T10:00:04Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.ChatSteer]: true },
+    });
+
+    await expect(
+      screen.findByText("Steer this follow-up"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+      "Keep the morning brief queued",
+    );
+    expect(screen.getByLabelText("Queued message")).not.toHaveTextContent(
+      "Steer this follow-up",
+    );
+    expect(screen.getByLabelText("Pending automation event")).toHaveTextContent(
+      "Keep this automation queued",
+    );
+    expectTextBefore("Working on the first request.", "Steer this follow-up");
+  });
+
+  it("keeps an optimistic steer prompt at the bottom until persistence", async () => {
+    const user = userEvent.setup({ delay: null });
+    const appendGate = context.mocks.deferred<void>();
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      activeRunIds: ["run-active"],
+      appendGate: appendGate.promise,
+      chatEvents: [
+        {
+          id: `${THREAD_ID}-active-user`,
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-08-04T10:00:00Z",
+        },
+        {
+          id: `${THREAD_ID}-active-assistant`,
+          role: "assistant",
+          content: "Still working.",
+          runId: "run-active",
+          createdAt: "2026-08-04T10:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.ChatSteer]: true },
+    });
+
+    await screen.findByText("Still working.");
+    const submit = sendQueuedMessage(user, "Optimistic steer prompt");
+    await expect(
+      screen.findByText("Optimistic steer prompt"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+    expectTextBefore("Still working.", "Optimistic steer prompt");
+
+    appendGate.resolve();
+    await submit;
+  });
+
   it("falls back to generic queue guidance for a previous API response", async () => {
     mockCancellationRecoveryQueue();
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {

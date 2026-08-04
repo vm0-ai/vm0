@@ -43,9 +43,7 @@ async fn codex_app_server_backend_ignores_secondary_thread_notifications()
     );
     let payload = common::active_input_payload("must wait for the top-level turn")?;
     assert_eq!(
-        active_input
-            .controller()
-            .handle_control_payload("secondary-thread-active-input", &payload),
+        active_input.controller().handle_control_payload(&payload),
         ActiveInputControlOutcome::Accepted
     );
 

@@ -248,128 +248,7 @@ async function confirmPermissionAction(
   await user.click(await waitForButtonByText("Confirm", card));
 }
 
-const MAIL_FOLLOW_UP_SUBJECT = "July receipts";
-
-async function waitForMailDraftCard(): Promise<HTMLElement> {
-  let card: HTMLElement | undefined;
-  await waitFor(() => {
-    card = queryAllByRoleFast("button").find((button) => {
-      return (
-        button.getAttribute("aria-label") ===
-        `Open draft email: ${MAIL_FOLLOW_UP_SUBJECT}`
-      );
-    });
-    expect(card).toBeDefined();
-  });
-  if (!card) {
-    throw new Error("Mail draft card not found");
-  }
-  return card;
-}
-
-function mailFollowUpScenario(args: {
-  readonly threadId: string;
-  readonly mailDraftId: string;
-}): {
-  readonly threadId: string;
-  readonly mailDraftId: string;
-  readonly sentPrompts: { prompt: string; threadId?: string }[];
-  readonly followUpRequests: string[];
-} {
-  const { threadId, mailDraftId } = args;
-  const createdAt = "2026-07-14T10:00:00.000Z";
-  const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
-  const sentPrompts: { prompt: string; threadId?: string }[] = [];
-  const followUpRequests: string[] = [];
-  let sent = false;
-  let followUp:
-    | {
-        readonly status: "active";
-        readonly automationId: string;
-      }
-    | undefined;
-  const mailDraft = (status: "draft" | "sent") => {
-    return {
-      version: 3 as const,
-      provider: "gmail" as const,
-      from: "sender@example.com",
-      to: ["recipient@example.com"],
-      cc: [],
-      bcc: [],
-      subject: MAIL_FOLLOW_UP_SUBJECT,
-      body: "Mail body",
-      status,
-      detailAvailable: true,
-      gmailDraftId: "r-callback-draft",
-      gmailThreadId: "gmail-thread-id",
-      gmailMessageId: "gmail-message-id",
-      ...(status === "sent"
-        ? {
-            sentGmailMessageId: "gmail-sent-message-id",
-            sentAt: "2026-07-14T10:01:00.000Z",
-            ...(followUp ? { followUp } : {}),
-          }
-        : {}),
-      references: [],
-      attachments: [],
-      createdAt,
-      updatedAt: createdAt,
-    };
-  };
-
-  mockConnectorCatalogStatus([
-    publicConnectorStatusItem({ slug: "gmail", label: "Gmail" }),
-  ]);
-  context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
-    return respond(200, {
-      mailDraftId,
-      mailDraftUrl,
-      mailDraft: mailDraft(sent ? "sent" : "draft"),
-    });
-  });
-  context.mocks.api(zeroMailContract.sendDraft, ({ respond }) => {
-    sent = true;
-    return respond(200, {
-      mailDraftId,
-      mailDraftUrl,
-      mailDraft: mailDraft("sent"),
-    });
-  });
-  context.mocks.api(zeroMailContract.createFollowUp, ({ params, respond }) => {
-    followUpRequests.push(params.mailDraftId);
-    followUp = {
-      status: "active",
-      automationId: "c0000000-0000-4000-a000-000000000044",
-    };
-    return respond(200, {
-      mailDraftId,
-      automationId: followUp.automationId,
-    });
-  });
-  mockChatLifecycle(context, {
-    threadId,
-    threadTitle: "Mail follow-up",
-    chatEvents: [
-      {
-        id: `${mailDraftId}-message`,
-        role: "assistant",
-        content: mailDraftUrl,
-        runId: `${mailDraftId}-run`,
-        createdAt,
-      },
-    ],
-    onSendRequest: ({ prompt, threadId: sentThreadId }) => {
-      sentPrompts.push({ prompt, threadId: sentThreadId });
-    },
-  });
-
-  return {
-    threadId,
-    mailDraftId,
-    sentPrompts,
-    followUpRequests,
-  };
-}
+const MAIL_DRAFT_SUBJECT = "July receipts";
 
 function selectMailText(element: HTMLElement): void {
   element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
@@ -450,7 +329,8 @@ describe("chat event action cards", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps sent mail card height stable while draft data loads", async () => {
+  it("keeps sent mail card height stable without exposing follow-up", async () => {
+    const user = userEvent.setup({ delay: null });
     const threadId = `${THREAD_ID}-mail-loading-height`;
     const mailDraftId = "c0000000-0000-4000-a000-000000000091";
     const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
@@ -481,7 +361,7 @@ describe("chat event action cards", () => {
             to: ["recipient@example.com"],
             cc: [],
             bcc: [],
-            subject: MAIL_FOLLOW_UP_SUBJECT,
+            subject: MAIL_DRAFT_SUBJECT,
             body: "Mail body",
             status: "sent",
             detailAvailable: true,
@@ -515,9 +395,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-      },
     });
 
     const loadingCard = await screen.findByTestId("mail-draft-card-loading");
@@ -527,12 +404,18 @@ describe("chat event action cards", () => {
     });
     resolveDraft();
 
-    await screen.findByText(MAIL_FOLLOW_UP_SUBJECT);
-    const mailCard = document.querySelector("[data-mail-draft-card]");
+    const mailCard = await screen.findByLabelText(
+      `Open sent email: ${MAIL_DRAFT_SUBJECT}`,
+    );
     expect(mailCard).toHaveClass("h-[76px]");
     expect(
       screen.queryByTestId("mail-draft-card-loading"),
     ).not.toBeInTheDocument();
+    expect(queryButtonByText("Follow up", document)).toBeNull();
+
+    await user.click(mailCard);
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    expect(queryButtonByText("Follow up", sidebar)).toBeNull();
   });
 
   it("opens a shared mail draft without reloading and refreshes after sending", async () => {
@@ -750,9 +633,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroMailReplyFollowUp]: false,
-      },
     });
 
     let cards: HTMLElement[] = [];
@@ -1036,191 +916,6 @@ describe("chat event action cards", () => {
     expect(untrustedLink).toHaveAttribute("href", untrustedUrl);
   });
 
-  it("offers follow-up after sending without starting another round", async () => {
-    const user = userEvent.setup({ delay: null });
-    const scenario = mailFollowUpScenario({
-      threadId: "c0000000-0000-4000-a000-000000000041",
-      mailDraftId: "c0000000-0000-4000-a000-000000000043",
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${scenario.threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-      },
-    });
-
-    await user.click(await waitForMailDraftCard());
-    let sidebar = await screen.findByTestId("mail-draft-sidebar");
-    await user.click(await waitForButtonByText("Send", sidebar));
-
-    await expect(screen.findByText("Email sent")).resolves.toBeInTheDocument();
-    expect(scenario.sentPrompts).toStrictEqual([]);
-    sidebar = screen.getByTestId("mail-draft-sidebar");
-    expect(
-      queryAllByRoleFast("button").filter((button) => {
-        return button.textContent?.trim() === "Follow up";
-      }),
-    ).toHaveLength(2);
-    await user.click(await waitForButtonByText("Follow up", sidebar));
-
-    await waitFor(() => {
-      expect(scenario.followUpRequests).toStrictEqual([scenario.mailDraftId]);
-      expect(scenario.sentPrompts).toStrictEqual([]);
-      expect(
-        queryAllByRoleFast("button").filter((button) => {
-          return button.textContent?.trim() === "Tracking replies";
-        }),
-      ).toHaveLength(2);
-    });
-  });
-
-  it("hides follow-up while its rollout switch is disabled", async () => {
-    const user = userEvent.setup({ delay: null });
-    const scenario = mailFollowUpScenario({
-      threadId: "c0000000-0000-4000-a000-000000000044",
-      mailDraftId: "c0000000-0000-4000-a000-000000000045",
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${scenario.threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroMailReplyFollowUp]: false,
-      },
-    });
-
-    await user.click(await waitForMailDraftCard());
-    const sidebar = await screen.findByTestId("mail-draft-sidebar");
-    await user.click(await waitForButtonByText("Send", sidebar));
-    await expect(screen.findByText("Email sent")).resolves.toBeInTheDocument();
-
-    expect(queryButtonByText("Follow up", document)).toBeNull();
-    expect(scenario.followUpRequests).toStrictEqual([]);
-  });
-
-  it("keeps the email sent when reply tracking cannot be enabled", async () => {
-    const user = userEvent.setup({ delay: null });
-    const scenario = mailFollowUpScenario({
-      threadId: "c0000000-0000-4000-a000-000000000061",
-      mailDraftId: "c0000000-0000-4000-a000-000000000062",
-    });
-    context.mocks.api(zeroMailContract.createFollowUp, ({ respond }) => {
-      return respond(409, {
-        error: {
-          message: "Failed to enable reply tracking",
-          code: "CONFLICT",
-        },
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${scenario.threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-      },
-    });
-
-    await user.click(await waitForMailDraftCard());
-    let sidebar = await screen.findByTestId("mail-draft-sidebar");
-    await user.click(await waitForButtonByText("Send", sidebar));
-
-    await waitFor(() => {
-      expect(screen.getByText("Email sent")).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      sidebar = screen.getByTestId("mail-draft-sidebar");
-      expect(within(sidebar).getByText("Sent")).toBeInTheDocument();
-    });
-    await user.click(await waitForButtonByText("Follow up", sidebar));
-    await waitFor(() => {
-      expect(
-        screen.getByText("Failed to enable reply tracking"),
-      ).toBeInTheDocument();
-    });
-    expect(scenario.sentPrompts).toStrictEqual([]);
-  });
-
-  it("does not offer follow-up when the email fails to send", async () => {
-    const user = userEvent.setup({ delay: null });
-    const scenario = mailFollowUpScenario({
-      threadId: "c0000000-0000-4000-a000-000000000081",
-      mailDraftId: "c0000000-0000-4000-a000-000000000082",
-    });
-    context.mocks.api(zeroMailContract.sendDraft, ({ respond }) => {
-      return respond(409, {
-        error: {
-          message: "This mail draft can no longer be sent",
-          code: "CONFLICT",
-        },
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${scenario.threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-      },
-    });
-
-    await user.click(await waitForMailDraftCard());
-    const sidebar = await screen.findByTestId("mail-draft-sidebar");
-    await user.click(await waitForButtonByText("Send", sidebar));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("This mail draft can no longer be sent"),
-      ).toBeInTheDocument();
-    });
-    expect(screen.queryByText("Email sent")).toBeNull();
-    expect(queryButtonByText("Follow up", document)).toBeNull();
-    expect(scenario.sentPrompts).toStrictEqual([]);
-  });
-
-  it("starts follow-up from the sent email card in the chat thread", async () => {
-    const user = userEvent.setup({ delay: null });
-    const scenario = mailFollowUpScenario({
-      threadId: "c0000000-0000-4000-a000-000000000071",
-      mailDraftId: "c0000000-0000-4000-a000-000000000072",
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${scenario.threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-      },
-    });
-
-    await user.click(await waitForMailDraftCard());
-    const sidebar = await screen.findByTestId("mail-draft-sidebar");
-    await user.click(await waitForButtonByText("Send", sidebar));
-
-    await waitFor(() => {
-      expect(screen.getByText("Email sent")).toBeInTheDocument();
-    });
-    const closeButton = queryAllByRoleFast(
-      "button",
-      screen.getByTestId("mail-draft-sidebar"),
-    ).find((button) => {
-      return button.getAttribute("aria-label") === "Close email details";
-    });
-    expect(closeButton).toBeDefined();
-    if (!closeButton) {
-      throw new Error("Close email details button not found");
-    }
-    await user.click(closeButton);
-    await user.click(await waitForButtonByText("Follow up", document));
-
-    await waitFor(() => {
-      expect(scenario.followUpRequests).toStrictEqual([scenario.mailDraftId]);
-      expect(scenario.sentPrompts).toStrictEqual([]);
-    });
-  });
-
   it("keeps mail feedback scoped to the chat that owns the draft in split view", async () => {
     const user = userEvent.setup({ delay: null });
     const leftThreadId = "c0000000-0000-4000-a000-000000000031";
@@ -1386,9 +1081,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroMailReplyFollowUp]: false,
-      },
     });
 
     await user.click(
@@ -1824,9 +1516,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroMailReplyFollowUp]: false,
-      },
     });
 
     const card = await screen.findByLabelText("Open draft email: Delete me");
@@ -1968,9 +1657,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroMailReplyFollowUp]: false,
-      },
     });
 
     const card = await screen.findByLabelText(

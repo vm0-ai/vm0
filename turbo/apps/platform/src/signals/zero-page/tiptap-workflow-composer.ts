@@ -234,6 +234,7 @@ export type ComposerTemplateAttachmentType =
   | "presentation"
   | "illustration"
   | "video"
+  | "avatar"
   | "workflow"
   | "website";
 
@@ -605,6 +606,7 @@ function templateAttachmentNodeAttributes(
     (type !== "presentation" &&
       type !== "illustration" &&
       type !== "video" &&
+      type !== "avatar" &&
       type !== "workflow" &&
       type !== "website") ||
     typeof title !== "string" ||
@@ -723,6 +725,11 @@ function templateAttachmentTypeLabel(
   if (type === "video") {
     return i18n.t(($) => {
       return $.chat.templates.categories.video;
+    });
+  }
+  if (type === "avatar") {
+    return i18n.t(($) => {
+      return $.artifacts.templates.avatar;
     });
   }
   if (type === "website") {
@@ -1115,6 +1122,7 @@ function isComposerTemplateAttachmentType(
     value === "presentation" ||
     value === "illustration" ||
     value === "video" ||
+    value === "avatar" ||
     value === "workflow" ||
     value === "website"
   );
@@ -2226,7 +2234,7 @@ function inlineTemplateNode(
   return editor.schema.nodeFromJSON({
     type: INLINE_TEMPLATE_NODE_NAME,
     attrs: {
-      templateType: request.type,
+      templateType: attachment.type,
       template: request,
       title: attachment.title,
       category: attachment.category,

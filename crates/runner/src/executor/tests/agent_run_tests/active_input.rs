@@ -10,7 +10,7 @@ use crate::local_queue::{ActiveInputEntry, LocalQueue};
 use crate::types::SandboxReuseResult;
 
 #[tokio::test]
-async fn run_in_sandbox_forwards_local_active_inputs_in_order_and_dedupes() {
+async fn run_in_sandbox_forwards_local_active_inputs_in_order() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let wait_gate = Arc::new(tokio::sync::Notify::new());
@@ -25,25 +25,23 @@ async fn run_in_sandbox_forwards_local_active_inputs_in_order_and_dedupes() {
         ActiveInputEntry {
             run_id: ctx.run_id,
             sequence: 1,
-            message_id: "msg-dup".to_string(),
             text: "first".to_string(),
         },
         ActiveInputEntry {
             run_id: ctx.run_id,
             sequence: 2,
-            message_id: "msg-dup".to_string(),
             text: "duplicate".to_string(),
         },
         ActiveInputEntry {
             run_id: ctx.run_id,
             sequence: 3,
-            message_id: "msg-3".to_string(),
             text: "third".to_string(),
         },
     ] {
         queue.write_active_input_sync(&entry).unwrap();
     }
     let source = ActiveInputSource::local_queue(LocalQueue::new(group_dir), ctx.run_id);
+    let run_id = ctx.run_id;
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);
 
@@ -65,7 +63,7 @@ async fn run_in_sandbox_forwards_local_active_inputs_in_order_and_dedupes() {
 
     assert!(
         overrides
-            .wait_for_process_control_calls(2, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .wait_for_process_control_calls(3, RUN_IN_SANDBOX_TEST_TIMEOUT)
             .await
     );
     wait_gate.notify_one();
@@ -81,14 +79,19 @@ async fn run_in_sandbox_forwards_local_active_inputs_in_order_and_dedupes() {
             .iter()
             .map(|call| call.message_id.as_str())
             .collect::<Vec<_>>(),
-        vec!["msg-dup", "msg-3"]
+        vec![
+            format!("active-input:{run_id}:1"),
+            format!("active-input:{run_id}:2"),
+            format!("active-input:{run_id}:3"),
+        ]
     );
     let payloads = calls
         .iter()
         .map(|call| serde_json::from_slice::<serde_json::Value>(&call.payload).unwrap())
         .collect::<Vec<_>>();
     assert_eq!(payloads[0]["text"], "first");
-    assert_eq!(payloads[1]["text"], "third");
+    assert_eq!(payloads[1]["text"], "duplicate");
+    assert_eq!(payloads[2]["text"], "third");
 }
 
 #[tokio::test]
@@ -136,7 +139,7 @@ async fn run_in_sandbox_sets_codex_app_server_backend_for_active_input_source() 
 }
 
 #[tokio::test]
-async fn run_in_sandbox_retries_active_input_after_control_error() {
+async fn run_in_sandbox_drops_active_input_after_control_error() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let wait_gate = Arc::new(tokio::sync::Notify::new());
@@ -154,7 +157,6 @@ async fn run_in_sandbox_retries_active_input_after_control_error() {
         .write_active_input_sync(&ActiveInputEntry {
             run_id: ctx.run_id,
             sequence: 1,
-            message_id: "msg-1".to_string(),
             text: "first".to_string(),
         })
         .unwrap();
@@ -162,11 +164,11 @@ async fn run_in_sandbox_retries_active_input_after_control_error() {
         .write_active_input_sync(&ActiveInputEntry {
             run_id: ctx.run_id,
             sequence: 2,
-            message_id: "msg-2".to_string(),
             text: "second".to_string(),
         })
         .unwrap();
     let source = ActiveInputSource::local_queue(LocalQueue::new(group_dir), ctx.run_id);
+    let run_id = ctx.run_id;
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);
 
@@ -188,7 +190,7 @@ async fn run_in_sandbox_retries_active_input_after_control_error() {
 
     assert!(
         overrides
-            .wait_for_process_control_calls(3, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .wait_for_process_control_calls(2, RUN_IN_SANDBOX_TEST_TIMEOUT)
             .await
     );
     wait_gate.notify_one();
@@ -205,6 +207,9 @@ async fn run_in_sandbox_retries_active_input_after_control_error() {
             .iter()
             .map(|call| call.message_id.as_str())
             .collect::<Vec<_>>(),
-        vec!["msg-1", "msg-1", "msg-2"]
+        vec![
+            format!("active-input:{run_id}:1"),
+            format!("active-input:{run_id}:2"),
+        ]
     );
 }

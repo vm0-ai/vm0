@@ -9,6 +9,7 @@ use guest_agent::active_input::{ActiveInputControlOutcome, ActiveInputRuntime};
 use guest_agent::masker::SecretMasker;
 use serde_json::Value;
 use std::time::Duration;
+use uuid::Uuid;
 
 #[tokio::test]
 async fn codex_app_server_backend_steers_active_input_into_active_turn()
@@ -39,14 +40,9 @@ async fn codex_app_server_backend_steers_active_input_into_active_turn()
     let controller = active_input.controller();
     let payload = common::active_input_payload("follow-up prompt")?;
     assert_eq!(
-        controller.handle_control_payload("active-msg-1", &payload),
+        controller.handle_control_payload(&payload),
         ActiveInputControlOutcome::Accepted
     );
-    assert!(matches!(
-        controller.handle_control_payload("active-msg-1", &payload),
-        ActiveInputControlOutcome::Rejected { diagnostic }
-            if diagnostic == "active input message id is duplicate"
-    ));
 
     let masker = SecretMasker::from_raw("");
     let cli_result = tokio::time::timeout(
@@ -76,10 +72,10 @@ async fn codex_app_server_backend_steers_active_input_into_active_turn()
     );
     assert_eq!(input_events[1]["kind"], "steered");
     assert_eq!(input_events[1]["text"], "follow-up prompt");
-    assert_eq!(
-        input_events[1]["turn_request_client_user_message_id"],
-        "active-msg-1"
-    );
+    let client_user_message_id = input_events[1]["turn_request_client_user_message_id"]
+        .as_str()
+        .expect("steered input should carry an internal UUID");
+    assert!(Uuid::parse_str(client_user_message_id).is_ok());
 
     Ok(())
 }
