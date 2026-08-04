@@ -6033,7 +6033,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     });
     expect(claim.environment).not.toHaveProperty("ANTHROPIC_MODEL");
     expect(claim.codexRuntimeConfig).toMatchObject({
-      providerId: "vm0-model",
+      providerId: "deepseek-codex",
       name: "DeepSeek",
       baseUrl: "https://api.deepseek.com",
       envKey: "OPENAI_API_KEY",
