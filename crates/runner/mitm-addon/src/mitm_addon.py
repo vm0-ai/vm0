@@ -811,7 +811,6 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
             except BaseException:
                 auth_base_forwarder.release_forward_request_admission(admission)
                 raise
-            request_classification.cache_classification(flow, classification)
             return None
 
         if _firewall_allow_uses_aws_sigv4(allow):
@@ -928,7 +927,6 @@ def _admit_buffered_aws_sigv4_request(
     except BaseException:
         aws_sigv4_body_admission.release(admission)
         raise
-    request_classification.cache_classification(flow, classification)
 
 
 async def _try_firewall_request_stream_from_headers(
@@ -1145,6 +1143,10 @@ async def request(flow: http.HTTPFlow) -> None:
             flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
 
         classification = _request_classification_for_flow(flow)
+        if classification.kind != "firewall_allow" or not _firewall_allow_auth_base(
+            classification.firewall_allow
+        ):
+            auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         if classification.kind != "firewall_allow" or not _firewall_allow_uses_aws_sigv4(
             classification.firewall_allow
         ):
@@ -1194,7 +1196,6 @@ async def request(flow: http.HTTPFlow) -> None:
             _set_firewall_block_response(flow, classification.firewall_block)
             return
         if classification.kind == "public_destination_denied":
-            auth_base_forwarder.release_forward_request_admission_from_flow(flow)
             terminal_usage.release_tracked_flow(flow)
             _block_public_destination_denied(flow, classification.public_destination_denial)
             return

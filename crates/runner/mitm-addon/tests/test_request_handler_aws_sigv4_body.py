@@ -16,6 +16,7 @@ import auth
 import aws_sigv4_body_admission
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import request_classification
 import request_streaming
 from aws_sigv4 import AwsSigV4BodyHash, hash_request_body
 from body_limits import STREAM_BUFFER_LIMIT
@@ -344,6 +345,48 @@ async def test_payload_dependent_sigv4_holds_admission_until_terminal_cleanup(
     get_headers.assert_awaited_once()
     assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
     assert metadata_keys.AWS_SIGV4_BODY_ADMISSION not in flow.metadata
+
+
+async def test_payload_dependent_sigv4_revalidates_network_policy_before_auth(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    body = b"body"
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        body=body,
+        content_length=str(len(body)),
+    )
+    original_authorization = flow.request.headers["authorization"]
+    get_headers = AsyncMock(return_value=_resolved_token_meta())
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        assert aws_sigv4_body_admission.state_for_tests() == (1, len(body))
+        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
+
+        registry_payload = json.loads(registry_path.read_text())
+        policy = registry_payload["vms"][_CLIENT_IP]["networkPolicies"]["aws"]
+        policy["allow"] = []
+        policy["deny"] = [_AWS_PERMISSION]
+        registry_payload["updatedAt"] = 1
+        registry_path.write_text(json.dumps(registry_payload))
+
+        await mitm_addon.request(flow)
+
+    get_headers.assert_not_awaited()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert json.loads(flow.response.content)["reason"] == "permission_denied"
+    assert flow.request.headers["authorization"] == original_authorization
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
 
 
 async def test_payload_dependent_sigv4_hashing_allows_event_loop_progress(
