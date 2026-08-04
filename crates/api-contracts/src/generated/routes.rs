@@ -97,45 +97,6 @@ pub mod runners {
     pub mod runs {
         /// Generated route bindings under `runners::runs::by_run_id`.
         pub mod by_run_id {
-            /// Generated route bindings under `runners::runs::by_run_id::active_inputs`.
-            pub mod active_inputs {
-                /// Generated route bindings under `runners::runs::by_run_id::active_inputs::by_from_sequence`.
-                pub mod by_from_sequence {
-                    /// List active input for a running agent run.
-                    /// Route contract: `GET /api/runners/runs/:runId/active-inputs/:fromSequence`.
-                    pub const LIST: crate::RouteTemplate = crate::RouteTemplate {
-                        method: crate::Method::Get,
-                        path: "/api/runners/runs/:runId/active-inputs/:fromSequence",
-                    };
-
-                    /// Path parameters for `GET /api/runners/runs/:runId/active-inputs/:fromSequence`.
-                    #[derive(Debug, Clone, Copy)]
-                    pub struct Params<'a> {
-                        /// Value for the `:runId` path parameter.
-                        pub run_id: &'a str,
-                        /// Value for the `:fromSequence` path parameter.
-                        pub from_sequence: &'a str,
-                    }
-
-                    /// Build the concrete path for `GET /api/runners/runs/:runId/active-inputs/:fromSequence`.
-                    /// Percent-encodes each path parameter as a URL path segment.
-                    #[must_use]
-                    pub fn path(params: Params<'_>) -> String {
-                        format!(
-                            "/api/runners/runs/{}/active-inputs/{}",
-                            crate::route::encode_path_segment(params.run_id),
-                            crate::route::encode_path_segment(params.from_sequence),
-                        )
-                    }
-
-                    /// Build a resolved route for `GET /api/runners/runs/:runId/active-inputs/:fromSequence`.
-                    #[must_use]
-                    pub fn route(params: Params<'_>) -> crate::ResolvedRoute {
-                        crate::ResolvedRoute::new(LIST.method, path(params))
-                    }
-                }
-            }
-
             /// Generated route bindings under `runners::runs::by_run_id::network_policy_refresh`.
             pub mod network_policy_refresh {
                 /// Refresh active run network policies.

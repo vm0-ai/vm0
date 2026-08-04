@@ -283,15 +283,6 @@ function isInterruptEventBody(body: { interruptsRunId?: string }): body is {
   return body.interruptsRunId !== undefined;
 }
 
-function isSteerEventBody(body: object): body is {
-  steersRunId: string;
-  steersEventId: string;
-  threadId: string;
-  clientEventId?: string;
-} {
-  return "steersRunId" in body && typeof body.steersRunId === "string";
-}
-
 function appendSeedChatEvents(args: {
   pagedEvents: (MockChatEvent & { id: string })[];
   chatEvents: MockChatEvent[];
@@ -421,11 +412,6 @@ export function mockChatLifecycle(
     }) => void;
     onInterruptEventAppend?: (body: {
       interruptsRunId: string;
-      clientEventId: string;
-    }) => void;
-    onSteerEventAppend?: (body: {
-      steersRunId: string;
-      steersEventId: string;
       clientEventId: string;
     }) => void;
     onComputerUseHostUpdate?: (body: {
@@ -583,40 +569,6 @@ export function mockChatLifecycle(
     });
     markRunCancelled();
     return { runId: null, threadId: body.threadId, createdAt: now };
-  };
-
-  const appendSteeredUserMessage = (body: {
-    steersRunId: string;
-    steersEventId: string;
-    threadId: string;
-    clientEventId?: string;
-  }) => {
-    const target = queuedEvents.find((event) => {
-      return event.id === body.steersEventId;
-    });
-    if (!target) {
-      throw new Error("Expected the steered queued event to exist");
-    }
-    const clientEventId = body.clientEventId ?? crypto.randomUUID();
-    const now = nowIso();
-    options?.onSteerEventAppend?.({
-      steersRunId: body.steersRunId,
-      steersEventId: body.steersEventId,
-      clientEventId,
-    });
-    queuedEvents.push({
-      ...target,
-      id: clientEventId,
-      runId: body.steersRunId,
-      revokesEventId: body.steersEventId,
-      createdAt: now,
-    });
-    return {
-      runId: body.steersRunId,
-      threadId: body.threadId,
-      status: "running" as const,
-      createdAt: now,
-    };
   };
 
   const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);
@@ -989,9 +941,6 @@ export function mockChatLifecycle(
 
     if (isInterruptEventBody(body)) {
       return respond(201, appendInterruptControlEvent(body));
-    }
-    if (isSteerEventBody(body)) {
-      return respond(201, appendSteeredUserMessage(body));
     }
     if (body.prompt === undefined) {
       throw new Error("Expected prompt for a normal chat event send");

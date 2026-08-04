@@ -2,7 +2,7 @@
 //!
 //! # Ordering and consumption
 //!
-//! Reading begins at the first sequence, and `ForwardState::next_sequence` always
+//! Polling begins at the first sequence, and `ForwardState::next_sequence` always
 //! identifies the first unconsumed entry. Entries below it are stale; an entry above
 //! it exposes a gap, so later entries cannot pass it. A duplicate recent message ID,
 //! payload serialization failure, successful control delivery, or non-retryable
@@ -17,17 +17,14 @@
 //! window is bounded and a timed-out control call may have reached the guest, this is
 //! recent-ID deduplication, not a global at-most-once or exactly-once guarantee.
 //!
-//! # Scheduling and cancellation
+//! # Polling and cancellation
 //!
-//! Ably-capable API sources read once after process startup and then wait for a
-//! runner-group notification before reading the durable mailbox again while Ably is
-//! connected, with a low-frequency reconciliation read to cover lost notifications.
-//! They temporarily fall back to adaptive polling during an Ably outage; legacy API
-//! responses and local queue sources retain adaptive polling throughout. Retryable
-//! guest-control errors always use the fast retry interval. Stop and job cancellation
-//! take priority at read and wait boundaries, but are not selected during a forwarding
-//! pass. Each control call has a deadline, and explicit stop bounds task join time
-//! before aborting the task.
+//! Progress and retry-pending outcomes use the fast poll interval. Idle and gap-only
+//! passes back off to the configured cap; a pass that progresses before reaching a
+//! gap still counts as progress. Stop and job cancellation take priority at the read
+//! and sleep selection boundaries, but are not selected during a forwarding pass.
+//! Each control call has a deadline, and explicit stop bounds task join time before
+//! aborting the task.
 
 use std::collections::{HashSet, VecDeque};
 use std::time::Duration;
@@ -42,7 +39,6 @@ use crate::local_queue::ActiveInputEntry;
 
 const ACTIVE_INPUT_POLL_FAST_INTERVAL: Duration = Duration::from_millis(50);
 const ACTIVE_INPUT_POLL_IDLE_MAX_INTERVAL: Duration = Duration::from_millis(250);
-const ACTIVE_INPUT_ABLY_RECONCILE_INTERVAL: Duration = Duration::from_secs(30);
 const ACTIVE_INPUT_CONTROL_TIMEOUT: Duration = Duration::from_secs(1);
 const ACTIVE_INPUT_FORWARDER_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
 const ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY: usize = 1024;
@@ -64,26 +60,17 @@ enum ForwardOutcome {
 /// Adaptive poll delay that backs off only after idle or gap-only passes.
 struct PollCadence {
     next_idle_interval: Duration,
-    idle_max_interval: Duration,
 }
 
 impl Default for PollCadence {
     fn default() -> Self {
         Self {
             next_idle_interval: ACTIVE_INPUT_POLL_FAST_INTERVAL,
-            idle_max_interval: ACTIVE_INPUT_POLL_IDLE_MAX_INTERVAL,
         }
     }
 }
 
 impl PollCadence {
-    fn new(idle_max_interval: Duration) -> Self {
-        Self {
-            next_idle_interval: ACTIVE_INPUT_POLL_FAST_INTERVAL,
-            idle_max_interval,
-        }
-    }
-
     /// Returns the next delay and updates the backoff state for `outcome`.
     fn next_interval_after(&mut self, outcome: ForwardOutcome) -> Duration {
         match outcome {
@@ -96,8 +83,8 @@ impl PollCadence {
                 self.next_idle_interval = std::cmp::min(
                     self.next_idle_interval
                         .checked_mul(2)
-                        .unwrap_or(self.idle_max_interval),
-                    self.idle_max_interval,
+                        .unwrap_or(ACTIVE_INPUT_POLL_IDLE_MAX_INTERVAL),
+                    ACTIVE_INPUT_POLL_IDLE_MAX_INTERVAL,
                 );
                 interval
             }
@@ -189,39 +176,24 @@ impl ActiveInputForwarder {
 
 async fn run_forwarder(
     run_id: RunId,
-    mut source: ActiveInputSource,
+    source: ActiveInputSource,
     control: GuestProcessControlHandle,
     job_cancel: CancellationToken,
     stop: CancellationToken,
 ) {
     let mut state = ForwardState::default();
-    let mut cadence = PollCadence::new(source.idle_max_interval());
+    let mut cadence = PollCadence::default();
     loop {
         let next_sequence = state.next_sequence;
-        let (outcome, poll_interval) = tokio::select! {
+        let poll_interval = tokio::select! {
             biased;
             () = stop.cancelled() => return,
             () = job_cancel.cancelled() => return,
-            entries = read_entries(run_id, &source, next_sequence) => {
+            entries = read_entries(run_id, source.clone(), next_sequence) => {
                 let outcome = forward_entries(run_id, &control, entries, &mut state).await;
-                (outcome, cadence.next_interval_after(outcome))
+                cadence.next_interval_after(outcome)
             }
         };
-
-        if source.uses_ably_notifications() && outcome != ForwardOutcome::RetryPending {
-            let max_wait = if source.ably_notifications_connected() {
-                ACTIVE_INPUT_ABLY_RECONCILE_INTERVAL
-            } else {
-                poll_interval
-            };
-            tokio::select! {
-                biased;
-                () = stop.cancelled() => return,
-                () = job_cancel.cancelled() => return,
-                () = source.wait_for_ably_notification_or_reconcile(max_wait) => {}
-            }
-            continue;
-        }
 
         tokio::select! {
             biased;
@@ -234,10 +206,12 @@ async fn run_forwarder(
 
 async fn read_entries(
     run_id: RunId,
-    source: &ActiveInputSource,
+    source: ActiveInputSource,
     min_sequence: u64,
 ) -> Vec<ActiveInputEntry> {
-    match source.read_entries_from_sequence(min_sequence).await {
+    match tokio::task::spawn_blocking(move || source.read_entries_from_sequence_sync(min_sequence))
+        .await
+    {
         Ok(entries) => entries,
         Err(error) => {
             warn!(run_id = %run_id, error = %error, "active-input reader task failed");
