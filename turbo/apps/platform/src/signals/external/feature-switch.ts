@@ -142,12 +142,8 @@ export const reloadFeatureSwitch$ = command(
     if (result.body.supportsCustomModelGateways !== true) {
       combined[FeatureSwitchKey.CustomModelGateways] = false;
     }
-    // The existing support bit predates global rollout. Requiring the new
-    // marker keeps a new Platform fail-closed while talking to an older API
-    // that still gates recognition by user or organization.
     const imageRecognitionGloballyAvailable =
-      result.body.supportsImageRecognition === true &&
-      result.body.imageRecognitionRolloutComplete === true;
+      result.body.supportsImageRecognition === true;
 
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
     set(imageRecognitionGloballyAvailable$, imageRecognitionGloballyAvailable);

@@ -11,6 +11,8 @@ import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import { signSandboxJwtForTests } from "../../auth/tokens";
+import { now } from "../../external/time";
 import {
   seedOrgMetadata,
   seedUsagePricingRows,
@@ -18,12 +20,14 @@ import {
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
+import { zeroArtifactCatalogRoutes } from "../zero-artifact-catalog";
 import { zeroAvatarVideoRoutes } from "../zero-avatar-video";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { seedCompose$, seedRun$ } from "./helpers/zero-usage-insight";
 
 const context = testContext();
 const store = createStore();
@@ -50,10 +54,28 @@ function createAvatarVideoTestApp() {
     signal: context.signal,
     routes: [
       ...zeroAvatarVideoRoutes,
+      ...zeroArtifactCatalogRoutes,
       ...zeroBuiltInGenerationRoutes,
       ...webhooksBuiltInGenerationRoutes,
       ...zeroBillingStatusRoutes,
     ],
+  });
+}
+
+function zeroToken(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly runId: string;
+}): string {
+  const seconds = Math.floor(now() / 1000);
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId: args.userId,
+    orgId: args.orgId,
+    runId: args.runId,
+    capabilities: ["file:write"],
+    iat: seconds,
+    exp: seconds + 60,
   });
 }
 
@@ -145,6 +167,7 @@ describe("JoggAI built-in avatar video routes", () => {
   beforeEach(() => {
     mockEnv("VM0_API_BACKEND_URL", WEB_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://artifacts.vm0.test");
     mockEnv("JOGGAI_API_KEY", "test-joggai-key");
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -290,8 +313,24 @@ describe("JoggAI built-in avatar video routes", () => {
     );
   });
 
-  it("acknowledges, stores, and bills a talking-avatar video webhook", async () => {
+  it("stores a run-scoped talking-avatar video in the avatar catalog", async () => {
     const fixture = await seedAvatarVideoFixture();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    const token = zeroToken({ ...fixture, runId });
     const videoDownloadStarted = createDeferredPromise<void>(context.signal);
     const releaseVideoDownload = createDeferredPromise<void>(context.signal);
     let observedBody: unknown = null;
@@ -313,12 +352,17 @@ describe("JoggAI built-in avatar video routes", () => {
           headers: { "content-type": "video/mp4" },
         });
       }),
+      http.get(/\/cdn-cgi\/media\//, () => {
+        return new HttpResponse(Buffer.from("avatar video poster"), {
+          headers: { "content-type": "image/jpeg" },
+        });
+      }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const app = createAvatarVideoTestApp();
     const response = await app.request("/api/zero/avatar-video/generate", {
       method: "POST",
-      headers: authHeaders(),
+      headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
         avatarId: 81,
         voiceId: "en-US-ChristopherNeural",
@@ -406,6 +450,59 @@ describe("JoggAI built-in avatar video routes", () => {
         return command instanceof PutObjectCommand;
       }),
     ).toBeTruthy();
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const catalogResponse = await app.request(
+      "/api/zero/artifacts/catalog?kind=avatar",
+      { headers: authHeaders() },
+    );
+    expect(catalogResponse.status).toBe(200);
+    const catalog = asRecord(await catalogResponse.json());
+    expect(catalog.supportedKinds).toContain("avatar");
+    if (!Array.isArray(catalog.artifacts) || catalog.artifacts.length !== 1) {
+      throw new Error("Expected one avatar catalog artifact");
+    }
+    const avatar = asRecord(catalog.artifacts[0]);
+    expect(avatar).toMatchObject({
+      kind: "avatar",
+      title: expect.stringMatching(/^avatar-video-.*\.mp4$/),
+    });
+    if (typeof avatar.id !== "string") {
+      throw new Error("Expected avatar catalog artifact ID");
+    }
+
+    const detailResponse = await app.request(
+      `/api/zero/artifacts/catalog/${avatar.id}`,
+      { headers: authHeaders() },
+    );
+    expect(detailResponse.status).toBe(200);
+    await expect(detailResponse.json()).resolves.toMatchObject({
+      kind: "avatar",
+      model: "joggai-talking-avatar",
+      durationSeconds: 121,
+      file: {
+        contentType: "video/mp4",
+        size: VIDEO_BYTES.byteLength,
+      },
+    });
+
+    const videoCatalogResponse = await app.request(
+      "/api/zero/artifacts/catalog?kind=video",
+      { headers: authHeaders() },
+    );
+    expect(videoCatalogResponse.status).toBe(200);
+    expect(asRecord(await videoCatalogResponse.json()).artifacts).toStrictEqual(
+      [],
+    );
+
+    const fileCatalogResponse = await app.request(
+      "/api/zero/artifacts/catalog?kind=file",
+      { headers: authHeaders() },
+    );
+    expect(fileCatalogResponse.status).toBe(200);
+    expect(asRecord(await fileCatalogResponse.json()).artifacts).toStrictEqual(
+      [],
+    );
     await expect(orgCredits(fixture)).resolves.toBe(8802);
   });
 

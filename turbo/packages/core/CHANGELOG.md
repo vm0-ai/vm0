@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.509.1](https://github.com/vm0-ai/vm0/compare/core-v8.509.0...core-v8.509.1) (2026-08-04)
+
+
+### Refactoring
+
+* stop showing org slugs and drop dead slug payloads ([#25008](https://github.com/vm0-ai/vm0/issues/25008)) ([9676511](https://github.com/vm0-ai/vm0/commit/9676511282db6694e300e1a8fa4a40bb5c5d1e41))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.2
+
 ## [8.509.0](https://github.com/vm0-ai/vm0/compare/core-v8.508.2...core-v8.509.0) (2026-08-04)
 
 

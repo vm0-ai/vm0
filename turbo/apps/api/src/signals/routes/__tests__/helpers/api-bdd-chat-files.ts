@@ -1011,6 +1011,7 @@ export function createChatFilesBddApi(context: TestContext) {
     ): Promise<{
       readonly artifacts: readonly ArtifactSummary[];
       readonly nextCursor: string | null;
+      readonly supportedKinds?: readonly ArtifactCatalogKind[];
     }> {
       const response = await accept(
         artifactCatalogClient().list({

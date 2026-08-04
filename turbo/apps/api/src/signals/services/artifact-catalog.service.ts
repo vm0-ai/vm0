@@ -35,6 +35,7 @@ const ARTIFACT_CATALOG_DEFAULT_LIMIT = 60;
  */
 const OFFICIAL_IMAGE_MARKER = "zero-official-image";
 const OFFICIAL_VIDEO_MARKER = "zero-official-video";
+const AVATAR_VIDEO_MARKER = "zero-joggai-avatar-video";
 
 const artifactCursorSchema = z.object({
   createdAt: z.string(),
@@ -84,10 +85,43 @@ function fileArtifactKind(row: CatalogFileRow): "file" | "image" | "video" {
   if (generatedBy === OFFICIAL_IMAGE_MARKER) {
     return "image";
   }
-  if (generatedBy === OFFICIAL_VIDEO_MARKER) {
+  if (
+    generatedBy === OFFICIAL_VIDEO_MARKER ||
+    generatedBy === AVATAR_VIDEO_MARKER
+  ) {
     return "video";
   }
   return "file";
+}
+
+/**
+ * Avatar is a catalog projection over the existing video storage kind. Keeping
+ * the persisted kind readable as `video` lets the previous API version keep
+ * serving during rollout, while both existing and newly generated JoggAI
+ * videos appear in the dedicated category on the new API.
+ */
+function catalogArtifactKind(
+  kind: ArtifactKind,
+  metadata: Record<string, unknown> | null,
+): ArtifactCatalogKind {
+  return metadata &&
+    metadataString(metadata, "generatedBy") === AVATAR_VIDEO_MARKER
+    ? "avatar"
+    : kind;
+}
+
+function artifactCatalogKindFilter(kind: ArtifactCatalogKind) {
+  const generatedBy = sql`${runUploadedFiles.metadata} ->> 'generatedBy'`;
+  if (kind === "avatar") {
+    return eq(generatedBy, AVATAR_VIDEO_MARKER);
+  }
+  if (kind === "file" || kind === "video") {
+    return and(
+      eq(artifacts.kind, kind),
+      sql`${generatedBy} IS DISTINCT FROM ${AVATAR_VIDEO_MARKER}`,
+    );
+  }
+  return eq(artifacts.kind, kind);
 }
 
 function hostedArtifactKind(
@@ -705,6 +739,7 @@ async function reconcilePendingArtifactCatalog(
 function toArtifactSummary(row: {
   readonly id: string;
   readonly kind: ArtifactKind;
+  readonly projectionMetadata: Record<string, unknown> | null;
   readonly title: string;
   readonly thumbnail: ArtifactThumbnail | null;
   readonly createdAt: Date;
@@ -712,7 +747,7 @@ function toArtifactSummary(row: {
 }): ArtifactSummary {
   return {
     id: row.id,
-    kind: row.kind,
+    kind: catalogArtifactKind(row.kind, row.projectionMetadata),
     title: row.title,
     thumbnail: row.thumbnail,
     createdAt: row.createdAt.toISOString(),
@@ -762,17 +797,22 @@ export const listArtifactCatalog$ = command(
       .select({
         id: artifacts.id,
         kind: artifacts.kind,
+        projectionMetadata: runUploadedFiles.metadata,
         title: artifacts.title,
         thumbnail: artifacts.thumbnail,
         createdAt: artifacts.createdAt,
         updatedAt: artifacts.updatedAt,
       })
       .from(artifacts)
+      .leftJoin(
+        runUploadedFiles,
+        eq(runUploadedFiles.id, artifacts.projectionFileId),
+      )
       .where(
         and(
           eq(artifacts.orgId, args.orgId),
           eq(artifacts.authorUserId, args.userId),
-          args.kind ? eq(artifacts.kind, args.kind) : undefined,
+          args.kind ? artifactCatalogKindFilter(args.kind) : undefined,
           args.chatThreadId
             ? chatThreadFilter(db, args.chatThreadId)
             : undefined,
@@ -912,12 +952,18 @@ export const getArtifactCatalogEntry$ = command(
         id: artifacts.id,
         kind: artifacts.kind,
         entityId: artifacts.entityId,
+        projectionFileId: artifacts.projectionFileId,
+        projectionMetadata: runUploadedFiles.metadata,
         title: artifacts.title,
         thumbnail: artifacts.thumbnail,
         createdAt: artifacts.createdAt,
         updatedAt: artifacts.updatedAt,
       })
       .from(artifacts)
+      .leftJoin(
+        runUploadedFiles,
+        eq(runUploadedFiles.id, artifacts.projectionFileId),
+      )
       .where(
         and(
           eq(artifacts.id, args.artifactId),
@@ -932,6 +978,23 @@ export const getArtifactCatalogEntry$ = command(
     }
 
     const summary = toArtifactSummary(row);
+    if (summary.kind === "avatar") {
+      const file = await fileDetail(db, row.projectionFileId, signal);
+      const durationSeconds = row.projectionMetadata?.durationSeconds;
+      return file
+        ? {
+            ...summary,
+            kind: "avatar",
+            file,
+            model: metadataString(row.projectionMetadata ?? {}, "model"),
+            durationSeconds:
+              typeof durationSeconds === "number"
+                ? Math.round(durationSeconds)
+                : null,
+          }
+        : null;
+    }
+
     if (row.kind === "file") {
       const file = await fileDetail(db, row.entityId, signal);
       return file ? { ...summary, kind: "file", file } : null;

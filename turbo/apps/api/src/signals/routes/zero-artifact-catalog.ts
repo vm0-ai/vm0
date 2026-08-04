@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import { artifactCatalogContract } from "@vm0/api-contracts/contracts/artifact-catalog";
+import {
+  ARTIFACT_CATALOG_KINDS,
+  artifactCatalogContract,
+} from "@vm0/api-contracts/contracts/artifact-catalog";
 
 import { notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -34,6 +37,7 @@ const listArtifactCatalogInner$ = command(
       body: {
         artifacts: [...result.artifacts],
         nextCursor: result.nextCursor,
+        supportedKinds: [...ARTIFACT_CATALOG_KINDS],
       },
     };
   },
