@@ -148,6 +148,13 @@
       "when": 1785847164447,
       "tag": "0828_migrate_legacy_deepseek_state",
       "breakpoints": true
+    },
+    {
+      "idx": 829,
+      "version": "7",
+      "when": 1785855013869,
+      "tag": "0829_revoke_invalidated_goal_continuations",
+      "breakpoints": true
     }
   ]
 }
