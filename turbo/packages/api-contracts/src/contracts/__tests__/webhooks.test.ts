@@ -1,7 +1,63 @@
 import { describe, expect, it } from "vitest";
 
 import { SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT } from "../runners";
-import { webhookTelemetryContract } from "../webhooks";
+import {
+  STORAGE_MANIFEST_MAX_FILES,
+  STORAGE_MANIFEST_MAX_PATH_BYTES,
+  storageManifestFilesSchema,
+} from "../storages";
+import {
+  webhookStoragesCommitContract,
+  webhookStoragesPrepareContract,
+  webhookTelemetryContract,
+} from "../webhooks";
+
+const storageId = "00000000-0000-4000-8000-000000000000";
+const manifestHash = "a".repeat(64);
+
+function manifestFile(path: string) {
+  return { path, hash: manifestHash, size: 0 };
+}
+
+describe("storage webhook manifest limits", () => {
+  it("accepts the exact file-count boundary and rejects one more file", () => {
+    const exactFiles = Array.from(
+      { length: STORAGE_MANIFEST_MAX_FILES },
+      (_, index) => {
+        return manifestFile(`f-${index}`);
+      },
+    );
+    const overFiles = [...exactFiles, manifestFile("over-limit")];
+
+    expect(storageManifestFilesSchema.safeParse(exactFiles).success).toBe(true);
+    expect(
+      webhookStoragesPrepareContract.prepare.body.safeParse({
+        runId: "run-id",
+        storageId,
+        files: overFiles,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts the exact path-byte boundary and rejects one more byte", () => {
+    const exactFiles = [
+      manifestFile("é".repeat(STORAGE_MANIFEST_MAX_PATH_BYTES / 2)),
+    ];
+    const overFiles = [
+      manifestFile(`${"é".repeat(STORAGE_MANIFEST_MAX_PATH_BYTES / 2)}a`),
+    ];
+
+    expect(storageManifestFilesSchema.safeParse(exactFiles).success).toBe(true);
+    expect(
+      webhookStoragesCommitContract.commit.body.safeParse({
+        runId: "run-id",
+        storageId,
+        versionId: manifestHash,
+        files: overFiles,
+      }).success,
+    ).toBe(false);
+  });
+});
 
 describe("webhook telemetry contract", () => {
   it("accepts known session history download sources", () => {

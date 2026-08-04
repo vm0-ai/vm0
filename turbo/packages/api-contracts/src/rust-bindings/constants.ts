@@ -30,6 +30,10 @@ import {
   SESSION_HISTORY_ENCODING_ZSTD,
   SESSION_HISTORY_GZIP_MIN_BYTES,
 } from "../contracts/runners";
+import {
+  STORAGE_MANIFEST_MAX_FILES,
+  STORAGE_MANIFEST_MAX_PATH_BYTES,
+} from "../contracts/storages";
 
 export type RustConstantValue =
   | {
@@ -86,6 +90,7 @@ const modelProviderEnvPlaceholderModule = [
 const clientHeadersModule = ["client", "headers"] as const;
 const clientTypesModule = ["client", "types"] as const;
 const runnerPathsModule = ["runners", "paths"] as const;
+const storagesModule = ["storages"] as const;
 
 export const rustConstantRootDoc = [
   "Generated Rust constants for `@vm0/api-contracts`.",
@@ -147,6 +152,12 @@ export const rustConstantModuleDocs = [
     rustModulePath: runnerPathsModule,
     rustDoc: [
       "Runner and guest filesystem path constants shared across Rust and TypeScript.",
+    ],
+  },
+  {
+    rustModulePath: storagesModule,
+    rustDoc: [
+      "Storage manifest contract constants shared by TypeScript and Rust.",
     ],
   },
 ] satisfies readonly RustConstantModuleDoc[];
@@ -381,6 +392,24 @@ export const rustConstantBindings = [
     rustDoc: [
       "Canonical working directory path expected inside runner guests.",
       "Rust and TypeScript components use this shared contract value when building runner commands and paths.",
+    ],
+  },
+  {
+    rustModulePath: storagesModule,
+    rustConstName: "STORAGE_MANIFEST_MAX_FILES",
+    value: rustU64(STORAGE_MANIFEST_MAX_FILES),
+    rustDoc: [
+      "Maximum file entries accepted in a storage manifest.",
+      "Guest artifact checkpointing and TypeScript storage webhook validation use this shared limit.",
+    ],
+  },
+  {
+    rustModulePath: storagesModule,
+    rustConstName: "STORAGE_MANIFEST_MAX_PATH_BYTES",
+    value: rustU64(STORAGE_MANIFEST_MAX_PATH_BYTES),
+    rustDoc: [
+      "Maximum cumulative UTF-8 path bytes accepted in a storage manifest.",
+      "Guest artifact checkpointing and TypeScript storage webhook validation use this shared limit.",
     ],
   },
   ...codexOauthPlaceholderNames.map((name) => {

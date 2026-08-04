@@ -41,6 +41,10 @@ import {
   SESSION_HISTORY_ENCODING_ZSTD,
   SESSION_HISTORY_GZIP_MIN_BYTES,
 } from "../../contracts/runners";
+import {
+  STORAGE_MANIFEST_MAX_FILES,
+  STORAGE_MANIFEST_MAX_PATH_BYTES,
+} from "../../contracts/storages";
 
 const codexOauthPlaceholders =
   MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"].placeholders!;
@@ -53,6 +57,15 @@ const canonicalGuestHomeDirDoc = [
 const canonicalWorkingDirDoc = [
   "Canonical working directory path expected inside runner guests.",
   "Rust and TypeScript components use this shared contract value when building runner commands and paths.",
+] as const;
+
+const storageManifestMaxFilesDoc = [
+  "Maximum file entries accepted in a storage manifest.",
+  "Guest artifact checkpointing and TypeScript storage webhook validation use this shared limit.",
+] as const;
+const storageManifestMaxPathBytesDoc = [
+  "Maximum cumulative UTF-8 path bytes accepted in a storage manifest.",
+  "Guest artifact checkpointing and TypeScript storage webhook validation use this shared limit.",
 ] as const;
 
 const resumeSessionHistoryMaxBytesDoc = [
@@ -279,6 +292,18 @@ const expectedBindings = [
     rustDoc: canonicalWorkingDirDoc,
   },
   {
+    rustModulePath: ["storages"],
+    rustConstName: "STORAGE_MANIFEST_MAX_FILES",
+    value: rustU64(STORAGE_MANIFEST_MAX_FILES),
+    rustDoc: storageManifestMaxFilesDoc,
+  },
+  {
+    rustModulePath: ["storages"],
+    rustConstName: "STORAGE_MANIFEST_MAX_PATH_BYTES",
+    value: rustU64(STORAGE_MANIFEST_MAX_PATH_BYTES),
+    rustDoc: storageManifestMaxPathBytesDoc,
+  },
+  {
     rustModulePath: ["codex_oauth_token", "placeholders"],
     rustConstName: "CHATGPT_ACCESS_TOKEN",
     value: rustString(codexOauthPlaceholders.CHATGPT_ACCESS_TOKEN),
@@ -405,6 +430,7 @@ describe("Rust constant bindings", () => {
     expect(firstRender).toContain("pub mod model_provider_env {");
     expect(firstRender).toContain("pub mod client {");
     expect(firstRender).toContain("pub mod runners {");
+    expect(firstRender).toContain("pub mod storages {");
     expect(firstRender).toContain("pub mod placeholders {");
     expect(firstRender).toContain("pub mod headers {");
     expect(firstRender).toContain(
@@ -478,6 +504,12 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const SESSION_HISTORY_GZIP_MIN_BYTES: u64 = ${SESSION_HISTORY_GZIP_MIN_BYTES};`,
+    );
+    expect(firstRender).toContain(
+      `pub const STORAGE_MANIFEST_MAX_FILES: u64 = ${STORAGE_MANIFEST_MAX_FILES};`,
+    );
+    expect(firstRender).toContain(
+      `pub const STORAGE_MANIFEST_MAX_PATH_BYTES: u64 = ${STORAGE_MANIFEST_MAX_PATH_BYTES};`,
     );
     expect(firstRender).toContain(
       `pub const CLIENT_VERSION_HEADER: &str = "${CLIENT_VERSION_HEADER}";`,

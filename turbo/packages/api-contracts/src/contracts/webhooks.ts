@@ -11,9 +11,9 @@ import {
 } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
 import {
-  fileEntryWithHashSchema,
-  storageChangesSchema,
   presignedUploadSchema,
+  storageChangesSchema,
+  storageManifestFilesSchema,
 } from "./storages";
 
 const c = initContract();
@@ -725,7 +725,7 @@ export const webhookStoragesPrepareContract = c.router({
        * mounts.
        */
       storageId: z.string().uuid(),
-      files: z.array(fileEntryWithHashSchema),
+      files: storageManifestFilesSchema,
       parentVersionId: z.string().optional(),
       force: z.boolean().optional(),
       baseVersion: z.string().optional(),
@@ -772,7 +772,7 @@ export const webhookStoragesCommitContract = c.router({
       storageId: z.string().uuid(),
       versionId: z.string().min(1, "Version ID is required"),
       parentVersionId: z.string().optional(),
-      files: z.array(fileEntryWithHashSchema),
+      files: storageManifestFilesSchema,
       message: z.string().optional(),
     }),
     responses: {

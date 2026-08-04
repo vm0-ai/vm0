@@ -1,6 +1,10 @@
 use super::FileEntry;
 #[cfg(target_os = "linux")]
 use crate::nofollow_fs::Dir;
+#[cfg(target_os = "linux")]
+use api_contracts::generated::constants::storages::{
+    STORAGE_MANIFEST_MAX_FILES, STORAGE_MANIFEST_MAX_PATH_BYTES,
+};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use guest_common::log_warn;
@@ -16,10 +20,11 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 #[cfg(target_os = "linux")]
 pub(super) fn collect_file_metadata(dir_path: &str) -> Result<Vec<FileEntry>, ArchiveError> {
     let mut files = Vec::new();
+    let mut path_bytes = 0;
     let root_path = Path::new(dir_path);
     let root = open_artifact_root(root_path)?;
     let entries = read_artifact_root(&root, root_path)?;
-    walk_entries(&root, "", entries, &mut files)?;
+    walk_entries(&root, "", entries, &mut files, &mut path_bytes)?;
     Ok(files)
 }
 
@@ -31,12 +36,17 @@ pub(super) fn collect_file_metadata(dir_path: &str) -> Result<Vec<FileEntry>, Ar
 }
 
 #[cfg(target_os = "linux")]
-fn walk_dir(current: &Dir, relative: &str, out: &mut Vec<FileEntry>) -> Result<(), ArchiveError> {
+fn walk_dir(
+    current: &Dir,
+    relative: &str,
+    out: &mut Vec<FileEntry>,
+    path_bytes: &mut u64,
+) -> Result<(), ArchiveError> {
     let entries = match current.read_dir() {
         Ok(e) => e,
         Err(_) => return Ok(()),
     };
-    walk_entries(current, relative, entries, out)
+    walk_entries(current, relative, entries, out, path_bytes)
 }
 
 #[cfg(target_os = "linux")]
@@ -45,6 +55,7 @@ fn walk_entries(
     relative: &str,
     entries: fs::ReadDir,
     out: &mut Vec<FileEntry>,
+    path_bytes: &mut u64,
 ) -> Result<(), ArchiveError> {
     for entry in entries.flatten() {
         let name = entry.file_name();
@@ -59,7 +70,7 @@ fn walk_entries(
         if try_directory && let Ok(dir) = current.open_child_dir(&name) {
             let name_str = artifact_path_component(&name, relative)?;
             let rel = relative_artifact_path(relative, name_str);
-            walk_dir(&dir, &rel, out)?;
+            walk_dir(&dir, &rel, out, path_bytes)?;
             continue;
         }
         if !try_file {
@@ -77,12 +88,30 @@ fn walk_entries(
         }
         let name_str = artifact_path_component(&name, relative)?;
         let rel = relative_artifact_path(relative, name_str);
+        let observed_files = u64::try_from(out.len())
+            .unwrap_or(u64::MAX)
+            .saturating_add(1);
+        let observed_path_bytes =
+            path_bytes.saturating_add(u64::try_from(rel.len()).unwrap_or(u64::MAX));
+        if observed_files > STORAGE_MANIFEST_MAX_FILES
+            || observed_path_bytes > STORAGE_MANIFEST_MAX_PATH_BYTES
+        {
+            return Err(ArchiveError::ManifestLimitExceeded {
+                observed_files,
+                max_files: STORAGE_MANIFEST_MAX_FILES,
+                observed_path_bytes,
+                max_path_bytes: STORAGE_MANIFEST_MAX_PATH_BYTES,
+            });
+        }
         match compute_file_hash_from_reader(file) {
-            Ok((hash, size)) => out.push(FileEntry {
-                path: rel,
-                hash,
-                size,
-            }),
+            Ok((hash, size)) => {
+                *path_bytes = observed_path_bytes;
+                out.push(FileEntry {
+                    path: rel,
+                    hash,
+                    size,
+                });
+            }
             Err(e) => {
                 log_warn!(LOG_TAG, "Could not process file {rel}: {e}");
             }
@@ -159,6 +188,15 @@ pub(super) enum ArchiveError {
         "artifact path component is not valid UTF-8 under {parent:?}: {component}; artifact paths must be valid UTF-8"
     )]
     NonUtf8PathComponent { parent: String, component: String },
+    #[error(
+        "artifact checkpoint manifest limit exceeded: candidate files {observed_files}/{max_files}, candidate UTF-8 path bytes {observed_path_bytes}/{max_path_bytes}"
+    )]
+    ManifestLimitExceeded {
+        observed_files: u64,
+        max_files: u64,
+        observed_path_bytes: u64,
+        max_path_bytes: u64,
+    },
     #[error("failed to create archive output {}: {source}", path.display())]
     CreateOutput { path: PathBuf, source: io::Error },
     #[error("invalid archive path {path:?}: path must be relative and stay within the artifact")]
