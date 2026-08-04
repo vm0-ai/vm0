@@ -177,6 +177,7 @@ async fn create_netns_with_tap(
 async fn setup_veth_pair(
     name: &str,
     host_device: &str,
+    host_mac: &str,
     host_ip: &str,
     peer_ip: &str,
 ) -> Result<()> {
@@ -186,6 +187,8 @@ async fn setup_veth_pair(
         "link",
         "add",
         host_device,
+        "address",
+        host_mac,
         "type",
         "veth",
         "peer",
@@ -605,6 +608,7 @@ pub(super) async fn create_single_namespace(
     let ns_idx_str = format_hex_index(ns_index);
     let ns_name = make_ns_name(&pool_idx_str, &ns_idx_str);
     let host_device = make_host_device(&pool_idx_str, &ns_idx_str);
+    let host_mac = format!("02:56:4d:{pool_idx_str}:{ns_idx_str}:01");
     let (host_ip, peer_ip) = generate_veth_ip_pair(pool_index, ns_index);
 
     info!(name = %ns_name, proxy = proxy_port.is_some(), "creating namespace");
@@ -613,6 +617,7 @@ pub(super) async fn create_single_namespace(
     let result = create_namespace_inner(
         &ns_name,
         &host_device,
+        &host_mac,
         &host_ip,
         &peer_ip,
         sn,
@@ -668,6 +673,7 @@ pub(super) async fn create_single_namespace(
 async fn create_namespace_inner(
     name: &str,
     host_device: &str,
+    host_mac: &str,
     host_ip: &str,
     peer_ip: &str,
     sn: &GuestNetwork,
@@ -675,7 +681,7 @@ async fn create_namespace_inner(
 ) -> Result<()> {
     let gw_with_prefix = format!("{}/{}", sn.gateway_ip, sn.prefix_len);
     create_netns_with_tap(name, sn.tap_name, sn.tap_mac, &gw_with_prefix).await?;
-    setup_veth_pair(name, host_device, host_ip, peer_ip).await?;
+    setup_veth_pair(name, host_device, host_mac, host_ip, peer_ip).await?;
     setup_namespace_routing(name, host_ip, sn.gateway_ip, sn.prefix_len).await?;
     apply_namespace_rules(name, host_device, peer_ip, firewall_config).await?;
 
