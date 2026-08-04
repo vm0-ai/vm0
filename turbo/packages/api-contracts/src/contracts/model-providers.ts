@@ -88,7 +88,7 @@ const MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS: Partial<
   Record<ModelProviderType, ModelProviderCodexRuntimeConfig>
 > = {
   "deepseek-codex": {
-    providerId: "vm0-model",
+    providerId: "deepseek-codex",
     name: "DeepSeek",
     baseUrl: "https://api.deepseek.com",
     envKey: "OPENAI_API_KEY",
@@ -98,11 +98,6 @@ const MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS: Partial<
     modelCatalog: DEEPSEEK_CODEX_MODEL_CATALOG,
   },
 };
-
-/**
- * The org slug authorized to use the VM0 managed provider.
- */
-export const VM0_ORG_SLUG = "vm0";
 
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "claude-fable-5",

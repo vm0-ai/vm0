@@ -1,6 +1,5 @@
 import { Command } from "commander";
 import { statusCommand } from "./status";
-import { setCommand } from "./set";
 import { listCommand } from "./list";
 import { membersCommand } from "./members";
 import { inviteCommand } from "./invite";
@@ -14,7 +13,6 @@ export const zeroOrgCommand = new Command()
   .name("org")
   .description("Manage organization settings, members, and providers")
   .addCommand(statusCommand)
-  .addCommand(setCommand)
   .addCommand(listCommand)
   .addCommand(membersCommand)
   .addCommand(inviteCommand)

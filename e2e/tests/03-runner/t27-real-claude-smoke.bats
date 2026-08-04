@@ -113,7 +113,7 @@ ensure_anthropic_model_provider() {
 
     # Run claude --version inside the sandbox to confirm which binary is installed
     run run_compose_fixture "$AGENT_NAME" \
-        "Run 'claude --version' with the Bash tool and include the exact output" \
+        "Run \`claude --version\` with Bash; return its output." \
         '{"modelProviderType":"anthropic-api-key","realAgentInPreview":true}'
 
     assert_success
@@ -131,7 +131,7 @@ ensure_anthropic_model_provider() {
     ensure_anthropic_model_provider
 
     run run_compose_fixture "$AGENT_NAME" \
-        "Compute 123+456 and reply with exactly: RESULT=<answer>" \
+        "123+456. Reply only RESULT=<answer>." \
         '{"modelProviderType":"anthropic-api-key","realAgentInPreview":true}'
 
     assert_success
@@ -152,11 +152,11 @@ ensure_anthropic_model_provider() {
     ensure_anthropic_model_provider
 
     run run_compose_fixture "${AGENT_NAME}-flags" \
-        "Compute 789+101 and follow the required final response format." \
+        "789+101. Follow the required response format." \
         '{
             "modelProviderType":"anthropic-api-key",
             "realAgentInPreview":true,
-            "appendSystemPrompt":"In your final response, output exactly two lines and no extra text. Line 1: RESULT=<answer>. Line 2: SIGNATURE=smoke-test.",
+            "appendSystemPrompt":"Reply only:\nRESULT=<answer>\nSIGNATURE=smoke-test",
             "disallowedTools":["CronCreate","CronList","CronDelete"]
         }'
 
@@ -184,7 +184,7 @@ ensure_anthropic_model_provider() {
     local settings='{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo SETTINGS_HOOK_OK > /tmp/hook_sentinel.txt"}]}]}}'
 
     run run_compose_fixture "${AGENT_NAME}-settings" \
-        "Step 1: run 'echo hello'. Step 2: run 'cat /tmp/hook_sentinel.txt'. Include the exact output of step 2 in your response." \
+        "Use Bash: echo hello; cat /tmp/hook_sentinel.txt. Return the cat output." \
         "$(jq -nc --arg settings "$settings" \
             '{
                 modelProviderType: "anthropic-api-key",

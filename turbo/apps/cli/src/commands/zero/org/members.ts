@@ -10,7 +10,7 @@ export const membersCommand = new Command()
     withErrorHandler(async () => {
       const status = await getZeroOrgMembers();
 
-      console.log(chalk.bold(`Organization: ${status.slug}`));
+      console.log(chalk.bold(`Organization: ${status.name}`));
       console.log(`  Role: ${status.role}`);
       console.log(
         `  Created: ${new Date(status.createdAt).toLocaleDateString()}`,

@@ -138,7 +138,7 @@ async def prepare_miss(flow: http.HTTPFlow) -> None:
     assert "If-None-Match" not in flow.request.headers
 
 
-def finish_response(flow: http.HTTPFlow) -> dict[str, object]:
+async def finish_response(flow: http.HTTPFlow) -> dict[str, object]:
     assert flow.response is not None
     wire_body = flow.response.raw_content or b""
     mitm_addon.responseheaders(flow)
@@ -147,7 +147,9 @@ def finish_response(flow: http.HTTPFlow) -> dict[str, object]:
         split = len(wire_body) // 2
         assert stream(wire_body[:split]) == wire_body[:split]
         assert stream(wire_body[split:]) == wire_body[split:]
-    catalog_cache.finalize_response(flow)
+    finalization = catalog_cache.finalize_response(flow)
+    if finalization is not None:
+        await finalization
     telemetry: dict[str, object] = {}
     catalog_cache.add_network_log_fields(flow, telemetry)
     return telemetry
@@ -162,4 +164,4 @@ async def install_catalog(
 ) -> dict[str, object]:
     await prepare_miss(flow)
     flow.response = catalog_response(body=body, etag=etag, encoding=encoding)
-    return finish_response(flow)
+    return await finish_response(flow)

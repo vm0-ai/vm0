@@ -20,7 +20,6 @@ import {
   onDomEventFn,
   Reason,
 } from "../../signals/utils.ts";
-import { org$ } from "../../signals/org.ts";
 import {
   userInvitations$,
   refreshUserInvitations$,
@@ -220,7 +219,6 @@ function OtherMembershipsList() {
 
 function OrgDropdownContent() {
   const clerkLoadable = useLastLoadable(clerk$);
-  const orgData = useLastResolved(org$);
   const pendingInvitations = useLastResolved(userInvitations$);
   const currentOrg = useLastResolved(currentOrgInfo$);
   const { t } = useTranslation();
@@ -231,7 +229,6 @@ function OrgDropdownContent() {
     t(($) => {
       return $.appShell.sidebar.workspaceSwitcher.organizationFallback;
     });
-  const orgSlug = orgData?.slug;
   const memberships = clerk?.user?.organizationMemberships ?? [];
   const currentOrgId = clerk?.organization?.id;
 
@@ -259,11 +256,6 @@ function OrgDropdownContent() {
           <p className="text-sm font-semibold leading-tight truncate text-foreground">
             {orgName}
           </p>
-          {orgSlug && (
-            <p className="text-xs text-muted-foreground truncate mt-0.5">
-              {orgSlug}
-            </p>
-          )}
         </div>
       </div>
 

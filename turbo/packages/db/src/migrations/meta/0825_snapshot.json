@@ -1,5 +1,5 @@
 {
-  "id": "8fc28a47-2258-4218-9847-7a53c803f9d0",
+  "id": "e98616bf-0a70-46e2-8782-32fab6c57ea5",
   "prevId": "9b1af387-cd8e-4391-bdc8-161eece2eebe",
   "version": "7",
   "dialect": "postgresql",
@@ -4118,44 +4118,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.chat_agent_run_context": {
-      "name": "chat_agent_run_context",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "source_chat_thread_id": {
-          "name": "source_chat_thread_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source_agent_id": {
-          "name": "source_agent_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.chat_agentphone_context": {
       "name": "chat_agentphone_context",
       "schema": "",
@@ -4817,7 +4779,7 @@
         },
         "chat_events_context_type_check": {
           "name": "chat_events_context_type_check",
-          "value": "\"chat_events\".\"context_type\" IN (\n          'slack',\n          'feishu',\n          'teams',\n          'telegram',\n          'github',\n          'agentphone',\n          'automation',\n          'goal',\n          'morning_brief',\n          'agent_run'\n        )"
+          "value": "\"chat_events\".\"context_type\" IN (\n          'slack',\n          'feishu',\n          'teams',\n          'telegram',\n          'github',\n          'agentphone',\n          'automation',\n          'goal',\n          'morning_brief'\n        )"
         }
       },
       "isRLSEnabled": false
@@ -5039,59 +5001,6 @@
           "value": "\"chat_github_context\".\"subject_kind\" IN ('issue', 'pull_request')"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.chat_goal_context": {
-      "name": "chat_goal_context",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "chat_thread_id": {
-          "name": "chat_thread_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "objective_brief": {
-          "name": "objective_brief",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "chat_goal_context_chat_thread_id_chat_threads_id_fk": {
-          "name": "chat_goal_context_chat_thread_id_chat_threads_id_fk",
-          "tableFrom": "chat_goal_context",
-          "tableTo": "chat_threads",
-          "columnsFrom": [
-            "chat_thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.chat_morning_brief_context": {

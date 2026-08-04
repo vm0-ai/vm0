@@ -354,11 +354,7 @@ describe("ORG-01 and ORG-02", () => {
         { actor: member, role: "org:member" },
       ],
     });
-    const updated = await api.updateOrg(admin, {
-      slug: nextSlug,
-      name: "BDD Org Updated",
-      force: true,
-    });
+    const updated = await api.updateOrg(admin, { name: "BDD Org Updated" });
     expect(updated).toMatchObject({
       slug: nextSlug,
       name: "BDD Org Updated",
@@ -367,7 +363,11 @@ describe("ORG-01 and ORG-02", () => {
     const orgs = await api.listOrgs(admin);
     expect(
       orgs.orgs.some((candidate) => {
-        return candidate.slug === nextSlug && candidate.role === "admin";
+        return (
+          candidate.id === admin.orgId &&
+          candidate.name === "BDD Org Updated" &&
+          candidate.role === "admin"
+        );
       }),
     ).toBeTruthy();
 
@@ -381,7 +381,7 @@ describe("ORG-01 and ORG-02", () => {
     });
     const memberUpdate = await api.requestUpdateOrg(
       member,
-      { force: false, name: "Member Update" },
+      { name: "Member Update" },
       [403],
     );
     expectApiError(memberUpdate.body);
@@ -404,6 +404,7 @@ describe("ORG-01 and ORG-02", () => {
       membershipRequests: [{ id: requestId, actor: requester }],
     });
     const members = await api.listMembers(admin);
+    expect(members.name).toBe("BDD Org Updated");
     expect(members.role).toBe("admin");
     expect(
       members.members.some((candidate) => {

@@ -62,7 +62,7 @@ ensure_openai_model_provider() {
     ensure_openai_model_provider
 
     run run_compose_fixture "$AGENT_NAME" \
-        "Run 'codex --version' with the shell tool and include the exact output" \
+        "Run \`codex --version\` with shell; return its output." \
         '{"modelProviderType":"openai-api-key","realAgentInPreview":true}'
 
     assert_success
@@ -74,7 +74,7 @@ ensure_openai_model_provider() {
     ensure_openai_model_provider
 
     run run_compose_fixture "$AGENT_NAME" \
-        "Compute 123+456 and reply with exactly: RESULT=<answer>" \
+        "123+456. Reply only RESULT=<answer>." \
         '{"modelProviderType":"openai-api-key","realAgentInPreview":true}'
 
     assert_success

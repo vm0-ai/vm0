@@ -25,7 +25,6 @@ const teamsConnectStatusSchema = z.object({
   teamId: nullableStringSchema.optional(),
   teamName: nullableStringSchema.optional(),
   defaultAgentName: nullableStringSchema.optional(),
-  agentOrgSlug: nullableStringSchema.optional(),
   permissionMismatch: z.boolean().optional(),
   reinstallUrl: nullableStringSchema.optional(),
   environment: teamsEnvironmentSchema.optional(),

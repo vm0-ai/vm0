@@ -13,11 +13,16 @@ export const statusCommand = new Command()
         const org = await getZeroOrg();
 
         console.log(chalk.bold("Organization Information:"));
-        console.log(`  Slug: ${chalk.green(org.slug)}`);
+        console.log(`  Name: ${chalk.green(org.name)}`);
+        if (org.tier) {
+          console.log(`  Tier: ${org.tier}`);
+        }
       } catch (error) {
         if (error instanceof ApiRequestError && error.status === 404) {
           throw new Error("No organization configured", {
-            cause: new Error("Set your organization with: zero org set <slug>"),
+            cause: new Error(
+              "Create or join an organization in the vm0 dashboard, then try again",
+            ),
           });
         }
         throw error;

@@ -213,7 +213,7 @@ async def test_both_firewall_auth_paths_prepare_catalog_cache(
     assert request_flow.request.headers["Accept-Encoding"] == "br"
     assert "X-VM0-Codex-Model-Catalog-Prefetch" not in request_flow.request.headers
     request_flow.response = catalog_response(encoding="br")
-    request_telemetry = finish_response(request_flow)
+    request_telemetry = await finish_response(request_flow)
     assert request_telemetry["model_catalog_prefetch_role"] == "producer"
 
     header_registry = _write_codex_registry(tmp_path, capture=True)
@@ -332,7 +332,7 @@ async def test_catalog_wait_revalidates_only_provider_continuation(
                 catalog_cache.handle_error(owner)
             elif owner_result == "local-response":
                 owner.response = catalog_response(encoding="br")
-                finish_response(owner)
+                await finish_response(owner)
 
             await follower_task
             if entry_point == "requestheaders":
@@ -460,7 +460,9 @@ async def test_network_log_contains_bounded_encoding_telemetry_and_cleanup(
     assert response_stream(flow)(compressed_body) == compressed_body
 
     with mitm_ctx():
-        mitm_addon.response(flow)
+        continuation = mitm_addon.response(flow)
+        assert continuation is not None
+        await continuation
 
     [entry] = read_jsonl_entries_after_flush(tmp_path / "network.jsonl")
     assert entry["model_catalog_cache_status"] == "model_catalog_cold_stored"

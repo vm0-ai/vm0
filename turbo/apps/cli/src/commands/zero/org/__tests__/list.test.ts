@@ -40,10 +40,9 @@ describe("zero org list command", () => {
       http.get("http://localhost:3000/api/zero/org/list", () => {
         return HttpResponse.json({
           orgs: [
-            { slug: "personal-user", role: "admin" },
-            { slug: "my-org", role: "admin" },
+            { id: "org-personal", name: "Personal User", role: "admin" },
+            { id: "my-org", name: "My Org", role: "admin" },
           ],
-          active: undefined,
         });
       }),
     );
@@ -51,9 +50,9 @@ describe("zero org list command", () => {
     await listCommand.parseAsync(["node", "cli"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("personal-user");
+    expect(logCalls).toContain("Personal User");
     expect(logCalls).toContain("admin");
-    expect(logCalls).toContain("my-org");
+    expect(logCalls).toContain("My Org");
   });
 
   it("should mark current organization", async () => {
@@ -61,10 +60,9 @@ describe("zero org list command", () => {
       http.get("http://localhost:3000/api/zero/org/list", () => {
         return HttpResponse.json({
           orgs: [
-            { slug: "personal-user", role: "admin" },
-            { slug: "my-org", role: "admin" },
+            { id: "org-personal", name: "Personal User", role: "admin" },
+            { id: "my-org", name: "My Org", role: "admin" },
           ],
-          active: undefined,
         });
       }),
     );
@@ -72,7 +70,8 @@ describe("zero org list command", () => {
     await listCommand.parseAsync(["node", "cli"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("current");
+    expect(logCalls).toContain("* My Org (admin) \u2190 current");
+    expect(logCalls).not.toContain("* Personal User");
   });
 
   it("should handle API error", async () => {

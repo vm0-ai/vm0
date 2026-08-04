@@ -503,7 +503,6 @@ export {
   type CronTelegramCleanupContract,
 } from "./cron";
 export {
-  orgSlugSchema,
   orgResponseSchema,
   updateOrgRequestSchema,
   orgTierSchema,
@@ -603,7 +602,6 @@ export {
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   getModelProviderFirewall,
   // VM0 managed provider
-  VM0_ORG_SLUG,
   VM0_MODEL_TO_PROVIDER,
   VM0_MODEL_ALIAS_TO_MODEL,
   getVm0ConcreteProviderType,

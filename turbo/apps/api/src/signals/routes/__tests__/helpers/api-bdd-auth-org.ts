@@ -964,7 +964,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async requestUpdateOrg(
       actor: ApiTestUser | null,
       body: UpdateOrgRequest,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroOrgContract,
@@ -1026,7 +1026,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async requestUpdateOrgWithBearer(
       token: string,
       body: UpdateOrgRequest,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroOrgContract,

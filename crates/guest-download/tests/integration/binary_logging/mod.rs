@@ -1,13 +1,14 @@
 use crate::support::unique_run_id;
 use serde_json::Value;
 use std::ffi::OsStr;
-use std::io::{self, Write as _};
+use std::io;
 use std::path::PathBuf;
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, Output};
 use tempfile::TempDir;
 
 mod attribution;
 mod manifest_input;
+mod process;
 mod redaction;
 mod runtime_paths;
 
@@ -55,21 +56,22 @@ impl BinaryLoggingFixture {
     }
 
     pub(super) fn run_manifest_path(&self, manifest_path: impl AsRef<OsStr>) -> io::Result<Output> {
-        self.command().arg(manifest_path).output()
+        self.spawn_manifest_path(manifest_path)?.wait()
+    }
+
+    pub(in crate::binary_logging) fn spawn_manifest_path(
+        &self,
+        manifest_path: impl AsRef<OsStr>,
+    ) -> io::Result<process::CommandExecution> {
+        process::CommandExecution::spawn(self.command().arg(manifest_path), None)
     }
 
     pub(super) fn run_manifest_stdin(&self, manifest_json: &[u8]) -> io::Result<Output> {
-        let mut command = self.command();
-        let mut child = command
-            .arg("--manifest-stdin")
-            .stdin(Stdio::piped())
-            .spawn()?;
-        child
-            .stdin
-            .as_mut()
-            .ok_or_else(|| io::Error::other("guest-download stdin unavailable"))?
-            .write_all(manifest_json)?;
-        child.wait_with_output()
+        process::CommandExecution::spawn(
+            self.command().arg("--manifest-stdin"),
+            Some(manifest_json),
+        )?
+        .wait()
     }
 
     pub(super) fn read_system_log(&self) -> io::Result<String> {

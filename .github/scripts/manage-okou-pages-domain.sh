@@ -45,9 +45,17 @@ pages_domain_missing() {
   jq -e 'any(.errors[]?; .code == 8000021)' >/dev/null
 }
 
+pages_domain_already_added() {
+  jq -e 'any(.errors[]?; .code == 8000018)' >/dev/null
+}
+
 require_cloudflare_success() {
-  if jq -e '.success == false' >/dev/null; then
-    jq -r '.errors[]? | "Cloudflare API error \(.code): \(.message)"' >&2
+  local response
+
+  response="$(cat)"
+  if jq -e '.success == false' <<< "$response" >/dev/null; then
+    jq -r '.errors[]? | "Cloudflare API error \(.code): \(.message)"' \
+      <<< "$response" >&2
     return 1
   fi
 }
@@ -131,11 +139,16 @@ begin_domain_validation() {
   domain_state="$(pages_domain_state)"
   if pages_domain_missing <<< "$domain_state"; then
     delete_dns_record
-    cloudflare_request \
+    domain_state="$(cloudflare_response \
       --request POST \
       "$pages_domains_url" \
-      --data "$(jq -n --arg name "$domain" '{name: $name}')" >/dev/null
-    domain_state="$(cloudflare_request "${pages_domains_url}/${domain}")"
+      --data "$(jq -n --arg name "$domain" '{name: $name}')")"
+    if pages_domain_already_added <<< "$domain_state"; then
+      upsert_cname "${project_name}.pages.dev"
+      printf 'pending\n'
+      return
+    fi
+    require_cloudflare_success <<< "$domain_state"
   else
     require_cloudflare_success <<< "$domain_state"
   fi
@@ -152,25 +165,32 @@ begin_domain_validation() {
 
 finish_domain_validation() {
   local domain_state
-  local verification_status
 
-  domain_state="$(cloudflare_request "${pages_domains_url}/${domain}")"
+  domain_state="$(pages_domain_state)"
+  if ! pages_domain_missing <<< "$domain_state"; then
+    require_cloudflare_success <<< "$domain_state"
+  fi
+
   if ! domain_is_active "$domain_state"; then
     upsert_cname "${project_name}.pages.dev"
-    verification_status="$(jq -r '.result.verification_data.status' <<< "$domain_state")"
 
     # A newly-created Pages custom domain can take longer than a minute to
-    # publish ownership verification even after its CNAME is visible.
+    # become readable and publish ownership verification even after its CNAME
+    # is visible.
     for _ in {1..90}; do
-      domain_state="$(cloudflare_request "${pages_domains_url}/${domain}")"
-      verification_status="$(jq -r '.result.verification_data.status' <<< "$domain_state")"
-      if [[ "$verification_status" == "active" ]]; then
+      domain_state="$(pages_domain_state)"
+      if pages_domain_missing <<< "$domain_state"; then
+        sleep 2
+        continue
+      fi
+      require_cloudflare_success <<< "$domain_state"
+      if domain_is_active "$domain_state"; then
         break
       fi
       sleep 2
     done
 
-    if [[ "$verification_status" != "active" ]]; then
+    if ! domain_is_active "$domain_state"; then
       echo "Cloudflare Pages did not verify ${domain}" >&2
       exit 1
     fi
