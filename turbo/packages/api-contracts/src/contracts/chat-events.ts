@@ -264,7 +264,7 @@ function compareChatQueueEvents(
     if (eventType === "input.prompt") {
       return 0;
     }
-    if (eventType === "input.automation") {
+    if (eventType === "input.goal") {
       return 1;
     }
     return 2;
