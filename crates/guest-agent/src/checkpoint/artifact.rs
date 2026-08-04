@@ -243,6 +243,21 @@ mod tests {
 
     const REQUEST_OVERLAP_TIMEOUT: Duration = Duration::from_secs(5);
 
+    struct SandboxOpsOverrideGuard;
+
+    impl SandboxOpsOverrideGuard {
+        fn set(path: &std::path::Path) -> Self {
+            guest_common::telemetry::set_sandbox_ops_log_file(path);
+            Self
+        }
+    }
+
+    impl Drop for SandboxOpsOverrideGuard {
+        fn drop(&mut self) {
+            guest_common::telemetry::clear_sandbox_ops_log_file();
+        }
+    }
+
     async fn start_artifact_checkpoint_test_server(
         artifact_count: usize,
     ) -> (String, tokio::task::JoinHandle<Vec<String>>) {
@@ -392,6 +407,10 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit");
             then.status(200).json_body(json!({"unreachable": true}));
         });
+        let upload = server.mock(|when, then| {
+            when.method(PUT);
+            then.status(200);
+        });
         let http = HttpClient::with_api_config(
             server.base_url(),
             "test-token",
@@ -419,7 +438,137 @@ mod tests {
             "got: {err}"
         );
         prepare.assert_calls(0);
+        upload.assert_calls(0);
         commit.assert_calls(0);
+    }
+
+    #[tokio::test]
+    async fn artifact_snapshot_enforces_manifest_boundaries_before_storage_api_calls() {
+        use api_contracts::generated::constants::storages::{
+            STORAGE_MANIFEST_MAX_FILES, STORAGE_MANIFEST_MAX_PATH_BYTES,
+        };
+
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        guest_common::log::clear_system_log_file();
+
+        let dir = tempfile::tempdir().unwrap();
+        let first_prefix = "a".repeat(200);
+        let second_prefix = "b".repeat(200);
+        let mount = dir
+            .path()
+            .join(first_prefix)
+            .join(second_prefix)
+            .join("files");
+        std::fs::create_dir_all(&mount).unwrap();
+        let max_files = usize::try_from(STORAGE_MANIFEST_MAX_FILES).unwrap();
+        for index in 0..max_files {
+            std::fs::File::create(mount.join(format!("{index:05}"))).unwrap();
+        }
+
+        let exact_files = vas::walk_files_for_checkpoint(mount.to_str().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(exact_files.len(), max_files);
+        drop(exact_files);
+
+        let over_limit_path = mount.join("over-limit");
+        std::fs::File::create(&over_limit_path).unwrap();
+
+        let telemetry_dir = tempfile::tempdir().unwrap();
+        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
+        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let server = MockServer::start();
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let http = HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap();
+        let entries = vec![env::ArtifactEnv {
+            name: "workspace".to_string(),
+            mount_path: mount.to_string_lossy().into_owned(),
+            storage_id: "storage-id".to_string(),
+            version_id: "parent-version".to_string(),
+            missing_root_policy: None,
+        }];
+
+        let count_error = snapshot_artifact_entries(&http, "test-run", &entries)
+            .await
+            .unwrap_err();
+        let count_message = count_error.to_string();
+        assert!(
+            count_message.contains(&format!(
+                "candidate files {}/{STORAGE_MANIFEST_MAX_FILES}",
+                STORAGE_MANIFEST_MAX_FILES + 1
+            )),
+            "got: {count_message}"
+        );
+        assert!(
+            count_message.contains("candidate UTF-8 path bytes"),
+            "got: {count_message}"
+        );
+        assert!(
+            count_message.contains(&format!("/{STORAGE_MANIFEST_MAX_PATH_BYTES}")),
+            "got: {count_message}"
+        );
+        prepare.assert_calls(0);
+        commit.assert_calls(0);
+
+        let telemetry_entries = std::fs::read_to_string(&telemetry_path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        let failure = telemetry_entries
+            .iter()
+            .find(|entry| {
+                entry.get("action_type").and_then(serde_json::Value::as_str)
+                    == Some("artifact_hash_compute")
+                    && entry.get("success").and_then(serde_json::Value::as_bool) == Some(false)
+            })
+            .expect("failed artifact_hash_compute telemetry entry");
+        assert_eq!(
+            failure.get("error").and_then(serde_json::Value::as_str),
+            Some(
+                count_message
+                    .strip_prefix("checkpoint: ")
+                    .unwrap_or(&count_message)
+            )
+        );
+
+        std::fs::remove_file(over_limit_path).unwrap();
+        let path_error = vas::walk_files_for_checkpoint(dir.path().to_str().unwrap())
+            .await
+            .unwrap_err()
+            .into_agent_error();
+        let path_message = path_error.to_string();
+        assert!(
+            path_message.contains("candidate UTF-8 path bytes"),
+            "got: {path_message}"
+        );
+        assert!(
+            path_message.contains(&format!("/{STORAGE_MANIFEST_MAX_PATH_BYTES}")),
+            "got: {path_message}"
+        );
+        assert!(
+            !path_message.contains(&format!(
+                "candidate files {}/{STORAGE_MANIFEST_MAX_FILES}",
+                STORAGE_MANIFEST_MAX_FILES + 1
+            )),
+            "path-byte limit must fail before the file-count limit: {path_message}"
+        );
     }
 
     #[tokio::test]

@@ -160,3 +160,14 @@ pub mod runners {
         pub const CANONICAL_WORKING_DIR: &str = "/home/user/workspace";
     }
 }
+
+/// Storage manifest contract constants shared by TypeScript and Rust.
+pub mod storages {
+    /// Maximum file entries accepted in a storage manifest.
+    /// Guest artifact checkpointing and TypeScript storage webhook validation use this shared limit.
+    pub const STORAGE_MANIFEST_MAX_FILES: u64 = 50000;
+
+    /// Maximum cumulative UTF-8 path bytes accepted in a storage manifest.
+    /// Guest artifact checkpointing and TypeScript storage webhook validation use this shared limit.
+    pub const STORAGE_MANIFEST_MAX_PATH_BYTES: u64 = 8388608;
+}

@@ -6,6 +6,16 @@ import { z } from "zod";
 export const MAX_FILE_SIZE_BYTES = 104_857_600;
 
 /**
+ * Maximum file entries accepted in a storage manifest.
+ */
+export const STORAGE_MANIFEST_MAX_FILES = 50_000;
+
+/**
+ * Maximum cumulative UTF-8 path bytes accepted in a storage manifest.
+ */
+export const STORAGE_MANIFEST_MAX_PATH_BYTES = 8 * 1024 * 1024;
+
+/**
  * File entry with hash for content-addressable storage.
  */
 export const fileEntryWithHashSchema = z.object({
@@ -17,6 +27,33 @@ export const fileEntryWithHashSchema = z.object({
     .min(0, "Size must be non-negative")
     .max(MAX_FILE_SIZE_BYTES, "File size exceeds 100MB limit"),
 });
+
+const storageManifestPathEncoder = new TextEncoder();
+
+/**
+ * Bounded file entries for storage prepare and commit manifests.
+ */
+export const storageManifestFilesSchema = z
+  .array(fileEntryWithHashSchema)
+  .max(
+    STORAGE_MANIFEST_MAX_FILES,
+    `Storage manifest exceeds ${STORAGE_MANIFEST_MAX_FILES} files`,
+  )
+  .refine(
+    (files) => {
+      let pathBytes = 0;
+      for (const file of files) {
+        pathBytes += storageManifestPathEncoder.encode(file.path).byteLength;
+        if (pathBytes > STORAGE_MANIFEST_MAX_PATH_BYTES) {
+          return false;
+        }
+      }
+      return true;
+    },
+    {
+      message: `Storage manifest paths exceed ${STORAGE_MANIFEST_MAX_PATH_BYTES} UTF-8 bytes`,
+    },
+  );
 
 /**
  * Incremental changes for partial uploads.
