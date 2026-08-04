@@ -43,10 +43,7 @@ import {
   mockTestOAuthDeviceConnectorProvider,
   requestOauthCallbackRaw,
 } from "./helpers/api-bdd-connectors";
-import {
-  seedConnectorStorageRow,
-  setConnectorSecretOwner,
-} from "./helpers/connector-credential-storage-state";
+import { readUserSecrets } from "./helpers/user-config-state";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 
 const context = testContext();
@@ -250,45 +247,16 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
       }),
     );
 
-    const secretList = await authOrgApi.listSecrets(actor);
+    const storedSecrets = await readUserSecrets(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+    });
     expect(
-      secretList.secrets.find((secret) => {
+      storedSecrets.find((secret) => {
         return secret.name === "OPENAI_TOKEN";
       }),
-    ).toMatchObject({
-      type: "connector",
-      connectorDisplay: {
-        label: "OpenAI",
-        environmentNames: ["OPENAI_TOKEN"],
-      },
-    });
-    expectNoVisibleSecret(secretList, "sk-bdd-manual-secret");
-
-    const foreignConnectorId = await seedConnectorStorageRow(context, {
-      authMethod: "oauth",
-      connectorSlug: "github",
-      orgId: actor.orgId ?? "",
-      storageVersion: 1,
-      userId: actor.userId,
-    });
-    await setConnectorSecretOwner(context, {
-      connectorId: foreignConnectorId,
-      name: "OPENAI_TOKEN",
-      orgId: actor.orgId ?? "",
-      userId: actor.userId,
-    });
-    const wrongOwnerSecretList = await authOrgApi.listSecrets(actor);
-    expect(
-      wrongOwnerSecretList.secrets.find((secret) => {
-        return secret.name === "OPENAI_TOKEN";
-      })?.connectorDisplay,
-    ).toBeNull();
-    await setConnectorSecretOwner(context, {
-      connectorId: connected.id,
-      name: "OPENAI_TOKEN",
-      orgId: actor.orgId ?? "",
-      userId: actor.userId,
-    });
+    ).toMatchObject({ type: "connector" });
+    expectNoVisibleSecret(storedSecrets, "sk-bdd-manual-secret");
 
     await expect(
       connectorsApi.readScopeDiff(actor, "openai"),

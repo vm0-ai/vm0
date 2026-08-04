@@ -198,29 +198,21 @@ delete_e2e_agent() {
     e2e_api_curl "/api/zero/agents/$agent_id" -X DELETE >/dev/null
 }
 
-delete_e2e_secret() {
-    local secret_name="$1"
-    local encoded_name
-    encoded_name=$(jq -rn --arg value "$secret_name" '$value | @uri')
-    e2e_api_curl "/api/zero/secrets/$encoded_name" -X DELETE >/dev/null
-}
-
+# Plain user variables lost their write API in #25011. Seed them through the
+# deployed test fixture route, which is the only remaining write path.
 set_e2e_variable() {
     local variable_name="$1"
     local variable_value="$2"
-    local payload
+    local org_id user_id payload
+    org_id=$(e2e_api_curl "/api/zero/org" | jq -r '.id') || return 1
+    user_id=$(e2e_api_curl "/api/auth/me" | jq -r '.userId') || return 1
     payload=$(jq -nc \
+        --arg orgId "$org_id" \
+        --arg userId "$user_id" \
         --arg name "$variable_name" \
         --arg value "$variable_value" \
-        '{name: $name, value: $value}')
-    e2e_api_curl "/api/zero/variables" -X POST -d "$payload" >/dev/null
-}
-
-delete_e2e_variable() {
-    local variable_name="$1"
-    local encoded_name
-    encoded_name=$(jq -rn --arg value "$variable_name" '$value | @uri')
-    e2e_api_curl "/api/zero/variables/$encoded_name" -X DELETE >/dev/null
+        '{action: "set-variable", org_id: $orgId, user_id: $userId, name: $name, value: $value}')
+    e2e_api_curl "/api/test/user-config-state/action" -X POST -d "$payload" >/dev/null
 }
 
 set_e2e_timezone() {

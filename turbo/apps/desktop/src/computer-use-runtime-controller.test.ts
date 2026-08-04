@@ -15,7 +15,7 @@ const GRANTED_PERMISSIONS: ComputerUsePermissionState = {
 const SIGNED_IN_AUTH_STATE: DesktopAuthState = {
   status: "signed_in",
   user: { userId: "user-1", email: "user@vm0.ai" },
-  organization: { id: "org-1", name: "vm0", slug: null },
+  organization: { id: "org-1", name: "vm0" },
 };
 
 function hostState(

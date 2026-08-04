@@ -10,41 +10,13 @@ export { ApiRequestError } from "./core/client-factory";
 export { getRegistryResourceDownload } from "./domains/registry-resources";
 
 // Domain modules - Zero Organizations
-export {
-  getZeroOrg,
-  listZeroOrgs,
-  getZeroOrgMembers,
-  inviteZeroOrgMember,
-  removeZeroOrgMember,
-  leaveZeroOrg,
-} from "./domains/zero-orgs";
+export { getZeroOrg } from "./domains/zero-orgs";
 
 // Domain modules - Zero Billing
 export {
   getZeroBillingStatus,
   createZeroCreditCheckout,
 } from "./domains/zero-billing";
-
-// Domain modules - Zero Org Secrets
-export {
-  listZeroOrgSecrets,
-  setZeroOrgSecret,
-  deleteZeroOrgSecret,
-} from "./domains/zero-org-secrets";
-
-// Domain modules - Zero Org Variables
-export {
-  listZeroOrgVariables,
-  setZeroOrgVariable,
-  deleteZeroOrgVariable,
-} from "./domains/zero-org-variables";
-
-// Domain modules - Zero Org Model Providers
-export {
-  listZeroOrgModelProviders,
-  upsertZeroOrgModelProvider,
-  deleteZeroOrgModelProvider,
-} from "./domains/zero-org-model-providers";
 
 // Domain modules - Zero Model Policies
 export { listZeroModelPolicies } from "./domains/zero-model-policies";

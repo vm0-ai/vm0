@@ -89,13 +89,6 @@ type FeatureSwitchOverrides = Partial<Record<FeatureSwitchKey, boolean>>;
 
 export const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   {
-    name: "org",
-    description: "Manage organization settings, members, and providers",
-    load: async () => {
-      return (await import("./commands/zero/org")).zeroOrgCommand;
-    },
-  },
-  {
     name: "model",
     description: "List available models and model-switching guidance",
     load: async () => {

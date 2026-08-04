@@ -480,3 +480,774 @@ pub mod webhooks {
         }
     }
 }
+
+/// Native Zero CLI request and response DTOs.
+pub mod zero {
+    /// Managed banking gateway DTOs for the native Zero CLI.
+    pub mod banking {
+        /// Empty request body for listing managed bank accounts.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct AccountsRequest {}
+
+        /// One bank account returned by the managed provider.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct AccountsResponseAccount {
+            /// Provider account identifier.
+            pub id: String,
+            /// Optional account display name.
+            pub name: Option<String>,
+            /// Optional financial institution name.
+            pub institution_name: Option<String>,
+            /// Optional provider account type.
+            #[serde(rename = "type")]
+            pub type_: Option<String>,
+            /// Optional last four account digits.
+            pub last4: Option<String>,
+            /// Optional provider account status.
+            pub status: Option<String>,
+            /// Optional account currency code.
+            pub currency: Option<String>,
+        }
+
+        /// Managed bank account listing response.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct AccountsResponse {
+            /// Banking operation that produced this response.
+            pub operation: String,
+            /// Managed banking provider identifier.
+            pub provider: String,
+            /// Bank accounts returned by the provider.
+            pub accounts: Vec<AccountsResponseAccount>,
+        }
+
+        /// Request body for a managed bank balance lookup.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct BalancesRequest {
+            /// Provider account identifier.
+            pub account_id: String,
+        }
+
+        /// Current balance information for one bank account.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct BalancesResponseBalance {
+            /// Provider account identifier.
+            pub account_id: String,
+            /// Optional account display name.
+            pub name: Option<String>,
+            /// Optional provider account type.
+            #[serde(rename = "type")]
+            pub type_: Option<String>,
+            /// Optional current account balance.
+            pub balance: Option<f64>,
+            /// Optional currently available balance.
+            pub available_balance: Option<f64>,
+            /// Optional balance currency code.
+            pub currency: Option<String>,
+            /// Optional provider balance timestamp.
+            pub balance_date: Option<f64>,
+        }
+
+        /// Managed bank balance response.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct BalancesResponse {
+            /// Banking operation that produced this response.
+            pub operation: String,
+            /// Managed banking provider identifier.
+            pub provider: String,
+            /// Current account balance information.
+            pub balance: BalancesResponseBalance,
+        }
+
+        /// Request body for managed bank transactions.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct TransactionsRequest {
+            /// Provider account identifier.
+            pub account_id: String,
+            /// Inclusive start date formatted as YYYY-MM-DD.
+            pub from: String,
+            /// Inclusive end date formatted as YYYY-MM-DD.
+            pub to: String,
+            /// Maximum number of transactions to return.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub limit: Option<u64>,
+        }
+
+        /// One bank transaction returned by the managed provider.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct TransactionsResponseTransaction {
+            /// Provider transaction identifier.
+            pub id: String,
+            /// Provider account identifier.
+            pub account_id: String,
+            /// Optional signed transaction amount.
+            pub amount: Option<f64>,
+            /// Optional transaction description.
+            pub description: Option<String>,
+            /// Optional transaction memo.
+            pub memo: Option<String>,
+            /// Optional provider posted timestamp.
+            pub posted_date: Option<f64>,
+            /// Optional provider transaction timestamp.
+            pub transaction_date: Option<f64>,
+            /// Optional provider transaction status.
+            pub status: Option<String>,
+            /// Optional provider categorization.
+            pub categorization: Option<String>,
+            /// Optional merchant description.
+            pub merchant: Option<String>,
+        }
+
+        /// Managed bank transaction response.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct TransactionsResponse {
+            /// Banking operation that produced this response.
+            pub operation: String,
+            /// Managed banking provider identifier.
+            pub provider: String,
+            /// Provider account identifier.
+            pub account_id: String,
+            /// Transactions returned by the provider.
+            pub transactions: Vec<TransactionsResponseTransaction>,
+        }
+    }
+
+    /// Managed financial data DTOs for the native Zero CLI.
+    pub mod finance {
+        /// Historical range requested for a market chart.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum ChartRequestRange {
+            /// Chart range `1d`.
+            #[serde(rename = "1d")]
+            V1d,
+            /// Chart range `5d`.
+            #[serde(rename = "5d")]
+            V5d,
+            /// Chart range `1mo`.
+            #[serde(rename = "1mo")]
+            V1mo,
+            /// Chart range `3mo`.
+            #[serde(rename = "3mo")]
+            V3mo,
+            /// Chart range `6mo`.
+            #[serde(rename = "6mo")]
+            V6mo,
+            /// Chart range `1y`.
+            #[serde(rename = "1y")]
+            V1y,
+            /// Chart range `2y`.
+            #[serde(rename = "2y")]
+            V2y,
+            /// Chart range `5y`.
+            #[serde(rename = "5y")]
+            V5y,
+            /// Chart range `10y`.
+            #[serde(rename = "10y")]
+            V10y,
+            /// Chart range `ytd`.
+            #[serde(rename = "ytd")]
+            Ytd,
+            /// Chart range `max`.
+            #[serde(rename = "max")]
+            Max,
+        }
+
+        /// Sampling interval requested for a market chart.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum ChartRequestInterval {
+            /// Chart interval `1m`.
+            #[serde(rename = "1m")]
+            V1m,
+            /// Chart interval `2m`.
+            #[serde(rename = "2m")]
+            V2m,
+            /// Chart interval `5m`.
+            #[serde(rename = "5m")]
+            V5m,
+            /// Chart interval `15m`.
+            #[serde(rename = "15m")]
+            V15m,
+            /// Chart interval `30m`.
+            #[serde(rename = "30m")]
+            V30m,
+            /// Chart interval `60m`.
+            #[serde(rename = "60m")]
+            V60m,
+            /// Chart interval `1d`.
+            #[serde(rename = "1d")]
+            V1d,
+            /// Chart interval `1wk`.
+            #[serde(rename = "1wk")]
+            V1wk,
+            /// Chart interval `1mo`.
+            #[serde(rename = "1mo")]
+            V1mo,
+        }
+
+        /// Request body for market chart data.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ChartRequest {
+            /// Provider-supported financial instrument symbol.
+            pub symbol: String,
+            /// Historical range to return.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub range: Option<ChartRequestRange>,
+            /// Sampling interval for chart points.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub interval: Option<ChartRequestInterval>,
+        }
+
+        /// Request body for a company profile lookup.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ProfileRequest {
+            /// Provider-supported financial instrument symbol.
+            pub symbol: String,
+        }
+
+        /// Request body for a market quote lookup.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct QuoteRequest {
+            /// Provider-supported financial instrument symbol.
+            pub symbol: String,
+        }
+
+        /// Managed financial data operation that produced a response.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum ResponseOperation {
+            /// Finance operation `search`.
+            #[serde(rename = "search")]
+            Search,
+            /// Finance operation `profile`.
+            #[serde(rename = "profile")]
+            Profile,
+            /// Finance operation `quote`.
+            #[serde(rename = "quote")]
+            Quote,
+            /// Finance operation `chart`.
+            #[serde(rename = "chart")]
+            Chart,
+        }
+
+        /// Managed financial data response.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct Response {
+            /// Financial data operation that produced this response.
+            pub operation: ResponseOperation,
+            /// Managed financial data provider identifier.
+            pub provider: String,
+            /// Billing category for the request.
+            pub billing_category: String,
+            /// Provider billing quantity for the request.
+            pub billing_quantity: i64,
+            /// Workspace credits charged for the request.
+            pub credits_charged: u64,
+            /// Opaque provider result for the selected operation.
+            pub result: serde_json::Value,
+        }
+
+        /// Request body for financial instrument search.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct SearchRequest {
+            /// Financial instrument search query.
+            pub query: String,
+        }
+    }
+
+    /// Managed professional search DTOs for the native Zero CLI.
+    pub mod people_search {
+        /// Request body for managed professional search.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct Request {
+            /// Natural-language professional search query.
+            pub query: String,
+            /// Maximum number of profiles to return.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub limit: Option<u64>,
+        }
+
+        /// Provider-backed source supporting a professional profile.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseProfileSource {
+            /// Source page title.
+            pub title: String,
+            /// Public HTTP or HTTPS source URL.
+            pub url: String,
+        }
+
+        /// Professional profile extracted by the managed provider.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseProfile {
+            /// Professional's name.
+            pub name: String,
+            /// Optional current role or title.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub title: Option<String>,
+            /// Optional current employer.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub company: Option<String>,
+            /// Optional reported location.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub location: Option<String>,
+            /// Optional provider-extracted profile summary.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub summary: Option<String>,
+            /// Provider-backed sources for this profile.
+            pub sources: Vec<ResponseProfileSource>,
+        }
+
+        /// Managed professional search response.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct Response {
+            /// Normalized query sent to the provider.
+            pub query: String,
+            /// Requested result limit.
+            pub limit: u64,
+            /// Managed professional search provider identifier.
+            pub provider: String,
+            /// Billing category for the request.
+            pub billing_category: String,
+            /// Provider billing quantity for the request.
+            pub billing_quantity: i64,
+            /// Workspace credits charged for the request.
+            pub credits_charged: u64,
+            /// Professional profiles returned by the provider.
+            pub profiles: Vec<ResponseProfile>,
+        }
+    }
+
+    /// Managed public page scraping DTOs for the native Zero CLI.
+    pub mod scrape {
+        /// Requested Zero Scrape response format.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum RequestFormat {
+            /// Return extracted Markdown content.
+            #[serde(rename = "markdown")]
+            Markdown,
+            /// Return links extracted from the page.
+            #[serde(rename = "links")]
+            Links,
+        }
+
+        /// Managed Zero Scrape processing mode.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum RequestMode {
+            /// Use standard page extraction.
+            #[serde(rename = "standard")]
+            Standard,
+            /// Use enhanced page extraction.
+            #[serde(rename = "enhanced")]
+            Enhanced,
+        }
+
+        /// Request body for managed Zero Scrape.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct Request {
+            /// Public HTTP or HTTPS URL to scrape.
+            pub url: String,
+            /// Requested response format.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub format: Option<RequestFormat>,
+            /// Requested scrape processing mode.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub mode: Option<RequestMode>,
+        }
+
+        /// Optional page metadata returned by Zero Scrape.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseStandardMarkdownMetadata {
+            /// Optional document title.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub title: Option<String>,
+            /// Optional document description.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub description: Option<String>,
+            /// Optional detected document language.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub language: Option<String>,
+            /// Optional upstream HTTP status code.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub status_code: Option<i64>,
+            /// Optional source publication timestamp.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub published_time: Option<String>,
+        }
+
+        /// Literal discriminator for the `ResponseStandardMarkdownBillingCategory` wire contract.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum ResponseStandardMarkdownBillingCategory {
+            /// The `standard.markdown` wire value.
+            #[serde(rename = "standard.markdown")]
+            StandardMarkdown,
+        }
+
+        /// Format-specific content returned by Zero Scrape.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseStandardMarkdownResult {
+            /// Extracted page content as Markdown.
+            pub markdown: String,
+        }
+
+        /// One billed Zero Scrape response branch.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseStandardMarkdown {
+            /// URL submitted to the managed scrape service.
+            pub requested_url: String,
+            /// Optional final URL after redirects.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub final_url: Option<String>,
+            /// Managed scrape provider identifier.
+            pub provider: String,
+            /// Workspace credits charged for this request.
+            pub credits_charged: u64,
+            /// Provider billing quantity for this request.
+            pub billing_quantity: i64,
+            /// Optional metadata extracted from the page.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub metadata: Option<ResponseStandardMarkdownMetadata>,
+            /// Response content format.
+            pub format: String,
+            /// Managed scrape processing mode.
+            pub mode: String,
+            /// Billing category for the selected format and mode.
+            pub billing_category: ResponseStandardMarkdownBillingCategory,
+            /// Format-specific scrape result.
+            pub result: ResponseStandardMarkdownResult,
+        }
+
+        /// Optional page metadata returned by Zero Scrape.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseEnhancedMarkdownMetadata {
+            /// Optional document title.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub title: Option<String>,
+            /// Optional document description.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub description: Option<String>,
+            /// Optional detected document language.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub language: Option<String>,
+            /// Optional upstream HTTP status code.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub status_code: Option<i64>,
+            /// Optional source publication timestamp.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub published_time: Option<String>,
+        }
+
+        /// Literal discriminator for the `ResponseEnhancedMarkdownBillingCategory` wire contract.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum ResponseEnhancedMarkdownBillingCategory {
+            /// The `enhanced.markdown` wire value.
+            #[serde(rename = "enhanced.markdown")]
+            EnhancedMarkdown,
+        }
+
+        /// Format-specific content returned by Zero Scrape.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseEnhancedMarkdownResult {
+            /// Extracted page content as Markdown.
+            pub markdown: String,
+        }
+
+        /// One billed Zero Scrape response branch.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseEnhancedMarkdown {
+            /// URL submitted to the managed scrape service.
+            pub requested_url: String,
+            /// Optional final URL after redirects.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub final_url: Option<String>,
+            /// Managed scrape provider identifier.
+            pub provider: String,
+            /// Workspace credits charged for this request.
+            pub credits_charged: u64,
+            /// Provider billing quantity for this request.
+            pub billing_quantity: i64,
+            /// Optional metadata extracted from the page.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub metadata: Option<ResponseEnhancedMarkdownMetadata>,
+            /// Response content format.
+            pub format: String,
+            /// Managed scrape processing mode.
+            pub mode: String,
+            /// Billing category for the selected format and mode.
+            pub billing_category: ResponseEnhancedMarkdownBillingCategory,
+            /// Format-specific scrape result.
+            pub result: ResponseEnhancedMarkdownResult,
+        }
+
+        /// Optional page metadata returned by Zero Scrape.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseStandardLinksMetadata {
+            /// Optional document title.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub title: Option<String>,
+            /// Optional document description.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub description: Option<String>,
+            /// Optional detected document language.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub language: Option<String>,
+            /// Optional upstream HTTP status code.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub status_code: Option<i64>,
+            /// Optional source publication timestamp.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub published_time: Option<String>,
+        }
+
+        /// Literal discriminator for the `ResponseStandardLinksBillingCategory` wire contract.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum ResponseStandardLinksBillingCategory {
+            /// The `standard.links` wire value.
+            #[serde(rename = "standard.links")]
+            StandardLinks,
+        }
+
+        /// Format-specific content returned by Zero Scrape.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseStandardLinksResult {
+            /// Links extracted from the page.
+            pub links: Vec<String>,
+        }
+
+        /// One billed Zero Scrape response branch.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseStandardLinks {
+            /// URL submitted to the managed scrape service.
+            pub requested_url: String,
+            /// Optional final URL after redirects.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub final_url: Option<String>,
+            /// Managed scrape provider identifier.
+            pub provider: String,
+            /// Workspace credits charged for this request.
+            pub credits_charged: u64,
+            /// Provider billing quantity for this request.
+            pub billing_quantity: i64,
+            /// Optional metadata extracted from the page.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub metadata: Option<ResponseStandardLinksMetadata>,
+            /// Response content format.
+            pub format: String,
+            /// Managed scrape processing mode.
+            pub mode: String,
+            /// Billing category for the selected format and mode.
+            pub billing_category: ResponseStandardLinksBillingCategory,
+            /// Format-specific scrape result.
+            pub result: ResponseStandardLinksResult,
+        }
+
+        /// Optional page metadata returned by Zero Scrape.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseEnhancedLinksMetadata {
+            /// Optional document title.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub title: Option<String>,
+            /// Optional document description.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub description: Option<String>,
+            /// Optional detected document language.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub language: Option<String>,
+            /// Optional upstream HTTP status code.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub status_code: Option<i64>,
+            /// Optional source publication timestamp.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub published_time: Option<String>,
+        }
+
+        /// Literal discriminator for the `ResponseEnhancedLinksBillingCategory` wire contract.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum ResponseEnhancedLinksBillingCategory {
+            /// The `enhanced.links` wire value.
+            #[serde(rename = "enhanced.links")]
+            EnhancedLinks,
+        }
+
+        /// Format-specific content returned by Zero Scrape.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseEnhancedLinksResult {
+            /// Links extracted from the page.
+            pub links: Vec<String>,
+        }
+
+        /// One billed Zero Scrape response branch.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseEnhancedLinks {
+            /// URL submitted to the managed scrape service.
+            pub requested_url: String,
+            /// Optional final URL after redirects.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub final_url: Option<String>,
+            /// Managed scrape provider identifier.
+            pub provider: String,
+            /// Workspace credits charged for this request.
+            pub credits_charged: u64,
+            /// Provider billing quantity for this request.
+            pub billing_quantity: i64,
+            /// Optional metadata extracted from the page.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub metadata: Option<ResponseEnhancedLinksMetadata>,
+            /// Response content format.
+            pub format: String,
+            /// Managed scrape processing mode.
+            pub mode: String,
+            /// Billing category for the selected format and mode.
+            pub billing_category: ResponseEnhancedLinksBillingCategory,
+            /// Format-specific scrape result.
+            pub result: ResponseEnhancedLinksResult,
+        }
+
+        /// Strongly typed managed Zero Scrape response.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(untagged)]
+        pub enum Response {
+            /// Standard Markdown scrape response.
+            StandardMarkdown(ResponseStandardMarkdown),
+            /// Enhanced Markdown scrape response.
+            EnhancedMarkdown(ResponseEnhancedMarkdown),
+            /// Standard link extraction response.
+            StandardLinks(ResponseStandardLinks),
+            /// Enhanced link extraction response.
+            EnhancedLinks(ResponseEnhancedLinks),
+        }
+    }
+
+    /// Managed public web search DTOs for the native Zero CLI.
+    pub mod web_search {
+        /// Optional recency window for public web search.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum RequestRecency {
+            /// Recency window `hour`.
+            #[serde(rename = "hour")]
+            Hour,
+            /// Recency window `day`.
+            #[serde(rename = "day")]
+            Day,
+            /// Recency window `week`.
+            #[serde(rename = "week")]
+            Week,
+            /// Recency window `month`.
+            #[serde(rename = "month")]
+            Month,
+            /// Recency window `year`.
+            #[serde(rename = "year")]
+            Year,
+        }
+
+        /// Request body for managed public web search.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct Request {
+            /// Public web search query.
+            pub query: String,
+            /// Maximum number of results to return.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub limit: Option<u64>,
+            /// Optional publication recency window.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub recency: Option<RequestRecency>,
+            /// Optional domain allowlist for the search.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub domains: Option<Vec<String>>,
+        }
+
+        /// Applied recency window for public web search.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum ResponseRecency {
+            /// Recency window `hour`.
+            #[serde(rename = "hour")]
+            Hour,
+            /// Recency window `day`.
+            #[serde(rename = "day")]
+            Day,
+            /// Recency window `week`.
+            #[serde(rename = "week")]
+            Week,
+            /// Recency window `month`.
+            #[serde(rename = "month")]
+            Month,
+            /// Recency window `year`.
+            #[serde(rename = "year")]
+            Year,
+        }
+
+        /// One ranked public web search result.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResponseResult {
+            /// One-based provider result rank.
+            pub rank: u64,
+            /// Result page title.
+            pub title: String,
+            /// Public HTTP or HTTPS result URL.
+            pub url: String,
+            /// Provider-returned result snippet.
+            pub snippet: String,
+            /// Optional source publication date.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub published_date: Option<String>,
+            /// Optional source update date.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub last_updated_date: Option<String>,
+        }
+
+        /// Managed public web search response.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct Response {
+            /// Normalized query sent to the provider.
+            pub query: String,
+            /// Requested result limit.
+            pub limit: u64,
+            /// Optional applied publication recency window.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub recency: Option<ResponseRecency>,
+            /// Optional applied domain allowlist.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub domains: Option<Vec<String>>,
+            /// Managed web search provider identifier.
+            pub provider: String,
+            /// Billing category for the request.
+            pub billing_category: String,
+            /// Provider billing quantity for the request.
+            pub billing_quantity: i64,
+            /// Workspace credits charged for the request.
+            pub credits_charged: u64,
+            /// Ranked public web search results.
+            pub results: Vec<ResponseResult>,
+        }
+    }
+}

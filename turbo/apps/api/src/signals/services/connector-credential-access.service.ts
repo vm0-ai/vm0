@@ -1,7 +1,6 @@
 import {
   connectorAuthMethodOwnedSecretNames,
   connectorAuthMethodOwnedVariableNames,
-  connectorAuthMethodRuntimeMetadata,
 } from "@vm0/connectors/connector-auth-method";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
@@ -224,40 +223,4 @@ export function connectorCredentialVariableReadCondition(args: {
     ];
   });
   return conditions.length === 0 ? isNull(variables.id) : or(...conditions);
-}
-
-export function connectorCredentialStoredSecretDisplayInfo(args: {
-  readonly access: ConnectorCredentialAccess;
-  readonly name: string;
-  readonly snapshot: ConnectorRuntimeSnapshot;
-}): {
-  readonly environmentNames: readonly string[];
-  readonly label: string;
-} | null {
-  if (
-    !connectorAuthMethodOwnedSecretNames(
-      args.access.runtimeMethod.method,
-    ).includes(args.name)
-  ) {
-    return null;
-  }
-  const connector = args.snapshot.connectors.get(args.access.connectorSlug);
-  if (connector === undefined) {
-    return null;
-  }
-  const environmentNames = [
-    ...new Set(
-      connectorAuthMethodRuntimeMetadata(
-        args.access.runtimeMethod.method,
-      ).runtimeBindings.flatMap((binding) => {
-        return binding.source.kind === "connector-secret" &&
-          binding.source.name === args.name
-          ? [binding.envName]
-          : [];
-      }),
-    ),
-  ];
-  return environmentNames.length === 0
-    ? null
-    : { environmentNames, label: connector.catalogConnector.label };
 }

@@ -18,7 +18,6 @@ interface AuthMeResponse {
 interface ZeroOrgResponse {
   readonly id: string;
   readonly name: string;
-  readonly slug?: string;
 }
 
 /**
@@ -201,7 +200,6 @@ export class DesktopAuthSession {
       organization: {
         id: organization.id,
         name: organization.name,
-        slug: organization.slug ?? null,
       },
     };
   }

@@ -11,7 +11,6 @@ export interface DesktopAuthUser {
 export interface DesktopAuthOrganization {
   readonly id: string;
   readonly name: string;
-  readonly slug: string | null;
 }
 
 export type DesktopAuthState =

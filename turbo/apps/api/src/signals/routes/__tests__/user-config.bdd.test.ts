@@ -15,7 +15,7 @@ import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 /*
 Round-5 cluster auth-03 (AUTH-01/AUTH-03): user-owned configuration plus the
 auth probe matrix. State is constructed only through public APIs (onboarding,
-CLI auth, secrets, variables, agents, composes); the only mocks are the Clerk
+CLI auth, agents, composes); the only mocks are the Clerk
 SDK boundary and the S3 accept for agent creation. Sandbox/zero/forged-PAT
 bearers are minted with the exported test token signers (api-bdd-github and
 api-bdd-computer-use precedent).
@@ -35,10 +35,6 @@ function shortId(): string {
 
 function slug(prefix: string): string {
   return `${prefix}-${shortId()}`;
-}
-
-function upperName(prefix: string): string {
-  return `${prefix}_${shortId().toUpperCase()}`;
 }
 
 async function onboardAdmin(
@@ -63,81 +59,9 @@ async function onboardAdmin(
 }
 
 describe("AUTH-03 user config CRUD error boundaries", () => {
-  it("isolates secret and variable deletion across users and missing names", async () => {
-    const admin = api.user();
-    const member = api.user({ orgId: admin.orgId, orgRole: "org:member" });
-    await onboardAdmin(admin, { slug: slug("bdd-uc-a1") });
-
-    const secretName = upperName("BDD_UC_SECRET");
-    await api.setSecret(admin, {
-      name: secretName,
-      value: "uc-secret-value",
-    });
-    const missingSecret = await cfg.requestDeleteSecret(
-      admin,
-      "NONEXISTENT",
-      [404],
-    );
-    expectApiError(missingSecret.body);
-    expect(missingSecret.body.error).toStrictEqual({
-      message: 'Secret "NONEXISTENT" not found',
-      code: "NOT_FOUND",
-    });
-    const crossUserSecret = await cfg.requestDeleteSecret(
-      member,
-      secretName,
-      [404],
-    );
-    expectApiError(crossUserSecret.body);
-    expect(crossUserSecret.body.error.code).toBe("NOT_FOUND");
-    const secretsAfter = await api.listSecrets(admin);
-    expect(
-      secretsAfter.secrets.some((candidate) => {
-        return candidate.name === secretName;
-      }),
-    ).toBeTruthy();
-
-    const variableName = upperName("BDD_UC_VARIABLE");
-    await api.setVariable(admin, {
-      name: variableName,
-      value: "uc-variable-value",
-    });
-    const missingVariable = await cfg.requestDeleteVariable(
-      admin,
-      "NONEXISTENT",
-      [404],
-    );
-    expectApiError(missingVariable.body);
-    expect(missingVariable.body.error).toStrictEqual({
-      message: 'Variable "NONEXISTENT" not found',
-      code: "NOT_FOUND",
-    });
-    const crossUserVariable = await cfg.requestDeleteVariable(
-      member,
-      variableName,
-      [404],
-    );
-    expectApiError(crossUserVariable.body);
-    expect(crossUserVariable.body.error.code).toBe("NOT_FOUND");
-    const variablesAfter = await api.listVariables(admin);
-    expect(
-      variablesAfter.variables.some((candidate) => {
-        return candidate.name === variableName;
-      }),
-    ).toBeTruthy();
-  });
-
   it("rejects invalid config bodies with 400s", async () => {
     const admin = api.user();
     await onboardAdmin(admin, { slug: slug("bdd-uc-a2") });
-
-    const invalidVariable = await cfg.requestSetVariable(
-      admin,
-      { name: "invalid name", value: "v" },
-      [400],
-    );
-    expectApiError(invalidVariable.body);
-    expect(invalidVariable.body.error.code).toBe("BAD_REQUEST");
 
     const invalidPush = await cfg.requestRegisterPush(
       admin,
