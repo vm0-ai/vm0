@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use vsock_proto::{
     self, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecStartEncodeRequest,
     ExecTermination, ExecTimeoutPolicy,
@@ -129,7 +130,7 @@ fn exec_operation_returns_when_grandchild_holds_stdin_without_reading() {
     assert_eq!(result.stderr, Some(Vec::new()));
     assert!(result.diagnostic.is_empty());
     assert!(
-        elapsed < Duration::from_secs(DRAIN_DEADLINE_SECS),
+        elapsed < EXEC_OUTPUT_DRAIN_DEADLINE,
         "exec result should not wait for an inherited stdin pipe, took {elapsed:?}",
     );
     finish_guest_connection(handle, host_stream);

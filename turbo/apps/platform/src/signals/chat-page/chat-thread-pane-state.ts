@@ -1,26 +1,26 @@
 import { command, computed, state } from "ccstate";
 
-import type { ChatThreadSignals } from "./chat-thread-signals.ts";
+import type { ChatPanelSignals } from "./chat-panel-signals.ts";
 
-const internalLeftThread$ = state<ChatThreadSignals | null>(null);
-const internalRightThread$ = state<ChatThreadSignals | null>(null);
+const internalLeftThread$ = state<ChatPanelSignals | null>(null);
+const internalRightThread$ = state<ChatPanelSignals | null>(null);
 
-export const currentLeftThread$ = computed((get): ChatThreadSignals | null => {
+export const currentLeftThread$ = computed((get): ChatPanelSignals | null => {
   return get(internalLeftThread$);
 });
 
-export const currentRightThread$ = computed((get): ChatThreadSignals | null => {
+export const currentRightThread$ = computed((get): ChatPanelSignals | null => {
   return get(internalRightThread$);
 });
 
 export const setCurrentLeftThread$ = command(
-  ({ set }, thread: ChatThreadSignals | null) => {
+  ({ set }, thread: ChatPanelSignals | null) => {
     set(internalLeftThread$, thread);
   },
 );
 
 export const setCurrentRightThread$ = command(
-  ({ set }, thread: ChatThreadSignals | null) => {
+  ({ set }, thread: ChatPanelSignals | null) => {
     set(internalRightThread$, thread);
   },
 );

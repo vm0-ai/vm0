@@ -16,7 +16,7 @@ import {
   artifactRefFromUrl,
   openThreadArtifacts$,
 } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
-import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
+import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import type {
   ThreadSidebarArtifactSource,
   ThreadSidebarTarget,
@@ -50,7 +50,7 @@ const THREAD_SIDEBAR_FULLSCREEN_CLASSNAME =
  * first-page refresh plus realtime catalog updates). Entry buttons and the
  * detail's Back action share this hook so the session always starts.
  */
-export function useOpenThreadArtifacts(thread: ChatThreadSignals): () => void {
+export function useOpenThreadArtifacts(thread: ChatPanelSignals): () => void {
   const open = useSet(openThreadArtifacts$);
   const setupSession = useSet(thread.sidebar.setupArtifactsSession$);
   const pageSignal = useGet(pageSignal$);
@@ -135,7 +135,7 @@ function ThreadSidebarHeader({
   );
 }
 
-function ThreadArtifactsPanel({ thread }: { thread: ChatThreadSignals }) {
+function ThreadArtifactsPanel({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const sidebar = thread.sidebar;
   const catalogLoadable = useLastLoadable(sidebar.artifactCatalog.catalog$);
@@ -227,7 +227,7 @@ function ThreadArtifactUnavailable({
   thread,
   showBack,
 }: {
-  readonly thread: ChatThreadSignals;
+  readonly thread: ChatPanelSignals;
   readonly showBack: boolean;
 }) {
   const { t } = useTranslation();
@@ -261,7 +261,7 @@ function ThreadArtifactDetail({
   thread,
   source,
 }: {
-  readonly thread: ChatThreadSignals;
+  readonly thread: ChatPanelSignals;
   readonly source: ThreadSidebarArtifactSource;
 }) {
   const { t } = useTranslation();
@@ -350,7 +350,7 @@ function ThreadMailDraftPanel({
   thread,
   mailDraftId,
 }: {
-  readonly thread: ChatThreadSignals;
+  readonly thread: ChatPanelSignals;
   readonly mailDraftId: string;
 }) {
   const close = useSet(thread.sidebar.close$);
@@ -364,7 +364,7 @@ function ThreadMailDraftPanel({
 function ThreadBrowserSessionPanel({
   thread,
 }: {
-  readonly thread: ChatThreadSignals;
+  readonly thread: ChatPanelSignals;
 }) {
   const close = useSet(thread.sidebar.close$);
   return (
@@ -379,7 +379,7 @@ export function ThreadSidebarSlot({
   thread,
   target,
 }: {
-  readonly thread: ChatThreadSignals;
+  readonly thread: ChatPanelSignals;
   readonly target: ThreadSidebarTarget;
 }) {
   switch (target.type) {

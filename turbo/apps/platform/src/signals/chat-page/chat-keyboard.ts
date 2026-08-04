@@ -6,7 +6,7 @@ import {
   loadLeftThread$,
   loadRightThread$,
 } from "./chat-thread-panes.ts";
-import type { ChatThreadSignals } from "./chat-thread-signals.ts";
+import type { ChatPanelSignals } from "./chat-panel-signals.ts";
 import {
   clearChatThreadEmojiFromThreadMeta$,
   openRenameChatThreadDialogFromThreadMeta$,
@@ -72,10 +72,10 @@ function isKeyboardScrollAllowedTarget(
 }
 
 function resolveKeyboardScrollThread(
-  leftThread: ChatThreadSignals | null,
-  rightThread: ChatThreadSignals | null,
+  leftThread: ChatPanelSignals | null,
+  rightThread: ChatPanelSignals | null,
   threadId: string | null,
-): ChatThreadSignals | null {
+): ChatPanelSignals | null {
   if (threadId === rightThread?.threadId) {
     return rightThread;
   }
@@ -87,10 +87,10 @@ function resolveKeyboardScrollThread(
 
 function containingChatThread(
   target: EventTarget | null,
-  leftThread: ChatThreadSignals | null,
-  rightThread: ChatThreadSignals | null,
-  containerElForThread: (thread: ChatThreadSignals) => HTMLElement | null,
-): ChatThreadSignals | null {
+  leftThread: ChatPanelSignals | null,
+  rightThread: ChatPanelSignals | null,
+  containerElForThread: (thread: ChatPanelSignals) => HTMLElement | null,
+): ChatPanelSignals | null {
   if (
     rightThread &&
     containerContainsTarget(containerElForThread(rightThread), target)
@@ -107,9 +107,9 @@ function containingChatThread(
 }
 
 function paneForThread(
-  leftThread: ChatThreadSignals | null,
-  rightThread: ChatThreadSignals | null,
-  thread: ChatThreadSignals | null,
+  leftThread: ChatPanelSignals | null,
+  rightThread: ChatPanelSignals | null,
+  thread: ChatPanelSignals | null,
 ): ChatThreadPane | null {
   if (!thread) {
     return null;
@@ -134,11 +134,11 @@ function setupKeyboardScrollPrepareListener({
   signal,
 }: {
   activeThreadId: () => string | null;
-  containingThread: (target: EventTarget | null) => ChatThreadSignals | null;
-  currentLeftThread: () => ChatThreadSignals | null;
-  currentRightThread: () => ChatThreadSignals | null;
+  containingThread: (target: EventTarget | null) => ChatPanelSignals | null;
+  currentLeftThread: () => ChatPanelSignals | null;
+  currentRightThread: () => ChatPanelSignals | null;
   doc: Document;
-  prepareScroll: (thread: ChatThreadSignals) => void;
+  prepareScroll: (thread: ChatPanelSignals) => void;
   root: HTMLElement;
   signal: AbortSignal;
 }): void {
@@ -180,7 +180,7 @@ interface ChatPageShortcutActions {
 
 interface ChatPageShortcutSetup {
   doc: Document;
-  focusedThread: () => ChatThreadSignals | null;
+  focusedThread: () => ChatPanelSignals | null;
   navigateFocusedThread: (direction: "prev" | "next") => void | Promise<void>;
 }
 
@@ -202,7 +202,7 @@ const setFocusedThreadEmoji$ = command(
   async (
     { set },
     args: {
-      thread: ChatThreadSignals;
+      thread: ChatPanelSignals;
       emoji: string;
     },
     signal: AbortSignal,
@@ -219,7 +219,7 @@ const setFocusedThreadEmoji$ = command(
 );
 
 const clearFocusedThreadEmoji$ = command(
-  async ({ set }, args: { thread: ChatThreadSignals }, signal: AbortSignal) => {
+  async ({ set }, args: { thread: ChatPanelSignals }, signal: AbortSignal) => {
     await set(
       clearChatThreadEmojiFromThreadMeta$,
       {
@@ -299,7 +299,7 @@ const setupChatPageShortcutActions$ = command(
 );
 
 const openFocusedThreadEmojiMenu$ = command(
-  ({ get, set }, args: { thread: ChatThreadSignals }, _signal: AbortSignal) => {
+  ({ get, set }, args: { thread: ChatPanelSignals }, _signal: AbortSignal) => {
     const threadMeta = get(args.thread.threadMeta$);
     set(openChatThreadEmojiMenu$, {
       threadId: args.thread.threadId,
@@ -311,7 +311,7 @@ const openFocusedThreadEmojiMenu$ = command(
 const renameDialogRequestForThread$ = command(
   (
     { get },
-    thread: ChatThreadSignals | null,
+    thread: ChatPanelSignals | null,
     threadId: string,
     _signal: AbortSignal,
   ): RenameChatThreadDialogRequest => {
@@ -416,7 +416,7 @@ export const focusChatThreadContainer$ = command(
 );
 
 const scrollCurrentThread$ = command(
-  ({ set }, thread: ChatThreadSignals, position: "top" | "bottom"): boolean => {
+  ({ set }, thread: ChatPanelSignals, position: "top" | "bottom"): boolean => {
     if (position === "top") {
       set(thread.scrollToTop$);
       return true;

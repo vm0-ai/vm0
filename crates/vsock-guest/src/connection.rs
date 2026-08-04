@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use vsock_proto::{
     self, BorrowedRawMessage, DecodeWithError, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START,
     MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_READY,
@@ -24,7 +25,6 @@ use crate::handlers::{
 use crate::log::log;
 use crate::process_containment::{ProcessContainmentMode, verify_exec_process_containment_empty};
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
-use crate::wait::DRAIN_DEADLINE;
 use crate::writer::GuestWriter;
 
 // Vsock constants (only used on Linux)
@@ -596,7 +596,7 @@ fn handle_connection_with_mode(
     handle_connection_with_mode_and_exec_drain_deadline(
         stream,
         process_containment_mode,
-        DRAIN_DEADLINE,
+        EXEC_OUTPUT_DRAIN_DEADLINE,
     )
 }
 
@@ -785,7 +785,11 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                 .map_err(unstable_connection_failure)
                 .and_then(|stream| {
                     log("INFO", "Connected");
-                    handle_connection_with_outcome(stream, process_containment_mode, DRAIN_DEADLINE)
+                    handle_connection_with_outcome(
+                        stream,
+                        process_containment_mode,
+                        EXEC_OUTPUT_DRAIN_DEADLINE,
+                    )
                 })
         } else {
             log("INFO", "Connecting to host (CID=2)...");
@@ -793,7 +797,11 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                 .map_err(unstable_connection_failure)
                 .and_then(|stream| {
                     log("INFO", "Connected");
-                    handle_connection_with_outcome(stream, process_containment_mode, DRAIN_DEADLINE)
+                    handle_connection_with_outcome(
+                        stream,
+                        process_containment_mode,
+                        EXEC_OUTPUT_DRAIN_DEADLINE,
+                    )
                 })
         };
 

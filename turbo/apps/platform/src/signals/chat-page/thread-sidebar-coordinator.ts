@@ -9,12 +9,12 @@ import {
   currentLeftThread$,
   currentRightThread$,
 } from "./chat-thread-pane-state.ts";
-import type { ChatThreadSignals } from "./chat-thread-signals.ts";
+import type { ChatPanelSignals } from "./chat-panel-signals.ts";
 import type { ArtifactRef, ThreadSidebarTarget } from "./thread-sidebar.ts";
 
 // ---------------------------------------------------------------------------
 // Page-level coordinator for the thread-owned utility sidebar. Sidebar state
-// lives in the initiating thread's `ChatThreadSignals`; this module only
+// lives in the initiating thread's `ChatPanelSignals`; this module only
 // enforces "at most one utility sidebar per page" across the two thread panes
 // and routes every entry point into that thread-owned state.
 // ---------------------------------------------------------------------------
@@ -27,7 +27,7 @@ export const activeThreadSidebar$ = computed(
   (
     get,
   ): {
-    readonly thread: ChatThreadSignals;
+    readonly thread: ChatPanelSignals;
     readonly target: ThreadSidebarTarget;
     readonly animateEntry: boolean;
   } | null => {
@@ -49,7 +49,7 @@ export const activeThreadSidebar$ = computed(
 );
 
 const openOnThread$ = command(
-  ({ get, set }, thread: ChatThreadSignals, target: ThreadSidebarTarget) => {
+  ({ get, set }, thread: ChatPanelSignals, target: ThreadSidebarTarget) => {
     for (const other of [get(currentLeftThread$), get(currentRightThread$)]) {
       if (other && other.threadId !== thread.threadId) {
         set(other.sidebar.close$);
@@ -60,13 +60,13 @@ const openOnThread$ = command(
 );
 
 export const openThreadArtifacts$ = command(
-  ({ set }, thread: ChatThreadSignals) => {
+  ({ set }, thread: ChatPanelSignals) => {
     set(openOnThread$, thread, { type: "artifacts" });
   },
 );
 
 export const openThreadAutomations$ = command(
-  ({ set }, thread: ChatThreadSignals) => {
+  ({ set }, thread: ChatPanelSignals) => {
     set(openOnThread$, thread, { type: "automations" });
   },
 );
@@ -77,9 +77,9 @@ export const openThreadAutomations$ = command(
  * wins in the impossible tie.
  */
 function threadOwningCard(
-  threads: readonly (ChatThreadSignals | null)[],
-  owns: (thread: ChatThreadSignals) => boolean,
-): ChatThreadSignals | null {
+  threads: readonly (ChatPanelSignals | null)[],
+  owns: (thread: ChatPanelSignals) => boolean,
+): ChatPanelSignals | null {
   for (const thread of threads) {
     if (thread && owns(thread)) {
       return thread;

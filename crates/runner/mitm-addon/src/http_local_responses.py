@@ -18,6 +18,7 @@ from url_utils import AuthorityValidationError
 
 _BUILTIN_HOST_POLICY_DENIED_ERROR: Final = "builtin_host_policy_denied"
 _AMBIGUOUS_CONNECTOR_ROUTE_ERROR: Final = "ambiguous_connector_route"
+_FIREWALL_AUTHORIZATION_CHANGED_ERROR: Final = "firewall_authorization_changed"
 _STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
 _UPSTREAM_DESTINATION_UNBOUND_ERROR: Final = "upstream_destination_unbound"
 _HTTP_STATUS_CONFLICT = 409
@@ -126,6 +127,39 @@ def block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
                     "proxy registry VM"
                 ),
                 "reason": reason,
+            }
+        ).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
+def block_firewall_authorization_changed(
+    flow: http.HTTPFlow,
+    *,
+    current_decision: str,
+) -> None:
+    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "Request blocked: firewall authorization changed while credentials were resolving",
+        type="firewall_authorization",
+        current_decision=current_decision,
+    )
+    flow_metadata.set_firewall_decision(
+        flow.metadata,
+        "BLOCK",
+        error=_FIREWALL_AUTHORIZATION_CHANGED_ERROR,
+    )
+    flow.response = http.Response.make(
+        _HTTP_STATUS_CONFLICT,
+        json.dumps(
+            {
+                "error": _FIREWALL_AUTHORIZATION_CHANGED_ERROR,
+                "message": (
+                    "Request blocked: firewall authorization changed while credentials "
+                    "were resolving"
+                ),
             }
         ).encode(),
         {"Content-Type": "application/json"},

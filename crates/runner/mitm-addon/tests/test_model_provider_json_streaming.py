@@ -165,23 +165,31 @@ class TestModelProviderJsonStreaming:
             cache_write_tokens=cache_write_tokens,
         )
 
+    @pytest.mark.parametrize(
+        "provider_case",
+        MODEL_PROVIDER_JSON_CASES,
+        ids=model_provider_json_case_id,
+    )
     @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
-    def test_full_pipeline_compressed_anthropic_json_work_limit(
-        self, tmp_path, real_flow, encoding_case
+    def test_full_pipeline_compressed_model_json_work_limit(
+        self, tmp_path, real_flow, provider_case, encoding_case
     ):
         proxy_log_path = tmp_path / "proxy.jsonl"
         flow = model_provider_flow(
             real_flow,
             tmp_path,
-            ANTHROPIC_JSON_CASE,
+            provider_case,
             proxy_log_path=proxy_log_path,
         )
-        payload = (
-            b'{"id":"msg_partial","model":"claude-sonnet-4-6",'
-            b'"usage":{"input_tokens":50,"output_tokens":200},"padding":['
-            + b",".join([b"0"] * 40_000)
-            + b"]}"
-        )
+        payload = json.dumps(
+            {
+                "id": provider_case.message_id,
+                "model": provider_case.model,
+                "usage": {"input_tokens": 50, "output_tokens": 200},
+                "padding": [0] * 40_000,
+            },
+            separators=(",", ":"),
+        ).encode()
         compressed = gzip.compress(payload) if encoding_case == "gzip" else zlib.compress(payload)
         allowed_decoded_bytes = max(
             STREAM_DECODE_EXPANSION_GRACE,

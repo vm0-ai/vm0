@@ -1580,7 +1580,7 @@ describe("connectors page", () => {
     await waitFor(() => {
       const card = connectorCardByLabel("GitHub");
       const access = within(card).getByLabelText("Manage GitHub access");
-      expect(access).toHaveTextContent("Used by");
+      expect(access.textContent).toContain("Used by\u00a0Research, Support");
       expect(access).toHaveTextContent("Research, Support");
       expect(access).toHaveTextContent("+2");
       expect(access).not.toHaveTextContent("Growth");
