@@ -603,8 +603,6 @@ export async function seedChatEventAnnotationProjectionFixture(
         threadId: "activity-rejected",
         serviceUrl: "https://smba.trafficmanager.net/amer/",
         teamsAppId: "teams-app-2",
-        botId: "28:bot-2",
-        botName: "Okou",
         senderUserId: "29:user-2",
         senderDisplayName: "Grace Hopper",
         senderPrincipalName: "grace@example.com",
