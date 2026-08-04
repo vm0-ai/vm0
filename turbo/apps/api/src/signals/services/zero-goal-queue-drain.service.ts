@@ -16,6 +16,7 @@ import {
   loadGoalQueueTarget,
   loadNextGoalQueueEvent,
   rejectGoalQueueEvent,
+  revokeGoalQueueEvent,
   type GoalQueueTarget,
   type PendingGoalQueueEvent,
 } from "./chat-goal-queue.service";
@@ -28,8 +29,6 @@ import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 
 const log = logger("api:zero-goal-queue-drain");
 const MAX_DRAIN_ATTEMPTS = 5;
-const GOAL_INVALIDATED_REASON =
-  "Goal continuation no longer matches the active goal";
 
 type GoalDrainAttempt = "initial" | "retry";
 type GoalDrainTimingRole = "waiting" | "phase" | "aggregate";
@@ -273,6 +272,22 @@ async function rejectGoalEvent(
   return rejected;
 }
 
+async function revokeGoalEvent(
+  db: Db,
+  event: PendingGoalQueueEvent,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const revoked = await revokeGoalQueueEvent(db, {
+    chatThreadId: event.chatThreadId,
+    eventId: event.id,
+  });
+  signal.throwIfAborted();
+  if (revoked) {
+    await publishGoalQueueChanged(event, signal);
+  }
+  return revoked;
+}
+
 const launchQueuedGoal$ = command(
   async (
     { set },
@@ -420,15 +435,10 @@ export const drainGoalQueueForThread$ = command(
       signal.throwIfAborted();
       if (!goal) {
         await timing.measure(
-          "api_dispatch_pre_create_zero_goal_drain_reject_invalid_event",
+          "api_dispatch_pre_create_zero_goal_drain_revoke_invalid_event",
           "nested",
           async () => {
-            return await rejectGoalEvent(
-              db,
-              event,
-              GOAL_INVALIDATED_REASON,
-              signal,
-            );
+            return await revokeGoalEvent(db, event, signal);
           },
           phaseDimensions,
         );
@@ -457,7 +467,7 @@ export const drainGoalQueueForThread$ = command(
         const stillValid = await loadGoalQueueTarget(db, event);
         signal.throwIfAborted();
         if (!stillValid) {
-          await rejectGoalEvent(db, event, GOAL_INVALIDATED_REASON, signal);
+          await revokeGoalEvent(db, event, signal);
         }
         return;
       }

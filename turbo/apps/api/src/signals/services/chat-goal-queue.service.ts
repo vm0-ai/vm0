@@ -11,7 +11,11 @@ import {
   loadPendingChatQueueEvent,
   lockChatQueueThread,
 } from "./chat-event-queue.service";
-import { insertChatEvent, replaceChatEvent } from "./zero-chat-event.service";
+import {
+  insertChatEvent,
+  revokeChatEvent,
+  replaceChatEvent,
+} from "./zero-chat-event.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
@@ -220,7 +224,31 @@ async function pendingGoalEventStillExists(
   return pending?.eventType === "input.goal";
 }
 
-/** Consume an invalid or failed goal trigger through the canonical reject edge. */
+/** Remove a goal trigger invalidated by a normal goal lifecycle change. */
+export async function revokeGoalQueueEvent(
+  db: Db,
+  args: {
+    readonly chatThreadId: string;
+    readonly eventId: string;
+  },
+): Promise<boolean> {
+  return await db.transaction(async (tx) => {
+    if (!(await lockChatQueueThread(tx, args.chatThreadId))) {
+      return false;
+    }
+    if (!(await pendingGoalEventStillExists(tx, args))) {
+      return false;
+    }
+    const revoked = await revokeChatEvent(tx, args.eventId, {
+      chatThreadId: args.chatThreadId,
+      eventType: "control.revoke",
+      runId: null,
+    });
+    return revoked !== null;
+  });
+}
+
+/** Consume a failed goal trigger through the canonical reject edge. */
 export async function rejectGoalQueueEvent(
   db: Db,
   args: {

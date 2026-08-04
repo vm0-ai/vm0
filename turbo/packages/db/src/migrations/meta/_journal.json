@@ -141,6 +141,13 @@
       "when": 1785843891909,
       "tag": "0827_add_image_task_usage_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 828,
+      "version": "7",
+      "when": 1785844907868,
+      "tag": "0828_revoke_invalidated_goal_continuations",
+      "breakpoints": true
     }
   ]
 }

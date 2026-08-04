@@ -1825,7 +1825,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await flushWaitUntilForTest();
   }, 90_000);
 
-  it("rejects a goal invalidated during run preparation without creating a run", async () => {
+  it("revokes a goal invalidated during run preparation without creating a run", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1879,7 +1879,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       (items) => {
         return items.some((event) => {
           return (
-            event.eventType === "input.rejected" &&
+            event.eventType === "control.revoke" &&
             event.revokesEventId === goalEventId
           );
         });
@@ -1887,33 +1887,27 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     );
     expect(events.events).toContainEqual(
       expect.objectContaining({
-        eventType: "input.rejected",
+        eventType: "control.revoke",
         revokesEventId: goalEventId,
         content: null,
-        error: "Goal continuation no longer matches the active goal",
-        userMessage: {
-          version: 1,
-          parts: [{ type: "goal", goalBrief: objectiveBrief }],
-        },
       }),
     );
-    const rejected = events.events.find((event) => {
+    const revoked = events.events.find((event) => {
       return (
-        event.eventType === "input.rejected" &&
+        event.eventType === "control.revoke" &&
         event.revokesEventId === goalEventId
       );
     });
-    if (rejected?.eventType !== "input.rejected") {
-      throw new Error("Expected the invalidated goal event to be rejected");
+    if (revoked?.eventType !== "control.revoke") {
+      throw new Error("Expected the invalidated goal event to be revoked");
     }
-    expect(chatEventDisplayText(rejected)).toBe("");
     const admittedContext = await readChatEventContextFixture(goalEventId);
-    const rejectedContext = await readChatEventContextFixture(rejected.id);
+    const revokedContext = await readChatEventContextFixture(revoked.id);
     expect(admittedContext).toMatchObject({
       contextType: null,
       contextId: null,
     });
-    expect(rejectedContext).toMatchObject({
+    expect(revokedContext).toMatchObject({
       contextType: null,
       contextId: null,
     });
@@ -2162,28 +2156,28 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await completeChatRunOk(userRun.runId, userRunHeaders, {
       lastEventSequence: 0,
     });
-    const rejected = await waitForThreadMessages(
+    const revoked = await waitForThreadMessages(
       actor,
       first.threadId,
       (events) => {
         return events.some((event) => {
           return (
-            event.eventType === "input.rejected" &&
+            event.eventType === "control.revoke" &&
             event.revokesEventId === goalEventId
           );
         });
       },
     );
-    const rejectedGoalEvent = rejected.events.find((event) => {
+    const revokedGoalEvent = revoked.events.find((event) => {
       return (
-        event.eventType === "input.rejected" &&
+        event.eventType === "control.revoke" &&
         event.revokesEventId === goalEventId
       );
     });
-    expect(rejectedGoalEvent).toMatchObject({
-      eventType: "input.rejected",
+    expect(revokedGoalEvent).toMatchObject({
+      eventType: "control.revoke",
     });
-    expect(rejectedGoalEvent).not.toHaveProperty("runId");
+    expect(revokedGoalEvent).not.toHaveProperty("runId");
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
     await flushWaitUntilForTest();
   }, 90_000);
