@@ -972,7 +972,6 @@ export function mockChatLifecycle(
       modelProvider: null,
       selectedModel: null,
       triggerSource: "web",
-      triggerAgentName: null,
       status: runStatus,
       prompt: "Hello",
       appendSystemPrompt: null,

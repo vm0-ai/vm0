@@ -119,9 +119,6 @@ export const dispatchProgressCallbacks$ = command(
         if (isInlineOnlyCanonicalDeliveryCallback(internalKind)) {
           return;
         }
-        if (internalKind === "agent") {
-          return;
-        }
         if (!callback.url) {
           return;
         }
