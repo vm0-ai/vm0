@@ -69,19 +69,8 @@ const releaseMermaidDiagramResult$ = command(({ get, set }, key: string) => {
   set(internalMermaidDiagramRefCountByKey$, (current) => {
     return withoutKey(current, key);
   });
-  // Dropped one microtask later, not here. A block that only moves in the tree
-  // — a run finishing regroups the messages around it — detaches its old
-  // element and attaches the replacement inside a single commit, and dropping
-  // the result in between blanks the diagram and re-runs mermaid for a source
-  // that never changed. A block that is really gone has nothing retaining it
-  // when the microtask runs, so its data URL is still released.
-  queueMicrotask(() => {
-    if ((get(internalMermaidDiagramRefCountByKey$)[key] ?? 0) > 0) {
-      return;
-    }
-    set(internalMermaidDiagramResultByKey$, (current) => {
-      return withoutKey(current, key);
-    });
+  set(internalMermaidDiagramResultByKey$, (current) => {
+    return withoutKey(current, key);
   });
 });
 
