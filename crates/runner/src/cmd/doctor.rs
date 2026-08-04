@@ -192,7 +192,9 @@ impl Warning {
         network_namespaces: Option<&HashSet<String>>,
     ) -> bool {
         match self {
-            Self::StatusUnavailable { base_dir } => read_status(base_dir).await.is_none(),
+            // Report-level rechecks consume a recovered snapshot before clearing
+            // this warning. A generic recheck must never clear it without that update.
+            Self::StatusUnavailable { .. } => true,
             Self::ApiUnreachable {
                 server_url,
                 server_token,
