@@ -3103,6 +3103,7 @@ const reconcileBrowserInstance$ = command(
       reason,
       signal,
       {
+        emitCloseEvent: row.chatThreadId !== null,
         stopProvider,
       },
     );

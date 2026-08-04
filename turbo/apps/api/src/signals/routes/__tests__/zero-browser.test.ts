@@ -27,6 +27,7 @@ import { mockEnv } from "../../../lib/env";
 import { mockNow, withMockNowForTest } from "../../../lib/time";
 import webClientCompatibility from "../../../lib/web-client-compatibility.json";
 import { server } from "../../../mocks/server";
+import { deleteChatThreadRootFixture } from "../../../test-fixtures/chat-thread-deletion";
 import { deleteAgentRunRootFixture } from "../../../test-fixtures/run-deletion";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
@@ -1995,6 +1996,59 @@ describe("zero browser route", () => {
         }),
       }),
     );
+  }, 120_000);
+
+  it("reclaims an active browser after its thread is already deleted", async () => {
+    const { runs, chat, actor, agent } = await setupBrowserScenario();
+    const first = await createClaimedChatRun(
+      chat,
+      runs,
+      actor,
+      agent.agentId,
+      "Open a managed browser",
+    );
+
+    const providerId = randomUUID();
+    acceptBrowserUseCdpSessions([providerId]);
+    let providerStops = 0;
+    server.use(
+      http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
+        const body = z
+          .strictObject({ name: z.string() })
+          .parse(await request.json());
+        return HttpResponse.json(providerProfile(randomUUID(), body.name), {
+          status: 201,
+        });
+      }),
+      http.post(`${BROWSER_USE_API_URL}/browsers`, () => {
+        return HttpResponse.json(providerBrowser(providerId), { status: 201 });
+      }),
+      http.get(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
+        return HttpResponse.json(providerBrowser(String(params.id)));
+      }),
+      http.patch(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
+        providerStops += 1;
+        return HttpResponse.json(
+          providerBrowser(String(params.id), { status: "stopped" }),
+        );
+      }),
+    );
+
+    await accept(
+      client().use({ headers: first.claim.browserHeaders, body: {} }),
+      [200],
+    );
+
+    await deleteChatThreadRootFixture(first.threadId);
+    const reclaimed = await reconcileBrowsers();
+    expect(reclaimed.body.errors).toBe(0);
+    expect(reclaimed.body.stopped).toBeGreaterThanOrEqual(1);
+    await flushWaitUntilForTest();
+    expect(providerStops).toBeGreaterThanOrEqual(1);
+
+    const retired = await reconcileBrowsers();
+    expect(retired.body).toMatchObject({ checked: 0, stopped: 0, errors: 0 });
+    await deleteAgentRunRootFixture(first.runId);
   }, 120_000);
 
   it("records browser close events for UI actions and automatic reclamation", async () => {
