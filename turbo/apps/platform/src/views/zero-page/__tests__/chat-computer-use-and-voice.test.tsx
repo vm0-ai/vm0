@@ -202,6 +202,39 @@ describe("chat lifecycle", () => {
     );
   });
 
+  it("keeps Cloud browser out of the Your computer group", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: AGENT_CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
+    });
+
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(await screen.findByLabelText("Connectors"));
+
+    const cloudBrowserSwitch = await screen.findByRole("switch", {
+      name: "Disable Cloud browser",
+    });
+    expect(screen.getByText("No online computers")).toBeInTheDocument();
+
+    // Cloud browser is a Zero-hosted remote browser, not one of the user's own
+    // machines, so its toggle must stay above the "Your computer" heading
+    // instead of being listed under it. That heading labels the rows after it
+    // rather than wrapping them, so document order is the only page-visible
+    // expression of the grouping.
+    expect(
+      cloudBrowserSwitch.compareDocumentPosition(
+        screen.getByText("Your computer"),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("creates a new chat thread with Cloud browser on by default", async () => {
     const user = userEvent.setup({ delay: null });
     let sentCloudBrowserEnabled: boolean | undefined;
