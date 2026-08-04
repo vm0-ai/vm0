@@ -3,13 +3,19 @@ use std::time::Duration;
 
 use tokio::sync::broadcast;
 
+use api_contracts::generated::constants::runners::ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES as ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES_U64;
+
 use crate::error::RunnerResult;
 use crate::ids::RunId;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
 use crate::provider::ApiClient;
 
 /// Exec-control payloads are bounded by the guest-side process-control IPC frame limit.
-pub(crate) const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: usize = 1024 * 1024;
+pub(crate) const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: usize =
+    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES_U64 as usize;
+const _: () = assert!(
+    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES == process_control_ipc::MAX_CONTROL_PAYLOAD_BYTES
+);
 
 #[derive(serde::Serialize)]
 pub(crate) struct ActiveInputPayload<'a> {

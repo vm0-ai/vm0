@@ -23,6 +23,7 @@ import {
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
+import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   getModelProviderFirewall,
@@ -1480,6 +1481,53 @@ describe("CHAT-02: queueing and recalling messages", () => {
         }),
       );
     }
+
+    const oversizedPendingEventId = randomUUID();
+    const oversizedPending = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "x".repeat(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES),
+        clientEventId: oversizedPendingEventId,
+      },
+      [201],
+    );
+    if (oversizedPending.status !== 201) {
+      throw new Error("Expected the oversized pending send to be accepted");
+    }
+    expect(oversizedPending.body.runId).toBeNull();
+    const oversizedConflict = await api.claimRunnerActiveInputsConflict(
+      claim.sandboxToken,
+      active.runId,
+      [oversizedPendingEventId],
+    );
+    expectApiError(oversizedConflict);
+    expect(oversizedConflict.error.message).toBe(
+      "Active input batch exceeds runner control payload limit",
+    );
+    await expect(
+      api.listRunnerActiveInputs(claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([oversizedPendingEventId]);
+
+    const afterOversizedClaim = await chat.listThreadEvents(
+      actor,
+      active.threadId,
+    );
+    expect(
+      userMessages(afterOversizedClaim.events).some((event) => {
+        return event.revokesEventId === oversizedPendingEventId;
+      }),
+    ).toBeFalsy();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        revokesEventId: oversizedPendingEventId,
+      },
+      [201],
+    );
 
     await cancelChatRun(actor, active.runId);
   }, 90_000);
@@ -5036,6 +5084,22 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     expect(appended).toContain("Assistant: Assistant migration answer");
     expect(appended).toContain("- RELATIVE_INDEX: 0");
     expect(appended).not.toContain("follow-up question");
+
+    const blockedRecommendedFollowup = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "do not queue this recommended follow-up",
+        revokesEventId: recommender.id,
+        clientEventId: randomUUID(),
+      },
+      [400],
+    );
+    expectApiError(blockedRecommendedFollowup.body);
+    expect(blockedRecommendedFollowup.body.error.message).toBe(
+      "Recommended follow-up cannot be queued",
+    );
 
     await cancelChatRun(actor, second.runId);
 

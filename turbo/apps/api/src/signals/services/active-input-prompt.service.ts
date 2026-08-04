@@ -1,4 +1,5 @@
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type {
@@ -46,6 +47,14 @@ const CONTEXT_BACKED_TRIGGER_SOURCES: readonly ContextBackedTriggerSource[] = [
   "telegram",
   "agentphone",
 ];
+
+export function activeInputPromptFitsControlPayload(prompt: string): boolean {
+  const payload = JSON.stringify({ type: "active-input", text: prompt });
+  return (
+    new TextEncoder().encode(payload).byteLength <=
+    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES
+  );
+}
 
 function isContextBackedTriggerSource(
   source: TriggerSource | null,

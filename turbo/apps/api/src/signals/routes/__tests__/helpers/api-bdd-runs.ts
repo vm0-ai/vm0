@@ -526,6 +526,22 @@ export function createRunsApi(context: TestContext) {
       return response.body.prompt;
     },
 
+    async claimRunnerActiveInputsConflict(
+      sandboxToken: string,
+      runId: string,
+      eventIds: string[],
+    ) {
+      const response = await accept(
+        runApp(context)(runnersActiveInputsContract).claim({
+          headers: { authorization: `Bearer ${sandboxToken}` },
+          params: { runId },
+          body: { eventIds },
+        }),
+        [409],
+      );
+      return response.body;
+    },
+
     async refreshRunnerNetworkPolicy(runId: string, connectorSlug: string) {
       const response = await accept(
         runApp(context)(runnersNetworkPolicyRefreshContract).refresh({

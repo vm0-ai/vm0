@@ -87,7 +87,10 @@ import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
-import { materializeActiveInputPrompt } from "../services/active-input-prompt.service";
+import {
+  activeInputPromptFitsControlPayload,
+  materializeActiveInputPrompt,
+} from "../services/active-input-prompt.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   lockChatQueueThread,
@@ -2762,6 +2765,20 @@ const claimActiveInputsInner$ = command(
     if (!materializedPrompts) {
       return conflict("One or more active inputs cannot be materialized");
     }
+    const promptParts: string[] = [];
+    for (const candidate of candidates) {
+      const prompt = materializedPrompts.get(candidate.id);
+      if (prompt === undefined) {
+        throw new Error("Active input prompt materialization is missing");
+      }
+      promptParts.push(prompt);
+    }
+    const materializedPrompt = promptParts.join("\n\n");
+    if (!activeInputPromptFitsControlPayload(materializedPrompt)) {
+      return conflict(
+        "Active input batch exceeds runner control payload limit",
+      );
+    }
 
     const result = await db.transaction(async (tx) => {
       if (!(await lockChatQueueThread(tx, run.chatThreadId))) {
@@ -2821,13 +2838,7 @@ const claimActiveInputsInner$ = command(
           throw new Error("Active input claim lost after locking the thread");
         }
       }
-      return events.map((event) => {
-        const prompt = materializedPrompts.get(event.id);
-        if (!prompt) {
-          throw new Error("Active input prompt materialization is missing");
-        }
-        return prompt;
-      });
+      return true;
     });
     signal.throwIfAborted();
     if (!result) {
@@ -2837,7 +2848,7 @@ const claimActiveInputsInner$ = command(
     signal.throwIfAborted();
     return {
       status: 200 as const,
-      body: { prompt: result.join("\n\n") },
+      body: { prompt: materializedPrompt },
     };
   },
 );

@@ -2631,6 +2631,7 @@ dependencies = [
  "libc",
  "nbd-cow",
  "nix",
+ "process-control-ipc",
  "reqwest",
  "sandbox",
  "sandbox-fc",

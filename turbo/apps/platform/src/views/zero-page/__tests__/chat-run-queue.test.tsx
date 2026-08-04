@@ -241,6 +241,14 @@ describe("chat run queue", () => {
           createdAt: "2026-08-04T10:00:02Z",
         },
         {
+          id: `${THREAD_ID}-pending-morning-brief`,
+          role: "user",
+          content: "Keep the morning brief queued",
+          triggerSource: "workflow-schedule",
+          runId: undefined,
+          createdAt: "2026-08-04T10:00:03Z",
+        },
+        {
           id: `${THREAD_ID}-pending-automation`,
           eventType: "input.automation",
           content: null,
@@ -256,7 +264,7 @@ describe("chat run queue", () => {
             ],
           },
           runId: undefined,
-          createdAt: "2026-08-04T10:00:03Z",
+          createdAt: "2026-08-04T10:00:04Z",
         },
       ],
     });
@@ -270,7 +278,12 @@ describe("chat run queue", () => {
     await expect(
       screen.findByText("Steer this follow-up"),
     ).resolves.toBeInTheDocument();
-    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+      "Keep the morning brief queued",
+    );
+    expect(screen.getByLabelText("Queued message")).not.toHaveTextContent(
+      "Steer this follow-up",
+    );
     expect(screen.getByLabelText("Pending automation event")).toHaveTextContent(
       "Keep this automation queued",
     );

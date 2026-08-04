@@ -808,6 +808,12 @@ describe("chat lifecycle", () => {
           createdAt: "2026-08-04T10:00:20Z",
         },
         {
+          role: "user",
+          content: "Keep the rollback checklist concise",
+          runId,
+          createdAt: "2026-08-04T10:00:25Z",
+        },
+        {
           role: "assistant",
           content: "Adding the rollback steps.",
           runId,
@@ -838,6 +844,9 @@ describe("chat lifecycle", () => {
     expect(screen.getAllByText("Also include the rollback steps")).toHaveLength(
       1,
     );
+    expect(
+      screen.getAllByText("Keep the rollback checklist concise"),
+    ).toHaveLength(1);
     expect(screen.queryByText("Reviewing the launch notes.")).toBeNull();
     expect(screen.queryByText("Adding the rollback steps.")).toBeNull();
     expectTextBefore(
@@ -848,6 +857,11 @@ describe("chat lifecycle", () => {
     expectTextBefore(
       messageContainer!,
       "Also include the rollback steps",
+      "Keep the rollback checklist concise",
+    );
+    expectTextBefore(
+      messageContainer!,
+      "Keep the rollback checklist concise",
       "Worked for 40s",
     );
     expectTextBefore(
@@ -867,6 +881,9 @@ describe("chat lifecycle", () => {
       expect(screen.getAllByText("Prepare the launch plan")).toHaveLength(1);
       expect(
         screen.getAllByText("Also include the rollback steps"),
+      ).toHaveLength(1);
+      expect(
+        screen.getAllByText("Keep the rollback checklist concise"),
       ).toHaveLength(1);
     });
   });
@@ -949,6 +966,63 @@ describe("chat lifecycle", () => {
         screen.getAllByText("Also include the rollback steps"),
       ).toHaveLength(1);
     });
+  });
+
+  it("keeps the legacy trailing-user layout when chat steer is disabled", async () => {
+    const threadId = "thread-work-folding-trailing-user-disabled";
+    const runId = "run-work-folding-trailing-user-disabled";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          role: "user",
+          content: "Prepare the disabled-switch launch plan",
+          runId,
+          createdAt: "2026-08-04T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Reviewing the disabled-switch launch notes.",
+          runId,
+          createdAt: "2026-08-04T10:00:10Z",
+        },
+        {
+          role: "assistant",
+          content: "The disabled-switch launch plan is ready.",
+          runId,
+          createdAt: "2026-08-04T10:00:20Z",
+        },
+        {
+          role: "user",
+          content: "Add disabled-switch rollback steps",
+          runId,
+          createdAt: "2026-08-04T10:00:30Z",
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-08-04T10:00:40Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatSteer]: false },
+    });
+
+    await expect(
+      screen.findByText("Reviewing the disabled-switch launch notes."),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Expand work history")).toBeNull();
+    expectTextBefore(
+      document.body,
+      "The disabled-switch launch plan is ready.",
+      "Add disabled-switch rollback steps",
+    );
   });
 
   it("keeps the established completed-run layout across container sizes", async () => {
