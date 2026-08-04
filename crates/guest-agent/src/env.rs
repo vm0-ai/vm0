@@ -149,9 +149,12 @@ pub struct ArtifactEnv {
 
 /// Raw runner bootstrap values used to build an owned guest-agent run config.
 ///
-/// Empty strings represent unset bootstrap environment values. Variable-length
-/// run payload fields live in [`guest_contracts::env::RunPayload`] and are
-/// loaded through `run_payload_file`.
+/// `String` fields captured by [`Self::from_process_env`] cannot distinguish an
+/// absent or non-Unicode environment value from a present empty value: each
+/// becomes an empty string. `Option` fields do not share that rule.
+/// Variable-length run payload fields live in
+/// [`guest_contracts::env::RunPayload`] and are loaded through
+/// `run_payload_file`.
 #[derive(Clone, Default)]
 pub struct GuestConfigRaw {
     pub run_id: String,
@@ -164,12 +167,22 @@ pub struct GuestConfigRaw {
     pub api_start_time: String,
     pub agent_execution_timeout_secs: String,
     pub use_mock_claude: String,
+    /// Optional `VM0_MOCK_CLAUDE_PATH` executable override.
+    ///
+    /// [`Self::from_process_env`] captures an absent or non-Unicode value as
+    /// `None` and a present empty value as `Some("")`. [`GuestConfig::from_raw`]
+    /// selects [`DEFAULT_MOCK_CLAUDE_PATH`] only when this field is `None`.
     pub mock_claude_path: Option<String>,
     pub cli_agent_type: String,
     pub user_env_file: String,
     pub run_payload_file: String,
     pub use_mock_codex: String,
     pub use_codex_app_server_backend: String,
+    /// Optional `VM0_MOCK_CODEX_PATH` executable override.
+    ///
+    /// [`Self::from_process_env`] captures an absent or non-Unicode value as
+    /// `None` and a present empty value as `Some("")`. [`GuestConfig::from_raw`]
+    /// selects [`DEFAULT_MOCK_CODEX_PATH`] only when this field is `None`.
     pub mock_codex_path: Option<String>,
     pub home: Option<String>,
     pub runtime_home: Option<PathBuf>,
