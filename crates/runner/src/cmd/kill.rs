@@ -36,7 +36,8 @@ use target::{
     rediscover_same_target,
 };
 
-const RUN_ORPHAN_FALLBACK_REFUSAL: &str = "run target can no longer be verified after owning-runner control failed; use --sandbox for explicit orphan cleanup";
+const RUN_ORPHAN_FALLBACK_REFUSAL: &str =
+    "run target can no longer be verified; use --sandbox for explicit orphan cleanup";
 
 #[derive(Args)]
 #[command(group = clap::ArgGroup::new("target").required(true))]
@@ -72,15 +73,18 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
         Ok(current) => current,
         Err(error) => {
             if error.allows_disappeared_orphan_cleanup() {
+                if should_refuse_orphan_fallback(initial.target.run_id.as_deref()) {
+                    println!(
+                        "Refused to kill sandbox {} (PID {}) - {RUN_ORPHAN_FALLBACK_REFUSAL}",
+                        initial.target.sandbox_id, initial.target.pid
+                    );
+                    return Ok(ExitCode::FAILURE);
+                }
                 if let Ok(refreshed) = rediscover_same_sandbox_process(&initial.target).await
                     && process::is_orphan(refreshed.target.pid, &refreshed.runner_pids).await
                 {
-                    let outcome = if should_refuse_orphan_fallback(initial.target.run_id.as_deref())
-                    {
-                        KillOutcome::RefusedTargetChanged(RUN_ORPHAN_FALLBACK_REFUSAL.into())
-                    } else {
-                        kill_current_target(refreshed.target.clone(), true, control).await
-                    };
+                    let outcome =
+                        kill_current_target(refreshed.target.clone(), true, control).await;
                     let exit_code =
                         finish_kill_outcome(&initial.target, &refreshed.target, &outcome, control)
                             .await;
