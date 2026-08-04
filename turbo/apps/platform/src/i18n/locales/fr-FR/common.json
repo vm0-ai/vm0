@@ -1033,7 +1033,7 @@
     "fitAction": "Adapter",
     "fitWindow": "Adapter le navigateur à la fenêtre",
     "iframeTitle": "Navigateur en direct : {{name}}",
-    "invalidLink": "Lien de navigateur invalide",
+    "notFound": "Navigateur introuvable",
     "open": "Ouvrir le navigateur {{name}}",
     "openAction": "Ouvrir",
     "openNewPage": "Ouvrir ce navigateur dans une nouvelle page",

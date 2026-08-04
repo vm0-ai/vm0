@@ -157,7 +157,7 @@ function PanelMessage({
 }: {
   readonly icon: ReactNode;
   readonly title: string;
-  readonly description: string;
+  readonly description?: string;
   readonly action?: ReactNode;
   readonly className?: string;
 }) {
@@ -170,11 +170,27 @@ function PanelMessage({
     >
       {icon}
       <p className="text-sm font-medium text-foreground">{title}</p>
-      <p className="max-w-md text-xs leading-5 text-muted-foreground">
-        {description}
-      </p>
+      {description ? (
+        <p className="max-w-md text-xs leading-5 text-muted-foreground">
+          {description}
+        </p>
+      ) : null}
       {action}
     </div>
+  );
+}
+
+export function BrowserSessionNotFound() {
+  const { t } = useTranslation();
+  return (
+    <PanelFrame>
+      <PanelMessage
+        icon={<IconBrowserOff size={26} className="text-muted-foreground" />}
+        title={t(($) => {
+          return $.browserSession.notFound;
+        })}
+      />
+    </PanelFrame>
   );
 }
 
@@ -395,6 +411,9 @@ export function BrowserSessionPanel({
         />
       </PanelFrame>
     );
+  }
+  if (sessionLoadable.data === null) {
+    return <BrowserSessionNotFound />;
   }
 
   const session = sessionLoadable.data;

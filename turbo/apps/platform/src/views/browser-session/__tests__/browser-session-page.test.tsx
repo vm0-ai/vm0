@@ -87,6 +87,41 @@ describe("browser session page", () => {
     },
   );
 
+  it.each([
+    {
+      name: "an invalid thread ID",
+      path: "/browsers/not-a-thread-id",
+      missingBrowser: false,
+    },
+    {
+      name: "a missing or inaccessible browser",
+      path: `/browsers/${threadId}`,
+      missingBrowser: true,
+    },
+  ])("shows browser not found for $name", async ({ path, missingBrowser }) => {
+    if (missingBrowser) {
+      context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+        return respond(404, {
+          error: {
+            code: "BROWSER_NOT_FOUND",
+            message: "Managed browser not found",
+          },
+        });
+      });
+    }
+
+    detachedSetupPage({
+      context,
+      path,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
+    });
+
+    await expect(
+      screen.findByText("Browser not found"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Browser not live")).not.toBeInTheDocument();
+  });
+
   it("loads the authenticated live viewer and keeps the browser leased while it is open", async () => {
     let leaseRequests = 0;
     context.mocks.api(zeroBrowserContract.get, ({ params, respond }) => {
@@ -111,6 +146,8 @@ describe("browser session page", () => {
     const frame = await screen.findByTitle("Live browser: booking");
     expect(frame).toHaveAttribute("src", liveUrl);
     expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
+    const panel = frame.closest("[data-browser-session-panel]");
+    expect(panel?.parentElement).toBe(document.querySelector("main"));
     await waitFor(() => {
       expect(leaseRequests).toBeGreaterThan(0);
     });
