@@ -195,6 +195,10 @@ import {
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
+import {
+  DEFAULT_MODEL_PLAN_CAPABILITIES,
+  modelPlanCapabilities$,
+} from "../../signals/zero-page/model-plan-capabilities.ts";
 import { shouldUseUserMessage } from "../../signals/zero-page/user-message-document-codec.ts";
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
@@ -7404,6 +7408,15 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const modelSelection = useLastLoadable(signals.model.modelSelection$);
+  const modelCapabilitiesLoadable = useLoadable(modelPlanCapabilities$);
+  const lastModelCapabilities = useLastResolved(modelPlanCapabilities$);
+  const modelCapabilities =
+    modelCapabilitiesLoadable.state === "hasData"
+      ? modelCapabilitiesLoadable.data
+      : (lastModelCapabilities ??
+        (modelCapabilitiesLoadable.state === "hasError"
+          ? DEFAULT_MODEL_PLAN_CAPABILITIES
+          : undefined));
   const selectedModelOauthAvailable =
     useLastResolved(signals.model.selectedModelOauthAvailable$) ?? true;
   const setModelSelection = useSet(signals.model.setModelSelection$);
@@ -7450,36 +7463,39 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
           },
         }
       : undefined;
-  if (modelPickerLoading) {
+  if (
+    modelPickerLoading ||
+    modelCapabilities === undefined ||
+    modelCapabilities.restrictedVm0Models ||
+    modelPicker.value === null
+  ) {
     return null;
   }
-  const shouldRenderModelPicker = modelPicker.value !== null;
 
   return (
     <>
       {submitBlocker && <ModelConfigurationWarning blocker={submitBlocker} />}
-      {shouldRenderModelPicker && (
-        <ModelProviderPicker
-          value={modelPicker.value}
-          onChange={onModelPickerChange}
-          placeholder={t(($) => {
-            return $.chat.composer.selectModel;
-          })}
-          triggerClassName={cn(
-            "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
-            "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
-            "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
-            COMPOSER_CONTROL_FOCUS_CLASS,
-          )}
-          compactTrigger
-          mobileIconTrigger
-          codexFastModeEnabled={codexFastModeEnabled}
-          open={modelPickerOpen}
-          onOpenChange={setModelPickerOpen}
-          disabled={modelPicker.disabled}
-          resolveDefaultSelection={false}
-        />
-      )}
+      <ModelProviderPicker
+        value={modelPicker.value}
+        onChange={onModelPickerChange}
+        placeholder={t(($) => {
+          return $.chat.composer.selectModel;
+        })}
+        triggerClassName={cn(
+          "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
+          "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
+          "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+          COMPOSER_CONTROL_FOCUS_CLASS,
+        )}
+        compactTrigger
+        mobileIconTrigger
+        codexFastModeEnabled={codexFastModeEnabled}
+        open={modelPickerOpen}
+        onOpenChange={setModelPickerOpen}
+        disabled={modelPicker.disabled}
+        resolveDefaultSelection={false}
+      />
+      <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
     </>
   );
 }
@@ -8047,7 +8063,6 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
               <ComposerModelPickerSlot signals={signals} />
-              <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
               <MicButton signals={signals} />
               <ComposerSendControl signals={signals} />
             </div>
