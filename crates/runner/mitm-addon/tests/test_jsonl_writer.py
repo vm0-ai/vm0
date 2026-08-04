@@ -170,7 +170,8 @@ def test_writer_does_not_recover_from_mixed_path_batch(tmp_path, mitm_ctx):
     release_gate = threading.Event()
     mixed_batch_started = threading.Event()
     release_mixed_batch = threading.Event()
-    original_append_lines = jsonl_writer._append_lines
+    original_writev = jsonl_writer.os.writev
+    writev_calls = 0
     now = 0.0
 
     def monotonic() -> float:
@@ -180,14 +181,17 @@ def test_writer_does_not_recover_from_mixed_path_batch(tmp_path, mitm_ctx):
         jsonl_writer.write_jsonl_line(path, line, "network")
         assert jsonl_writer.flush_log_path(path)
 
-    def append_lines(path: str, lines: list[bytes]) -> None:
-        if path == str(gate_path):
+    def writev(fd: int, buffers: list[bytes | memoryview]) -> int:
+        nonlocal writev_calls
+
+        writev_calls += 1
+        if writev_calls == 1:
             gate_started.set()
             release_gate.wait()
-        elif path == str(healthy_path):
+        elif writev_calls == 2:
             mixed_batch_started.set()
             release_mixed_batch.wait()
-        original_append_lines(path, lines)
+        return original_writev(fd, buffers)
 
     with (
         patch.object(jsonl_writer.time, "monotonic", side_effect=monotonic),
@@ -197,7 +201,7 @@ def test_writer_does_not_recover_from_mixed_path_batch(tmp_path, mitm_ctx):
         assert log.warn.call_count == 1
 
         now = 59.0
-        with patch.object(jsonl_writer, "_append_lines", side_effect=append_lines):
+        with patch.object(jsonl_writer.os, "writev", side_effect=writev):
             try:
                 jsonl_writer.write_jsonl_line(str(gate_path), b"gate\n", "network")
                 assert gate_started.wait(timeout=1)
