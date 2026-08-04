@@ -124,7 +124,6 @@ type ChatEventDisplayContext =
       readonly telegramContext: {
         readonly chatId: string;
         readonly messageId: string;
-        readonly isDm: boolean;
         readonly messageThreadId: number | null;
         readonly messageText: string;
         readonly threadContext: string;
@@ -479,7 +478,6 @@ type NewDisplayContext =
       readonly chatThreadId: string;
       readonly chatId: string;
       readonly messageId: string;
-      readonly isDm: boolean;
       readonly messageThreadId: number | null;
       readonly messageText: string;
       readonly threadContext: string;
@@ -771,7 +769,6 @@ async function insertTelegramDisplayContext(
     chatThreadId: context.chatThreadId,
     chatId: context.chatId,
     messageId: context.messageId,
-    isDm: context.isDm,
     messageThreadId: context.messageThreadId,
     messageText: context.messageText,
     threadContext: context.threadContext,
