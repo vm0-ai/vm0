@@ -707,7 +707,8 @@ async fn build_runner_report(
             mitm_procs,
             dns_procs,
         ));
-    } else {
+    } else if runner.subcommand == "start" {
+        // Benchmark publishes live identity but intentionally has no status writer.
         report.warnings.push(Warning::StatusUnavailable {
             base_dir: runner.base_dir.clone(),
         });
@@ -3118,6 +3119,23 @@ mod tests {
         let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
 
         assert_eq!(report.subcommand, "benchmark");
+    }
+
+    #[tokio::test]
+    async fn report_does_not_require_status_for_benchmark() {
+        let fixture = doctor_report_fixture_without_status();
+        let mut runner = live_runner_instance(
+            std::process::id(),
+            fixture.config_path.clone(),
+            fixture.base_dir.clone(),
+        );
+        runner.subcommand = "benchmark".into();
+
+        let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
+
+        assert!(report.status.is_none());
+        assert!(!has_status_unavailable_warning(&report));
+        assert!(report.warnings.is_empty());
     }
 
     #[tokio::test]
