@@ -10,6 +10,7 @@ import {
 import { presentationCommand } from "./presentation";
 import { spriteCommand } from "./sprite";
 import { videoCommand } from "./video";
+import { avatarVideoCommand } from "./avatar-video";
 import { websiteCommand } from "./website";
 import { voiceCommand } from "./voice";
 import { createListerOnlyCommand } from "./lister-only";
@@ -45,6 +46,7 @@ function buildGenerateHelpText(): string {
     '  Generate report:       zero generate report --prompt "A Q2 usage report"',
     '  Generate docs:         zero generate docs-design --prompt "A setup guide"',
     '  Generate video:        zero generate video --prompt "A cinematic city shot"',
+    '  Generate avatar video: zero generate avatar-video --avatar-id 81 --voice-id en-US-ChristopherNeural --script "Hello"',
     '  Generate site:         zero generate website --prompt "A launch site"',
     '  Generate sprite:       zero generate sprite --prompt "A slime monster idle loop"',
     '  Generate speech:       zero generate voice --prompt "Hello"',
@@ -74,6 +76,7 @@ export const generateCommand = new Command()
   .addCommand(dashboardDesignCommand)
   .addCommand(mobileAppDesignCommand)
   .addCommand(videoCommand)
+  .addCommand(avatarVideoCommand)
   .addCommand(websiteCommand)
   .addCommand(spriteCommand)
   .addCommand(voiceCommand)
