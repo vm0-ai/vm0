@@ -2,6 +2,7 @@
 
 import errno
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
 
@@ -18,13 +19,31 @@ def _assert_descriptor_closed(fd: int) -> None:
     assert exc_info.value.errno == errno.EBADF
 
 
-def test_reads_exact_limit_from_opened_identity_and_closes(tmp_path):
+@pytest.fixture
+def opened_fds() -> Iterator[list[int]]:
+    descriptors: list[int] = []
+    real_open = os.open
+
+    def record_open(open_path: Path, flags: int) -> int:
+        fd = real_open(open_path, flags)
+        descriptors.append(fd)
+        return fd
+
+    with patch.object(state_file.os, "open", side_effect=record_open):
+        yield descriptors
+
+
+def test_reads_exact_limit_from_opened_identity_and_closes(
+    tmp_path: Path,
+    opened_fds: list[int],
+) -> None:
     path = tmp_path / "state.json"
     payload = b"state"
     path.write_bytes(payload)
 
     with state_file.open_state_file(path, description="test state") as opened_file:
-        fd = opened_file.fd
+        assert len(opened_fds) == 1
+        fd = opened_fds[0]
         st = os.fstat(fd)
 
         assert opened_file.identity == state_file.StateFileIdentity(
@@ -40,7 +59,7 @@ def test_reads_exact_limit_from_opened_identity_and_closes(tmp_path):
     _assert_descriptor_closed(fd)
 
 
-def test_rejects_initially_oversized_file(tmp_path):
+def test_rejects_initially_oversized_file(tmp_path: Path) -> None:
     path = tmp_path / "state.json"
     path.write_bytes(b"too large")
 
@@ -51,7 +70,7 @@ def test_rejects_initially_oversized_file(tmp_path):
         opened_file.read_bytes(3)
 
 
-def test_rejects_bytes_beyond_underreported_size():
+def test_rejects_bytes_beyond_underreported_size() -> None:
     path = Path("/proc/self/status")
     assert path.stat().st_size == 0
 
@@ -62,7 +81,7 @@ def test_rejects_bytes_beyond_underreported_size():
         opened_file.read_bytes(1)
 
 
-def test_rejects_symlink_without_following_target(tmp_path):
+def test_rejects_symlink_without_following_target(tmp_path: Path) -> None:
     target = tmp_path / "target.json"
     target.write_text("{}")
     path = tmp_path / "state.json"
@@ -72,7 +91,7 @@ def test_rejects_symlink_without_following_target(tmp_path):
         state_file.open_state_file(path, description="test state")
 
 
-def test_rejects_fifo_without_blocking(tmp_path):
+def test_rejects_fifo_without_blocking(tmp_path: Path) -> None:
     path = tmp_path / "state.json"
     os.mkfifo(path)
 
@@ -87,7 +106,7 @@ def test_rejects_fifo_without_blocking(tmp_path):
     assert not thread.is_alive(), "state-file open blocked on FIFO"
 
 
-def test_rejects_directory(tmp_path):
+def test_rejects_directory(tmp_path: Path) -> None:
     path = tmp_path / "state.json"
     path.mkdir()
 
@@ -95,19 +114,14 @@ def test_rejects_directory(tmp_path):
         state_file.open_state_file(path, description="test state")
 
 
-def test_fstat_failure_closes_opened_descriptor(tmp_path):
+def test_fstat_failure_closes_opened_descriptor(
+    tmp_path: Path,
+    opened_fds: list[int],
+) -> None:
     path = tmp_path / "state.json"
     path.write_text("{}")
-    opened_fds: list[int] = []
-    real_open = os.open
-
-    def record_open(open_path: Path, flags: int) -> int:
-        fd = real_open(open_path, flags)
-        opened_fds.append(fd)
-        return fd
 
     with (
-        patch.object(state_file.os, "open", side_effect=record_open),
         patch.object(state_file.os, "fstat", side_effect=OSError("fstat failed")),
         pytest.raises(OSError, match="fstat failed"),
     ):
@@ -117,22 +131,17 @@ def test_fstat_failure_closes_opened_descriptor(tmp_path):
     _assert_descriptor_closed(opened_fds[0])
 
 
-def test_stat_validator_failure_closes_opened_descriptor(tmp_path):
+def test_stat_validator_failure_closes_opened_descriptor(
+    tmp_path: Path,
+    opened_fds: list[int],
+) -> None:
     path = tmp_path / "state.json"
     path.write_text("{}")
-    opened_fds: list[int] = []
-    real_open = os.open
-
-    def record_open(open_path: Path, flags: int) -> int:
-        fd = real_open(open_path, flags)
-        opened_fds.append(fd)
-        return fd
 
     def reject_stat(_path: Path, _st: os.stat_result) -> None:
         raise PermissionError("untrusted")
 
     with (
-        patch.object(state_file.os, "open", side_effect=record_open),
         pytest.raises(PermissionError, match="untrusted"),
     ):
         state_file.open_state_file(
@@ -145,19 +154,14 @@ def test_stat_validator_failure_closes_opened_descriptor(tmp_path):
     _assert_descriptor_closed(opened_fds[0])
 
 
-def test_identity_setup_failure_closes_opened_descriptor(tmp_path):
+def test_identity_setup_failure_closes_opened_descriptor(
+    tmp_path: Path,
+    opened_fds: list[int],
+) -> None:
     path = tmp_path / "state.json"
     path.write_text("{}")
-    opened_fds: list[int] = []
-    real_open = os.open
-
-    def record_open(open_path: Path, flags: int) -> int:
-        fd = real_open(open_path, flags)
-        opened_fds.append(fd)
-        return fd
 
     with (
-        patch.object(state_file.os, "open", side_effect=record_open),
         patch.object(state_file.Path, "absolute", side_effect=OSError("absolute failed")),
         pytest.raises(OSError, match="absolute failed"),
     ):

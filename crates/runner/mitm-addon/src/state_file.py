@@ -30,7 +30,7 @@ class StateFileNotRegularError(OSError):
 class OpenedStateFile:
     """Validated state-file descriptor owned by a context manager."""
 
-    fd: int
+    _fd: int
     path: Path
     description: str
     identity: StateFileIdentity
@@ -39,7 +39,7 @@ class OpenedStateFile:
         return self
 
     def __exit__(self, *_args: object) -> None:
-        os.close(self.fd)
+        os.close(self._fd)
 
     def read_bytes(self, max_bytes: int) -> bytes:
         """Read at most `max_bytes`, probing one extra byte for size drift."""
@@ -50,7 +50,7 @@ class OpenedStateFile:
         total = 0
         while total <= max_bytes:
             to_read = min(_READ_CHUNK_BYTES, max_bytes + 1 - total)
-            chunk = os.read(self.fd, to_read)
+            chunk = os.read(self._fd, to_read)
             if not chunk:
                 break
             chunks.append(chunk)
@@ -75,7 +75,7 @@ def open_state_file(
     try:
         st = _validate_opened_file(fd, path, description, validate_stat)
         return OpenedStateFile(
-            fd=fd,
+            _fd=fd,
             path=path,
             description=description,
             identity=StateFileIdentity(
