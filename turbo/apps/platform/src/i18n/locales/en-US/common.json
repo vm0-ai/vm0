@@ -5288,6 +5288,12 @@
     "connectedWithDetail": "Connected ({{detail}})",
     "documentTitle": "Works",
     "feishuConnected": "Feishu connected successfully",
+    "github": {
+      "adminInstall": "Ask an organization admin to install the GitHub App",
+      "description": "Trigger workflow automations from GitHub events",
+      "install": "Install GitHub App",
+      "title": "GitHub"
+    },
     "header": {
       "description": "Connect with {{displayName}} through these channels",
       "title": "Where {{displayName}} works"
