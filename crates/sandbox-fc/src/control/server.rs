@@ -23,12 +23,13 @@ use crate::exec_operation_result::{
     validate_exec_capture_timeout,
 };
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
-use crate::park_coordinator::ParkCoordinator;
+use crate::park_coordinator::{ParkCoordinator, RunControlMismatch, TerminateAdmission};
 use crate::runtime_dirs::set_private_runtime_socket_mode;
 
 const RUNNER_EXEC_CAPTURE_LIMIT_BYTES: u32 = 7 * 1024 * 1024;
 const CONTROL_SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 const CONTROL_HANDLER_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
+const RUN_CONTROL_MISMATCH_ERROR: &str = "run control target is no longer assigned to this sandbox";
 
 /// Cloneable handle used by the control server to ask the process monitor to
 /// terminate the sandbox process group.
@@ -54,9 +55,14 @@ impl ProcessTerminationHandle {
         }
     }
 
-    async fn request_terminate(&self) -> TerminateStatus {
-        if !self.park_coordinator.begin_terminate() {
-            return TerminateStatus::RefusedIdle;
+    async fn request_terminate(
+        &self,
+        expected_run_id: Option<&str>,
+    ) -> Result<TerminateStatus, RunControlMismatch> {
+        match self.park_coordinator.begin_terminate(expected_run_id) {
+            TerminateAdmission::Accepted => {}
+            TerminateAdmission::RefusedIdle => return Ok(TerminateStatus::RefusedIdle),
+            TerminateAdmission::RunControlMismatch => return Err(RunControlMismatch),
         }
 
         let (ack_tx, ack_rx) = oneshot::channel();
@@ -66,10 +72,10 @@ impl ProcessTerminationHandle {
             .await
         {
             Ok(()) => match ack_rx.await {
-                Ok(()) => TerminateStatus::Accepted,
-                Err(_) => TerminateStatus::AlreadyStopped,
+                Ok(()) => Ok(TerminateStatus::Accepted),
+                Err(_) => Ok(TerminateStatus::AlreadyStopped),
             },
-            Err(_) => TerminateStatus::AlreadyStopped,
+            Err(_) => Ok(TerminateStatus::AlreadyStopped),
         }
     }
 }
@@ -408,8 +414,14 @@ async fn terminate(
     termination: &ProcessTerminationHandle,
 ) -> TerminateResponse {
     match request.action {
-        TerminateAction::Terminate => TerminateResponse::Status {
-            status: termination.request_terminate().await,
+        TerminateAction::Terminate => match termination
+            .request_terminate(request.expected_run_id.as_deref())
+            .await
+        {
+            Ok(status) => TerminateResponse::Status { status },
+            Err(RunControlMismatch) => TerminateResponse::Error {
+                error: RUN_CONTROL_MISMATCH_ERROR.into(),
+            },
         },
     }
 }
@@ -437,7 +449,13 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGat
         }
     };
 
-    let timeout_ms = request.timeout_secs.saturating_mul(1000);
+    let ExecRequest {
+        expected_run_id,
+        command,
+        timeout_secs,
+        sudo,
+    } = request;
+    let timeout_ms = timeout_secs.saturating_mul(1000);
     let env: &[(&str, &str)] = &[];
 
     if let Err(e) = validate_exec_capture_timeout(timeout_ms) {
@@ -446,19 +464,35 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGat
         };
     }
 
+    let write_admission = expected_run_id.map_or_else(vsock_host::FrameWriteObserver::default, {
+        let guest_operations = guest_operations.clone();
+        |expected_run_id| {
+            vsock_host::FrameWriteObserver::new(move || {
+                guest_operations
+                    .ensure_run_control_matches(&expected_run_id)
+                    .map_err(|RunControlMismatch| {
+                        io::Error::new(io::ErrorKind::PermissionDenied, RUN_CONTROL_MISMATCH_ERROR)
+                    })
+            })
+        }
+    });
+
     let result = vsock
-        .exec_operation_capture(vsock_host::ExecCaptureRequest {
-            command: &request.command,
-            timeout_ms,
-            env,
-            sudo: request.sudo,
-            label: "runner-exec",
-            stdout_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
-            stderr_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
-            wait_timeout: Duration::from_millis(timeout_ms as u64 + CONTROL_SOCKET_OVERHEAD_MS),
-        })
+        .exec_operation_capture_with_write_admission(
+            vsock_host::ExecCaptureRequest {
+                command: &command,
+                timeout_ms,
+                env,
+                sudo,
+                label: "runner-exec",
+                stdout_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
+                stderr_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
+                expected_exit_codes: &[],
+                stdin_bytes: None,
+                wait_timeout: Duration::from_millis(timeout_ms as u64 + CONTROL_SOCKET_OVERHEAD_MS),
+            },
+            write_admission,
+        )
         .await
         .and_then(exec_response_from_operation_result);
 

@@ -257,15 +257,24 @@ async fn idle_park_request_success_preserves_reuse_metadata() {
         .reserve_reusable(reuse_key, profile_name, &None)
         .expect("idle entry should be reserved");
 
+    let next_run_id = RunId::new_v4();
     let IdleUnparkResult::Reused {
         sandbox,
         budget_lease,
-    } = reservation.try_unpark().await
+    } = reservation.try_unpark_for_run(next_run_id).await
     else {
         panic!("unpark should succeed");
     };
     let sandbox = *sandbox;
     assert_eq!(sandbox.sandbox_id(), sandbox_id);
+    assert_eq!(
+        overrides.run_control_bind_calls(),
+        vec![next_run_id.to_string()]
+    );
+    assert_eq!(
+        overrides.unpark_run_control_ids(),
+        vec![Some(next_run_id.to_string())]
+    );
     let reused_parts = sandbox.into_parts();
     assert_eq!(reused_parts.source_ip, source_ip);
     assert_eq!(

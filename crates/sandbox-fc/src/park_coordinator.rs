@@ -31,6 +31,7 @@ impl ParkCoordinator {
             inner: Arc::new(Mutex::new(Inner {
                 state: CoordinatorState::Open,
                 next_attempt_id: 1,
+                active_run_id: None,
             })),
         }
     }
@@ -43,6 +44,34 @@ impl ParkCoordinator {
         match self.inner().state.clone() {
             CoordinatorState::Open => Ok(()),
             state => Err(OperationStartRejection::GateClosed { state }),
+        }
+    }
+
+    /// Bind the full run identity before this assignment can admit controls.
+    pub(crate) fn bind_run_control(&self, run_id: &str) -> Result<(), RunControlBindError> {
+        let mut inner = self.inner();
+        if inner.active_run_id.is_some() {
+            return Err(RunControlBindError::AlreadyBound);
+        }
+
+        match inner.state.clone() {
+            CoordinatorState::Open | CoordinatorState::Parked => {
+                inner.active_run_id = Some(run_id.to_owned());
+                Ok(())
+            }
+            state => Err(RunControlBindError::InvalidState { state }),
+        }
+    }
+
+    /// Verify a guarded control target without revealing the current owner.
+    pub(crate) fn ensure_run_control_matches(
+        &self,
+        expected_run_id: &str,
+    ) -> Result<(), RunControlMismatch> {
+        if self.inner().active_run_id.as_deref() == Some(expected_run_id) {
+            Ok(())
+        } else {
+            Err(RunControlMismatch)
         }
     }
 
@@ -86,6 +115,7 @@ impl ParkCoordinator {
         match inner.state.clone() {
             CoordinatorState::ReadyForPark { attempt_id } if attempt_id == attempt.id => {
                 inner.state = CoordinatorState::Parked;
+                inner.active_run_id = None;
                 Ok(())
             }
             CoordinatorState::Dirty { reason } => Err(PrepareParkError::Dirty { reason }),
@@ -110,14 +140,18 @@ impl ParkCoordinator {
     /// Once this moves the policy to `Terminating`, future or in-flight park
     /// attempts cannot reach `Parked`, so a terminate request cannot race with
     /// the active job finalizer transferring ownership to the idle pool.
-    pub(crate) fn begin_terminate(&self) -> bool {
+    pub(crate) fn begin_terminate(&self, expected_run_id: Option<&str>) -> TerminateAdmission {
         let mut inner = self.inner();
+        if expected_run_id.is_some() && inner.active_run_id.as_deref() != expected_run_id {
+            return TerminateAdmission::RunControlMismatch;
+        }
+
         match inner.state {
-            CoordinatorState::Parked => false,
-            CoordinatorState::Terminating => true,
+            CoordinatorState::Parked => TerminateAdmission::RefusedIdle,
+            CoordinatorState::Terminating => TerminateAdmission::Accepted,
             _ => {
                 inner.state = CoordinatorState::Terminating;
-                true
+                TerminateAdmission::Accepted
             }
         }
     }
@@ -179,6 +213,22 @@ pub(crate) enum OperationStartRejection {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum RunControlBindError {
+    AlreadyBound,
+    InvalidState { state: CoordinatorState },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RunControlMismatch;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TerminateAdmission {
+    Accepted,
+    RefusedIdle,
+    RunControlMismatch,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum PrepareParkError {
     Dirty {
         reason: DirtyReason,
@@ -210,6 +260,7 @@ impl PrepareParkResolution {
 struct Inner {
     state: CoordinatorState,
     next_attempt_id: u64,
+    active_run_id: Option<String>,
 }
 
 impl Inner {
@@ -289,6 +340,62 @@ mod tests {
     }
 
     #[test]
+    fn run_control_assignment_changes_only_at_successful_park_boundary() {
+        let coordinator = ParkCoordinator::new();
+        coordinator.bind_run_control("run-a").unwrap();
+
+        assert_eq!(coordinator.ensure_run_control_matches("run-a"), Ok(()));
+        assert_eq!(
+            coordinator.bind_run_control("run-b"),
+            Err(RunControlBindError::AlreadyBound)
+        );
+
+        let aborted_attempt = begin_attempt(&coordinator);
+        coordinator.abort_prepare_park(&aborted_attempt).unwrap();
+        assert_eq!(coordinator.ensure_run_control_matches("run-a"), Ok(()));
+
+        let failed_coordinator = ParkCoordinator::new();
+        failed_coordinator.bind_run_control("run-a").unwrap();
+        let failed_attempt = begin_attempt(&failed_coordinator);
+        complete_attempt(&failed_coordinator, &failed_attempt);
+        failed_coordinator.mark_dirty(DirtyReason::new("park failed"));
+        assert_eq!(
+            failed_coordinator.ensure_run_control_matches("run-a"),
+            Ok(())
+        );
+
+        let successful_attempt = begin_attempt(&coordinator);
+        complete_attempt(&coordinator, &successful_attempt);
+        coordinator.mark_parked(&successful_attempt).unwrap();
+        assert_eq!(
+            coordinator.ensure_run_control_matches("run-a"),
+            Err(RunControlMismatch)
+        );
+
+        coordinator.bind_run_control("run-b").unwrap();
+        assert_eq!(coordinator.ensure_run_control_matches("run-b"), Ok(()));
+        coordinator.reopen_after_unpark().unwrap();
+        assert_eq!(coordinator.ensure_run_control_matches("run-b"), Ok(()));
+    }
+
+    #[test]
+    fn guarded_terminate_mismatch_does_not_change_coordinator_state() {
+        let coordinator = ParkCoordinator::new();
+        coordinator.bind_run_control("run-b").unwrap();
+
+        assert_eq!(
+            coordinator.begin_terminate(Some("run-a")),
+            TerminateAdmission::RunControlMismatch
+        );
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+        assert_eq!(
+            coordinator.begin_terminate(Some("run-b")),
+            TerminateAdmission::Accepted
+        );
+        assert_eq!(coordinator.state(), CoordinatorState::Terminating);
+    }
+
+    #[test]
     fn poisoned_mutex_marks_coordinator_dirty() {
         let coordinator = ParkCoordinator::new();
         let poisoned_coordinator = coordinator.clone();
@@ -346,7 +453,10 @@ mod tests {
         );
 
         let terminating = ParkCoordinator::new();
-        assert!(terminating.begin_terminate());
+        assert_eq!(
+            terminating.begin_terminate(None),
+            TerminateAdmission::Accepted
+        );
         assert_eq!(
             terminating.ensure_operation_start_allowed(),
             Err(OperationStartRejection::GateClosed {
@@ -594,8 +704,14 @@ mod tests {
     fn terminate_blocks_future_park_attempts() {
         let coordinator = ParkCoordinator::new();
 
-        assert!(coordinator.begin_terminate());
-        assert!(coordinator.begin_terminate());
+        assert_eq!(
+            coordinator.begin_terminate(None),
+            TerminateAdmission::Accepted
+        );
+        assert_eq!(
+            coordinator.begin_terminate(None),
+            TerminateAdmission::Accepted
+        );
         assert_eq!(coordinator.state(), CoordinatorState::Terminating);
 
         assert_eq!(
@@ -611,7 +727,10 @@ mod tests {
         let coordinator = ParkCoordinator::new();
         let attempt = begin_attempt(&coordinator);
 
-        assert!(coordinator.begin_terminate());
+        assert_eq!(
+            coordinator.begin_terminate(None),
+            TerminateAdmission::Accepted
+        );
         assert_eq!(coordinator.state(), CoordinatorState::Terminating);
 
         assert_eq!(
@@ -629,7 +748,10 @@ mod tests {
         let attempt = begin_attempt(&coordinator);
         complete_attempt(&coordinator, &attempt);
 
-        assert!(coordinator.begin_terminate());
+        assert_eq!(
+            coordinator.begin_terminate(None),
+            TerminateAdmission::Accepted
+        );
         assert_eq!(coordinator.state(), CoordinatorState::Terminating);
         assert_eq!(
             coordinator.mark_parked(&attempt),
@@ -646,7 +768,10 @@ mod tests {
         complete_attempt(&coordinator, &attempt);
         coordinator.mark_parked(&attempt).unwrap();
 
-        assert!(!coordinator.begin_terminate());
+        assert_eq!(
+            coordinator.begin_terminate(None),
+            TerminateAdmission::RefusedIdle
+        );
         assert_eq!(coordinator.state(), CoordinatorState::Parked);
     }
 
@@ -655,7 +780,10 @@ mod tests {
         let coordinator = ParkCoordinator::new();
         coordinator.mark_dirty(DirtyReason::new("transport failed"));
 
-        assert!(coordinator.begin_terminate());
+        assert_eq!(
+            coordinator.begin_terminate(None),
+            TerminateAdmission::Accepted
+        );
         assert_eq!(coordinator.state(), CoordinatorState::Terminating);
     }
 
@@ -663,7 +791,10 @@ mod tests {
     fn dirty_does_not_override_terminating() {
         let coordinator = ParkCoordinator::new();
 
-        assert!(coordinator.begin_terminate());
+        assert_eq!(
+            coordinator.begin_terminate(None),
+            TerminateAdmission::Accepted
+        );
         coordinator.mark_dirty(DirtyReason::new("late park failure"));
 
         assert_eq!(coordinator.state(), CoordinatorState::Terminating);
@@ -686,7 +817,7 @@ mod tests {
             let terminate_barrier = std::sync::Arc::clone(&barrier);
             let terminate_thread = std::thread::spawn(move || {
                 terminate_barrier.wait();
-                terminate_coordinator.begin_terminate()
+                terminate_coordinator.begin_terminate(None)
             });
 
             let prepare_result = prepare_thread
@@ -697,7 +828,7 @@ mod tests {
                 .expect("terminate thread should not panic");
 
             match (prepare_result, terminate_result) {
-                (Ok(attempt), true) => {
+                (Ok(attempt), TerminateAdmission::Accepted) => {
                     assert_eq!(coordinator.state(), CoordinatorState::Terminating);
                     assert_eq!(
                         coordinator
@@ -712,7 +843,7 @@ mod tests {
                     Err(PrepareParkError::InvalidState {
                         state: CoordinatorState::Terminating,
                     }),
-                    true,
+                    TerminateAdmission::Accepted,
                 ) => {
                     assert_eq!(coordinator.state(), CoordinatorState::Terminating);
                 }

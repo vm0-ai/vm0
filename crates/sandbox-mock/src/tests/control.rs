@@ -4,12 +4,20 @@ use super::*;
 async fn sandbox_control_default_succeeds() {
     let control = MockSandboxControl::new("/tmp/test");
     let result = control
-        .exec_remote("sandbox-1", "echo hi", Duration::from_secs(5), false)
+        .exec_remote(
+            SandboxControlTarget::sandbox("sandbox-1"),
+            "echo hi",
+            Duration::from_secs(5),
+            false,
+        )
         .await
         .unwrap();
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
     assert_eq!(
-        control.kill_remote("sandbox-1").await.unwrap(),
+        control
+            .kill_remote(SandboxControlTarget::sandbox("sandbox-1"))
+            .await
+            .unwrap(),
         RemoteKillResult::Accepted
     );
     assert_eq!(
@@ -22,11 +30,21 @@ async fn sandbox_control_default_succeeds() {
 async fn sandbox_control_records_exec_calls() {
     let control = MockSandboxControl::new("/tmp/test");
     control
-        .exec_remote("sandbox-1", "echo one", Duration::from_secs(5), false)
+        .exec_remote(
+            SandboxControlTarget::sandbox("sandbox-1"),
+            "echo one",
+            Duration::from_secs(5),
+            false,
+        )
         .await
         .unwrap();
     control
-        .exec_remote("sandbox-2", "echo two", Duration::from_secs(7), true)
+        .exec_remote(
+            SandboxControlTarget::run("run-2", "sandbox-2"),
+            "echo two",
+            Duration::from_secs(7),
+            true,
+        )
         .await
         .unwrap();
 
@@ -34,13 +52,13 @@ async fn sandbox_control_records_exec_calls() {
         control.recorded_exec_calls(),
         vec![
             RemoteExecCall {
-                sandbox_id: "sandbox-1".to_string(),
+                target: SandboxControlTarget::sandbox("sandbox-1"),
                 command: "echo one".to_string(),
                 timeout: Duration::from_secs(5),
                 sudo: false,
             },
             RemoteExecCall {
-                sandbox_id: "sandbox-2".to_string(),
+                target: SandboxControlTarget::run("run-2", "sandbox-2"),
                 command: "echo two".to_string(),
                 timeout: Duration::from_secs(7),
                 sudo: true,
@@ -54,14 +72,23 @@ async fn sandbox_control_records_exec_calls() {
 }
 
 #[tokio::test]
-async fn sandbox_control_records_kill_ids() {
+async fn sandbox_control_records_kill_targets() {
     let control = MockSandboxControl::new("/tmp/test");
-    control.kill_remote("sandbox-1").await.unwrap();
-    control.kill_remote("sandbox-2").await.unwrap();
+    control
+        .kill_remote(SandboxControlTarget::sandbox("sandbox-1"))
+        .await
+        .unwrap();
+    control
+        .kill_remote(SandboxControlTarget::run("run-2", "sandbox-2"))
+        .await
+        .unwrap();
 
     assert_eq!(
-        control.recorded_kill_ids(),
-        vec!["sandbox-1".to_string(), "sandbox-2".to_string()],
+        control.recorded_kill_targets(),
+        vec![
+            SandboxControlTarget::sandbox("sandbox-1"),
+            SandboxControlTarget::run("run-2", "sandbox-2"),
+        ],
     );
 }
 
@@ -71,13 +98,23 @@ async fn sandbox_control_queued_results() {
     control.push_exec_remote_result(Err(SandboxControlError::NotFound("gone".into())));
 
     let result = control
-        .exec_remote("sandbox-1", "test", Duration::from_secs(5), false)
+        .exec_remote(
+            SandboxControlTarget::sandbox("sandbox-1"),
+            "test",
+            Duration::from_secs(5),
+            false,
+        )
         .await;
     assert!(result.is_err());
 
     // Falls back to default.
     let result = control
-        .exec_remote("sandbox-1", "test", Duration::from_secs(5), false)
+        .exec_remote(
+            SandboxControlTarget::sandbox("sandbox-1"),
+            "test",
+            Duration::from_secs(5),
+            false,
+        )
         .await
         .unwrap();
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
@@ -88,11 +125,16 @@ async fn sandbox_control_queued_kill_results() {
     let control = MockSandboxControl::new("/tmp/test");
     control.push_kill_remote_result(Err(SandboxControlError::NotFound("gone".into())));
 
-    let result = control.kill_remote("sandbox-1").await;
+    let result = control
+        .kill_remote(SandboxControlTarget::sandbox("sandbox-1"))
+        .await;
     assert!(result.is_err());
 
     assert_eq!(
-        control.kill_remote("sandbox-1").await.unwrap(),
+        control
+            .kill_remote(SandboxControlTarget::sandbox("sandbox-1"))
+            .await
+            .unwrap(),
         RemoteKillResult::Accepted
     );
 }

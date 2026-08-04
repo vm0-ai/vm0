@@ -5,7 +5,9 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use clap::Args;
-use sandbox::{ExecTermination, RemoteExecResult, SandboxControl, SandboxControlError};
+use sandbox::{
+    ExecTermination, RemoteExecResult, SandboxControl, SandboxControlError, SandboxControlTarget,
+};
 use shell_quote::quote_shell_arg;
 
 use crate::error::{RunnerError, RunnerResult};
@@ -74,13 +76,13 @@ pub struct ExecArgs {
 /// as [`ExitCode::FAILURE`]. Other sandbox-control errors are propagated as
 /// [`RunnerError::Config`].
 pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerResult<ExitCode> {
-    // Resolve the target to a sandbox_id string.
-    let sandbox_id = if let Some(ref sid) = args.sandbox {
-        sid.clone()
+    let target = if let Some(ref sid) = args.sandbox {
+        SandboxControlTarget::sandbox(sid)
     } else if let Some(ref rid) = args.run {
         let home = HomePaths::new()?;
         let mappings = run_resolution::collect_active_run_mappings_from_home(&home).await?;
-        run_resolution::resolve_run_to_sandbox(rid, &mappings)?
+        let mapping = run_resolution::resolve_run_mapping(rid, &mappings)?;
+        SandboxControlTarget::run(mapping.run_id, mapping.sandbox_id)
     } else {
         // clap group guarantees one is set — this branch is unreachable.
         return Err(RunnerError::Config(
@@ -97,7 +99,7 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
     let timeout = Duration::from_secs(u64::from(args.timeout));
 
     match control
-        .exec_remote(&sandbox_id, &command, timeout, args.sudo)
+        .exec_remote(target, &command, timeout, args.sudo)
         .await
     {
         Ok(result) => {
@@ -258,7 +260,7 @@ mod tests {
         assert_eq!(
             control.recorded_exec_calls(),
             vec![RemoteExecCall {
-                sandbox_id: "direct-sandbox".to_string(),
+                target: SandboxControlTarget::sandbox("direct-sandbox"),
                 command: "'echo' 'hello world'".to_string(),
                 timeout: Duration::from_secs(47),
                 sudo: true,

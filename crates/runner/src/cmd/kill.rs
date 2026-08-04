@@ -173,7 +173,7 @@ async fn kill_current_target(
     is_orphan: bool,
     control: &dyn SandboxControl,
 ) -> KillOutcome {
-    match control.kill_remote(&current.sandbox_id).await {
+    match control.kill_remote(current.control_target()).await {
         Ok(RemoteKillResult::RefusedIdle) => KillOutcome::RefusedManagedIdle,
         Ok(result) => KillOutcome::OwnerAccepted(result),
         Err(error) => retry_as_orphan_if_owner_disappeared(&current, error, is_orphan).await,
@@ -404,6 +404,7 @@ async fn confirm() -> bool {
 mod tests {
     use std::path::Path;
 
+    use sandbox::SandboxControlTarget;
     use sandbox_mock::MockSandboxControl;
 
     use super::test_support::make_target;
@@ -460,7 +461,28 @@ mod tests {
             outcome,
             KillOutcome::OwnerAccepted(RemoteKillResult::Accepted)
         ));
-        assert_eq!(control.recorded_kill_ids(), vec!["sbox-123"]);
+        assert_eq!(
+            control.recorded_kill_targets(),
+            vec![SandboxControlTarget::sandbox("sbox-123")]
+        );
+    }
+
+    #[tokio::test]
+    async fn managed_run_target_preserves_full_run_identity() {
+        let control = MockSandboxControl::new("/tmp/test");
+        let mut current = make_target(200, "sbox-123");
+        current.run_id = Some("run-full-id".into());
+
+        let outcome = kill_current_target(current, false, &control).await;
+
+        assert!(matches!(
+            outcome,
+            KillOutcome::OwnerAccepted(RemoteKillResult::Accepted)
+        ));
+        assert_eq!(
+            control.recorded_kill_targets(),
+            vec![SandboxControlTarget::run("run-full-id", "sbox-123")]
+        );
     }
 
     #[tokio::test]
@@ -472,7 +494,10 @@ mod tests {
         let outcome = kill_current_target(current, false, &control).await;
 
         assert!(matches!(outcome, KillOutcome::RefusedManagedIdle));
-        assert_eq!(control.recorded_kill_ids(), vec!["sbox-123"]);
+        assert_eq!(
+            control.recorded_kill_targets(),
+            vec![SandboxControlTarget::sandbox("sbox-123")]
+        );
     }
 
     #[tokio::test]
@@ -486,7 +511,10 @@ mod tests {
             outcome,
             KillOutcome::OwnerAccepted(RemoteKillResult::Accepted)
         ));
-        assert_eq!(control.recorded_kill_ids(), vec!["sbox-123"]);
+        assert_eq!(
+            control.recorded_kill_targets(),
+            vec![SandboxControlTarget::sandbox("sbox-123")]
+        );
     }
 
     #[tokio::test]

@@ -73,6 +73,23 @@ async fn start_exec_operation_on_shared_with_tracking(
     tracking: ExecOperationTracking<'_>,
     write_observer: FrameWriteObserver,
 ) -> io::Result<(ExecOperationHandle, Instant)> {
+    start_exec_operation_on_shared_with_tracking_and_admission(
+        shared,
+        request,
+        tracking,
+        FrameWriteObserver::default(),
+        write_observer,
+    )
+    .await
+}
+
+async fn start_exec_operation_on_shared_with_tracking_and_admission(
+    shared: &Arc<Shared>,
+    request: ExecOperationRequest<'_>,
+    tracking: ExecOperationTracking<'_>,
+    write_admission: FrameWriteObserver,
+    write_observer: FrameWriteObserver,
+) -> io::Result<(ExecOperationHandle, Instant)> {
     if request.timeout_ms == 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -131,6 +148,7 @@ async fn start_exec_operation_on_shared_with_tracking(
             &payload,
             &diagnostic,
             tracks_normal_operation,
+            write_admission,
             write_observer,
         ),
     )
@@ -251,6 +269,7 @@ where
             &diagnostic,
             tracks_normal_operation,
             FrameWriteObserver::default(),
+            FrameWriteObserver::default(),
         ),
     )
     .await
@@ -361,13 +380,45 @@ pub(crate) async fn exec_operation_capture_on_shared_with_write_observer(
     .await
 }
 
+pub(crate) async fn exec_operation_capture_on_shared_with_write_admission(
+    shared: &Arc<Shared>,
+    request: ExecCaptureRequest<'_>,
+    write_admission: FrameWriteObserver,
+) -> io::Result<ExecOperationResult> {
+    exec_operation_capture_on_shared_with_tracking_and_admission(
+        shared,
+        request,
+        ExecOperationTracking::Tracked,
+        write_admission,
+        FrameWriteObserver::default(),
+    )
+    .await
+}
+
 async fn exec_operation_capture_on_shared_with_tracking(
     shared: &Arc<Shared>,
     request: ExecCaptureRequest<'_>,
     tracking: ExecOperationTracking<'_>,
     write_observer: FrameWriteObserver,
 ) -> io::Result<ExecOperationResult> {
-    let (handle, deadline) = start_exec_operation_on_shared_with_tracking(
+    exec_operation_capture_on_shared_with_tracking_and_admission(
+        shared,
+        request,
+        tracking,
+        FrameWriteObserver::default(),
+        write_observer,
+    )
+    .await
+}
+
+async fn exec_operation_capture_on_shared_with_tracking_and_admission(
+    shared: &Arc<Shared>,
+    request: ExecCaptureRequest<'_>,
+    tracking: ExecOperationTracking<'_>,
+    write_admission: FrameWriteObserver,
+    write_observer: FrameWriteObserver,
+) -> io::Result<ExecOperationResult> {
+    let (handle, deadline) = start_exec_operation_on_shared_with_tracking_and_admission(
         shared,
         ExecOperationRequest {
             timeout_ms: request.timeout_ms,
@@ -387,6 +438,7 @@ async fn exec_operation_capture_on_shared_with_tracking(
             start_write_timeout: request.wait_timeout,
         },
         tracking,
+        write_admission,
         write_observer,
     )
     .await?;

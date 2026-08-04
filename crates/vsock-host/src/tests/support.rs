@@ -233,6 +233,15 @@ pub(crate) async fn exec_capture_with_write_observer(
     .await
 }
 
+pub(crate) async fn exec_capture_with_write_admission(
+    host: &VsockHost,
+    request: ExecCaptureRequest<'_>,
+    write_admission: FrameWriteObserver,
+) -> io::Result<ExecOperationResult> {
+    host.exec_operation_capture_with_write_admission(request, write_admission)
+        .await
+}
+
 pub(crate) fn captured_output_bytes(output: &ExecOwnedCapturedOutput) -> &[u8] {
     match output {
         ExecOwnedCapturedOutput::Captured { bytes, .. } => bytes,
