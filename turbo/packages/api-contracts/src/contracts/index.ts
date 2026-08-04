@@ -186,7 +186,10 @@ export {
 } from "./zero-user-model-preference";
 export {
   MAX_FILE_SIZE_BYTES,
+  STORAGE_MANIFEST_MAX_FILES,
+  STORAGE_MANIFEST_MAX_PATH_BYTES,
   fileEntryWithHashSchema,
+  storageManifestFilesSchema,
   storageChangesSchema,
   presignedUploadSchema,
 } from "./storages";
