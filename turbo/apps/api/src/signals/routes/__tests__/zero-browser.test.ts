@@ -29,6 +29,7 @@ import webClientCompatibility from "../../../lib/web-client-compatibility.json";
 import { server } from "../../../mocks/server";
 import { deleteAgentRunRootFixture } from "../../../test-fixtures/run-deletion";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { createDeferredPromise } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -1727,6 +1728,7 @@ describe("zero browser route", () => {
       }
       return Promise.resolve({});
     });
+    const releaseSecondCapture = createDeferredPromise<void>(context.signal);
     let captureCount = 0;
     context.mocks.browserUseCdp.command.mockImplementation((command) => {
       if (command.method === "Target.getTargets") {
@@ -1773,11 +1775,16 @@ describe("zero browser route", () => {
       }
       if (command.method === "Page.captureScreenshot") {
         captureCount += 1;
-        return {
+        const result = {
           data: Buffer.from(`screenshot-${String(captureCount)}`).toString(
             "base64",
           ),
         };
+        return captureCount === 2
+          ? releaseSecondCapture.promise.then(() => {
+              return result;
+            })
+          : result;
       }
       return undefined;
     });
@@ -1847,6 +1854,7 @@ describe("zero browser route", () => {
     expect(secondReconcile.body).toMatchObject({
       errors: 0,
     });
+    releaseSecondCapture.resolve(undefined);
     await flushWaitUntilForTest();
 
     const afterSecondCapture = await accept(
