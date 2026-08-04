@@ -37,6 +37,10 @@ import {
   readRunCallbackFixture,
   withThreadlessRunCleanupTestLockFixture,
 } from "../../../test-fixtures/run-deletion";
+import {
+  deleteUsagePricingRows,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -779,6 +783,23 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         threadless: true,
       }),
     );
+    const usageProvider = `cleanup-test-${fixture.runId}`;
+    await seedUsagePricingRows([
+      {
+        kind: "model",
+        provider: usageProvider,
+        category: "tokens.input",
+        unitPrice: 9,
+        unitSize: 1,
+      },
+    ]);
+    onTestFinished(async () => {
+      await deleteUsagePricingRows({
+        kind: "model",
+        provider: usageProvider,
+        categories: ["tokens.input"],
+      });
+    });
     const ownership = await trackRunOwnership(insertRunOwnership(fixture));
 
     const response = await accept(
