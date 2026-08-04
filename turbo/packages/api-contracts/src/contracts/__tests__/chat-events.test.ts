@@ -502,7 +502,7 @@ describe("ChatEvent folds", () => {
     );
   });
 
-  it("folds pending queue events by user priority, original time, and revoke state", () => {
+  it("folds pending queue events by class priority, original time, and revoke state", () => {
     const revoked = revokedChatEventIds(queueFoldFixture);
     expect(isPendingChatQueueEvent(queueFoldFixture[1], revoked)).toBe(true);
     expect(isPendingChatQueueEvent(queueFoldFixture[3], revoked)).toBe(false);
@@ -510,7 +510,7 @@ describe("ChatEvent folds", () => {
       foldPendingChatQueueEvents(queueFoldFixture).map((event) => {
         return event.id;
       }),
-    ).toStrictEqual(["prompt-newer", "automation-oldest", "goal-oldest"]);
+    ).toStrictEqual(["prompt-newer", "goal-oldest", "automation-oldest"]);
   });
 
   it("returns every pending queue event as runnable", () => {
@@ -518,7 +518,7 @@ describe("ChatEvent folds", () => {
       foldRunnableChatQueueEvents(queueFoldFixture).map((event) => {
         return event.id;
       }),
-    ).toStrictEqual(["prompt-newer", "automation-oldest", "goal-oldest"]);
+    ).toStrictEqual(["prompt-newer", "goal-oldest", "automation-oldest"]);
   });
 });
 
