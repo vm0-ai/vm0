@@ -6584,6 +6584,9 @@ const STRUCTURED_REFERENCE_CHIP_CLASS =
   "inline-flex max-w-[240px] items-center gap-1 rounded-md border " +
   "border-foreground/15 bg-background/80 px-1.5 py-0.5 align-middle " +
   "text-xs font-medium";
+// File chips carry their own border, so they need more breathing room from the
+// surrounding sentence than a borderless inline mention does.
+const INLINE_FILE_REFERENCE_SPACING_CLASS = "mx-1";
 const STRUCTURED_INLINE_REFERENCE_CLASS =
   "relative -top-px mx-0.5 inline-flex h-7 max-w-[240px] items-center " +
   "gap-1.5 rounded-md bg-orange-500/10 px-2 align-middle text-[13px] " +
@@ -6745,7 +6748,13 @@ function UserMessageFileReference({
         />
       );
     }
-    return <span className="inline-flex align-middle">{reference}</span>;
+    return (
+      <span
+        className={`${INLINE_FILE_REFERENCE_SPACING_CLASS} inline-flex align-middle`}
+      >
+        {reference}
+      </span>
+    );
   }
   return (
     <span
@@ -6757,7 +6766,7 @@ function UserMessageFileReference({
           filename: part.filenameSnapshot,
         },
       )}
-      className={`${STRUCTURED_REFERENCE_CHIP_CLASS} h-7`}
+      className={`${STRUCTURED_REFERENCE_CHIP_CLASS} ${INLINE_FILE_REFERENCE_SPACING_CLASS} h-7`}
       title={part.filenameSnapshot}
     >
       <FilePreviewIcon
@@ -7179,11 +7188,16 @@ function UserMessageContent({
   agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
   composerSignals: ComposerSignals;
 }) {
-  const imageAttachments = attachments.filter((attachment) => {
-    return attachment.id !== null && attachment.isImage;
+  // Images and videos read as media, so they sit above the bubble as
+  // thumbnails instead of interrupting the sentence they were dropped into.
+  const mediaAttachments = attachments.filter((attachment) => {
+    return (
+      attachment.id !== null &&
+      (attachment.isImage || attachment.kind === "video")
+    );
   });
-  const imageAttachmentIds = new Set(
-    imageAttachments.flatMap((attachment) => {
+  const mediaAttachmentIds = new Set(
+    mediaAttachments.flatMap((attachment) => {
       return attachment.id ? [attachment.id] : [];
     }),
   );
@@ -7197,7 +7211,7 @@ function UserMessageContent({
       !isUserMessageNonContentPart(part) &&
       !isElevatedUserMessagePart(
         part,
-        imageAttachmentIds,
+        mediaAttachmentIds,
         inlineTemplatesEnabled,
       )
     );
@@ -7219,7 +7233,7 @@ function UserMessageContent({
         </div>
       ) : null}
       <UserMessageAttachments
-        attachments={imageAttachments}
+        attachments={mediaAttachments}
         onImageClick={onImageClick}
       />
       {hasBody ? (
@@ -7228,7 +7242,7 @@ function UserMessageContent({
             <UserMessageView
               document={document}
               attachments={referenceAttachments}
-              elevatedFileIds={imageAttachmentIds}
+              elevatedFileIds={mediaAttachmentIds}
               inlineTemplatesEnabled={inlineTemplatesEnabled}
               agentReferenceSignalsForId={agentReferenceSignalsForId}
               composerSignals={composerSignals}
