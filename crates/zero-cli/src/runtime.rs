@@ -9,21 +9,30 @@ use crate::output::Output;
 
 /// Shared state supplied to one native command handler.
 pub struct CommandContext {
-    config: RuntimeConfig,
+    config: Option<RuntimeConfig>,
     output: Output,
 }
 
 impl CommandContext {
-    /// Build a command context from validated config and output streams.
+    /// Build a command context without reading process configuration.
+    ///
+    /// Local-only handlers can use the output boundary without being affected
+    /// by unrelated API or authentication environment variables.
     #[must_use]
-    pub const fn new(config: RuntimeConfig, output: Output) -> Self {
-        Self { config, output }
+    pub const fn new(output: Output) -> Self {
+        Self {
+            config: None,
+            output,
+        }
     }
 
-    /// Captured runtime configuration.
-    #[must_use]
-    pub const fn config(&self) -> &RuntimeConfig {
-        &self.config
+    /// Lazily load and return the captured runtime configuration.
+    pub fn config(&mut self) -> Result<&RuntimeConfig, CliError> {
+        if self.config.is_none() {
+            self.config = Some(RuntimeConfig::from_env()?);
+        }
+
+        self.config.as_ref().ok_or(CliError::Runtime)
     }
 
     /// Shared output renderer.
@@ -61,10 +70,6 @@ pub fn run_native(registry: HandlerRegistry, invocation: Invocation) -> ExitCode
         }
         Err(error) => return render_error(error, output),
     };
-    let config = match RuntimeConfig::from_env() {
-        Ok(config) => config,
-        Err(error) => return render_error(error.into(), output),
-    };
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -73,7 +78,7 @@ pub fn run_native(registry: HandlerRegistry, invocation: Invocation) -> ExitCode
         Err(_) => return render_error(CliError::Runtime, output),
     };
 
-    let mut context = CommandContext::new(config, output);
+    let mut context = CommandContext::new(output);
     let result = runtime.block_on(parsed.handler.run(&mut context, parsed.matches));
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -95,5 +100,17 @@ pub fn render_error(error: CliError, mut output: Output) -> ExitCode {
         Ok(()) => ExitCode::from(exit_status),
         Err(output_error) if output_error.is_broken_pipe() => ExitCode::SUCCESS,
         Err(_) => ExitCode::FAILURE,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_context_does_not_load_config_during_construction() {
+        let context = CommandContext::new(Output::stdio());
+
+        assert!(context.config.is_none());
     }
 }

@@ -130,12 +130,10 @@ impl HandlerRegistry {
             .try_get_matches_from(invocation.clap_args())
         {
             Ok(matches) => matches,
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
-                ) =>
-            {
+            Err(error) if error.kind() == ErrorKind::DisplayHelp => {
+                return Ok(NativeParse::Display(crate::help::render(invocation)?));
+            }
+            Err(error) if error.kind() == ErrorKind::DisplayVersion => {
                 return Ok(NativeParse::Display(error.to_string()));
             }
             Err(_) => return Err(CliError::Usage),
@@ -173,6 +171,12 @@ pub enum RegistryError {
     /// A previously selected handler was absent from the parsed registry.
     #[error("native handler registry lost the selected command")]
     MissingSelectedCommand,
+    /// The committed TypeScript command inventory could not be decoded.
+    #[error("native help inventory is invalid")]
+    InvalidHelpInventory,
+    /// The selected native command was absent from the committed inventory.
+    #[error("native help inventory is missing the selected command")]
+    MissingSelectedHelp,
 }
 
 #[cfg(test)]
@@ -184,7 +188,7 @@ mod tests {
     #[async_trait]
     impl NativeHandler for HelpHandler {
         fn command(&self) -> Command {
-            Command::new("native-help").about("Native help boundary")
+            Command::new("intro").about("Native help boundary")
         }
 
         async fn run(
@@ -200,13 +204,14 @@ mod tests {
     fn native_help_is_a_successful_display_decision() {
         let registry =
             HandlerRegistry::try_new([Box::new(HelpHandler) as Box<dyn NativeHandler>]).unwrap();
-        let invocation = Invocation::from_args(["native-help".into(), "--help".into()]);
+        let invocation = Invocation::from_args(["intro".into(), "--help".into()]);
         let decision = registry.parse(&invocation).unwrap();
         let NativeParse::Display(help) = decision else {
             panic!("expected native help display");
         };
 
-        assert!(help.contains("Native help boundary"));
-        assert!(help.contains("Usage: zero native-help"));
+        assert!(help.contains("Print Zero's self-introduction and capability guide"));
+        assert!(help.contains("Usage: zero intro"));
+        assert!(!help.contains("Native help boundary"));
     }
 }

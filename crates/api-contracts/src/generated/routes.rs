@@ -234,6 +234,61 @@ pub mod webhooks {
 
 /// Generated route bindings under `zero`.
 pub mod zero {
+    /// Generated route bindings under `zero::banking`.
+    pub mod banking {
+        /// List accounts through the managed Zero Banking gateway.
+        /// Route contract: `POST /api/zero/banking/accounts`.
+        pub const ACCOUNTS: crate::Route = crate::Route {
+            method: crate::Method::Post,
+            path: "/api/zero/banking/accounts",
+        };
+
+        /// Read an account balance through the managed Zero Banking gateway.
+        /// Route contract: `POST /api/zero/banking/balances`.
+        pub const BALANCES: crate::Route = crate::Route {
+            method: crate::Method::Post,
+            path: "/api/zero/banking/balances",
+        };
+
+        /// Read account transactions through the managed Zero Banking gateway.
+        /// Route contract: `POST /api/zero/banking/transactions`.
+        pub const TRANSACTIONS: crate::Route = crate::Route {
+            method: crate::Method::Post,
+            path: "/api/zero/banking/transactions",
+        };
+    }
+
+    /// Generated route bindings under `zero::finance`.
+    pub mod finance {
+        /// Fetch market chart data through managed Zero Finance.
+        /// Route contract: `POST /api/zero/finance/chart`.
+        pub const CHART: crate::Route = crate::Route {
+            method: crate::Method::Post,
+            path: "/api/zero/finance/chart",
+        };
+
+        /// Fetch a company profile through managed Zero Finance.
+        /// Route contract: `POST /api/zero/finance/profile`.
+        pub const PROFILE: crate::Route = crate::Route {
+            method: crate::Method::Post,
+            path: "/api/zero/finance/profile",
+        };
+
+        /// Fetch a market quote through managed Zero Finance.
+        /// Route contract: `POST /api/zero/finance/quote`.
+        pub const QUOTE: crate::Route = crate::Route {
+            method: crate::Method::Post,
+            path: "/api/zero/finance/quote",
+        };
+
+        /// Search financial instruments through managed Zero Finance.
+        /// Route contract: `POST /api/zero/finance/search`.
+        pub const SEARCH: crate::Route = crate::Route {
+            method: crate::Method::Post,
+            path: "/api/zero/finance/search",
+        };
+    }
+
     /// Generated route bindings under `zero::model_policies`.
     pub mod model_policies {
         /// List org model-first policies.
@@ -244,6 +299,26 @@ pub mod zero {
         };
     }
 
+    /// Generated route bindings under `zero::people_search`.
+    pub mod people_search {
+        /// Find professionals through managed Zero People Search.
+        /// Route contract: `POST /api/zero/people-search`.
+        pub const SEARCH: crate::Route = crate::Route {
+            method: crate::Method::Post,
+            path: "/api/zero/people-search",
+        };
+    }
+
+    /// Generated route bindings under `zero::scrape`.
+    pub mod scrape {
+        /// Scrape a public web page through managed Zero Scrape.
+        /// Route contract: `POST /api/zero/scrape`.
+        pub const SCRAPE: crate::Route = crate::Route {
+            method: crate::Method::Post,
+            path: "/api/zero/scrape",
+        };
+    }
+
     /// Generated route bindings under `zero::user_model_preference`.
     pub mod user_model_preference {
         /// Get current user's model-first preference.
@@ -251,6 +326,16 @@ pub mod zero {
         pub const GET: crate::Route = crate::Route {
             method: crate::Method::Get,
             path: "/api/zero/user-model-preference",
+        };
+    }
+
+    /// Generated route bindings under `zero::web_search`.
+    pub mod web_search {
+        /// Search the public web through managed Zero Web Search.
+        /// Route contract: `POST /api/zero/web-search`.
+        pub const SEARCH: crate::Route = crate::Route {
+            method: crate::Method::Post,
+            path: "/api/zero/web-search",
         };
     }
 }
