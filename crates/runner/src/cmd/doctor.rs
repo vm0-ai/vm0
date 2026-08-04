@@ -55,6 +55,8 @@ const PREPARING_NO_PROCESS_GRACE: Duration = Duration::from_secs(120);
 
 /// A detected anomaly that carries enough context to recheck itself.
 enum Warning {
+    /// status.json is missing or cannot be read as Doctor status.
+    StatusUnavailable { base_dir: PathBuf },
     /// API server not responding to HEAD request.
     ApiUnreachable {
         server_url: String,
@@ -109,6 +111,7 @@ enum Warning {
 impl fmt::Display for Warning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::StatusUnavailable { .. } => write!(f, "status.json unavailable"),
             Self::ApiUnreachable { .. } => write!(f, "API unreachable"),
             Self::NoMitmproxy { port, .. } => {
                 write!(f, "no mitmproxy process on port {port}")
@@ -189,6 +192,7 @@ impl Warning {
         network_namespaces: Option<&HashSet<String>>,
     ) -> bool {
         match self {
+            Self::StatusUnavailable { base_dir } => read_status(base_dir).await.is_none(),
             Self::ApiUnreachable {
                 server_url,
                 server_token,
@@ -341,6 +345,24 @@ struct RunnerReport {
     service_type: ServiceType,
     status: Option<StatusInfo>,
     api_ok: Option<bool>,
+    proxy_pid: Option<u32>,
+    dns_pid: Option<u32>,
+    jobs: Vec<JobReport>,
+    warnings: Vec<Warning>,
+}
+
+impl RunnerReport {
+    fn apply_status_diagnostics(&mut self, diagnostics: StatusDiagnostics) {
+        self.status = Some(diagnostics.status);
+        self.proxy_pid = diagnostics.proxy_pid;
+        self.dns_pid = diagnostics.dns_pid;
+        self.jobs = diagnostics.jobs;
+        self.warnings.extend(diagnostics.warnings);
+    }
+}
+
+struct StatusDiagnostics {
+    status: StatusInfo,
     proxy_pid: Option<u32>,
     dns_pid: Option<u32>,
     jobs: Vec<JobReport>,
@@ -562,12 +584,33 @@ async fn recheck_current_runner_warnings(
     )
     .map(|report| async move {
         let mut rechecked = Vec::new();
-        for warning in report.warnings.drain(..) {
-            if warning.persists(api_client, fresh, &[], None).await {
-                rechecked.push(warning);
+        let mut recovered_status = None;
+        for warning in std::mem::take(&mut report.warnings) {
+            match warning {
+                Warning::StatusUnavailable { base_dir } => {
+                    if let Some(status) = read_status(&base_dir).await {
+                        recovered_status = Some(build_status_diagnostics(
+                            status,
+                            &base_dir,
+                            &fresh.firecrackers,
+                            &fresh.mitmdumps,
+                            &fresh.dnsmasqs,
+                        ));
+                    } else {
+                        rechecked.push(Warning::StatusUnavailable { base_dir });
+                    }
+                }
+                warning => {
+                    if warning.persists(api_client, fresh, &[], None).await {
+                        rechecked.push(warning);
+                    }
+                }
             }
         }
         report.warnings = rechecked;
+        if let Some(diagnostics) = recovered_status {
+            report.apply_status_diagnostics(diagnostics);
+        }
     })
     .buffered(DOCTOR_IO_CONCURRENCY)
     .for_each(|_| async {})
@@ -640,22 +683,59 @@ async fn build_runner_report(
         });
     }
 
-    // Base dir for job correlation
-    let base_dir = &runner.base_dir;
+    let mut report = RunnerReport {
+        live_runner: runner.clone(),
+        name,
+        base_dir: Some(runner.base_dir.clone()),
+        pid: runner.pid,
+        config_path: runner.config_path.clone(),
+        subcommand: runner.subcommand.clone(),
+        service_type,
+        status: None,
+        api_ok,
+        proxy_pid: None,
+        dns_pid: None,
+        jobs: Vec::new(),
+        warnings,
+    };
+
+    if let Some(status) = status {
+        report.apply_status_diagnostics(build_status_diagnostics(
+            status,
+            &runner.base_dir,
+            fc_procs,
+            mitm_procs,
+            dns_procs,
+        ));
+    } else {
+        report.warnings.push(Warning::StatusUnavailable {
+            base_dir: runner.base_dir.clone(),
+        });
+    }
+
+    report
+}
+
+fn build_status_diagnostics(
+    status: StatusInfo,
+    base_dir: &Path,
+    fc_procs: &[process::FirecrackerProcessInfo],
+    mitm_procs: &[process::MitmproxyProcessInfo],
+    dns_procs: &[process::DnsmasqProcessInfo],
+) -> StatusDiagnostics {
+    let mut warnings = Vec::new();
 
     // Proxy check (match by port from status.json).
     //   running  + proxy missing  → NoMitmproxy warning
     //   stopped  + proxy present  → StaleMitmproxy warning
     //   draining                  → no warning either way
-    let proxy_pid = if let Some(st) = &status
-        && let Some(port) = st.proxy_port
-    {
+    let proxy_pid = if let Some(port) = status.proxy_port {
         let pid = mitm_procs.iter().find(|m| m.port == port).map(|m| m.pid);
-        match (st.mode.as_str(), pid) {
+        match (status.mode.as_str(), pid) {
             ("running", None) => {
                 warnings.push(Warning::NoMitmproxy {
                     port,
-                    base_dir: base_dir.clone(),
+                    base_dir: base_dir.to_path_buf(),
                 });
             }
             ("stopped", Some(_)) => {
@@ -669,14 +749,12 @@ async fn build_runner_report(
     };
 
     // DNS proxy check (same pattern as proxy check).
-    let dns_pid = if let Some(st) = &status
-        && let Some(port) = st.dns_port
-    {
+    let dns_pid = if let Some(port) = status.dns_port {
         let pid = dns_procs.iter().find(|d| d.port == port).map(|d| d.pid);
-        if st.mode == "running" && pid.is_none() {
+        if status.mode == "running" && pid.is_none() {
             warnings.push(Warning::NoDnsmasq {
                 port,
-                base_dir: base_dir.clone(),
+                base_dir: base_dir.to_path_buf(),
             });
         }
         pid
@@ -684,25 +762,11 @@ async fn build_runner_report(
         None
     };
 
-    // Job correlation
-    let jobs = if let Some(st) = &status {
-        let (job_reports, job_warnings) = correlate_jobs(st, base_dir, fc_procs);
-        warnings.extend(job_warnings);
-        job_reports
-    } else {
-        Vec::new()
-    };
+    let (jobs, job_warnings) = correlate_jobs(&status, base_dir, fc_procs);
+    warnings.extend(job_warnings);
 
-    RunnerReport {
-        live_runner: runner.clone(),
-        name,
-        base_dir: Some(runner.base_dir.clone()),
-        pid: runner.pid,
-        config_path: runner.config_path.clone(),
-        subcommand: runner.subcommand.clone(),
-        service_type,
+    StatusDiagnostics {
         status,
-        api_ok,
         proxy_pid,
         dns_pid,
         jobs,
@@ -2443,6 +2507,11 @@ mod tests {
 
     #[test]
     fn warning_display() {
+        let w = Warning::StatusUnavailable {
+            base_dir: PathBuf::from("/data/r1"),
+        };
+        assert_eq!(w.to_string(), "status.json unavailable");
+
         let w = Warning::NoFirecrackerForRun {
             run_id: "abc-123".into(),
             sandbox_id: "sbox-abc".into(),
@@ -2551,6 +2620,12 @@ mod tests {
         dns_port: Option<u16>,
     ) -> DoctorReportFixture {
         doctor_report_fixture_for_runner("test-runner", mode, proxy_port, dns_port, None)
+    }
+
+    fn doctor_report_fixture_without_status() -> DoctorReportFixture {
+        let fixture = doctor_report_fixture("starting", None, None);
+        std::fs::remove_file(fixture.base_dir.join("status.json")).unwrap();
+        fixture
     }
 
     fn doctor_report_fixture_for_runner(
@@ -2690,6 +2765,159 @@ mod tests {
             .any(|w| matches!(w, Warning::NoDnsmasq { .. }))
     }
 
+    fn has_status_unavailable_warning(report: &RunnerReport) -> bool {
+        report
+            .warnings
+            .iter()
+            .any(|w| matches!(w, Warning::StatusUnavailable { .. }))
+    }
+
+    #[tokio::test]
+    async fn report_warns_for_each_unavailable_status_form() {
+        enum StatusInput {
+            Missing,
+            Contents(String),
+            Directory,
+        }
+
+        let cases = [
+            ("missing", StatusInput::Missing),
+            ("malformed json", StatusInput::Contents("{".into())),
+            (
+                "oversized",
+                StatusInput::Contents(
+                    "x".repeat(crate::private_fs::PRIVATE_STATUS_FILE_READ_MAX_BYTES as usize + 1),
+                ),
+            ),
+            (
+                "missing required field",
+                StatusInput::Contents(
+                    r#"{"active_runs":[],"started_at":"2026-01-01T00:00:00.000Z"}"#.into(),
+                ),
+            ),
+            (
+                "malformed required entry",
+                StatusInput::Contents(
+                    r#"{
+                        "mode":"running",
+                        "started_at":"2026-01-01T00:00:00.000Z",
+                        "active_runs":[{"run_id":"run-1"}]
+                    }"#
+                    .into(),
+                ),
+            ),
+            ("invalid file type", StatusInput::Directory),
+        ];
+
+        for (name, input) in cases {
+            let fixture = doctor_report_fixture_without_status();
+            let status_path = fixture.base_dir.join("status.json");
+            match input {
+                StatusInput::Missing => {}
+                StatusInput::Contents(contents) => {
+                    std::fs::write(&status_path, contents).unwrap();
+                }
+                StatusInput::Directory => {
+                    std::fs::create_dir(&status_path).unwrap();
+                }
+            }
+            let runner = live_runner_instance(
+                std::process::id(),
+                fixture.config_path.clone(),
+                fixture.base_dir.clone(),
+            );
+
+            let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
+
+            assert!(report.status.is_none(), "{name}");
+            assert!(has_status_unavailable_warning(&report), "{name}");
+            assert_eq!(report.warnings.len(), 1, "{name}");
+        }
+    }
+
+    #[tokio::test]
+    async fn persistent_unavailable_status_survives_recheck_budget() {
+        let fixture = doctor_report_fixture_without_status();
+        let runner = live_runner_instance(
+            std::process::id(),
+            fixture.config_path.clone(),
+            fixture.base_dir.clone(),
+        );
+        let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
+        let mut reports = [report];
+
+        for _ in 0..RECHECK_MAX_ATTEMPTS {
+            recheck_current_runner_warnings(None, &empty_discovered(), &mut reports).await;
+        }
+
+        assert!(reports[0].status.is_none());
+        assert!(has_status_unavailable_warning(&reports[0]));
+        assert_eq!(print_report(&reports, &[], &[]), 1);
+    }
+
+    #[tokio::test]
+    async fn unavailable_status_recheck_applies_recovered_snapshot() {
+        let fixture = doctor_report_fixture_without_status();
+        let runner = live_runner_instance(
+            std::process::id(),
+            fixture.config_path.clone(),
+            fixture.base_dir.clone(),
+        );
+        let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
+        std::fs::write(
+            fixture.base_dir.join("status.json"),
+            r#"{
+                "mode":"starting",
+                "started_at":"2026-01-01T00:00:00.000Z",
+                "active_runs":[]
+            }"#,
+        )
+        .unwrap();
+        let mut reports = [report];
+
+        recheck_current_runner_warnings(None, &empty_discovered(), &mut reports).await;
+
+        assert_eq!(
+            reports[0]
+                .status
+                .as_ref()
+                .map(|status| status.mode.as_str()),
+            Some("starting")
+        );
+        assert!(!has_status_unavailable_warning(&reports[0]));
+        assert!(reports[0].warnings.is_empty());
+        assert_eq!(print_report(&reports, &[], &[]), 0);
+    }
+
+    #[tokio::test]
+    async fn unavailable_status_recheck_reports_recovered_proxy_anomaly() {
+        let fixture = doctor_report_fixture_without_status();
+        let runner = live_runner_instance(
+            std::process::id(),
+            fixture.config_path.clone(),
+            fixture.base_dir.clone(),
+        );
+        let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
+        std::fs::write(
+            fixture.base_dir.join("status.json"),
+            r#"{
+                "mode":"running",
+                "started_at":"2026-01-01T00:00:00.000Z",
+                "active_runs":[],
+                "proxy_port":32821
+            }"#,
+        )
+        .unwrap();
+        let mut reports = [report];
+
+        recheck_current_runner_warnings(None, &empty_discovered(), &mut reports).await;
+
+        assert!(reports[0].status.is_some());
+        assert!(!has_status_unavailable_warning(&reports[0]));
+        assert!(has_proxy_warning(&reports[0]));
+        assert_eq!(print_report(&reports, &[], &[]), 1);
+    }
+
     #[tokio::test]
     async fn recheck_clears_runner_warnings_when_registry_entry_disappears() {
         let dir = tempfile::tempdir().unwrap();
@@ -2713,10 +2941,7 @@ mod tests {
             proxy_pid: None,
             dns_pid: None,
             jobs: vec![],
-            warnings: vec![Warning::NoMitmproxy {
-                port: 32821,
-                base_dir,
-            }],
+            warnings: vec![Warning::StatusUnavailable { base_dir }],
         }];
 
         recheck_per_runner_warnings(&home, None, &empty_discovered(), &mut reports)
