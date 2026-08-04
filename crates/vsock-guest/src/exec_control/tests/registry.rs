@@ -158,6 +158,37 @@ fn duplicate_control_sink_sequence_is_rejected_without_rebinding_endpoint() {
     first.guard.release();
 }
 #[test]
+fn failed_control_sink_registration_rolls_back_active_sequence() {
+    let seq = 21;
+    let nonce = unique_test_nonce(21);
+    let endpoint = process_control_ipc::endpoint_name(seq, &nonce);
+    let occupied_listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+    let registry = ExecControlRegistry::default();
+
+    let error = match registry.register(seq, nonce, true) {
+        Ok(_) => panic!("expected occupied control sink endpoint to reject registration"),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.kind(), io::ErrorKind::AddrInUse);
+    let (status, diagnostic) = resolve_error(&registry, seq, nonce);
+    assert_eq!(status, ExecControlStatus::Inactive);
+    assert_eq!(diagnostic, "exec operation is not active");
+
+    drop(occupied_listener);
+    let registration = registry.register(seq, nonce, true).unwrap();
+    assert_eq!(
+        registration.bootstrap_endpoint.as_deref(),
+        Some(endpoint.as_str())
+    );
+    assert!(registry.resolve(seq, nonce).is_ok());
+
+    drop(registration);
+    let (status, diagnostic) = resolve_error(&registry, seq, nonce);
+    assert_eq!(status, ExecControlStatus::Inactive);
+    assert_eq!(diagnostic, "exec operation is not active");
+}
+#[test]
 fn control_sink_registration_exports_bootstrap_endpoint() {
     let nonce = unique_test_nonce(7);
     let registry = ExecControlRegistry::default();
