@@ -74,7 +74,7 @@ async function applyMigrationsBefore0828(databaseUrl: string): Promise<void> {
   );
   const journal = migrationJournalSchema.parse(rawJournal);
   const rolloutMigration = journal.entries.find((entry) => {
-    return entry.tag === "0828_majestic_abomination";
+    return entry.tag === "0828_wise_natasha_romanoff";
   });
   if (!rolloutMigration) {
     throw new Error("Expected migration 0828 in the migration journal");
