@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.679.2](https://github.com/vm0-ai/vm0/compare/app-v0.679.1...app-v0.679.2) (2026-08-04)
+
+
+### Bug Fixes
+
+* **platform:** preserve connector access spacing ([#24960](https://github.com/vm0-ai/vm0/issues/24960)) ([02c3cc1](https://github.com/vm0-ai/vm0/commit/02c3cc1871bfa102c4749f18d29f955dc7861049))
+
+
+### Refactoring
+
+* **platform:** compose chat panels from shared event signals ([#24954](https://github.com/vm0-ai/vm0/issues/24954)) ([472b7bc](https://github.com/vm0-ai/vm0/commit/472b7bca63366d4fe90c519691dd1eb8b41cfd81))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.0
+    * @vm0/core bumped to 8.508.2
+
 ## [0.679.1](https://github.com/vm0-ai/vm0/compare/app-v0.679.0...app-v0.679.1) (2026-08-04)
 
 
