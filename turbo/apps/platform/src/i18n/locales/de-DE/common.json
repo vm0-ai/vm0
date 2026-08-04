@@ -1426,7 +1426,6 @@
       "queuedMessage": "Nachricht in der Warteschlange",
       "queuedMessageDescription": "Wartet in der Warteschlange und wird gesendet, sobald die aktuelle Ausführung beendet ist.",
       "removeQueuedMessage": "Nachricht aus der Warteschlange entfernen",
-      "sendQueuedMessageNow": "Nachricht aus der Warteschlange jetzt senden",
       "skipAutomationEvent": "Automatisierungsereignis überspringen"
     },
     "replaceDraft": {

@@ -1,1 +1,0 @@
-DROP TABLE "telegram_thread_sessions" CASCADE;

@@ -1,1 +1,0 @@
-ALTER TABLE "chat_threads" ADD COLUMN "generation_template" jsonb;

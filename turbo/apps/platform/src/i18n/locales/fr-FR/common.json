@@ -1459,7 +1459,6 @@
       "queuedMessage": "Message en file d'attente",
       "queuedMessageDescription": "Attend en ligne et envoie une fois l'exécution actuelle terminée.",
       "removeQueuedMessage": "Supprimer le message en attente",
-      "sendQueuedMessageNow": "Envoyer maintenant le message en attente",
       "skipAutomationEvent": "Ignorer l'événement d'automatisation"
     },
     "replaceDraft": {

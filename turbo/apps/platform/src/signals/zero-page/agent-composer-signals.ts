@@ -178,7 +178,6 @@ export const agentChatComposerSignals$ = computed((get) => {
     submitMessage$,
     cancelRun$: unsupportedAction$,
     cancellationRecoveryPending$: idle$,
-    steerQueuedMessage$: unsupportedEventAction$,
     removeQueuedMessage$: unsupportedEventAction$,
     removeWorkflowEvent$: unsupportedEventAction$,
     cancelActiveGoal$: unsupportedAction$,

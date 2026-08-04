@@ -93,9 +93,15 @@ one package and the portion of the graph it constrains, use
 with `git diff -- uv.lock`, then run all static checks and the complete test
 suite.
 
-Commit `pyproject.toml` and `uv.lock` together. Keep the mitmproxy constraint
-aligned with the standalone runtime version in `crates/runner/src/deps.rs`;
-tests must not resolve a different mitmproxy version from production.
+Commit `pyproject.toml` and `uv.lock` together. The contract test in
+`crates/runner/src/deps.rs` requires the mitmproxy constraint and add-on runtime
+guard to match the canonical standalone runtime version.
+
+Before changing that version, re-audit the private mitmproxy APIs used by the
+compatibility layer. Update the canonical Rust version together with the
+x86_64 and aarch64 installed/archive sizes and checksums, then update the Python
+constraint and lockfile. Run both the runner and complete add-on validation
+suites before committing the upgrade.
 
 ## Test Files
 

@@ -1459,7 +1459,6 @@
       "queuedMessage": "Mensagem na fila",
       "queuedMessageDescription": "Aguarda na fila e é enviada quando a execução atual termina.",
       "removeQueuedMessage": "Remover mensagem da fila",
-      "sendQueuedMessageNow": "Enviar mensagem da fila agora",
       "skipAutomationEvent": "Ignorar evento de automação"
     },
     "replaceDraft": {

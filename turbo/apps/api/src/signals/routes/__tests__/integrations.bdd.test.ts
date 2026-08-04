@@ -107,12 +107,10 @@ async function expectClaimedSlackDisplayContext(
   expect(claimedContext).toMatchObject({
     contextType: "slack",
     contextId: expect.any(String),
-    slackPermalink: messagePermalink,
   });
   expect(pendingContext).toMatchObject({
     contextType: "slack",
     contextId: claimedContext?.contextId,
-    slackPermalink: messagePermalink,
   });
 }
 
@@ -1845,7 +1843,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     ).resolves.toMatchObject({
       contextType: "slack",
       contextId: expect.any(String),
-      slackPermalink: null,
       slackChannelId: channelId,
       slackMessageTs: "2900.000200",
       slackConversationContext: "",

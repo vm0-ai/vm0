@@ -1,1 +1,0 @@
-ALTER TABLE "org_members_cache" ADD COLUMN "send_mode" text DEFAULT 'enter' NOT NULL;

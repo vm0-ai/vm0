@@ -1,1 +1,0 @@
-ALTER TABLE "usage_event" ADD COLUMN "gross_credits" bigint;

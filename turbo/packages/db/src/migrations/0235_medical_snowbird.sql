@@ -1,1 +1,0 @@
-ALTER TABLE "user_cache" ADD COLUMN "name" text;

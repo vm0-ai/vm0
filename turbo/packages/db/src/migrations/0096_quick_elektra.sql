@@ -1,1 +1,0 @@
-ALTER TABLE "agent_sessions" ADD COLUMN "chat_messages" jsonb DEFAULT '[]'::jsonb;

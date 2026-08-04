@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.154.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.154.0...runner-rs-v0.154.1) (2026-08-04)
+
+
+### Documentation
+
+* **python:** clarify binding refresh trust contract ([#24827](https://github.com/vm0-ai/vm0/issues/24827)) ([7b032b8](https://github.com/vm0-ai/vm0/commit/7b032b8057e09aa97ad1ecf2f4255fd94ebd59ad))
+
+
+### Refactoring
+
+* **runner:** rename affinity internals to reuse terminology ([#24841](https://github.com/vm0-ai/vm0/issues/24841)) ([8bf2594](https://github.com/vm0-ai/vm0/commit/8bf2594f6f00fb8ee9bff85ac544bc72f1908577))
+
+
+### Performance Improvements
+
+* **python:** rate-limit jsonl append warnings ([#24835](https://github.com/vm0-ai/vm0/issues/24835)) ([6054435](https://github.com/vm0-ai/vm0/commit/60544352eef3491a8600a7e51a71b2f6c109c1c8))
+
 ## [0.154.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.153.1...runner-rs-v0.154.0) (2026-08-03)
 
 

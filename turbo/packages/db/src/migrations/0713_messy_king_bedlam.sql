@@ -1,1 +1,0 @@
-ALTER TABLE "chat_messages" ALTER COLUMN "role" DROP NOT NULL;

@@ -502,6 +502,45 @@ mod tests {
     }
 
     #[test]
+    fn compression_ratio_boundaries_keep_stable_serialized_labels() {
+        let cases = [
+            (ResumeSessionHistoryEncoding::Gzip, 1024, 255, "lt_0_25"),
+            (ResumeSessionHistoryEncoding::Gzip, 1024, 256, "0_25_0_5"),
+            (ResumeSessionHistoryEncoding::Gzip, 1024, 511, "0_25_0_5"),
+            (ResumeSessionHistoryEncoding::Gzip, 1024, 512, "0_5_0_75"),
+            (ResumeSessionHistoryEncoding::Gzip, 1024, 767, "0_5_0_75"),
+            (ResumeSessionHistoryEncoding::Gzip, 1024, 768, "0_75_1"),
+            (ResumeSessionHistoryEncoding::Gzip, 1024, 1023, "0_75_1"),
+            (ResumeSessionHistoryEncoding::Gzip, 1024, 1024, "ge_1"),
+            (ResumeSessionHistoryEncoding::Identity, 1024, 0, "identity"),
+            (ResumeSessionHistoryEncoding::Gzip, 0, 0, "ge_1"),
+        ];
+
+        for (encoding, raw_size, encoded_size, expected_label) in cases {
+            let fields = SessionHistoryTelemetryFields::from(
+                SessionHistoryTelemetryMetadata::from_ref(&ResumeSessionHistoryRef {
+                    kind: ResumeSessionHistoryRefKind::Blob,
+                    hash: "hash".to_string(),
+                    url: "https://example.com/history".to_string(),
+                    encoding,
+                    raw_size,
+                    encoded_size,
+                    download_source: None,
+                }),
+            );
+            let serialized = serde_json::to_value(fields).unwrap();
+
+            assert_eq!(
+                serialized
+                    .get("session_history_compression_ratio_bucket")
+                    .and_then(serde_json::Value::as_str),
+                Some(expected_label),
+                "encoding={encoding:?} raw_size={raw_size} encoded_size={encoded_size}"
+            );
+        }
+    }
+
+    #[test]
     fn metadata_serializes_stable_session_history_fields() {
         let fields = SessionHistoryTelemetryFields::from(
             metadata(ResumeSessionHistoryDownloadSource::ConfiguredPublicEndpoint)

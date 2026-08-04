@@ -33,12 +33,10 @@ use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
     parse_runner_preference,
 };
-use crate::active_input::{ActiveInputAblyNotifications, ActiveInputSource};
 use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
-use crate::local_queue::ActiveInputEntry;
 use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{
     CompleteRequest, ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse,
@@ -49,7 +47,6 @@ use sandbox::SandboxId;
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody<'a> {
-    active_input: bool,
     runner_identity: ClaimRunnerIdentity<'a>,
     telemetry: ClaimRequestTelemetry,
 }
@@ -170,20 +167,6 @@ struct PollApiResult {
     http_request_elapsed: Duration,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ActiveInputsResponse {
-    entries: Vec<ActiveInputResponseEntry>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ActiveInputResponseEntry {
-    sequence: u64,
-    message_id: String,
-    text: String,
-}
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -250,7 +233,6 @@ pub struct ApiProvider {
     poll_wakeups: Arc<PollWakeups>,
     /// Supported direct job candidates delivered by Ably notifications.
     direct_candidates: Arc<DirectCandidateInbox>,
-    active_input_ably_notifications: ActiveInputAblyNotifications,
     /// Runs temporarily ineligible for this runner after a failed claim.
     claim_cooldowns: ClaimCooldowns,
     /// Background Ably control-plane task.
@@ -303,7 +285,6 @@ impl ApiProvider {
             DIRECT_CANDIDATE_INBOX_CAPACITY,
             DIRECT_CANDIDATE_STALE_AFTER,
         );
-        let active_input_ably_notifications = ActiveInputAblyNotifications::new();
 
         Arc::new(Self {
             api,
@@ -313,7 +294,6 @@ impl ApiProvider {
             supported_profiles,
             poll_wakeups,
             direct_candidates,
-            active_input_ably_notifications,
             claim_cooldowns: ClaimCooldowns::new(CLAIM_COOLDOWN_CAPACITY),
             ably_supervisor: Mutex::new(None),
             cancel_tokens,
@@ -476,7 +456,6 @@ impl ApiProvider {
             profiles: self.supported_profiles.clone(),
             poll_wakeups: Arc::clone(&self.poll_wakeups),
             direct_candidates: Arc::clone(&self.direct_candidates),
-            active_input_ably_notifications: self.active_input_ably_notifications.clone(),
             cancel_tokens: self.cancel_tokens.clone(),
             network_policy_refresh: self.network_policy_refresh.clone(),
             provider_cancel: self.cancel.clone(),
@@ -649,29 +628,7 @@ impl JobProvider for ApiProvider {
             .await
         {
             Ok(Some(ctx)) => {
-                let active_input_source = if ctx.active_input == Some(true) {
-                    if ctx.active_input_ably == Some(true) {
-                        Some(ActiveInputSource::api_ably(
-                            self.api.clone(),
-                            run_id,
-                            ctx.sandbox_token.clone(),
-                            self.active_input_ably_notifications.subscribe(run_id),
-                        ))
-                    } else {
-                        Some(ActiveInputSource::api_polling(
-                            self.api.clone(),
-                            run_id,
-                            ctx.sandbox_token.clone(),
-                        ))
-                    }
-                } else {
-                    None
-                };
-                let claimed = match ClaimedJob::api_with_active_input_source(
-                    run_id,
-                    ctx,
-                    active_input_source,
-                ) {
+                let claimed = match ClaimedJob::api(run_id, ctx) {
                     Ok(claimed) => claimed,
                     Err(error) => {
                         self.record_claim_failure(
@@ -940,7 +897,7 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
 
 /// Low-level HTTP client for the vm0 runner API endpoints.
 #[derive(Clone)]
-pub(crate) struct ApiClient {
+pub(super) struct ApiClient {
     http: HttpClient,
     token: String,
 }
@@ -1041,41 +998,6 @@ impl ApiClient {
         Ok(Some(ctx))
     }
 
-    pub(crate) async fn active_inputs(
-        &self,
-        sandbox_token: &str,
-        run_id: RunId,
-        from_sequence: u64,
-    ) -> RunnerResult<Vec<ActiveInputEntry>> {
-        let run_id_string = run_id.to_string();
-        let from_sequence_string = from_sequence.to_string();
-        let resp = send_api(
-            self.http.request_resolved_route(
-                routes::runners::runs::by_run_id::active_inputs::by_from_sequence::route(
-                    routes::runners::runs::by_run_id::active_inputs::by_from_sequence::Params {
-                        run_id: &run_id_string,
-                        from_sequence: &from_sequence_string,
-                    },
-                ),
-                sandbox_token,
-            ),
-            "active input",
-        )
-        .await?;
-        let resp = check_api_status(resp, "active input").await?;
-        let response: ActiveInputsResponse = decode_api_json(resp, "active input").await?;
-        Ok(response
-            .entries
-            .into_iter()
-            .map(|entry| ActiveInputEntry {
-                run_id,
-                sequence: entry.sequence,
-                message_id: entry.message_id,
-                text: entry.text,
-            })
-            .collect())
-    }
-
     #[cfg(test)]
     async fn claim_for_test(
         &self,
@@ -1084,7 +1006,6 @@ impl ApiClient {
         self.claim(candidate, "550e8400-e29b-41d4-a716-446655440000", 7)
             .await
     }
-
     /// Report job completion. Uses the per-job **sandbox token** for auth.
     async fn complete(
         &self,
@@ -1235,7 +1156,6 @@ fn claim_request_body<'a>(
     };
 
     ClaimRequestBody {
-        active_input: true,
         runner_identity: ClaimRunnerIdentity {
             runner_id,
             heartbeat_generation,
@@ -1584,7 +1504,7 @@ fn sanitized_json_error_detail(error: &serde_json::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use httpmock::Method::{GET, POST};
+    use httpmock::Method::POST;
     use httpmock::MockServer;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -1619,42 +1539,6 @@ mod tests {
             .unwrap(),
             "runner-token".to_string(),
         )
-    }
-
-    #[tokio::test]
-    async fn api_client_reads_active_inputs_with_sandbox_auth() {
-        let server = MockServer::start_async().await;
-        let run_id: RunId = "00000000-0000-4000-8000-000000000101".parse().unwrap();
-        let message_id = "00000000-0000-4000-8000-000000000102";
-        let path = format!("/api/runners/runs/{run_id}/active-inputs/3");
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(GET)
-                    .path(path.as_str())
-                    .header("authorization", "Bearer sandbox-token");
-                then.status(200).json_body(serde_json::json!({
-                    "entries": [{
-                        "sequence": 3,
-                        "messageId": message_id,
-                        "text": "steer this run"
-                    }]
-                }));
-            })
-            .await;
-        let api = api_client_for_server(&server);
-
-        let entries = api.active_inputs("sandbox-token", run_id, 3).await.unwrap();
-
-        assert_eq!(
-            entries,
-            vec![ActiveInputEntry {
-                run_id,
-                sequence: 3,
-                message_id: message_id.to_string(),
-                text: "steer this run".to_string(),
-            }]
-        );
-        mock.assert_async().await;
     }
 
     #[test]
@@ -1876,7 +1760,6 @@ mod tests {
                 DIRECT_CANDIDATE_INBOX_CAPACITY,
                 DIRECT_CANDIDATE_STALE_AFTER,
             ),
-            active_input_ably_notifications: ActiveInputAblyNotifications::new(),
             claim_cooldowns: ClaimCooldowns::new(claim_cooldown_capacity),
             ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
             cancel_tokens: RunCancellationRegistry::new(),
@@ -2183,7 +2066,6 @@ mod tests {
 
         let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
 
-        assert_eq!(body["activeInput"], true);
         assert_eq!(body["runnerIdentity"]["runnerId"], TEST_RUNNER_ID);
         assert_eq!(
             body["runnerIdentity"]["heartbeatGeneration"],
@@ -3861,81 +3743,6 @@ mod tests {
         assert_eq!(context.prompt, "previous response");
         assert!(context.append_system_prompt.is_none());
         assert!(context.billable_firewalls.is_empty());
-        claim_mock.assert_calls_async(1).await;
-    }
-
-    #[tokio::test]
-    async fn api_provider_claim_enables_active_input_from_response() {
-        let server = MockServer::start_async().await;
-        let run_id = RunId::nil();
-        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
-        let claim_mock = server
-            .mock_async(|when, then| {
-                when.method(POST).path(claim_path.as_str());
-                then.status(200).json_body(serde_json::json!({
-                    "runId": run_id,
-                    "prompt": "active input response",
-                    "sandboxToken": "active-input-sandbox-token",
-                    "cliAgentType": "claude_code",
-                    "activeInput": true
-                }));
-            })
-            .await;
-        let provider = api_provider_for_test(
-            server.base_url(),
-            CancellationToken::new(),
-            Arc::new(PollWakeups::new(false)),
-        );
-
-        let claimed = provider
-            .claim(JobCandidate::new(
-                run_id,
-                crate::profile::DEFAULT_PROFILE.to_string(),
-            ))
-            .await
-            .expect("active input claim response should decode");
-
-        assert_eq!(claimed.context().active_input, Some(true));
-        let source = claimed.active_input_source().expect("active input source");
-        assert!(!source.uses_ably_notifications());
-        claim_mock.assert_calls_async(1).await;
-    }
-
-    #[tokio::test]
-    async fn api_provider_claim_uses_ably_active_input_when_advertised() {
-        let server = MockServer::start_async().await;
-        let run_id = RunId::nil();
-        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
-        let claim_mock = server
-            .mock_async(|when, then| {
-                when.method(POST).path(claim_path.as_str());
-                then.status(200).json_body(serde_json::json!({
-                    "runId": run_id,
-                    "prompt": "ably active input response",
-                    "sandboxToken": "active-input-ably-sandbox-token",
-                    "cliAgentType": "claude_code",
-                    "activeInput": true,
-                    "activeInputAbly": true
-                }));
-            })
-            .await;
-        let provider = api_provider_for_test(
-            server.base_url(),
-            CancellationToken::new(),
-            Arc::new(PollWakeups::new(false)),
-        );
-
-        let claimed = provider
-            .claim(JobCandidate::new(
-                run_id,
-                crate::profile::DEFAULT_PROFILE.to_string(),
-            ))
-            .await
-            .expect("Ably active input claim response should decode");
-
-        assert_eq!(claimed.context().active_input_ably, Some(true));
-        let source = claimed.active_input_source().expect("active input source");
-        assert!(source.uses_ably_notifications());
         claim_mock.assert_calls_async(1).await;
     }
 

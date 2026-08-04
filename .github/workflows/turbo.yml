@@ -636,8 +636,29 @@ jobs:
         if: vars.CI_CHECK_IMMUTABLE_MIGRATE != '0'
         run: |
           BASE_REF="${{ needs.prepare.outputs.base-ref }}"
-          # Check that migration SQL files and snapshots are only added, never modified or deleted
-          CHANGED=$(git diff --diff-filter=MD --name-only "$BASE_REF" -- \
+          MIGRATION_BASELINE=808
+          # The squashed baseline and its history may be removed. Migrations after
+          # the baseline must not be deleted once they land on main.
+          DELETED=$(git diff --diff-filter=D --name-only "$BASE_REF" -- \
+            'turbo/packages/db/src/migrations/*.sql' \
+            'turbo/packages/db/src/migrations/meta/*_snapshot.json' | \
+            awk -v baseline="$MIGRATION_BASELINE" '
+              {
+                name = $0
+                sub(/^.*\//, "", name)
+                if (name !~ /^[0-9][0-9][0-9][0-9]_/) {
+                  print
+                  next
+                }
+                if ((substr(name, 1, 4) + 0) > baseline) {
+                  print
+                }
+              }
+            ')
+
+          # Migration SQL and snapshots are append-only at every index, including
+          # the baseline.
+          MODIFIED=$(git diff --diff-filter=M --name-only "$BASE_REF" -- \
             'turbo/packages/db/src/migrations/*.sql' \
             'turbo/packages/db/src/migrations/meta/*_snapshot.json')
 
@@ -646,9 +667,14 @@ jobs:
             'turbo/packages/db/src/migrations/meta/_journal.json')
 
           FAILED=0
-          if [ -n "$CHANGED" ]; then
-            echo "::error::Migration files must not be modified or deleted once on main:"
-            echo "$CHANGED"
+          if [ -n "$DELETED" ]; then
+            echo "::error::Migration files above baseline $MIGRATION_BASELINE must not be deleted once on main:"
+            echo "$DELETED"
+            FAILED=1
+          fi
+          if [ -n "$MODIFIED" ]; then
+            echo "::error::Migration files must never be modified once on main:"
+            echo "$MODIFIED"
             FAILED=1
           fi
           if [ -n "$DELETED_JOURNAL" ]; then

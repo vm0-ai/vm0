@@ -281,7 +281,6 @@ type ClaimedCanonicalSlackIngress = NonNullable<
 >;
 
 interface CanonicalSlackLaunchContext {
-  readonly messagePermalink: string | null;
   readonly channelId: string;
   readonly messageTs: string;
   readonly conversationContext: string;
@@ -300,7 +299,6 @@ function canonicalSlackLaunchContext(args: {
   readonly routeThreadTs: string;
   readonly messageText: string;
   readonly conversationContext: string;
-  readonly messagePermalink: string | null;
   readonly mentionDisplayNames: Readonly<Record<string, string>>;
   readonly userInfoExtras: {
     readonly slackDisplayName?: string;
@@ -309,7 +307,6 @@ function canonicalSlackLaunchContext(args: {
 }): CanonicalSlackLaunchContext {
   const threadTs = slackPhysicalThreadTs(args.event);
   return {
-    messagePermalink: args.messagePermalink,
     channelId: args.event.channel,
     messageTs: args.event.ts,
     conversationContext: args.conversationContext,
@@ -331,6 +328,7 @@ async function persistCanonicalSlackMessage(
     readonly chatThreadId: string;
     readonly displayContent: string;
     readonly slackContext: CanonicalSlackLaunchContext;
+    readonly messagePermalink: string | null;
     readonly canonicalAssets: readonly CanonicalSlackInputAsset[];
   },
   signal: AbortSignal,
@@ -353,7 +351,7 @@ async function persistCanonicalSlackMessage(
           }),
           nonContentPart: createChatEventSourcePart({
             kind: "slack",
-            messagePermalink: args.slackContext.messagePermalink,
+            messagePermalink: args.messagePermalink,
           }),
         }),
         runId: null,
@@ -476,12 +474,12 @@ const persistClaimedCanonicalSlackIngress$ = command(
         ingress,
         chatThreadId,
         displayContent: enriched.displayContent,
+        messagePermalink,
         slackContext: canonicalSlackLaunchContext({
           event,
           routeThreadTs: ingress.threadTs,
           messageText: messageContent,
           conversationContext: context.executionContext,
-          messagePermalink,
           mentionDisplayNames: enriched.mentionDisplayNames,
           userInfoExtras: enriched.userInfoExtras,
         }),

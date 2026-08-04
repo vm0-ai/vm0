@@ -48,7 +48,6 @@ type ChatEventIdentity = Pick<
 type ChatEventDisplayContext =
   | {
       readonly slackContext: {
-        readonly messagePermalink: string | null;
         readonly channelId: string;
         readonly messageTs: string;
         readonly conversationContext: string;
@@ -71,7 +70,6 @@ type ChatEventDisplayContext =
   | {
       readonly slackContext?: never;
       readonly feishuContext: {
-        readonly chatOpenUrl: string;
         readonly conversationHistory: string;
         readonly messageText: string;
         readonly messageFiles: ChatFeishuMessageFiles;
@@ -227,7 +225,6 @@ type InputPromptEvent = ChatEventIdentity &
     readonly eventType: "input.prompt";
     readonly content?: null;
     readonly triggerSource?: TriggerSource;
-    readonly activeInputSequence?: number;
   };
 
 type InputAutomationEvent = ChatEventIdentity &
@@ -426,7 +423,6 @@ type NewDisplayContext =
       readonly type: "slack";
       readonly id: string;
       readonly chatThreadId: string;
-      readonly messagePermalink: string | null;
       readonly channelId: string;
       readonly messageTs: string;
       readonly conversationContext: string;
@@ -443,7 +439,6 @@ type NewDisplayContext =
       readonly type: "feishu";
       readonly id: string;
       readonly chatThreadId: string;
-      readonly chatOpenUrl: string;
       readonly conversationHistory: string;
       readonly messageText: string;
       readonly messageFiles: ChatFeishuMessageFiles;
@@ -597,7 +592,6 @@ function newDisplayContext(
       type: "slack",
       id: eventId,
       chatThreadId: values.chatThreadId,
-      messagePermalink: slackContext.messagePermalink,
       channelId: slackContext.channelId,
       messageTs: slackContext.messageTs,
       conversationContext: slackContext.conversationContext,
@@ -807,7 +801,6 @@ async function insertDisplayContext(
     await tx.insert(chatSlackContext).values({
       id: context.id,
       chatThreadId: context.chatThreadId,
-      messagePermalink: context.messagePermalink,
       channelId: context.channelId,
       messageTs: context.messageTs,
       conversationContext: context.conversationContext,
@@ -827,7 +820,6 @@ async function insertDisplayContext(
     await tx.insert(chatFeishuContext).values({
       id: context.id,
       chatThreadId: context.chatThreadId,
-      chatOpenUrl: context.chatOpenUrl,
       conversationHistory: context.conversationHistory,
       messageText: context.messageText,
       messageFiles: context.messageFiles,

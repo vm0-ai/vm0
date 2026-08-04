@@ -1,6 +1,6 @@
 {
-  "id": "36a2e746-c24e-4cd0-9b57-45314d45f540",
-  "prevId": "56d62d46-2142-44b4-8064-4b0ae112c771",
+  "id": "8d8eaf53-6d87-4040-99cd-219ec6aed4ad",
+  "prevId": "36a2e746-c24e-4cd0-9b57-45314d45f540",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4763,7 +4763,7 @@
       "checkConstraints": {
         "chat_events_event_type_check": {
           "name": "chat_events_event_type_check",
-          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'control.interrupt',\n          'control.revoke',\n          'browser.started',\n          'browser.stopped',\n          'goal.changed',\n          'usage.recorded'\n        )"
+          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'control.interrupt',\n          'control.revoke',\n          'browser.open',\n          'browser.close',\n          'goal.changed',\n          'usage.recorded'\n        )"
         },
         "chat_events_input_user_message_check": {
           "name": "chat_events_input_user_message_check",

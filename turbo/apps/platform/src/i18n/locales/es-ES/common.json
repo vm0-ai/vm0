@@ -1459,7 +1459,6 @@
       "queuedMessage": "Mensaje en cola",
       "queuedMessageDescription": "Espera en la cola y se envía cuando termina la ejecución actual.",
       "removeQueuedMessage": "Eliminar mensaje en cola",
-      "sendQueuedMessageNow": "Enviar ahora el mensaje en cola",
       "skipAutomationEvent": "Omitir evento de automatización"
     },
     "replaceDraft": {

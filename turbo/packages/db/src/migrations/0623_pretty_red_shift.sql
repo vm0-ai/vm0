@@ -1,1 +1,0 @@
-ALTER TABLE "storage_versions" ADD COLUMN "archive_size" bigint;

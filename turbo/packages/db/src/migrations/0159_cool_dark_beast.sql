@@ -1,1 +1,0 @@
-ALTER TABLE "agent_runs" ADD COLUMN "append_system_prompt" text;

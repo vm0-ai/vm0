@@ -1,1 +1,0 @@
-ALTER TABLE "zero_agent_drafts" ADD COLUMN "draft_structured_prompt" jsonb;

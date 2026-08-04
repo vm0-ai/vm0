@@ -359,12 +359,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatSteer]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Allow queued text messages to be sent into the currently running chat turn.",
-    enabled: false,
-  },
   [FeatureSwitchKey.PwaChatKeyboardGestures]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -445,8 +439,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Use target-specific static indexes for HTML generation resource selection.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.VideoArtifactPosters]: {
     maintainer: "bingjie@vm0.ai",

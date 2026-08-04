@@ -65,7 +65,7 @@ overrides:
   follow-redirects: ">=1.16.0"
   form-data: ">=4.0.6"
   glob: ">=10.5.0"
-  hono: 4.12.27
+  hono: 4.13.0
   ip-address: 10.4.0
   "jayson>uuid": 11.1.1
   js-cookie: ">=3.0.7"
@@ -78,7 +78,7 @@ overrides:
   "miniflare>undici": 7.28.0
   minimatch: ">=10.2.3"
   picomatch: ">=4.0.4"
-  postcss: ">=8.5.22"
+  postcss: ">=8.5.23"
   "protobufjs@>=7.5.0 <=7.6.4": 7.6.5
   "protobufjs@>=8.0.0 <=8.6.5": 8.6.6
   smol-toml: ">=1.6.1"

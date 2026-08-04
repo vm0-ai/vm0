@@ -367,21 +367,12 @@ export async function publishNetworkPolicyRefreshToRunnerGroup(
   );
 }
 
-export async function publishActiveInputToRunnerGroup(
-  group: string,
-  runId: string,
-): Promise<void> {
-  const channel = ablyClient().channels.get(`runner-group:${group}`);
-  await channel.publish("active-input", { runId });
-  L.debug(`Published active input ${runId} to runner-group:${group}`);
-}
-
 export async function publishRunnerJobNotification(
   group: string,
   runId: string,
   profile: string,
   metadata?: {
-    /** Raw key required for runner-local affinity matching; it stays on the internal runner-group channel. */
+    /** Raw key required for runner-local reuse matching; it stays on the internal runner-group channel. */
     readonly reuseKey: string | null;
     readonly cliAgentSessionId: string | null;
     readonly historyGenerationRunId: string | undefined;
