@@ -1,1 +1,0 @@
-DROP TABLE "user_platform_connectors" CASCADE;

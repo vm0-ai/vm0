@@ -1,1 +1,0 @@
-ALTER TABLE "agent_runs" ADD COLUMN "resumed_from_checkpoint_id" uuid;

@@ -2,6 +2,7 @@
 
 pub const FIRECRACKER_VERSION: &str = "v1.15.1";
 pub const KERNEL_VERSION: &str = "6.1.155";
+/// Canonical mitmproxy release for runner artifacts and the embedded add-on.
 pub const MITMPROXY_VERSION: &str = "12.2.3";
 
 // Exact identities for installed artifacts, keyed by arch.
@@ -91,6 +92,16 @@ pub fn mitmdump_url(arch: &str) -> String {
 mod tests {
     use super::*;
 
+    const MITMPROXY_COMPAT_SOURCE: &str = include_str!("../mitm-addon/src/mitmproxy_compat.py");
+    const MITM_ADDON_PYPROJECT: &str = include_str!("../mitm-addon/pyproject.toml");
+
+    fn quoted_values<'a>(source: &'a str, prefix: &str, suffix: &str) -> Vec<&'a str> {
+        source
+            .lines()
+            .filter_map(|line| line.strip_prefix(prefix)?.strip_suffix(suffix))
+            .collect()
+    }
+
     #[test]
     fn strip_patch_version() {
         assert_eq!(FIRECRACKER_MINOR, "v1.15");
@@ -128,5 +139,26 @@ mod tests {
                 "SHA256 should be valid hex: {sha}"
             );
         }
+    }
+
+    #[test]
+    fn mitmproxy_version_contract_matches_python_runtime_and_tests() {
+        let runtime_versions = quoted_values(
+            MITMPROXY_COMPAT_SOURCE,
+            "_SUPPORTED_MITMPROXY_VERSION = \"",
+            "\"",
+        );
+        assert_eq!(
+            runtime_versions.as_slice(),
+            &[MITMPROXY_VERSION],
+            "mitmproxy runtime guard must contain exactly one version matching MITMPROXY_VERSION"
+        );
+
+        let test_versions = quoted_values(MITM_ADDON_PYPROJECT, "    \"mitmproxy==", "\",");
+        assert_eq!(
+            test_versions.as_slice(),
+            &[MITMPROXY_VERSION],
+            "mitmproxy test dependencies must contain exactly one version matching MITMPROXY_VERSION"
+        );
     }
 }

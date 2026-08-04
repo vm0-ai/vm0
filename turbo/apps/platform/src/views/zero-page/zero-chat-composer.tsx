@@ -406,20 +406,16 @@ function ComposerQueueGlyph() {
 function ComposerStripRow({
   kind,
   text,
-  onSend,
   onRemove,
   onOpenDetail,
   removeAriaLabel,
-  sendAriaLabel,
   cancellationRecoveryPending,
 }: {
   kind: "queued" | "workflow-event" | "goal";
   text: string;
-  onSend?: () => void;
   onRemove?: () => void;
   onOpenDetail?: () => void;
   removeAriaLabel: string;
-  sendAriaLabel?: string;
   cancellationRecoveryPending?: boolean;
 }) {
   const { t } = useTranslation();
@@ -534,16 +530,6 @@ function ComposerStripRow({
           <span className="min-w-0 flex-1 truncate">{text}</span>
         </>
       )}
-      {onSend && sendAriaLabel ? (
-        <button
-          type="button"
-          className="shrink-0 rounded-lg p-1.5 text-muted-foreground/70 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onSend}
-          aria-label={sendAriaLabel}
-        >
-          <IconArrowUp size={16} stroke={1.5} />
-        </button>
-      ) : null}
       <button
         type="button"
         className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -591,20 +577,16 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
     ([] satisfies readonly ComposerPendingEvent[]);
   const cancellationRecoveryPending =
     useLastResolved(signals.queue.cancellationRecoveryPending$) ?? false;
-  const canSteer = useLastResolved(signals.queue.canSteer$) ?? false;
   const activeGoalObjective = useLastResolved(
     signals.goal.activeGoalObjective$,
   );
   const removeQueuedMessage = useSet(signals.queue.removeQueuedMessage$);
-  const steerQueuedMessage = useSet(signals.queue.steerQueuedMessage$);
   const removeWorkflowEvent = useSet(signals.queue.removeWorkflowEvent$);
   const cancelActiveGoal = useSet(signals.goal.cancelActiveGoal$);
   const openActiveGoal = useSet(signals.goal.openActiveGoal$);
   const pageSignal = useGet(pageSignal$);
   const queued = pendingEvents.flatMap((event) => {
-    return event.kind === "message"
-      ? [{ id: event.id, text: event.text, steerable: event.steerable }]
-      : [];
+    return event.kind === "message" ? [{ id: event.id, text: event.text }] : [];
   });
   const events = pendingEvents.flatMap((event) => {
     return event.kind === "automation"
@@ -673,19 +655,6 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
               key={item.id}
               kind="queued"
               text={item.text}
-              onSend={
-                canSteer && item.steerable
-                  ? () => {
-                      detach(
-                        steerQueuedMessage(item.id, pageSignal),
-                        Reason.DomCallback,
-                      );
-                    }
-                  : undefined
-              }
-              sendAriaLabel={t(($) => {
-                return $.chat.queue.sendQueuedMessageNow;
-              })}
               onRemove={() => {
                 detach(
                   removeQueuedMessage(item.id, pageSignal),

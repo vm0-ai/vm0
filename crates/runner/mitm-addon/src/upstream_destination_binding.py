@@ -230,7 +230,25 @@ def refresh_server_binding_connected_address_if_matching(
     kind: BindingKind,
     connected_address: tuple[str, int],
 ) -> bool:
-    """Replace original_address with a verified connected endpoint if safe."""
+    """Refresh a matching binding from a caller-verified live endpoint.
+
+    ``connected_address`` is a caller-owned trust precondition. Before invoking this helper, the
+    caller must prove through verified upstream TLS and authoritative live-connection evidence that
+    it is the current endpoint for the exact normalized ``destination.host`` and
+    ``destination.port``. The production caller first confirms that the server remains connected,
+    then obtains the TLS identity and exact-port endpoint evidence from
+    ``upstream_admission._connected_verified_tls_destination_endpoint()``.
+
+    This helper only matches the stored binding authority and screens ``connected_address`` with
+    ``connection_endpoints.authoritative_connected_endpoint()``. It does not establish that the
+    server is connected, that TLS authenticated the destination, that the destination owns or
+    authorizes the endpoint, that the endpoint is publicly routable, or that its port corresponds
+    to ``destination.port``. Success replaces ``original_address`` and adds ``kind``, so callers
+    must complete every trust check before invocation.
+
+    The fail-closed ``without_verified_tls`` and positive ``after_retargeting`` integration cases
+    in ``tests/test_request_handler_connector_admission.py`` cover this handoff.
+    """
     server_id = _connection_id(server)
     if server_id is None:
         return False

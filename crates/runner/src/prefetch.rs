@@ -11,6 +11,7 @@ const MEMORY_PREFETCH_CHUNK_BYTES: usize = 1024 * 1024;
 enum PrefetchOutcome {
     Complete { bytes: u64 },
     Cancelled { bytes: u64 },
+    OpenFailed { error: std::io::Error },
     ReadFailed { bytes: u64, error: std::io::Error },
 }
 
@@ -33,7 +34,9 @@ impl MemoryPrefetchTasks {
             .into_iter()
             .map(|path| {
                 let cancel = cancel.clone();
-                tokio::task::spawn_blocking(move || prefetch_memory_with_cancel(&path, &cancel))
+                tokio::task::spawn_blocking(move || {
+                    let _ = prefetch_memory_with_cancel(&path, &cancel);
+                })
             })
             .collect();
 
@@ -86,34 +89,35 @@ impl Drop for MemoryPrefetchTasks {
 /// page cache, guest memory accesses trigger host-side demand paging.
 /// This performs blocking I/O — callers should use `spawn_blocking`.
 pub fn prefetch_memory(path: &Path) {
-    prefetch_memory_with_cancel(path, &CancellationToken::new());
+    let _ = prefetch_memory_with_cancel(path, &CancellationToken::new());
 }
 
-fn prefetch_memory_with_cancel(path: &Path, cancel: &CancellationToken) {
-    if cancel.is_cancelled() {
-        info!(bytes = 0_u64, path = %path.display(), "memory prefetch cancelled");
-        return;
-    }
-
-    let mut file = match std::fs::File::open(path) {
-        Ok(f) => f,
-        Err(e) => {
-            warn!(error = %e, path = %path.display(), "memory prefetch: open failed");
-            return;
+fn prefetch_memory_with_cancel(path: &Path, cancel: &CancellationToken) -> PrefetchOutcome {
+    let outcome = if cancel.is_cancelled() {
+        PrefetchOutcome::Cancelled { bytes: 0 }
+    } else {
+        match std::fs::File::open(path) {
+            Ok(mut file) => prefetch_reader(&mut file, cancel),
+            Err(error) => PrefetchOutcome::OpenFailed { error },
         }
     };
 
-    match prefetch_reader(&mut file, cancel) {
+    match &outcome {
         PrefetchOutcome::Complete { bytes } => {
-            info!(bytes, path = %path.display(), "memory prefetch complete");
+            info!(bytes = *bytes, path = %path.display(), "memory prefetch complete");
         }
         PrefetchOutcome::Cancelled { bytes } => {
-            info!(bytes, path = %path.display(), "memory prefetch cancelled");
+            info!(bytes = *bytes, path = %path.display(), "memory prefetch cancelled");
+        }
+        PrefetchOutcome::OpenFailed { error } => {
+            warn!(error = %error, path = %path.display(), "memory prefetch: open failed");
         }
         PrefetchOutcome::ReadFailed { bytes, error } => {
-            warn!(error = %error, bytes, path = %path.display(), "memory prefetch: read failed");
+            warn!(error = %error, bytes = *bytes, path = %path.display(), "memory prefetch: read failed");
         }
     }
+
+    outcome
 }
 
 fn prefetch_reader<R: Read>(reader: &mut R, cancel: &CancellationToken) -> PrefetchOutcome {
@@ -151,25 +155,41 @@ mod tests {
     use tokio::sync::oneshot;
 
     #[test]
-    fn prefetch_memory_reads_file() {
+    fn prefetch_memory_reports_completed_bytes_for_multi_chunk_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("memory.bin");
-        std::fs::write(&path, vec![0u8; 4096]).unwrap();
-        // Should not panic
-        prefetch_memory(&path);
+        let contents = vec![0u8; MEMORY_PREFETCH_CHUNK_BYTES + 17];
+        std::fs::write(&path, &contents).unwrap();
+
+        let outcome = prefetch_memory_with_cancel(&path, &CancellationToken::new());
+
+        match outcome {
+            PrefetchOutcome::Complete { bytes } => {
+                assert_eq!(bytes, contents.len() as u64);
+            }
+            other => panic!("expected completed prefetch, got {other:?}"),
+        }
     }
 
     #[test]
-    fn prefetch_memory_missing_file_does_not_panic() {
-        prefetch_memory(Path::new("/nonexistent/memory.bin"));
+    fn prefetch_memory_reports_open_failure_for_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.bin");
+
+        let outcome = prefetch_memory_with_cancel(&path, &CancellationToken::new());
+
+        assert!(matches!(outcome, PrefetchOutcome::OpenFailed { .. }));
     }
 
     #[test]
-    fn prefetch_memory_empty_file() {
+    fn prefetch_memory_reports_zero_bytes_for_empty_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("empty.bin");
         std::fs::write(&path, b"").unwrap();
-        prefetch_memory(&path);
+
+        let outcome = prefetch_memory_with_cancel(&path, &CancellationToken::new());
+
+        assert!(matches!(outcome, PrefetchOutcome::Complete { bytes: 0 }));
     }
 
     #[test]

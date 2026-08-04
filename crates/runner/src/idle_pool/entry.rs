@@ -36,7 +36,7 @@ pub(super) struct IdleSandboxMetadata {
     /// Local terminal timestamp for this parked sandbox.
     ///
     /// `None` is reserved for synthetic test entries and means the VM is not
-    /// advertised for reuse affinity.
+    /// advertised as reusable.
     pub(super) last_completed_at: Option<String>,
 }
 

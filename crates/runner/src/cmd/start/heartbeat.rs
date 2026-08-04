@@ -288,7 +288,7 @@ impl WorkspaceCacheStateSnapshot {
     /// Before the first load, absence has not been established, so every
     /// reuse key might be present. Once loaded, this becomes a membership check
     /// against the stored states. Discovery uses a possible match to request an
-    /// immediate affinity heartbeat after claiming the key.
+    /// immediate reuse-state heartbeat after claiming the key.
     pub(super) fn might_contain_workspace_cache_reuse_key(&self, reuse_key: &str) -> bool {
         let inner = self.lock_inner();
         !inner.workspace_cache_loaded

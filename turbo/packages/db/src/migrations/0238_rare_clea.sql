@@ -1,1 +1,0 @@
-DROP TABLE "slack_org_pending_questions" CASCADE;

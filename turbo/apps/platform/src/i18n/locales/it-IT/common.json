@@ -1459,7 +1459,6 @@
       "queuedMessage": "Messaggio in coda",
       "queuedMessageDescription": "Attende in coda e viene inviato al termine dell'esecuzione corrente.",
       "removeQueuedMessage": "Rimuovi il messaggio in coda",
-      "sendQueuedMessageNow": "Invia ora il messaggio in coda",
       "skipAutomationEvent": "Salta evento di automazione"
     },
     "replaceDraft": {

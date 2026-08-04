@@ -1,1 +1,0 @@
-ALTER TABLE "chat_messages" ADD COLUMN "mail_draft" jsonb;

@@ -494,6 +494,6 @@ async fn held_workspace_states_reject_unsafe_working_dir_metadata() {
 
     assert!(
         cache.held_workspace_states().await.is_empty(),
-        "unsafe working dirs must not be advertised for affinity",
+        "unsafe working dirs must not be advertised as reusable workspace caches",
     );
 }

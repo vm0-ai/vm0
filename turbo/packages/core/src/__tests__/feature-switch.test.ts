@@ -28,6 +28,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.HostedArtifactVersions, {})).toBe(
       true,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.HtmlResourceIndex, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -179,7 +180,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
       otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],

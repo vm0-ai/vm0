@@ -1,1 +1,0 @@
-DROP TABLE "scope_members" CASCADE;

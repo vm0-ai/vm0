@@ -1,1 +1,0 @@
-ALTER TABLE "slack_org_pending_questions" ADD COLUMN "answer" text;

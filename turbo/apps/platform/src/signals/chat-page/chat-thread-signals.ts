@@ -151,7 +151,6 @@ export interface ChatThreadSignals {
     [string, QueueMessageOptions, AbortSignal]
   >;
   recallMessage$: Command<Promise<void>, [string, AbortSignal]>;
-  steerQueuedMessage$: Command<Promise<void>, [string, AbortSignal]>;
   skipAutomationEvent$: Command<Promise<void>, [string, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   scrollContainerOnRef$: Command<

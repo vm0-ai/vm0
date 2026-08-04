@@ -2797,55 +2797,6 @@ function createRecallMessage(deps: RecallMessageDeps) {
   });
 }
 
-function createSteerQueuedMessage({
-  agentId$,
-  chatEvents$,
-  sendEvent$,
-}: RecallMessageDeps) {
-  return command(
-    async (
-      { get, set },
-      eventId: string,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      const chatEvents = get(chatEvents$);
-      const event = queuedEventsFromChatEvents(chatEvents).find((candidate) => {
-        return candidate.id === eventId;
-      });
-      const runIds = liveRunIdsFromChatEvents(chatEvents);
-      const agentId = get(agentId$);
-      if (
-        !event ||
-        event.eventType !== "input.prompt" ||
-        (event.attachFiles?.length ?? 0) > 0 ||
-        event.generationTemplate !== undefined ||
-        !event.userMessage.parts.every((part) => {
-          return part.type === "text";
-        }) ||
-        runIds.length !== 1 ||
-        !agentId
-      ) {
-        return;
-      }
-
-      const runId = runIds[0]!;
-      await set(
-        sendEvent$,
-        {
-          kind: "steer",
-          agentId,
-          runId,
-          eventId,
-          triggerSource: event.triggerSource,
-          userMessage: event.userMessage,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-    },
-  );
-}
-
 function createSkipAutomationEvent({
   agentId$,
   chatEvents$,
@@ -2892,7 +2843,6 @@ function createMessageCommands(deps: MessageCommandsDeps) {
     sendMessage$: createSendMessage(deps),
     queueMessage$: createQueueMessage(deps),
     recallMessage$: createRecallMessage(deps),
-    steerQueuedMessage$: createSteerQueuedMessage(deps),
   };
 }
 
@@ -3488,11 +3438,6 @@ function createThreadPendingActionSignals(
       await set(thread.recallMessage$, eventId, signal);
     },
   );
-  const steerQueuedMessage$ = command(
-    async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
-      await set(thread.steerQueuedMessage$, eventId, signal);
-    },
-  );
   const removeWorkflowEvent$ = command(
     async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
       await set(thread.skipAutomationEvent$, eventId, signal);
@@ -3507,7 +3452,6 @@ function createThreadPendingActionSignals(
     set(openChatThreadGoalDialog$, thread.threadId);
   });
   return {
-    steerQueuedMessage$,
     removeQueuedMessage$,
     removeWorkflowEvent$,
     cancelActiveGoal$,

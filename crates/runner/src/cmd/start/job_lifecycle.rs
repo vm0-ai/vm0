@@ -154,7 +154,7 @@ impl CompletionPayload {
 pub(super) struct CompletionReady {
     payload: CompletionPayload,
     budget: BudgetOwnership,
-    session_affinity_changed: bool,
+    reuse_state_changed: bool,
 }
 
 impl CompletionReady {
@@ -162,17 +162,17 @@ impl CompletionReady {
         Self {
             payload,
             budget,
-            session_affinity_changed: false,
+            reuse_state_changed: false,
         }
     }
 
-    pub(super) fn with_session_affinity_changed(mut self) -> Self {
-        self.session_affinity_changed = true;
+    pub(super) fn with_reuse_state_changed(mut self) -> Self {
+        self.reuse_state_changed = true;
         self
     }
 
-    pub(super) fn session_affinity_changed(&self) -> bool {
-        self.session_affinity_changed
+    pub(super) fn reuse_state_changed(&self) -> bool {
+        self.reuse_state_changed
     }
 
     #[cfg(test)]

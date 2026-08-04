@@ -1,1 +1,0 @@
-DROP TABLE "teams_org_thread_sessions" CASCADE;

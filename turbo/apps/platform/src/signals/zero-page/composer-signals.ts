@@ -10,10 +10,7 @@ import {
   isVisualAttachment,
   shouldExcludeVisualAttachmentsForModel,
 } from "../chat-page/resolve-draft-attachments.ts";
-import {
-  chatSteerEnabled$,
-  zeroImageRecognitionEnabled$,
-} from "../external/feature-switch.ts";
+import { zeroImageRecognitionEnabled$ } from "../external/feature-switch.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ZeroChatAttachment } from "./chat-draft.ts";
 import type { ComposerFeedbackModel } from "./chat-feedback.ts";
@@ -110,7 +107,6 @@ export type ComposerPendingEvent =
       readonly kind: "message";
       readonly id: string;
       readonly text: string;
-      readonly steerable: boolean;
     }
   | {
       readonly kind: "automation";
@@ -184,8 +180,6 @@ interface ComposerSubmissionSignals {
 interface ComposerQueueSignals {
   readonly pendingEvents$: Computed<Promise<readonly ComposerPendingEvent[]>>;
   readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
-  readonly canSteer$: Computed<Promise<boolean>>;
-  readonly steerQueuedMessage$: Command<Promise<void>, [string, AbortSignal]>;
   readonly removeQueuedMessage$: Command<Promise<void>, [string, AbortSignal]>;
   readonly removeWorkflowEvent$: Command<Promise<void>, [string, AbortSignal]>;
 }
@@ -248,7 +242,6 @@ interface CreateComposerSignalsOptions {
   >;
   readonly cancelRun$: Command<Promise<void>, [AbortSignal]>;
   readonly cancellationRecoveryPending$: ComposerQueueSignals["cancellationRecoveryPending$"];
-  readonly steerQueuedMessage$: ComposerQueueSignals["steerQueuedMessage$"];
   readonly removeQueuedMessage$: ComposerQueueSignals["removeQueuedMessage$"];
   readonly removeWorkflowEvent$: ComposerQueueSignals["removeWorkflowEvent$"];
   readonly cancelActiveGoal$: ComposerGoalSignals["cancelActiveGoal$"];
@@ -435,18 +428,6 @@ function createRemoveQueuedMessage(
   );
 }
 
-function createSteerQueuedMessage(
-  steerQueuedMessage$: CreateComposerSignalsOptions["steerQueuedMessage$"],
-  workflowComposer: WorkflowComposerSignals,
-): ComposerQueueSignals["steerQueuedMessage$"] {
-  return command(
-    async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
-      await set(steerQueuedMessage$, eventId, signal);
-      set(workflowComposer.focus$);
-    },
-  );
-}
-
 export function createComposerSignals(
   options: CreateComposerSignalsOptions,
 ): ComposerSignals {
@@ -523,17 +504,6 @@ export function createComposerSignals(
     queue: {
       pendingEvents$: eventSignals.pendingEvents$,
       cancellationRecoveryPending$: options.cancellationRecoveryPending$,
-      canSteer$: computed(async (get): Promise<boolean> => {
-        return (
-          get(chatSteerEnabled$) &&
-          get(eventSignals.runIndicatorState$) === "running" &&
-          !(await get(options.cancellationRecoveryPending$))
-        );
-      }),
-      steerQueuedMessage$: createSteerQueuedMessage(
-        options.steerQueuedMessage$,
-        workflowComposer,
-      ),
       removeQueuedMessage$: createRemoveQueuedMessage(
         options.removeQueuedMessage$,
         workflowComposer,
@@ -597,7 +567,6 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
                 kind: "message" as const,
                 id: event.id,
                 text: "",
-                steerable: false,
               };
             }
             return {
@@ -613,13 +582,6 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
             text: (
               messageDocumentToDisplayText(event.userMessage) ?? ""
             ).trim(),
-            steerable:
-              event.eventType === "input.prompt" &&
-              (event.attachFiles?.length ?? 0) === 0 &&
-              event.generationTemplate === undefined &&
-              event.userMessage.parts.every((part) => {
-                return part.type === "text";
-              }),
           };
         }),
       );
@@ -632,7 +594,6 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
     actionsLoading$,
     sending$,
     pendingEvents$,
-    runIndicatorState$,
     activeGoalObjective$,
     hasEvents$,
   };

@@ -1,1 +1,0 @@
-ALTER TABLE "agent_runs" ADD COLUMN "last_event_sequence" integer;

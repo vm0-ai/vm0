@@ -59,15 +59,6 @@ export interface SendInterruptChatEvent {
   readonly interruptsRunId: string;
 }
 
-export interface SendSteerChatEvent {
-  readonly kind: "steer";
-  readonly agentId: string;
-  readonly runId: string;
-  readonly eventId: string;
-  readonly triggerSource: ChatPromptEvent["triggerSource"];
-  readonly userMessage: UserMessageDocument;
-}
-
 export interface SendBrowserLifecycleChatEvent {
   readonly kind: "browser-lifecycle";
   readonly eventId: string;
@@ -78,7 +69,6 @@ export type SendChatEventInput =
   | SendInputChatEvent
   | SendRevokeChatEvent
   | SendInterruptChatEvent
-  | SendSteerChatEvent
   | SendBrowserLifecycleChatEvent;
 
 export interface SendChatEventResult {
@@ -262,57 +252,6 @@ function createSendInterruptChatEvent({
   );
 }
 
-function createSendSteerChatEvent({
-  threadId,
-  appendOptimisticEvent$,
-}: SendChatEventDependencies): Command<
-  Promise<SendChatEventResult>,
-  [SendSteerChatEvent, AbortSignal]
-> {
-  return command(
-    async ({ get, set }, input: SendSteerChatEvent, signal: AbortSignal) => {
-      const clientEventId = crypto.randomUUID();
-      const result = await sendChatEvent(
-        get(zeroClient$),
-        {
-          agentId: input.agentId,
-          threadId,
-          steersRunId: input.runId,
-          steersEventId: input.eventId,
-          clientEventId,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-      if (result.runId !== input.runId) {
-        throw new Error("Steered chat event was associated with another run");
-      }
-      await set(
-        appendOptimisticEvent$,
-        {
-          threadId,
-          optimisticUserMessageAssociation: "run",
-          event: {
-            id: clientEventId,
-            threadId,
-            eventType: "input.prompt",
-            content: null,
-            runId: input.runId,
-            revokesEventId: input.eventId,
-            triggerSource: input.triggerSource,
-            userMessage: input.userMessage,
-            createdAt: result.createdAt ?? nowDate().toISOString(),
-          },
-        },
-        "preserve",
-        signal,
-      );
-      signal.throwIfAborted();
-      return { runId: result.runId };
-    },
-  );
-}
-
 function createSendBrowserLifecycleChatEvent({
   threadId,
   appendOptimisticEvent$,
@@ -352,7 +291,6 @@ function createSendChatEvent(
   const sendInput$ = createSendInputChatEvent(dependencies);
   const sendRevoke$ = createSendRevokeChatEvent(dependencies);
   const sendInterrupt$ = createSendInterruptChatEvent(dependencies);
-  const sendSteer$ = createSendSteerChatEvent(dependencies);
   const sendBrowserLifecycle$ =
     createSendBrowserLifecycleChatEvent(dependencies);
   return command(
@@ -366,9 +304,6 @@ function createSendChatEvent(
         }
         case "interrupt": {
           return await set(sendInterrupt$, input, signal);
-        }
-        case "steer": {
-          return await set(sendSteer$, input, signal);
         }
         case "browser-lifecycle": {
           return await set(sendBrowserLifecycle$, input, signal);
