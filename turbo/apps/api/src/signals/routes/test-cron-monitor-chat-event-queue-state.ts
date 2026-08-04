@@ -45,6 +45,26 @@ type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const STALE_CONTEXT_FIXTURES = [
   {
+    contextType: null,
+    eventType: "input.prompt",
+    triggerSource: null,
+  },
+  {
+    contextType: null,
+    eventType: "input.prompt",
+    triggerSource: "web",
+  },
+  {
+    contextType: null,
+    eventType: "input.prompt",
+    triggerSource: "test",
+  },
+  {
+    contextType: null,
+    eventType: "input.prompt",
+    triggerSource: "agent",
+  },
+  {
     contextType: "slack",
     eventType: "input.prompt",
     triggerSource: "slack",
@@ -266,7 +286,7 @@ async function seedFixture(
             return {
               ...baseEvent,
               ...fixture,
-              contextId: randomUUID(),
+              contextId: fixture.contextType === null ? null : randomUUID(),
               createdAt: new Date(0),
               seqId: index + 1,
             };
