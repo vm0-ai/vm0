@@ -665,8 +665,13 @@ async fn build_runner_report(
     // Detect service type
     let service_type = detect_service_type(runner.pid, installed).await;
 
-    // Read status.json
-    let status = read_status(&runner.base_dir).await;
+    // Benchmark publishes live identity but intentionally has no status writer.
+    let status_expected = runner.subcommand == "start";
+    let status = if status_expected {
+        read_status(&runner.base_dir).await
+    } else {
+        None
+    };
 
     // API connectivity check (only when server is configured)
     let api_ok = match &config {
@@ -707,8 +712,7 @@ async fn build_runner_report(
             mitm_procs,
             dns_procs,
         ));
-    } else if runner.subcommand == "start" {
-        // Benchmark publishes live identity but intentionally has no status writer.
+    } else if status_expected {
         report.warnings.push(Warning::StatusUnavailable {
             base_dir: runner.base_dir.clone(),
         });
@@ -3107,8 +3111,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn report_uses_registry_subcommand() {
-        let fixture = doctor_report_fixture("running", None, None);
+    async fn report_ignores_status_for_benchmark() {
+        let fixture = doctor_report_fixture("stopped", Some(32821), None);
         let mut runner = live_runner_instance(
             std::process::id(),
             fixture.config_path.clone(),
@@ -3116,23 +3120,10 @@ mod tests {
         );
         runner.subcommand = "benchmark".into();
 
-        let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
+        let report =
+            build_runner_report(&runner, None, &[], &[mitm_proc(123, 32821)], &[], &[]).await;
 
         assert_eq!(report.subcommand, "benchmark");
-    }
-
-    #[tokio::test]
-    async fn report_does_not_require_status_for_benchmark() {
-        let fixture = doctor_report_fixture_without_status();
-        let mut runner = live_runner_instance(
-            std::process::id(),
-            fixture.config_path.clone(),
-            fixture.base_dir.clone(),
-        );
-        runner.subcommand = "benchmark".into();
-
-        let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
-
         assert!(report.status.is_none());
         assert!(!has_status_unavailable_warning(&report));
         assert!(report.warnings.is_empty());
