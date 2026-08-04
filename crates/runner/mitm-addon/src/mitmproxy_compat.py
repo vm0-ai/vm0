@@ -9,9 +9,10 @@ from mitmproxy.proxy.layers.http._hooks import HttpRequestHeadersHook
 
 import websocket_framing
 
-# Keep this synchronized with ``crates/runner/src/deps.rs`` and the Python
-# test dependencies. Re-audit the private imports, generators, and WebSocket
-# extension behavior before accepting another version.
+# The contract test in ``crates/runner/src/deps.rs`` enforces alignment with
+# the runner artifact and Python test dependency. Re-audit the private
+# imports, generators, and WebSocket extension behavior before accepting
+# another version.
 _SUPPORTED_MITMPROXY_VERSION = "12.2.3"
 _SUPPORTED_WSPROTO_VERSION = "1.3.2"
 _BRIDGE_MARKER_ATTRIBUTE = "_vm0_request_end_stream_bridge"
