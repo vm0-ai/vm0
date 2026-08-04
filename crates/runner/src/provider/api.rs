@@ -34,6 +34,7 @@ use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
     parse_runner_preference,
 };
+use crate::active_input::{ActiveInputNotifications, ActiveInputSource};
 use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
@@ -44,6 +45,19 @@ use crate::types::{
     PollResponse, SandboxReuseResult,
 };
 use sandbox::SandboxId;
+
+const CHAT_STEER_FEATURE_FLAG: &str = "chatSteer";
+
+fn chat_steer_enabled(
+    reuse_key: Option<&str>,
+    feature_flags: Option<&std::collections::HashMap<String, bool>>,
+) -> bool {
+    reuse_key.is_some_and(|key| key.starts_with("thread:"))
+        && feature_flags
+            .and_then(|flags| flags.get(CHAT_STEER_FEATURE_FLAG))
+            .copied()
+            .unwrap_or(false)
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -242,6 +256,7 @@ pub struct ApiProvider {
     cancel_tokens: RunCancellationRegistry,
     network_policy_refresh: NetworkPolicyRefreshHandle,
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
+    active_input_notifications: ActiveInputNotifications,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -287,6 +302,7 @@ impl ApiProvider {
             DIRECT_CANDIDATE_INBOX_CAPACITY,
             DIRECT_CANDIDATE_STALE_AFTER,
         );
+        let active_input_notifications = ActiveInputNotifications::new();
 
         Arc::new(Self {
             api,
@@ -301,6 +317,7 @@ impl ApiProvider {
             cancel_tokens,
             network_policy_refresh,
             builtin_firewall_catalog_refresh,
+            active_input_notifications,
             cancel,
         })
     }
@@ -460,6 +477,7 @@ impl ApiProvider {
             direct_candidates: Arc::clone(&self.direct_candidates),
             cancel_tokens: self.cancel_tokens.clone(),
             network_policy_refresh: self.network_policy_refresh.clone(),
+            active_input_notifications: self.active_input_notifications.clone(),
             provider_cancel: self.cancel.clone(),
         }));
     }
@@ -630,7 +648,22 @@ impl JobProvider for ApiProvider {
             .await
         {
             Ok(Some(ctx)) => {
-                let claimed = match ClaimedJob::api(run_id, ctx) {
+                let active_input_source =
+                    chat_steer_enabled(ctx.reuse_key.as_deref(), ctx.feature_flags.as_ref()).then(
+                        || {
+                            ActiveInputSource::api(
+                                self.api.clone(),
+                                run_id,
+                                ctx.sandbox_token.clone(),
+                                self.active_input_notifications.subscribe(run_id),
+                            )
+                        },
+                    );
+                let claimed = match if let Some(active_input_source) = active_input_source {
+                    ClaimedJob::api_with_active_input_source(run_id, ctx, active_input_source)
+                } else {
+                    ClaimedJob::api(run_id, ctx)
+                } {
                     Ok(claimed) => claimed,
                     Err(error) => {
                         self.record_claim_failure(
@@ -899,7 +932,7 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
 
 /// Low-level HTTP client for the vm0 runner API endpoints.
 #[derive(Clone)]
-pub(super) struct ApiClient {
+pub(crate) struct ApiClient {
     http: HttpClient,
     token: String,
 }
@@ -907,6 +940,71 @@ pub(super) struct ApiClient {
 impl ApiClient {
     pub(super) fn new(http: HttpClient, token: String) -> Self {
         Self { http, token }
+    }
+
+    pub(crate) async fn list_active_input_event_ids(
+        &self,
+        run_id: RunId,
+        sandbox_token: &str,
+    ) -> RunnerResult<Vec<String>> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct ListResponse {
+            event_ids: Vec<String>,
+        }
+
+        let run_id = run_id.to_string();
+        let resp = send_api(
+            self.http.request_resolved_route(
+                routes::runners::runs::by_run_id::active_inputs::route(
+                    routes::runners::runs::by_run_id::active_inputs::Params {
+                        run_id: run_id.as_str(),
+                    },
+                ),
+                sandbox_token,
+            ),
+            "list active inputs",
+        )
+        .await?;
+        let resp = check_api_status(resp, "list active inputs").await?;
+        let body: ListResponse = decode_api_json(resp, "list active inputs").await?;
+        Ok(body.event_ids)
+    }
+
+    pub(crate) async fn claim_active_inputs(
+        &self,
+        run_id: RunId,
+        sandbox_token: &str,
+        event_ids: &[String],
+    ) -> RunnerResult<String> {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct ClaimRequest<'a> {
+            event_ids: &'a [String],
+        }
+        #[derive(Deserialize)]
+        struct ClaimResponse {
+            prompt: String,
+        }
+
+        let run_id = run_id.to_string();
+        let resp = send_api(
+            self.http
+                .request_resolved_route(
+                    routes::runners::runs::by_run_id::active_inputs::claim::route(
+                        routes::runners::runs::by_run_id::active_inputs::claim::Params {
+                            run_id: run_id.as_str(),
+                        },
+                    ),
+                    sandbox_token,
+                )
+                .json(&ClaimRequest { event_ids }),
+            "claim active inputs",
+        )
+        .await?;
+        let resp = check_api_status(resp, "claim active inputs").await?;
+        let body: ClaimResponse = decode_api_json(resp, "claim active inputs").await?;
+        Ok(body.prompt)
     }
 
     /// Poll for a pending job. The response contains `job: None` when no work is available.
@@ -1552,6 +1650,18 @@ mod tests {
         claim_request_body(candidate, TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION)
     }
 
+    #[test]
+    fn chat_steer_requires_a_thread_run_and_enabled_feature() {
+        let enabled = std::collections::HashMap::from([(CHAT_STEER_FEATURE_FLAG.to_owned(), true)]);
+        let disabled =
+            std::collections::HashMap::from([(CHAT_STEER_FEATURE_FLAG.to_owned(), false)]);
+
+        assert!(chat_steer_enabled(Some("thread:chat-id"), Some(&enabled)));
+        assert!(!chat_steer_enabled(Some("thread:chat-id"), Some(&disabled)));
+        assert!(!chat_steer_enabled(Some("thread:chat-id"), None));
+        assert!(!chat_steer_enabled(Some("goal:goal-id"), Some(&enabled)));
+    }
+
     fn api_client_for_server(server: &MockServer) -> ApiClient {
         ApiClient::new(
             HttpClient::new(HttpClientConfig {
@@ -1785,6 +1895,7 @@ mod tests {
             ),
             claim_cooldowns: ClaimCooldowns::new(claim_cooldown_capacity),
             ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
+            active_input_notifications: ActiveInputNotifications::new(),
             cancel_tokens: RunCancellationRegistry::new(),
             cancel,
         })

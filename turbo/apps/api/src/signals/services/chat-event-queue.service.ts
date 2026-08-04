@@ -36,6 +36,15 @@ function unrevokedQueueEventCondition(db: ChatQueueReadDb) {
   );
 }
 
+export function pendingActiveInputPromptCondition(db: ChatQueueReadDb) {
+  return and(
+    chatEventTypeIn(["input.prompt"]),
+    isNull(chatEvents.runId),
+    sql`${chatEvents.contextType} IS DISTINCT FROM 'morning_brief'`,
+    unrevokedQueueEventCondition(db),
+  );
+}
+
 export function pendingChatQueueEventCondition(db: ChatQueueReadDb) {
   return and(
     chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),

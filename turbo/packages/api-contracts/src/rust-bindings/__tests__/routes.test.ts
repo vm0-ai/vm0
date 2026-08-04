@@ -93,6 +93,18 @@ const expectedBindings = [
     rustConstName: "CLAIM",
   },
   {
+    method: "GET",
+    path: "/api/runners/runs/:runId/active-inputs",
+    rustModulePath: ["runners", "runs", "by_run_id", "active_inputs"],
+    rustConstName: "LIST",
+  },
+  {
+    method: "POST",
+    path: "/api/runners/runs/:runId/active-inputs/claim",
+    rustModulePath: ["runners", "runs", "by_run_id", "active_inputs", "claim"],
+    rustConstName: "CLAIM",
+  },
+  {
     method: "POST",
     path: "/api/runners/runs/:runId/network-policy-refresh",
     rustModulePath: ["runners", "runs", "by_run_id", "network_policy_refresh"],
