@@ -24,7 +24,7 @@ use super::entry::{
 
 /// One-shot request to transition an active sandbox into same-reuse-key idle
 /// ownership.
-#[must_use = "idle park requests own active sandbox and budget; call park_for_idle"]
+#[must_use = "idle park requests own active sandbox and budget; call a park_for_idle method"]
 pub(crate) struct IdleParkRequest {
     pub(super) parts: IdleParkRequestParts,
 }

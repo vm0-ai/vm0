@@ -123,6 +123,10 @@ pub enum SandboxFinalExecParkStage {
 /// own lifecycle transitions, cleanup, or cancellation. A cancelled attempt
 /// can therefore omit the stage that was in progress. Implementations using
 /// the default observer-aware method report no stages.
+///
+/// An overriding implementation reports each applicable stage at most once.
+/// `PhysicalPark` is reported only after a successful `ReusePreparation`;
+/// either failed stage ends the sequence.
 pub trait SandboxFinalExecParkObserver: Send {
     /// Records one completed final-exec/park stage.
     fn record_stage(&mut self, stage: SandboxFinalExecParkStage, duration: Duration, success: bool);
