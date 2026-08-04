@@ -551,6 +551,8 @@
       "emptyTitle": "Nessun artefatto trovato",
       "error": "Impossibile caricare gli artefatti. Riprova più tardi.",
       "filters": {
+        "avatar": "Avatar",
+        "avatarAria": "Mostra artefatti avatar",
         "file": "File",
         "fileAria": "Mostra gli artefatti del file",
         "image": "Immagini",
@@ -595,6 +597,7 @@
     },
     "kinds": {
       "audio": "Audio",
+      "avatar": "Avatar",
       "code": "Codice",
       "csv": "CSV",
       "data": "Dati",

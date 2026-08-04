@@ -4,13 +4,16 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-const artifactKindSchema = z.enum([
+export const ARTIFACT_CATALOG_KINDS = [
   "file",
   "hosted-site",
   "image",
   "video",
+  "avatar",
   "presentation",
-]);
+] as const;
+
+const artifactKindSchema = z.enum(ARTIFACT_CATALOG_KINDS);
 
 /**
  * Static preview descriptor rendered by the catalog grid. Absent when the
@@ -52,10 +55,13 @@ const artifactCatalogListQuerySchema = z.object({
 const artifactCatalogListResponseSchema = z.object({
   artifacts: z.array(artifactSummarySchema),
   nextCursor: z.string().nullable(),
+  // Optional while the frontend and API can be on adjacent deploys. New
+  // clients only expose filters that the serving API advertises.
+  supportedKinds: z.array(artifactKindSchema).optional(),
 });
 
 /**
- * The stored file backing a `file`, `image`, or `video` artifact.
+ * The stored file backing a `file`, `image`, `video`, or `avatar` artifact.
  */
 const artifactFileSchema = z.object({
   id: z.string().uuid(),
@@ -95,6 +101,12 @@ const artifactDetailSchema = z.discriminatedUnion("kind", [
   }),
   artifactDetailBaseSchema.extend({
     kind: z.literal("video"),
+    file: artifactFileSchema,
+    model: z.string().nullable(),
+    durationSeconds: z.number().nullable(),
+  }),
+  artifactDetailBaseSchema.extend({
+    kind: z.literal("avatar"),
     file: artifactFileSchema,
     model: z.string().nullable(),
     durationSeconds: z.number().nullable(),
