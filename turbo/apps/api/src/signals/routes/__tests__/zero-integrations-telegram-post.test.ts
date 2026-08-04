@@ -1216,7 +1216,6 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       contextId: expect.any(String),
       telegramChatId: "77001",
       telegramMessageId: "42",
-      telegramIsDm: true,
       telegramMessageThreadId: null,
       telegramMessageText: "hello from telegram",
       telegramThreadContext: "",
@@ -1563,6 +1562,12 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       sandboxToken: firstClaim.sandboxToken,
     });
     expect(telegramMocks.sentMessages).toHaveLength(1);
+    expect(telegramMocks.sentMessages[0]).toMatchObject({
+      chat_id: String(chatId),
+    });
+    expect(telegramMocks.sentMessages[0]).not.toHaveProperty(
+      "reply_parameters",
+    );
     const completedRun = await postTelegramStateAction({
       action: "get-run",
       run_id: firstState.run!.id,
@@ -1719,7 +1724,6 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       contextType: "telegram",
       telegramChatId: String(chatId),
       telegramMessageId: "2201",
-      telegramIsDm: false,
       telegramMessageThreadId: messageThreadId,
       telegramMessageText: firstPrompt,
       telegramThreadContext: "",
@@ -2086,7 +2090,6 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       contextType: "telegram",
       telegramChatId: "-10099002",
       telegramMessageId: "101",
-      telegramIsDm: false,
       telegramMessageThreadId: null,
       telegramMessageText: "summarize this thread",
       telegramThreadContext: "",

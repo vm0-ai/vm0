@@ -17,7 +17,6 @@ import {
 } from "@vm0/db/schema/chat-event";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
-import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
@@ -107,8 +106,6 @@ type ChatEventDisplayContext =
         readonly threadId: string;
         readonly serviceUrl: string;
         readonly teamsAppId: string | null;
-        readonly botId: string | null;
-        readonly botName: string | null;
         readonly senderUserId: string;
         readonly senderDisplayName: string | null;
         readonly senderPrincipalName: string | null;
@@ -126,7 +123,6 @@ type ChatEventDisplayContext =
       readonly telegramContext: {
         readonly chatId: string;
         readonly messageId: string;
-        readonly isDm: boolean;
         readonly messageThreadId: number | null;
         readonly messageText: string;
         readonly threadContext: string;
@@ -244,7 +240,6 @@ type InputGoalEvent = ChatEventIdentity &
     readonly eventType: "input.goal";
     readonly content?: null;
     readonly runGroupId: string;
-    readonly goalBrief: string;
   };
 
 type InputRejectedEvent = ChatEventIdentity &
@@ -337,7 +332,7 @@ type BrowserLifecycleEvent = Pick<
   ChatEventIdentity,
   "id" | "chatThreadId" | "createdAt"
 > & {
-  readonly eventType: "browser.started" | "browser.stopped";
+  readonly eventType: "browser.open" | "browser.close";
   readonly content?: null;
 };
 
@@ -470,8 +465,6 @@ type NewDisplayContext =
       readonly threadId: string;
       readonly serviceUrl: string;
       readonly teamsAppId: string | null;
-      readonly botId: string | null;
-      readonly botName: string | null;
       readonly senderUserId: string;
       readonly senderDisplayName: string | null;
       readonly senderPrincipalName: string | null;
@@ -483,7 +476,6 @@ type NewDisplayContext =
       readonly chatThreadId: string;
       readonly chatId: string;
       readonly messageId: string;
-      readonly isDm: boolean;
       readonly messageThreadId: number | null;
       readonly messageText: string;
       readonly threadContext: string;
@@ -536,12 +528,6 @@ type NewDisplayContext =
       readonly workflowAutomationEventType: WorkflowAutomationEventType | null;
       readonly workflowAutomationEventPayload: WorkflowAutomationEventPayload | null;
       readonly triggerBrief: string | null;
-    }
-  | {
-      readonly type: "goal";
-      readonly id: string;
-      readonly chatThreadId: string;
-      readonly objectiveBrief: string;
     }
   | {
       readonly type: "morning_brief";
@@ -677,16 +663,6 @@ function newDisplayContext(
     return automationContext;
   }
 
-  const goalBrief = "goalBrief" in values ? values.goalBrief : undefined;
-  if (goalBrief !== undefined) {
-    return {
-      type: "goal",
-      id: eventId,
-      chatThreadId: values.chatThreadId,
-      objectiveBrief: goalBrief,
-    };
-  }
-
   return undefined;
 }
 
@@ -775,7 +751,6 @@ async function insertTelegramDisplayContext(
     chatThreadId: context.chatThreadId,
     chatId: context.chatId,
     messageId: context.messageId,
-    isDm: context.isDm,
     messageThreadId: context.messageThreadId,
     messageText: context.messageText,
     threadContext: context.threadContext,
@@ -854,8 +829,6 @@ async function insertDisplayContext(
       threadId: context.threadId,
       serviceUrl: context.serviceUrl,
       teamsAppId: context.teamsAppId,
-      botId: context.botId,
-      botName: context.botName,
       senderUserId: context.senderUserId,
       senderDisplayName: context.senderDisplayName,
       senderPrincipalName: context.senderPrincipalName,
@@ -903,12 +876,6 @@ async function insertDisplayContext(
   if (context.type === "morning_brief") {
     return insertMorningBriefContext(tx, context, createdAt);
   }
-  await tx.insert(chatGoalContext).values({
-    id: context.id,
-    chatThreadId: context.chatThreadId,
-    objectiveBrief: context.objectiveBrief,
-    createdAt,
-  });
 }
 
 function persistedChatEventValues(
@@ -917,12 +884,8 @@ function persistedChatEventValues(
     Pick<ChatEventInsert, "id" | "contextType" | "contextId">
   >,
 ): PersistedChatEvent {
-  const { goalBrief: _goalBrief, ...persistedValues } = {
-    goalBrief: undefined,
-    ...values,
-  };
   return {
-    ...persistedValues,
+    ...values,
     ...overrides,
     ...(values.eventType === "input.prompt" ||
     values.eventType === "input.rejected" ||
@@ -930,7 +893,15 @@ function persistedChatEventValues(
     values.eventType === "input.goal"
       ? { content: null }
       : {}),
-    eventType: values.eventType,
+    // Keep the physical value compatible with the pre-deploy constraint and
+    // draining API instances. Readers project both generations to the
+    // canonical open/close vocabulary.
+    eventType:
+      values.eventType === "browser.open"
+        ? ("browser.started" as ChatEventInsert["eventType"])
+        : values.eventType === "browser.close"
+          ? ("browser.stopped" as ChatEventInsert["eventType"])
+          : values.eventType,
   };
 }
 

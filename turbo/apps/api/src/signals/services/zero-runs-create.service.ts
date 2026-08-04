@@ -1,5 +1,3 @@
-import { randomBytes } from "node:crypto";
-
 import { PLAN_UPGRADE_CLI_HINT } from "@vm0/api-contracts/contracts/errors";
 import { CANONICAL_WORKING_DIR } from "@vm0/api-contracts/contracts/runners";
 import { zeroRunCreateBodySchema } from "@vm0/api-contracts/contracts/zero-runs";
@@ -139,7 +137,6 @@ interface InternalRunCallback {
 type RunCallback = HttpRunCallback | InternalRunCallback;
 
 interface ZeroRunMetadata {
-  readonly triggerAgentId?: string;
   readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
   readonly goalId?: string;
@@ -223,10 +220,6 @@ function forbidden(message: string) {
       },
     },
   };
-}
-
-function generateCallbackSecret(): string {
-  return randomBytes(32).toString("hex");
 }
 
 function buildAgentIdentityPrompt(agent: ZeroAgentRunRecord): string | null {
@@ -339,10 +332,14 @@ function buildAgentToolsPrompt(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly zeroChatMessagingEnabled: boolean;
   readonly mermaidDiagramsEnabled: boolean;
+  readonly rustZeroCliEnabled: boolean;
 }): string {
+  const zeroCliCommand = args.rustZeroCliEnabled
+    ? "zero-cli"
+    : "npx -p @vm0/cli zero";
   return [
     "# Agent Tools",
-    "You have access to the Zero CLI. Run commands with: `npx -p @vm0/cli zero <command>`",
+    `You have access to the Zero CLI. Run commands with: \`${zeroCliCommand} <command>\``,
     "- Discover available commands: `zero --help`.",
     "- Capability questions: when the user asks what Zero can do, whether Zero can do a category of work, or compares Zero to another assistant, run `zero intro` first. Use its output to synthesize a concise answer in the user's language. Do not paste the intro verbatim.",
     "- Search agent run logs, web chat messages, or external services via connectors: `zero search --help`.",
@@ -381,7 +378,8 @@ function buildAgentToolsPrompt(args: {
     `- Upgrade plan: use \`${PLAN_UPGRADE_CLI_HINT}\` when the current plan blocks a requested capability or cannot buy credits. Return the generated plan link to the user so chat can render the upgrade card.`,
     "- If a connector appears unconnected, unauthenticated, missing auth/token environment names, blocked by firewall, or denied by permission policy, diagnose it with `zero connector check --help` before trying ad hoc fixes.",
     "- An attached generation template takes precedence. Follow its exact commands and resources directly; do not run `zero generate -h` or list providers unless the template explicitly names type-specific help as a fallback.",
-    '- Without an attached generation template, when the user asks to generate anything (supported generation content: image, video, presentation, voice/audio, and connector-backed text, code, document, or website), run `zero generate -h`. Use `zero generate <type>` (no --prompt) to list every provider available for that type; then run `zero generate <type> --provider built-in --prompt "..."` to execute via vm0, or `zero generate <type> --provider <connector>` to get connector skill-invocation guidance. Do not claim support for other generated content.',
+    "- Without an attached generation template, when the user asks to generate anything (supported generation content: image, video, talking-avatar video via `avatar-video`, presentation, voice/audio, and connector-backed text, code, document, or website), run `zero generate -h`. Run `zero generate <type>` with no generation input to list every provider available for that type. Do not claim support for other generated content.",
+    "- Before executing a generation command, run `zero generate <type> -h` and follow its type-specific input flags; for example, `avatar-video` uses `--script` or `--audio-url`, not `--prompt`. Follow that help with `--provider built-in` to execute via vm0, or use `--provider <connector>` to get connector skill-invocation guidance.",
     "- If you choose a Zero generation command, wait for it to finish and use its returned artifact. Do not abandon it, switch to your own generation approach, or recreate the output yourself just because generation takes a long time.",
     "- Plan permission requests: identify all concrete connector operations required for the current task before asking for access. Do not include hypothetical future operations.",
     "- Check permission state: run `zero whoami --permissions` and skip permissions already allowed.",
@@ -467,6 +465,10 @@ function buildAppendSystemPrompt(args: {
       ),
       mermaidDiagramsEnabled: isFeatureEnabled(
         FeatureSwitchKey.MermaidDiagrams,
+        args.featureSwitchContext,
+      ),
+      rustZeroCliEnabled: isFeatureEnabled(
+        FeatureSwitchKey.RustZeroCli,
         args.featureSwitchContext,
       ),
     }),
@@ -637,14 +639,11 @@ function createRunBody(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly userInfo: UserInfo;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
-  readonly triggerAgentId: string | undefined;
   readonly triggerSource: TriggerSource | undefined;
   readonly appendSystemPrompt: string | undefined;
   readonly cloudBrowserEnabled: boolean | undefined;
 }) {
-  const triggerSource =
-    args.triggerSource ??
-    (args.triggerAgentId ? ("agent" as const) : ("web" as const));
+  const triggerSource = args.triggerSource ?? "web";
   const baseAppendSystemPrompt = buildAppendSystemPrompt({
     agent: args.agent,
     featureSwitchContext: args.featureSwitchContext,
@@ -673,18 +672,6 @@ function createRunBody(args: {
     disallowedTools: [...DISALLOWED_TOOLS],
     vars: { ZERO_AGENT_ID: args.agent.id },
   };
-}
-
-function callbacksForAutomationAgent(triggerAgentId: string | undefined) {
-  return triggerAgentId
-    ? [
-        {
-          internalKind: "agent" as const,
-          secret: generateCallbackSecret(),
-          payload: { triggerAgentId },
-        },
-      ]
-    : undefined;
 }
 
 function measureZeroPreCreate<T>(
@@ -739,7 +726,6 @@ async function loadZeroRunPostAuthorizationContext(
     readonly userId: string;
     readonly orgId: string;
     readonly agentId: string;
-    readonly triggerRunId: string | undefined;
     readonly apiStartTime: number;
     readonly timing: ApiDispatchTimingCollector;
   },
@@ -754,7 +740,6 @@ async function loadZeroRunPostAuthorizationContext(
         userId: args.userId,
         orgId: args.orgId,
         agentId: args.agentId,
-        triggerRunId: args.triggerRunId,
         checkedAt: new Date(args.apiStartTime),
       });
       measuredSnapshotRows = loadedRows;
@@ -820,7 +805,6 @@ function buildZeroCreateAgentRunArgs(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly userInfo: UserInfo;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
-  readonly triggerAgentId: string | undefined;
   readonly workflows: readonly RunWorkflowRef[];
   readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   readonly allowedCustomConnectorIds: readonly string[];
@@ -841,7 +825,6 @@ function buildZeroCreateAgentRunArgs(args: {
       featureSwitchContext: args.featureSwitchContext,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
       permissionPolicies: args.runPermissionPolicies,
-      triggerAgentId: args.triggerAgentId,
       triggerSource: command.triggerSource,
       appendSystemPrompt: command.appendSystemPrompt,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
@@ -860,10 +843,7 @@ function buildZeroCreateAgentRunArgs(args: {
       chatThreadId: command.chatThreadId,
       codexServiceTier: command.codexServiceTier,
     }),
-    callbacks: [
-      ...(callbacksForAutomationAgent(args.triggerAgentId) ?? []),
-      ...(command.callbacks ?? []),
-    ],
+    callbacks: command.callbacks,
     includeZeroTokenSecret: true,
     zeroTokenComputerUseHostId: command.computerUseHostId,
     zeroTokenCloudBrowserEnabled: args.cloudBrowserEnabled,
@@ -877,10 +857,7 @@ function buildZeroCreateAgentRunArgs(args: {
       source: "zero_agent",
     },
     validateEnvironmentReferences: false,
-    zeroRunMetadata: {
-      ...command.zeroRunMetadata,
-      triggerAgentId: args.triggerAgentId,
-    },
+    zeroRunMetadata: command.zeroRunMetadata,
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
     ...(command.zeroRunModelPin
       ? { zeroRunModelPin: command.zeroRunModelPin }
@@ -911,7 +888,6 @@ interface ZeroRunAfterPreCreate {
   readonly timing: ApiDispatchTimingCollector;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly command: AnyCreateZeroRunCommandArgs;
-  readonly triggerAgentId: string | undefined;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
 }
 
@@ -1070,10 +1046,6 @@ const createZeroRunInternal$ = command(
       return forbidden("Only the private agent owner can run this agent");
     }
 
-    const triggerRunId =
-      args.auth.tokenType === "sandbox" || args.auth.tokenType === "zero"
-        ? args.auth.runId
-        : undefined;
     const {
       userInfo,
       featureSwitchContext,
@@ -1083,14 +1055,12 @@ const createZeroRunInternal$ = command(
       workflows,
       runPermissionPolicies,
       connectorCatalogSnapshot,
-      triggerAgentId,
     } = await loadZeroRunPostAuthorizationContext(
       db,
       {
         userId: args.auth.userId,
         orgId: args.auth.orgId,
         agentId: agent.id,
-        triggerRunId,
         apiStartTime: args.apiStartTime,
         timing,
       },
@@ -1106,7 +1076,6 @@ const createZeroRunInternal$ = command(
         featureSwitchContext,
         runPermissionPolicies,
         connectorCatalogSnapshot,
-        triggerAgentId,
         workflows,
         allowedConnectorSlugs,
         allowedCustomConnectorIds,

@@ -1008,6 +1008,7 @@
     "cardTitle": "Cloud-Browser",
     "close": "Schließen Sie den Live-Browser",
     "documentTitle": "Live-Browser",
+    "fitAction": "Anpassen",
     "fitWindow": "Browser an Fenster anpassen",
     "iframeTitle": "Live-Browser: {{name}}",
     "invalidLink": "Ungültiger Browser-Link",
@@ -1027,7 +1028,6 @@
       "starting": "Beginnt",
       "stopped": "Angehalten"
     },
-    "stop": "Browser stoppen",
     "title": "Live-Browser",
     "unavailable": {
       "description": "Dieser Browser gehört nicht zu diesem Chat oder wurde entfernt.",
@@ -2211,19 +2211,14 @@
           "challengeQuestion": "Warum zeigt Feishu an, dass der Challenge-Code keine Antwort erhalten hat?",
           "title": "Häufig gestellte Fragen zur Einrichtung"
         },
-        "guide": {
-          "next": "Nächstes Bild des Feishu-Führers anzeigen",
-          "previous": "Vorheriges Feishu-Leitbild anzeigen",
-          "show": "Feishu-Leitbild anzeigen {{number}}"
-        },
         "loadError": "Die Feishu-Einstellungen konnten nicht geladen werden.",
         "manage": "Verwalten",
         "manageDialogTitle": "Verwalten Sie den Feishu-Bot",
         "moreOptions": "Weitere Optionen für {{bot}}",
         "pageDescription": "Verwalten Sie das Bot-Routing für diesen Arbeitsbereich",
         "permissions": {
-          "description": "Öffnen Sie in der Feishu-Entwicklerkonsole „Berechtigungen & Bereiche“, wählen Sie „Stapelimport/-export > Importieren“ und fügen Sie das folgende JSON ein. Dadurch werden alle Bereiche des verwalteten Connectors unter der Benutzeridentität importiert.",
-          "hint": "Bestätigen Sie die importierten Berechtigungen der Benutzeridentität. Erstellen und veröffentlichen Sie anschließend eine neue App-Version, damit der OAuth-Zustimmungsbildschirm sie gewähren kann.",
+          "description": "Öffnen Sie in der Feishu-Entwicklerkonsole „Berechtigungen & Bereiche“, wählen Sie „Stapelimport/-export > Importieren“ und fügen Sie das folgende JSON ein. Dadurch werden alle Bereiche des verwalteten Connectors unter der Benutzeridentität importiert. Dies sind die Mindestberechtigungen, die für die Funktion der Integration erforderlich sind.",
+          "hint": "Behalten Sie alle importierten Berechtigungen der Benutzeridentität bei. Erstellen und veröffentlichen Sie anschließend eine neue App-Version, damit der OAuth-Zustimmungsbildschirm sie gewähren kann. Wenn Sie eine Berechtigung entfernen, funktioniert die Integration nicht mehr, und möglicherweise ist die Genehmigung eines Feishu-Administrators erforderlich.",
           "label": "JSON für Benutzertoken-Bereiche",
           "menuAlt": "Feishu-Seite „Berechtigungen & Bereiche“ mit hervorgehobenem Menü „Stapelimport/-export von Bereichen“",
           "menuLabel": "Stapelimport/-export von Bereichen öffnen",

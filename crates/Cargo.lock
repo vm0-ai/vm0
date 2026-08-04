@@ -43,9 +43,9 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "aho-corasick"
-version = "1.1.4"
+version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddd31a130427c27518df266943a5308ed92d4b226cc639f5a8f1002816174301"
+checksum = "c982642fa9e8606056828ee9a8505737230110bb1099153c79efe865c59d12ba"
 dependencies = [
  "memchr",
 ]
@@ -117,7 +117,7 @@ dependencies = [
 
 [[package]]
 name = "api-contracts"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -966,9 +966,9 @@ dependencies = [
 
 [[package]]
 name = "data-encoding"
-version = "2.11.0"
+version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
+checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 
 [[package]]
 name = "debugid"
@@ -1253,7 +1253,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.63.3"
+version = "0.63.5"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1292,7 +1292,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.59"
+version = "0.2.60"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1304,7 +1304,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.5.4"
+version = "0.5.5"
 dependencies = [
  "libc",
  "serde",
@@ -1315,7 +1315,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.22.14"
+version = "0.22.15"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1331,7 +1331,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.140"
+version = "0.16.141"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1342,7 +1342,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.34"
+version = "0.21.36"
 dependencies = [
  "api-contracts",
  "guest-contracts",
@@ -1382,7 +1382,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.47"
+version = "0.1.48"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2604,7 +2604,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.154.2"
+version = "0.155.1"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2656,6 +2656,7 @@ dependencies = [
  "uuid",
  "vsock-proto",
  "which",
+ "zero-cli",
  "zstd",
 ]
 
@@ -2814,7 +2815,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.36"
+version = "0.19.37"
 dependencies = [
  "async-trait",
  "serde",
@@ -2826,10 +2827,9 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.175"
+version = "0.37.177"
 dependencies = [
  "async-trait",
- "base64 0.23.0",
  "clap",
  "futures-util",
  "guest-contracts",
@@ -2857,7 +2857,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.67"
+version = "0.8.68"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -2913,9 +2913,9 @@ checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 
 [[package]]
 name = "sentry"
-version = "0.49.0"
+version = "0.49.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d91e4790d8c2f43a6645ee2cb12aac2db79221fddd035b94c8166b88ea094408"
+checksum = "63207365db50cb817402f0ec8097d6dad3d644ef3fffd6ba30c75b3077e514da"
 dependencies = [
  "cfg_aliases",
  "sentry-core",
@@ -2924,9 +2924,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-backtrace"
-version = "0.49.0"
+version = "0.49.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "326e106874a7ea90636f1ca42e2f7b912929d29307982cab37f81208c16cf043"
+checksum = "e3bcc2497c2327998146207b7600599ef7592233920f4d4e1d41ddeeba0e4210"
 dependencies = [
  "backtrace",
  "regex",
@@ -2935,9 +2935,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-core"
-version = "0.49.0"
+version = "0.49.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f9efafefbb78d7e02cb06c10aec08b77e7500428389eabbf6d5a668325265e8"
+checksum = "48759bc392fb5e3b36b4efcb485f51074c0ba8479711cd5c8cf79e86f9f75d41"
 dependencies = [
  "rand 0.9.5",
  "sentry-types",
@@ -2948,9 +2948,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-panic"
-version = "0.49.0"
+version = "0.49.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8fc536a3e1fc68d626ae8dd18b628cafd474d9d36fea74e4bbb4d038877f003"
+checksum = "a685d22f672b1562ebeff3f2affceb5960595648cc936dae73da3e1d6a55fbd1"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -2958,9 +2958,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-types"
-version = "0.49.0"
+version = "0.49.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f967748632cd4c5405dbed45426b27b407c0e53ac59b7df1c163e7f5aa57a77c"
+checksum = "fab146d15a30ab4897a95fd15d6a038b8d7fbf2661c5f8b13738ce8df7a095b7"
 dependencies = [
  "debugid",
  "hex",
@@ -3778,7 +3778,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.59"
+version = "0.19.60"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3811,7 +3811,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-test"
-version = "0.9.183"
+version = "0.9.184"
 dependencies = [
  "guest-write-file",
  "libc",
@@ -4240,6 +4240,13 @@ dependencies = [
  "quote",
  "syn 2.0.119",
  "synstructure",
+]
+
+[[package]]
+name = "zero-cli"
+version = "0.2.0"
+dependencies = [
+ "tempfile",
 ]
 
 [[package]]

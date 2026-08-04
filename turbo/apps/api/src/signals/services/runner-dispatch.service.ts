@@ -66,13 +66,16 @@ export async function notifyRunnerJob(
   );
   const publishFinishedAt = now();
 
-  const dimensions = {
+  const dimensions: Record<string, string> = {
     runner_group: args.runnerGroup,
     profile: args.profile,
     notification_target: "broadcast",
     runner_preference_resolution: reusePreference.outcome,
     reuse_key_kind: runnerReuseKeyTelemetryKind(args.reuseKey),
   };
+  if (args.historyGenerationRunId) {
+    dimensions.history_generation_run_id = args.historyGenerationRunId;
+  }
   // Queue-relative actions are cumulative boundaries. Preference lookup and
   // publish durations are nested children and must not be added to them.
   recordSandboxOperations([

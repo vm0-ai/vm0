@@ -186,7 +186,10 @@ export {
 } from "./zero-user-model-preference";
 export {
   MAX_FILE_SIZE_BYTES,
+  STORAGE_MANIFEST_MAX_FILES,
+  STORAGE_MANIFEST_MAX_PATH_BYTES,
   fileEntryWithHashSchema,
+  storageManifestFilesSchema,
   storageChangesSchema,
   presignedUploadSchema,
 } from "./storages";
@@ -233,6 +236,7 @@ export {
   webhookStripeContract,
   webhookBuiltInGenerationFalContract,
   webhookBuiltInGenerationBytePlusContract,
+  webhookBuiltInGenerationJoggAiContract,
   webhookCompleteContract,
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
@@ -262,6 +266,7 @@ export {
   type WebhookGoogleWorkspaceEventsContract,
   type WebhookStripeContract,
   type WebhookBuiltInGenerationFalContract,
+  type WebhookBuiltInGenerationJoggAiContract,
 } from "./webhooks";
 export {
   cliAuthDeviceContract,
@@ -1632,6 +1637,26 @@ export {
   pushSubscriptionsContract,
   type PushSubscriptionsContract,
 } from "./push-subscriptions";
+export {
+  avatarVideoAspectRatioSchema,
+  avatarVideoScreenStyleSchema,
+  zeroAvatarVideoAvatarSchema,
+  zeroAvatarVideoAvatarsQuerySchema,
+  zeroAvatarVideoAvatarsResponseSchema,
+  zeroAvatarVideoContract,
+  zeroAvatarVideoGenerateRequestSchema,
+  zeroAvatarVideoGenerateResponseSchema,
+  zeroAvatarVideoVoiceSchema,
+  zeroAvatarVideoVoicesQuerySchema,
+  zeroAvatarVideoVoicesResponseSchema,
+  type ZeroAvatarVideoAvatar,
+  type ZeroAvatarVideoAvatarsQuery,
+  type ZeroAvatarVideoContract,
+  type ZeroAvatarVideoGenerateRequest,
+  type ZeroAvatarVideoGenerateResponse,
+  type ZeroAvatarVideoVoice,
+  type ZeroAvatarVideoVoicesQuery,
+} from "./zero-avatar-video";
 export {
   zeroImageIoGenerateContract,
   zeroImageIoGenerateRequestSchema,

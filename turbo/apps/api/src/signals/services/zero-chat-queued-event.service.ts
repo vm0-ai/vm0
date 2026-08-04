@@ -2,7 +2,6 @@ import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import { command } from "ccstate";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
-import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import {
   chatEvents,
   type ChatEventAttachFileMetadata,
@@ -16,10 +15,6 @@ import {
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
-import {
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
 import {
   and,
   asc,
@@ -58,7 +53,6 @@ import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import { noGoalChangeAfterQueueEvent } from "./chat-goal-queue.service";
-import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
 import { attachCanonicalWebInputAssetsToEvent } from "./canonical-asset.service";
 
@@ -387,10 +381,7 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
       ...queueFirstReplacementTargetFields,
       automationId: chatAutomationContext.automationId,
       triggerSource: chatEvents.triggerSource,
-      triggerBrief: chatAutomationContext.triggerBrief,
       userMessage: chatEvents.userMessage,
-      workflowId: zeroWorkflows.id,
-      workflowName: zeroWorkflows.name,
     })
     .from(chatEvents)
     .leftJoin(
@@ -399,14 +390,6 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
         eq(chatEvents.contextType, "automation"),
         eq(chatAutomationContext.id, chatEvents.contextId),
       ),
-    )
-    .leftJoin(
-      zeroWorkflowAutomations,
-      eq(zeroWorkflowAutomations.id, chatAutomationContext.automationId),
-    )
-    .leftJoin(
-      zeroWorkflows,
-      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
     )
     .where(
       and(
@@ -429,24 +412,7 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
   ) {
     return null;
   }
-  const userMessage =
-    head.userMessage ??
-    (head.workflowName === null
-      ? null
-      : createUserMessageDocument({
-          text: null,
-          nonContentPart: {
-            type: "automation",
-            workflowName: head.workflowName,
-            ...(head.workflowId === null
-              ? {}
-              : { workflowId: head.workflowId }),
-            ...(head.triggerBrief === null
-              ? {}
-              : { automationBrief: head.triggerBrief }),
-          },
-        }));
-  if (!userMessage) {
+  if (!head.userMessage) {
     throw new Error("Workflow queue event is missing its user message");
   }
   return {
@@ -454,7 +420,7 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
     replacement: {
       chatThreadId: args.threadId,
       eventType: "input.prompt",
-      userMessage,
+      userMessage: head.userMessage,
       runId: args.runId,
       ...(head.triggerSource ? { triggerSource: head.triggerSource } : {}),
     },
@@ -473,7 +439,6 @@ async function resolveGoalQueueFirstClaimSnapshot(
       goalSnapshotCurrent:
         noGoalChangeAfterQueueEvent(db).mapWith(pgBooleanDecoder),
       userMessage: chatEvents.userMessage,
-      goalBrief: chatGoalContext.objectiveBrief,
     })
     .from(chatEvents)
     .leftJoin(
@@ -484,13 +449,6 @@ async function resolveGoalQueueFirstClaimSnapshot(
         eq(threadGoals.orgId, args.orgId),
         eq(threadGoals.ownerUserId, args.userId),
         eq(chatEvents.runGroupId, threadGoals.id),
-      ),
-    )
-    .leftJoin(
-      chatGoalContext,
-      and(
-        eq(chatEvents.contextType, "goal"),
-        eq(chatGoalContext.id, chatEvents.contextId),
       ),
     )
     .where(
@@ -516,18 +474,7 @@ async function resolveGoalQueueFirstClaimSnapshot(
   ) {
     return null;
   }
-  const userMessage =
-    head.userMessage ??
-    (head.goalBrief
-      ? createUserMessageDocument({
-          text: null,
-          nonContentPart: {
-            type: "goal",
-            goalBrief: head.goalBrief,
-          },
-        })
-      : null);
-  if (!userMessage) {
+  if (!head.userMessage) {
     throw new Error("Goal queue event is missing its user message");
   }
   return {
@@ -535,7 +482,7 @@ async function resolveGoalQueueFirstClaimSnapshot(
     replacement: {
       chatThreadId: args.threadId,
       eventType: "input.prompt",
-      userMessage,
+      userMessage: head.userMessage,
       runId: args.runId,
       runGroupId: args.goalId,
       triggerSource: "workflow-event",

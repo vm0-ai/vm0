@@ -1030,6 +1030,7 @@
     "cardTitle": "Navegador en la nube",
     "close": "Cerrar el navegador en vivo",
     "documentTitle": "Navegador en vivo",
+    "fitAction": "Ajustar",
     "fitWindow": "Ajustar el navegador a la ventana",
     "iframeTitle": "Navegador en vivo: {{name}}",
     "invalidLink": "Enlace del navegador inválido",
@@ -1050,7 +1051,6 @@
       "starting": "Iniciando",
       "stopped": "Detenido"
     },
-    "stop": "Detener navegador",
     "title": "Navegador en vivo",
     "unavailable": {
       "description": "Este navegador no pertenece a este chat ni ha sido eliminado.",
@@ -2254,19 +2254,14 @@
           "challengeQuestion": "¿Por qué Feishu muestra \"El código de desafío no recibió respuesta\"?",
           "title": "Preguntas frecuentes sobre la configuración"
         },
-        "guide": {
-          "next": "Mostrar la siguiente imagen de la guía de Feishu",
-          "previous": "Mostrar imagen de la guía de Feishu anterior",
-          "show": "Mostrar la imagen {{number}} de la guía de Feishu"
-        },
         "loadError": "No se pudo cargar la configuración de Feishu.",
         "manage": "Gestionar",
         "manageDialogTitle": "Gestionar bot de Feishu",
         "moreOptions": "Más opciones para {{bot}}",
         "pageDescription": "Gestiona el enrutamiento de bots para este espacio de trabajo",
         "permissions": {
-          "description": "En la consola de desarrolladores de Feishu, abre Permisos y ámbitos, elige Importación/exportación por lotes > Importar y pega el JSON siguiente. Esto importa todos los ámbitos del conector administrado bajo la identidad de usuario.",
-          "hint": "Confirma los permisos importados de la identidad de usuario y, después, crea y publica una nueva versión de la aplicación para que la pantalla de consentimiento de OAuth pueda concederlos.",
+          "description": "En la consola de desarrolladores de Feishu, abre Permisos y ámbitos, elige Importación/exportación por lotes > Importar y pega el JSON siguiente. Esto importa todos los ámbitos del conector administrado bajo la identidad de usuario. Estos son los permisos mínimos necesarios para que la integración funcione.",
+          "hint": "Conserva todos los permisos importados de la identidad de usuario y, después, crea y publica una nueva versión de la aplicación para que la pantalla de consentimiento de OAuth pueda concederlos. Si eliminas algún permiso, la integración dejará de funcionar y es posible que se requiera la aprobación de un administrador de Feishu.",
           "label": "JSON de ámbitos del token de usuario",
           "menuAlt": "Página Permisos y ámbitos de Feishu con el menú de importación/exportación por lotes de ámbitos resaltado",
           "menuLabel": "Abrir la importación/exportación por lotes de ámbitos",

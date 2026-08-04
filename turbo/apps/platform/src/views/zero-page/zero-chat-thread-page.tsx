@@ -247,10 +247,10 @@ import type {
 import type { AgentReferenceSignals } from "../../signals/chat-page/agent-reference-signals.ts";
 import type { AssistantErrorRecovery } from "../../signals/chat-page/assistant-error-recovery.ts";
 import type {
-  ChatThreadSignals,
+  ChatPanelSignals,
   RecommendedFollowupSource,
   ThinkingIndicatorMode,
-} from "../../signals/chat-page/chat-thread-signals.ts";
+} from "../../signals/chat-page/chat-panel-signals.ts";
 import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
 import {
   applyChatThreadEmoji,
@@ -374,11 +374,11 @@ function chatEventError(event: ChatEvent): string | undefined {
   return undefined;
 }
 
-function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
+function ArtifactsButton({ thread }: { thread: ChatPanelSignals }) {
   return <ArtifactsButtonInner thread={thread} />;
 }
 
-function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
+function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const sidebarTarget = useGet(thread.sidebar.target$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
@@ -424,7 +424,7 @@ export function AutomationMenuButton({
   thread,
   ariaLabel,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   ariaLabel?: string;
 }) {
   const { t } = useTranslation();
@@ -483,7 +483,7 @@ export function AutomationMenuButton({
   );
 }
 
-function BrowserMenuButton({ thread }: { thread: ChatThreadSignals }) {
+function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const sidebarTarget = useGet(thread.sidebar.target$);
   const openBrowserSidebar = useSet(openThreadBrowserSession$);
@@ -527,7 +527,7 @@ function BrowserMenuButton({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
   const threadTitle = useGet(thread.threadTitle$)?.trim() ?? "";
   const threadTitleEmoji = useGet(thread.threadTitleEmoji$);
   const threadTitleText = useGet(thread.threadTitleText$);
@@ -2351,7 +2351,7 @@ function HeaderAutomationSidebar({
   thread,
   onClose,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -2433,7 +2433,7 @@ function ChatThread({
   thread,
 }: {
   isMain?: boolean;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
   const setContainerRef = useSet(
@@ -2459,8 +2459,8 @@ function ChatThreadArea({
   leftThread,
   rightThread,
 }: {
-  leftThread: ChatThreadSignals | null;
-  rightThread: ChatThreadSignals | null;
+  leftThread: ChatPanelSignals | null;
+  rightThread: ChatPanelSignals | null;
 }) {
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
 
@@ -2483,7 +2483,7 @@ function ChatThreadArea({
 function ThreadAutomationsSidebarSlot({
   thread,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const close = useSet(thread.sidebar.close$);
   return <HeaderAutomationSidebar thread={thread} onClose={close} />;
@@ -2548,7 +2548,7 @@ const CHAT_RENDER_LOAD_MORE_TOP_THRESHOLD_PX = 100;
 function ChatThreadRenderedEventGroups({
   thread,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const renderedGroups =
     useLastResolved(thread.visibleRenderedChatGroups$, {
@@ -2592,7 +2592,7 @@ function ChatThreadRenderedEventGroups({
   );
 }
 
-function ChatThreadSessionError({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadSessionError({ thread }: { thread: ChatPanelSignals }) {
   const renderedGroupsReadyLoadable = useLastLoadable(
     thread.visibleRenderedChatGroupsReady$,
   );
@@ -2610,7 +2610,7 @@ function ChatThreadSessionError({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadEmptyState({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
@@ -2637,7 +2637,7 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadEventsMain({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
   const scrollContentOnRef = useSet(thread.scrollContentOnRef$);
@@ -2666,11 +2666,7 @@ function ChatThreadEventsMain({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadThinkingIndicator({
-  thread,
-}: {
-  thread: ChatThreadSignals;
-}) {
+function ChatThreadThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
   return <ThinkingIndicator thread={thread} />;
 }
 
@@ -2683,7 +2679,7 @@ function ChatThreadEventGroups({
   completedWorkExpandedKeys,
   onToggleCompletedWork,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   groups: readonly ChatEventGroup[];
   runGroupFolding: RunGroupFolding | null;
   onToggleRunGroup: (key: string, expanded: boolean) => void;
@@ -3471,7 +3467,7 @@ function RunGroupFoldRow({
   );
 }
 
-function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadSkeletonOverlay({ thread }: { thread: ChatPanelSignals }) {
   const chatSkeletonVisible = useGet(thread.chatSkeletonVisible$);
   if (!chatSkeletonVisible) {
     return null;
@@ -3491,7 +3487,7 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadEventsPane({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
   const scrollContainerOnRef = useSet(thread.scrollContainerOnRef$);
   const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
   const pageSignal = useGet(pageSignal$);
@@ -3536,11 +3532,7 @@ function ChatThreadEventsPane({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatHistoryBackfillSkeleton({
-  thread,
-}: {
-  thread: ChatThreadSignals;
-}) {
+function ChatHistoryBackfillSkeleton({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const historyBackfillPending = useGet(thread.historyBackfillPending$);
   if (!historyBackfillPending) {
@@ -3560,7 +3552,7 @@ function ChatHistoryBackfillSkeleton({
   );
 }
 
-function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadContent({ thread }: { thread: ChatPanelSignals }) {
   return (
     <>
       <ChatThreadHeader thread={thread} />
@@ -3579,7 +3571,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ScrollToBottomButton({ thread }: { thread: ChatThreadSignals }) {
+function ScrollToBottomButton({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const awayFromBottom = useGet(thread.awayFromBottom$);
   const scrollToBottom = useSet(thread.scrollToBottom$);
@@ -3670,7 +3662,7 @@ function RecommendedFollowupList({
   thread,
   source,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   source: RecommendedFollowupSource;
 }) {
   const selectOrAppendComposerText = useSet(
@@ -3855,7 +3847,7 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
   );
 }
 
-function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
   const pwaChatKeyboardGesturesEnabled =
     useGet(pwaChatKeyboardGesturesEnabled$) && isStandalonePwa();
 
@@ -4027,7 +4019,7 @@ function FinishedRunRow({
   thread,
   source,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   source: RecommendedFollowupSource | null;
 }) {
   const { t } = useTranslation();
@@ -4076,7 +4068,7 @@ function WaitingForAssistantResponse({
   thinkingLabel,
   serverThinkingLabel,
 }: {
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   blockStyle: CSSProperties;
   isQueued: boolean;
   thinkingLabel: string;
@@ -4130,7 +4122,7 @@ function AssistantThinkingStatusRow({
   isQueued: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   recommendedFollowupSource: RecommendedFollowupSource | null;
 }) {
   const thinkingIndicatorProps = running
@@ -4185,7 +4177,7 @@ function equalRecommendedFollowupSources(
   );
 }
 
-function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
+function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
   const [c1, c2, c3] = useGet(thread.blockColors$);
   const blockStyle = {
     "--zb-c1": c1,
@@ -5702,11 +5694,11 @@ function AssistantRecoveryActions({
   thread,
 }: {
   recovery: AssistantErrorRecovery;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const setModelSelection = useSet(thread.setModelSelection$);
+  const setModelSelection = useSet(thread.composer.model.setModelSelection$);
   const [retryLoadable, retry] = useLoadableSet(thread.retryAssistantError$);
   const [resetLoadable, resetAndRetry] = useLoadableSet(
     thread.resetCodexSubscriptionAndRetry$,
@@ -5773,7 +5765,7 @@ function AssistantErrorRecoveryCard({
   thread,
 }: {
   recovery: AssistantErrorRecovery;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
   const resetText = assistantRecoveryResetText(recovery);
@@ -5987,7 +5979,7 @@ function AssistantErrorContent({
 }: {
   error: string;
   eventId: string;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const recovery = useLastResolved(thread.assistantErrorRecovery$);
   return recovery?.sourceEventId === eventId ? (
@@ -5997,7 +5989,7 @@ function AssistantErrorContent({
   );
 }
 
-function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
+function AssistantBubbleAvatar({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const agentId = useGet(thread.agentId$) ?? "";
   return (
@@ -6030,7 +6022,7 @@ function PagedGroupRow({
   completedWorkFold,
 }: {
   group: ChatEventGroup;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -6064,7 +6056,7 @@ function PagedUserGroup({
   runGroupFolds,
 }: {
   group: ChatEventGroup;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
   return (
@@ -6103,7 +6095,7 @@ interface ResolvedMessageAttachment {
 function resolveAttachments(
   event: EnrichedChatEvent,
   parsed: { filename: string; url: string }[],
-  artifactSignalsForUrl: ChatThreadSignals["artifactSignalsForUrl"],
+  artifactSignalsForUrl: ChatPanelSignals["artifactSignalsForUrl"],
 ): ResolvedMessageAttachment[] {
   const eventAttachments = chatEventAttachments(event);
   const source =
@@ -6584,6 +6576,9 @@ const STRUCTURED_REFERENCE_CHIP_CLASS =
   "inline-flex max-w-[240px] items-center gap-1 rounded-md border " +
   "border-foreground/15 bg-background/80 px-1.5 py-0.5 align-middle " +
   "text-xs font-medium";
+// File chips carry their own border, so they need more breathing room from the
+// surrounding sentence than a borderless inline mention does.
+const INLINE_FILE_REFERENCE_SPACING_CLASS = "mx-1";
 const STRUCTURED_INLINE_REFERENCE_CLASS =
   "relative -top-px mx-0.5 inline-flex h-7 max-w-[240px] items-center " +
   "gap-1.5 rounded-md bg-orange-500/10 px-2 align-middle text-[13px] " +
@@ -6745,7 +6740,13 @@ function UserMessageFileReference({
         />
       );
     }
-    return <span className="inline-flex align-middle">{reference}</span>;
+    return (
+      <span
+        className={`${INLINE_FILE_REFERENCE_SPACING_CLASS} inline-flex align-middle`}
+      >
+        {reference}
+      </span>
+    );
   }
   return (
     <span
@@ -6757,7 +6758,7 @@ function UserMessageFileReference({
           filename: part.filenameSnapshot,
         },
       )}
-      className={`${STRUCTURED_REFERENCE_CHIP_CLASS} h-7`}
+      className={`${STRUCTURED_REFERENCE_CHIP_CLASS} ${INLINE_FILE_REFERENCE_SPACING_CLASS} h-7`}
       title={part.filenameSnapshot}
     >
       <FilePreviewIcon
@@ -6840,7 +6841,7 @@ function UserMessageFeedbackNote({
   composerSignals,
 }: {
   note: readonly FeedbackNotePart[];
-  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
+  agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
   composerSignals: ComposerSignals;
 }) {
   const partOccurrences = new Map<string, number>();
@@ -6972,7 +6973,7 @@ function UserMessageFeedbackGroup({
   composerSignals,
 }: {
   parts: readonly UserMessageFeedbackPart[];
-  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
+  agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
   composerSignals: ComposerSignals;
 }) {
   const partOccurrences = new Map<string, number>();
@@ -7029,7 +7030,7 @@ function UserMessagePartView({
 }: {
   part: UserMessageStandalonePart;
   attachments: readonly ResolvedAttachFile[];
-  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
+  agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
   composerSignals: ComposerSignals;
 }): ReactNode {
   if (part.type === "text") {
@@ -7079,7 +7080,7 @@ function UserMessageView({
   attachments: readonly ResolvedAttachFile[];
   elevatedFileIds: ReadonlySet<string>;
   inlineTemplatesEnabled: boolean;
-  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
+  agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
   composerSignals: ComposerSignals;
 }) {
   const partOccurrences = new Map<string, number>();
@@ -7176,14 +7177,19 @@ function UserMessageContent({
   referenceAttachments: readonly ResolvedAttachFile[];
   onImageClick: (url: string) => void;
   inlineTemplatesEnabled: boolean;
-  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
+  agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
   composerSignals: ComposerSignals;
 }) {
-  const imageAttachments = attachments.filter((attachment) => {
-    return attachment.id !== null && attachment.isImage;
+  // Images and videos read as media, so they sit above the bubble as
+  // thumbnails instead of interrupting the sentence they were dropped into.
+  const mediaAttachments = attachments.filter((attachment) => {
+    return (
+      attachment.id !== null &&
+      (attachment.isImage || attachment.kind === "video")
+    );
   });
-  const imageAttachmentIds = new Set(
-    imageAttachments.flatMap((attachment) => {
+  const mediaAttachmentIds = new Set(
+    mediaAttachments.flatMap((attachment) => {
       return attachment.id ? [attachment.id] : [];
     }),
   );
@@ -7197,7 +7203,7 @@ function UserMessageContent({
       !isUserMessageNonContentPart(part) &&
       !isElevatedUserMessagePart(
         part,
-        imageAttachmentIds,
+        mediaAttachmentIds,
         inlineTemplatesEnabled,
       )
     );
@@ -7219,7 +7225,7 @@ function UserMessageContent({
         </div>
       ) : null}
       <UserMessageAttachments
-        attachments={imageAttachments}
+        attachments={mediaAttachments}
         onImageClick={onImageClick}
       />
       {hasBody ? (
@@ -7228,7 +7234,7 @@ function UserMessageContent({
             <UserMessageView
               document={document}
               attachments={referenceAttachments}
-              elevatedFileIds={imageAttachmentIds}
+              elevatedFileIds={mediaAttachmentIds}
               inlineTemplatesEnabled={inlineTemplatesEnabled}
               agentReferenceSignalsForId={agentReferenceSignalsForId}
               composerSignals={composerSignals}
@@ -7395,7 +7401,7 @@ function PagedUserMessage({
   thread,
 }: {
   event: EnrichedChatEvent;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const { inlineTemplates } = useUserMessageRendering();
   const inputEvent = asInputChatEvent(event);
@@ -7516,7 +7522,7 @@ function PagedAssistantGroup({
   completedWorkFold,
 }: {
   group: ChatEventGroup;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -7607,7 +7613,7 @@ function PagedAssistantEventItem({
 }: {
   event: EnrichedChatEvent;
   compactTop?: boolean;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
@@ -7899,7 +7905,7 @@ function PagedGroupActions({
 }: {
   group: ChatEventGroup;
   content: string;
-  thread: ChatThreadSignals;
+  thread: ChatPanelSignals;
 }) {
   const pageSignal = useGet(pageSignal$);
   const copiedId = useGet(thread.copiedEventId$);

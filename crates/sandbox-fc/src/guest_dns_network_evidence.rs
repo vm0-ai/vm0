@@ -87,7 +87,7 @@ use crate::guest_dns_netfilter_trace::{
     GuestDnsNetfilterTraceAttachment, GuestDnsNetfilterTraceCaptureTarget,
     GuestDnsNetfilterTraceCursor, GuestDnsNetfilterTraceReport,
 };
-use crate::guest_dns_readiness::GUEST_DNS_READINESS_PACKET_BYTES;
+use crate::guest_dns_probe::GUEST_DNS_PROBE_PACKET_BYTES;
 
 const BASELINE_COMMAND_TIMEOUT: Duration = Duration::from_millis(250);
 const PEER_DEVICE: &str = "veth0";
@@ -613,7 +613,7 @@ fn correlate(
             Some(deltas),
         );
     }
-    if deltas.namespace_masquerade.bytes != expected_packets * GUEST_DNS_READINESS_PACKET_BYTES {
+    if deltas.namespace_masquerade.bytes != expected_packets * GUEST_DNS_PROBE_PACKET_BYTES {
         return EvidenceCorrelation::inconclusive(
             EvidenceReason::MasqueradeByteMismatch,
             Some(deltas),
@@ -677,7 +677,7 @@ fn observe_counters(
 
     let expected_packets = u64::from(readiness_attempts);
     let exact_namespace_masquerade = if deltas.namespace_masquerade.packets == expected_packets
-        && deltas.namespace_masquerade.bytes == expected_packets * GUEST_DNS_READINESS_PACKET_BYTES
+        && deltas.namespace_masquerade.bytes == expected_packets * GUEST_DNS_PROBE_PACKET_BYTES
     {
         CounterObservationStatus::Observed
     } else {

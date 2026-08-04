@@ -21,8 +21,8 @@ mod system_log;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::future::Future;
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
@@ -597,8 +597,8 @@ pub fn ensure_canonical_workspace_for_test() -> Result<(), String> {
     Ok(())
 }
 
-/// Build the mock binary (idempotent when up to date) and resolve its
-/// filesystem path.
+/// Build the mock binary once per verified Cargo test invocation and resolve
+/// its filesystem path.
 ///
 /// The subprocess `cargo build` must land the artifact in the same
 /// `target/` directory + profile that the enclosing `cargo test` uses,
@@ -626,6 +626,28 @@ fn build_and_locate_mock_package(package: &str, binary: &str) -> Result<PathBuf,
         .parent()
         .and_then(|p| p.parent())
         .ok_or_else(|| "target/<profile> dir".to_string())?;
+    let workspace_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| "guest-agent workspace directory".to_string())?;
+
+    let build_session = cargo_build_session_id();
+    build_and_locate_mock_package_in_workspace(
+        workspace_dir,
+        target_profile_dir,
+        package,
+        binary,
+        build_session.as_deref(),
+    )
+}
+
+/// Build a mock package in an explicit workspace and cache it for one Cargo build session.
+pub fn build_and_locate_mock_package_in_workspace(
+    workspace_dir: &Path,
+    target_profile_dir: &Path,
+    package: &str,
+    binary: &str,
+    build_session: Option<&str>,
+) -> Result<PathBuf, String> {
     let target_dir = target_profile_dir
         .parent()
         .ok_or_else(|| "target dir".to_string())?;
@@ -633,25 +655,34 @@ fn build_and_locate_mock_package(package: &str, binary: &str) -> Result<PathBuf,
         .file_name()
         .and_then(|n| n.to_str())
         .ok_or_else(|| "profile dir name".to_string())?;
-
     let mock = target_profile_dir.join(binary);
-    let workspace_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or_else(|| "guest-agent workspace directory".to_string())?;
-    let package_dir = workspace_dir.join(package);
-    let fingerprint = mock_fingerprint(&package_dir, profile_dir_name)?;
-    let marker = target_dir.join(format!(".vm0-{package}-{profile_dir_name}.fingerprint"));
+    let marker = target_dir.join(format!(".vm0-{package}-{profile_dir_name}.build-session"));
     let lock = target_dir.join(format!(".vm0-{package}-{profile_dir_name}.lock"));
     let _lock = acquire_mock_build_lock(&lock)?;
 
-    if mock.exists() && std::fs::read_to_string(&marker).ok().as_deref() == Some(&fingerprint) {
+    if mock.exists()
+        && build_session.is_some()
+        && std::fs::read_to_string(&marker).ok().as_deref() == build_session
+    {
         return Ok(mock);
+    }
+
+    match std::fs::remove_file(&marker) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "remove mock build session {}: {error}",
+                marker.display()
+            ));
+        }
     }
 
     let mut cmd = std::process::Command::new("cargo");
     cmd.args(["build", "-p", package, "--quiet"])
         .arg("--target-dir")
-        .arg(target_dir);
+        .arg(target_dir)
+        .current_dir(workspace_dir);
     // Cargo profile → output dir mapping:
     //   --release            → target_dir/release
     //   --profile <name>     → target_dir/<name>
@@ -676,7 +707,10 @@ fn build_and_locate_mock_package(package: &str, binary: &str) -> Result<PathBuf,
     if !mock.exists() {
         return Err(format!("mock binary not found at {}", mock.display()));
     }
-    std::fs::write(&marker, fingerprint).map_err(|e| format!("write mock fingerprint: {e}"))?;
+    if let Some(build_session) = build_session {
+        std::fs::write(&marker, build_session)
+            .map_err(|e| format!("write mock build session: {e}"))?;
+    }
     Ok(mock)
 }
 
@@ -693,39 +727,35 @@ pub fn acquire_mock_build_lock(lock: &Path) -> Result<std::fs::File, String> {
     Ok(file)
 }
 
-fn mock_fingerprint(package_dir: &Path, profile: &str) -> Result<String, String> {
-    let mut files = Vec::new();
-    collect_files(package_dir, &mut files)?;
-    files.sort();
-    let mut hasher = Sha256::new();
-    hasher.update(profile.as_bytes());
-    for path in files {
-        hasher.update(
-            path.strip_prefix(package_dir)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .as_bytes(),
-        );
-        hasher.update(std::fs::read(&path).map_err(|e| format!("read mock source: {e}"))?);
+/// Resolve a reusable session only for tests launched directly by Cargo on Linux.
+fn cargo_build_session_id() -> Option<String> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let parent_pid = status
+        .lines()
+        .find_map(|line| line.strip_prefix("PPid:"))?
+        .trim()
+        .parse::<u32>()
+        .ok()?;
+    let parent_exe = std::fs::read_link(format!("/proc/{parent_pid}/exe")).ok()?;
+    if parent_exe.file_name()? != OsStr::new("cargo") {
+        return None;
     }
-    Ok(hex::encode(hasher.finalize()))
-}
 
-fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    for entry in std::fs::read_dir(dir).map_err(|e| format!("read mock package: {e}"))? {
-        let path = entry
-            .map_err(|e| format!("read mock package entry: {e}"))?
-            .path();
-        if path.file_name().is_some_and(|name| name == "target") {
-            continue;
-        }
-        if path.is_dir() {
-            collect_files(&path, files)?;
-        } else {
-            files.push(path);
-        }
+    let parent_stat = std::fs::read_to_string(format!("/proc/{parent_pid}/stat")).ok()?;
+    let fields_after_command = parent_stat.get(parent_stat.rfind(')')? + 1..)?;
+    // `starttime` is field 22, or field 20 after the PID and parenthesized command.
+    let parent_start_time = fields_after_command
+        .split_whitespace()
+        .nth(19)?
+        .parse::<u64>()
+        .ok()?;
+    let boot_id = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+    let boot_id = boot_id.trim();
+    if boot_id.is_empty() {
+        return None;
     }
-    Ok(())
+
+    Some(format!("{boot_id}:{parent_pid}:{parent_start_time}"))
 }
 
 /// Test-specific values for the experimental Codex app-server backend env.

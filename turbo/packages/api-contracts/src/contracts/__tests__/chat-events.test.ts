@@ -13,10 +13,12 @@ import {
   terminatedChatRunIds,
 } from "../chat-events";
 import {
+  canonicalChatEvent,
   chatEventResponse,
   chatEventSchema,
   chatEventsContract,
   chatThreadEventsContract,
+  compatibleChatEventSchema,
   type ChatEvent,
 } from "../chat-threads";
 
@@ -192,18 +194,18 @@ const chatEvents = [
     createdAt: CREATED_AT,
   },
   {
-    id: "browser-started",
+    id: "browser-open",
     seqId: 16,
     threadId: THREAD_ID,
-    eventType: "browser.started",
+    eventType: "browser.open",
     content: null,
     createdAt: CREATED_AT,
   },
   {
-    id: "browser-stopped",
+    id: "browser-close",
     seqId: 17,
     threadId: THREAD_ID,
-    eventType: "browser.stopped",
+    eventType: "browser.close",
     content: null,
     createdAt: CREATED_AT,
   },
@@ -328,12 +330,12 @@ describe("ChatEvent catalog", () => {
         callbackSecret: "must-stay-server-side",
       }).success,
     ).toBe(false);
-    const browserStarted = chatEvents.find((event) => {
-      return event.eventType === "browser.started";
+    const browserOpen = chatEvents.find((event) => {
+      return event.eventType === "browser.open";
     });
     expect(
       chatEventSchema.safeParse({
-        ...browserStarted,
+        ...browserOpen,
         browserId: "must-not-exist",
       }).success,
     ).toBe(false);
@@ -345,6 +347,34 @@ describe("ChatEvent catalog", () => {
       expect(response).toStrictEqual(event);
       expect(chatEventSchema.parse(response)).toStrictEqual(response);
     }
+  });
+
+  it("normalizes browser lifecycle values from previous clients and storage", () => {
+    const browserOpen = chatEvents.find((event) => {
+      return event.eventType === "browser.open";
+    });
+    const browserClose = chatEvents.find((event) => {
+      return event.eventType === "browser.close";
+    });
+    expect(browserOpen).toBeDefined();
+    expect(browserClose).toBeDefined();
+
+    expect(
+      canonicalChatEvent(
+        compatibleChatEventSchema.parse({
+          ...browserOpen,
+          eventType: "browser.started",
+        }),
+      ),
+    ).toMatchObject({ eventType: "browser.open" });
+    expect(
+      canonicalChatEvent(
+        compatibleChatEventSchema.parse({
+          ...browserClose,
+          eventType: "browser.stopped",
+        }),
+      ),
+    ).toMatchObject({ eventType: "browser.close" });
   });
 
   it("rejects a response that only carries the retired rich-input field", () => {
@@ -472,7 +502,7 @@ describe("ChatEvent folds", () => {
     );
   });
 
-  it("folds pending queue events by user priority, original time, and revoke state", () => {
+  it("folds pending queue events by class priority, original time, and revoke state", () => {
     const revoked = revokedChatEventIds(queueFoldFixture);
     expect(isPendingChatQueueEvent(queueFoldFixture[1], revoked)).toBe(true);
     expect(isPendingChatQueueEvent(queueFoldFixture[3], revoked)).toBe(false);
@@ -480,7 +510,7 @@ describe("ChatEvent folds", () => {
       foldPendingChatQueueEvents(queueFoldFixture).map((event) => {
         return event.id;
       }),
-    ).toStrictEqual(["prompt-newer", "automation-oldest", "goal-oldest"]);
+    ).toStrictEqual(["prompt-newer", "goal-oldest", "automation-oldest"]);
   });
 
   it("returns every pending queue event as runnable", () => {
@@ -488,7 +518,7 @@ describe("ChatEvent folds", () => {
       foldRunnableChatQueueEvents(queueFoldFixture).map((event) => {
         return event.id;
       }),
-    ).toStrictEqual(["prompt-newer", "automation-oldest", "goal-oldest"]);
+    ).toStrictEqual(["prompt-newer", "goal-oldest", "automation-oldest"]);
   });
 });
 

@@ -164,6 +164,7 @@ const CLAIM_ROUTE_PREPARED_PATH_OMITTED_ACTION_TYPES = [
 const CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES = [
   "claim_route_response_resume_session",
   "claim_route_response_network_policy_refresh",
+  "claim_route_response_network_policy_refresh_baseline_database",
 ] as const;
 type ClaimRouteResponseTimingActionType =
   (typeof CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES)[number];
@@ -769,6 +770,9 @@ function expectClaimRouteResponseTimingActions(args: {
     );
     expect(event?.duration_ms).toStrictEqual(expect.any(Number));
     expect(Number(event?.duration_ms)).toBeGreaterThanOrEqual(0);
+    expect(Object.hasOwn(event ?? {}, "policy_refresh_path")).toBe(
+      actionType === "claim_route_response_network_policy_refresh",
+    );
     for (const forbiddenKey of FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS) {
       expect(event).not.toHaveProperty(forbiddenKey);
     }
@@ -3941,16 +3945,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(runnerPreference(sourcePoll.body.job)).toStrictEqual(
       finalizingPreference,
     );
-    expect(
-      sandboxOperationEventsForRunByAction(
-        successor.runId,
-        "runner_notification_affinity_lookup",
-      ),
-    ).toContainEqual(
-      expect.objectContaining({
-        runner_preference_resolution: "finalizing_predecessor",
-      }),
-    );
+    for (const actionType of [
+      "runner_notification_affinity_lookup",
+      "runner_poll_pending_job_lookup",
+    ]) {
+      expect(
+        sandboxOperationEventsForRunByAction(successor.runId, actionType),
+      ).toContainEqual(
+        expect.objectContaining({
+          runner_preference_resolution: "finalizing_predecessor",
+          history_generation_run_id: first.runId,
+        }),
+      );
+    }
 
     mockNow(sourceCompletedAt + 1601);
     const genericPoll = await api.requestPollRunner(
@@ -4366,9 +4373,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           notification_target: "broadcast",
           runner_preference_resolution: "exact_history_generation",
           reuse_key_kind: "thread",
+          history_generation_run_id: first.runId,
         }),
       );
     }
+    expect(
+      sandboxOperationEventsForRunByAction(
+        protectedFollowUp.runId,
+        "api_to_claim_request",
+      ),
+    ).toContainEqual(
+      expect.objectContaining({ history_generation_run_id: first.runId }),
+    );
     await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
     await webhooks.requestAgentComplete(
       {
@@ -5130,7 +5146,14 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
           reuse_key_kind: "none",
         }),
       );
+      expect(events[0]).not.toHaveProperty("history_generation_run_id");
     }
+    expect(
+      sandboxOperationEventsForRunByAction(
+        third.runId,
+        "api_to_claim_request",
+      )[0],
+    ).not.toHaveProperty("history_generation_run_id");
     await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(
       decryptCountBeforeClaim,
     );
@@ -9083,6 +9106,21 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expect(claim.networkPolicies?.slack?.deny).toContain("chat:write");
       expect(claim).not.toHaveProperty("connectorPermissionBaseline");
       expectClaimNetworkPolicyRefreshPath(run.runId, fallbackCase.path);
+      expectClaimRouteResponseTimingActions({
+        runId: run.runId,
+        expectedActionTypes:
+          fallbackCase.mode === "catalog-mismatch"
+            ? [
+                "claim_route_response_network_policy_refresh",
+                "claim_route_response_network_policy_refresh_baseline_database",
+              ]
+            : ["claim_route_response_network_policy_refresh"],
+        forbiddenValues: [
+          `fallback ${fallbackCase.mode}`,
+          "slack",
+          claim.sandboxToken,
+        ],
+      });
       await api.requestCancelRun(actor, run.runId, [200]);
     }
   });
@@ -9201,7 +9239,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const granted = grantedContext.policy;
     expectClaimRouteResponseTimingActions({
       runId: grantedContext.claim.runId,
-      expectedActionTypes: ["claim_route_response_network_policy_refresh"],
+      expectedActionTypes: [
+        "claim_route_response_network_policy_refresh",
+        "claim_route_response_network_policy_refresh_baseline_database",
+      ],
       forbiddenValues: [
         "granted permissions",
         "slack",
@@ -9568,6 +9609,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expectedActionTypes: [
         "claim_route_response_resume_session",
         "claim_route_response_network_policy_refresh",
+        "claim_route_response_network_policy_refresh_baseline_database",
       ],
       forbiddenValues: [
         firstPrompt,
@@ -9837,6 +9879,50 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 });
 
 describe("RUN-01: zero runner context, queue promotion, and skills", () => {
+  it("selects the runner-bundled zero-cli only when its feature switch is enabled", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Zero CLI selection requires an organization");
+    }
+
+    const npmRun = await api.createRun(actor, {
+      agentId,
+      prompt: "use the default Zero CLI",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const npmClaim = await api.claimRunnerJob(npmRun.runId);
+    expect(npmClaim.appendSystemPrompt ?? "").toContain(
+      "Run commands with: `npx -p @vm0/cli zero <command>`",
+    );
+    expect(npmClaim.appendSystemPrompt ?? "").not.toContain(
+      "Run commands with: `zero-cli <command>`",
+    );
+    await api.requestCancelRun(actor, npmRun.runId, [200]);
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.RustZeroCli]: true },
+    );
+
+    const rustRun = await api.createRun(actor, {
+      agentId,
+      prompt: "use the runner-bundled Zero CLI",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const rustClaim = await api.claimRunnerJob(rustRun.runId);
+    expect(rustClaim.appendSystemPrompt ?? "").toContain(
+      "Run commands with: `zero-cli <command>`",
+    );
+    expect(rustClaim.appendSystemPrompt ?? "").not.toContain(
+      "Run commands with: `npx -p @vm0/cli zero <command>`",
+    );
+    await api.requestCancelRun(actor, rustRun.runId, [200]);
+  });
+
   it("injects agent identity, tool hints, and user info into the runner context", async () => {
     const appUrl = "https://app.example.test";
     mockEnv("APP_URL", appUrl);
@@ -9982,6 +10068,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "An attached generation template takes precedence",
       "Without an attached generation template",
       "zero generate -h",
+      "talking-avatar video via `avatar-video`",
+      "zero generate <type> -h",
+      "`avatar-video` uses `--script` or `--audio-url`, not `--prompt`",
       "zero doctor credit",
       "zero credit <credits>",
       "Plan permission requests",

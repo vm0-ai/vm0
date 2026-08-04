@@ -44,7 +44,14 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         Arc::clone(&masker),
         http.clone(),
     );
-    telemetry.final_flush_and_shutdown().await?;
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        telemetry.final_flush_and_shutdown(),
+    )
+    .await
+    .expect(
+        "no-API final-flush reply and uploader task termination should complete within 5 seconds",
+    )?;
 
     let shutdown = CancellationToken::new();
     let heartbeat = tokio::spawn(guest_agent::heartbeat::heartbeat_loop_for_run(

@@ -34,7 +34,8 @@ use super::workspace_session_history_materializer::WorkspaceSessionHistoryMateri
 use super::{
     ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch,
     PROCESS_CANCEL_TIMEOUTS, RunnerError, RunnerResult, SandboxPreparedNotifier,
-    SandboxReuseResult, SessionHistoryMaterializer, SessionHistoryRestorePlan,
+    SandboxReuseDisposition, SandboxReuseRejection, SandboxReuseResult, SessionHistoryMaterializer,
+    SessionHistoryRestorePlan,
 };
 use crate::dns::{DnsReadinessLogObservation, inspect_readiness_log_segment};
 use crate::duration::duration_ms;
@@ -1289,6 +1290,7 @@ pub(super) async fn execute_reused_sandbox(
             );
             return ExecuteOutcome {
                 failure: Some(ExecutionFailure::from_error(e.to_string())),
+                sandbox_reuse_disposition: SandboxReuseDisposition::default(),
                 sandbox: Some(sandbox),
                 source_ip,
                 network_log_session: None,
@@ -1426,6 +1428,8 @@ pub(super) async fn execute_prepared_sandbox_run_with_process_cancel_timeouts(
                 "post-job proxy cleanup failed: {e}"
             )));
         }
+        agent_result.sandbox_reuse_disposition =
+            SandboxReuseDisposition::Ineligible(SandboxReuseRejection::PostJobCleanupFailure);
     }
 
     // Read the CLI-generated session ID after a first-run execution.
@@ -1447,6 +1451,7 @@ pub(super) async fn execute_prepared_sandbox_run_with_process_cancel_timeouts(
 
     ExecuteOutcome {
         failure: agent_result.failure,
+        sandbox_reuse_disposition: agent_result.sandbox_reuse_disposition,
         sandbox: Some(sandbox),
         source_ip,
         network_log_session: Some(network_log_session),

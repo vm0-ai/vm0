@@ -128,6 +128,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the JoggAI video generation connector",
     enabled: true,
   },
+  [FeatureSwitchKey.JoggAiBuiltIn]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable vm0-managed JoggAI talking-avatar video generation",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Mercury banking connector",
@@ -441,12 +447,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Use target-specific static indexes for HTML generation resource selection.",
     enabled: true,
   },
-  [FeatureSwitchKey.VideoArtifactPosters]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Generate poster images asynchronously when video artifacts are recorded.",
-    enabled: true,
-  },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -481,6 +481,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable managed image recognition for Zero runs whose selected model does not support image input.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.RustZeroCli]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Use the runner-bundled Rust zero-cli entry point for Zero CLI commands.",
+    enabled: false,
   },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",

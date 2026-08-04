@@ -12,6 +12,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -31,6 +32,7 @@ import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import {
   installTeamsForTest,
   removeTeamsForTest,
@@ -45,6 +47,7 @@ import {
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
+const callbackStore = createStore();
 const mocks = createZeroRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 const computerUseApi = createComputerUseBddApi(context);
@@ -2594,6 +2597,17 @@ describe("POST /api/zero/teams/bot", () => {
         id: "activity-dispatch-1",
         replyToId: "root-dispatch",
         text: "<at>Zero</at> ship the Teams dispatch",
+        attachments: [
+          {
+            id: "teams-file-current-1",
+            name: "current-task.txt",
+            contentType: "application/vnd.microsoft.teams.file.download.info",
+            content: {
+              downloadUrl: "https://files.example.test/current-task.txt",
+              fileType: "txt",
+            },
+          },
+        ],
       }),
       token: teamsToken(),
     });
@@ -2617,7 +2631,14 @@ describe("POST /api/zero/teams/bot", () => {
       },
     ]);
 
-    const runId = await runIdForPrompt(actor, "ship the Teams dispatch");
+    const dispatchRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
+    const dispatchRun = dispatchRuns.runs.find((run) => {
+      return run.prompt.includes("ship the Teams dispatch");
+    });
+    if (!dispatchRun) {
+      throw new Error("Expected Teams dispatch run");
+    }
+    const runId = dispatchRun.id;
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
@@ -2640,7 +2661,33 @@ describe("POST /api/zero/teams/bot", () => {
       appendSystemPrompt,
       "# Microsoft Teams Thread Context",
     );
-    expect(claim.prompt).toBe("ship the Teams dispatch");
+    expect(claim.prompt).toContain("ship the Teams dispatch");
+    expect(claim.prompt).toContain("[Web file] current-task.txt (text/plain)");
+    expect(claim.prompt).not.toContain("deployment-plan.pdf");
+    expect(claim.prompt).not.toContain("release-checklist.txt");
+    await expect(
+      callbackStore.set(
+        readAgentRunCallbacks$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          runId,
+        },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual([
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          teamsDelivery: expect.objectContaining({
+            files: expect.arrayContaining([
+              expect.objectContaining({ name: "current-task.txt" }),
+              expect.objectContaining({ name: "deployment-plan.pdf" }),
+              expect.objectContaining({ name: "release-checklist.txt" }),
+            ]),
+          }),
+        }),
+      }),
+    ]);
     expect(currentIntegrationPrompt).toContain(
       "You are currently running inside: Microsoft Teams",
     );

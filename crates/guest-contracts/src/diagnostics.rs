@@ -408,7 +408,9 @@ pub struct CliTerminationDiagnostic {
     pub signal_pgid: Option<i32>,
     /// Grace period in milliseconds associated with the signal, when available.
     pub signal_grace_ms: Option<u64>,
-    /// Whether termination escalated from SIGTERM to SIGKILL.
+    /// Whether a recorded SIGTERM was followed by SIGKILL.
+    ///
+    /// A direct SIGKILL is retained in [`Self::signal_sent`] but is not an escalation.
     pub escalated: bool,
     /// Exit code observed after termination, when available.
     pub observed_exit_code: Option<i32>,
@@ -431,6 +433,9 @@ impl CliTerminationDiagnostic {
 
     /// Record the first attempted signal, then only update on SIGTERM -> SIGKILL escalation.
     ///
+    /// A direct initial SIGKILL is retained as the first attempted signal without marking the
+    /// diagnostic as escalated.
+    ///
     /// Multiple watchdog paths may observe the same child before `wait()` completes. Keeping this
     /// monotonic prevents a later duplicate signal from rewriting the original termination
     /// attribution fields.
@@ -441,18 +446,12 @@ impl CliTerminationDiagnostic {
         signal_pgid: Option<i32>,
         signal_grace_ms: Option<u64>,
     ) -> Self {
-        let should_update = matches!(
-            (self.signal_sent, signal_sent),
-            (None, _)
-                | (
-                    Some(CliTerminationSignal::Sigterm),
-                    CliTerminationSignal::Sigkill
-                )
-        );
-        if !should_update {
-            return self;
-        }
-        if matches!(signal_sent, CliTerminationSignal::Sigkill) {
+        let is_escalation = match (self.signal_sent, signal_sent) {
+            (None, _) => false,
+            (Some(CliTerminationSignal::Sigterm), CliTerminationSignal::Sigkill) => true,
+            _ => return self,
+        };
+        if is_escalation {
             self.escalated = true;
         }
         self.signal_sent = Some(signal_sent);
@@ -1044,6 +1043,7 @@ mod tests {
     fn failure_reason_and_cli_termination_reason_are_independent() {
         let cli_termination =
             CliTerminationDiagnostic::new(CliTerminationReason::StuckToolWatchdog)
+                .record_signal(CliTerminationSignal::Sigterm, Some(234), Some(10_000))
                 .record_signal(CliTerminationSignal::Sigkill, Some(234), Some(1_000))
                 .with_observed_exit_code(137);
         let diagnostic = FailureDiagnostic::new(
@@ -1063,6 +1063,21 @@ mod tests {
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn cli_termination_direct_sigkill_is_not_escalation() {
+        let diagnostic = CliTerminationDiagnostic::new(CliTerminationReason::HeartbeatError)
+            .record_signal(CliTerminationSignal::Sigkill, Some(42), Some(1_000));
+
+        assert_eq!(diagnostic.signal_sent, Some(CliTerminationSignal::Sigkill));
+        assert_eq!(diagnostic.signal_pgid, Some(42));
+        assert_eq!(diagnostic.signal_grace_ms, Some(1_000));
+        assert!(!diagnostic.escalated);
+
+        let json = serde_json::to_value(diagnostic).unwrap();
+        assert_eq!(json["signalSent"], "sigkill");
+        assert_eq!(json["escalated"], false);
     }
 
     #[test]

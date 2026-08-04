@@ -23,8 +23,9 @@ use crate::executor::tests::support::{
     spawn_run_in_sandbox_test_with_timeouts, test_executor_config, test_telemetry,
 };
 use crate::executor::{
-    EXIT_SIGKILL, PROCESS_CANCEL_TIMEOUTS, PROCESS_CANCEL_WRITE_TIMEOUT,
-    SessionHistoryMaterializer, SessionHistoryRestorePlan, effective_cli_framework,
+    EXIT_SIGKILL, PROCESS_CANCEL_TIMEOUTS, PROCESS_CANCEL_WRITE_TIMEOUT, SandboxReuseDisposition,
+    SandboxReuseRejection, SandboxReuseTerminal, SessionHistoryMaterializer,
+    SessionHistoryRestorePlan, effective_cli_framework,
 };
 use crate::run_cancellation::RunCancellationHandle;
 use crate::types::{
@@ -450,6 +451,10 @@ async fn run_in_sandbox_cancels_guest_process_and_waits_for_terminal_status() {
         Some(EXIT_SIGKILL)
     );
     assert_eq!(
+        result.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::HardCancellation),
+    );
+    assert_eq!(
         result.stdout_stream_diagnostics,
         AgentStdoutStreamDiagnostics {
             bytes_written: 14,
@@ -509,6 +514,10 @@ async fn run_in_sandbox_requests_cooperative_user_cancellation() {
     assert_eq!(
         result.failure.as_ref().map(|failure| failure.exit_code),
         Some(EXIT_SIGKILL)
+    );
+    assert_eq!(
+        result.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::CooperativeCancellation),
     );
 }
 
@@ -732,6 +741,10 @@ async fn hard_cancellation_preempts_cooperative_recovery() {
     assert_eq!(
         result.failure.as_ref().map(|failure| failure.exit_code),
         Some(EXIT_SIGKILL)
+    );
+    assert_eq!(
+        result.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::HardCancellation),
     );
 }
 

@@ -21,6 +21,7 @@ type ConnectorGenerationType =
   | "video";
 
 type BuiltInGenerationType =
+  | "avatar-video"
   | "dashboard-design"
   | "docs-design"
   | "image"
@@ -164,6 +165,11 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
 const BUILT_IN_GENERATION_COMMANDS: Partial<
   Record<GenerationType, BuiltInGenerationCommand>
 > = {
+  "avatar-video": {
+    label: "Built-in JoggAI talking-avatar video generation",
+    command: "zero generate avatar-video --provider built-in -h",
+    models: "joggai-talking-avatar",
+  },
   image: {
     label: "Built-in image generation",
     command: "zero generate image --provider built-in -h",
@@ -235,6 +241,7 @@ const GENERATION_CONTEXT: Partial<Record<GenerationType, GenerationContext>> = {
 
 const GENERATION_TYPE_LABELS: Record<GenerationType, string> = {
   audio: "Audio",
+  "avatar-video": "Talking-avatar video",
   code: "Code",
   "dashboard-design": "Dashboard design",
   document: "Document",
@@ -277,6 +284,8 @@ function getConnectorGenerationType(
   generationType: GenerationType,
 ): ConnectorGenerationType | null {
   switch (generationType) {
+    case "avatar-video":
+      return "video";
     case "voice":
     case "music":
       return "audio";
@@ -485,7 +494,7 @@ function renderBuiltInProvider(params: {
     console.log("Built-in command:");
     console.log(`  vm0  ${command.label}`);
     console.log(`  Models: ${command.models}`);
-    if (generationType === "video") {
+    if (generationType === "video" || generationType === "avatar-video") {
       if (videoGenerationAllowed === false) {
         console.log(
           "  Availability: Requires a Pro, Team, or Custom workspace plan.",
@@ -607,7 +616,8 @@ export async function runLister(
       listZeroConnectorCatalogStatus(),
       agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
       getPlatformOrigin(),
-      generationType === "video" && currentTokenCanReadBilling()
+      (generationType === "video" || generationType === "avatar-video") &&
+      currentTokenCanReadBilling()
         ? getZeroBillingStatus()
         : Promise.resolve(null),
     ]);

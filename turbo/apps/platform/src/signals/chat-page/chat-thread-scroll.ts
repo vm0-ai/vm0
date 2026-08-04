@@ -28,6 +28,10 @@ interface ChatThreadScrollSignals {
   >;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   readonly awayFromBottom$: Computed<boolean>;
+  readonly readRenderedThreadScrollPosition$: Command<
+    ThreadScrollPosition | null,
+    []
+  >;
   readonly autoScroll$: Command<
     Promise<void>,
     [ThreadScrollPosition | null, AbortSignal]
@@ -207,6 +211,20 @@ function createInternalScrollSignals(threadId: string) {
       }
     },
   );
+  const readRenderedThreadScrollPosition$ = command(({ get }) => {
+    const currentPosition = get(threadScrollPosition$);
+    if (currentPosition === null) {
+      return null;
+    }
+    const container = get(scrollContainer$);
+    if (!container) {
+      return currentPosition;
+    }
+    if (isAtBottom(container)) {
+      return null;
+    }
+    return captureScrollPosition(container) ?? currentPosition;
+  });
   const bindScrollContainer$ = command(
     ({ set }, container: HTMLElement): void => {
       set(internalScrollContainer$, container);
@@ -224,6 +242,7 @@ function createInternalScrollSignals(threadId: string) {
     scrollContainer$,
     threadScrollPosition$,
     awayFromBottom$,
+    readRenderedThreadScrollPosition$,
     syncThreadScrollPosition$,
     clearThreadScrollPosition$,
     bindScrollContainer$,
@@ -568,6 +587,7 @@ export function createChatThreadScrollSignals(
     scrollContentOnRef$,
     threadScrollPosition$: scroll.threadScrollPosition$,
     awayFromBottom$: scroll.awayFromBottom$,
+    readRenderedThreadScrollPosition$: scroll.readRenderedThreadScrollPosition$,
     autoScroll$: render.autoScroll$,
     scrollTo$: navigation.scrollTo$,
     scrollToTop$: navigation.scrollToTop$,

@@ -1,13 +1,16 @@
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { createStore } from "ccstate";
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import { db } from "../lib/db";
+import { dispatchFailedRunCallbacks } from "../signals/services/agent-run-callback.service";
 import {
   admitGoalQueueEvent,
   type GoalQueueAdmission,
 } from "../signals/services/chat-goal-queue.service";
+import { drainChatThreadQueueForThread$ } from "../signals/services/chat-thread-queue-drain.service";
 
 interface GoalQueueAdmissionFixtureArgs {
   readonly threadId: string;
@@ -60,6 +63,35 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
       return run.id;
     }),
   };
+}
+
+/** Run the same shared scheduler that follows production goal admission. */
+export async function drainChatThreadQueueFixture(args: {
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  await createStore().set(
+    drainChatThreadQueueForThread$,
+    {
+      chatThreadId: args.threadId,
+      dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+    },
+    args.signal,
+  );
+}
+
+/** Invalidate a goal without triggering a separate queue drain. */
+export async function pauseGoalQueueTargetFixture(
+  goalId: string,
+): Promise<void> {
+  const [goal] = await db()
+    .update(threadGoals)
+    .set({ status: "paused" })
+    .where(eq(threadGoals.id, goalId))
+    .returning({ id: threadGoals.id });
+  if (!goal) {
+    throw new Error("Expected the goal queue target fixture");
+  }
 }
 
 /**

@@ -1136,6 +1136,56 @@ describe("zero attachment chips", () => {
     expect(screen.getByText("this is the screencast")).toBeInTheDocument();
   });
 
+  it("shows user video attachments before the text bubble and keeps file chips inline", async () => {
+    const videoUrl = "https://cdn.vm7.io/artifacts/test/elevated/clip.mp4";
+    const docUrl = "https://cdn.vm7.io/artifacts/test/elevated/README.md";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-video-then-text",
+          role: "user",
+          content: "Watch this clip",
+          attachFiles: [
+            {
+              id: "attachment-clip",
+              filename: "clip.mp4",
+              contentType: "video/mp4",
+              size: 4096,
+              url: videoUrl,
+            },
+            {
+              id: "attachment-readme",
+              filename: "README.md",
+              contentType: "text/markdown",
+              size: 512,
+              url: docUrl,
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const videoPreview = await screen.findByLabelText("Preview clip.mp4");
+    const text = await screen.findByText("Watch this clip");
+    const textBubble = text.closest(".zero-chat-bubble-user");
+    const docChip = screen.getByLabelText(
+      "Open markdown preview for README.md",
+    );
+
+    expect(textBubble).not.toBeNull();
+    expect(videoPreview.closest(".zero-chat-bubble-user")).toBeNull();
+    expect(
+      videoPreview.compareDocumentPosition(textBubble!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(docChip.closest(".zero-chat-bubble-user")).toBe(textBubble);
+    expect(docChip.parentElement).toHaveClass("mx-1");
+  });
+
   it("opens persisted canonical audio, video, and document attachments", async () => {
     const audioUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-audio/briefing.mp3";

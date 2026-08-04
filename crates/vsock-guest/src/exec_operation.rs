@@ -49,6 +49,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+#[cfg(test)]
+use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use vsock_proto::{
     self, ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecLifecyclePolicy,
     ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy, MSG_ERROR,
@@ -1720,7 +1722,7 @@ mod tests {
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,
             process_containment_mode: ProcessContainmentMode::BuildConfigured,
-            drain_deadline: crate::wait::DRAIN_DEADLINE,
+            drain_deadline: EXEC_OUTPUT_DRAIN_DEADLINE,
         }
     }
 

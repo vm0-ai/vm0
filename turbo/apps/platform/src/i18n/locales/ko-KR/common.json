@@ -1008,6 +1008,7 @@
     "cardTitle": "클라우드 브라우저",
     "close": "라이브 브라우저 닫기",
     "documentTitle": "라이브 브라우저",
+    "fitAction": "맞춤",
     "fitWindow": "브라우저 창에 맞춤",
     "iframeTitle": "라이브 브라우저: {{name}}",
     "invalidLink": "잘못된 브라우저 링크",
@@ -1027,7 +1028,6 @@
       "starting": "시작 중",
       "stopped": "중지됨"
     },
-    "stop": "브라우저 중지",
     "title": "라이브 브라우저",
     "unavailable": {
       "description": "이 브라우저는 이 채팅에 속하지 않거나 제거되었습니다.",
@@ -2211,19 +2211,14 @@
           "challengeQuestion": "Feishu가 \"챌린지 코드에 응답이 없습니다\"를 표시하는 이유는 무엇인가요?",
           "title": "설정 FAQ"
         },
-        "guide": {
-          "next": "다음 Feishu 가이드 이미지 보기",
-          "previous": "이전 Feishu 가이드 이미지 보기",
-          "show": "Feishu 가이드 이미지 {{number}} 보기"
-        },
         "loadError": "Feishu 설정을 불러올 수 없습니다.",
         "manage": "관리",
         "manageDialogTitle": "Feishu 봇 관리",
         "moreOptions": "{{bot}}에 대한 추가 옵션",
         "pageDescription": "이 워크스페이스의 봇 라우팅 관리",
         "permissions": {
-          "description": "Feishu 개발자 콘솔에서 '권한 및 범위'를 열고 '일괄 가져오기/내보내기 > 가져오기'를 선택한 다음 아래 JSON을 붙여넣으세요. 관리형 커넥터에 필요한 모든 범위가 사용자 ID로 가져와집니다.",
-          "hint": "가져온 사용자 ID 권한을 확인한 후 OAuth 동의 화면에서 권한을 부여할 수 있도록 새 앱 버전을 생성하고 게시하세요.",
+          "description": "Feishu 개발자 콘솔에서 '권한 및 범위'를 열고 '일괄 가져오기/내보내기 > 가져오기'를 선택한 다음 아래 JSON을 붙여넣으세요. 관리형 커넥터에 필요한 모든 범위가 사용자 ID로 가져와집니다. 이는 연동이 작동하는 데 필요한 최소 권한입니다.",
+          "hint": "가져온 사용자 ID 권한을 모두 유지한 후 OAuth 동의 화면에서 권한을 부여할 수 있도록 새 앱 버전을 생성하고 게시하세요. 권한을 하나라도 제거하면 연동이 작동하지 않으며 Feishu 관리자의 승인이 필요할 수 있습니다.",
           "label": "사용자 토큰 범위 JSON",
           "menuAlt": "일괄 범위 가져오기/내보내기 메뉴가 강조 표시된 Feishu 권한 및 범위 페이지",
           "menuLabel": "일괄 범위 가져오기/내보내기 열기",

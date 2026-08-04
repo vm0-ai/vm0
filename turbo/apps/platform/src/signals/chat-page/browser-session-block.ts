@@ -16,7 +16,6 @@ import {
 import { formatAppNumber } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
 import { accept } from "../../lib/accept.ts";
-import { nowDate } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { zeroBrowserEnabled$ } from "../external/feature-switch.ts";
 import { pageSignal$ } from "../page-signal.ts";
@@ -37,12 +36,11 @@ export interface BrowserSessionSignals extends BrowserSessionDescriptor {
   readonly session$: Computed<Promise<ZeroBrowserSession | null>>;
   readonly panelSession$: Computed<Promise<ZeroBrowserSession | null>>;
   readonly starting$: Computed<boolean>;
-  readonly stopping$: Computed<boolean>;
   readonly fittingWindow$: Computed<boolean>;
   readonly reload$: Command<void, []>;
   readonly reloadPanel$: Command<void, []>;
   readonly start$: Command<Promise<void>, [AbortSignal]>;
-  readonly stop$: Command<Promise<void>, [AbortSignal]>;
+  readonly close$: Command<Promise<void>, [AbortSignal]>;
   readonly fitWindow$: Command<Promise<void>, [number, AbortSignal]>;
   readonly subscribe$: Command<Promise<void>, [AbortSignal]>;
   // Attach to the visible panel container: the lease heartbeat lives exactly as
@@ -59,7 +57,7 @@ export interface BrowserLifecycleOptimisticEvents {
     [
       {
         readonly eventId: string;
-        readonly eventType: "browser.started" | "browser.stopped";
+        readonly eventType: "browser.open" | "browser.close";
       },
       AbortSignal,
     ]
@@ -154,7 +152,6 @@ function createFitWindowSignals(
 
 interface BrowserMutationSignalContext {
   readonly descriptor: BrowserSessionDescriptor;
-  readonly session$: Computed<Promise<ZeroBrowserSession | null>>;
   readonly sessionOverride$: State<ZeroBrowserSession | null | undefined>;
   readonly reload$: Command<void, []>;
   readonly optimisticEvents?: BrowserLifecycleOptimisticEvents;
@@ -181,7 +178,7 @@ function createStartBrowserSignals({
         optimisticEvents.append$,
         {
           eventId,
-          eventType: "browser.started",
+          eventType: "browser.open",
         },
         signal,
       );
@@ -189,7 +186,7 @@ function createStartBrowserSignals({
     }
     const started = await settle(
       accept(
-        get(zeroClient$)(zeroBrowserContract).start({
+        get(zeroClient$)(zeroBrowserContract).open({
           params: { threadId: descriptor.threadId },
           body: { eventId },
           fetchOptions: { signal },
@@ -214,51 +211,29 @@ function createStartBrowserSignals({
   };
 }
 
-function createStopBrowserSignals({
+function createCloseBrowserSignals({
   descriptor,
-  session$,
-  sessionOverride$,
-  reload$,
   optimisticEvents,
-}: BrowserMutationSignalContext): Pick<
-  BrowserSessionSignals,
-  "stopping$" | "stop$"
-> {
-  const stoppingState$ = state(false);
-  const stop$ = command(async ({ get, set }, signal: AbortSignal) => {
+}: BrowserMutationSignalContext): Pick<BrowserSessionSignals, "close$"> {
+  const close$ = command(async ({ get, set }, signal: AbortSignal) => {
     if (!get(zeroBrowserEnabled$)) {
       return;
     }
     const eventId = crypto.randomUUID();
-    const current = await settle(get(session$), signal);
-    signal.throwIfAborted();
-    set(stoppingState$, true);
     if (optimisticEvents) {
       await set(
         optimisticEvents.append$,
         {
           eventId,
-          eventType: "browser.stopped",
+          eventType: "browser.close",
         },
         signal,
       );
       signal.throwIfAborted();
     }
-    if (current.ok && current.value) {
-      const stoppedAt = nowDate().toISOString();
-      set(sessionOverride$, {
-        ...current.value,
-        status: "suspended",
-        liveUrl: null,
-        idleExpiresAt: null,
-        suspendedAt: stoppedAt,
-        suspensionReason: "user",
-        updatedAt: stoppedAt,
-      });
-    }
-    const stopped = await settle(
+    await settle(
       accept(
-        get(zeroClient$)(zeroBrowserContract).stop({
+        get(zeroClient$)(zeroBrowserContract).close({
           params: { threadId: descriptor.threadId },
           body: { eventId },
           fetchOptions: { signal },
@@ -268,19 +243,8 @@ function createStopBrowserSignals({
       ),
       signal,
     );
-    set(stoppingState$, false);
-    if (stopped.ok) {
-      set(sessionOverride$, stopped.value.body.browser);
-      return;
-    }
-    set(reload$);
   });
-  return {
-    stopping$: computed((get) => {
-      return get(stoppingState$);
-    }),
-    stop$,
-  };
+  return { close$ };
 }
 
 function createBrowserSessionSubscriptionSignals(
@@ -358,13 +322,12 @@ export function createBrowserSessionSignals(
   );
   const mutationContext: BrowserMutationSignalContext = {
     descriptor,
-    session$,
     sessionOverride$,
     reload$,
     ...(optimisticEvents ? { optimisticEvents } : {}),
   };
   const startSignals = createStartBrowserSignals(mutationContext);
-  const stopSignals = createStopBrowserSignals(mutationContext);
+  const closeSignals = createCloseBrowserSignals(mutationContext);
   const subscriptionSignals = createBrowserSessionSubscriptionSignals(
     descriptor,
     reload$,
@@ -422,7 +385,7 @@ export function createBrowserSessionSignals(
     session$,
     panelSession$: session$,
     ...startSignals,
-    ...stopSignals,
+    ...closeSignals,
     fittingWindow$,
     reload$,
     reloadPanel$: reload$,

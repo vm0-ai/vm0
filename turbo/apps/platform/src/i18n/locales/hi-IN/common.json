@@ -1008,6 +1008,7 @@
     "cardTitle": "क्लाउड ब्राउज़र",
     "close": "लाइव ब्राउज़र बंद करें",
     "documentTitle": "लाइव ब्राउज़र",
+    "fitAction": "फ़िट करें",
     "fitWindow": "ब्राउज़र को विंडो में फ़िट करें",
     "iframeTitle": "लाइव ब्राउज़र: {{name}}",
     "invalidLink": "अमान्य ब्राउज़र लिंक",
@@ -1027,7 +1028,6 @@
       "starting": "प्रारंभ",
       "stopped": "रुक गया"
     },
-    "stop": "ब्राउज़र रोकें",
     "title": "लाइव ब्राउज़र",
     "unavailable": {
       "description": "यह ब्राउज़र इस चैट से संबंधित नहीं है या हटा दिया गया है.",
@@ -2211,19 +2211,14 @@
           "challengeQuestion": "Feishu \"चैलेंज कोड को प्रतिक्रिया नहीं मिली\" क्यों दिखाता है?",
           "title": "सेटअप FAQ"
         },
-        "guide": {
-          "next": "अगली Feishu गाइड छवि दिखाएँ",
-          "previous": "पिछली Feishu गाइड छवि दिखाएँ",
-          "show": "Feishu गाइड छवि {{number}} दिखाएँ"
-        },
         "loadError": "Feishu सेटिंग लोड नहीं हो सकी.",
         "manage": "प्रबंधित करना",
         "manageDialogTitle": "Feishu बॉट प्रबंधित करें",
         "moreOptions": "{{bot}} के लिए अधिक विकल्प",
         "pageDescription": "इस वर्कस्पेस के लिए बॉट रूटिंग प्रबंधित करें",
         "permissions": {
-          "description": "Feishu डेवलपर कंसोल में Permissions & Scopes खोलें, Batch Import/Export > Import चुनें और नीचे दिया गया JSON पेस्ट करें। इससे मैनेज्ड कनेक्टर के सभी स्कोप User identity के अंतर्गत इंपोर्ट हो जाते हैं।",
-          "hint": "इंपोर्ट की गई User identity अनुमतियों की पुष्टि करें, फिर नया ऐप संस्करण बनाएँ और प्रकाशित करें ताकि OAuth सहमति स्क्रीन उन्हें प्रदान कर सके।",
+          "description": "Feishu डेवलपर कंसोल में Permissions & Scopes खोलें, Batch Import/Export > Import चुनें और नीचे दिया गया JSON पेस्ट करें। इससे मैनेज्ड कनेक्टर के सभी स्कोप User identity के अंतर्गत इंपोर्ट हो जाते हैं। ये इंटीग्रेशन के काम करने के लिए ज़रूरी न्यूनतम अनुमतियाँ हैं।",
+          "hint": "इंपोर्ट की गई सभी User identity अनुमतियाँ बनाए रखें, फिर नया ऐप संस्करण बनाएँ और प्रकाशित करें ताकि OAuth सहमति स्क्रीन उन्हें प्रदान कर सके। किसी भी अनुमति को हटाने पर इंटीग्रेशन काम नहीं करेगा और Feishu एडमिन की मंज़ूरी की ज़रूरत पड़ सकती है।",
           "label": "यूज़र टोकन स्कोप JSON",
           "menuAlt": "Feishu Permissions & Scopes पेज, जिसमें Batch import/export scopes मेन्यू हाइलाइट किया गया है",
           "menuLabel": "Batch import/export scopes खोलें",

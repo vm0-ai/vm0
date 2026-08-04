@@ -1,13 +1,14 @@
 use super::super::super::*;
 use super::super::support::{
     WorkspacePromotionSeedSpec, context_with_session, mock_run_config,
-    mock_run_config_with_overrides, push_job, seed_idle_pool,
+    mock_run_config_with_overrides, push_job, seed_idle_pool_with_overrides,
     seed_idle_pool_with_workspace_promotion, shutdown, test_profiles, wait_budget_count,
     wait_discover_entered, wait_idle_pool_reuse_keys,
 };
 
+use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
 use crate::paths::RunnerPaths;
-use crate::types::SandboxReuseResult;
+use crate::types::{SandboxReuseResult, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheCapability};
 use crate::workspace_image_cache::WorkspaceImageCache;
 
 fn reusable_candidate(
@@ -23,17 +24,26 @@ async fn wait_heartbeat_with_workspace_after(
     handle: &crate::provider::mock::MockProviderHandle,
     mut cursor: usize,
     reuse_key: &str,
+    expected_workspace: &WorkspaceCacheCapability,
+    absent_sandbox_reuse_key: Option<&str>,
     timeout: Duration,
 ) -> bool {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         {
             let heartbeats = handle.heartbeats.lock().unwrap_or_else(|e| e.into_inner());
-            if heartbeats[cursor..].iter().any(|state| {
-                state
-                    .held_workspace_states
-                    .iter()
-                    .any(|state| state.reuse_key == reuse_key)
+            if heartbeats[cursor..].iter().any(|heartbeat| {
+                let has_expected_workspace = heartbeat.held_workspace_states.iter().any(|state| {
+                    state.reuse_key == reuse_key
+                        && state.workspace_caches.contains(expected_workspace)
+                });
+                let omits_claimed_sandbox = absent_sandbox_reuse_key.is_none_or(|reuse_key| {
+                    heartbeat
+                        .held_sandbox_states
+                        .iter()
+                        .all(|state| state.reuse_key != reuse_key)
+                });
+                has_expected_workspace && omits_claimed_sandbox
             }) {
                 return true;
             }
@@ -75,6 +85,10 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     let run_id = RunId::new_v4();
     let provider_session_id = "provider-session-cache-heartbeat";
     let reuse_key = "thread:cache-heartbeat";
+    let expected_workspace = WorkspaceCacheCapability {
+        profile: "vm0/default".to_string(),
+        workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
+    };
     let mut ctx = context_with_session(run_id, provider_session_id);
     ctx.reuse_key = Some(reuse_key.into());
     push_job(&env, run_id, "vm0/default", Some(ctx));
@@ -97,6 +111,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     file.set_len(16 * 1024 * 1024).await.unwrap();
     drop(file);
 
+    assert!(env.parking_gate.soft_drain());
     overrides.clear_wait_process_lifecycle_gate();
     wait_gate.release_one();
     let completion = env
@@ -108,7 +123,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     assert_eq!(
         env.idle_pool.lock().await.len(),
         0,
-        "nonzero job should not park a VM",
+        "soft-drained parking gate should prevent VM parking",
     );
 
     assert!(
@@ -116,11 +131,14 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
             &env.handle,
             before,
             reuse_key,
+            &expected_workspace,
+            None,
             Duration::from_secs(5),
         )
         .await,
         "immediate heartbeat should advertise the promoted workspace cache",
     );
+    assert!(env.parking_gate.open_after_soft_drain());
 
     let second_gate = sandbox_mock::MockLifecycleGate::new();
     overrides.set_wait_process_lifecycle_gate(second_gate.clone());
@@ -238,6 +256,10 @@ async fn reuse_take_preserves_cached_workspace_snapshot_state() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     overrides.push_wait_process_exit(sandbox::ProcessExit::new(1, 1, Vec::new(), Vec::new()));
+    let reuse_wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let reuse_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    add_healthy_reuse_preparation_matcher(&reuse_overrides);
+    reuse_overrides.set_wait_process_lifecycle_gate(reuse_wait_gate.clone());
 
     let mut profiles = test_profiles();
     profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
@@ -255,11 +277,24 @@ async fn reuse_take_preserves_cached_workspace_snapshot_state() {
         .unwrap()
         .workspace_cache = Some(workspace_cache.clone());
 
-    seed_idle_pool(&idle_pool, &budget, "sess-refresh", "vm0/default", 2, 4096).await;
+    seed_idle_pool_with_overrides(
+        &idle_pool,
+        &budget,
+        &reuse_overrides,
+        "sess-refresh",
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
 
     let run_handle = tokio::spawn(run(config));
     wait_discover_entered(&env, Duration::from_secs(5)).await;
-    let heartbeat_count = env.handle.heartbeat_count();
+    let promotion_heartbeat_count = env.handle.heartbeat_count();
+    let expected_workspace = WorkspaceCacheCapability {
+        profile: "vm0/default".to_string(),
+        workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
+    };
 
     let cache_run_id = RunId::new_v4();
     push_job(
@@ -287,6 +322,7 @@ async fn reuse_take_preserves_cached_workspace_snapshot_state() {
     file.set_len(16 * 1024 * 1024).await.unwrap();
     drop(file);
 
+    assert!(env.parking_gate.soft_drain());
     overrides.clear_wait_process_lifecycle_gate();
     wait_gate.release_one();
     let cache_completion = env
@@ -296,11 +332,19 @@ async fn reuse_take_preserves_cached_workspace_snapshot_state() {
         .expect("cache seed job should complete");
     assert_eq!(cache_completion.exit_code, 1);
     assert!(
-        env.handle
-            .wait_heartbeat_past(heartbeat_count, Duration::from_secs(5))
-            .await,
-        "workspace cache promotion should refresh the workspace snapshot before claim"
+        wait_heartbeat_with_workspace_after(
+            &env.handle,
+            promotion_heartbeat_count,
+            "sess-cached",
+            &expected_workspace,
+            None,
+            Duration::from_secs(5),
+        )
+        .await,
+        "workspace cache promotion should advertise the expected workspace before claim"
     );
+    assert!(env.parking_gate.open_after_soft_drain());
+    let reuse_heartbeat_count = env.handle.heartbeat_count();
     let run_id = RunId::new_v4();
     push_job(
         &env,
@@ -308,6 +352,24 @@ async fn reuse_take_preserves_cached_workspace_snapshot_state() {
         "vm0/default",
         Some(context_with_session(run_id, "sess-refresh")),
     );
+    reuse_wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("reused wait_process should enter before the post-take heartbeat assertion");
+    assert!(
+        wait_heartbeat_with_workspace_after(
+            &env.handle,
+            reuse_heartbeat_count,
+            "sess-cached",
+            &expected_workspace,
+            Some("sess-refresh"),
+            Duration::from_secs(5),
+        )
+        .await,
+        "idle take should preserve the unrelated cached workspace in the immediate heartbeat"
+    );
+    reuse_overrides.clear_wait_process_lifecycle_gate();
+    reuse_wait_gate.release_one();
 
     let completion = env
         .handle

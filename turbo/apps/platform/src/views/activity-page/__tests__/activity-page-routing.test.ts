@@ -196,7 +196,7 @@ describe("activity page routing", () => {
     },
   );
 
-  it("identifies delegated activity with the parent agent source", async () => {
+  it("shows historical agent activity with the generic source label", async () => {
     context.mocks.data.composesList([
       {
         id: "c0000000-0000-4000-a000-000000000001",
@@ -219,7 +219,7 @@ describe("activity page routing", () => {
             framework: "claude-code",
             status: "completed",
             triggerSource: "agent",
-            triggerAgentName: "Parent Bot",
+            triggerAgentName: null,
             prompt: "Test prompt",
             createdAt: "2026-03-10T15:00:00Z",
             startedAt: "2026-03-10T15:00:01Z",
@@ -234,7 +234,7 @@ describe("activity page routing", () => {
     detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
-      expect(screen.getByText("Agent (Parent Bot)")).toBeInTheDocument();
+      expect(screen.getByText("Agent")).toBeInTheDocument();
     });
   });
 

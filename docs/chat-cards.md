@@ -296,22 +296,24 @@ its hard timeout is reached, or the provider ends it. Deleting a chat thread
 also reclaims its browser. While the sidebar or full-page viewer is open
 and its page is visible, it refreshes the lease on a timer; the CLI can do the
 same with `zero browser lease`. Each lease is a fixed window from now and cannot
-be stacked. After each successful viewer lease heartbeat, the API
-asynchronously captures the foreground tab as a `640px`-wide WebP, preserves
-its aspect ratio, and replaces the thread's previous immutable preview object.
-Screenshot failure does not invalidate the lease.
+be stacked. The once-per-minute reconciler captures the foreground tab of each
+healthy active browser as a `640px`-wide WebP, preserves its aspect ratio, and
+replaces the thread's previous immutable preview object. Viewer lease
+heartbeats do not capture screenshots, and screenshot failure does not affect
+the browser lease.
 
-Starting or resuming appends a payload-free `browser.started` chat event;
-stopping or automatic reclamation appends a payload-free `browser.stopped`
+Starting or resuming appends a payload-free `browser.open` chat event; clicking
+the sidebar close button appends a payload-free `browser.close` event without
+stopping the provider instance. Automatic reclamation does not append a chat
 event. The frontend supplies each mutation's event UUID so it can optimistically
 project the same event without duplicating it when the server response or
 realtime delivery arrives. Folding these events in order yields the thread's
-browser activity state. Opening a thread waits for the authoritative initial
+browser sidebar state. Opening a thread waits for the authoritative initial
 event page before using that projection to auto-open the sidebar, so stale
-IndexedDB events cannot override a later server stop. A `browser.started`
+IndexedDB events cannot override a later server close. A `browser.open`
 projection opens the sidebar only when no other utility sidebar is already open;
-a terminal `browser.stopped` projection does not auto-open it. The browser icon
-in the thread header remains available in either state, and both a never-created
+a later `browser.close` projection does not auto-open it. The browser icon in
+the thread header remains available in either state, and both a never-created
 browser and a non-live browser keep the Start action. When a screenshot exists,
 the suspended sidebar reuses it at full width and top-aligns it beneath a
 half-transparent blurred mask, so the small preview fills the available surface

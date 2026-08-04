@@ -546,7 +546,7 @@ mod tests {
         let overrides = vec![
             r#"model_provider="minimax""#.to_string(),
             r#"model_providers.minimax.supports_websockets=false"#.to_string(),
-            r#"model_catalog_json="/home/user/.codex/vm0-model-catalog.json""#.to_string(),
+            r#"model_catalog_json="/home/user/.codex/codex-model-catalog.json""#.to_string(),
         ];
         let args = build_codex_args_with_startup_config_for_test("MiniMax-M3", &overrides, "p");
 

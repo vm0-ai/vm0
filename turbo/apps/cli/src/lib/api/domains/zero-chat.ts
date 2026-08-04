@@ -1,5 +1,6 @@
 import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import {
+  canonicalChatEvent,
   type ChatEvent,
   type ChatEventSendBody,
   chatEventsContract,
@@ -217,7 +218,7 @@ export async function listZeroChatEvents(options: {
     },
   });
   if (result.status === 200) {
-    return result.body.events;
+    return result.body.events.map(canonicalChatEvent);
   }
   handleError(result, "Failed to list chat events");
 }

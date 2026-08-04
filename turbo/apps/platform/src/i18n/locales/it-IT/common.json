@@ -1030,6 +1030,7 @@
     "cardTitle": "Browser cloud",
     "close": "Chiudi il browser live",
     "documentTitle": "Browser in tempo reale",
+    "fitAction": "Adatta",
     "fitWindow": "Adatta il browser alla finestra",
     "iframeTitle": "Browser live: {{name}}",
     "invalidLink": "Collegamento del browser non valido",
@@ -1050,7 +1051,6 @@
       "starting": "Avvio",
       "stopped": "Arrestato"
     },
-    "stop": "Arresta il browser",
     "title": "Browser in tempo reale",
     "unavailable": {
       "description": "Questo browser non appartiene a questa chat o è stato rimosso.",
@@ -2254,19 +2254,14 @@
           "challengeQuestion": "Perché Feishu mostra \"Il codice di sfida non ha ricevuto risposta\"?",
           "title": "Domande frequenti sulla configurazione"
         },
-        "guide": {
-          "next": "Mostra l'immagine guida successiva Feishu",
-          "previous": "Mostra l'immagine guida precedente Feishu",
-          "show": "Mostra Feishu immagine guida {{number}}"
-        },
         "loadError": "Impossibile caricare le impostazioni Feishu.",
         "manage": "Gestisci",
         "manageDialogTitle": "Gestisci Feishu bot",
         "moreOptions": "Altre opzioni per {{bot}}",
         "pageDescription": "Gestisci il routing dei bot per questa area di lavoro",
         "permissions": {
-          "description": "Nella console per sviluppatori di Feishu, apri Autorizzazioni e ambiti, scegli Importazione/esportazione in blocco > Importa e incolla il JSON seguente. Verranno importati tutti gli ambiti del connettore gestito per l'identità utente.",
-          "hint": "Conferma le autorizzazioni importate per l'identità utente, quindi crea e pubblica una nuova versione dell'app affinché la schermata di consenso OAuth possa concederle.",
+          "description": "Nella console per sviluppatori di Feishu, apri Autorizzazioni e ambiti, scegli Importazione/esportazione in blocco > Importa e incolla il JSON seguente. Verranno importati tutti gli ambiti del connettore gestito per l'identità utente. Queste sono le autorizzazioni minime necessarie per il funzionamento dell'integrazione.",
+          "hint": "Mantieni tutte le autorizzazioni importate per l'identità utente, quindi crea e pubblica una nuova versione dell'app affinché la schermata di consenso OAuth possa concederle. La rimozione di qualsiasi autorizzazione impedirà il funzionamento dell'integrazione e potrebbe essere necessaria l'approvazione di un amministratore Feishu.",
           "label": "JSON degli ambiti del token utente",
           "menuAlt": "Pagina Autorizzazioni e ambiti di Feishu con il menu di importazione/esportazione in blocco degli ambiti evidenziato",
           "menuLabel": "Apri l'importazione/esportazione in blocco degli ambiti",

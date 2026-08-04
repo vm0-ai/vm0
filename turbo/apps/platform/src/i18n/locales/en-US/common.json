@@ -1008,6 +1008,7 @@
     "cardTitle": "Cloud browser",
     "close": "Close live browser",
     "documentTitle": "Live browser",
+    "fitAction": "Fit",
     "fitWindow": "Fit browser to window",
     "iframeTitle": "Live browser: {{name}}",
     "invalidLink": "Invalid browser link",
@@ -1027,7 +1028,6 @@
       "starting": "Starting",
       "stopped": "Stopped"
     },
-    "stop": "Stop browser",
     "title": "Live browser",
     "unavailable": {
       "description": "This browser does not belong to this chat or has been removed.",
@@ -2211,19 +2211,14 @@
           "challengeQuestion": "Why does Feishu show \"Challenge code didn't get a response\"?",
           "title": "Setup FAQ"
         },
-        "guide": {
-          "next": "Show next Feishu guide image",
-          "previous": "Show previous Feishu guide image",
-          "show": "Show Feishu guide image {{number}}"
-        },
         "loadError": "Couldn't load Feishu settings.",
         "manage": "Manage",
         "manageDialogTitle": "Manage Feishu bot",
         "moreOptions": "More options for {{bot}}",
         "pageDescription": "Manage bot routing for this workspace",
         "permissions": {
-          "description": "In the Feishu developer console, open Permissions & Scopes, choose Batch Import/Export > Import, and paste the JSON below. It imports every managed connector scope under User identity.",
-          "hint": "Confirm the imported User identity permissions, then create and publish a new app version so the OAuth consent screen can grant them.",
+          "description": "In the Feishu developer console, open Permissions & Scopes, choose Batch Import/Export > Import, and paste the JSON below. It imports every managed connector scope under User identity. These are the minimum permissions required for the integration to work.",
+          "hint": "Keep every imported User identity permission, then create and publish a new app version so the OAuth consent screen can grant them. Removing any permission prevents the integration from working, and Feishu administrator approval may be required.",
           "label": "User token scope JSON",
           "menuAlt": "Feishu Permissions & Scopes page with the Batch import/export scopes menu highlighted",
           "menuLabel": "Open Batch import/export scopes",

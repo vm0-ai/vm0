@@ -1030,6 +1030,7 @@
     "cardTitle": "Navigateur cloud",
     "close": "Fermer le navigateur en direct",
     "documentTitle": "Navigateur en direct",
+    "fitAction": "Adapter",
     "fitWindow": "Adapter le navigateur à la fenêtre",
     "iframeTitle": "Navigateur en direct : {{name}}",
     "invalidLink": "Lien de navigateur invalide",
@@ -1050,7 +1051,6 @@
       "starting": "Démarrage",
       "stopped": "Arrêté"
     },
-    "stop": "Arrêter le navigateur",
     "title": "Navigateur en direct",
     "unavailable": {
       "description": "Ce navigateur n'appartient pas à ce chat ou a été supprimé.",
@@ -2254,19 +2254,14 @@
           "challengeQuestion": "Pourquoi Feishu affiche-t-il \"Le code de défi n'a pas reçu de réponse\" ?",
           "title": "FAQ de configuration"
         },
-        "guide": {
-          "next": "Afficher l'image suivante du guide Feishu",
-          "previous": "Afficher l'image précédente du guide Feishu",
-          "show": "Afficher l'image du guide Feishu {{number}}"
-        },
         "loadError": "Impossible de charger les paramètres de Feishu.",
         "manage": "Gérer",
         "manageDialogTitle": "Gérer le bot Feishu",
         "moreOptions": "Plus d'options pour {{bot}}",
         "pageDescription": "Gérer le routage du bot pour cet espace de travail",
         "permissions": {
-          "description": "Dans la console développeur Feishu, ouvrez Autorisations et portées, choisissez Importation/exportation par lots > Importer, puis collez le JSON ci-dessous. Toutes les portées du connecteur géré sont importées sous l'identité Utilisateur.",
-          "hint": "Confirmez les autorisations importées de l'identité Utilisateur, puis créez et publiez une nouvelle version de l'application afin que l'écran de consentement OAuth puisse les accorder.",
+          "description": "Dans la console développeur Feishu, ouvrez Autorisations et portées, choisissez Importation/exportation par lots > Importer, puis collez le JSON ci-dessous. Toutes les portées du connecteur géré sont importées sous l'identité Utilisateur. Il s’agit des autorisations minimales requises pour que l’intégration fonctionne.",
+          "hint": "Conservez toutes les autorisations importées de l'identité Utilisateur, puis créez et publiez une nouvelle version de l'application afin que l'écran de consentement OAuth puisse les accorder. Si vous en retirez une, l’intégration ne fonctionnera plus et l’approbation d’un administrateur Feishu peut être requise.",
           "label": "JSON des portées du jeton utilisateur",
           "menuAlt": "Page Autorisations et portées de Feishu avec le menu d’importation/exportation par lots des portées mis en évidence",
           "menuLabel": "Ouvrir l’importation/exportation par lots des portées",

@@ -1,5 +1,37 @@
 # Changelog
 
+## [8.508.1](https://github.com/vm0-ai/vm0/compare/core-v8.508.0...core-v8.508.1) (2026-08-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.268.0
+
+## [8.508.0](https://github.com/vm0-ai/vm0/compare/core-v8.507.1...core-v8.508.0) (2026-08-04)
+
+
+### Features
+
+* add runner-bundled rust zero cli foundation ([#24907](https://github.com/vm0-ai/vm0/issues/24907)) ([8cc6154](https://github.com/vm0-ai/vm0/commit/8cc6154eb9016e8b7a44d72177053c2224dd5d9a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.267.0
+
+## [8.507.1](https://github.com/vm0-ai/vm0/compare/core-v8.507.0...core-v8.507.1) (2026-08-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.266.1
+
 ## [8.507.0](https://github.com/vm0-ai/vm0/compare/core-v8.506.1...core-v8.507.0) (2026-08-04)
 
 

@@ -586,29 +586,42 @@ describe("works page", () => {
         name: "Feishu Permissions & Scopes page with the Batch import/export scopes menu highlighted",
       }),
     ).toBeInTheDocument();
-    click(getRole("button", "Show next Feishu guide image"));
     expect(
       screen.getByRole("img", {
         name: "Feishu Batch import/export scopes dialog with the imported JSON and review button highlighted",
       }),
     ).toBeInTheDocument();
+    expect(queryRole("button", "Show next Feishu guide image")).toBeNull();
     expect(screen.getByText("User token scope JSON")).toBeInTheDocument();
-    expect(
-      JSON.parse(
-        screen.getByTestId("feishu-user-scope-import-json").textContent ?? "",
-      ),
-    ).toStrictEqual({
+    const scopeImportJson = screen.getByTestId("feishu-user-scope-import-json");
+    expect(JSON.parse(scopeImportJson.textContent ?? "")).toStrictEqual({
       scopes: {
         tenant: [],
         user: [...FEISHU_OAUTH_SCOPES],
       },
     });
+    expect(screen.getByRole("note")).toBeInTheDocument();
 
     click(getRole("button", "Next"));
     expect(screen.getByText("Configure event delivery")).toBeInTheDocument();
 
     click(getRole("button", "Next"));
     expect(screen.getByText("Publish the app")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Feishu Version Management page with the Create a version button highlighted",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Feishu version details page with the availability settings edit action highlighted",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Feishu availability settings with All members selected",
+      }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Default agent")).toBeDisabled();
 
     click(getRole("button", "Done"));
@@ -759,6 +772,16 @@ describe("works page", () => {
     expect(
       screen.getByText("Configure the OAuth redirect URL"),
     ).toBeInTheDocument();
+    const redirectGuideImage = screen.getByRole("img", {
+      name: "Feishu Security Settings page showing where to add an OAuth redirect URL",
+    });
+    const redirectUrlInput = screen.getByDisplayValue(
+      "https://app.vm0.test/connectors/feishu/callback",
+    );
+    expect(
+      redirectGuideImage.compareDocumentPosition(redirectUrlInput) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     click(getRole("button", "Next"));
     expect(screen.getByText("Import user token scopes")).toBeInTheDocument();
     click(getRole("button", "Next"));
@@ -767,12 +790,12 @@ describe("works page", () => {
         name: "Feishu Event Configuration screen with the subscription mode edit control highlighted",
       }),
     ).toBeInTheDocument();
-    click(getRole("button", "Show next Feishu guide image"));
     expect(
       screen.getByRole("img", {
         name: "Feishu Event Configuration screen with the Request URL field highlighted",
       }),
     ).toBeInTheDocument();
+    expect(queryRole("button", "Show next Feishu guide image")).toBeNull();
 
     await waitFor(() => {
       expect(screen.getAllByText("Waiting for callback")).not.toHaveLength(0);

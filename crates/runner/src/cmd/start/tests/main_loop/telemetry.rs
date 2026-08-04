@@ -24,6 +24,10 @@ async fn telemetry_flush_includes_start_loop_claim_phase_spans() {
                 .body_includes("runner_claim_active_status_publish")
                 .body_includes("runner_claim_spawn_job_setup")
                 .body_includes("runner_claim_task_schedule_wait")
+                .body_includes("runner_host_finalization_started")
+                .body_includes("runner_host_reuse_preparation")
+                .body_includes("runner_host_physical_park")
+                .body_includes("runner_host_idle_publication")
                 .body_includes("runner_host_finalization_reusable_sandbox")
                 .body_includes("runner_host_completion_fallback")
                 .body_includes("runner_active_reuse_key_released");
@@ -165,6 +169,7 @@ async fn telemetry_flush_classifies_workspace_cache_finalization() {
     let file = tokio::fs::File::create(active_image).await.unwrap();
     file.set_len(16 * 1024 * 1024).await.unwrap();
     drop(file);
+    assert!(env.parking_gate.soft_drain());
     overrides.clear_wait_process_lifecycle_gate();
     wait_gate.release_one();
 

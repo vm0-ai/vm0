@@ -16,6 +16,8 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, withNowScopeForTest } from "../../../lib/time";
 import {
   createActiveGoalQueueEventFixture,
+  drainChatThreadQueueFixture,
+  pauseGoalQueueTargetFixture,
   readGoalQueueStateFixture,
 } from "../../../test-fixtures/goal-queue";
 import { admitWorkflowAutomationEventFixture } from "../../../test-fixtures/workflow-queue";
@@ -384,7 +386,7 @@ async function expectSweepLeftQueueUntouched(
 }
 
 describe("workflow queue", () => {
-  it("runs a pending workflow event before an older goal continuation on the same thread", async () => {
+  it("keeps a user prompt ahead of a pending goal continuation", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     const goal = await createActiveGoalQueueEventFixture({
@@ -392,17 +394,144 @@ describe("workflow queue", () => {
       orgId: scenario.orgId,
       userId: scenario.userId,
       agentId: scenario.agentId,
-      objective: "finish after the workflow event",
-      objectiveBrief: "Finish after the workflow event",
+      objective: "continue after the user prompt",
+      objectiveBrief: "Continue after the user prompt",
     });
 
-    const workflowRunId = await expectAcceptedRunId(
-      await postWorkflowWebhook(automation, "workflow wins queue priority"),
-      automation.threadId,
+    const user = await accept(
+      chatEventsClient().send({
+        headers: authHeaders(),
+        body: {
+          agentId: scenario.agentId,
+          threadId: automation.threadId,
+          prompt: "user prompt wins queue priority",
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: "user prompt wins queue priority" }],
+          },
+        },
+      }),
+      [201],
     );
+    if (!user.body.runId) {
+      throw new Error("Expected the user prompt to create a run");
+    }
     const goalQueue = await readGoalQueueStateFixture(automation.threadId);
     expect(goalQueue.runIds).toHaveLength(0);
     expect(goalQueue.eventIds).toContain(goal.eventId);
+
+    await runsApi.requestCancelRun(scenario.actor, user.body.runId, [200]);
+  });
+
+  it("runs a pending goal continuation before a newer workflow event on the same thread", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const goal = await createActiveGoalQueueEventFixture({
+      threadId: automation.threadId,
+      orgId: scenario.orgId,
+      userId: scenario.userId,
+      agentId: scenario.agentId,
+      objective: "finish before the workflow event",
+      objectiveBrief: "Finish before the workflow event",
+    });
+
+    expectAcceptedWithoutRun(
+      await postWorkflowWebhook(automation, "goal wins queue priority"),
+    );
+    const goalQueue = await readGoalQueueStateFixture(automation.threadId);
+    expect(goalQueue.runIds).toHaveLength(1);
+    expect(goalQueue.eventIds).toContain(goal.eventId);
+    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(0);
+    await expect(
+      pendingWorkflowEvents(automation.threadId),
+    ).resolves.toHaveLength(1);
+
+    const [goalRunId] = goalQueue.runIds;
+    if (!goalRunId) {
+      throw new Error("Expected the goal continuation to create a run");
+    }
+    await runsApi.requestCancelRun(scenario.actor, goalRunId, [200]);
+  });
+
+  it("lets a goal continuation preempt a workflow event during final queue claim", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: scenario.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    const workflowRequest = postWorkflowWebhook(
+      automation,
+      "workflow launch before goal admission",
+    );
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+
+    const goal = await createActiveGoalQueueEventFixture({
+      threadId: automation.threadId,
+      orgId: scenario.orgId,
+      userId: scenario.userId,
+      agentId: scenario.agentId,
+      objective: "preempt the preparing workflow event",
+      objectiveBrief: "Preempt the preparing workflow event",
+    });
+    const goalDrain = drainChatThreadQueueFixture({
+      threadId: automation.threadId,
+      signal: context.signal,
+    });
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(2);
+
+    admissionLock.release();
+    const [workflowResult] = await Promise.all([workflowRequest, goalDrain]);
+    await admissionLock.done;
+    expectAcceptedWithoutRun(workflowResult);
+
+    const goalQueue = await readGoalQueueStateFixture(automation.threadId);
+    expect(goalQueue.runIds).toHaveLength(1);
+    expect(goalQueue.eventIds).toContain(goal.eventId);
+    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(0);
+    await expect(
+      pendingWorkflowEvents(automation.threadId),
+    ).resolves.toHaveLength(1);
+
+    const [goalRunId] = goalQueue.runIds;
+    if (!goalRunId) {
+      throw new Error("Expected the preempting goal to create a run");
+    }
+    await runsApi.requestCancelRun(scenario.actor, goalRunId, [200]);
+  });
+
+  it("continues to workflow automation after rejecting a higher-priority invalid goal", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const goal = await createActiveGoalQueueEventFixture({
+      threadId: automation.threadId,
+      orgId: scenario.orgId,
+      userId: scenario.userId,
+      agentId: scenario.agentId,
+      objective: "become invalid before the queue drains",
+      objectiveBrief: "Become invalid before the queue drains",
+    });
+    await pauseGoalQueueTargetFixture(goal.goalId);
+
+    const workflowRunId = await expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "run after invalid goal"),
+      automation.threadId,
+    );
+    const events = await wf.readThreadEvents(automation.threadId);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        eventType: "input.rejected",
+        revokesEventId: goal.eventId,
+        error: "Goal continuation no longer matches the active goal",
+      }),
+    );
+    const goalQueue = await readGoalQueueStateFixture(automation.threadId);
+    expect(goalQueue.runIds).toHaveLength(0);
 
     await runsApi.requestCancelRun(scenario.actor, workflowRunId, [200]);
   });

@@ -109,6 +109,10 @@ const browserMutationResponseSchema = browserResponseSchema.extend({
   lifecycleEventId: z.uuid().nullable(),
 });
 
+const browserCloseResponseSchema = z.object({
+  lifecycleEventId: z.uuid(),
+});
+
 const browserResizeRequestSchema = z.object({
   aspectRatio: z.number().positive().finite(),
 });
@@ -196,6 +200,32 @@ export const zeroBrowserContract = c.router({
     },
     summary: "Extend the idle lease of a live browser from its viewer",
   },
+  open: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:threadId/browser/open",
+    headers: authHeadersSchema,
+    pathParams: browserThreadParamsSchema,
+    body: browserLifecycleRequestSchema,
+    responses: {
+      200: browserMutationResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary: "Open a chat thread's managed browser",
+  },
+  close: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:threadId/browser/close",
+    headers: authHeadersSchema,
+    pathParams: browserThreadParamsSchema,
+    body: browserLifecycleRequestSchema,
+    responses: {
+      200: browserCloseResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary: "Record that the managed browser sidebar was closed",
+  },
+  // Compatibility aliases for browser bundles loaded before open/close.
+  // Remove after the stale web-client window has closed.
   start: {
     method: "POST",
     path: "/api/zero/chat-threads/:threadId/browser/start",
@@ -206,7 +236,7 @@ export const zeroBrowserContract = c.router({
       200: browserMutationResponseSchema,
       ...commonErrorResponses,
     },
-    summary: "Create, reuse, or resume a chat thread's managed browser",
+    summary: "Compatibility alias for opening a managed browser",
   },
   stop: {
     method: "POST",
@@ -218,7 +248,7 @@ export const zeroBrowserContract = c.router({
       200: browserMutationResponseSchema,
       ...commonErrorResponses,
     },
-    summary: "Stop a chat thread's live managed browser",
+    summary: "Compatibility endpoint for a stale browser viewer",
   },
   resizeByThread: {
     method: "POST",

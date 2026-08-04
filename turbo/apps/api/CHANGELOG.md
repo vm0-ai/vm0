@@ -1,5 +1,118 @@
 # Changelog
 
+## [1.372.0](https://github.com/vm0-ai/vm0/compare/api-v1.371.0...api-v1.372.0) (2026-08-04)
+
+
+### Features
+
+* **chat:** prioritize goal continuation over automation ([#24978](https://github.com/vm0-ai/vm0/issues/24978)) ([c4b92d6](https://github.com/vm0-ai/vm0/commit/c4b92d69430ec89798a71cc70b82e2bb560fba43))
+
+
+### Bug Fixes
+
+* **api:** monitor null-trigger pointerless queue events ([#24952](https://github.com/vm0-ai/vm0/issues/24952)) ([85956c7](https://github.com/vm0-ai/vm0/commit/85956c775245fe22a174ecfcc8aff85a71b3f5b0))
+
+
+### Refactoring
+
+* stop writing goal contexts ([#24984](https://github.com/vm0-ai/vm0/issues/24984)) ([74e53cf](https://github.com/vm0-ai/vm0/commit/74e53cf246cacdf0c5eaabba449782a95c509927))
+
+
+### Performance Improvements
+
+* measure pre-park successor handoff ([#24938](https://github.com/vm0-ai/vm0/issues/24938)) ([6e7c0aa](https://github.com/vm0-ai/vm0/commit/6e7c0aa73c51d7916efaa354f6ce1ba32b83090f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.268.0
+    * @vm0/core bumped to 8.508.1
+    * @vm0/db bumped to 1.163.11
+
+## [1.371.0](https://github.com/vm0-ai/vm0/compare/api-v1.370.7...api-v1.371.0) (2026-08-04)
+
+
+### Features
+
+* add runner-bundled rust zero cli foundation ([#24907](https://github.com/vm0-ai/vm0/issues/24907)) ([8cc6154](https://github.com/vm0-ai/vm0/commit/8cc6154eb9016e8b7a44d72177053c2224dd5d9a))
+* refine browser sidebar lifecycle ([#24852](https://github.com/vm0-ai/vm0/issues/24852)) ([498ecb5](https://github.com/vm0-ai/vm0/commit/498ecb5e1da3c3ff517b6322403b6eb59e06fe91))
+
+
+### Refactoring
+
+* **api:** add web queued launch loader ([#24945](https://github.com/vm0-ai/vm0/issues/24945)) ([3d900bd](https://github.com/vm0-ai/vm0/commit/3d900bd873a118a4cb0bb603ed45014d1e785bba))
+* retire goal context readers ([#24939](https://github.com/vm0-ai/vm0/issues/24939)) ([0c6d9da](https://github.com/vm0-ai/vm0/commit/0c6d9da9976507322ea555b7575c7fe15c442452))
+* retire zero run trigger agent provenance ([#24929](https://github.com/vm0-ai/vm0/issues/24929)) ([6eb4009](https://github.com/vm0-ai/vm0/commit/6eb400938c00f60f3b4da0b356ac3ff5b8402061))
+
+
+### Performance Improvements
+
+* **api:** attribute runner-claim baseline database latency ([#24928](https://github.com/vm0-ai/vm0/issues/24928)) ([730ea21](https://github.com/vm0-ai/vm0/commit/730ea21d783f3cfe0fe9dea6f3ad971bc8a19eab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.267.0
+    * @vm0/core bumped to 8.508.0
+    * @vm0/db bumped to 1.163.10
+
+## [1.370.7](https://github.com/vm0-ai/vm0/compare/api-v1.370.6...api-v1.370.7) (2026-08-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.266.1
+    * @vm0/core bumped to 8.507.1
+    * @vm0/db bumped to 1.163.9
+
+## [1.370.6](https://github.com/vm0-ai/vm0/compare/api-v1.370.5...api-v1.370.6) (2026-08-04)
+
+
+### Refactoring
+
+* **db:** drop teams context bot identity columns ([#24911](https://github.com/vm0-ai/vm0/issues/24911)) ([08e148e](https://github.com/vm0-ai/vm0/commit/08e148eb0166e1e0c85fc3a40d28b097c796945a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.163.8
+
+## [1.370.5](https://github.com/vm0-ai/vm0/compare/api-v1.370.4...api-v1.370.5) (2026-08-04)
+
+
+### Refactoring
+
+* **db:** require telegram chat type ([#24874](https://github.com/vm0-ai/vm0/issues/24874)) ([2dc9c55](https://github.com/vm0-ai/vm0/commit/2dc9c55ab09d3025985f4f720396599379eb26bb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.163.7
+
+## [1.370.4](https://github.com/vm0-ai/vm0/compare/api-v1.370.3...api-v1.370.4) (2026-08-04)
+
+
+### Refactoring
+
+* **api:** read Teams launch context from canonical sources ([#24863](https://github.com/vm0-ai/vm0/issues/24863)) ([0f30583](https://github.com/vm0-ai/vm0/commit/0f3058355b9f5c07a26e3e84f2984b744497d9e9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.163.6
+
 ## [1.370.3](https://github.com/vm0-ai/vm0/compare/api-v1.370.2...api-v1.370.3) (2026-08-04)
 
 

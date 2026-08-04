@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.155.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.155.0...runner-rs-v0.155.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **python:** revalidate buffered requests before dispatch ([#24966](https://github.com/vm0-ai/vm0/issues/24966)) ([4cf228b](https://github.com/vm0-ai/vm0/commit/4cf228bd3fcf2e8ecc23a72fabec4a78fe16403b))
+
+
+### Performance Improvements
+
+* measure pre-park successor handoff ([#24938](https://github.com/vm0-ai/vm0/issues/24938)) ([6e7c0aa](https://github.com/vm0-ai/vm0/commit/6e7c0aa73c51d7916efaa354f6ce1ba32b83090f))
+
+## [0.155.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.154.3...runner-rs-v0.155.0) (2026-08-04)
+
+
+### Features
+
+* add runner-bundled rust zero cli foundation ([#24907](https://github.com/vm0-ai/vm0/issues/24907)) ([8cc6154](https://github.com/vm0-ai/vm0/commit/8cc6154eb9016e8b7a44d72177053c2224dd5d9a))
+
+
+### Bug Fixes
+
+* **runner:** fail closed on unreadable resume status ([#24947](https://github.com/vm0-ai/vm0/issues/24947)) ([570362c](https://github.com/vm0-ai/vm0/commit/570362c4e1a357bfb43f1913cbcd86c25b2dd6b4))
+
+
+### Documentation
+
+* **runner:** document fail-closed run prefix resolution ([#24931](https://github.com/vm0-ai/vm0/issues/24931)) ([282b1cb](https://github.com/vm0-ai/vm0/commit/282b1cb7218df6b6e17dd16f6c05427862099569))
+
+
+### Refactoring
+
+* **runner:** centralize guest dns probe signature ([#24936](https://github.com/vm0-ai/vm0/issues/24936)) ([6fbb873](https://github.com/vm0-ai/vm0/commit/6fbb87342944fc9292ae4c6dfa99d7302caf8acc))
+
+
+### Performance Improvements
+
+* **python:** offload sigv4 body hashing ([#24926](https://github.com/vm0-ai/vm0/issues/24926)) ([38863a8](https://github.com/vm0-ai/vm0/commit/38863a8ad23e9354b8507150561d1223b8d94eff))
+* **runner:** retain healthy failed and cancelled sandboxes ([#24919](https://github.com/vm0-ai/vm0/issues/24919)) ([c8069ce](https://github.com/vm0-ai/vm0/commit/c8069ce992bb7e79f10d025147c10269556ed329))
+
+## [0.154.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.154.2...runner-rs-v0.154.3) (2026-08-04)
+
+
+### Performance Improvements
+
+* **python:** bound anthropic json usage inspection ([#24918](https://github.com/vm0-ai/vm0/issues/24918)) ([e1630b9](https://github.com/vm0-ai/vm0/commit/e1630b93fa79206dd0bd0b6c1f9760e548389bee))
+
 ## [0.154.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.154.1...runner-rs-v0.154.2) (2026-08-04)
 
 

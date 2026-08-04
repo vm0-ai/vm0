@@ -1710,7 +1710,6 @@ function telegramLaunchContext(args: {
   return {
     chatId: args.chatId,
     messageId: String(args.source.message.message_id),
-    isDm: args.source.isDM,
     messageThreadId: args.source.message.message_thread_id ?? null,
     messageText: args.prompt,
     threadContext: args.context,

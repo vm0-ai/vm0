@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   artifactsContract,
+  canonicalChatEvent,
   chatEventsContract,
   chatSearchContract,
   chatThreadArtifactsContract,
@@ -911,7 +912,9 @@ export function createChatFilesBddApi(context: TestContext) {
         }),
         [200],
       );
-      return response.body;
+      return {
+        events: response.body.events.map(canonicalChatEvent),
+      };
     },
 
     async requestListThreadEvents(
@@ -948,7 +951,7 @@ export function createChatFilesBddApi(context: TestContext) {
         }),
         [200],
       );
-      return response.body;
+      return canonicalChatEvent(response.body);
     },
 
     async listThreadArtifacts(

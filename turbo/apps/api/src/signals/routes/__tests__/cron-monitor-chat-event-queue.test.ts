@@ -116,11 +116,48 @@ describe("cron monitor chat event queue", () => {
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
+  it("alerts for a pointerless prompt with a null trigger source", async () => {
+    const fixture = await trackFixture(seedFixture("orphan"));
+
+    const response = await accept(
+      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: "Internal server error",
+    });
+    expect(
+      context.mocks.sentry.captureException.mock.calls.at(-1)?.[0],
+    ).toMatchObject({
+      code: "ORPHANED_QUEUED_CHAT_MESSAGES",
+      orphanedMessages: 1,
+      orphanedMessagesBySource: { "(unknown)": 1 },
+    });
+  });
+
+  it("does not alert for pointerless web, test, or agent prompts", async () => {
+    const fixture = await trackFixture(seedFixture("orphan"));
+
+    const response = await accept(
+      stateClient().monitor({
+        body: { event_ids: fixture.eventIds.slice(1, 4) },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      orphanedMessages: 0,
+    });
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+  });
+
   it("raises a grouped alert for every source with a missing context row", async () => {
     const fixture = await trackFixture(seedFixture("orphan"));
 
     const response = await accept(
-      stateClient().monitor({ body: { event_ids: [...fixture.eventIds] } }),
+      stateClient().monitor({ body: { event_ids: fixture.eventIds.slice(4) } }),
       [500],
     );
 
@@ -172,6 +209,41 @@ describe("cron monitor chat event queue", () => {
 
   it("does not flag input.automation without legacy encrypted params", async () => {
     const fixture = await trackFixture(seedFixture("orphaned-automation"));
+
+    const response = await accept(
+      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      orphanedMessages: 0,
+    });
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("alerts when a pending goal event has lost its goal row", async () => {
+    const fixture = await trackFixture(seedFixture("orphaned-goal"));
+
+    const response = await accept(
+      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: "Internal server error",
+    });
+    expect(
+      context.mocks.sentry.captureException.mock.calls.at(-1)?.[0],
+    ).toMatchObject({
+      code: "ORPHANED_QUEUED_CHAT_MESSAGES",
+      orphanedMessages: 1,
+      orphanedMessagesBySource: { goal: 1 },
+    });
+  });
+
+  it("does not alert for a paused goal continuation without a context pointer", async () => {
+    const fixture = await trackFixture(seedFixture("paused-goal"));
 
     const response = await accept(
       stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),

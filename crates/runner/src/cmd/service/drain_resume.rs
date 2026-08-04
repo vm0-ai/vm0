@@ -5,7 +5,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
 use super::drain_override::{remove_drain_restart_override, write_drain_restart_override};
-use super::gate::{read_runner_status, runner_base_dir};
+use super::gate::read_runner_status;
 use super::reload::{SystemdReloadRequirement, coordinate_systemd_reload};
 use super::signal::{ServiceSignalOutcome, signal_service_main};
 use super::systemctl::{
@@ -68,6 +68,7 @@ trait ServiceDrainOps {
 }
 
 trait ServiceResumeOps {
+    fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
     fn enablement<'a>(
         &'a mut self,
         unit: &'a RunnerServiceUnit,
@@ -153,6 +154,10 @@ impl ServiceDrainOps for RealServiceDrainOps {
 }
 
 impl ServiceResumeOps for RealServiceResumeOps {
+    fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+        Box::pin(async move { is_unit_active(unit).await })
+    }
+
     fn enablement<'a>(
         &'a mut self,
         unit: &'a RunnerServiceUnit,
@@ -585,6 +590,35 @@ async fn resume_after_preflight_with_ops(
     .await)
 }
 
+async fn resume_with_ops(
+    unit: &RunnerServiceUnit,
+    home: &HomePaths,
+    ops: &mut impl ServiceResumeOps,
+) -> RunnerResult<()> {
+    if !ops.is_active(unit).await? {
+        return Err(RunnerError::Internal(format!(
+            "{} is not active — cannot resume an inactive runner",
+            unit.unit_name()
+        )));
+    }
+
+    // Only remove Restart=no once status.json confirms the runner has
+    // processed SIGUSR1 and entered Draining. A too-early resume while status
+    // is still Running can race with the pending SIGUSR1: SIGUSR2 is a no-op
+    // in Running, but removing the restart override would let a later Draining
+    // runner regain restart behavior.
+    let base_dir = home.runners_dir().join(unit.suffix());
+    let status = read_runner_status(&base_dir).await.map_err(|error| {
+        RunnerError::Internal(format!(
+            "cannot read status.json for {} during resume preflight: {error}",
+            unit.unit_name()
+        ))
+    })?;
+    ensure_resume_mode_is_draining(unit, &status.mode)?;
+
+    resume_after_preflight_with_ops(unit, ops).await
+}
+
 /// `service drain` — send SIGUSR1, disable unit, return immediately.
 pub(super) async fn run_drain(args: DrainArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
@@ -597,8 +631,8 @@ pub(super) async fn run_drain(args: DrainArgs) -> RunnerResult<()> {
 ///
 /// Reverses a prior `service drain` while the runner is still `Draining`.
 /// If the runner has already transitioned to `Stopping` (teardown in
-/// progress), is still `Running`, or exited, resume is refused when status is
-/// readable. SIGUSR2 on an already-`Running` runner is a no-op on the runner
+/// progress), is still `Running`, exited, or has unreadable status, resume is
+/// refused. SIGUSR2 on an already-`Running` runner is a no-op on the runner
 /// side, so the CLI must not restore Restart=on-failure until the runner has
 /// actually entered `Draining`.
 pub(super) async fn run_resume(args: ResumeArgs) -> RunnerResult<()> {
@@ -606,33 +640,7 @@ pub(super) async fn run_resume(args: ResumeArgs) -> RunnerResult<()> {
     let home = HomePaths::new()?;
     let _service_lock = acquire_service_lock(&unit, &home).await?;
 
-    if !is_unit_active(&unit).await? {
-        return Err(RunnerError::Internal(format!(
-            "{} is not active — cannot resume an inactive runner",
-            unit.unit_name()
-        )));
-    }
-
-    // Preflight: only remove Restart=no once status.json confirms the runner
-    // has processed SIGUSR1 and entered Draining. A too-early resume while
-    // status is still Running can race with the pending SIGUSR1: SIGUSR2 is a
-    // no-op in Running, but removing the restart override would let a later
-    // Draining runner regain restart behavior.
-    if let Some(base_dir) = runner_base_dir(&unit) {
-        match read_runner_status(&base_dir).await {
-            Ok(status) => ensure_resume_mode_is_draining(&unit, &status.mode)?,
-            Err(e) => {
-                warn!(
-                    unit = %unit.unit_name(),
-                    base_dir = %base_dir.display(),
-                    error = %e,
-                    "cannot read status.json during resume preflight"
-                );
-            }
-        }
-    }
-
-    resume_after_preflight_with_ops(&unit, &mut RealServiceResumeOps).await
+    resume_with_ops(&unit, &home, &mut RealServiceResumeOps).await
 }
 
 #[cfg(test)]
@@ -663,6 +671,7 @@ mod tests {
 
     struct FakeResumeOps {
         events: Vec<&'static str>,
+        active_results: VecDeque<RunnerResult<bool>>,
         enablement_results: VecDeque<RunnerResult<SystemdUnitEnablement>>,
         write_error: bool,
         remove_error: bool,
@@ -699,6 +708,7 @@ mod tests {
         fn default() -> Self {
             Self {
                 events: Vec::new(),
+                active_results: VecDeque::from([Ok(true)]),
                 enablement_results: VecDeque::from([Ok(SystemdUnitEnablement::NotEnabled)]),
                 write_error: false,
                 remove_error: false,
@@ -822,6 +832,13 @@ mod tests {
     }
 
     impl ServiceResumeOps for FakeResumeOps {
+        fn is_active<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+            self.events.push("is_active");
+            Box::pin(std::future::ready(
+                self.active_results.pop_front().unwrap_or(Ok(false)),
+            ))
+        }
+
         fn enablement<'a>(
             &'a mut self,
             _unit: &'a RunnerServiceUnit,
@@ -1296,6 +1313,108 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resume_refuses_inactive_unit_before_status_read() {
+        let unit = service_unit();
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let mut ops = FakeResumeOps {
+            active_results: VecDeque::from([Ok(false)]),
+            ..FakeResumeOps::default()
+        };
+
+        let error = resume_with_ops(&unit, &home, &mut ops).await.unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("cannot resume an inactive runner")
+        );
+        assert_eq!(ops.events, ["is_active"]);
+    }
+
+    #[tokio::test]
+    async fn resume_refuses_missing_status_before_mutation() {
+        let unit = service_unit();
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let mut ops = FakeResumeOps::default();
+
+        let error = resume_with_ops(&unit, &home, &mut ops).await.unwrap_err();
+
+        assert!(error.to_string().contains("cannot read status.json"));
+        assert_eq!(ops.events, ["is_active"]);
+    }
+
+    #[tokio::test]
+    async fn resume_refuses_malformed_status_before_mutation() {
+        let unit = service_unit();
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let base_dir = home.runners_dir().join(unit.suffix());
+        tokio::fs::create_dir_all(&base_dir).await.unwrap();
+        tokio::fs::write(base_dir.join("status.json"), "{")
+            .await
+            .unwrap();
+        let mut ops = FakeResumeOps::default();
+
+        let error = resume_with_ops(&unit, &home, &mut ops).await.unwrap_err();
+
+        assert!(error.to_string().contains("cannot read status.json"));
+        assert_eq!(ops.events, ["is_active"]);
+    }
+
+    #[tokio::test]
+    async fn resume_refuses_non_draining_status_before_mutation() {
+        let unit = service_unit();
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let base_dir = home.runners_dir().join(unit.suffix());
+        tokio::fs::create_dir_all(&base_dir).await.unwrap();
+        tokio::fs::write(
+            base_dir.join("status.json"),
+            r#"{"mode":"running","active_runs":[],"started_at":"2026-08-04T00:00:00Z"}"#,
+        )
+        .await
+        .unwrap();
+        let mut ops = FakeResumeOps::default();
+
+        let error = resume_with_ops(&unit, &home, &mut ops).await.unwrap_err();
+
+        assert!(error.to_string().contains("running, not draining"));
+        assert_eq!(ops.events, ["is_active"]);
+    }
+
+    #[tokio::test]
+    async fn resume_verified_draining_status_reaches_transition() {
+        let unit = service_unit();
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let base_dir = home.runners_dir().join(unit.suffix());
+        tokio::fs::create_dir_all(&base_dir).await.unwrap();
+        tokio::fs::write(
+            base_dir.join("status.json"),
+            r#"{"mode":"draining","active_runs":[],"started_at":"2026-08-04T00:00:00Z"}"#,
+        )
+        .await
+        .unwrap();
+        let mut ops = FakeResumeOps::default();
+
+        resume_with_ops(&unit, &home, &mut ops).await.unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "is_active",
+                "is_enabled",
+                "remove_restart_override",
+                "enable",
+                "daemon_reload",
+                "signal_resume",
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn resume_enables_and_reloads_before_signal() {
         let unit = service_unit();
         let mut ops = FakeResumeOps::default();
@@ -1499,6 +1618,9 @@ mod tests {
 
         let stopping = ensure_resume_mode_is_draining(&unit, "stopping").unwrap_err();
         assert!(stopping.to_string().contains("already shutting down"));
+
+        let stopped = ensure_resume_mode_is_draining(&unit, "stopped").unwrap_err();
+        assert!(stopped.to_string().contains("already shutting down"));
 
         let unknown = ensure_resume_mode_is_draining(&unit, "paused").unwrap_err();
         assert!(unknown.to_string().contains("unknown mode"));

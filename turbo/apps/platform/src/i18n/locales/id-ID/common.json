@@ -1008,6 +1008,7 @@
     "cardTitle": "Browser cloud",
     "close": "Tutup browser live",
     "documentTitle": "Browser live",
+    "fitAction": "Sesuaikan",
     "fitWindow": "Sesuaikan browser ke jendela",
     "iframeTitle": "Browser live: {{name}}",
     "invalidLink": "Tautan browser tidak valid",
@@ -1027,7 +1028,6 @@
       "starting": "Memulai",
       "stopped": "Berhenti"
     },
-    "stop": "Hentikan browser",
     "title": "Browser live",
     "unavailable": {
       "description": "Browser ini bukan milik chat ini atau telah dihapus.",
@@ -2211,19 +2211,14 @@
           "challengeQuestion": "Mengapa Feishu menampilkan \"Challenge code didn't get a response\"?",
           "title": "FAQ penyiapan"
         },
-        "guide": {
-          "next": "Tampilkan gambar panduan Feishu berikutnya",
-          "previous": "Tampilkan gambar panduan Feishu sebelumnya",
-          "show": "Tampilkan gambar panduan Feishu {{number}}"
-        },
         "loadError": "Tidak dapat memuat pengaturan Feishu.",
         "manage": "Kelola",
         "manageDialogTitle": "Kelola bot Feishu",
         "moreOptions": "Opsi lainnya untuk {{bot}}",
         "pageDescription": "Kelola perutean bot untuk ruang kerja ini",
         "permissions": {
-          "description": "Di konsol developer Feishu, buka Permissions & Scopes, pilih Batch Import/Export > Import, lalu tempel JSON di bawah. Tindakan ini mengimpor semua scope konektor terkelola di bawah User identity.",
-          "hint": "Konfirmasikan izin User identity yang diimpor, lalu buat dan publikasikan versi aplikasi baru agar layar persetujuan OAuth dapat memberikannya.",
+          "description": "Di konsol developer Feishu, buka Permissions & Scopes, pilih Batch Import/Export > Import, lalu tempel JSON di bawah. Tindakan ini mengimpor semua scope konektor terkelola di bawah User identity. Ini adalah izin minimum yang diperlukan agar integrasi berfungsi.",
+          "hint": "Pertahankan semua izin User identity yang diimpor, lalu buat dan publikasikan versi aplikasi baru agar layar persetujuan OAuth dapat memberikannya. Menghapus izin apa pun akan membuat integrasi tidak berfungsi, dan persetujuan administrator Feishu mungkin diperlukan.",
           "label": "JSON scope token pengguna",
           "menuAlt": "Halaman Permissions & Scopes Feishu dengan menu Batch import/export scopes disorot",
           "menuLabel": "Buka Batch import/export scopes",

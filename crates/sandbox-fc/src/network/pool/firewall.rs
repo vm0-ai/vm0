@@ -4,7 +4,9 @@ use std::io::Write;
 use tracing::{info, warn};
 
 use crate::command::{CommandError, exec_status_with_timeout, exec_with_timeout};
-use crate::guest_dns_readiness::GUEST_DNS_READINESS_PACKET_BYTES;
+use crate::guest_dns_probe::{
+    DNS_PROBE_DESTINATION_PORT, DNS_PROBE_RESOLVER_IPV4, GUEST_DNS_PROBE_PACKET_BYTES,
+};
 
 use super::super::error::{NetworkError, Result};
 use super::HOST_NETWORK_COMMAND_TIMEOUT;
@@ -13,8 +15,6 @@ use super::naming::{
     make_pool_dns_filter_comment, parse_netns_name,
 };
 use super::types::NamespaceDeleteOutcome;
-
-const GUEST_DNS_READINESS_IPV4: &str = "8.8.8.8/32";
 
 /// Configuration for one namespace's host firewall transaction.
 #[derive(Clone, Copy)]
@@ -318,10 +318,10 @@ fn namespace_guest_dns_trace_restore_tables(
         table: "raw",
         rules: vec![
             format!(
-                "-I PREROUTING 1 -i {host_device} -s {peer} -d {GUEST_DNS_READINESS_IPV4} -p udp --dport 53 -m length --length {GUEST_DNS_READINESS_PACKET_BYTES} -m comment --comment {name} -j TRACE"
+                "-I PREROUTING 1 -i {host_device} -s {peer} -d {DNS_PROBE_RESOLVER_IPV4}/32 -p udp --dport {DNS_PROBE_DESTINATION_PORT} -m length --length {GUEST_DNS_PROBE_PACKET_BYTES} -m comment --comment {name} -j TRACE"
             ),
             format!(
-                "-I PREROUTING 1 -i {host_device} -s {peer} -d {GUEST_DNS_READINESS_IPV4} -p tcp --dport 53 -m comment --comment {name} -j TRACE"
+                "-I PREROUTING 1 -i {host_device} -s {peer} -d {DNS_PROBE_RESOLVER_IPV4}/32 -p tcp --dport {DNS_PROBE_DESTINATION_PORT} -m comment --comment {name} -j TRACE"
             ),
         ],
     }]
@@ -601,6 +601,7 @@ async fn run_firewall_restore(
         Err(error) => {
             return Err(CommandError {
                 command: command.to_string(),
+                exit_code: None,
                 detail: format!("failed to create firewall restore input: {error}"),
             });
         }
@@ -608,12 +609,14 @@ async fn run_firewall_restore(
     if let Err(error) = file.write_all(payload.as_bytes()) {
         return Err(CommandError {
             command: command.to_string(),
+            exit_code: None,
             detail: format!("failed to write firewall restore input: {error}"),
         });
     }
     let Some(path) = file.path().to_str() else {
         return Err(CommandError {
             command: command.to_string(),
+            exit_code: None,
             detail: format!(
                 "firewall restore input path is not UTF-8: {}",
                 file.path().display()

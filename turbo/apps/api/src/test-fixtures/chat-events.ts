@@ -101,8 +101,6 @@ interface ChatEventContextFixture {
   readonly teamsThreadId: string | null;
   readonly teamsServiceUrl: string | null;
   readonly teamsAppId: string | null;
-  readonly teamsBotId: string | null;
-  readonly teamsBotName: string | null;
   readonly teamsSenderUserId: string | null;
   readonly teamsSenderDisplayName: string | null;
   readonly teamsSenderPrincipalName: string | null;
@@ -122,7 +120,6 @@ interface ChatEventContextFixture {
   readonly agentphoneAgentId: string | null;
   readonly telegramChatId: string | null;
   readonly telegramMessageId: string | null;
-  readonly telegramIsDm: boolean | null;
   readonly telegramMessageThreadId: number | null;
   readonly telegramMessageText: string | null;
   readonly telegramThreadContext: string | null;
@@ -201,8 +198,6 @@ export async function readChatEventContextFixture(
       teamsThreadId: chatTeamsContext.threadId,
       teamsServiceUrl: chatTeamsContext.serviceUrl,
       teamsAppId: chatTeamsContext.teamsAppId,
-      teamsBotId: chatTeamsContext.botId,
-      teamsBotName: chatTeamsContext.botName,
       teamsSenderUserId: chatTeamsContext.senderUserId,
       teamsSenderDisplayName: chatTeamsContext.senderDisplayName,
       teamsSenderPrincipalName: chatTeamsContext.senderPrincipalName,
@@ -222,7 +217,6 @@ export async function readChatEventContextFixture(
       agentphoneAgentId: chatAgentphoneContext.agentphoneAgentId,
       telegramChatId: chatTelegramContext.chatId,
       telegramMessageId: chatTelegramContext.messageId,
-      telegramIsDm: chatTelegramContext.isDm,
       telegramMessageThreadId: chatTelegramContext.messageThreadId,
       telegramMessageText: chatTelegramContext.messageText,
       telegramThreadContext: chatTelegramContext.threadContext,
@@ -326,8 +320,6 @@ const annotationProjectionInputs = [
         threadId: "activity-1",
         serviceUrl: "https://smba.trafficmanager.net/amer/",
         teamsAppId: "teams-app-1",
-        botId: "28:bot-1",
-        botName: "Okou",
         senderUserId: "29:user-1",
         senderDisplayName: "Ada Lovelace",
         senderPrincipalName: "ada@example.com",
@@ -354,8 +346,6 @@ const annotationProjectionInputs = [
         threadId: "direct-message:agent-1:default",
         serviceUrl: "https://smba.trafficmanager.net/amer/",
         teamsAppId: "teams-app-1",
-        botId: null,
-        botName: null,
         senderUserId: "29:user-1",
         senderDisplayName: null,
         senderPrincipalName: null,
@@ -370,7 +360,6 @@ const annotationProjectionInputs = [
       telegramContext: {
         chatId: "-1001234567890",
         messageId: "42",
-        isDm: false,
         messageThreadId: 7,
         messageText: "telegram supergroup linked",
         threadContext: "",
@@ -393,7 +382,6 @@ const annotationProjectionInputs = [
       telegramContext: {
         chatId: "123456789",
         messageId: "43",
-        isDm: true,
         messageThreadId: null,
         messageText: "telegram dm unlinked",
         threadContext: "",
@@ -416,7 +404,6 @@ const annotationProjectionInputs = [
       telegramContext: {
         chatId: "-123456789",
         messageId: "44",
-        isDm: false,
         messageThreadId: null,
         messageText: "telegram group unlinked",
         threadContext: "",
@@ -494,7 +481,7 @@ function annotationProjectionSourcePart(
       kind: "telegram",
       chatId: input.context.telegramContext.chatId,
       messageId: input.context.telegramContext.messageId,
-      isDm: input.context.telegramContext.isDm,
+      isDm: input.context.telegramContext.chatType === "private",
     });
   }
   return createChatEventSourcePart({
@@ -603,8 +590,6 @@ export async function seedChatEventAnnotationProjectionFixture(
         threadId: "activity-rejected",
         serviceUrl: "https://smba.trafficmanager.net/amer/",
         teamsAppId: "teams-app-2",
-        botId: "28:bot-2",
-        botName: "Okou",
         senderUserId: "29:user-2",
         senderDisplayName: "Grace Hopper",
         senderPrincipalName: "grace@example.com",

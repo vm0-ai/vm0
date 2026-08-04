@@ -1,5 +1,67 @@
 # Changelog
 
+## [0.679.1](https://github.com/vm0-ai/vm0/compare/app-v0.679.0...app-v0.679.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **platform:** wait for voice input before sending ([#24956](https://github.com/vm0-ai/vm0/issues/24956)) ([97e4fc1](https://github.com/vm0-ai/vm0/commit/97e4fc1f62553d20b7c577ec4a2910aa643f6d14))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.268.0
+    * @vm0/core bumped to 8.508.1
+
+## [0.679.0](https://github.com/vm0-ai/vm0/compare/app-v0.678.5...app-v0.679.0) (2026-08-04)
+
+
+### Features
+
+* refine browser sidebar lifecycle ([#24852](https://github.com/vm0-ai/vm0/issues/24852)) ([498ecb5](https://github.com/vm0-ai/vm0/commit/498ecb5e1da3c3ff517b6322403b6eb59e06fe91))
+
+
+### Bug Fixes
+
+* **platform:** simplify feishu bot setup guidance ([#24899](https://github.com/vm0-ai/vm0/issues/24899)) ([289ad2b](https://github.com/vm0-ai/vm0/commit/289ad2b41edca258efe24d66d8792f0b6b62dca5))
+
+
+### Refactoring
+
+* retire zero run trigger agent provenance ([#24929](https://github.com/vm0-ai/vm0/issues/24929)) ([6eb4009](https://github.com/vm0-ai/vm0/commit/6eb400938c00f60f3b4da0b356ac3ff5b8402061))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.267.0
+    * @vm0/core bumped to 8.508.0
+
+## [0.678.5](https://github.com/vm0-ai/vm0/compare/app-v0.678.4...app-v0.678.5) (2026-08-04)
+
+
+### Bug Fixes
+
+* **platform:** render mermaid diagrams only once their fence closes ([#24659](https://github.com/vm0-ai/vm0/issues/24659)) ([a91d7d7](https://github.com/vm0-ai/vm0/commit/a91d7d7caab8103c64556ddb78c650150784f161))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.266.1
+    * @vm0/core bumped to 8.507.1
+
+## [0.678.4](https://github.com/vm0-ai/vm0/compare/app-v0.678.3...app-v0.678.4) (2026-08-04)
+
+
+### Bug Fixes
+
+* **platform:** separate cloud browser from your computer in connector menu ([#24876](https://github.com/vm0-ai/vm0/issues/24876)) ([26bfa1f](https://github.com/vm0-ai/vm0/commit/26bfa1f35ea4976988ac1deacd55f13d6fa789e3))
+
 ## [0.678.3](https://github.com/vm0-ai/vm0/compare/app-v0.678.2...app-v0.678.3) (2026-08-04)
 
 

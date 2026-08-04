@@ -31,7 +31,6 @@ type TelegramLaunchContextRow = Pick<
   typeof chatTelegramContext.$inferSelect,
   | "chatId"
   | "messageId"
-  | "isDm"
   | "messageThreadId"
   | "messageText"
   | "threadContext"
@@ -97,7 +96,6 @@ async function loadTelegramLaunchContext(
     .select({
       chatId: chatTelegramContext.chatId,
       messageId: chatTelegramContext.messageId,
-      isDm: chatTelegramContext.isDm,
       messageThreadId: chatTelegramContext.messageThreadId,
       messageText: chatTelegramContext.messageText,
       threadContext: chatTelegramContext.threadContext,
@@ -236,7 +234,7 @@ export async function loadTelegramQueuedLaunchMaterial(
       userLinkId: context.userLinkId,
       userLinkKind: context.userLinkKind,
       agentId: context.agentId,
-      isDM: context.isDm,
+      isDM: context.chatType === "private",
       ...(context.messageThreadId !== null
         ? { messageThreadId: context.messageThreadId }
         : {}),
