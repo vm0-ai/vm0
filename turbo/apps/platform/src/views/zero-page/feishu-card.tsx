@@ -836,7 +836,10 @@ function FeishuPermissionsStep({ data }: { data: FeishuDialogData | null }) {
             {scopeImportJson}
           </code>
         </div>
-        <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">
+        <p
+          role="note"
+          className="mt-3 text-sm text-amber-600 dark:text-amber-400"
+        >
           {t(($) => {
             return $.connectors.providerSettings.feishu.permissions.hint;
           })}

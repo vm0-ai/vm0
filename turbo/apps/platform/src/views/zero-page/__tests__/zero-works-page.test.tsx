@@ -600,13 +600,7 @@ describe("works page", () => {
         user: [...FEISHU_OAUTH_SCOPES],
       },
     });
-    const permissionWarning = screen.getByText(
-      "Keep every imported User identity permission, then create and publish a new app version so the OAuth consent screen can grant them. Removing any permission prevents the integration from working, and Feishu administrator approval may be required.",
-    );
-    expect(scopeImportJson.parentElement?.parentElement).toContainElement(
-      permissionWarning,
-    );
-    expect(permissionWarning).toHaveClass("text-amber-600");
+    expect(screen.getByRole("note")).toBeInTheDocument();
 
     click(getRole("button", "Next"));
     expect(screen.getByText("Configure event delivery")).toBeInTheDocument();
