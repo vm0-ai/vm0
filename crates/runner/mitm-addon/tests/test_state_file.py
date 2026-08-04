@@ -143,3 +143,25 @@ def test_stat_validator_failure_closes_opened_descriptor(tmp_path):
 
     assert len(opened_fds) == 1
     _assert_descriptor_closed(opened_fds[0])
+
+
+def test_identity_setup_failure_closes_opened_descriptor(tmp_path):
+    path = tmp_path / "state.json"
+    path.write_text("{}")
+    opened_fds: list[int] = []
+    real_open = os.open
+
+    def record_open(open_path: Path, flags: int) -> int:
+        fd = real_open(open_path, flags)
+        opened_fds.append(fd)
+        return fd
+
+    with (
+        patch.object(state_file.os, "open", side_effect=record_open),
+        patch.object(state_file.Path, "absolute", side_effect=OSError("absolute failed")),
+        pytest.raises(OSError, match="absolute failed"),
+    ):
+        state_file.open_state_file(path, description="test state")
+
+    assert len(opened_fds) == 1
+    _assert_descriptor_closed(opened_fds[0])

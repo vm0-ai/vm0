@@ -74,22 +74,21 @@ def open_state_file(
     fd = os.open(path, flags)
     try:
         st = _validate_opened_file(fd, path, description, validate_stat)
+        return OpenedStateFile(
+            fd=fd,
+            path=path,
+            description=description,
+            identity=StateFileIdentity(
+                absolute_path=str(path.absolute()),
+                st_dev=st.st_dev,
+                st_ino=st.st_ino,
+                st_mtime_ns=st.st_mtime_ns,
+                st_size=st.st_size,
+            ),
+        )
     except BaseException:
         os.close(fd)
         raise
-
-    return OpenedStateFile(
-        fd=fd,
-        path=path,
-        description=description,
-        identity=StateFileIdentity(
-            absolute_path=str(path.absolute()),
-            st_dev=st.st_dev,
-            st_ino=st.st_ino,
-            st_mtime_ns=st.st_mtime_ns,
-            st_size=st.st_size,
-        ),
-    )
 
 
 def _validate_opened_file(
