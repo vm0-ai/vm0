@@ -230,7 +230,7 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
             "tokens.output": 9,
         }
 
-    def test_work_limit_accumulates_across_chunks_without_partial_usage(self):
+    def test_work_limit_discards_partial_document_and_next_extractor_recovers(self):
         extractor = create_openai_responses_json_usage_extractor()
         dense_array = b",".join([b"0"] * 40_000)
         extractor.feed(
@@ -243,3 +243,19 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
         extractor.feed(b"]}")
 
         assert extractor.finish() == (None, "work limit exceeded")
+
+        next_extractor = create_openai_responses_json_usage_extractor()
+        next_extractor.feed(
+            b'{"id":"resp_recovered","model":"gpt-5.6-sol",'
+            b'"usage":{"input_tokens":8,"output_tokens":3}}'
+        )
+
+        assert next_extractor.finish() == (
+            {
+                "message_id": "resp_recovered",
+                "model": "gpt-5.6-sol",
+                "tokens.input": 8,
+                "tokens.output": 3,
+            },
+            None,
+        )
