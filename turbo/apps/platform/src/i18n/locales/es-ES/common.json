@@ -1032,7 +1032,7 @@
     "fitAction": "Ajustar",
     "fitWindow": "Ajustar el navegador a la ventana",
     "iframeTitle": "Navegador en vivo: {{name}}",
-    "invalidLink": "Enlace del navegador inválido",
+    "notFound": "Navegador no encontrado",
     "open": "Abrir navegador de {{name}}",
     "openAction": "Abrir",
     "openNewPage": "Abre este navegador en una página nueva",

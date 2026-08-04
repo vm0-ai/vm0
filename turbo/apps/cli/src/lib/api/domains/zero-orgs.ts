@@ -30,25 +30,6 @@ export async function getZeroOrg(): Promise<OrgResponse> {
 }
 
 /**
- * Update org slug via zero API
- */
-export async function updateZeroOrg(body: {
-  slug: string;
-  force?: boolean;
-}): Promise<OrgResponse> {
-  const config = await getClientConfig();
-  const client = initClient(zeroOrgContract, config);
-
-  const result = await client.update({ body });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to update organization");
-}
-
-/**
  * List all accessible orgs.
  */
 export async function listZeroOrgs(): Promise<OrgListResponse> {

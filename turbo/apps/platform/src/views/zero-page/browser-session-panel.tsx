@@ -157,7 +157,7 @@ function PanelMessage({
 }: {
   readonly icon: ReactNode;
   readonly title: string;
-  readonly description: string;
+  readonly description?: string;
   readonly action?: ReactNode;
   readonly className?: string;
 }) {
@@ -170,11 +170,60 @@ function PanelMessage({
     >
       {icon}
       <p className="text-sm font-medium text-foreground">{title}</p>
-      <p className="max-w-md text-xs leading-5 text-muted-foreground">
-        {description}
-      </p>
+      {description ? (
+        <p className="max-w-md text-xs leading-5 text-muted-foreground">
+          {description}
+        </p>
+      ) : null}
       {action}
     </div>
+  );
+}
+
+export function BrowserSessionNotFound() {
+  const { t } = useTranslation();
+  return (
+    <PanelFrame>
+      <PanelMessage
+        icon={<IconBrowserOff size={26} className="text-muted-foreground" />}
+        title={t(($) => {
+          return $.browserSession.notFound;
+        })}
+      />
+    </PanelFrame>
+  );
+}
+
+export function BrowserSessionLoading() {
+  const { t } = useTranslation();
+  return (
+    <PanelFrame>
+      <div role="status" className="flex flex-1 items-center justify-center">
+        <IconLoader2 className="animate-spin text-muted-foreground" size={20} />
+        <span className="sr-only">
+          {t(($) => {
+            return $.browserSession.status.starting;
+          })}
+        </span>
+      </div>
+    </PanelFrame>
+  );
+}
+
+export function BrowserSessionUnavailable() {
+  const { t } = useTranslation();
+  return (
+    <PanelFrame>
+      <PanelMessage
+        icon={<IconBrowserOff size={26} className="text-muted-foreground" />}
+        title={t(($) => {
+          return $.browserSession.unavailable.title;
+        })}
+        description={t(($) => {
+          return $.browserSession.unavailable.description;
+        })}
+      />
+    </PanelFrame>
   );
 }
 
@@ -365,36 +414,10 @@ export function BrowserSessionPanel({
   const pageSignal = useGet(pageSignal$);
 
   if (sessionLoadable.state === "loading") {
-    return (
-      <PanelFrame>
-        <div role="status" className="flex flex-1 items-center justify-center">
-          <IconLoader2
-            className="animate-spin text-muted-foreground"
-            size={20}
-          />
-          <span className="sr-only">
-            {t(($) => {
-              return $.browserSession.status.starting;
-            })}
-          </span>
-        </div>
-      </PanelFrame>
-    );
+    return <BrowserSessionLoading />;
   }
   if (sessionLoadable.state === "hasError") {
-    return (
-      <PanelFrame>
-        <PanelMessage
-          icon={<IconBrowserOff size={26} className="text-muted-foreground" />}
-          title={t(($) => {
-            return $.browserSession.unavailable.title;
-          })}
-          description={t(($) => {
-            return $.browserSession.unavailable.description;
-          })}
-        />
-      </PanelFrame>
-    );
+    return <BrowserSessionUnavailable />;
   }
 
   const session = sessionLoadable.data;

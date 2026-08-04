@@ -2462,7 +2462,10 @@ describe("CHAT-02: model-first provider policies", () => {
       prompt: "run with DeepSeek Responses",
       model: "deepseek-v4-flash",
     });
-    const { claim } = await claimChatRun(runnerGroup, run.runId);
+    const { claim, sandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      run.runId,
+    );
     const environment = claimEnvironment(claim);
 
     expect(claim.cliAgentType).toBe("codex");
@@ -2473,7 +2476,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(environment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     expect(environment.ANTHROPIC_MODEL).toBeUndefined();
     expect(claim.codexRuntimeConfig).toMatchObject({
-      providerId: "vm0-model",
+      providerId: "deepseek-codex",
       name: "DeepSeek",
       baseUrl: "https://api.deepseek.com",
       envKey: "OPENAI_API_KEY",
@@ -2490,7 +2493,33 @@ describe("CHAT-02: model-first provider policies", () => {
       },
     });
 
-    await cancelChatRun(actor, run.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      cliAgentType: "codex",
+    });
+
+    const followUp = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "continue with DeepSeek Responses",
+    });
+    const { claim: followUpClaim } = await claimChatRun(
+      runnerGroup,
+      followUp.runId,
+    );
+    const followUpEnvironment = claimEnvironment(followUpClaim);
+    expect(followUpClaim.cliAgentType).toBe("codex");
+    expect(followUpClaim.resumeSession?.sessionId).toBe(`bdd-cli-${run.runId}`);
+    expect(followUpClaim.codexRuntimeConfig?.providerId).toBe("deepseek-codex");
+    expect(followUpEnvironment.OPENAI_API_KEY).toBe(
+      modelProviderSecretPlaceholder("deepseek-codex", "DEEPSEEK_API_KEY"),
+    );
+    expect(followUpEnvironment.OPENAI_BASE_URL).toBe(
+      "https://api.deepseek.com",
+    );
+    expect(followUpEnvironment.OPENAI_MODEL).toBe("deepseek-v4-flash");
+
+    await cancelChatRun(actor, followUp.runId);
   });
 
   it("resolves an unchanged existing thread without waiting for its row lock", async () => {

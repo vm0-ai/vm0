@@ -354,11 +354,7 @@ describe("ORG-01 and ORG-02", () => {
         { actor: member, role: "org:member" },
       ],
     });
-    const updated = await api.updateOrg(admin, {
-      slug: nextSlug,
-      name: "BDD Org Updated",
-      force: true,
-    });
+    const updated = await api.updateOrg(admin, { name: "BDD Org Updated" });
     expect(updated).toMatchObject({
       slug: nextSlug,
       name: "BDD Org Updated",
@@ -381,7 +377,7 @@ describe("ORG-01 and ORG-02", () => {
     });
     const memberUpdate = await api.requestUpdateOrg(
       member,
-      { force: false, name: "Member Update" },
+      { name: "Member Update" },
       [403],
     );
     expectApiError(memberUpdate.body);

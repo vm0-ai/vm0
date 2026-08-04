@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.372.2](https://github.com/vm0-ai/vm0/compare/api-v1.372.1...api-v1.372.2) (2026-08-04)
+
+
+### Refactoring
+
+* **org:** confirm workspace deletion with a literal and drop the cli delete command ([#25002](https://github.com/vm0-ai/vm0/issues/25002)) ([1a21a62](https://github.com/vm0-ai/vm0/commit/1a21a628d642e86840ee3739ccb86fcbffd8dd02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.1
+    * @vm0/core bumped to 8.509.0
+    * @vm0/db bumped to 1.163.13
+
 ## [1.372.1](https://github.com/vm0-ai/vm0/compare/api-v1.372.0...api-v1.372.1) (2026-08-04)
 
 

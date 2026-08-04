@@ -3,15 +3,15 @@ import { createElement } from "react";
 
 import { BrowserSessionPage } from "../../views/browser-session/browser-session-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import {
-  createBrowserSessionSignals,
-  parseBrowserSessionUrl,
-} from "../chat-page/browser-session-block.ts";
+import { parseBrowserSessionUrl } from "../chat-page/browser-session-block.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { setBrowserSessionPageSignals$ } from "./browser-session-page-state.ts";
+import {
+  createBrowserSessionPageSignals,
+  setBrowserSessionPageSignals$,
+} from "./browser-session-page-state.ts";
 import { i18n } from "../../i18n/index.ts";
 
 export const setupBrowserSessionPage$ = command(
@@ -20,7 +20,7 @@ export const setupBrowserSessionPage$ = command(
     const descriptor = parseBrowserSessionUrl(`/browsers/${threadId}`);
     set(
       setBrowserSessionPageSignals$,
-      descriptor ? createBrowserSessionSignals(descriptor.threadId) : null,
+      descriptor ? createBrowserSessionPageSignals(descriptor.threadId) : null,
     );
     set(updatePage$, createElement(BrowserSessionPage), "minimal");
     set(

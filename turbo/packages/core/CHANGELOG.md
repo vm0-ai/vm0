@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.509.0](https://github.com/vm0-ai/vm0/compare/core-v8.508.2...core-v8.509.0) (2026-08-04)
+
+
+### Features
+
+* **core:** enable google contacts and forms connectors globally ([#24986](https://github.com/vm0-ai/vm0/issues/24986)) ([ecca7e1](https://github.com/vm0-ai/vm0/commit/ecca7e1f1b55b3dd80dcf9c98ff1fcacdd7a09f9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.1
+
 ## [8.508.2](https://github.com/vm0-ai/vm0/compare/core-v8.508.1...core-v8.508.2) (2026-08-04)
 
 

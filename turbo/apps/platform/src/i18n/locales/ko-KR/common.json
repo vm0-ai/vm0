@@ -1010,7 +1010,7 @@
     "fitAction": "맞춤",
     "fitWindow": "브라우저 창에 맞춤",
     "iframeTitle": "라이브 브라우저: {{name}}",
-    "invalidLink": "잘못된 브라우저 링크",
+    "notFound": "브라우저를 찾을 수 없습니다",
     "open": "{{name}} 브라우저 열기",
     "openAction": "열기",
     "openNewPage": "이 브라우저를 새 페이지에서 열기",

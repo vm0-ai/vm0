@@ -1010,7 +1010,7 @@
     "fitAction": "合わせる",
     "fitWindow": "ブラウザをウィンドウに合わせる",
     "iframeTitle": "ライブブラウザ: {{name}}",
-    "invalidLink": "無効なブラウザリンク",
+    "notFound": "ブラウザが見つかりません",
     "open": "{{name}} ブラウザを開きます",
     "openAction": "開く",
     "openNewPage": "このブラウザを新しいページで開く",
