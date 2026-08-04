@@ -1259,10 +1259,10 @@ type PermanentFunction = {
 const EXPECTED_PERMANENT_TRIGGERS = [
   {
     definition:
-      "CREATE TRIGGER bridge_invalidated_goal_continuation_0828 BEFORE INSERT ON public.chat_events FOR EACH ROW WHEN (((new.event_type = 'input.rejected'::text) AND (new.error = 'Goal continuation no longer matches the active goal'::text))) EXECUTE FUNCTION bridge_invalidated_goal_continuation_0828()",
+      "CREATE TRIGGER bridge_invalidated_goal_continuation_0829 BEFORE INSERT ON public.chat_events FOR EACH ROW WHEN (((new.event_type = 'input.rejected'::text) AND (new.error = 'Goal continuation no longer matches the active goal'::text))) EXECUTE FUNCTION bridge_invalidated_goal_continuation_0829()",
     schemaName: "public",
     tableName: "chat_events",
-    triggerName: "bridge_invalidated_goal_continuation_0828",
+    triggerName: "bridge_invalidated_goal_continuation_0829",
   },
   {
     definition:
@@ -1423,7 +1423,7 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   },
   {
     bodyHash: "14663ff71eec325962f2784692c96937",
-    functionName: "bridge_invalidated_goal_continuation_0828",
+    functionName: "bridge_invalidated_goal_continuation_0829",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -3584,9 +3584,9 @@ async function validateTeamsMessageFileScopeBackfill(): Promise<void> {
 }
 
 const INVALIDATED_GOAL_CONTINUATION_PREVIOUS_MIGRATION =
-  "0827_add_image_task_usage_pricing";
+  "0828_migrate_legacy_deepseek_state";
 const INVALIDATED_GOAL_CONTINUATION_MIGRATION =
-  "0828_revoke_invalidated_goal_continuations";
+  "0829_revoke_invalidated_goal_continuations";
 
 async function validateInvalidatedGoalContinuationCleanup(): Promise<void> {
   console.log("=== Validate invalidated goal continuation cleanup ===\n");
