@@ -288,14 +288,15 @@ def classify_includes_bucket(key: str) -> str | None:
 # "could X auto-link this?" boolean, not link indices.  Keep protocol
 # matching case-insensitive and preserve twitter-text-style boundary
 # guards so emails, mentions, hashtags and cashtags do not look like
-# scheme-less URLs.  Candidate extraction stays greedy; classification
-# recognizes a valid TLD at its own boundary before later text can
-# invalidate the URL prefix.
+# scheme-less URLs.  Candidate extraction starts only at Unicode-label
+# boundaries and stays greedy; classification recognizes a valid TLD at
+# its own boundary before later text can invalidate the URL prefix.
 _URL_PRECEDING_CHARS = r"A-Za-z0-9@\uFF20$#\uFF03"
 _URL_WITH_PROTOCOL_RE = re.compile(rf"(?<![{_URL_PRECEDING_CHARS}])https?://", re.IGNORECASE)
 _DOMAIN_CODEPOINT = r"[^\W_]"
 _DOMAIN_CANDIDATE_CHAR = rf"(?:{_DOMAIN_CODEPOINT}|-)"
 _BARE_DOMAIN_CANDIDATE_RE = re.compile(
+    rf"(?<!{_DOMAIN_CODEPOINT})"
     rf"(?<![{_URL_PRECEDING_CHARS}._/-])"
     rf"({_DOMAIN_CANDIDATE_CHAR}+(?:\.{_DOMAIN_CANDIDATE_CHAR}+)+)",
     re.IGNORECASE,
