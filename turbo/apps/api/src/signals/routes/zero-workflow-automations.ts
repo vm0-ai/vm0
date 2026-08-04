@@ -11,13 +11,16 @@ import {
   badRequestMessage,
   conflict,
   notFound,
+  providerUnavailable,
   teamRequired,
 } from "../../lib/error";
+import { logger } from "../../lib/log";
 import {
   childAutonomyBudget,
   loadOwnedRunAutonomyBudget,
 } from "../services/autonomy-budget.service";
 import { autonomyBudgetSchemaAvailable } from "../services/autonomy-budget-schema.service";
+import { evaluateSlackUserMentionedAutomation } from "../services/slack-workflow-automation.service";
 import {
   loadVisibleWorkflowById,
   type WorkflowMember,
@@ -37,6 +40,8 @@ import {
   type AutomationResult,
 } from "../services/zero-workflow-automation.service";
 import type { RouteEntry, SignalRouteHandler } from "../route-entry";
+
+const log = logger("api:zero:workflow-automation-slack-readiness");
 
 const workflowAutomationReadAuth = {
   requireOrganization: true,
@@ -219,6 +224,56 @@ const getAutomationInner$ = computed(async (get) => {
   }
   return { status: 200 as const, body: automation };
 });
+
+const getSlackReadinessInner$ = command(
+  async ({ get }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(
+      pathParamsOf(zeroWorkflowAutomationsContract.getSlackReadiness),
+    );
+    const db = get(db$);
+    const member = memberFromAuth(auth);
+    const automation = await getWorkflowAutomation(db, {
+      orgId: auth.orgId,
+      member,
+      automationId: params.id,
+    });
+    signal.throwIfAborted();
+    if (
+      !automation ||
+      automation.kind !== "event" ||
+      automation.eventType !== "slack-user-mentioned"
+    ) {
+      return notFound("Workflow automation not found");
+    }
+
+    const evaluation = await evaluateSlackUserMentionedAutomation(db, {
+      orgId: auth.orgId,
+      ownerUserId: automation.ownerUserId,
+      callerUserId: auth.userId,
+      callerIsAdmin: member.role === "admin",
+      channel: {
+        kind: "persisted-id",
+        value: automation.eventConfig.channel.id,
+      },
+      signal,
+    });
+    signal.throwIfAborted();
+    if (evaluation.kind === "retryable-error") {
+      log.warn("Slack workflow automation readiness check failed", {
+        automationId: automation.id,
+        error:
+          evaluation.error instanceof Error
+            ? evaluation.error.message
+            : String(evaluation.error),
+      });
+      return providerUnavailable(
+        "Slack readiness is temporarily unavailable. Try again shortly.",
+      );
+    }
+    return { status: 200 as const, body: evaluation.readiness };
+  },
+);
 
 const revealWebhookSecretInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -415,6 +470,10 @@ const workflowAutomationRouteHandlers: Readonly<
   list: authRoute(workflowAutomationReadAuth, listAutomationsInner$),
   create: authRoute(workflowWriteAuth, createAutomationInner$),
   get: authRoute(workflowAutomationReadAuth, getAutomationInner$),
+  getSlackReadiness: authRoute(
+    workflowAutomationReadAuth,
+    getSlackReadinessInner$,
+  ),
   update: authRoute(workflowWriteAuth, updateAutomationInner$),
   delete: authRoute(workflowWriteAuth, deleteAutomationInner$),
   enable: authRoute(workflowWriteAuth, enableAutomationInner$),
@@ -443,6 +502,10 @@ export const zeroWorkflowAutomationsRoutes: readonly RouteEntry[] = [
   {
     route: zeroWorkflowAutomationsContract.get,
     handler: workflowAutomationRouteHandlers.get,
+  },
+  {
+    route: zeroWorkflowAutomationsContract.getSlackReadiness,
+    handler: workflowAutomationRouteHandlers.getSlackReadiness,
   },
   {
     route: zeroWorkflowAutomationsContract.update,

@@ -1728,7 +1728,7 @@ describe("zero workflow automations", () => {
     );
     await setSlackUserMentionAutomationsEnabled(scenario, true);
 
-    configureSlackConversations([]);
+    configureSlackConversations([{ id: "C_OTHER", name: "C_NEW" }]);
     const inaccessibleEnable = await accept(
       automationsClient().enable({
         headers: authHeaders(),

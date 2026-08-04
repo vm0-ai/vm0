@@ -7,6 +7,7 @@ import {
   googleMeetTranscriptGeneratedEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
+  slackUserMentionedAutomationReadinessResponseSchema,
   slackUserMentionedEventConfigSchema,
   chatThreadWorkflowAutomationSchema,
   zeroWorkflowConnectorReadinessResponseSchema,
@@ -14,6 +15,7 @@ import {
   zeroWorkflowAutomationCreateRequestSchema,
   zeroWorkflowAutomationSummarySchema,
   zeroWorkflowAutomationUpdateRequestSchema,
+  type SlackUserMentionedAutomationReadinessResponse,
 } from "../zero-workflows";
 
 describe("Slack user-mentioned workflow automation contract", () => {
@@ -124,6 +126,158 @@ describe("Slack user-mentioned workflow automation contract", () => {
         },
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("Slack user-mentioned automation readiness contract", () => {
+  const message = "Slack setup state";
+  const installAction = {
+    kind: "install",
+    label: "Install Slack",
+    url: "https://app.vm0.test/slack/install",
+  } as const;
+  const connectAction = {
+    kind: "connect",
+    label: "Connect Slack",
+    url: "https://app.vm0.test/slack/connect",
+  } as const;
+  const reinstallAction = {
+    kind: "reinstall",
+    label: "Update permissions",
+    url: "https://app.vm0.test/slack/reinstall",
+  } as const;
+
+  it("accepts every valid status, reason, and action combination", () => {
+    const responses = [
+      {
+        eventType: "slack-user-mentioned",
+        status: "ready",
+        reason: null,
+        message,
+        action: null,
+      },
+      {
+        eventType: "slack-user-mentioned",
+        status: "unavailable",
+        reason: "feature-disabled",
+        message,
+        action: null,
+      },
+      {
+        eventType: "slack-user-mentioned",
+        status: "unavailable",
+        reason: "database-upgrade",
+        message,
+        action: null,
+      },
+      {
+        eventType: "slack-user-mentioned",
+        status: "setup-required",
+        reason: "not-installed",
+        message,
+        action: installAction,
+      },
+      {
+        eventType: "slack-user-mentioned",
+        status: "setup-required",
+        reason: "not-installed",
+        message,
+        action: null,
+      },
+      {
+        eventType: "slack-user-mentioned",
+        status: "setup-required",
+        reason: "owner-not-connected",
+        message,
+        action: connectAction,
+      },
+      {
+        eventType: "slack-user-mentioned",
+        status: "setup-required",
+        reason: "owner-not-connected",
+        message,
+        action: null,
+      },
+      {
+        eventType: "slack-user-mentioned",
+        status: "setup-required",
+        reason: "scope-mismatch",
+        message,
+        action: reinstallAction,
+      },
+      {
+        eventType: "slack-user-mentioned",
+        status: "setup-required",
+        reason: "scope-mismatch",
+        message,
+        action: null,
+      },
+      {
+        eventType: "slack-user-mentioned",
+        status: "setup-required",
+        reason: "channel-unavailable",
+        message,
+        action: null,
+      },
+    ] as const satisfies readonly SlackUserMentionedAutomationReadinessResponse[];
+
+    for (const response of responses) {
+      expect(
+        slackUserMentionedAutomationReadinessResponseSchema.parse(response),
+      ).toStrictEqual(response);
+    }
+  });
+
+  it("rejects unknown fields, enum values, and mismatched actions", () => {
+    const ready = {
+      eventType: "slack-user-mentioned",
+      status: "ready",
+      reason: null,
+      message,
+      action: null,
+    } as const;
+    const invalidResponses: readonly unknown[] = [
+      { ...ready, extra: true },
+      { ...ready, eventType: "slack-user-mentioned-v2" },
+      { ...ready, status: "pending" },
+      { ...ready, reason: "not-installed" },
+      {
+        ...ready,
+        status: "setup-required",
+        reason: "unknown-reason",
+      },
+      {
+        ...ready,
+        status: "setup-required",
+        reason: "not-installed",
+        action: connectAction,
+      },
+      {
+        ...ready,
+        status: "setup-required",
+        reason: "owner-not-connected",
+        action: { ...connectAction, extra: true },
+      },
+      {
+        ...ready,
+        status: "setup-required",
+        reason: "scope-mismatch",
+        action: { ...reinstallAction, kind: "upgrade" },
+      },
+      {
+        ...ready,
+        status: "setup-required",
+        reason: "channel-unavailable",
+        action: installAction,
+      },
+    ];
+
+    for (const response of invalidResponses) {
+      expect(
+        slackUserMentionedAutomationReadinessResponseSchema.safeParse(response)
+          .success,
+      ).toBe(false);
+    }
   });
 });
 

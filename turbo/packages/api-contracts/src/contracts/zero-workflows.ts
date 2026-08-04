@@ -638,6 +638,131 @@ export type SlackUserMentionedEventCreateConfig = z.infer<
   typeof slackUserMentionedEventCreateConfigSchema
 >;
 
+const slackUserMentionedAutomationInstallActionSchema = z
+  .object({
+    kind: z.literal("install"),
+    label: z.string().min(1),
+    url: z.url(),
+  })
+  .strict();
+
+const slackUserMentionedAutomationConnectActionSchema = z
+  .object({
+    kind: z.literal("connect"),
+    label: z.string().min(1),
+    url: z.url(),
+  })
+  .strict();
+
+const slackUserMentionedAutomationReinstallActionSchema = z
+  .object({
+    kind: z.literal("reinstall"),
+    label: z.string().min(1),
+    url: z.url(),
+  })
+  .strict();
+
+export const slackUserMentionedAutomationReadinessActionSchema = z.union([
+  slackUserMentionedAutomationInstallActionSchema,
+  slackUserMentionedAutomationConnectActionSchema,
+  slackUserMentionedAutomationReinstallActionSchema,
+]);
+export type SlackUserMentionedAutomationReadinessAction = z.infer<
+  typeof slackUserMentionedAutomationReadinessActionSchema
+>;
+
+const slackUserMentionedAutomationReadySchema = z
+  .object({
+    eventType: z.literal("slack-user-mentioned"),
+    status: z.literal("ready"),
+    reason: z.null(),
+    message: z.string().min(1),
+    action: z.null(),
+  })
+  .strict();
+
+const slackUserMentionedAutomationFeatureDisabledSchema = z
+  .object({
+    eventType: z.literal("slack-user-mentioned"),
+    status: z.literal("unavailable"),
+    reason: z.literal("feature-disabled"),
+    message: z.string().min(1),
+    action: z.null(),
+  })
+  .strict();
+
+const slackUserMentionedAutomationDatabaseUpgradeSchema = z
+  .object({
+    eventType: z.literal("slack-user-mentioned"),
+    status: z.literal("unavailable"),
+    reason: z.literal("database-upgrade"),
+    message: z.string().min(1),
+    action: z.null(),
+  })
+  .strict();
+
+const slackUserMentionedAutomationNotInstalledSchema = z
+  .object({
+    eventType: z.literal("slack-user-mentioned"),
+    status: z.literal("setup-required"),
+    reason: z.literal("not-installed"),
+    message: z.string().min(1),
+    action: z.union([
+      slackUserMentionedAutomationInstallActionSchema,
+      z.null(),
+    ]),
+  })
+  .strict();
+
+const slackUserMentionedAutomationOwnerNotConnectedSchema = z
+  .object({
+    eventType: z.literal("slack-user-mentioned"),
+    status: z.literal("setup-required"),
+    reason: z.literal("owner-not-connected"),
+    message: z.string().min(1),
+    action: z.union([
+      slackUserMentionedAutomationConnectActionSchema,
+      z.null(),
+    ]),
+  })
+  .strict();
+
+const slackUserMentionedAutomationScopeMismatchSchema = z
+  .object({
+    eventType: z.literal("slack-user-mentioned"),
+    status: z.literal("setup-required"),
+    reason: z.literal("scope-mismatch"),
+    message: z.string().min(1),
+    action: z.union([
+      slackUserMentionedAutomationReinstallActionSchema,
+      z.null(),
+    ]),
+  })
+  .strict();
+
+const slackUserMentionedAutomationChannelUnavailableSchema = z
+  .object({
+    eventType: z.literal("slack-user-mentioned"),
+    status: z.literal("setup-required"),
+    reason: z.literal("channel-unavailable"),
+    message: z.string().min(1),
+    action: z.null(),
+  })
+  .strict();
+
+export const slackUserMentionedAutomationReadinessResponseSchema = z.union([
+  slackUserMentionedAutomationReadySchema,
+  slackUserMentionedAutomationFeatureDisabledSchema,
+  slackUserMentionedAutomationDatabaseUpgradeSchema,
+  slackUserMentionedAutomationNotInstalledSchema,
+  slackUserMentionedAutomationOwnerNotConnectedSchema,
+  slackUserMentionedAutomationScopeMismatchSchema,
+  slackUserMentionedAutomationChannelUnavailableSchema,
+]);
+export type SlackUserMentionedAutomationReadinessResponse = z.infer<
+  typeof slackUserMentionedAutomationReadinessResponseSchema
+>;
+
 export const notionPageContentUpdatedEventCreateConfigSchema = z
   .object({
     provider: z.literal("notion"),
@@ -1775,6 +1900,20 @@ export const zeroWorkflowAutomationsContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get a workflow automation",
+  },
+  getSlackReadiness: {
+    method: "GET",
+    path: "/api/zero/workflow-automations/:id/slack-readiness",
+    headers: authHeadersSchema,
+    pathParams: automationIdParams,
+    responses: {
+      200: slackUserMentionedAutomationReadinessResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Get Slack readiness for a workflow automation",
   },
   update: {
     method: "PATCH",

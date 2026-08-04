@@ -7,7 +7,10 @@ import { describe, expect, it } from "vitest";
 
 import { db } from "../../../lib/db";
 import { slackUserMentionedAutomationSchemaAvailable } from "../slack-workflow-automation-schema.service";
-import { prepareSlackUserMentionedEventConfigForPersist } from "../slack-workflow-automation.service";
+import {
+  evaluateSlackUserMentionedAutomation,
+  prepareSlackUserMentionedEventConfigForPersist,
+} from "../slack-workflow-automation.service";
 
 describe("Slack workflow automation rollout compatibility", () => {
   it("blocks preparation until the automation constraint supports Slack", async () => {
@@ -51,6 +54,26 @@ describe("Slack workflow automation rollout compatibility", () => {
           slackUserMentionedAutomationSchemaAvailable(tx),
         ).resolves.toBeTruthy();
         await expect(
+          evaluateSlackUserMentionedAutomation(tx, {
+            orgId,
+            ownerUserId: userId,
+            callerUserId: userId,
+            callerIsAdmin: false,
+            channel: { kind: "persisted-id", value: "C_GENERAL" },
+            signal,
+          }),
+        ).resolves.toStrictEqual({
+          kind: "not-installed",
+          readiness: {
+            eventType: "slack-user-mentioned",
+            status: "setup-required",
+            reason: "not-installed",
+            message:
+              "Install the Zero Slack App before this automation can run.",
+            action: null,
+          },
+        });
+        await expect(
           prepareSlackUserMentionedEventConfigForPersist(tx, preparationArgs),
         ).resolves.toStrictEqual({
           kind: "bad-request",
@@ -91,6 +114,26 @@ describe("Slack workflow automation rollout compatibility", () => {
         await expect(
           slackUserMentionedAutomationSchemaAvailable(tx),
         ).resolves.toBeFalsy();
+        await expect(
+          evaluateSlackUserMentionedAutomation(tx, {
+            orgId,
+            ownerUserId: userId,
+            callerUserId: userId,
+            callerIsAdmin: false,
+            channel: { kind: "persisted-id", value: "C_GENERAL" },
+            signal,
+          }),
+        ).resolves.toStrictEqual({
+          kind: "database-upgrade",
+          readiness: {
+            eventType: "slack-user-mentioned",
+            status: "unavailable",
+            reason: "database-upgrade",
+            message:
+              "Slack user-mentioned automations are temporarily unavailable while the database upgrade completes. Try again shortly.",
+            action: null,
+          },
+        });
         await expect(
           prepareSlackUserMentionedEventConfigForPersist(tx, preparationArgs),
         ).resolves.toStrictEqual({

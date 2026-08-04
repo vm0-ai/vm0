@@ -92,7 +92,10 @@ import {
   prepareNotionPageContentUpdatedEventConfigForPersist,
 } from "./notion-workflow-event.service";
 import { notionWorkflowAutomationCreationEnabledForOwner } from "./notion-workflow-automation-feature-switch.service";
-import { prepareSlackUserMentionedEventConfigForPersist } from "./slack-workflow-automation.service";
+import {
+  prepareSlackUserMentionedEventConfigForPersist,
+  validatePersistedSlackUserMentionedAutomationForMutation,
+} from "./slack-workflow-automation.service";
 import { lockWorkflowWebhookAutomationTierEligibleForOrg } from "./workflow-webhook-automation-entitlement.service";
 import {
   buildWorkflowWebhookSummaryFields,
@@ -2934,17 +2937,17 @@ const ensureEventAutomationCanBeEnabled$ = command(
         args.automation.eventConfig,
       );
       const preparedConfig =
-        await prepareSlackUserMentionedEventConfigForPersist(args.db, {
-          orgId: args.orgId,
-          userId: args.member.userId,
-          isAdmin: args.member.role === "admin",
-          eventConfig: {
-            provider: "slack",
-            event: "user_mentioned",
-            channel: storedConfig.channel.id,
+        await validatePersistedSlackUserMentionedAutomationForMutation(
+          args.db,
+          {
+            orgId: args.orgId,
+            ownerUserId: args.automation.ownerUserId,
+            callerUserId: args.member.userId,
+            callerIsAdmin: args.member.role === "admin",
+            channelId: storedConfig.channel.id,
+            signal,
           },
-          signal,
-        });
+        );
       signal.throwIfAborted();
       return preparedConfig.kind === "ok" ? null : preparedConfig;
     }
