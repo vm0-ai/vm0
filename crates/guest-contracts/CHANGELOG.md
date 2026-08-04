@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.4...guest-contracts-v0.5.5) (2026-08-04)
+
+
+### Bug Fixes
+
+* **rust:** distinguish direct sigkill from escalation ([#24976](https://github.com/vm0-ai/vm0/issues/24976)) ([6aa72d7](https://github.com/vm0-ai/vm0/commit/6aa72d7955c92e9c5dc475e6060a00b703e1da63))
+
 ## [0.5.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.3...guest-contracts-v0.5.4) (2026-08-03)
 
 
