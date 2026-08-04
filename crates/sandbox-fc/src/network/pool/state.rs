@@ -146,6 +146,7 @@ struct NetnsPoolState {
     /// Cleanup keeps this ownership marker until the bounded firewall delete
     /// completes so cancellation cannot silently orphan the rules.
     dns_input_filter_comment: Option<String>,
+    /// Background creation failure retained until no ready entry can satisfy an acquire.
     creation_failure: Option<NetworkError>,
     default_iface: String,
     ops: NetnsLifecycleOps,
@@ -604,9 +605,7 @@ impl NetnsPoolState {
                     error = %e,
                     "background namespace creation failed"
                 );
-                if !queue_when_inactive
-                    && matches!(self.dns_readiness_state, DnsReadinessState::Ready)
-                {
+                if !queue_when_inactive {
                     self.creation_failure = Some(e);
                 }
             }
@@ -614,6 +613,13 @@ impl NetnsPoolState {
     }
 
     fn prepare_acquire(&mut self) -> Result<AcquirePlan> {
+        self.prepare_acquire_with(Self::spawn_creation_for_kind)
+    }
+
+    fn prepare_acquire_with(
+        &mut self,
+        mut spawn: impl FnMut(&mut Self, NetnsKind) -> Result<()>,
+    ) -> Result<AcquirePlan> {
         loop {
             if !self.active {
                 return Err(NetworkError::PoolNotActive);
@@ -637,7 +643,7 @@ impl NetnsPoolState {
 
             let kind = self.active_kind();
             if self.pending_set(kind).is_empty() {
-                self.spawn_creation(kind)?;
+                spawn(self, kind)?;
             }
 
             let (delete, waiter) = self.prepare_completion_wait(false);
@@ -1931,6 +1937,45 @@ mod tests {
                 && state.next_ns_index == 7
         }));
         pool.cleanup().await.unwrap();
+    }
+
+    #[test]
+    fn not_required_acquire_returns_creation_failure_without_retrying() {
+        let mut state = NetnsPoolState::inactive_for_test();
+        state.active = true;
+        state.next_ns_index = 7;
+        let mut attempts = 0;
+
+        let error = match state.prepare_acquire_with(|state, kind| {
+            assert_eq!(kind, NetnsKind::Plain);
+            state.reserve_ns_index()?;
+            attempts += 1;
+            let id = state.reserve_pending_id();
+            state.pending_set_mut(kind).insert(id);
+            state.completion.enqueue_for_test(CreationCompletion {
+                id,
+                kind,
+                result: Err(NetworkError::Prerequisite(
+                    "injected plain namespace creation failure".into(),
+                )),
+            });
+            Ok(())
+        }) {
+            Ok(_) => panic!("acquire planning should return the creation failure"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(
+            error,
+            NetworkError::Prerequisite(message)
+                if message == "injected plain namespace creation failure"
+        ));
+        assert_eq!(attempts, 1);
+        assert_eq!(state.next_ns_index, 8);
+        assert!(state.pending_plain.is_empty());
+        assert!(state.pending_proxy.is_empty());
+        assert!(state.plain_queue.is_empty());
+        assert!(state.proxy_queue.is_empty());
     }
 
     #[tokio::test]

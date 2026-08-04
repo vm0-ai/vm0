@@ -65,13 +65,13 @@ export function chatEventTerminalPredicate(eventType: SQLWrapper): SQL {
  * leaves the queue. Event-backed rows are one row per assistant-visible agent
  * output event; result-only CLI output can be projected from a terminal
  * "result" event. Failed runs append an assistant row carrying the terminal
- * error message. Event-backed rows are keyed by `(run_id, sequence_number)` for
- * idempotent, lock-free inserts from both the event consumer and the callback's
- * final sweep.
+ * error message. `run_event_sequence_number` is the upstream run-event
+ * coordinate used for reconciliation and final-answer selection. The
+ * deterministic primary key derived from `run_event_id` is the first
+ * deduplication guard; `(run_id, run_event_sequence_number)` is a second guard.
  *
- * Terminal-state assistant rows carry `run_lifecycle_event` set to one of
- * `completed | failed | cancelled`. Exactly one such row exists per `run_id`;
- * the indicator and dim finish line are derived from this row.
+ * Terminal-state assistant rows use the `run.completed | run.failed |
+ * run.cancelled` event types.
  *
  * Summaries (tool-use activity) are NOT stored here — the client fetches
  * them in real-time from the telemetry/logs endpoint for active runs.
@@ -99,8 +99,7 @@ export const chatEvents = pgTable(
       { onDelete: "no action" },
     ),
     interruptsRunId: uuid("interrupts_run_id"),
-    // Stable grouping key for repeated automation/workflow/goal-triggered
-    // runs rendered in a chat thread.
+    // Stable grouping key for autonomous goal continuations rendered in chat.
     runGroupId: uuid("run_group_id"),
     eventType: text("event_type").$type<ChatEventType>().notNull(),
     /**
@@ -118,8 +117,10 @@ export const chatEvents = pgTable(
       | "teams"
       | "telegram"
       | "github"
+      | "agentphone"
       | "automation"
       | "goal"
+      | "morning_brief"
     >(),
     contextId: uuid("context_id"),
     triggerSource: text("trigger_source").$type<TriggerSource>(),
@@ -128,10 +129,15 @@ export const chatEvents = pgTable(
     userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),
     thinking: text("thinking"),
     error: text("error"),
-    /** "completed" | "failed" | "cancelled"; null for non-terminal rows. */
-    runLifecycleEvent: text("run_lifecycle_event"),
-    sequenceNumber: integer("sequence_number"),
-    runEventId: text("run_event_id"), // Anthropic message ID from event.message.id (e.g. "msg_01abc...")
+    activeInputSequence: integer("active_input_sequence"),
+    runEventSequenceNumber: integer("run_event_sequence_number"),
+    /**
+     * Upstream run-event ID or a deterministic seed for synthesized rows.
+     * `queue:queued`, `queue:dequeued`, and `thinking:initial` seed stable
+     * primary keys for non-agent rows. `thinking:initial` also distinguishes
+     * our placeholder from real agent thinking stored in the same leaf.
+     */
+    runEventId: text("run_event_id"),
     /** Strictly increasing position within the owning chat thread. */
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
     goalEvent: jsonb("goal_event").$type<ChatEventGoalEvent>(),
@@ -150,9 +156,6 @@ export const chatEvents = pgTable(
         table.chatThreadId,
         table.createdAt,
       ),
-      index("idx_chat_events_thread_run_finish_created")
-        .on(table.chatThreadId, table.createdAt.desc())
-        .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
       index("idx_chat_events_thread_run_terminal_created")
         .on(table.chatThreadId, table.createdAt.desc())
         .where(chatEventTerminalPredicate(table.eventType)),
@@ -160,15 +163,12 @@ export const chatEvents = pgTable(
       index("chat_events_usage_run_id_idx")
         .on(table.runId)
         .where(sql`${table.usagePayload} IS NOT NULL`),
-      uniqueIndex("chat_events_revokes_event_id_unique").on(
-        table.revokesEventId,
-      ),
-      uniqueIndex("chat_events_interrupts_run_id_unique").on(
-        table.interruptsRunId,
-      ),
-      index("idx_chat_events_run_group_id")
-        .on(table.runGroupId)
-        .where(sql`${table.runGroupId} IS NOT NULL`),
+      uniqueIndex("chat_events_revokes_event_id_not_null_unique")
+        .on(table.revokesEventId)
+        .where(sql`${table.revokesEventId} IS NOT NULL`),
+      uniqueIndex("chat_events_interrupts_run_id_not_null_unique")
+        .on(table.interruptsRunId)
+        .where(sql`${table.interruptsRunId} IS NOT NULL`),
       index("chat_events_input_automation_context_idx")
         .on(table.contextId)
         .where(sql`${table.eventType} = 'input.automation'`),
@@ -177,17 +177,17 @@ export const chatEvents = pgTable(
         .where(
           sql`${table.runId} IS NULL AND ${table.eventType} IN ('input.prompt', 'input.automation', 'input.goal')`,
         ),
-      uniqueIndex("chat_events_run_seq_unique").on(
+      uniqueIndex("chat_events_run_event_seq_unique").on(
         table.runId,
-        table.sequenceNumber,
+        table.runEventSequenceNumber,
       ),
+      uniqueIndex("chat_events_run_active_input_seq_unique")
+        .on(table.runId, table.activeInputSequence)
+        .where(sql`${table.activeInputSequence} IS NOT NULL`),
       uniqueIndex("chat_events_thread_seq_unique").on(
         table.chatThreadId,
         table.seqId,
       ),
-      uniqueIndex("chat_events_run_lifecycle_unique")
-        .on(table.runId)
-        .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
       uniqueIndex("chat_events_run_terminal_unique")
         .on(table.runId)
         .where(chatEventTerminalPredicate(table.eventType)),
@@ -240,8 +240,10 @@ export const chatEvents = pgTable(
           'teams',
           'telegram',
           'github',
+          'agentphone',
           'automation',
-          'goal'
+          'goal',
+          'morning_brief'
         )`,
       ),
     ];

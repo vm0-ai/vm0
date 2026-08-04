@@ -46,9 +46,8 @@ pub struct MockSandbox {
     private_write_file_calls: Mutex<Vec<WriteFileCall>>,
     write_file_gate: Mutex<Option<MockLifecycleGate>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
-    /// Holds the stdout channel sender alive when simulating a non-closing
-    /// channel (e.g. wait_process_error override). Without this, the sender is
-    /// dropped immediately in `start_process` and the drain task exits.
+    /// Holds the stdout channel sender alive when an override requests a
+    /// non-closing process stream.
     stdout_tx: Mutex<Option<tokio::sync::mpsc::Sender<ProcessOutputChunk>>>,
 }
 
@@ -695,13 +694,12 @@ impl Sandbox for MockSandbox {
                 }
             }
         }
-        // When simulating wait_process error (timeout/crash), keep the sender
-        // alive so the stdout channel never closes — reproducing the real bug.
-        if self
-            .overrides
-            .as_ref()
-            .is_some_and(|o| o.process.wait_process_error.is_some())
-            && let Some(tx) = tx.take()
+        if self.overrides.as_ref().is_some_and(|overrides| {
+            *overrides
+                .process
+                .keep_stdout_sender_open
+                .lock_ignoring_poison()
+        }) && let Some(tx) = tx.take()
         {
             *self.stdout_tx.lock_ignoring_poison() = Some(tx);
         }
@@ -820,7 +818,7 @@ impl Sandbox for MockSandbox {
             if let Some(ref msg) = overrides.process.wait_process_error {
                 return Err(SandboxError::Operation {
                     operation: SandboxOperation::WaitProcess,
-                    reason: SandboxOperationReason::Timeout,
+                    reason: overrides.process.wait_process_error_reason,
                     message: msg.clone(),
                 });
             }

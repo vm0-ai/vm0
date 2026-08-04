@@ -80,11 +80,11 @@ import {
   hasVm0ApiKeyLabel,
   holdChatEventFixture,
   holdChatEventQueueItemFixture,
+  holdChatThreadRowLockFixture,
   holdOrgAdmissionLockFixture,
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
-  readChatEventInputParamsFixture,
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
@@ -121,7 +121,6 @@ const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_codex_service_tier",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_prepare_recent_chat_context",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_model_selection",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
@@ -133,13 +132,34 @@ const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
   "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
   "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
+  "api_dispatch_pre_create_zero_resolve_thread_session",
+] as const;
+const API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE =
+  "api_dispatch_pre_create_zero_resolve_thread_session";
+const API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE =
+  "api_dispatch_pre_create_zero_web_chat_resolve_session_prompt_context";
+const API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE =
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_persisted_model";
+const API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_session_context_parallel",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_session",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_incomplete_context",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_prepare_recent_chat_context",
+] as const;
+const API_DISPATCH_EXISTING_THREAD_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
+  API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE,
+  API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
+] as const;
+const API_DISPATCH_EXPLICIT_EXISTING_THREAD_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
+  API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
 ] as const;
 const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_entrypoint_gap",
 ] as const;
 const API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES = [
   "api_dispatch_validate_thread_session_snapshot_thread",
-  "api_dispatch_update_thread_session_binding",
 ] as const;
 const API_DISPATCH_QUEUE_FIRST_ADMISSION_ACTION_TYPES = [
   "api_dispatch_resolve_queue_first_admission",
@@ -152,10 +172,8 @@ const API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES = [
   "api_dispatch_queue_first_thread_lock_wait",
   "api_dispatch_load_thread_session_binding",
 ] as const;
-const API_DISPATCH_QUEUED_PERSISTENCE_ACTION_TYPES = [
-  "api_dispatch_persist_custom_connector_auth_refs",
-  "api_dispatch_insert_agent_run_queue",
-  "api_dispatch_count_agent_run_queue_depth",
+const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
+  "api_dispatch_persist_atomic_launch",
 ] as const;
 const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "org_id",
@@ -1019,6 +1037,10 @@ describe("CHAT-02: web chat send and client ids", () => {
       timingEvents,
       API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES,
     );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
+    );
     expect(timingEvents).toContainEqual(
       expect.objectContaining({
         op_type: "api_dispatch_prepare_run_callbacks",
@@ -1374,6 +1396,238 @@ describe("CHAT-02: interrupting active chat runs", () => {
 });
 
 describe("CHAT-02: queueing and recalling messages", () => {
+  it("sends a queued text message into a capable running chat run", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatSteer]: true },
+    );
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor active input run",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(active.runId, {
+      activeInput: true,
+    });
+    expect(claim.activeInput).toBeTruthy();
+    expect(claim.activeInputAbly).toBeTruthy();
+
+    const queuedEventId = randomUUID();
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "steer this queued message",
+        clientEventId: queuedEventId,
+      },
+      [201],
+    );
+    if (queued.status !== 201) {
+      throw new Error("Expected the queued send to be accepted");
+    }
+    expect(queued.body.runId).toBeNull();
+
+    const activeInputEventId = randomUUID();
+    context.mocks.ably.publish.mockClear();
+    const steered = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        steersRunId: active.runId,
+        steersEventId: queuedEventId,
+        clientEventId: activeInputEventId,
+      },
+      [201],
+    );
+    if (steered.status !== 201) {
+      throw new Error("Expected the queued message to be steered");
+    }
+    expect(steered.body).toMatchObject({
+      runId: active.runId,
+      threadId: active.threadId,
+      status: "running",
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("active-input", {
+      runId: active.runId,
+    });
+
+    const retry = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        steersRunId: active.runId,
+        steersEventId: queuedEventId,
+        clientEventId: activeInputEventId,
+      },
+      [201],
+    );
+    if (retry.status !== 201) {
+      throw new Error("Expected the steer retry to be accepted");
+    }
+    expect(retry.body).toStrictEqual(steered.body);
+
+    await expect(
+      api.readRunnerActiveInputs(claim.sandboxToken, active.runId, 1),
+    ).resolves.toStrictEqual([
+      {
+        sequence: 1,
+        messageId: activeInputEventId,
+        text: "steer this queued message",
+      },
+    ]);
+    const events = await chat.listThreadEvents(actor, active.threadId);
+    expect(userMessages(events.events)).toContainEqual(
+      expect.objectContaining({
+        id: activeInputEventId,
+        runId: active.runId,
+        revokesEventId: queuedEventId,
+      }),
+    );
+
+    await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
+  it("rejects queued messages above the guest-control payload limit", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatSteer]: true },
+    );
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor active input payload boundary run",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(active.runId, {
+      activeInput: true,
+    });
+    expect(claim.activeInput).toBeTruthy();
+
+    const maxPayloadBytes = 1024 * 1024;
+    const payloadBytes = (text: string): number => {
+      return Buffer.byteLength(
+        JSON.stringify({ type: "active-input", text }),
+        "utf8",
+      );
+    };
+    const queuePrompt = async (text: string): Promise<string> => {
+      const eventId = randomUUID();
+      const queued = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: active.threadId,
+          prompt: text,
+          clientEventId: eventId,
+        },
+        [201],
+      );
+      if (queued.status !== 201) {
+        throw new Error("Expected the queued send to be accepted");
+      }
+      expect(queued.body.runId).toBeNull();
+      return eventId;
+    };
+    const rejectAndRecall = async (text: string): Promise<void> => {
+      expect(payloadBytes(text)).toBe(maxPayloadBytes + 1);
+      const queuedEventId = await queuePrompt(text);
+      context.mocks.ably.publish.mockClear();
+
+      const rejected = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: active.threadId,
+          steersRunId: active.runId,
+          steersEventId: queuedEventId,
+          clientEventId: randomUUID(),
+        },
+        [400],
+      );
+      expectApiError(rejected.body);
+      expect(rejected.body.error.message).toBe(
+        "Queued message is too large to send to the active run",
+      );
+      expect(context.mocks.ably.publish).not.toHaveBeenCalled();
+
+      const recalled = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: active.threadId,
+          revokesEventId: queuedEventId,
+          clientEventId: randomUUID(),
+        },
+        [201],
+      );
+      if (recalled.status !== 201) {
+        throw new Error(
+          "Expected the rejected queued message to be recallable",
+        );
+      }
+      expect(recalled.body.runId).toBeNull();
+    };
+
+    const exactText = "x".repeat(1_048_543);
+    expect(payloadBytes(exactText)).toBe(maxPayloadBytes);
+    const exactQueuedEventId = await queuePrompt(exactText);
+    const exactActiveInputEventId = randomUUID();
+    const accepted = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        steersRunId: active.runId,
+        steersEventId: exactQueuedEventId,
+        clientEventId: exactActiveInputEventId,
+      },
+      [201],
+    );
+    if (accepted.status !== 201) {
+      throw new Error("Expected the exact-limit queued message to be steered");
+    }
+
+    const [mailboxEntry] = await api.readRunnerActiveInputs(
+      claim.sandboxToken,
+      active.runId,
+      1,
+    );
+    if (!mailboxEntry) {
+      throw new Error("Expected the exact-limit runner mailbox entry");
+    }
+    expect(mailboxEntry.sequence).toBe(1);
+    expect(mailboxEntry.messageId).toBe(exactActiveInputEventId);
+    expect(payloadBytes(mailboxEntry.text)).toBe(maxPayloadBytes);
+    expect(createHash("sha256").update(mailboxEntry.text).digest("hex")).toBe(
+      createHash("sha256").update(exactText).digest("hex"),
+    );
+
+    await rejectAndRecall("x".repeat(1_048_544));
+    await rejectAndRecall(`${"x".repeat(1_048_542)}"`);
+    await rejectAndRecall(`${"x".repeat(1_048_540)}🚀`);
+
+    await expect(
+      api.readRunnerActiveInputs(claim.sandboxToken, active.runId, 2),
+    ).resolves.toStrictEqual([]);
+    await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
   it("queues, retries, and recalls messages behind an active run", async () => {
     const { actor, agentId, providerId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1697,8 +1951,21 @@ describe("CHAT-02: org queue markers", () => {
     );
     expectApiDispatchSpanKind(
       queuedTimingEvents,
-      API_DISPATCH_QUEUED_PERSISTENCE_ACTION_TYPES,
+      API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES,
       "nested",
+    );
+    expectNoApiDispatchActions(queuedTimingEvents, [
+      "api_dispatch_insert_run_record",
+      "api_dispatch_persist_custom_connector_auth_refs",
+      "api_dispatch_insert_agent_run_queue",
+      "api_dispatch_count_agent_run_queue_depth",
+      "api_dispatch_update_thread_session_binding",
+    ]);
+    expect(sandboxOperationEventsForRun(queuedRun.body.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "enqueue_zero_run",
+        queue_depth: 1,
+      }),
     );
     expect(
       queuedTimingEvents.filter((event) => {
@@ -2453,6 +2720,60 @@ describe("CHAT-02: model-first provider policies", () => {
     await cancelChatRun(actor, run.runId);
   });
 
+  it("resolves an unchanged existing thread without waiting for its row lock", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const thread = await chat.createThread(actor, { agentId });
+    const prompt = "continue without reconciling the thread model";
+    const threadLock = await holdChatThreadRowLockFixture({
+      threadId: thread.id,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      threadLock.release();
+      await threadLock.done;
+    });
+
+    const [sent] = await Promise.all([
+      sendChatRun(actor, {
+        agentId,
+        threadId: thread.id,
+        prompt,
+      }),
+      (async () => {
+        await expect.poll(threadLock.firstBlockedStatementKind).toBe("update");
+        threadLock.release();
+        await threadLock.done;
+      })(),
+    ]);
+    const timingEvents = apiDispatchTimingEventsForRun(sent.runId);
+    expectApiDispatchSpanKind(
+      timingEvents,
+      [
+        ...API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
+        API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
+      ],
+      "nested",
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES,
+    );
+    expect(timingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type:
+          "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
+        model_resolution_path: "read_only",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      prompt,
+      thread.id,
+      agentId,
+    ]);
+    await cancelChatRun(actor, sent.runId);
+  }, 90_000);
+
   it("recovers a removed thread model through the current workspace route", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
@@ -2479,6 +2800,7 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
 
     await seedVm0ManagedModelKey("gpt-5.6-terra");
     await api.updateOrgModelPolicies(actor, [
@@ -2491,11 +2813,48 @@ describe("CHAT-02: model-first provider policies", () => {
       },
     ]);
 
-    const recovered = await sendChatRun(actor, {
-      agentId,
+    const threadLock = await holdChatThreadRowLockFixture({
       threadId: first.threadId,
-      prompt: "continue through the current workspace default",
+      signal: context.signal,
     });
+    onTestFinished(async () => {
+      threadLock.release();
+      await threadLock.done;
+    });
+    const [recovered] = await Promise.all([
+      sendChatRun(actor, {
+        agentId,
+        threadId: first.threadId,
+        prompt: "continue through the current workspace default",
+      }),
+      (async () => {
+        await expect
+          .poll(threadLock.firstBlockedStatementKind)
+          .toBe("select_for_update");
+        threadLock.release();
+        await threadLock.done;
+      })(),
+    ]);
+    const timingEvents = apiDispatchTimingEventsForRun(recovered.runId);
+    expectApiDispatchSpanKind(
+      timingEvents,
+      [
+        ...API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
+        API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
+      ],
+      "nested",
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES,
+    );
+    expect(timingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type:
+          "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
+        model_resolution_path: "locked_reconciliation",
+      }),
+    );
     const recoveredClaim = await claimChatRun(runnerGroup, recovered.runId);
     expect(recoveredClaim.claim.cliAgentType).toBe("codex");
     expect(recoveredClaim.claim.resumeSession).toBeNull();
@@ -3232,6 +3591,22 @@ describe("CHAT-02: run-level model overrides", () => {
       prompt: "switch to sonnet",
       model: "claude-sonnet-4-6",
     });
+    const secondTimingEvents = apiDispatchTimingEventsForRun(second.runId);
+    expectApiDispatchSpanKind(
+      secondTimingEvents,
+      [
+        ...API_DISPATCH_EXPLICIT_EXISTING_THREAD_ACTION_TYPES,
+        API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
+      ],
+      "nested",
+    );
+    expectNoApiDispatchActions(secondTimingEvents, [
+      API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE,
+    ]);
+    expectNoApiDispatchActions(
+      secondTimingEvents,
+      API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES,
+    );
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
     expect(appended).toContain("# Web Chat Run Context");
@@ -3483,36 +3858,39 @@ describe("CHAT-02: run-level model overrides", () => {
 
     const firstEventId = randomUUID();
     const secondEventId = randomUUID();
-    const requests = [
-      {
-        eventId: firstEventId,
-        prompt: "first competing binding send",
-        response: chat.requestSendEvent(
-          actor,
-          {
-            agentId,
-            threadId: established.threadId,
-            prompt: "first competing binding send",
-            clientEventId: firstEventId,
-          },
-          [201],
-        ),
-      },
-      {
-        eventId: secondEventId,
-        prompt: "second competing binding send",
-        response: chat.requestSendEvent(
-          actor,
-          {
-            agentId,
-            threadId: established.threadId,
-            prompt: "second competing binding send",
-            clientEventId: secondEventId,
-          },
-          [201],
-        ),
-      },
-    ] as const;
+    const firstRequest = {
+      eventId: firstEventId,
+      prompt: "first competing binding send",
+      response: chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: established.threadId,
+          prompt: "first competing binding send",
+          clientEventId: firstEventId,
+        },
+        [201],
+      ),
+    } as const;
+    // Make the queue head the first admission-lock waiter so the second
+    // prepared request observes the binding committed by the first.
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+
+    const secondRequest = {
+      eventId: secondEventId,
+      prompt: "second competing binding send",
+      response: chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: established.threadId,
+          prompt: "second competing binding send",
+          clientEventId: secondEventId,
+        },
+        [201],
+      ),
+    } as const;
+    const requests = [firstRequest, secondRequest] as const;
 
     await expect
       .poll(async () => {
@@ -3762,6 +4140,191 @@ describe("CHAT-02: run-level model overrides", () => {
       `bdd-cli-${first.runId}`,
     );
     await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
+  it("rebuilds Web prompt context when a stale retry rotates the session", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for binding validation");
+    }
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const created = await accept(
+      modelProviderConnectionsClient().create({
+        headers: sessionHeaders(actor),
+        body: {
+          displayName: "Retry session gateway",
+          secret: "retry-session-gateway-secret",
+          surfaces: [
+            {
+              protocol: "anthropic-messages",
+              apiBaseUrl: "https://gateway.example.com/anthropic",
+              authHeaderName: "Authorization",
+              authHeaderTemplate: "Bearer {{secret}}",
+              modelMappings: {
+                "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+              },
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const surfaceId = created.body.surfaces[0]?.id;
+    if (!surfaceId) {
+      throw new Error("Expected the retry gateway to have a surface");
+    }
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "vercel-ai-gateway",
+        credentialScope: "org",
+        modelProviderId: null,
+        modelProviderSurfaceId: surfaceId,
+      },
+    ]);
+
+    const anchorPrompt = "successful context before the incomplete round";
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: anchorPrompt,
+      model: "claude-sonnet-4-6",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "successful context response"),
+    ]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    const incompletePrompt = "failed context from the reusable session";
+    const incomplete = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: incompletePrompt,
+    });
+    const incompleteClaim = await claimChatRun(runnerGroup, incomplete.runId);
+    await failChatRun(
+      incomplete.runId,
+      incompleteClaim.sandboxHeaders,
+      "expected retry context failure",
+    );
+    await flushWaitUntilForTest();
+    const originalBinding = await readThreadSessionBinding(
+      context,
+      anchor.threadId,
+    );
+    if (!originalBinding.agent_session_id) {
+      throw new Error("Expected the incomplete run to retain its session");
+    }
+
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: actor.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+    const messageId = randomUUID();
+    const retriedPromise = sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "rotate the prompt context during retry",
+      clientEventId: messageId,
+    });
+    await expect
+      .poll(async () => {
+        const messages = await chat.listThreadEvents(actor, anchor.threadId);
+        return messages.events.some((message) => {
+          return message.id === messageId;
+        });
+      })
+      .toBe(true);
+
+    const bindingClear = await holdThreadSessionBindingClearFixture({
+      threadId: anchor.threadId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      bindingClear.release();
+      await bindingClear.done;
+    });
+    admissionLock.release();
+    await admissionLock.done;
+    await expect
+      .poll(bindingClear.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+
+    await accept(
+      modelProviderConnectionsByIdClient().update({
+        headers: sessionHeaders(actor),
+        params: { id: created.body.id },
+        body: {
+          displayName: "Updated retry session gateway",
+          surfaces: [
+            {
+              protocol: "anthropic-messages",
+              apiBaseUrl: "https://gateway.example.com/anthropic-v2",
+              authHeaderName: "Authorization",
+              authHeaderTemplate: "Bearer {{secret}}",
+              modelMappings: {
+                "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6-v2",
+              },
+            },
+          ],
+        },
+      }),
+      [200],
+    );
+    bindingClear.release();
+    await bindingClear.done;
+    const retried = await retriedPromise;
+
+    expect(
+      sandboxOperationEvents().filter((event) => {
+        return (
+          event.op_type === "chat_thread_session_binding_retry" &&
+          event.chat_thread_id === anchor.threadId
+        );
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        agent_session_id: originalBinding.agent_session_id,
+        resolution_action: "reused",
+        retry_reason: "binding_changed",
+      }),
+    );
+    expect(sandboxOperationEventsForRun(retried.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "chat_thread_session_binding_persisted",
+        binding_action: "rotated",
+      }),
+    );
+    const retriedRun = await api.readRun(actor, retried.runId);
+    const appendSystemPrompt = retriedRun.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain("# Web Chat Run Context");
+    expect(appendSystemPrompt).toContain(anchorPrompt);
+    expect(appendSystemPrompt).toContain(incompletePrompt);
+    expect(appendSystemPrompt).not.toContain("# Incomplete Rounds Context");
+
+    const retryTimingEvents = apiDispatchTimingEventsForRun(retried.runId);
+    for (const actionType of [
+      API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
+      API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
+    ]) {
+      expect(
+        retryTimingEvents.filter((event) => {
+          return event.op_type === actionType;
+        }),
+      ).toHaveLength(2);
+    }
+    const retriedClaim = await claimChatRun(runnerGroup, retried.runId);
+    expect(retriedClaim.claim.resumeSession).toBeNull();
+    await cancelChatRun(actor, retried.runId);
   }, 90_000);
 
   it("retries preparation when the canonical conversation snapshot changes", async () => {
@@ -4758,6 +5321,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         },
       ],
     };
+    chat.mockCompletedUploadObject(actor, fileId, "brief.pdf", 42);
 
     const sent = await sendChatRun(actor, {
       agentId,
@@ -4920,6 +5484,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const fileId = randomUUID();
+    chat.mockCompletedUploadObject(actor, fileId, "api-input.txt", 12);
     const sent = await sendChatRun(actor, {
       agentId,
       prompt: "plain API attachment",
@@ -5442,6 +6007,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const fileId = randomUUID();
     const filename = "diagram final 100%.png";
+    chat.mockCompletedUploadObject(actor, fileId, filename, 42);
 
     const run = await sendChatRun(actor, {
       agentId,
@@ -5517,6 +6083,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
         },
       ],
     };
+    chat.mockCompletedUploadObject(actor, fileId, "ordered.txt", 12);
     const queued = await chat.requestSendEvent(
       actor,
       {
@@ -5587,6 +6154,10 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     const fileId = randomUUID();
     const secondFileId = randomUUID();
     const queuedId = randomUUID();
+    chat.mockCompletedUploadObjects(actor, [
+      { id: fileId, filename: "notes.txt", size: 12 },
+      { id: secondFileId, filename: "details.json", size: 24 },
+    ]);
     const queued = await chat.requestSendEvent(
       actor,
       {
@@ -5613,24 +6184,6 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       [201],
     );
     expect(queued.body).toMatchObject({ runId: null });
-    await expect(
-      readChatEventInputParamsFixture(queuedId),
-    ).resolves.toMatchObject({
-      eventId: queuedId,
-      encryptedParams: expect.any(String),
-      attachFileMetadata: [
-        expect.objectContaining({
-          id: fileId,
-          filename: "notes.txt",
-          contentType: "text/plain",
-        }),
-        expect.objectContaining({
-          id: secondFileId,
-          filename: "details.json",
-          contentType: "application/json",
-        }),
-      ],
-    });
     // Completing the anchor run promotes the queued message into a fresh
     // run whose prompt carries the resolved attachment references.
     chatCallbacks.mockChatOutputEvents([]);
@@ -5657,7 +6210,6 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     if (!promoted?.runId) {
       throw new Error("Expected the queued message to auto-send into a run");
     }
-    await expect(readChatEventInputParamsFixture(queuedId)).resolves.toBeNull();
     expect(promoted.content).toBeNull();
     expect(chatEventDisplayText(promoted)).toBe("queued with attachment");
     expect(promoted.attachFiles).toMatchObject([
@@ -6084,9 +6636,16 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, runId);
   }, 90_000);
 
-  it("preserves real-agent preview mode across queued auto-sends", async () => {
+  it("derives real-agent preview mode when queued messages are claimed", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const actorWithOrg = { ...actor, orgId: actor.orgId };
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.RealAgentInPreview]: false,
+    });
 
     const anchor = await sendChatRun(actor, {
       agentId,
@@ -6096,6 +6655,12 @@ describe("CHAT-02: shared user message queue", () => {
 
     const previewMessageId = randomUUID();
     const previewFileId = randomUUID();
+    chat.mockCompletedUploadObject(
+      actor,
+      previewFileId,
+      "preview-notes.txt",
+      18,
+    );
     const previewQueued = await chat.requestSendEvent(
       actor,
       {
@@ -6116,36 +6681,10 @@ describe("CHAT-02: shared user message queue", () => {
       [201],
     );
     expect(previewQueued.body).toMatchObject({ runId: null });
-    const previewParams =
-      await readChatEventInputParamsFixture(previewMessageId);
-    expect(previewParams).toMatchObject({
-      eventId: previewMessageId,
-      encryptedParams: expect.any(String),
-      attachFileMetadata: [
-        expect.objectContaining({
-          id: previewFileId,
-          filename: "preview-notes.txt",
-          contentType: "text/plain",
-        }),
-      ],
-    });
-    if (!previewParams) {
-      throw new Error("Expected the original preview queue params");
-    }
-
     const replayedPreviewMessageId = randomUUID();
     await replayPendingChatInputQueueEventFixture({
       eventId: previewMessageId,
       replacementId: replayedPreviewMessageId,
-    });
-    await expect(
-      readChatEventInputParamsFixture(previewMessageId),
-    ).resolves.toBeNull();
-    await expect(
-      readChatEventInputParamsFixture(replayedPreviewMessageId),
-    ).resolves.toStrictEqual({
-      ...previewParams,
-      eventId: replayedPreviewMessageId,
     });
     const mockMessageId = randomUUID();
     const mockQueued = await chat.requestSendEvent(
@@ -6155,13 +6694,14 @@ describe("CHAT-02: shared user message queue", () => {
         threadId: anchor.threadId,
         prompt: "queued preview mock run",
         clientEventId: mockMessageId,
+        realAgentInPreview: true,
       },
       [201],
     );
     expect(mockQueued.body).toMatchObject({ runId: null });
-    await expect(
-      readChatEventInputParamsFixture(mockMessageId),
-    ).resolves.toBeNull();
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.RealAgentInPreview]: true,
+    });
 
     // Terminal callbacks and the cleanup safety sweep use the same queued
     // auto-send builder; finishing the anchor guarantees that builder owns both.
@@ -6194,9 +6734,9 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(previewClaim.claim.prompt).toContain(`[ID] ${previewFileId}`);
     expect(previewClaim.claim.realAgentInPreview).toBeTruthy();
-    await expect(
-      readChatEventInputParamsFixture(replayedPreviewMessageId),
-    ).resolves.toBeNull();
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.RealAgentInPreview]: false,
+    });
     await cancelChatRun(actor, previewRunId, previewClaim.sandboxHeaders);
 
     const mockMessages = await waitForThreadMessages(

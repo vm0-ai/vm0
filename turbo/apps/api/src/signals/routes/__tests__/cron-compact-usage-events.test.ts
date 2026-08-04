@@ -19,7 +19,6 @@ import {
   insertUsageEvent$,
   materializeHourlyUsage$,
   readAllowanceWindowState$,
-  readUsageEventState$,
   readUsageCompactionStorageCounts$,
   seedChatThread$,
   seedCompose$,
@@ -189,7 +188,7 @@ describe("usage event compaction cron", () => {
     });
   });
 
-  it("atomically replaces an old processed grain and retains its sources", async () => {
+  it("atomically replaces an old processed grain and deletes its idempotency key", async () => {
     const fixture = await seedFixture();
     const idempotencyKey = randomUUID();
     const usageEventId = await store.set(
@@ -209,7 +208,6 @@ describe("usage event compaction cron", () => {
       processedAt: new Date("1800-01-01T00:15:00.000Z"),
       count: RAW_SEED_LIMIT - 1,
     });
-
     const response = await compactUsage();
 
     expect(response.body).toMatchObject({
@@ -217,7 +215,7 @@ describe("usage event compaction cron", () => {
       rawSeedLimit: RAW_SEED_LIMIT,
       seededRawRows: RAW_SEED_LIMIT,
       selectedGrains: 1,
-      rawRowsCompacted: RAW_SEED_LIMIT,
+      rawRowsDeleted: RAW_SEED_LIMIT,
       hourlyRowsDeleted: 0,
       hourlyRowsInserted: 1,
       quantity: "3",
@@ -239,7 +237,7 @@ describe("usage event compaction cron", () => {
       "lockWaitMs",
       "probedRawRows",
       "quantity",
-      "rawRowsCompacted",
+      "rawRowsDeleted",
       "rawSeedLimit",
       "reconciled",
       "seededRawRows",
@@ -247,20 +245,17 @@ describe("usage event compaction cron", () => {
       "success",
     ]);
     await expect(readStorage(fixture)).resolves.toStrictEqual({
-      raw: RAW_SEED_LIMIT,
+      raw: 0,
       processedRaw: 0,
-      compactedRaw: RAW_SEED_LIMIT,
       hourly: 1,
     });
     await expect(
-      store.set(readUsageEventState$, idempotencyKey, context.signal),
-    ).resolves.toStrictEqual({
-      id: usageEventId,
-      status: "compacted",
-      grossCredits: null,
-      creditsCharged: 7,
-      billingError: null,
-    });
+      store.set(
+        insertUsageEvent$,
+        { ...fixture, idempotencyKey },
+        context.signal,
+      ),
+    ).resolves.not.toBe(usageEventId);
 
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const insight = await accept(
@@ -339,20 +334,18 @@ describe("usage event compaction cron", () => {
     const response = await compactUsage();
 
     expect(response.body).toMatchObject({
-      rawRowsCompacted: RAW_SEED_LIMIT,
+      rawRowsDeleted: RAW_SEED_LIMIT,
       hourlyRowsInserted: 1,
       billingErrorHeldRows: 1,
     });
     await expect(readStorage(heldFixture)).resolves.toStrictEqual({
       raw: 4,
       processedRaw: 3,
-      compactedRaw: 0,
       hourly: 0,
     });
     await expect(readStorage(eligibleFixture)).resolves.toStrictEqual({
-      raw: RAW_SEED_LIMIT,
+      raw: 0,
       processedRaw: 0,
-      compactedRaw: RAW_SEED_LIMIT,
       hourly: 1,
     });
   });
@@ -386,15 +379,14 @@ describe("usage event compaction cron", () => {
       rawSeedLimit: RAW_SEED_LIMIT,
       seededRawRows: RAW_SEED_LIMIT,
       selectedGrains: 1,
-      rawRowsCompacted: RAW_SEED_LIMIT + 1,
+      rawRowsDeleted: RAW_SEED_LIMIT + 1,
       hourlyRowsInserted: 1,
       quantity: String(RAW_SEED_LIMIT + 1),
       hasMore: true,
     });
     await expect(readStorage(fixture)).resolves.toStrictEqual({
-      raw: RAW_SEED_LIMIT + 2,
+      raw: 1,
       processedRaw: 1,
-      compactedRaw: RAW_SEED_LIMIT + 1,
       hourly: 1,
     });
   });
@@ -427,7 +419,6 @@ describe("usage event compaction cron", () => {
     await expect(readStorage(fixture)).resolves.toStrictEqual({
       raw: 0,
       processedRaw: 0,
-      compactedRaw: 0,
       hourly: 2,
     });
 
@@ -448,29 +439,27 @@ describe("usage event compaction cron", () => {
     });
     const late = await compactUsage();
     expect(late.body).toMatchObject({
-      rawRowsCompacted: RAW_SEED_LIMIT,
+      rawRowsDeleted: RAW_SEED_LIMIT,
       hourlyRowsDeleted: 2,
       hourlyRowsInserted: 1,
       quantity: "12",
       creditsCharged: "16",
     });
     await expect(readStorage(fixture)).resolves.toStrictEqual({
-      raw: RAW_SEED_LIMIT,
+      raw: 0,
       processedRaw: 0,
-      compactedRaw: RAW_SEED_LIMIT,
       hourly: 1,
     });
 
     await seedCompactionBatch(new Date("0100-01-01T01:15:00.000Z"), 10_001);
     const retry = await compactUsage();
     expect(retry.body).toMatchObject({
-      rawRowsCompacted: RAW_SEED_LIMIT,
+      rawRowsDeleted: RAW_SEED_LIMIT,
       quantity: "10001",
     });
     await expect(readStorage(fixture)).resolves.toStrictEqual({
-      raw: RAW_SEED_LIMIT,
+      raw: 0,
       processedRaw: 0,
-      compactedRaw: RAW_SEED_LIMIT,
       hourly: 1,
     });
   });
@@ -541,7 +530,7 @@ describe("usage event compaction cron", () => {
 
     expect(response.body).toMatchObject({
       selectedGrains: 3,
-      rawRowsCompacted: RAW_SEED_LIMIT,
+      rawRowsDeleted: RAW_SEED_LIMIT,
       hourlyRowsInserted: 3,
       quantity: "14",
       creditsCharged: "18",
@@ -555,23 +544,22 @@ describe("usage event compaction cron", () => {
     ).resolves.toStrictEqual({
       shortWindowConsumedUnits: "11",
       weeklyWindowConsumedUnits: "11",
-      rawAllowanceUnits: "5",
+      rawAllowanceUnits: "0",
       hourlyAllowanceUnits: "5",
-      allocationCount: 1,
+      allocationCount: 0,
     });
     await expect(
       store.set(readAllowanceWindowState$, secondPair, context.signal),
     ).resolves.toStrictEqual({
       shortWindowConsumedUnits: "22",
       weeklyWindowConsumedUnits: "22",
-      rawAllowanceUnits: "7",
+      rawAllowanceUnits: "0",
       hourlyAllowanceUnits: "7",
-      allocationCount: 1,
+      allocationCount: 0,
     });
     await expect(readStorage(fixture)).resolves.toStrictEqual({
-      raw: RAW_SEED_LIMIT,
+      raw: 0,
       processedRaw: 0,
-      compactedRaw: RAW_SEED_LIMIT,
       hourly: 3,
     });
   });
@@ -616,21 +604,19 @@ describe("usage event compaction cron", () => {
     await expect(readStorage(fixture)).resolves.toStrictEqual({
       raw: RAW_SEED_LIMIT,
       processedRaw: RAW_SEED_LIMIT,
-      compactedRaw: 0,
       hourly: 1,
     });
     const response = await compactUsage();
 
     expect(response.body).toMatchObject({
-      rawRowsCompacted: RAW_SEED_LIMIT,
+      rawRowsDeleted: RAW_SEED_LIMIT,
       hourlyRowsDeleted: 1,
       hourlyRowsInserted: 1,
       quantity: "5",
     });
     await expect(readStorage(fixture)).resolves.toStrictEqual({
-      raw: RAW_SEED_LIMIT,
+      raw: 0,
       processedRaw: 0,
-      compactedRaw: RAW_SEED_LIMIT,
       hourly: 1,
     });
   });
@@ -658,26 +644,25 @@ describe("usage event compaction cron", () => {
 
     const outcomes = responses.map((response) => {
       return {
-        rawRowsCompacted: response.body.rawRowsCompacted,
+        rawRowsDeleted: response.body.rawRowsDeleted,
         quantity: response.body.quantity,
       };
     });
     expect(outcomes).toHaveLength(2);
     expect(outcomes).toStrictEqual(
       expect.arrayContaining([
-        { rawRowsCompacted: RAW_SEED_LIMIT, quantity: "10" },
-        { rawRowsCompacted: RAW_SEED_LIMIT, quantity: "70001" },
+        { rawRowsDeleted: RAW_SEED_LIMIT, quantity: "10" },
+        { rawRowsDeleted: RAW_SEED_LIMIT, quantity: "70001" },
       ]),
     );
     await expect(readStorage(fixture)).resolves.toStrictEqual({
-      raw: RAW_SEED_LIMIT,
+      raw: 0,
       processedRaw: 0,
-      compactedRaw: RAW_SEED_LIMIT,
       hourly: 1,
     });
   });
 
-  it("lets organization cleanup remove a batch compacted ahead of it", async () => {
+  it("lets organization cleanup remove a batch aggregated ahead of it", async () => {
     const fixture = await seedFixture();
     const quantity = 8_000_000_000_000_123;
     await store.set(
@@ -708,14 +693,13 @@ describe("usage event compaction cron", () => {
     const [response] = await Promise.all([compaction, cleanup]);
 
     expect(response.body).toMatchObject({
-      rawRowsCompacted: RAW_SEED_LIMIT,
+      rawRowsDeleted: RAW_SEED_LIMIT,
       hourlyRowsInserted: 1,
       quantity: String(quantity),
     });
     await expect(readStorage(fixture)).resolves.toStrictEqual({
       raw: 0,
       processedRaw: 0,
-      compactedRaw: 0,
       hourly: 0,
     });
   });
@@ -748,18 +732,17 @@ describe("usage event compaction cron", () => {
     const [, response] = await Promise.all([cleanup, compaction]);
 
     expect(response.body).toMatchObject({
-      rawRowsCompacted: RAW_SEED_LIMIT,
+      rawRowsDeleted: RAW_SEED_LIMIT,
       quantity: "1001",
     });
     await expect(readStorage(fixture)).resolves.toStrictEqual({
       raw: 0,
       processedRaw: 0,
-      compactedRaw: 0,
       hourly: 0,
     });
   });
 
-  it("rolls back replacement and source status when the aggregate overflows bigint", async () => {
+  it("rolls back replacement and source deletion when the aggregate overflows bigint", async () => {
     const fixture = await seedFixture();
     await store.set(
       seedUsageOverflowGrain$,
@@ -778,7 +761,6 @@ describe("usage event compaction cron", () => {
     await expect(readStorage(fixture)).resolves.toStrictEqual({
       raw: RAW_SEED_LIMIT,
       processedRaw: RAW_SEED_LIMIT,
-      compactedRaw: 0,
       hourly: 1,
     });
 
@@ -795,7 +777,6 @@ describe("usage event compaction cron", () => {
     await expect(readStorage(fixture)).resolves.toStrictEqual({
       raw: RAW_SEED_LIMIT,
       processedRaw: RAW_SEED_LIMIT,
-      compactedRaw: 0,
       hourly: 1,
     });
   });

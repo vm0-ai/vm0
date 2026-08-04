@@ -1,44 +1,97 @@
 /**
  * Tests for zero connector permission-request command.
  *
- * The command always points users at the self-service permission grant page.
+ * The command only points users at the grant page after a URL diagnostic
+ * confirms that the requested Zero permission is denied or requires approval.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HttpResponse, http } from "msw";
-import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
-import { server } from "../../../../mocks/server";
 import {
-  catalogPermissionDetail,
-  stubConnectorCatalogPermissions,
-} from "../../__tests__/helpers/connector-catalog";
+  connectorCheckRequestSchema,
+  type ConnectorCheckDiagnosticResult,
+  type ConnectorCheckPolicy,
+} from "@vm0/api-contracts/contracts/zero-connector-check";
+import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+import { HttpResponse, http } from "msw";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { server } from "../../../../mocks/server";
 import { permissionRequestCommand } from "../permission-request";
 
-describe("zero connector permission-request command", () => {
-  const SLACK_READ_PERMISSION = "admin.conversations:read";
-  const permissionDetails = [
-    catalogPermissionDetail({
-      connectorSlug: "slack",
-      label: "Slack",
-      permissions: [
-        { name: SLACK_READ_PERMISSION, description: "Read conversations" },
-        { name: "chat:write", description: "Send messages" },
-      ],
-    }),
-    catalogPermissionDetail({
-      connectorSlug: "gmail",
-      label: "Gmail",
-      permissions: [
-        { name: "messages.send", description: "Send messages" },
-        { name: "drafts.send", description: "Send drafts" },
-      ],
-    }),
-    catalogPermissionDetail({
-      connectorSlug: "cloudflare",
-      label: "Cloudflare",
-    }),
-  ];
+const SLACK_READ_PERMISSION = "admin.conversations:read";
+const SLACK_READ_URL = "https://slack.com/api/admin.conversations.search";
 
+type ResolvedUrlDiagnostic = Extract<
+  ConnectorCheckDiagnosticResult,
+  { readonly outcome: "resolved"; readonly mode: "url" }
+>;
+
+interface NonRequestablePolicyCase {
+  readonly name: string;
+  readonly policy: ConnectorCheckPolicy;
+  readonly expected: string;
+}
+
+function resolvedUrlDiagnostic(
+  args: {
+    readonly connectorSlug?: string;
+    readonly label?: string;
+    readonly method?: string;
+    readonly base?: string;
+    readonly relativePath?: string;
+    readonly permission?: ResolvedUrlDiagnostic["permission"];
+    readonly run?: ResolvedUrlDiagnostic["run"];
+  } = {},
+): ResolvedUrlDiagnostic {
+  return {
+    outcome: "resolved",
+    mode: "url",
+    connector: {
+      connectorSlug: args.connectorSlug ?? "slack",
+      label: args.label ?? "Slack",
+      visibility: "available",
+      credentialResolution: "network-boundary",
+    },
+    environmentNames: ["SLACK_TOKEN"],
+    run: args.run ?? {
+      status: "configured",
+      bases: [args.base ?? "https://slack.com/api"],
+    },
+    method: args.method ?? "GET",
+    base: args.base ?? "https://slack.com/api",
+    relativePath: args.relativePath ?? "/admin.conversations.search",
+    permission: args.permission ?? {
+      kind: "matched",
+      permissions: [
+        {
+          name: SLACK_READ_PERMISSION,
+          policy: { outcome: "deny", basis: "deny-list" },
+        },
+      ],
+    },
+  };
+}
+
+function stubDiagnostic(
+  result: ConnectorCheckDiagnosticResult,
+  baseUrl = "https://app.vm0.ai",
+  onRequest?: (
+    request: ReturnType<typeof connectorCheckRequestSchema.parse>,
+  ) => void,
+): void {
+  server.use(
+    http.post(
+      `${baseUrl}/api/zero/connectors/diagnostics/check`,
+      async ({ request }) => {
+        const body: unknown = await request.json();
+        const parsed = connectorCheckRequestSchema.parse(body);
+        onRequest?.(parsed);
+        return HttpResponse.json(result);
+      },
+    ),
+  );
+}
+
+describe("zero connector permission-request command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -50,12 +103,11 @@ describe("zero connector permission-request command", () => {
   beforeEach(() => {
     vi.stubEnv("ZERO_TOKEN", "test-token");
     vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
-    server.use(
-      stubConnectorCatalogPermissions(permissionDetails, "https://app.vm0.ai"),
-      stubConnectorCatalogPermissions(permissionDetails, "https://www.vm0.ai"),
-      stubConnectorCatalogPermissions(permissionDetails, "https://api.vm0.ai"),
-      stubConnectorCatalogPermissions(permissionDetails),
-    );
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
+    const result = resolvedUrlDiagnostic();
+    stubDiagnostic(result, "https://app.vm0.ai");
+    stubDiagnostic(result, "https://www.vm0.ai");
+    stubDiagnostic(result, "https://api.vm0.ai");
   });
 
   afterEach(() => {
@@ -68,6 +120,12 @@ describe("zero connector permission-request command", () => {
   it("outputs an allow grant link without choosing the user's duration", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+    let diagnosticRequest:
+      | ReturnType<typeof connectorCheckRequestSchema.parse>
+      | undefined;
+    stubDiagnostic(resolvedUrlDiagnostic(), "https://app.vm0.ai", (request) => {
+      diagnosticRequest = request;
+    });
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -75,8 +133,16 @@ describe("zero connector permission-request command", () => {
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
+      "--url",
+      `${SLACK_READ_URL}?token=secret#fragment`,
     ]);
 
+    expect(diagnosticRequest).toStrictEqual({
+      mode: "url",
+      method: "GET",
+      url: SLACK_READ_URL,
+      connectorSlug: "slack",
+    });
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain(
       `You can allow the "${SLACK_READ_PERMISSION}" permission for your connector access`,
@@ -84,7 +150,6 @@ describe("zero connector permission-request command", () => {
     expect(logCalls).toContain("[Manage Slack permissions]");
     expect(logCalls).toContain("/agents/agent-abc-123/permissions?");
     expect(logCalls).toContain("connectorSlug=slack");
-    expect(logCalls).not.toContain("ref=");
     expect(logCalls).toContain(
       `permission=${encodeURIComponent(SLACK_READ_PERMISSION)}`,
     );
@@ -92,6 +157,7 @@ describe("zero connector permission-request command", () => {
     expect(logCalls).not.toContain("expiresIn=");
     expect(logCalls).not.toContain("Requested duration:");
     expect(logCalls).not.toContain("admin approval");
+    expect(logCalls).not.toContain("secret");
   });
 
   it("uses the agent permission page inside an automated run", async () => {
@@ -105,6 +171,8 @@ describe("zero connector permission-request command", () => {
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
+      "--url",
+      SLACK_READ_URL,
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -130,13 +198,14 @@ describe("zero connector permission-request command", () => {
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
+      "--url",
+      SLACK_READ_URL,
       "--callback-prompt",
       "Re-check permission & continue",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("connectorSlug=slack");
-    expect(logCalls).not.toContain("ref=");
     expect(logCalls).toContain("action=allow");
     expect(logCalls).toContain("threadId=thread-abc-123");
     expect(logCalls).toContain(
@@ -158,6 +227,8 @@ describe("zero connector permission-request command", () => {
         "slack",
         "--permission",
         SLACK_READ_PERMISSION,
+        "--url",
+        SLACK_READ_URL,
         "--callback-prompt",
         "Continue",
       ]);
@@ -181,6 +252,8 @@ describe("zero connector permission-request command", () => {
         "slack",
         "--permission",
         SLACK_READ_PERMISSION,
+        "--url",
+        SLACK_READ_URL,
         "--agent",
         "agent-other",
         "--callback-prompt",
@@ -198,6 +271,19 @@ describe("zero connector permission-request command", () => {
   it("outputs an allow grant link for unknown endpoints", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+    const unknownUrl = "https://api.cloudflare.com/client/v4/example";
+    stubDiagnostic(
+      resolvedUrlDiagnostic({
+        connectorSlug: "cloudflare",
+        label: "Cloudflare",
+        base: "https://api.cloudflare.com/client/v4",
+        relativePath: "/example",
+        permission: {
+          kind: "unknown-endpoint",
+          policy: { outcome: "deny", basis: "unknown-policy" },
+        },
+      }),
+    );
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -205,6 +291,8 @@ describe("zero connector permission-request command", () => {
       "cloudflare",
       "--permission",
       UNKNOWN_PERMISSION_GRANT,
+      "--url",
+      unknownUrl,
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -228,6 +316,8 @@ describe("zero connector permission-request command", () => {
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
+      "--url",
+      SLACK_READ_URL,
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -245,6 +335,8 @@ describe("zero connector permission-request command", () => {
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
+      "--url",
+      SLACK_READ_URL,
       "--agent",
       "target-agent-123",
     ]);
@@ -265,6 +357,8 @@ describe("zero connector permission-request command", () => {
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
+      "--url",
+      SLACK_READ_URL,
       "--agent",
       "target-agent-123",
     ]);
@@ -284,6 +378,8 @@ describe("zero connector permission-request command", () => {
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
+      "--url",
+      SLACK_READ_URL,
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -295,6 +391,22 @@ describe("zero connector permission-request command", () => {
   it("prints sensitive Slack user-token guidance for chat:write enable", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+    const url = "https://slack.com/api/chat.postMessage";
+    stubDiagnostic(
+      resolvedUrlDiagnostic({
+        method: "POST",
+        relativePath: "/chat.postMessage",
+        permission: {
+          kind: "matched",
+          permissions: [
+            {
+              name: "chat:write",
+              policy: { outcome: "deny", basis: "deny-list" },
+            },
+          ],
+        },
+      }),
+    );
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -302,6 +414,10 @@ describe("zero connector permission-request command", () => {
       "slack",
       "--permission",
       "chat:write",
+      "--url",
+      url,
+      "--method",
+      "POST",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -313,6 +429,25 @@ describe("zero connector permission-request command", () => {
   it("prints sensitive Gmail sending guidance for messages.send enable", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+    const url = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+    stubDiagnostic(
+      resolvedUrlDiagnostic({
+        connectorSlug: "gmail",
+        label: "Gmail",
+        method: "POST",
+        base: "https://gmail.googleapis.com",
+        relativePath: "/gmail/v1/users/me/messages/send",
+        permission: {
+          kind: "matched",
+          permissions: [
+            {
+              name: "messages.send",
+              policy: { outcome: "ask", basis: "ask-list" },
+            },
+          ],
+        },
+      }),
+    );
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -320,6 +455,10 @@ describe("zero connector permission-request command", () => {
       "gmail",
       "--permission",
       "messages.send",
+      "--url",
+      url,
+      "--method",
+      "POST",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -330,18 +469,23 @@ describe("zero connector permission-request command", () => {
 
   it("validates a server-authored connector absent from the CLI bundle", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    const serverOnlyDetail = catalogPermissionDetail({
-      connectorSlug: "server-only",
-      label: "Server Only",
-      permissions: [
-        { name: "records.read", description: "Read server records" },
-      ],
-    });
-    server.use(
-      stubConnectorCatalogPermissions(
-        [...permissionDetails, serverOnlyDetail],
-        "https://app.vm0.ai",
-      ),
+    const url = "https://api.server-only.example/v1/records";
+    stubDiagnostic(
+      resolvedUrlDiagnostic({
+        connectorSlug: "server-only",
+        label: "Server Only",
+        base: "https://api.server-only.example",
+        relativePath: "/v1/records",
+        permission: {
+          kind: "matched",
+          permissions: [
+            {
+              name: "records.read",
+              policy: { outcome: "deny", basis: "deny-list" },
+            },
+          ],
+        },
+      }),
     );
 
     await permissionRequestCommand.parseAsync([
@@ -350,6 +494,8 @@ describe("zero connector permission-request command", () => {
       "server-only",
       "--permission",
       "records.read",
+      "--url",
+      url,
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -359,6 +505,7 @@ describe("zero connector permission-request command", () => {
   });
 
   it("exits with an error for an unknown connector slug", async () => {
+    stubDiagnostic({ outcome: "unknown-connector" });
     await expect(async () => {
       await permissionRequestCommand.parseAsync([
         "node",
@@ -366,6 +513,8 @@ describe("zero connector permission-request command", () => {
         "unknown-service",
         "--permission",
         "foo",
+        "--url",
+        "https://unknown.example/v1",
       ]);
     }).rejects.toThrow("process.exit called");
 
@@ -385,6 +534,8 @@ describe("zero connector permission-request command", () => {
         "slack",
         "--permission",
         SLACK_READ_PERMISSION,
+        "--url",
+        SLACK_READ_URL,
       ]);
     }).rejects.toThrow("process.exit called");
 
@@ -393,20 +544,7 @@ describe("zero connector permission-request command", () => {
     );
   });
 
-  it("does not treat permission API authorization failures as missing metadata", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    server.use(
-      http.get(
-        "https://app.vm0.ai/api/zero/connector-catalog/slack/permissions",
-        () => {
-          return HttpResponse.json(
-            { error: { message: "Forbidden", code: "FORBIDDEN" } },
-            { status: 403 },
-          );
-        },
-      ),
-    );
-
+  it("requires a failed request URL for regular connectors", async () => {
     await expect(async () => {
       await permissionRequestCommand.parseAsync([
         "node",
@@ -418,19 +556,28 @@ describe("zero connector permission-request command", () => {
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("403: Forbidden"),
+      expect.stringContaining("--url is required"),
+    );
+    expect(mockConsoleLog.mock.calls.flat().join("\n")).not.toContain(
+      "[Manage",
     );
   });
 
-  it("does not treat permission API network failures as missing metadata", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    server.use(
-      http.get(
-        "https://app.vm0.ai/api/zero/connector-catalog/slack/permissions",
-        () => {
-          return HttpResponse.error();
+  it("rejects provider scopes that do not match the checked route", async () => {
+    const routeUrl = "https://slack.com/api/conversations.history";
+    stubDiagnostic(
+      resolvedUrlDiagnostic({
+        relativePath: "/conversations.history",
+        permission: {
+          kind: "matched",
+          permissions: [
+            {
+              name: "conversations:history",
+              policy: { outcome: "deny", basis: "deny-list" },
+            },
+          ],
         },
-      ),
+      }),
     );
 
     await expect(async () => {
@@ -439,50 +586,71 @@ describe("zero connector permission-request command", () => {
         "cli",
         "slack",
         "--permission",
-        SLACK_READ_PERMISSION,
+        "im:history",
+        "--url",
+        `${routeUrl}?oldest=secret`,
       ]);
     }).rejects.toThrow("process.exit called");
 
     const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errorOutput).toContain("Failed to fetch");
-    expect(errorOutput).not.toContain("Unknown connector slug");
-  });
-
-  it("rejects permission metadata for a different connector slug", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    server.use(
-      http.get(
-        "https://app.vm0.ai/api/zero/connector-catalog/slack/permissions",
-        () => {
-          return HttpResponse.json({
-            permissions: {
-              ...catalogPermissionDetail({
-                connectorSlug: "github",
-                label: "GitHub",
-                permissions: [{ name: SLACK_READ_PERMISSION }],
-              }),
-            },
-          });
-        },
-      ),
+    expect(errorOutput).toContain(
+      `Permission "im:history" does not match GET ${routeUrl}`,
     );
-
-    await expect(async () => {
-      await permissionRequestCommand.parseAsync([
-        "node",
-        "cli",
-        "slack",
-        "--permission",
-        SLACK_READ_PERMISSION,
-      ]);
-    }).rejects.toThrow("process.exit called");
-
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Permission metadata connector slug mismatch: expected slack, got github",
-      ),
+    expect(errorOutput).toContain("maps to: conversations:history");
+    expect(errorOutput).toContain("missing_scope/needed");
+    expect(errorOutput).not.toContain("secret");
+    expect(mockConsoleLog.mock.calls.flat().join("\n")).not.toContain(
+      "[Manage",
     );
   });
+
+  it.each([
+    {
+      name: "already allowed",
+      policy: { outcome: "allow", basis: "allow-list" },
+      expected: "is already allowed by Zero",
+    },
+    {
+      name: "unavailable",
+      policy: { outcome: "unavailable", basis: "not-run-scoped" },
+      expected: "Retry zero connector check from an active run",
+    },
+  ] satisfies readonly NonRequestablePolicyCase[])(
+    "does not create a grant when policy is $name",
+    async ({ policy, expected }) => {
+      stubDiagnostic(
+        resolvedUrlDiagnostic({
+          run:
+            policy.outcome === "unavailable"
+              ? { status: "not-scoped" }
+              : undefined,
+          permission: {
+            kind: "matched",
+            permissions: [{ name: SLACK_READ_PERMISSION, policy }],
+          },
+        }),
+      );
+
+      await expect(async () => {
+        await permissionRequestCommand.parseAsync([
+          "node",
+          "cli",
+          "slack",
+          "--permission",
+          SLACK_READ_PERMISSION,
+          "--url",
+          SLACK_READ_URL,
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(expected),
+      );
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).not.toContain(
+        "[Manage",
+      );
+    },
+  );
 
   it("explains selected-host token grants for computer-use permission changes", async () => {
     vi.stubEnv("ZERO_TOKEN", "");
@@ -638,12 +806,14 @@ describe("zero connector permission-request command", () => {
         "slack",
         "--permission",
         "nonexistent:perm",
+        "--url",
+        SLACK_READ_URL,
       ]);
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining(
-        'Unknown permission "nonexistent:perm" for slack',
+        `Permission "nonexistent:perm" does not match GET ${SLACK_READ_URL}`,
       ),
     );
   });

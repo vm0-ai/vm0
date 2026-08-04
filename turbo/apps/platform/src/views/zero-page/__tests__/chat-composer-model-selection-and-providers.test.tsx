@@ -12,6 +12,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
@@ -20,6 +21,7 @@ import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { emitMockedClerkEvent } from "../../../__tests__/mock-auth.ts";
@@ -1615,7 +1617,7 @@ describe("chat composer models", () => {
     });
 
     await expectComposerModel("Claude Opus 4.7");
-    expect(screen.queryByText("Model Configure")).not.toBeInTheDocument();
+    expect(screen.queryByText("Configure model")).not.toBeInTheDocument();
 
     holdProviderReload = true;
     const accountName = await screen.findByText("Alex Rivera");
@@ -1650,7 +1652,7 @@ describe("chat composer models", () => {
       screen.findByRole("combobox", { name: "GPT 5.5" }),
     ).resolves.toBeInTheDocument();
 
-    expect(screen.queryByText("Model Configure")).not.toBeInTheDocument();
+    expect(screen.queryByText("Configure model")).not.toBeInTheDocument();
     const input = screen.getByPlaceholderText(PLACEHOLDER);
     await fill(input, "Keep this draft");
     await user.keyboard("{Enter}");
@@ -1720,11 +1722,11 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     expect(screen.getByLabelText("Send")).toBeDisabled();
-    const warning = (await screen.findByText("Model Configure")).closest(
+    const warning = (await screen.findByText("Configure model")).closest(
       "button",
     )!;
     expect(warning).toHaveAccessibleName(
-      "Model Configure: The selected model is not available. Configure it before sending.",
+      "Configure model: The selected model is not available. Configure it before sending.",
     );
 
     await user.click(warning);
@@ -1801,11 +1803,11 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     expect(screen.getByLabelText("Send")).toBeDisabled();
-    const warning = (await screen.findByText("Model Configure")).closest(
+    const warning = (await screen.findByText("Configure model")).closest(
       "button",
     )!;
     expect(warning).toHaveAccessibleName(
-      "Model Configure: The selected model is not available. Configure it before sending.",
+      "Configure model: The selected model is not available. Configure it before sending.",
     );
 
     await user.click(warning);
@@ -1862,11 +1864,11 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     expect(screen.getByLabelText("Send")).toBeDisabled();
-    const warning = (await screen.findByText("Model Configure")).closest(
+    const warning = (await screen.findByText("Configure model")).closest(
       "button",
     )!;
     expect(warning).toHaveAccessibleName(
-      "Model Configure: The selected model is not available. Configure it before sending.",
+      "Configure model: The selected model is not available. Configure it before sending.",
     );
 
     await user.click(warning);
@@ -2059,6 +2061,158 @@ describe("chat composer models", () => {
     });
   });
 
+  it("accepts visual attachments across composer paths for fallback-enabled text-only models", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("glm-5.1");
+    mockAgent();
+    context.mocks.upload.success({
+      id: "recognition-compatible-upload",
+      filename: "uploaded.png",
+      contentType: "image/png",
+      size: 3,
+      url: "https://example.com/uploaded.png",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroImageRecognition]: true,
+      },
+    });
+
+    await expectComposerModel("GLM-5.1");
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+
+    await user.upload(
+      fileInput,
+      new File(["png"], "uploaded.png", { type: "image/png" }),
+    );
+    await expect(
+      screen.findByLabelText("Open image preview for uploaded.png"),
+    ).resolves.toBeInTheDocument();
+
+    const editor = await findComposerEditor();
+    fireEvent.paste(editor, {
+      clipboardData: {
+        getData: () => {
+          return "";
+        },
+        items: [
+          {
+            kind: "file",
+            getAsFile: () => {
+              return new File(["jpeg"], "pasted.jpg", {
+                type: "image/jpeg",
+              });
+            },
+          },
+        ],
+      },
+    });
+
+    await expect(
+      screen.findByLabelText("Open image preview for pasted.jpg"),
+    ).resolves.toBeInTheDocument();
+
+    fireEvent.paste(editor, {
+      clipboardData: {
+        getData: (type: string) => {
+          if (type === "text/html") {
+            return chatClipboardHtml({
+              text: "Compare the restored image",
+              attachments: [
+                {
+                  id: "restored-recognition-image",
+                  url: "https://example.com/restored.png",
+                  filename: "restored.png",
+                  contentType: "image/png",
+                  size: 42,
+                },
+              ],
+            });
+          }
+          return "";
+        },
+        items: [],
+      },
+    });
+
+    await expect(
+      screen.findByLabelText("Open image preview for restored.png"),
+    ).resolves.toBeInTheDocument();
+
+    const composer = composerElementFrom(editor);
+    fireEvent.drop(composer, {
+      dataTransfer: {
+        files: [new File(["webp"], "dropped.webp", { type: "image/webp" })],
+      },
+    });
+
+    await expect(
+      screen.findByLabelText("Open image preview for dropped.webp"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("accepts media outside the direct recognition contract for fallback-enabled text-only models", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("glm-5.1");
+    mockAgent();
+    context.mocks.upload.success({
+      id: "recognition-boundary-visual",
+      filename: "uploaded-visual",
+      contentType: "application/octet-stream",
+      size: 5,
+      url: "https://example.com/uploaded-visual",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroImageRecognition]: true,
+      },
+    });
+
+    await expectComposerModel("GLM-5.1");
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const oversizedImage = new File(["png"], "oversized.png", {
+      type: "image/png",
+    });
+    Object.defineProperty(oversizedImage, "size", {
+      configurable: true,
+      value: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+    });
+
+    await user.upload(fileInput, [
+      new File(["gif"], "animated.gif", { type: "image/gif" }),
+      new File([], "empty.png", { type: "image/png" }),
+      oversizedImage,
+      new File(["video"], "clip.mp4", { type: "video/mp4" }),
+    ]);
+
+    await expect(
+      screen.findByLabelText("Open image preview for animated.gif"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Open image preview for empty.png"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Open image preview for oversized.png"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Remove clip.mp4"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
+    ).not.toBeInTheDocument();
+  });
+
   it("hides an accepted visual attachment after switching to a text-only model", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-sonnet-4-6");
@@ -2097,6 +2251,53 @@ describe("chat composer models", () => {
       ).toBeGreaterThan(0);
       expect(
         screen.queryByLabelText("Open image preview for storyboard.png"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps a non-native image after switching to a fallback-enabled text-only model", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("claude-sonnet-4-6");
+    mockAgent();
+    context.mocks.upload.success({
+      id: "recognition-model-switch",
+      filename: "storyboard.gif",
+      contentType: "image/gif",
+      size: 128,
+      url: "https://example.com/storyboard.gif",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroImageRecognition]: true,
+      },
+    });
+
+    await expectComposerModel("Claude Sonnet 4.6");
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(["image"], "storyboard.gif", { type: "image/gif" }),
+    );
+
+    await expect(
+      screen.findByLabelText("Open image preview for storyboard.gif"),
+    ).resolves.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+    );
+    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Open image preview for storyboard.gif"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
       ).not.toBeInTheDocument();
     });
   });
@@ -2147,7 +2348,9 @@ describe("chat composer models", () => {
 
   it("keeps connector access resolved across same-agent chat navigation", async () => {
     const unexpectedReload = context.mocks.deferred<void>();
+    const unexpectedCustomReload = context.mocks.deferred<void>();
     let authorizationRequestCount = 0;
+    let customAuthorizationRequestCount = 0;
 
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
@@ -2171,6 +2374,16 @@ describe("chat composer models", () => {
         return respond(200, { enabledConnectorSlugs: ["github"] });
       },
     );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      async ({ respond, withSignal }) => {
+        customAuthorizationRequestCount += 1;
+        if (customAuthorizationRequestCount > 1) {
+          await withSignal(unexpectedCustomReload.promise);
+        }
+        return respond(200, { enabledIds: [] });
+      },
+    );
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
@@ -2180,6 +2393,7 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(initialConnectorButton.querySelector("img")).not.toBeNull();
       expect(authorizationRequestCount).toBe(1);
+      expect(customAuthorizationRequestCount).toBe(1);
     });
 
     await navigateToChatThread(OTHER_AGENT_THREAD_ID);
@@ -2198,10 +2412,13 @@ describe("chat composer models", () => {
     const connectorStatusStayedResolved =
       screen.queryByLabelText("Remove GitHub") !== null;
     const requestCountAfterNavigation = authorizationRequestCount;
+    const customRequestCountAfterNavigation = customAuthorizationRequestCount;
     unexpectedReload.resolve();
+    unexpectedCustomReload.resolve();
 
     expect(connectorStatusStayedResolved).toBeTruthy();
     expect(requestCountAfterNavigation).toBe(1);
+    expect(customRequestCountAfterNavigation).toBe(1);
     expect(nextConnectorButton.querySelector("img")).not.toBeNull();
   });
 

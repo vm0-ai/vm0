@@ -14,21 +14,133 @@ mod local;
 pub mod mock;
 mod network_policy_refresh;
 
+pub(crate) use api::ApiClient;
 pub use api::{ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths};
 pub use local::LocalProvider;
 pub(crate) use network_policy_refresh::{
     NetworkPolicyRefreshHandle, NetworkPolicyRefreshRegistration,
 };
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset, Utc};
 use sandbox::SandboxId;
+use serde::{Deserialize, Deserializer, de::Error as _};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+use uuid::Uuid;
 
 use crate::active_input::ActiveInputSource;
 use crate::error::RunnerResult;
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult, SessionAffinityResource};
+use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+
+const JAVASCRIPT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum RunnerPreferenceReason {
+    ExactHistoryGeneration,
+    MatchingReuseKey,
+    FinalizingPredecessor,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RunnerProcessIdentity {
+    runner_id: Uuid,
+    #[serde(deserialize_with = "deserialize_heartbeat_generation")]
+    heartbeat_generation: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RunnerPreferencePayload {
+    runner_identity: RunnerProcessIdentity,
+    reason: RunnerPreferenceReason,
+    expires_at: DateTime<FixedOffset>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RunnerPreference {
+    runner_identity: RunnerProcessIdentity,
+    reason: RunnerPreferenceReason,
+    deadline: Instant,
+}
+
+impl RunnerPreference {
+    pub(crate) fn reason(&self) -> RunnerPreferenceReason {
+        self.reason
+    }
+
+    pub(crate) fn deadline(&self) -> Instant {
+        self.deadline
+    }
+
+    pub(crate) fn remaining(&self) -> Duration {
+        self.deadline.saturating_duration_since(Instant::now())
+    }
+
+    pub(crate) fn is_expired(&self) -> bool {
+        self.deadline <= Instant::now()
+    }
+
+    pub(crate) fn targets(&self, runner_id: &str, heartbeat_generation: u64) -> bool {
+        runner_id
+            .parse::<Uuid>()
+            .is_ok_and(|runner_id| runner_id == self.runner_identity.runner_id)
+            && heartbeat_generation == self.runner_identity.heartbeat_generation
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        runner_id: Uuid,
+        heartbeat_generation: u64,
+        reason: RunnerPreferenceReason,
+        deadline: Instant,
+    ) -> Self {
+        Self {
+            runner_identity: RunnerProcessIdentity {
+                runner_id,
+                heartbeat_generation,
+            },
+            reason,
+            deadline,
+        }
+    }
+}
+
+pub(crate) fn parse_runner_preference(
+    value: Option<serde_json::Value>,
+) -> Result<Option<RunnerPreference>, serde_json::Error> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let payload: RunnerPreferencePayload = serde_json::from_value(value)?;
+    let now = Instant::now();
+    let remaining = (payload.expires_at.with_timezone(&Utc) - Utc::now())
+        .to_std()
+        .unwrap_or_default();
+    let deadline = now
+        .checked_add(remaining)
+        .ok_or_else(|| serde_json::Error::custom("runner preference expiry is out of range"))?;
+    Ok(Some(RunnerPreference {
+        runner_identity: payload.runner_identity,
+        reason: payload.reason,
+        deadline,
+    }))
+}
+
+fn deserialize_heartbeat_generation<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = u64::deserialize(deserializer)?;
+    if value == 0 || value > JAVASCRIPT_MAX_SAFE_INTEGER {
+        return Err(D::Error::custom(
+            "heartbeat generation must be a positive JavaScript safe integer",
+        ));
+    }
+    Ok(value)
+}
 
 /// Low-cardinality source that first discovered a job candidate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -65,11 +177,8 @@ pub struct JobCandidate {
     poll_due_to_job_discovered_elapsed: Option<Duration>,
     poll_http_request_elapsed: Option<Duration>,
     reuse_key: Option<String>,
-    cli_agent_session_id: Option<String>,
-    session_affinity_resource: Option<SessionAffinityResource>,
     history_generation_run_id: Option<RunId>,
-    history_generation_affinity_protected_until: Option<DateTime<Utc>>,
-    affinity_protected_until: Option<DateTime<Utc>>,
+    runner_preference: Option<RunnerPreference>,
 }
 
 impl JobCandidate {
@@ -99,11 +208,8 @@ impl JobCandidate {
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
             reuse_key: None,
-            cli_agent_session_id: None,
-            session_affinity_resource: None,
             history_generation_run_id: None,
-            history_generation_affinity_protected_until: None,
-            affinity_protected_until: None,
+            runner_preference: None,
         }
     }
 
@@ -189,63 +295,33 @@ impl JobCandidate {
         self.poll_http_request_elapsed
     }
 
-    pub(crate) fn cli_agent_session_id(&self) -> Option<&str> {
-        self.cli_agent_session_id.as_deref()
-    }
-
     pub(crate) fn reuse_key(&self) -> Option<&str> {
         self.reuse_key.as_deref()
-    }
-
-    pub(crate) fn session_affinity_resource(&self) -> Option<SessionAffinityResource> {
-        self.session_affinity_resource
     }
 
     pub(crate) fn history_generation_run_id(&self) -> Option<RunId> {
         self.history_generation_run_id
     }
 
-    pub(crate) fn affinity_protection_remaining(&self) -> Option<Duration> {
-        protection_remaining(self.affinity_protected_until)
+    pub(crate) fn runner_preference(&self) -> Option<&RunnerPreference> {
+        self.runner_preference.as_ref()
     }
 
-    pub(crate) fn is_affinity_protected(&self) -> bool {
-        self.affinity_protection_remaining()
-            .is_some_and(|remaining| !remaining.is_zero())
-    }
-
-    pub(crate) fn history_generation_affinity_protection_remaining(&self) -> Option<Duration> {
-        let generation_remaining =
-            protection_remaining(self.history_generation_affinity_protected_until)?;
-        let session_remaining = self.affinity_protection_remaining()?;
-        Some(generation_remaining.min(session_remaining))
-    }
-
-    pub(crate) fn is_history_generation_affinity_protected(&self) -> bool {
-        self.history_generation_affinity_protection_remaining()
-            .is_some_and(|remaining| !remaining.is_zero())
-    }
-
-    pub(crate) fn with_affinity_metadata(
-        mut self,
-        reuse_key: Option<String>,
-        cli_agent_session_id: Option<String>,
-        affinity_protected_until: Option<String>,
-    ) -> Self {
-        self.reuse_key = reuse_key.filter(|reuse_key| !reuse_key.is_empty());
-        self.cli_agent_session_id =
-            cli_agent_session_id.filter(|session_id| !session_id.is_empty());
-        self.affinity_protected_until = affinity_protected_until
-            .as_deref()
-            .and_then(parse_affinity_protected_until);
+    pub(crate) fn without_runner_preference(mut self) -> Self {
+        self.runner_preference = None;
         self
     }
 
-    pub(crate) fn with_session_affinity_resource(
+    pub(crate) fn with_reuse_key(mut self, reuse_key: Option<String>) -> Self {
+        self.reuse_key = reuse_key.filter(|reuse_key| !reuse_key.is_empty());
+        self
+    }
+
+    pub(crate) fn with_runner_preference(
         mut self,
-        resource: Option<SessionAffinityResource>,
+        runner_preference: Option<RunnerPreference>,
     ) -> Self {
-        self.session_affinity_resource = resource;
+        self.runner_preference = runner_preference;
         self
     }
 
@@ -254,16 +330,6 @@ impl JobCandidate {
         history_generation_run_id: Option<RunId>,
     ) -> Self {
         self.history_generation_run_id = history_generation_run_id;
-        self
-    }
-
-    pub(crate) fn with_history_generation_affinity_protected_until(
-        mut self,
-        protected_until: Option<String>,
-    ) -> Self {
-        self.history_generation_affinity_protected_until = protected_until
-            .as_deref()
-            .and_then(parse_affinity_protected_until);
         self
     }
 
@@ -311,21 +377,6 @@ impl JobCandidate {
     }
 }
 
-fn parse_affinity_protected_until(value: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|parsed| parsed.with_timezone(&Utc))
-}
-
-fn protection_remaining(protected_until: Option<DateTime<Utc>>) -> Option<Duration> {
-    let protected_until = protected_until?;
-    let now = Utc::now();
-    if protected_until <= now {
-        return None;
-    }
-    (protected_until - now).to_std().ok()
-}
-
 /// Job claim result with the context and auth required for terminal completion.
 pub struct ClaimedJob {
     context: ExecutionContext,
@@ -354,9 +405,18 @@ impl ClaimedJob {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn api(
         expected_run_id: RunId,
         context: ExecutionContext,
+    ) -> Result<Self, ClaimedJobRunIdMismatch> {
+        Self::api_with_active_input_source(expected_run_id, context, None)
+    }
+
+    pub(crate) fn api_with_active_input_source(
+        expected_run_id: RunId,
+        context: ExecutionContext,
+        active_input_source: Option<ActiveInputSource>,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
         Self::validate_run_id(expected_run_id, &context)?;
         let completion_auth =
@@ -364,7 +424,7 @@ impl ClaimedJob {
         Ok(Self {
             context,
             completion_auth,
-            active_input_source: None,
+            active_input_source,
         })
     }
 
@@ -534,10 +594,10 @@ pub trait JobProvider: Send + Sync {
     /// the future to enforce single-flight and lifecycle ordering.
     async fn heartbeat(&self, state: &HeartbeatState);
 
-    /// Delay the next API-backed poll until a protected same-session job can
-    /// fall back to normal compatible-runner claiming.
+    /// Defer the next API-backed poll until the immutable preference deadline
+    /// allows normal compatible-runner claiming.
     /// Default no-op — only relevant for API-backed providers.
-    async fn defer_poll_after(&self, _delay: Duration) {}
+    async fn defer_poll_until(&self, _deadline: Instant) {}
 
     /// Release discovery resources (subscriptions, background tasks).
     ///
@@ -586,26 +646,5 @@ mod tests {
         assert_eq!(context.run_id, run_id);
         assert!(active_input_source.is_none());
         assert!(completion_auth.matches_sandbox_token_for_test(run_id, "sandbox-token"));
-    }
-
-    #[test]
-    fn history_generation_affinity_never_outlives_session_affinity() {
-        let expired_session = JobCandidate::new(RunId::nil(), "vm0/default".into())
-            .with_affinity_metadata(
-                Some("session:sess-deadline".into()),
-                Some("sess-deadline".into()),
-                Some("2000-01-01T00:00:00Z".into()),
-            )
-            .with_history_generation_affinity_protected_until(Some("2999-01-01T00:00:00Z".into()));
-        assert!(!expired_session.is_history_generation_affinity_protected());
-
-        let active_session = JobCandidate::new(RunId::nil(), "vm0/default".into())
-            .with_affinity_metadata(
-                Some("session:sess-deadline".into()),
-                Some("sess-deadline".into()),
-                Some("2999-01-01T00:00:01Z".into()),
-            )
-            .with_history_generation_affinity_protected_until(Some("2999-01-01T00:00:00Z".into()));
-        assert!(active_session.is_history_generation_affinity_protected());
     }
 }

@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 
 use super::super::{MAX_LOCAL_SUBMIT_TIMEOUT_SECS, SubmitArgs, run_submit_with_home};
-use super::support::{submit_args_for_test, wait_for_job_and_write_success};
+use super::support::{run_submit_and_write_success, submit_args_for_test};
 use crate::error::RunnerError;
 use crate::local_queue;
 use crate::paths::HomePaths;
@@ -13,6 +13,7 @@ async fn rejects_invalid_profile_name() {
         prompt: "hello".into(),
         cli_agent_type: "claude-code".into(),
         profile: Some("bad-name".into()),
+        chat_thread_id: None,
         session_id: None,
         feature_flags: vec![],
         env: vec![],
@@ -36,6 +37,7 @@ async fn accepts_valid_profile_name() {
         prompt: "hello".into(),
         cli_agent_type: "claude-code".into(),
         profile: Some("vm0/default".into()),
+        chat_thread_id: None,
         session_id: None,
         feature_flags: vec![],
         env: vec![],
@@ -59,6 +61,7 @@ async fn rejects_feature_flag_missing_equals() {
         prompt: "hello".into(),
         cli_agent_type: "claude-code".into(),
         profile: None,
+        chat_thread_id: None,
         session_id: None,
         feature_flags: vec!["myFlag".into()],
         env: vec![],
@@ -79,6 +82,7 @@ async fn rejects_feature_flag_non_boolean() {
         prompt: "hello".into(),
         cli_agent_type: "claude-code".into(),
         profile: None,
+        chat_thread_id: None,
         session_id: None,
         feature_flags: vec!["myFlag=yes".into()],
         env: vec![],
@@ -104,6 +108,7 @@ async fn timeout_message_includes_group_and_profile() {
         prompt: "hello".into(),
         cli_agent_type: "claude-code".into(),
         profile: Some("vm0/large".into()),
+        chat_thread_id: None,
         session_id: None,
         feature_flags: vec![],
         env: vec![],
@@ -125,17 +130,11 @@ async fn maximum_timeout_is_accepted() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
     let group = "test/group";
-    let group_dir = home.groups_dir().join(group);
     let mut args = submit_args_for_test();
     args.group = group.into();
     args.timeout = MAX_LOCAL_SUBMIT_TIMEOUT_SECS;
-    let watcher = tokio::spawn(wait_for_job_and_write_success(
-        group_dir,
-        crate::profile::DEFAULT_PROFILE.to_owned(),
-    ));
 
-    let code = run_submit_with_home(args, home).await.unwrap();
-    let request = watcher.await.unwrap();
+    let (code, request) = run_submit_and_write_success(args, home).await.unwrap();
 
     assert_eq!(code, ExitCode::SUCCESS);
     assert_eq!(request.prompt, "hello");
@@ -177,6 +176,7 @@ async fn timeout_removes_unclaimed_job_from_queue() {
         prompt: "hello".into(),
         cli_agent_type: "claude-code".into(),
         profile: None,
+        chat_thread_id: None,
         session_id: None,
         feature_flags: vec![],
         env: vec![],

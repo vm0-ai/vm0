@@ -97,7 +97,9 @@ export function OnboardingWorkflowRunPage() {
               </p>
             </div>
             <div className="flex items-center justify-between gap-3">
-              <WorkflowConnectorPills connectorIds={workflow.connectors} />
+              <WorkflowConnectorPills
+                connectorSlugs={workflow.connectorSlugs}
+              />
               <button
                 type="button"
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/30 text-muted-foreground hover:border-primary/35 hover:text-primary"
@@ -115,8 +117,8 @@ export function OnboardingWorkflowRunPage() {
         ) : null}
 
         <OnboardingConnectorSetup
-          connectorIds={workflow?.connectors ?? []}
-          requiredIds={workflow?.required ?? []}
+          connectorSlugs={workflow?.connectorSlugs ?? []}
+          requiredConnectorSlugs={workflow?.requiredConnectorSlugs ?? []}
         >
           <label className="sr-only" htmlFor="workflow-note">
             {custom

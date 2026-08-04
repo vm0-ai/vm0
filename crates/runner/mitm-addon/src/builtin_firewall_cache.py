@@ -11,6 +11,7 @@ from typing import Literal, NamedTuple
 from mitmproxy import ctx
 
 import builtin_host_policy
+import connector_template_syntax
 import matching
 from path_security import has_unsafe_path, has_unsafe_url_path
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
@@ -514,35 +515,20 @@ def _base_url_template_syntax_target(firewall_name: str, raw_base: str) -> str |
             raise BuiltinFirewallCatalogCacheError(
                 f'catalog cache firewall "{firewall_name}" api base template is unterminated'
             )
-        _validate_base_url_var_reference(firewall_name, raw_base[content_start:end])
+        template_end = end + len("}}")
+        template = raw_base[start:template_end]
+        reference = next(connector_template_syntax.iter_simple_references(template), None)
+        if reference is None or reference.start != 0 or reference.end != len(template):
+            raise BuiltinFirewallCatalogCacheError(
+                f'catalog cache firewall "{firewall_name}" api base template variable is invalid'
+            )
+        if reference.namespace != "vars":
+            raise BuiltinFirewallCatalogCacheError(
+                f'catalog cache firewall "{firewall_name}" api base template must use vars'
+            )
         result.append(raw_base[search_start:start])
         result.append("template")
-        search_start = end + len("}}")
-
-
-def _validate_base_url_var_reference(firewall_name: str, content: str) -> None:
-    stripped = content.strip()
-    if not stripped.startswith("vars."):
-        raise BuiltinFirewallCatalogCacheError(
-            f'catalog cache firewall "{firewall_name}" api base template must use vars'
-        )
-    name = stripped[len("vars.") :]
-    if not name or not _is_ascii_identifier_start(name[0]):
-        raise BuiltinFirewallCatalogCacheError(
-            f'catalog cache firewall "{firewall_name}" api base template variable is invalid'
-        )
-    if not all(_is_ascii_identifier_continue(char) for char in name):
-        raise BuiltinFirewallCatalogCacheError(
-            f'catalog cache firewall "{firewall_name}" api base template variable is invalid'
-        )
-
-
-def _is_ascii_identifier_start(char: str) -> bool:
-    return ("A" <= char <= "Z") or ("a" <= char <= "z") or char == "_"
-
-
-def _is_ascii_identifier_continue(char: str) -> bool:
-    return _is_ascii_identifier_start(char) or ("0" <= char <= "9")
+        search_start = template_end
 
 
 def _warn(message: str) -> None:

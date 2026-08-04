@@ -355,7 +355,7 @@ def test_eviction_and_reset_release_retained_buffered_report(
             "enqueue_webhook_delivery",
             return_value=False,
         ),
-        patch.object(claude_output_timing, "_MAX_TRACKED_RUNS", 1),
+        patch.object(claude_output_timing._store, "_max_tracked_runs", 1),
     ):
         first_flow = _claude_sse_flow(real_flow, tmp_path)
         first_flow.metadata[metadata_keys.VM_RUN_ID] = "run-first"
@@ -384,6 +384,78 @@ def test_eviction_and_reset_release_retained_buffered_report(
         reports=0,
         flush_request_id="after-reset",
     )
+
+
+def test_lru_hit_recency_preserves_recent_buffered_report(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+) -> None:
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+    delivery_available = False
+
+    def enqueue_timing_delivery(
+        _url: str,
+        _sandbox_token: str,
+        _payload: dict[str, object],
+        _proxy_log_path: str,
+        _log_type: str,
+    ) -> bool:
+        return delivery_available
+
+    def claude_flow(run_id: str) -> http.HTTPFlow:
+        flow = _claude_sse_flow(real_flow, tmp_path)
+        flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+        mitm_addon.responseheaders(flow)
+        return flow
+
+    with (
+        mitm_ctx(api_url="https://api.test"),
+        patch.object(
+            usage.webhook,
+            "enqueue_webhook_delivery",
+            side_effect=enqueue_timing_delivery,
+        ),
+        patch.object(claude_output_timing._store, "_max_tracked_runs", 2),
+    ):
+        first_flow = claude_flow("run-a")
+        _feed(first_flow, _message_start(include_usage=False))
+
+        second_flow = claude_flow("run-b")
+        _feed(second_flow, _message_start(include_usage=False))
+
+        mitm_addon.response(claude_flow("run-a"))
+
+        overflow_flow = claude_flow("run-c")
+        _feed(overflow_flow, _message_start(include_usage=False))
+
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=2,
+            reports=0,
+            flush_request_id="after-overflow",
+        )
+
+        delivery_available = True
+        mitm_addon.response(claude_flow("run-b"))
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=2,
+            reports=0,
+            flush_request_id="after-cold-retry",
+        )
+
+        mitm_addon.response(claude_flow("run-a"))
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=1,
+            reports=0,
+            flush_request_id="after-recent-retry",
+        )
 
 
 @pytest.mark.parametrize("terminal_hook", ["response", "error"])

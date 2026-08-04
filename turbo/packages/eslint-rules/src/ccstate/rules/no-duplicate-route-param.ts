@@ -27,7 +27,7 @@ interface ParamOccurrence {
 /**
  * Extract (segment, paramName) pairs from a route path string.
  * For "/agents/:agentId/chat", returns [["agents", "agentId"]].
- * For "/connectors/:type/connect", returns [["connectors", "type"]].
+ * For "/connectors/:connectorSlug/connect", returns [["connectors", "connectorSlug"]].
  */
 function extractSegmentParamPairs(
   path: string,

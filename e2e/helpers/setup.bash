@@ -6,6 +6,7 @@ TEST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Load BATS libraries
 load "${TEST_ROOT}/test/libs/bats-support/load"
 load "${TEST_ROOT}/test/libs/bats-assert/load"
+load "${TEST_ROOT}/helpers/http"
 load "${TEST_ROOT}/helpers/storage-fixtures"
 load "${TEST_ROOT}/helpers/compose-fixtures"
 load "${TEST_ROOT}/helpers/run-fixtures"
@@ -124,6 +125,22 @@ require_e2e_api_credentials() {
     e2e_api_token >/dev/null && e2e_api_url >/dev/null
 }
 
+use_e2e_api_credentials() {
+    local variant="$1"
+    local credentials="/tmp/e2e-api-credentials-${variant}.json"
+    E2E_API_TOKEN=$(jq -er '.token | select(type == "string" and length > 0)' "$credentials") || return 1
+    E2E_API_URL=$(jq -er '.apiUrl | select(type == "string" and length > 0)' "$credentials") || return 1
+    export E2E_API_TOKEN E2E_API_URL
+}
+
+set_real_agent_in_preview() {
+    local enabled="$1"
+    e2e_api_curl "/api/zero/feature-switches" \
+        -X POST \
+        -d "{\"switches\":{\"realAgentInPreview\":${enabled}}}" \
+        >/dev/null
+}
+
 e2e_api_curl() {
     local path="$1"; shift
     local token base
@@ -133,7 +150,22 @@ e2e_api_curl() {
     if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
         hdrs+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
     fi
-    curl -fsS "${hdrs[@]}" "$@" "$base$path"
+    e2e_curl "${hdrs[@]}" "$@" "$base$path"
+}
+
+e2e_cron_curl() {
+    local path="$1"; shift
+    local base
+    if [[ -z "${CRON_SECRET:-}" ]]; then
+        echo "CRON_SECRET is required" >&2
+        return 1
+    fi
+    base=$(e2e_api_url) || return 1
+    local -a hdrs=(-H "Authorization: Bearer $CRON_SECRET")
+    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+        hdrs+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+    fi
+    e2e_curl "${hdrs[@]}" "$@" "$base$path"
 }
 
 configure_e2e_model_provider() {
@@ -309,6 +341,10 @@ zero_usage_runs_response() {
     e2e_api_curl "/api/zero/usage/runs?runId=$run_id&pageSize=1"
 }
 
+process_zero_usage_events() {
+    e2e_cron_curl "/api/cron/process-usage-events" >/dev/null
+}
+
 zero_run_response() {
     local run_id="$1"
     e2e_api_curl "/api/zero/runs/$run_id"
@@ -353,6 +389,7 @@ wait_for_zero_usage_run() {
     local count=""
 
     while (( SECONDS - start < timeout )); do
+        process_zero_usage_events || return 1
         if body=$(zero_usage_runs_response "$run_id" 2>&1); then
             count=$(printf '%s' "$body" | jq -r '.runs | length')
             if [[ "$count" == "1" ]]; then

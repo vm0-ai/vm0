@@ -44,6 +44,7 @@ function buildCommands(): Command[] {
     new Command("scrape"),
     new Command("people-search"),
     new Command("web-search"),
+    new Command("recognize"),
     new Command("finance"),
     new Command("banking"),
     new Command("goal"),
@@ -728,6 +729,42 @@ describe("registerZeroCommands", () => {
     vi.stubEnv("ZERO_TOKEN", enabledToken);
 
     expect(visibleCommandNames(buildProgram())).toContain("browser");
+  });
+
+  it("should expose recognition only to eligible Zero runs", () => {
+    vi.stubEnv("ZERO_TOKEN", undefined);
+    const noTokenProgram = buildProgram({
+      [FeatureSwitchKey.ZeroImageRecognition]: true,
+    });
+    expect(registeredCommandNames(noTokenProgram)).toContain("recognize");
+    expect(hiddenCommandNames(noTokenProgram)).toContain("recognize");
+
+    const missingCapabilityToken = buildZeroToken({
+      scope: "zero",
+      userId: "user-1",
+      orgId: "org-1",
+      capabilities: [],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroImageRecognition]: true,
+      },
+    });
+    vi.stubEnv("ZERO_TOKEN", missingCapabilityToken);
+    expect(hiddenCommandNames(buildProgram())).toContain("recognize");
+
+    const eligibleToken = buildZeroToken({
+      scope: "zero",
+      userId: "user-1",
+      orgId: "org-1",
+      capabilities: ["image-recognition:write"],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroImageRecognition]: true,
+      },
+    });
+    vi.stubEnv("ZERO_TOKEN", eligibleToken);
+    expect(visibleCommandNames(buildProgram())).toContain("recognize");
+    expect(buildZeroHelpText(decodeZeroTokenPayload(eligibleToken))).toContain(
+      "Recognize an image?",
+    );
   });
 
   it("should show billing help examples only for billing capabilities", () => {

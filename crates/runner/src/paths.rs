@@ -24,6 +24,8 @@ use sha2::{Digest, Sha256};
 use crate::error::RunnerResult;
 use crate::ids::RunId;
 
+const WORKSPACE_IMAGE_CACHE_KEY_DOMAIN: &[u8] = b"workspace-image-cache:v1\0";
+
 /// Short hex digests for storage name and version components, used when
 /// building filesystem paths from untrusted manifest fields.
 ///
@@ -61,11 +63,11 @@ pub(crate) fn base_dir_lock_name(base_dir: &Path) -> String {
 /// includes the cache scope, profile, drive layout version, and logical image
 /// size so incompatible workspace images never share a host entry.
 #[cfg(test)]
-pub(crate) fn session_workspace_cache_key(reuse_key: &str, working_dir: &str) -> String {
-    scoped_session_workspace_cache_key("", "vm0/default", reuse_key, working_dir, 5)
+pub(crate) fn workspace_image_cache_key(reuse_key: &str, working_dir: &str) -> String {
+    scoped_workspace_image_cache_key("", "vm0/default", reuse_key, working_dir, 5)
 }
 
-pub(crate) fn scoped_session_workspace_cache_key(
+pub(crate) fn scoped_workspace_image_cache_key(
     cache_scope: &str,
     profile_name: &str,
     reuse_key: &str,
@@ -73,7 +75,7 @@ pub(crate) fn scoped_session_workspace_cache_key(
     image_size_bytes: u64,
 ) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(b"session-workspace-cache:v4\0");
+    hasher.update(WORKSPACE_IMAGE_CACHE_KEY_DOMAIN);
     hasher.update(cache_scope.as_bytes());
     hasher.update(b"\0");
     hasher.update(profile_name.as_bytes());
@@ -171,25 +173,25 @@ impl RunnerPaths {
     }
 
     #[cfg(test)]
-    pub fn session_workspace_cache_entry_dir(&self, cache_key: &str) -> PathBuf {
+    pub fn workspace_image_cache_entry_dir(&self, cache_key: &str) -> PathBuf {
         self.workspace_image_cache_dir().join(cache_key)
     }
 
     #[cfg(test)]
-    pub fn session_workspace_cache_metadata(&self, cache_key: &str) -> PathBuf {
-        self.session_workspace_cache_entry_dir(cache_key)
+    pub fn workspace_image_cache_metadata(&self, cache_key: &str) -> PathBuf {
+        self.workspace_image_cache_entry_dir(cache_key)
             .join("metadata.json")
     }
 
     #[cfg(test)]
-    pub fn session_workspace_cache_current_image(&self, cache_key: &str) -> PathBuf {
-        self.session_workspace_cache_entry_dir(cache_key)
+    pub fn workspace_image_cache_current_image(&self, cache_key: &str) -> PathBuf {
+        self.workspace_image_cache_entry_dir(cache_key)
             .join("current.ext4")
     }
 
     #[cfg(test)]
-    pub fn session_workspace_cache_tmp_image(&self, cache_key: &str, run_id: RunId) -> PathBuf {
-        self.session_workspace_cache_entry_dir(cache_key)
+    pub fn workspace_image_cache_tmp_image(&self, cache_key: &str, run_id: RunId) -> PathBuf {
+        self.workspace_image_cache_entry_dir(cache_key)
             .join(format!("current.ext4.tmp.{run_id}"))
     }
 }

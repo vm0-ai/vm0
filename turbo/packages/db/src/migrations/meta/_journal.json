@@ -5510,6 +5510,188 @@
       "when": 1785495667349,
       "tag": "0786_add_deepseek_v4_flash",
       "breakpoints": true
+    },
+    {
+      "idx": 787,
+      "version": "7",
+      "when": 1785498033767,
+      "tag": "0787_drop_legacy_browser_billing_storage",
+      "breakpoints": true
+    },
+    {
+      "idx": 788,
+      "version": "7",
+      "when": 1785507060886,
+      "tag": "0788_drop_chat_event_input_params_attach_file_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 789,
+      "version": "7",
+      "when": 1785515490435,
+      "tag": "0789_glamorous_fixer",
+      "breakpoints": true
+    },
+    {
+      "idx": 790,
+      "version": "7",
+      "when": 1785556484903,
+      "tag": "0790_bored_talisman",
+      "breakpoints": true
+    },
+    {
+      "idx": 791,
+      "version": "7",
+      "when": 1785559801767,
+      "tag": "0791_perfect_aqueduct",
+      "breakpoints": true
+    },
+    {
+      "idx": 792,
+      "version": "7",
+      "when": 1785567354104,
+      "tag": "0792_romantic_cable",
+      "breakpoints": true
+    },
+    {
+      "idx": 793,
+      "version": "7",
+      "when": 1785574307618,
+      "tag": "0793_contract_chat_event_run_lifecycle_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 794,
+      "version": "7",
+      "when": 1785575941106,
+      "tag": "0794_superb_firebird",
+      "breakpoints": true
+    },
+    {
+      "idx": 795,
+      "version": "7",
+      "when": 1785593771648,
+      "tag": "0795_optimize_chat_event_interrupt_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 796,
+      "version": "7",
+      "when": 1785596729593,
+      "tag": "0796_absurd_lockjaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 797,
+      "version": "7",
+      "when": 1785599674500,
+      "tag": "0797_drop_chat_feishu_context_tenant_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 798,
+      "version": "7",
+      "when": 1785642513771,
+      "tag": "0798_bright_scorpion",
+      "breakpoints": true
+    },
+    {
+      "idx": 799,
+      "version": "7",
+      "when": 1785643630260,
+      "tag": "0799_keen_smiling_tiger",
+      "breakpoints": true
+    },
+    {
+      "idx": 800,
+      "version": "7",
+      "when": 1785645273472,
+      "tag": "0800_expand_runner_sandbox_state_persistence",
+      "breakpoints": true
+    },
+    {
+      "idx": 801,
+      "version": "7",
+      "when": 1785647201189,
+      "tag": "0801_nifty_nicolaos",
+      "breakpoints": true
+    },
+    {
+      "idx": 802,
+      "version": "7",
+      "when": 1785655499795,
+      "tag": "0802_rich_echo",
+      "breakpoints": true
+    },
+    {
+      "idx": 803,
+      "version": "7",
+      "when": 1785657499556,
+      "tag": "0803_optimize_chat_event_revoke_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 804,
+      "version": "7",
+      "when": 1785667649461,
+      "tag": "0804_contract_runner_state_runtime_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 805,
+      "version": "7",
+      "when": 1785681651300,
+      "tag": "0805_contract_legacy_runner_session_state_persistence",
+      "breakpoints": true
+    },
+    {
+      "idx": 806,
+      "version": "7",
+      "when": 1785724367437,
+      "tag": "0806_mature_the_santerians",
+      "breakpoints": true
+    },
+    {
+      "idx": 807,
+      "version": "7",
+      "when": 1785726431707,
+      "tag": "0807_expand_run_event_sequence_number",
+      "breakpoints": true
+    },
+    {
+      "idx": 808,
+      "version": "7",
+      "when": 1785736098623,
+      "tag": "0808_drop_chat_event_input_params",
+      "breakpoints": true
+    },
+    {
+      "idx": 809,
+      "version": "7",
+      "when": 1785741568921,
+      "tag": "0809_clean_kronos",
+      "breakpoints": true
+    },
+    {
+      "idx": 810,
+      "version": "7",
+      "when": 1785750870456,
+      "tag": "0810_small_sway",
+      "breakpoints": true
+    },
+    {
+      "idx": 811,
+      "version": "7",
+      "when": 1785759014655,
+      "tag": "0811_clear_non_goal_run_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 812,
+      "version": "7",
+      "when": 1785763448631,
+      "tag": "0812_tranquil_caretaker",
+      "breakpoints": true
     }
   ]
 }

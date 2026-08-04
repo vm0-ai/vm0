@@ -83,10 +83,34 @@ export const runnerClaimPollReasonSchema = z.enum([
   "fast",
 ]);
 
-export const sessionAffinityResourceSchema = z.enum([
-  "reusableSandbox",
-  "workspaceCache",
-]);
+const runnerHeartbeatGenerationSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(Number.MAX_SAFE_INTEGER);
+
+const runnerProcessIdentitySchema = z
+  .object({
+    runnerId: z.uuid(),
+    heartbeatGeneration: runnerHeartbeatGenerationSchema,
+  })
+  .strict();
+
+/**
+ * Advisory cross-runner coordination, not an exclusive assignment. A runner
+ * with an equivalent compatible local resource remains eligible to claim.
+ */
+export const runnerPreferenceSchema = z
+  .object({
+    runnerIdentity: runnerProcessIdentitySchema,
+    reason: z.enum([
+      "exactHistoryGeneration",
+      "matchingReuseKey",
+      "finalizingPredecessor",
+    ]),
+    expiresAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
 
 const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
 const runnerClaimTelemetrySchema = z
@@ -270,41 +294,27 @@ export const jobSchema = z.object({
   cliAgentSessionId: z.string().nullable().optional(),
   reuseKey: z.string().nullable().optional(),
   historyGenerationRunId: z.uuid().optional(),
-  historyGenerationAffinityProtectedUntil: z
-    .string()
-    .datetime({ offset: true })
-    .nullable()
-    .optional(),
-  affinityProtectedUntil: z
-    .string()
-    .datetime({ offset: true })
-    .nullable()
-    .optional(),
-  sessionAffinityResource: sessionAffinityResourceSchema.optional(),
+  runnerPreference: runnerPreferenceSchema.optional(),
 });
 
-export const heldSessionStateSchema = z.object({
-  // Compatibility wire name. Semantically this is the Claude/Codex CLI agent
-  // session id retained for telemetry and diagnostics.
-  sessionId: z.string(),
-  // Optional while older runners drain during deployment.
-  reuseKey: z.string().optional(),
+const heldWorkspaceCacheSchema = z.object({
+  profile: z.string(),
+  workspaceAffinityVersion: z.literal(1),
+});
+
+export const heldSandboxStateSchema = z.object({
+  reuseKey: z.string(),
   lastCompletedAt: z.string().datetime({ offset: true }),
-  reusableSandbox: z
-    .object({
-      profile: z.string(),
-      historyGenerationRunId: z.uuid().optional(),
-    })
-    .optional(),
-  workspaceCaches: z
-    .array(
-      z.object({
-        profile: z.string(),
-        workspaceAffinityVersion: z.literal(1).optional(),
-      }),
-    )
-    .max(8)
-    .optional(),
+  reusableSandbox: z.object({
+    profile: z.string(),
+    historyGenerationRunId: z.uuid().optional(),
+  }),
+});
+
+export const heldWorkspaceStateSchema = z.object({
+  reuseKey: z.string(),
+  lastCompletedAt: z.string().datetime({ offset: true }),
+  workspaceCaches: z.array(heldWorkspaceCacheSchema).min(1).max(8),
 });
 
 /**
@@ -621,6 +631,8 @@ export const executionContextSchema = z.object({
   agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   sandboxToken: z.string(),
+  activeInput: z.literal(true).optional(),
+  activeInputAbly: z.literal(true).optional(),
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
@@ -692,6 +704,8 @@ export const runnersJobClaimContract = c.router({
       id: z.uuid(),
     }),
     body: z.object({
+      runnerIdentity: runnerProcessIdentitySchema.optional(),
+      activeInput: z.literal(true).optional(),
       telemetry: runnerClaimTelemetrySchema.optional(),
     }),
     responses: {
@@ -703,6 +717,33 @@ export const runnersJobClaimContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Claim a pending job for execution",
+  },
+});
+
+export const runnersActiveInputsContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/runners/runs/:runId/active-inputs/:fromSequence",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      runId: z.uuid(),
+      fromSequence: z.coerce.number().int().positive(),
+    }),
+    responses: {
+      200: z.object({
+        entries: z.array(
+          z.object({
+            sequence: z.number().int().positive(),
+            messageId: z.uuid(),
+            text: z.string().min(1),
+          }),
+        ),
+      }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "List active input for a running agent run",
   },
 });
 
@@ -772,11 +813,7 @@ export const heartbeatBodySchema = z
     runnerId: z.uuid(),
     runnerName: z.string(),
     group: runnerGroupSchema,
-    snapshotGeneration: z
-      .number()
-      .int()
-      .positive()
-      .max(Number.MAX_SAFE_INTEGER),
+    snapshotGeneration: runnerHeartbeatGenerationSchema,
     snapshotSequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     totalVcpu: z.number().int().nonnegative(),
     totalMemoryMb: z.number().int().nonnegative(),
@@ -785,13 +822,14 @@ export const heartbeatBodySchema = z
     allocatedMemoryMb: z.number().int().nonnegative(),
     runningCount: z.number().int().nonnegative(),
     admittableProfiles: runnerProfileListSchema,
-    heldSessionStates: z.array(heldSessionStateSchema).max(1024),
+    heldSandboxStates: z.array(heldSandboxStateSchema).max(1024),
+    heldWorkspaceStates: z.array(heldWorkspaceStateSchema).max(1024),
     mode: z.enum(["starting", "running", "draining", "stopping"]),
   })
   .superRefine((heartbeat, ctx) => {
-    const workspaceCacheCount = heartbeat.heldSessionStates.reduce(
+    const workspaceCacheCount = heartbeat.heldWorkspaceStates.reduce(
       (count, state) => {
-        return count + (state.workspaceCaches?.length ?? 0);
+        return count + state.workspaceCaches.length;
       },
       0,
     );
@@ -801,8 +839,8 @@ export const heartbeatBodySchema = z
 
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ["heldSessionStates"],
-      message: "heldSessionStates may contain at most 1024 workspace caches",
+      path: ["heldWorkspaceStates"],
+      message: "heartbeat may contain at most 1024 workspace caches",
     });
   });
 
@@ -828,13 +866,16 @@ export const runnersHeartbeatContract = c.router({
 
 export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
+export type RunnersActiveInputsContract = typeof runnersActiveInputsContract;
 export type RunnersNetworkPolicyRefreshContract =
   typeof runnersNetworkPolicyRefreshContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
 export type RunnersBuiltinFirewallsResolveContract =
   typeof runnersBuiltinFirewallsResolveContract;
 export type Job = z.infer<typeof jobSchema>;
-export type HeldSessionState = z.infer<typeof heldSessionStateSchema>;
+export type RunnerPreference = z.infer<typeof runnerPreferenceSchema>;
+export type HeldSandboxState = z.infer<typeof heldSandboxStateSchema>;
+export type HeldWorkspaceState = z.infer<typeof heldWorkspaceStateSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
@@ -868,7 +909,4 @@ export type SessionHistoryDownloadSource = z.infer<
 >;
 export type SessionHistorySizeBucket = z.infer<
   typeof sessionHistorySizeBucketSchema
->;
-export type SessionAffinityResource = z.infer<
-  typeof sessionAffinityResourceSchema
 >;

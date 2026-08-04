@@ -1,8 +1,9 @@
+use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::diagnostics::{FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureDiagnostic};
 use sandbox::Sandbox;
 use tracing::warn;
 
-use super::super::session_id::{invalid_session_id_diagnostic_preview, is_valid_session_id};
+use super::super::session_id::invalid_session_id_diagnostic_preview;
 use super::super::{SMALL_GUEST_FILE_MAX_BYTES, guest_runtime_path};
 use crate::ids::RunId;
 
@@ -103,7 +104,7 @@ pub(in crate::executor) async fn read_guest_cli_agent_session_id(
             if id.is_empty() {
                 return None;
             }
-            if !is_valid_session_id(&id) {
+            if !is_valid_cli_agent_session_id(&id) {
                 warn!(
                     run_id = %run_id,
                     session_id = %invalid_session_id_diagnostic_preview(&id),

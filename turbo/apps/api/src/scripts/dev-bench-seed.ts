@@ -31,7 +31,10 @@ type Database = ReturnType<typeof db>;
 type AgentRunInsert = typeof agentRuns.$inferInsert;
 type ZeroRunInsert = typeof zeroRuns.$inferInsert;
 type ChatEventInsert = typeof chatEvents.$inferInsert;
-type SeedChatEventRow = Omit<ChatEventInsert, "role" | "seqId"> & {
+type SeedChatEventRow = Omit<
+  ChatEventInsert,
+  "role" | "runLifecycleEvent" | "seqId"
+> & {
   id: string;
   createdAt: Date;
   sequenceNumber?: number | null;
@@ -797,7 +800,6 @@ function appendLifecycleEvent(args: {
     eventType: args.failed ? "run.failed" : "run.completed",
     content: null,
     error: args.failed ? "Synthetic benchmark failure" : null,
-    runLifecycleEvent: args.failed ? "failed" : "completed",
     createdAt: addMs(args.baseCreatedAt, 45_000 + args.eventCount * 100),
   });
 }

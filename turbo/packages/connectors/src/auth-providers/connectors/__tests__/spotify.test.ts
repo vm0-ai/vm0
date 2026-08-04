@@ -77,6 +77,34 @@ describe("connector/providers/spotify", () => {
       expect(result.userInfo.email).toBe("test@example.com");
     });
 
+    it("rejects user info without the required Spotify user id", async () => {
+      const tokenHandler = http.post(
+        "https://accounts.spotify.com/api/token",
+        () => {
+          return HttpResponse.json({
+            access_token: "spotify-test-token",
+          });
+        },
+      );
+      const meHandler = http.get("https://api.spotify.com/v1/me", () => {
+        return HttpResponse.json({
+          display_name: "Test Spotify User",
+          email: "test@example.com",
+        });
+      });
+      server.use(tokenHandler, meHandler);
+
+      await expect(
+        exchangeSpotifyCode(
+          authCodeGrant(),
+          "client-id",
+          "client-secret",
+          "test-code",
+          "https://example.com/callback",
+        ),
+      ).rejects.toThrow("No user id in Spotify user info response");
+    });
+
     it("throws when Spotify returns an error in response body", async () => {
       const tokenHandler = http.post(
         "https://accounts.spotify.com/api/token",

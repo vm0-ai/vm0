@@ -4,7 +4,7 @@ import type {
   BrowserSessionChangedPayload,
   ConnectorChangedPayload,
 } from "@vm0/api-contracts/contracts/realtime";
-import type { SessionAffinityResource } from "@vm0/api-contracts/contracts/runners";
+import type { RunnerPreference } from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
 import { env } from "../../lib/env";
@@ -136,7 +136,7 @@ export async function publishThreadListChangedSafely(
   userId: string,
 ): Promise<void> {
   await tapError(publishThreadListChanged(userId), (error) => {
-    L.warn("Failed to publish thread list changed signal", { error });
+    L.warn("Failed to publish thread list changed signal", { userId, error });
   });
 }
 
@@ -184,6 +184,26 @@ export async function publishChatThreadMessageCreatedSafely(
     ),
     (error) => {
       L.warn("Failed to publish chat thread message created signal", {
+        threadId,
+        error,
+      });
+    },
+  );
+}
+
+/**
+ * Notify an open chat thread that a persisted run was created.
+ *
+ * Best-effort: a failed publish must not fail the committed run creation.
+ */
+export async function publishChatThreadRunCreatedSafely(
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], `chatThreadRunCreated:${threadId}`),
+    (error) => {
+      L.warn("Failed to publish chat thread run created signal", {
         threadId,
         error,
       });
@@ -347,6 +367,15 @@ export async function publishNetworkPolicyRefreshToRunnerGroup(
   );
 }
 
+export async function publishActiveInputToRunnerGroup(
+  group: string,
+  runId: string,
+): Promise<void> {
+  const channel = ablyClient().channels.get(`runner-group:${group}`);
+  await channel.publish("active-input", { runId });
+  L.debug(`Published active input ${runId} to runner-group:${group}`);
+}
+
 export async function publishRunnerJobNotification(
   group: string,
   runId: string,
@@ -355,10 +384,8 @@ export async function publishRunnerJobNotification(
     /** Raw key required for runner-local affinity matching; it stays on the internal runner-group channel. */
     readonly reuseKey: string | null;
     readonly cliAgentSessionId: string | null;
-    readonly historyGenerationAffinityProtectedUntil: string | null;
-    readonly affinityProtectedUntil: string | null;
-    readonly sessionAffinityResource: SessionAffinityResource | null;
     readonly historyGenerationRunId: string | undefined;
+    readonly runnerPreference: RunnerPreference | null;
   },
 ): Promise<boolean> {
   const published = await tapError(
@@ -371,20 +398,11 @@ export async function publishRunnerJobNotification(
         ...(metadata?.cliAgentSessionId
           ? { cliAgentSessionId: metadata.cliAgentSessionId }
           : {}),
-        ...(metadata?.affinityProtectedUntil
-          ? { affinityProtectedUntil: metadata.affinityProtectedUntil }
-          : {}),
-        ...(metadata?.sessionAffinityResource
-          ? { sessionAffinityResource: metadata.sessionAffinityResource }
-          : {}),
-        ...(metadata?.historyGenerationAffinityProtectedUntil
-          ? {
-              historyGenerationAffinityProtectedUntil:
-                metadata.historyGenerationAffinityProtectedUntil,
-            }
-          : {}),
         ...(metadata?.historyGenerationRunId
           ? { historyGenerationRunId: metadata.historyGenerationRunId }
+          : {}),
+        ...(metadata?.runnerPreference
+          ? { runnerPreference: metadata.runnerPreference }
           : {}),
       });
       L.debug(`Published job ${runId} to runner-group:${group} (broadcast)`);

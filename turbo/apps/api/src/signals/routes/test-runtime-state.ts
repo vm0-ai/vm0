@@ -32,6 +32,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
+import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -49,6 +50,7 @@ import {
   onRejection,
   settleIncludingAbort,
 } from "../utils";
+import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,
@@ -536,20 +538,42 @@ type ReadRunnerJobStorageStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-runner-job-storage-state" }
 >;
-type AnyStorageStateAction =
+type ReadRunClaimOwnerAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-run-claim-owner" }
+>;
+type ReadBrowserScreenshotSchemaStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-browser-screenshot-schema-state" }
+>;
+type ResetDatabasePoolAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "reset-database-pool" }
+>;
+type PersistenceStateAction =
   | StorageStateAction
   | ReadStorageStateAction
-  | ReadRunnerJobStorageStateAction;
+  | ReadRunnerJobStorageStateAction
+  | ReadRunClaimOwnerAction
+  | ReadBrowserScreenshotSchemaStateAction
+  | ResetDatabasePoolAction;
 
-function isStorageStateAction(
+function isPersistenceStateAction(
   body: TestRuntimeStateActionBody,
-): body is AnyStorageStateAction {
+): body is PersistenceStateAction {
   switch (body.action) {
     case "remove-run-canonical-storage-state":
     case "read-storage-persistence-state": {
       return true;
     }
-    case "read-runner-job-storage-state": {
+    case "read-runner-job-storage-state":
+    case "read-run-claim-owner": {
+      return true;
+    }
+    case "read-browser-screenshot-schema-state": {
+      return true;
+    }
+    case "reset-database-pool": {
       return true;
     }
     default: {
@@ -567,9 +591,9 @@ async function mutateStorageState(
   signal.throwIfAborted();
 }
 
-async function storageStateActionResponse(
+async function persistenceStateActionResponse(
   db: Db,
-  body: AnyStorageStateAction,
+  body: PersistenceStateAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
@@ -603,11 +627,59 @@ async function storageStateActionResponse(
         },
       };
     }
+    case "read-run-claim-owner": {
+      return await readRunClaimOwnerActionResponse(db, body, signal);
+    }
+    case "read-browser-screenshot-schema-state": {
+      const available = await browserScreenshotSchemaAvailable(db);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          browser_screenshot_schema_available: available,
+        },
+      };
+    }
+    case "reset-database-pool": {
+      await closeDbPool();
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
+    }
     case "remove-run-canonical-storage-state": {
       await mutateStorageState(db, body, signal);
       return { status: 200 as const, body: { ok: true as const } };
     }
   }
+}
+
+async function readRunClaimOwnerActionResponse(
+  db: Db,
+  body: ReadRunClaimOwnerAction,
+  signal: AbortSignal,
+) {
+  const [run] = await db
+    .select({
+      runnerId: agentRuns.runnerId,
+      heartbeatGeneration: agentRuns.runnerHeartbeatGeneration,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, body.run_id))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!run) {
+    throw new Error("Agent run not found");
+  }
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      runner_claim_owner: {
+        runner_id: run.runnerId,
+        heartbeat_generation: run.heartbeatGeneration,
+      },
+    },
+  };
 }
 
 type TimingStateAction = Extract<
@@ -996,8 +1068,8 @@ const postRuntimeStateAction$ = command(
 
     const body = bodyResult.data;
     const db = set(writeDb$);
-    if (isStorageStateAction(body)) {
-      return await storageStateActionResponse(db, body, signal);
+    if (isPersistenceStateAction(body)) {
+      return await persistenceStateActionResponse(db, body, signal);
     }
     if (isTimingStateAction(body)) {
       return await timingStateActionResponse(db, body, signal);

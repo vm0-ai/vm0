@@ -3,33 +3,26 @@ use super::super::support::{
     WorkspacePromotionSeedSpec, context_with_session, mock_run_config,
     mock_run_config_with_overrides, push_job, seed_idle_pool,
     seed_idle_pool_with_workspace_promotion, shutdown, test_profiles, wait_budget_count,
-    wait_discover_entered, wait_idle_pool_session_states, wait_idle_pool_sessions,
+    wait_discover_entered, wait_idle_pool_reuse_keys,
 };
 
 use crate::paths::RunnerPaths;
-use crate::types::{SandboxReuseResult, SessionAffinityResource};
-use crate::workspace_image_cache::SessionWorkspaceCache;
-
-const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
+use crate::types::SandboxReuseResult;
+use crate::workspace_image_cache::WorkspaceImageCache;
 
 fn reusable_candidate(
     run_id: RunId,
     profile_name: &str,
-    session_id: &str,
+    reuse_key: &str,
 ) -> crate::provider::JobCandidate {
     crate::provider::JobCandidate::new(run_id, profile_name.to_string())
-        .with_affinity_metadata(
-            Some(session_id.to_string()),
-            Some(session_id.to_string()),
-            Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
-        )
-        .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox))
+        .with_reuse_key(Some(reuse_key.to_string()))
 }
 
-async fn wait_heartbeat_with_session_after(
+async fn wait_heartbeat_with_workspace_after(
     handle: &crate::provider::mock::MockProviderHandle,
     mut cursor: usize,
-    session_id: &str,
+    reuse_key: &str,
     timeout: Duration,
 ) -> bool {
     let deadline = tokio::time::Instant::now() + timeout;
@@ -38,9 +31,9 @@ async fn wait_heartbeat_with_session_after(
             let heartbeats = handle.heartbeats.lock().unwrap_or_else(|e| e.into_inner());
             if heartbeats[cursor..].iter().any(|state| {
                 state
-                    .held_session_states
+                    .held_workspace_states
                     .iter()
-                    .any(|state| state.session_id == session_id)
+                    .any(|state| state.reuse_key == reuse_key)
             }) {
                 return true;
             }
@@ -66,7 +59,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     let (mut config, env) =
         mock_run_config_with_overrides(profiles, 8, 32768, 4, Arc::clone(&overrides));
     let runner_paths = crate::paths::RunnerPaths::new(config.paths.base_dir.clone());
-    let workspace_cache = crate::workspace_image_cache::SessionWorkspaceCache::shared(
+    let workspace_cache = crate::workspace_image_cache::WorkspaceImageCache::shared(
         runner_paths.clone(),
         &config.paths.home,
         &config.runner.group,
@@ -80,8 +73,10 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     let before = env.handle.heartbeat_count();
 
     let run_id = RunId::new_v4();
-    let session_id = "sess-cache-heartbeat";
-    let ctx = context_with_session(run_id, session_id);
+    let provider_session_id = "provider-session-cache-heartbeat";
+    let reuse_key = "thread:cache-heartbeat";
+    let mut ctx = context_with_session(run_id, provider_session_id);
+    ctx.reuse_key = Some(reuse_key.into());
     push_job(&env, run_id, "vm0/default", Some(ctx));
 
     wait_gate
@@ -117,9 +112,14 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     );
 
     assert!(
-        wait_heartbeat_with_session_after(&env.handle, before, session_id, Duration::from_secs(5))
-            .await,
-        "immediate heartbeat should advertise the promoted workspace cache session",
+        wait_heartbeat_with_workspace_after(
+            &env.handle,
+            before,
+            reuse_key,
+            Duration::from_secs(5),
+        )
+        .await,
+        "immediate heartbeat should advertise the promoted workspace cache",
     );
 
     let second_gate = sandbox_mock::MockLifecycleGate::new();
@@ -127,12 +127,9 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     overrides.push_wait_process_exit(sandbox::ProcessExit::new(1, 1, Vec::new(), Vec::new()));
     let second_before = env.handle.heartbeat_count();
     let second_run_id = RunId::new_v4();
-    push_job(
-        &env,
-        second_run_id,
-        "vm0/default",
-        Some(context_with_session(second_run_id, session_id)),
-    );
+    let mut second_context = context_with_session(second_run_id, provider_session_id);
+    second_context.reuse_key = Some(reuse_key.into());
+    push_job(&env, second_run_id, "vm0/default", Some(second_context));
     second_gate
         .wait_entered(1, Duration::from_secs(5))
         .await
@@ -141,7 +138,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
         env.handle
             .wait_heartbeat_past(second_before, Duration::from_secs(5))
             .await,
-        "claiming a workspace-cache-only session should trigger an immediate heartbeat",
+        "claiming a workspace-cache-only reuse key should trigger an immediate heartbeat",
     );
     let post_claim_heartbeats = {
         let heartbeats = env
@@ -154,11 +151,11 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     assert!(
         post_claim_heartbeats.iter().any(|heartbeat| {
             heartbeat
-                .held_session_states
+                .held_workspace_states
                 .iter()
-                .all(|state| state.session_id != session_id)
+                .all(|state| state.reuse_key != reuse_key)
         }),
-        "post-claim heartbeat should stop advertising the active workspace cache session; heartbeats: {post_claim_heartbeats:?}",
+        "post-claim heartbeat should stop advertising the active workspace cache; heartbeats: {post_claim_heartbeats:?}",
     );
     overrides.clear_wait_process_lifecycle_gate();
     second_gate.release_one();
@@ -178,7 +175,7 @@ async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates()
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
     let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
-    let workspace_cache = SessionWorkspaceCache::shared(
+    let workspace_cache = WorkspaceImageCache::shared(
         runner_paths.clone(),
         &config.paths.home,
         &config.runner.group,
@@ -186,14 +183,15 @@ async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates()
     Arc::get_mut(&mut config.exec_config)
         .unwrap()
         .workspace_cache = Some(workspace_cache.clone());
-    let session_id = "sess-workspace-promotion-mismatch";
+    let provider_session_id = "sess-workspace-promotion-mismatch";
+    let reuse_key = "thread:workspace-promotion-mismatch";
     let stale_sandbox_id = seed_idle_pool_with_workspace_promotion(
         &idle_pool,
         &budget,
         &workspace_cache,
         &runner_paths,
         WorkspacePromotionSeedSpec {
-            session_id,
+            reuse_key,
             profile_name: "vm0/default",
             vcpu: 2,
             memory_mb: 4096,
@@ -204,11 +202,12 @@ async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates()
 
     let run_handle = tokio::spawn(run(config));
     let run_id = RunId::new_v4();
-    env.provider
-        .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
+    let mut context = context_with_session(run_id, provider_session_id);
+    context.reuse_key = Some(reuse_key.into());
+    env.provider.set_claim_result(run_id, Some(context));
     env.handle
         .discover_tx
-        .send(reusable_candidate(run_id, "vm0/default", session_id))
+        .send(reusable_candidate(run_id, "vm0/default", reuse_key))
         .unwrap();
 
     let completion = env
@@ -223,10 +222,10 @@ async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates()
         Some(stale_sandbox_id),
         "workspace promotion mismatch should force a fresh sandbox"
     );
-    wait_idle_pool_sessions(&idle_pool, &[session_id], Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&idle_pool, &[reuse_key], Duration::from_secs(5)).await;
     wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
     assert!(
-        workspace_cache.held_session_states().await.is_empty(),
+        workspace_cache.held_workspace_states().await.is_empty(),
         "mismatched stale idle VM must be destroyed without publishing its workspace image"
     );
 
@@ -234,7 +233,7 @@ async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates()
 }
 
 #[tokio::test]
-async fn reuse_take_preserves_cached_workspace_held_session_state() {
+async fn reuse_take_preserves_cached_workspace_snapshot_state() {
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
@@ -247,7 +246,7 @@ async fn reuse_take_preserves_cached_workspace_held_session_state() {
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
     let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
-    let workspace_cache = SessionWorkspaceCache::shared(
+    let workspace_cache = WorkspaceImageCache::shared(
         runner_paths.clone(),
         &config.paths.home,
         &config.runner.group,
@@ -300,7 +299,7 @@ async fn reuse_take_preserves_cached_workspace_held_session_state() {
         env.handle
             .wait_heartbeat_past(heartbeat_count, Duration::from_secs(5))
             .await,
-        "workspace cache promotion should refresh the held-session snapshot before claim"
+        "workspace cache promotion should refresh the workspace snapshot before claim"
     );
     let run_id = RunId::new_v4();
     push_job(
@@ -316,7 +315,7 @@ async fn reuse_take_preserves_cached_workspace_held_session_state() {
         .await
         .expect("job should complete");
     assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
-    wait_idle_pool_session_states(&idle_pool, &["sess-refresh"], Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&idle_pool, &["sess-refresh"], Duration::from_secs(5)).await;
 
     shutdown(&env, run_handle).await;
 }

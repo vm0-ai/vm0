@@ -827,7 +827,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_attempt_guard_drop_aborts_dispatch_task() {
+    async fn create_attempt_guard_drop_aborts_dispatch_and_preserves_lease_cooldown() {
         struct DropNotify(Option<tokio::sync::oneshot::Sender<()>>);
 
         impl Drop for DropNotify {
@@ -839,11 +839,25 @@ mod tests {
         }
 
         let lock_dir = tempfile::tempdir().expect("tempdir");
-        let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
-        let mut guard = CreateAttemptGuard::new(
-            pool.clone(),
-            pool::DeviceLease::new_for_test(3, lock_dir.path()),
+        let pool = pool::DevicePoolHandle::new_one_device_for_test(
+            pool::DevicePoolConfig {
+                cooldown: Duration::MAX,
+            },
+            lock_dir.path(),
         );
+        let acquisition = tokio::time::timeout(Duration::from_secs(1), pool.acquire())
+            .await
+            .expect("pool acquire timed out")
+            .expect("pool acquire failed");
+        let (lease, _, _) = acquisition.into_parts();
+        let device_index = lease.index();
+        let snapshot = tokio::time::timeout(Duration::from_secs(1), pool.snapshot())
+            .await
+            .expect("initial pool snapshot timed out");
+        assert!(snapshot.in_flight.contains(&device_index));
+        assert!(snapshot.cooldown.is_empty());
+
+        let mut guard = CreateAttemptGuard::new(pool.clone(), lease);
         let token = guard.shutdown_token();
         let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
@@ -854,13 +868,42 @@ mod tests {
             token.cancelled().await;
         }));
 
-        started_rx.await.unwrap();
+        tokio::time::timeout(Duration::from_secs(1), started_rx)
+            .await
+            .expect("dispatch task startup timed out")
+            .expect("dispatch task exited before startup notification");
         drop(guard);
 
-        tokio::time::timeout(std::time::Duration::from_secs(1), dropped_rx)
+        tokio::time::timeout(Duration::from_secs(1), dropped_rx)
             .await
-            .unwrap()
-            .unwrap();
-        pool.cleanup().await;
+            .expect("dispatch task teardown timed out")
+            .expect("dispatch task dropped without notification");
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let snapshot = pool.snapshot().await;
+                if !snapshot.in_flight.contains(&device_index)
+                    && snapshot.cooldown == vec![device_index]
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("dropped create attempt did not reach cooldown");
+        assert!(
+            crate::device_lock::try_acquire_device_claim_in(device_index, lock_dir.path())
+                .expect("lock probe")
+                .is_none()
+        );
+
+        tokio::time::timeout(Duration::from_secs(1), pool.cleanup())
+            .await
+            .expect("pool cleanup timed out");
+        assert!(
+            crate::device_lock::try_acquire_device_claim_in(device_index, lock_dir.path())
+                .expect("lock probe")
+                .is_some()
+        );
     }
 }

@@ -1,10 +1,12 @@
 import { command } from "ccstate";
 import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-identity";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   compatibleStoredExecutionContextSchema,
   elapsedSinceApiStartMs,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  runnersActiveInputsContract,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -13,7 +15,8 @@ import {
   storedConnectorPermissionBaselineSchema,
   type CompatibleStoredExecutionContext,
   type ExecutionContext,
-  type HeldSessionState,
+  type HeldSandboxState,
+  type HeldWorkspaceState,
   type SessionHistoryDownloadSource,
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
@@ -26,14 +29,22 @@ import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realti
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { runnerState } from "@vm0/db/schema/runner-state";
+import {
+  runnerState,
+  type RunnerHeldSandboxState as PersistedRunnerHeldSandboxState,
+  type RunnerHeldWorkspaceState as PersistedRunnerHeldWorkspaceState,
+} from "@vm0/db/schema/runner-state";
 import {
   and,
+  asc,
   desc,
   eq,
+  gte,
   gt,
   inArray,
+  isNotNull,
   lt,
   lte,
   notInArray,
@@ -44,6 +55,8 @@ import {
 import { z } from "zod";
 
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
+import { authContext$ } from "../auth/auth-context";
+import { authRoute } from "../auth/auth-route";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
@@ -74,6 +87,7 @@ import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
+import { projectUserMessage } from "../services/zero-chat-user-message.service";
 import {
   networkPolicyRefreshesRecord,
   mergeNetworkPolicyRefreshes,
@@ -89,12 +103,12 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
+  type RunnerPreferenceResolutionOutcome,
   runnerReuseKeyTelemetryKind,
-  runnerSessionAffinityPollPriority,
-  runnerSessionAffinityLookupError,
-  runnerSessionAffinityProtection,
-  runnerSessionAffinityTelemetryResource,
-} from "../services/runner-session-affinity";
+  runnerReusePreferenceLookupError,
+  runnerReusePreferencePollPriority,
+  resolveRunnerReusePreference,
+} from "../services/runner-reuse-preference";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
 
@@ -103,6 +117,9 @@ const L = logger("Runners");
 type SandboxOperationAttrs = Parameters<
   typeof recordSandboxOperations
 >[0][number];
+type RunnerClaimIdentity = NonNullable<
+  z.infer<(typeof runnersJobClaimContract.claim)["body"]>["runnerIdentity"]
+>;
 
 const STALE_RUNNER_THRESHOLD_MS = 5 * 60 * 1000;
 const INVALID_EXECUTION_CONTEXT_ERROR =
@@ -152,7 +169,7 @@ function isResumeSessionHistoryLoadError(
   return error instanceof ResumeSessionHistoryLoadError;
 }
 
-type ClaimRouteTimingSpanKind = "top_level" | "nested";
+type ClaimRouteTimingSpanKind = "parent" | "top_level" | "nested";
 type ClaimNetworkPolicyRefreshPath =
   | "baseline"
   | "baseline_empty"
@@ -160,6 +177,8 @@ type ClaimNetworkPolicyRefreshPath =
   | "full_invalid_baseline"
   | "full_incompatible_baseline";
 type ClaimRouteTimingActionType =
+  | "claim_route_request_to_transition_start"
+  | "claim_route_request_to_response_ready"
   | "claim_route_request_prepare"
   | "claim_route_lookup_authorization"
   | "claim_route_context_parse"
@@ -366,43 +385,51 @@ function isOfficialRunnerGroup(group: string): boolean {
   return group.split("/")[0] === "vm0";
 }
 
-function canonicalizeHeldSessionStates(
-  states: readonly HeldSessionState[] | undefined,
-): HeldSessionState[] | undefined {
-  return states?.map((state) => {
-    const cliAgentSessionId = state.sessionId;
+function canonicalizeHeldSandboxStates(
+  states: readonly HeldSandboxState[],
+): PersistedRunnerHeldSandboxState[] {
+  return states.map((state) => {
     return {
-      sessionId: cliAgentSessionId,
-      ...(state.reuseKey ? { reuseKey: state.reuseKey } : {}),
+      reuseKey: state.reuseKey,
       lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
-      ...(state.reusableSandbox
-        ? {
-            reusableSandbox: {
-              profile: state.reusableSandbox.profile,
-              ...(state.reusableSandbox.historyGenerationRunId
-                ? {
-                    historyGenerationRunId:
-                      state.reusableSandbox.historyGenerationRunId,
-                  }
-                : {}),
-            },
-          }
-        : {}),
-      ...(state.workspaceCaches
-        ? {
-            workspaceCaches: state.workspaceCaches.map((workspaceCache) => {
-              return {
-                profile: workspaceCache.profile,
-                ...(workspaceCache.workspaceAffinityVersion
-                  ? {
-                      workspaceAffinityVersion:
-                        workspaceCache.workspaceAffinityVersion,
-                    }
-                  : {}),
-              };
-            }),
-          }
-        : {}),
+      reusableSandbox: {
+        profile: state.reusableSandbox.profile,
+        ...(state.reusableSandbox.historyGenerationRunId
+          ? {
+              historyGenerationRunId:
+                state.reusableSandbox.historyGenerationRunId,
+            }
+          : {}),
+      },
+    };
+  });
+}
+
+function canonicalizeHeldWorkspaceStates(
+  states: readonly HeldWorkspaceState[],
+): PersistedRunnerHeldWorkspaceState[] {
+  return states.map((state) => {
+    const [firstWorkspaceCache, ...remainingWorkspaceCaches] =
+      state.workspaceCaches;
+    if (!firstWorkspaceCache) {
+      throw new Error("Held workspace state requires a workspace cache");
+    }
+    return {
+      reuseKey: state.reuseKey,
+      lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
+      workspaceCaches: [
+        {
+          profile: firstWorkspaceCache.profile,
+          workspaceAffinityVersion:
+            firstWorkspaceCache.workspaceAffinityVersion,
+        },
+        ...remainingWorkspaceCaches.map((workspaceCache) => {
+          return {
+            profile: workspaceCache.profile,
+            workspaceAffinityVersion: workspaceCache.workspaceAffinityVersion,
+          };
+        }),
+      ],
     };
   });
 }
@@ -426,8 +453,12 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage("Invalid runner group");
   }
 
-  const heldSessionStates =
-    canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
+  const heldSandboxStates = canonicalizeHeldSandboxStates(
+    body.data.heldSandboxStates,
+  );
+  const heldWorkspaceStates = canonicalizeHeldWorkspaceStates(
+    body.data.heldWorkspaceStates,
+  );
   const admittableProfiles = body.data.admittableProfiles;
   const currentDate = nowDate();
   const snapshotOrder = {
@@ -450,7 +481,8 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       allocatedMemoryMb: body.data.allocatedMemoryMb,
       runningCount: body.data.runningCount,
       admittableProfiles,
-      heldSessionStates,
+      heldSandboxStates,
+      heldWorkspaceStates,
       mode: body.data.mode,
       lastSeenAt: currentDate,
     })
@@ -468,7 +500,8 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         allocatedMemoryMb: body.data.allocatedMemoryMb,
         runningCount: body.data.runningCount,
         admittableProfiles,
-        heldSessionStates,
+        heldSandboxStates,
+        heldWorkspaceStates,
         mode: body.data.mode,
         lastSeenAt: currentDate,
       },
@@ -503,9 +536,7 @@ function recordPollTimingMetrics(args: {
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
   readonly pollReason: string | undefined;
-  readonly sessionAffinity: string;
-  readonly sessionAffinityResource: string;
-  readonly historyGenerationAffinity: string;
+  readonly runnerPreferenceResolution: RunnerPreferenceResolutionOutcome;
   readonly reuseKeyKind: "thread" | "session" | "none";
   readonly queueCreatedAtMs: number;
   readonly pollRequestStartedAtMs: number;
@@ -517,9 +548,7 @@ function recordPollTimingMetrics(args: {
     runner_group: args.runnerGroup,
     profile: args.profile,
     auth_type: args.authType,
-    session_affinity: args.sessionAffinity,
-    session_affinity_resource: args.sessionAffinityResource,
-    history_generation_affinity: args.historyGenerationAffinity,
+    runner_preference_resolution: args.runnerPreferenceResolution,
     reuse_key_kind: args.reuseKeyKind,
   };
   if (args.pollReason) {
@@ -573,7 +602,7 @@ function runnerPollPriorityOrder(
   }
   return [
     desc(
-      runnerSessionAffinityPollPriority({
+      runnerReusePreferencePollPriority({
         db,
         runnerId: args.runnerId,
         runnerGroup: args.runnerGroup,
@@ -581,6 +610,32 @@ function runnerPollPriorityOrder(
       }),
     ),
   ];
+}
+
+async function resolvePollRunnerReusePreference(
+  db: Pick<Db, "select">,
+  args: {
+    readonly runId: string;
+    readonly runnerGroup: string;
+    readonly profile: string;
+    readonly reuseKey: string | null;
+    readonly historyGenerationRunId: string | undefined;
+    readonly createdAt: Date;
+    readonly currentDate: Date;
+  },
+) {
+  const resolution = await tapError(
+    resolveRunnerReusePreference({ db, ...args }),
+    (error) => {
+      L.warn("Failed to resolve runner reuse preference for poll response", {
+        runId: args.runId,
+        runnerGroup: args.runnerGroup,
+        profile: args.profile,
+        error,
+      });
+    },
+  );
+  return resolution ?? runnerReusePreferenceLookupError();
 }
 
 const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -622,7 +677,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const db = set(writeDb$);
   const pendingJobLookupStartedAtMs = now();
   const currentDate = nowDate();
-  const sessionAffinityPriorityOrder = runnerPollPriorityOrder(db, {
+  const reusePreferencePriorityOrder = runnerPollPriorityOrder(db, {
     runnerId: body.data.runnerId,
     runnerGroup: group,
     currentDate,
@@ -647,7 +702,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
     .where(and(...whereConditions))
     .orderBy(
-      ...sessionAffinityPriorityOrder,
+      ...reusePreferencePriorityOrder,
       runnerJobQueue.createdAt,
       runnerJobQueue.runId,
     )
@@ -658,26 +713,15 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!pendingJob) {
     return { status: 200 as const, body: { job: null } };
   }
-  const affinity =
-    (await tapError(
-      runnerSessionAffinityProtection({
-        db,
-        runnerGroup: group,
-        profile: pendingJob.profile,
-        reuseKey: pendingJob.reuseKey,
-        historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
-        createdAt: pendingJob.createdAt,
-        currentDate,
-      }),
-      (error) => {
-        L.warn("Failed to resolve runner session affinity for poll response", {
-          runId: pendingJob.runId,
-          runnerGroup: group,
-          profile: pendingJob.profile,
-          error,
-        });
-      },
-    )) ?? runnerSessionAffinityLookupError();
+  const reusePreference = await resolvePollRunnerReusePreference(db, {
+    runId: pendingJob.runId,
+    runnerGroup: group,
+    profile: pendingJob.profile,
+    reuseKey: pendingJob.reuseKey,
+    historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
+    createdAt: pendingJob.createdAt,
+    currentDate,
+  });
   signal.throwIfAborted();
   recordPollTimingMetrics({
     runId: pendingJob.runId,
@@ -685,9 +729,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     profile: pendingJob.profile,
     authType: auth.type,
     pollReason: body.data.telemetry?.pollReason,
-    sessionAffinity: affinity.status,
-    sessionAffinityResource: runnerSessionAffinityTelemetryResource(affinity),
-    historyGenerationAffinity: affinity.historyGenerationStatus,
+    runnerPreferenceResolution: reusePreference.outcome,
     reuseKeyKind: runnerReuseKeyTelemetryKind(pendingJob.reuseKey),
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
     pollRequestStartedAtMs,
@@ -709,10 +751,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         cliAgentSessionId: pendingJob.cliAgentSessionId,
         reuseKey: pendingJob.reuseKey,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
-        historyGenerationAffinityProtectedUntil:
-          affinity.historyGenerationProtectedUntil?.toISOString() ?? null,
-        affinityProtectedUntil: affinity.protectedUntil?.toISOString() ?? null,
-        sessionAffinityResource: affinity.resource ?? undefined,
+        runnerPreference: reusePreference.runnerPreference ?? undefined,
       },
     },
   };
@@ -897,6 +936,22 @@ const claimTransitionSqlRowSchema = z.object({
   claimedAtMs: z.number().nullable(),
 });
 
+function decodeClaimTransitionResult(
+  rows: readonly z.infer<typeof claimTransitionSqlRowSchema>[],
+): ClaimTransitionResult {
+  const row = rows[0];
+  if (!row || row.status === "invariant-error") {
+    throw new Error("Runner job claim transition violated its invariant");
+  }
+  if (row.status === "claimed") {
+    if (row.claimedAtMs === null) {
+      throw new Error("Claimed runner job is missing its transition time");
+    }
+    return { status: "claimed", claimedAt: new Date(row.claimedAtMs) };
+  }
+  return { status: row.status };
+}
+
 async function lockClaimRun(
   db: Pick<Db, "select">,
   runId: string,
@@ -933,10 +988,17 @@ async function lockRunnerJob(
 
 async function transitionClaimedJobToRunning(
   db: Db,
-  runId: string,
+  args: {
+    readonly runId: string;
+    readonly runnerIdentity: RunnerClaimIdentity | undefined;
+    readonly activeInputEnabled: boolean;
+  },
   signal: AbortSignal,
   timing: ClaimRouteTimingCollector,
 ): Promise<ClaimTransitionResult> {
+  const runnerId = args.runnerIdentity?.runnerId ?? null;
+  const runnerHeartbeatGeneration =
+    args.runnerIdentity?.heartbeatGeneration ?? null;
   return await db.transaction(async (tx) => {
     const result = await timing.measure(
       "claim_route_transition_execute",
@@ -951,7 +1013,7 @@ async function transitionClaimedJobToRunning(
               ${agentRuns.id} AS "id",
               ${agentRuns.status} AS "status"
             FROM ${agentRuns}
-            WHERE ${eq(agentRuns.id, runId)}
+            WHERE ${eq(agentRuns.id, args.runId)}
             FOR UPDATE
           ),
           locked_job AS MATERIALIZED (
@@ -982,7 +1044,10 @@ async function transitionClaimedJobToRunning(
               status = 'running',
               started_at = claim_clock."claimedAt",
               last_heartbeat_at = claim_clock."claimedAt",
-              cancellation_recovery_completed = false
+              cancellation_recovery_completed = false,
+              runner_id = ${runnerId},
+              runner_heartbeat_generation = ${runnerHeartbeatGeneration},
+              active_input_enabled = ${args.activeInputEnabled}
             FROM locked_run
             INNER JOIN locked_job
               ON locked_job."runId" = locked_run."id"
@@ -1045,17 +1110,7 @@ async function transitionClaimedJobToRunning(
       },
     );
     signal.throwIfAborted();
-    const row = result[0];
-    if (!row || row.status === "invariant-error") {
-      throw new Error("Runner job claim transition violated its invariant");
-    }
-    if (row.status === "claimed") {
-      if (row.claimedAtMs === null) {
-        throw new Error("Claimed runner job is missing its transition time");
-      }
-      return { status: "claimed", claimedAt: new Date(row.claimedAtMs) };
-    }
-    return { status: row.status };
+    return decodeClaimTransitionResult(result);
   });
 }
 
@@ -1658,6 +1713,7 @@ async function buildClaimResponseBody(args: {
   readonly reuseKey: string | null;
   readonly storedContext: StoredExecutionContext;
   readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
+  readonly activeInputSupported: boolean;
   readonly timing: ClaimRouteTimingCollector;
   readonly signal: AbortSignal;
   readonly loadIdentityRepresentation: (
@@ -1750,6 +1806,10 @@ async function buildClaimResponseBody(args: {
         },
         resumeSession,
         sandboxToken,
+        ...(args.activeInputSupported &&
+        args.storedContext.featureFlags?.[FeatureSwitchKey.ChatSteer] === true
+          ? { activeInput: true as const, activeInputAbly: true as const }
+          : {}),
         secretValues,
         networkPolicies: refreshedPolicies.networkPolicies,
         networkPolicyRefreshes: refreshedPolicies.networkPolicyRefreshes,
@@ -1767,6 +1827,7 @@ const buildClaimResponseBodyForClaim$ = command(
       readonly reuseKey: string | null;
       readonly storedContext: StoredExecutionContext;
       readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
+      readonly activeInputSupported: boolean;
       readonly timing: ClaimRouteTimingCollector;
       readonly signal: AbortSignal;
     },
@@ -1777,6 +1838,7 @@ const buildClaimResponseBodyForClaim$ = command(
       reuseKey: args.reuseKey,
       storedContext: args.storedContext,
       connectorPermissionBaseline: args.connectorPermissionBaseline,
+      activeInputSupported: args.activeInputSupported,
       timing: args.timing,
       signal: args.signal,
       loadIdentityRepresentation(hash: string) {
@@ -1853,6 +1915,8 @@ function scheduleSuccessfulClaimSideEffects(args: {
     ),
     claimRequestToRunningMs: Math.max(
       0,
+      // This historical state boundary ends at PostgreSQL's in-transaction
+      // claimedAt, not at an application-clock route parent.
       args.claimResult.claimedAt.getTime() - args.claimRequestStartedAtMs,
     ),
     jobDiscoveredToClaimRequestMs:
@@ -2185,6 +2249,8 @@ const claimAuthorizedJob$ = command(
       readonly db: Db;
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
+      readonly runnerIdentity: RunnerClaimIdentity | undefined;
+      readonly activeInputSupported: boolean;
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
@@ -2232,6 +2298,7 @@ const claimAuthorizedJob$ = command(
         reuseKey: jobWithRun.job.reuseKey,
         storedContext,
         connectorPermissionBaseline,
+        activeInputSupported: args.activeInputSupported,
         timing: claimRouteTiming,
         signal,
       }),
@@ -2251,13 +2318,22 @@ const claimAuthorizedJob$ = command(
     }
     signal.throwIfAborted();
 
+    claimRouteTiming.recordElapsed(
+      "claim_route_request_to_transition_start",
+      "parent",
+      args.claimRequestStartedAtMs,
+    );
     const claimResult = await claimRouteTiming.measure(
       "claim_route_transition_running",
       "top_level",
       async () => {
         return await transitionClaimedJobToRunning(
           db,
-          runId,
+          {
+            runId,
+            runnerIdentity: args.runnerIdentity,
+            activeInputEnabled: responseBodyResult.value.activeInput === true,
+          },
           signal,
           claimRouteTiming,
         );
@@ -2268,6 +2344,12 @@ const claimAuthorizedJob$ = command(
       return claimTransitionErrorResponse(claimResult);
     }
 
+    const response = { status: 200 as const, body: responseBodyResult.value };
+    claimRouteTiming.recordElapsed(
+      "claim_route_request_to_response_ready",
+      "parent",
+      args.claimRequestStartedAtMs,
+    );
     scheduleSuccessfulClaimSideEffects({
       jobWithRun,
       authType: args.authType,
@@ -2278,7 +2360,7 @@ const claimAuthorizedJob$ = command(
       claimRouteTiming,
     });
 
-    return { status: 200 as const, body: responseBodyResult.value };
+    return response;
   },
 );
 
@@ -2295,6 +2377,9 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   if (!body.ok) {
     return body.response;
+  }
+  if (auth.type === "official-runner" && !body.data.runnerIdentity) {
+    return badRequestMessage("Official runner claim requires runnerIdentity");
   }
 
   const runId = get(pathParamsOf(runnersJobClaimContract.claim)).id;
@@ -2324,6 +2409,9 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     db,
     runId,
     authType: auth.type,
+    runnerIdentity:
+      auth.type === "official-runner" ? body.data.runnerIdentity : undefined,
+    activeInputSupported: body.data.activeInput === true,
     jobWithRun,
     telemetry: body.data.telemetry,
     claimRequestStartedAtMs,
@@ -2480,6 +2568,72 @@ const builtinFirewallsResolveInner$ = command(
   },
 );
 
+const activeInputsInner$ = command(async ({ get }, signal: AbortSignal) => {
+  const auth = get(authContext$);
+  const { runId, fromSequence } = get(
+    pathParamsOf(runnersActiveInputsContract.list),
+  );
+  if (auth.tokenType !== "sandbox" || auth.runId !== runId) {
+    return notFound("Run not found");
+  }
+
+  const db = get(db$);
+  const [run] = await db
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        eq(agentRuns.userId, auth.userId),
+        eq(agentRuns.orgId, auth.orgId),
+        eq(agentRuns.status, "running"),
+        eq(agentRuns.activeInputEnabled, true),
+      ),
+    );
+  signal.throwIfAborted();
+  if (!run) {
+    return notFound("Run not found");
+  }
+
+  const rows = await db
+    .select({
+      sequence: chatEvents.activeInputSequence,
+      messageId: chatEvents.id,
+      userMessage: chatEvents.userMessage,
+    })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.runId, runId),
+        eq(chatEvents.eventType, "input.prompt"),
+        isNotNull(chatEvents.activeInputSequence),
+        gte(chatEvents.activeInputSequence, fromSequence),
+      ),
+    )
+    .orderBy(asc(chatEvents.activeInputSequence));
+  signal.throwIfAborted();
+
+  return {
+    status: 200 as const,
+    body: {
+      entries: rows.map((row) => {
+        if (row.sequence === null || row.userMessage === null) {
+          throw new Error("Active input event is missing required data");
+        }
+        const text = projectUserMessage(row.userMessage).agentPrompt;
+        if (text.length === 0) {
+          throw new Error("Active input event has an empty prompt");
+        }
+        return {
+          sequence: row.sequence,
+          messageId: row.messageId,
+          text,
+        };
+      }),
+    },
+  };
+});
+
 export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersHeartbeatContract.heartbeat,
@@ -2492,6 +2646,13 @@ export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersJobClaimContract.claim,
     handler: claimInner$,
+  },
+  {
+    route: runnersActiveInputsContract.list,
+    handler: authRoute(
+      { accept: ["sandbox"], acceptAnySandboxCapability: true },
+      activeInputsInner$,
+    ),
   },
   {
     route: runnersNetworkPolicyRefreshContract.refresh,

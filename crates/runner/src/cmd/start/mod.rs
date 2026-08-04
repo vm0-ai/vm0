@@ -64,17 +64,17 @@ use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
 use crate::provider::{
-    ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths, JobProvider, LocalProvider,
-    NetworkPolicyRefreshHandle,
+    ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths, JobCandidate, JobProvider,
+    LocalProvider, NetworkPolicyRefreshHandle,
 };
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::status::{StatusTracker, remove_stale_status_file};
-use crate::workspace_image_cache::SessionWorkspaceCache;
+use crate::workspace_image_cache::WorkspaceImageCache;
 
-mod active_sessions;
+mod active_reuse_keys;
 mod factory_lifecycle;
 mod heartbeat;
 mod identity;
@@ -89,12 +89,12 @@ mod ownership;
 mod sandbox_finalization;
 mod signals;
 
-use active_sessions::new_active_reuse_keys;
+use active_reuse_keys::{ActiveReuseKeys, new_active_reuse_keys};
 use factory_lifecycle::{shutdown_factory_instances, shutdown_runtime, start_factories};
 use heartbeat::{
     HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeartbeatController,
-    HeartbeatSnapshotMetadata, HeldSessionStateSnapshot, collect_heartbeat_state,
-    refresh_workspace_cache_held_session_snapshot,
+    HeartbeatSnapshotMetadata, WorkspaceCacheStateSnapshot, collect_heartbeat_state,
+    refresh_workspace_cache_snapshot,
 };
 use identity::{load_or_generate_runner_id, next_heartbeat_generation};
 use idle_lifecycle::{
@@ -115,6 +115,44 @@ use signals::{
 };
 
 const READY_DIRECT_CANDIDATE_DRAIN_LIMIT: usize = 8;
+
+fn candidate_for_admission(
+    candidate: JobCandidate,
+    pending_candidate: &mut Option<JobCandidate>,
+) -> JobCandidate {
+    if let Some(pending) =
+        pending_candidate.take_if(|pending| pending.run_id() == candidate.run_id())
+    {
+        info!(
+            run_id = %candidate.run_id(),
+            "duplicate finalizing candidate rechecks retained admission state"
+        );
+        pending
+    } else {
+        candidate
+    }
+}
+
+fn retain_finalizing_candidate(
+    pending_candidate: &mut Option<JobCandidate>,
+    candidate: JobCandidate,
+) {
+    if pending_candidate.is_none() {
+        *pending_candidate = Some(candidate);
+    } else {
+        info!(
+            run_id = %candidate.run_id(),
+            "finalizing candidate not retained because the pending slot is occupied"
+        );
+    }
+}
+
+async fn sleep_until_optional_instant(deadline: Option<Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(deadline.into()).await,
+        None => std::future::pending().await,
+    }
+}
 
 struct TeardownTimer {
     start: Instant,
@@ -658,6 +696,7 @@ async fn run_start_with_home(
             server.token,
             ApiProviderConfig {
                 runner_id: runner_id.clone(),
+                heartbeat_generation,
                 group,
                 supported_profiles: profiles,
             },
@@ -685,7 +724,7 @@ async fn run_start_with_home(
         session_history_probe: SessionHistoryProbe::default(),
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
         home: home.clone(),
-        workspace_cache: Some(SessionWorkspaceCache::shared(
+        workspace_cache: Some(WorkspaceImageCache::shared(
             paths.clone(),
             &home,
             &group_name,
@@ -716,6 +755,8 @@ async fn run_start_with_home(
         )
         .await?;
 
+    let active_reuse_keys = new_active_reuse_keys();
+    let reuse_state_notify = Arc::new(tokio::sync::Notify::new());
     let config = RunConfig {
         runner: RunnerInfo {
             id: runner_id,
@@ -742,6 +783,8 @@ async fn run_start_with_home(
             idle_pool,
             parking_gate,
             status,
+            active_reuse_keys,
+            reuse_state_notify,
         },
         provider: ProviderState {
             provider,
@@ -828,6 +871,8 @@ struct RunnerSharedState {
     idle_pool: SharedIdlePool,
     parking_gate: ParkingGate,
     status: Arc<StatusTracker>,
+    active_reuse_keys: ActiveReuseKeys,
+    reuse_state_notify: Arc<tokio::sync::Notify>,
 }
 
 struct ProviderState {
@@ -886,7 +931,7 @@ enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
     IdleCleanupProcessed { expired_count: usize },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
-    VmParkedForReuse { run_id: RunId, session_id: String },
+    VmParkedForReuse { run_id: RunId, reuse_key: String },
     UsageFlushRequested,
 }
 
@@ -992,8 +1037,8 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id });
     }
 
-    fn notify_vm_parked_for_reuse(&self, run_id: RunId, session_id: String) {
-        self.record(StartLoopEvent::VmParkedForReuse { run_id, session_id });
+    fn notify_vm_parked_for_reuse(&self, run_id: RunId, reuse_key: String) {
+        self.record(StartLoopEvent::VmParkedForReuse { run_id, reuse_key });
     }
 
     fn notify_usage_flush_requested(&self) {
@@ -1039,8 +1084,8 @@ impl StartLoopTestObserver {
         self.wait_for(timeout, "VM parked for reuse", |event| match event {
             StartLoopEvent::VmParkedForReuse {
                 run_id: observed_run_id,
-                session_id,
-            } if *observed_run_id == run_id => Some(session_id.clone()),
+                reuse_key,
+            } if *observed_run_id == run_id => Some(reuse_key.clone()),
             _ => None,
         })
         .await
@@ -1339,13 +1384,13 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // Main loop
     // -----------------------------------------------------------------------
     // Notification channel: spawned jobs signal the main loop to send an
-    // immediate heartbeat after session affinity state changes, so the server
-    // learns about a held session VM or workspace image cache without waiting
-    // for the next 10-second tick.
-    let park_notify = Arc::new(tokio::sync::Notify::new());
+    // immediate heartbeat after reusable state changes, so the server
+    // learns about a held reusable sandbox or workspace image cache without
+    // waiting for the next 10-second tick.
+    let reuse_state_notify = Arc::clone(&shared.reuse_state_notify);
     let orphaned_active_runs = OrphanedActiveRuns::new();
-    let active_reuse_keys = new_active_reuse_keys();
-    let held_session_snapshot = HeldSessionStateSnapshot::new();
+    let active_reuse_keys = shared.active_reuse_keys.clone();
+    let workspace_cache_snapshot = WorkspaceCacheStateSnapshot::new();
     let mut orphan_reap_tick = tokio::time::interval_at(
         tokio::time::Instant::now() + Duration::from_secs(10),
         Duration::from_secs(10),
@@ -1363,15 +1408,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         provider: &*provider_state.provider,
         workspace_cache: exec_config.workspace_cache.clone(),
         active_reuse_keys: &active_reuse_keys,
-        held_session_snapshot: held_session_snapshot.clone(),
+        workspace_cache_snapshot: workspace_cache_snapshot.clone(),
     });
-    refresh_workspace_cache_held_session_snapshot(
-        &held_session_snapshot,
+    refresh_workspace_cache_snapshot(
+        &workspace_cache_snapshot,
         exec_config.workspace_cache.as_ref(),
         &runner.profiles,
     )
     .await;
-    debug_assert!(held_session_snapshot.workspace_cache_loaded());
+    debug_assert!(workspace_cache_snapshot.workspace_cache_loaded());
     let mut heartbeat = HeartbeatController::new(hb_ctx);
 
     // Pin the discover future so it survives cancellation by other select!
@@ -1388,10 +1433,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         status: Arc::clone(&shared.status),
         orphaned_active_runs: orphaned_active_runs.clone(),
         parking_gate: shared.parking_gate.clone(),
-        park_notify: Arc::clone(&park_notify),
+        reuse_state_notify: Arc::clone(&reuse_state_notify),
         usage_flush_tx,
         active_reuse_keys: active_reuse_keys.clone(),
-        held_session_snapshot,
+        workspace_cache_snapshot,
         device_rate_limits: capacity.device_rate_limits.clone(),
         #[cfg(test)]
         outer_job_panic: test_hooks.outer_job_panic,
@@ -1399,12 +1444,16 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         test_observer: test_hooks.test_observer.clone(),
     };
     let mut draining_idle_pool_drained = false;
+    let mut pending_finalizing_candidate = None;
     let mut terminal_error = None;
     loop {
         let mode = *mode_rx.borrow_and_update();
         if mode != current_mode {
             current_mode = mode;
             shared.status.set_mode(mode).await;
+        }
+        if mode != RunnerMode::Running {
+            pending_finalizing_candidate = None;
         }
         match mode {
             RunnerMode::Starting => {}
@@ -1457,7 +1506,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         "reclaiming expired idle VMs for resource pressure"
                     );
                     if destroy_idle_jobs_and_wait(expired, "budget_pressure_expired").await {
-                        park_notify.notify_one();
+                        reuse_state_notify.notify_one();
                     }
                     continue;
                 }
@@ -1474,6 +1523,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             test_hooks.test_observer.notify_budget_exhausted_reactor();
         }
         let heartbeat_sending = heartbeat.is_sending();
+        let pending_finalizing_deadline = pending_finalizing_candidate
+            .as_ref()
+            .and_then(JobCandidate::runner_preference)
+            .map(crate::provider::RunnerPreference::deadline);
         tokio::select! {
             // Job discovery via provider (Ably wakeups + HTTP poll).
             // The future is pinned outside the loop so heartbeat/cleanup
@@ -1482,9 +1535,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let Some(candidate) = discovered else { break };
                 // Future completed — create a new one for the next discovery.
                 discover_fut = Box::pin(provider_state.provider.discover());
-                let mut needs_session_affinity_refresh = handle_discovered_job(
+                let candidate = candidate_for_admission(
+                    candidate,
+                    &mut pending_finalizing_candidate,
+                );
+                let result = handle_discovered_job(
                     DiscoveredJob { candidate },
                     DiscoveredJobContext {
+                        runner_id: &runner.id,
+                        heartbeat_generation: runner.heartbeat_generation,
                         profiles: &runner.profiles,
                         factories: &factories,
                         budget: &capacity.budget,
@@ -1497,6 +1556,14 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         jobs: &mut jobs,
                     },
                 ).await;
+                let mut needs_reuse_state_refresh =
+                    result.needs_reuse_state_refresh;
+                if let Some(candidate) = result.pending_candidate {
+                    retain_finalizing_candidate(
+                        &mut pending_finalizing_candidate,
+                        candidate,
+                    );
+                }
                 let mut drained_ready_candidates = 0;
                 while drained_ready_candidates < READY_DIRECT_CANDIDATE_DRAIN_LIMIT {
                     let live_mode = *mode_rx.borrow();
@@ -1514,9 +1581,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         break;
                     };
                     drained_ready_candidates += 1;
-                    let candidate_needs_session_affinity_refresh = handle_discovered_job(
+                    let candidate = candidate_for_admission(
+                        candidate,
+                        &mut pending_finalizing_candidate,
+                    );
+                    let result = handle_discovered_job(
                         DiscoveredJob { candidate },
                         DiscoveredJobContext {
+                            runner_id: &runner.id,
+                            heartbeat_generation: runner.heartbeat_generation,
                             profiles: &runner.profiles,
                             factories: &factories,
                             budget: &capacity.budget,
@@ -1529,16 +1602,22 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                             jobs: &mut jobs,
                         },
                     ).await;
-                    needs_session_affinity_refresh |= candidate_needs_session_affinity_refresh;
+                    needs_reuse_state_refresh |= result.needs_reuse_state_refresh;
+                    if let Some(candidate) = result.pending_candidate {
+                        retain_finalizing_candidate(
+                            &mut pending_finalizing_candidate,
+                            candidate,
+                        );
+                    }
                 }
                 let live_mode = *mode_rx.borrow();
-                if needs_session_affinity_refresh
+                if needs_reuse_state_refresh
                     && matches!(live_mode, RunnerMode::Running | RunnerMode::Draining)
                 {
                     info!(
                         source = "direct_candidate_batch",
                         drained_ready_candidates,
-                        "session affinity state triggered immediate heartbeat"
+                        "reusable state triggered immediate heartbeat"
                     );
                     heartbeat.request(live_mode)?;
                 }
@@ -1666,7 +1745,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // Reap completed destroy tasks
             Some(result) = destroy_tasks.join_next(), if !destroy_tasks.is_empty() => {
                 match result {
-                    Ok(true) => park_notify.notify_one(),
+                    Ok(true) => reuse_state_notify.notify_one(),
                     Ok(false) => {}
                     Err(e) => warn!(error = %e, "destroy task panicked"),
                 }
@@ -1706,10 +1785,71 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let live_mode = *mode_rx.borrow();
                 heartbeat.request(live_mode)?;
             }
-            // Immediate heartbeat after session affinity state changes —
-            // eliminates the up-to-10s blind spot for affinity routing.
-            _ = park_notify.notified(), if matches!(mode, RunnerMode::Running | RunnerMode::Draining) => {
+            _ = sleep_until_optional_instant(pending_finalizing_deadline),
+                if pending_finalizing_candidate.is_some() && mode == RunnerMode::Running =>
+            {
+                let Some(candidate) = pending_finalizing_candidate.take() else {
+                    continue;
+                };
+                let candidate = candidate.without_runner_preference();
+                let result = handle_discovered_job(
+                    DiscoveredJob { candidate },
+                    DiscoveredJobContext {
+                        runner_id: &runner.id,
+                        heartbeat_generation: runner.heartbeat_generation,
+                        profiles: &runner.profiles,
+                        factories: &factories,
+                        budget: &capacity.budget,
+                        idle_pool: &shared.idle_pool,
+                        status: &shared.status,
+                        mode_rx: &mode_rx,
+                        cancel_tokens: &provider_state.cancel_tokens,
+                        spawn_ctx: &spawn_ctx,
+                        destroy_tasks: &mut destroy_tasks,
+                        jobs: &mut jobs,
+                    },
+                ).await;
+                if let Some(candidate) = result.pending_candidate {
+                    retain_finalizing_candidate(
+                        &mut pending_finalizing_candidate,
+                        candidate,
+                    );
+                }
+                if result.needs_reuse_state_refresh {
+                    heartbeat.request(*mode_rx.borrow())?;
+                }
+            }
+            // Immediate heartbeat after reusable state changes eliminates the
+            // up-to-10s blind spot for reuse-aware routing.
+            _ = reuse_state_notify.notified(), if matches!(mode, RunnerMode::Running | RunnerMode::Draining) => {
                 let live_mode = *mode_rx.borrow();
+                if live_mode == RunnerMode::Running
+                    && let Some(candidate) = pending_finalizing_candidate.take()
+                {
+                    let result = handle_discovered_job(
+                        DiscoveredJob { candidate },
+                        DiscoveredJobContext {
+                            runner_id: &runner.id,
+                            heartbeat_generation: runner.heartbeat_generation,
+                            profiles: &runner.profiles,
+                            factories: &factories,
+                            budget: &capacity.budget,
+                            idle_pool: &shared.idle_pool,
+                            status: &shared.status,
+                            mode_rx: &mode_rx,
+                            cancel_tokens: &provider_state.cancel_tokens,
+                            spawn_ctx: &spawn_ctx,
+                            destroy_tasks: &mut destroy_tasks,
+                            jobs: &mut jobs,
+                        },
+                    ).await;
+                    if let Some(candidate) = result.pending_candidate {
+                        retain_finalizing_candidate(
+                            &mut pending_finalizing_candidate,
+                            candidate,
+                        );
+                    }
+                }
                 let source = match live_mode {
                     RunnerMode::Running if can_discover => "main",
                     RunnerMode::Running => "budget_exhausted",
@@ -1719,7 +1859,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     }
                 };
                 if matches!(live_mode, RunnerMode::Running | RunnerMode::Draining) {
-                    info!(source, "session affinity state triggered immediate heartbeat");
+                    info!(source, "reusable state triggered immediate heartbeat");
                     heartbeat.request(live_mode)?;
                 }
             }

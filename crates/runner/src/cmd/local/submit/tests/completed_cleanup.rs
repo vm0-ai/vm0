@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 
-use super::super::{SubmitArgs, run_submit_with_home};
-use super::support::{submit_queue_entry, wait_for_job_and_write_result, write_queue_job_file};
+use super::super::SubmitArgs;
+use super::support::{run_submit_and_write_result, submit_queue_entry, write_queue_job_file};
 use crate::ids::RunId;
 use crate::local_queue;
 use crate::paths::HomePaths;
@@ -12,19 +12,14 @@ async fn submit_returns_failure_for_nonzero_job_response() {
     let home = HomePaths::with_root(dir.path().to_path_buf());
     let group = "test/group";
     let group_dir = home.groups_dir().join(group);
-    let watcher = tokio::spawn(wait_for_job_and_write_result(
-        group_dir.clone(),
-        crate::profile::DEFAULT_PROFILE.to_owned(),
-        42,
-        Some("agent failed".into()),
-    ));
 
-    let code = run_submit_with_home(
+    let (code, request) = run_submit_and_write_result(
         SubmitArgs {
             group: group.into(),
             prompt: "hello".into(),
             cli_agent_type: "claude-code".into(),
             profile: None,
+            chat_thread_id: None,
             session_id: None,
             feature_flags: vec![],
             env: vec![],
@@ -33,10 +28,11 @@ async fn submit_returns_failure_for_nonzero_job_response() {
             active_inputs: vec![],
         },
         home,
+        42,
+        Some("agent failed".into()),
     )
     .await
     .unwrap();
-    let request = watcher.await.unwrap();
     let result_path = local_queue::result_path(&group_dir, request.job_id);
 
     assert_eq!(code, ExitCode::FAILURE);

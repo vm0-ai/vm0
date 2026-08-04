@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.37.174](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.173...sandbox-fc-v0.37.174) (2026-08-03)
+
+
+### Bug Fixes
+
+* **runner:** localize guest dns loss across veth ([#24791](https://github.com/vm0-ai/vm0/issues/24791)) ([32ff5f5](https://github.com/vm0-ai/vm0/commit/32ff5f5d305669d91d9459a7f4b8c359444201b7))
+* **sandbox-fc:** surface namespace creation failures ([#24810](https://github.com/vm0-ai/vm0/issues/24810)) ([41a8207](https://github.com/vm0-ai/vm0/commit/41a8207b30858d63e7e85e98ede595a6af4ce243))
+
+## [0.37.173](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.172...sandbox-fc-v0.37.173) (2026-08-03)
+
+## [0.37.172](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.171...sandbox-fc-v0.37.172) (2026-08-03)
+
+## [0.37.171](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.170...sandbox-fc-v0.37.171) (2026-08-03)
+
+## [0.37.170](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.169...sandbox-fc-v0.37.170) (2026-08-02)
+
+## [0.37.169](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.168...sandbox-fc-v0.37.169) (2026-08-02)
+
+## [0.37.168](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.167...sandbox-fc-v0.37.168) (2026-08-01)
+
 ## [0.37.167](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.166...sandbox-fc-v0.37.167) (2026-07-31)
 
 

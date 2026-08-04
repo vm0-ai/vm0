@@ -256,7 +256,7 @@ export type FirewallPolicies = z.infer<typeof firewallPoliciesSchema>;
 /**
  * Per-firewall grant configuration — which permissions are granted and
  * what policy applies to unknown endpoints (not matching any permission rule).
- * Refs absent from the map are fully permissive (all granted + allow unknown).
+ * Firewall names absent from the map are fully permissive (all granted + allow unknown).
  */
 export const networkPolicySchema = z.object({
   allow: z.array(z.string()),

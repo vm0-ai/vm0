@@ -5,6 +5,8 @@ use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
+use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
+use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use sandbox::{
     Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
     SandboxFactory, SandboxGuestDnsReadinessReason, SandboxId, SandboxNbdCowCreateOutcome,
@@ -15,7 +17,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::agent_run::{
-    AgentExecutionResult, PreparedGuestRuntime, RunControls, RunStart, run_in_sandbox,
+    AgentExecutionResult, PreparedGuestRuntime, ProcessCancelTimeouts, RunControls, RunStart,
+    run_in_sandbox_with_process_cancel_timeouts,
 };
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
@@ -25,14 +28,13 @@ use super::diagnostics::{
     collect_agent_abnormal_exit_diagnostics, copy_guest_logs, explicit_enospc_evidence,
     read_guest_cli_agent_session_id,
 };
-use super::session_id::{
-    canonical_codex_thread_id, invalid_session_id_diagnostic_preview, is_valid_session_id,
-};
+use super::session_id::invalid_session_id_diagnostic_preview;
 use super::telemetry::record_workspace_cache_result;
+use super::workspace_session_history_materializer::WorkspaceSessionHistoryMaterializer;
 use super::{
-    ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch, RunnerError,
-    RunnerResult, SandboxPreparedNotifier, SandboxReuseResult, SessionHistoryMaterializer,
-    SessionHistoryRestorePlan,
+    ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch,
+    PROCESS_CANCEL_TIMEOUTS, RunnerError, RunnerResult, SandboxPreparedNotifier,
+    SandboxReuseResult, SessionHistoryMaterializer, SessionHistoryRestorePlan,
 };
 use crate::dns::{DnsReadinessLogObservation, inspect_readiness_log_segment};
 use crate::duration::duration_ms;
@@ -530,6 +532,10 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
             .as_ref()
             .is_some_and(WorkspaceImageLease::is_cache_hit);
         if failure.invalidate_consumed_workspace_cache && cache_hit {
+            controls.session_history_restore_plan = cancel_local_sidecar_restore_plan(
+                std::mem::take(&mut controls.session_history_restore_plan),
+            )
+            .await;
             invalidate_workspace_cache_hit(
                 workspace_image.as_ref(),
                 context.run_id,
@@ -599,6 +605,15 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         }
 
         if cache_hit {
+            controls.session_history_restore_plan =
+                replace_local_sidecar_restore_plan_for_workspace_retry(
+                    std::mem::take(&mut controls.session_history_restore_plan),
+                    context,
+                    config,
+                    controls.cancel.clone(),
+                    telemetry,
+                )
+                .await;
             cancel_prepared_storage(&mut controls, telemetry).await;
             invalidate_workspace_cache_hit(
                 workspace_image.as_ref(),
@@ -634,14 +649,6 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                     return Err(error);
                 }
             }
-            controls.session_history_restore_plan =
-                discard_local_sidecar_restore_plan_for_workspace_retry(
-                    std::mem::take(&mut controls.session_history_restore_plan),
-                    context,
-                    config,
-                    controls.cancel.clone(),
-                    telemetry,
-                );
         }
         used_retry = true;
     };
@@ -764,7 +771,6 @@ pub(super) async fn prepare_workspace_image(
                 sandbox_id,
                 profile_name,
                 reuse_key,
-                cli_agent_session_id: context.cli_agent_session_id(),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
             },
@@ -833,7 +839,18 @@ async fn resolve_fresh_session_history_restore_plan(
                 true,
                 None,
             );
-            SessionHistoryRestorePlan::LocalSidecar { sidecar, fallback }
+            let materializer = WorkspaceSessionHistoryMaterializer::start(
+                sidecar,
+                context.resume_session.as_ref(),
+                effective_cli_framework(&context.cli_agent_type),
+                &config.session_history_cpu,
+                cancel,
+            )
+            .await;
+            SessionHistoryRestorePlan::LocalSidecar {
+                materializer,
+                fallback,
+            }
         }
         Err(reason) => {
             telemetry.record(
@@ -847,25 +864,46 @@ async fn resolve_fresh_session_history_restore_plan(
     }
 }
 
-fn discard_local_sidecar_restore_plan_for_workspace_retry(
+async fn cancel_local_sidecar_restore_plan(
+    plan: SessionHistoryRestorePlan,
+) -> SessionHistoryRestorePlan {
+    match plan {
+        SessionHistoryRestorePlan::LocalSidecar {
+            materializer,
+            fallback,
+        } => {
+            materializer.cancel().await;
+            SessionHistoryRestorePlan::DeferredHashBacked { fallback }
+        }
+        other => other,
+    }
+}
+
+async fn replace_local_sidecar_restore_plan_for_workspace_retry(
     plan: SessionHistoryRestorePlan,
     context: &ExecutionContext,
     config: &ExecutorConfig,
     cancel: CancellationToken,
     telemetry: &mut JobTelemetry,
 ) -> SessionHistoryRestorePlan {
-    match plan {
-        SessionHistoryRestorePlan::LocalSidecar { fallback, .. } => {
-            telemetry.record(
-                "session_history_workspace_cache_miss",
-                Duration::ZERO,
-                true,
-                Some("sandbox_retry_without_workspace_image"),
-            );
-            start_fresh_session_history_materializer(context, config, cancel, telemetry, fallback)
+    let fallback = match plan {
+        SessionHistoryRestorePlan::LocalSidecar {
+            materializer,
+            fallback,
+        } => {
+            materializer.cancel().await;
+            fallback
         }
-        other => other,
-    }
+        SessionHistoryRestorePlan::DeferredHashBacked { fallback } => fallback,
+        other => return other,
+    };
+    telemetry.record(
+        "session_history_workspace_cache_miss",
+        Duration::ZERO,
+        true,
+        Some("sandbox_retry_without_workspace_image"),
+    );
+    start_fresh_session_history_materializer(context, config, cancel, telemetry, fallback)
 }
 
 fn start_fresh_session_history_materializer(
@@ -900,7 +938,7 @@ fn workspace_image_prepare_error(result: WorkspaceCacheCheckoutResult) -> Option
     match result {
         WorkspaceCacheCheckoutResult::Hit
         | WorkspaceCacheCheckoutResult::Miss
-        | WorkspaceCacheCheckoutResult::NoSession => None,
+        | WorkspaceCacheCheckoutResult::NoReuseKey => None,
         WorkspaceCacheCheckoutResult::InvalidWorkingDir => {
             Some(WORKSPACE_IMAGE_PREPARE_INVALID_WORKING_DIR)
         }
@@ -1290,6 +1328,27 @@ pub(super) async fn execute_prepared_sandbox_run(
     telemetry: &mut JobTelemetry,
     controls: RunControls,
 ) -> ExecuteOutcome {
+    execute_prepared_sandbox_run_with_process_cancel_timeouts(
+        run,
+        context,
+        config,
+        start,
+        telemetry,
+        controls,
+        PROCESS_CANCEL_TIMEOUTS,
+    )
+    .await
+}
+
+pub(super) async fn execute_prepared_sandbox_run_with_process_cancel_timeouts(
+    run: PreparedSandboxRun,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    start: RunStart<'_>,
+    telemetry: &mut JobTelemetry,
+    controls: RunControls,
+    process_cancel_timeouts: ProcessCancelTimeouts,
+) -> ExecuteOutcome {
     let PreparedSandboxRun {
         sandbox,
         source_ip,
@@ -1301,13 +1360,14 @@ pub(super) async fn execute_prepared_sandbox_run(
 
     let mut controls = controls;
     controls.prepared_guest_runtime = prepared_guest_runtime;
-    let result = run_in_sandbox(
+    let result = run_in_sandbox_with_process_cancel_timeouts(
         sandbox.as_ref(),
         context,
         config,
         start,
         telemetry,
         controls,
+        process_cancel_timeouts,
     )
     .await;
 
@@ -1405,7 +1465,7 @@ fn normalize_guest_cli_agent_session_id(
             None
         }),
         EffectiveCliFramework::ClaudeCode => {
-            if is_valid_session_id(&session_id) {
+            if is_valid_cli_agent_session_id(&session_id) {
                 Some(session_id)
             } else {
                 warn!(

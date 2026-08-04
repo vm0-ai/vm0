@@ -31,4 +31,5 @@ pub(super) use self::sandbox::{
 pub(super) use self::tracing::{CapturedEvent, CapturedEvents};
 pub(super) use self::workspace_cache::{
     seed_workspace_image_cache, seed_workspace_image_cache_with_fingerprints,
+    seed_workspace_image_cache_with_sidecar,
 };

@@ -29,6 +29,12 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("read-fake-kms-state"),
   }),
   z.object({
+    action: z.literal("read-browser-screenshot-schema-state"),
+  }),
+  z.object({
+    action: z.literal("reset-database-pool"),
+  }),
+  z.object({
     action: z.literal("mutate-runner-job-secret-value-environment-keys"),
     run_id: z.uuid(),
     mode: z.enum(["remove", "invalid"]),
@@ -52,6 +58,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("read-runner-job-storage-state"),
+    run_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("read-run-claim-owner"),
     run_id: z.uuid(),
   }),
   z.object({
@@ -138,6 +148,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
   ok: z.literal(true),
   selected_model: z.string().optional(),
   decrypt_call_count: z.number().optional(),
+  browser_screenshot_schema_available: z.boolean().optional(),
   admission_lock_held: z.boolean().optional(),
   admission_lock_waiting: z.boolean().optional(),
   uploaded_file_sources: z.array(z.string()).optional(),
@@ -164,6 +175,17 @@ export const testRuntimeStateActionResponseSchema = z.object({
       has_stored_storage_manifest: z.boolean(),
       canonical_mount_count: z.number().int().nonnegative(),
       has_run_context_storage: z.boolean(),
+    })
+    .optional(),
+  runner_claim_owner: z
+    .object({
+      runner_id: z.uuid().nullable(),
+      heartbeat_generation: z
+        .number()
+        .int()
+        .positive()
+        .max(Number.MAX_SAFE_INTEGER)
+        .nullable(),
     })
     .optional(),
 });

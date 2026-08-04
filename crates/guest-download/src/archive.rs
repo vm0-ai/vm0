@@ -7,7 +7,8 @@ use std::path::{Component, Path, PathBuf};
 
 /// Extract a gzip-compressed tar archive into an existing target directory.
 ///
-/// Accepted entries are unpacked sequentially and directly into `target_path`.
+/// `target` must be an existing canonical directory prepared before download
+/// scheduling. Accepted entries are unpacked sequentially and directly into it.
 /// Extraction is non-atomic and does not roll back entries written before a
 /// later error. Entries rejected by the path and link safety checks, and link
 /// targets or sources that are missing or unreadable for non-transport reasons,
@@ -16,27 +17,16 @@ use std::path::{Component, Path, PathBuf};
 ///
 /// # Errors
 ///
-/// The target is canonicalized before entries are read, so `target_path` must
-/// already exist. A canonicalization failure, an unreadable archive entry or
-/// entry path, or a failure to unpack an accepted entry terminates extraction.
-/// Terminating archive errors are retriable when the source recorded an HTTP
-/// body-read failure; otherwise they are fatal. Files written before an error
-/// remain in the target directory.
-pub(crate) fn extract_tar_gz(
-    source: ArchiveSource,
-    target_path: &str,
-) -> Result<(), DownloadError> {
+/// An unreadable archive entry or entry path, or a failure to unpack an
+/// accepted entry terminates extraction. Terminating archive errors are
+/// retriable when the source recorded an HTTP body-read failure; otherwise they
+/// are fatal. Files written before an error remain in the target directory.
+pub(crate) fn extract_tar_gz(source: ArchiveSource, target: &Path) -> Result<(), DownloadError> {
     let (reader, http_body_read_failure) = source.into_parts();
     let decoder = flate2::read::GzDecoder::new(reader);
     let mut archive = tar::Archive::new(decoder);
 
     // Extract entries one by one, validating paths to prevent symlink path traversal.
-    let target = Path::new(target_path).canonicalize().map_err(|e| {
-        DownloadError::fatal(format!(
-            "Failed to canonicalize target path {target_path}: {e}"
-        ))
-    })?;
-
     for entry in archive
         .entries()
         .map_err(|e| archive_error(&http_body_read_failure, "Failed to read archive entries", e))?
@@ -55,7 +45,7 @@ pub(crate) fn extract_tar_gz(
         // Check that the entry path lexically stays within the target directory
         // (normalize to collapse any .. components before checking)
         let full_path = target.join(&entry_path);
-        if !is_within(&full_path, &target) {
+        if !is_within(&full_path, target) {
             log_warn!(
                 LOG_TAG,
                 "Skipping entry with path escaping target dir: {}",
@@ -84,9 +74,9 @@ pub(crate) fn extract_tar_gz(
                     continue;
                 }
             };
-            let link_dir = full_path.parent().unwrap_or(&target);
+            let link_dir = full_path.parent().unwrap_or(target);
             let resolved = link_dir.join(&*link_target);
-            if !is_within(&resolved, &target) {
+            if !is_within(&resolved, target) {
                 log_warn!(
                     LOG_TAG,
                     "Skipping symlink with target escaping dir: {} -> {}",
@@ -118,7 +108,7 @@ pub(crate) fn extract_tar_gz(
                 }
             };
             let resolved = target.join(&*link_name);
-            if !is_within(&resolved, &target) {
+            if !is_within(&resolved, target) {
                 log_warn!(
                     LOG_TAG,
                     "Skipping hardlink with source escaping dir: {} -> {}",
@@ -134,7 +124,7 @@ pub(crate) fn extract_tar_gz(
         // it). Walk up to the deepest existing ancestor since the immediate parent may not
         // exist yet. This applies to ALL entry types — a symlink/hardlink entry extracted
         // through a malicious symlink directory is equally dangerous.
-        if !ancestors_within_target(&full_path, &target) {
+        if !ancestors_within_target(&full_path, target) {
             log_warn!(
                 LOG_TAG,
                 "Skipping entry whose parent resolves outside target: {}",
@@ -146,7 +136,7 @@ pub(crate) fn extract_tar_gz(
         // TOCTOU is not a concern here: entries are processed sequentially from a single
         // archive stream, so no external actor can modify the filesystem between our checks
         // and the extraction below.
-        entry.unpack_in(&target).map_err(|e| {
+        entry.unpack_in(target).map_err(|e| {
             archive_error(
                 &http_body_read_failure,
                 format!("Failed to extract entry {}", entry_path.display()),
@@ -345,11 +335,8 @@ mod tests {
 
     fn extract_archive(tar_gz: Vec<u8>, mount: &Path) -> bool {
         std::fs::create_dir_all(mount).unwrap();
-        extract_tar_gz(
-            ArchiveSource::local(Cursor::new(tar_gz)),
-            mount.to_str().unwrap(),
-        )
-        .is_ok()
+        let target = mount.canonicalize().unwrap();
+        extract_tar_gz(ArchiveSource::local(Cursor::new(tar_gz)), &target).is_ok()
     }
 
     #[test]

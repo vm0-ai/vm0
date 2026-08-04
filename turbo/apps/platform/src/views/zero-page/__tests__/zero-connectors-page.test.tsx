@@ -3602,9 +3602,7 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.CustomConnectorOAuth2]: true,
-      },
+      featureSwitches: {},
     });
 
     click(await screen.findByText("Custom"));
@@ -3857,7 +3855,13 @@ describe("connectors page", () => {
       teamAgent(supportAgentId, "Support"),
     ]);
 
-    detachedSetupPage({ context, path: "/connectors" });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.CustomConnectorOAuth2]: false,
+      },
+    });
 
     click(await screen.findByText("Custom"));
 

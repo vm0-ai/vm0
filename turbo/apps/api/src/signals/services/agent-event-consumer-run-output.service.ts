@@ -225,7 +225,7 @@ function assistantEventItems(
     }
     return [
       {
-        sequenceNumber: event.sequenceNumber,
+        runEventSequenceNumber: event.sequenceNumber,
         content: text,
         runEventId: eventMessageId(event),
       },

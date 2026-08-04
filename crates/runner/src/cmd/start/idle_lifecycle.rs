@@ -225,7 +225,7 @@ mod tests {
 
     #[tokio::test]
     async fn destroy_idle_jobs_and_wait_reports_workspace_cache_promotion() {
-        let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-cache").await;
+        let fixture = WorkspacePromotionFixture::new("thread:idle-destroy-cache").await;
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
         add_healthy_reuse_preparation_matcher(&overrides);
         let factory: Arc<Box<dyn SandboxFactory>> =
@@ -248,8 +248,7 @@ mod tests {
             run_id: crate::ids::RunId::new_v4(),
             sandbox,
             factory,
-            reuse_key: fixture.session_id.clone(),
-            cli_agent_session_id: fixture.session_id.clone(),
+            reuse_key: fixture.reuse_key.clone(),
             sandbox_id: fixture.sandbox_id,
             profile_name: "vm0/default".into(),
             device_rate_limits: None,
@@ -277,8 +276,8 @@ mod tests {
 
         assert!(promoted);
         assert_eq!(budget.allocated(), (0, 0, 0));
-        let held = fixture.cache.held_session_states().await;
+        let held = fixture.cache.held_workspace_states().await;
         assert_eq!(held.len(), 1);
-        assert_eq!(held[0].session_id, fixture.session_id);
+        assert_eq!(held[0].reuse_key, fixture.reuse_key);
     }
 }

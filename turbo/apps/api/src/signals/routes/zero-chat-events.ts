@@ -2,11 +2,7 @@
 import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
-import {
-  CHAT_EVENT_TYPES,
-  chatEventCompatibilityRole,
-  type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
+import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import {
   chatEventsContract,
   type AttachFile,
@@ -15,30 +11,21 @@ import {
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  runStatusSchema,
+  type RunStatus,
+} from "@vm0/api-contracts/contracts/runs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   chatEvents,
   type ChatEventAttachFileMetadata,
-  type ChatEventGenerationTemplate,
 } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  inArray,
-  isNotNull,
-  isNull,
-  not,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, max } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
@@ -48,6 +35,7 @@ import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishActiveInputToRunnerGroup,
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
@@ -70,10 +58,7 @@ import {
   createQueueFirstZeroRun$,
   type ZeroPreCreateSource,
 } from "../services/zero-runs-create.service";
-import {
-  BEFORE_DISPATCH_CANCELLED_ERROR,
-  isQueueFirstRunClaimLost,
-} from "../services/agent-run-create.service";
+import { isQueueFirstRunClaimLost } from "../services/agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import { drainChatThreadQueueForThread$ } from "../services/chat-thread-queue-drain.service";
 import { loadPendingChatQueueEvent } from "../services/chat-event-queue.service";
@@ -98,41 +83,40 @@ import {
 } from "../services/zero-model-selection.service";
 import {
   chatThreadModelPinColumns,
+  persistedChatThreadModelSnapshotColumns,
   resolvePersistedChatThreadModel,
+  type PersistedChatThreadModelResolutionPath,
 } from "../services/zero-chat-thread-model.service";
-import {
-  touchChatThreadLastMessageAt,
-  visibleChatEventCondition,
-} from "../services/zero-chat-event-shared.service";
+import { touchChatThreadLastMessageAt } from "../services/zero-chat-event-shared.service";
 import {
   revokeChatEvent,
   insertChatEvent,
   type NewChatEvent,
   replaceChatEvent,
 } from "../services/zero-chat-event.service";
-import { loadWebChatIncompleteContext } from "../services/zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "../services/zero-chat-active-run.service";
-import {
-  projectUserMessage,
-  requiredUserMessageForEvent,
-} from "../services/zero-chat-user-message.service";
+import { projectUserMessage } from "../services/zero-chat-user-message.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
   discardUnclaimedUserMessage,
-  encryptQueuedUserMessageRunParams,
+  loadNextUnclaimedQueuedUserMessage,
   loadNextUnclaimedQueuedUserMessageId,
   lockUserMessageQueueThread,
+  resolveAttachFileMetadata$,
 } from "../services/zero-chat-queued-event.service";
 import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
 } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
-import { resolveChatThreadSession } from "../services/chat-session-continuity.service";
 import { attachCanonicalWebInputAssetsToEvent } from "../services/canonical-asset.service";
 import { resolveArtifactObject$ } from "../services/artifact-storage.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import { chatEventTypeIn } from "../services/zero-chat-event-type.service";
+import {
+  buildWebChatAppendSystemPrompt,
+  type WebChatSessionPromptContext,
+} from "../services/zero-web-chat-session-prompt.service";
 import { bestEffort, tapError } from "../utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -141,6 +125,8 @@ import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
 import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-template";
 
 const L = logger("ZeroChatEvents");
+// Mirrors the guest process-control payload limit enforced by the runner.
+const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES = 1024 * 1024;
 
 type SendBody = z.infer<typeof chatEventsContract.send.body>;
 
@@ -184,6 +170,23 @@ interface InterruptSendBody {
   readonly clientEventId?: string;
 }
 
+interface SteerSendBody {
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly steersRunId: string;
+  readonly steersEventId: string;
+  readonly clientEventId?: string;
+}
+
+type ChatEventTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+interface LockedActiveInputRun {
+  readonly id: string;
+  readonly status: RunStatus;
+  readonly activeInputEnabled: boolean;
+  readonly runnerGroup: string | null;
+}
+
 interface AgentForChatSend {
   readonly id: string;
   readonly orgId: string;
@@ -195,27 +198,10 @@ type ThreadModelPin = ModelFirstPin;
 
 interface ResolvedThread {
   readonly threadId: string;
-  readonly incompleteContext: string;
   readonly computerUseHostId: string | null;
   readonly cloudBrowserEnabled: boolean;
   readonly isNewThread: boolean;
   readonly isClientThreadRetry: boolean;
-}
-
-interface WebChatPriorRunEvent {
-  readonly eventType: ChatEventType;
-  readonly role: "user" | "assistant";
-  readonly content: string | null;
-  readonly userMessage: UserMessageDocument | null;
-  readonly attachFiles: readonly string[] | null;
-  readonly generationTemplate: ChatEventGenerationTemplate | null;
-}
-
-interface WebChatPriorRun {
-  readonly runId: string;
-  readonly status: string;
-  readonly prompt: string;
-  readonly events: readonly WebChatPriorRunEvent[];
 }
 
 type ModelFirstProviderAdmission = Awaited<
@@ -231,6 +217,7 @@ interface ResolvedRunConfiguration {
 interface ResolvedThreadAndRunConfiguration {
   readonly thread: ResolvedThread;
   readonly runConfiguration: ResolvedRunConfiguration;
+  readonly modelResolutionPath?: PersistedChatThreadModelResolutionPath;
 }
 
 type IncomingModelSelection = NormalSendBody["modelSelection"];
@@ -253,7 +240,7 @@ interface PreparedNormalSend {
   readonly agent: AgentForChatSend;
   readonly thread: ResolvedThread;
   readonly body: RuntimeNormalSendBody;
-  readonly priorContext: string;
+  readonly userMessageInlineTemplatesEnabled: boolean;
   readonly generationTemplatePrompt: string;
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
@@ -375,10 +362,6 @@ interface ExistingClientEventIdRow {
 }
 
 const sendEventBody$ = bodyResultOf(chatEventsContract.send);
-// Existing web chat threads carry a small recent-run window in the system
-// prompt. Session compatibility is decided server-side from the target model.
-const RECENT_CHAT_RUN_LIMIT = 10;
-const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
 const INSUFFICIENT_CREDITS_MARKER = "insufficient_credits";
 const replacementChatEvent = alias(chatEvents, "replacement_chat_event");
 const replacementAgentRun = alias(agentRuns, "replacement_agent_run");
@@ -551,6 +534,10 @@ function isRecallSendBody(body: SendBody): body is RecallSendBody {
   );
 }
 
+function isSteerSendBody(body: SendBody): body is SteerSendBody {
+  return "steersRunId" in body && body.steersRunId !== undefined;
+}
+
 function isInterruptSendBody(body: SendBody): body is InterruptSendBody {
   return "interruptsRunId" in body && body.interruptsRunId !== undefined;
 }
@@ -590,43 +577,6 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-function buildWebChatPrompt(): string {
-  return [
-    "# Current Integration\nYou are currently running inside: Web",
-    "You are communicating with the user through the web chat UI.",
-  ].join("\n\n");
-}
-
-function buildAppendSystemPrompt(
-  incompleteContext: string,
-  priorContext: string,
-  generationTemplatePrompt: string,
-  computerUseHostDisplayName: string | null,
-): string {
-  return [
-    buildWebChatPrompt(),
-    priorContext,
-    incompleteContext,
-    generationTemplatePrompt,
-    computerUseHostDisplayName
-      ? buildComputerUseSystemPrompt(computerUseHostDisplayName)
-      : "",
-  ]
-    .filter((part) => {
-      return part.length > 0;
-    })
-    .join("\n\n");
-}
-
-function buildComputerUseSystemPrompt(displayName: string): string {
-  return [
-    "# Computer Use",
-    `Computer Use is enabled for this run on ${displayName}.`,
-    "Use Zero CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
-    "The computer may go offline while this run is active. If a command reports that the computer is unavailable or offline, ask the user to reconnect Zero Computer Use on that computer, then retry.",
-  ].join("\n");
-}
-
 function resolveRuntimeNormalSendBody(
   body: NormalSendBody,
   inlineTemplatesEnabled: boolean,
@@ -661,7 +611,7 @@ function attachFileIds(
   return ids && ids.length > 0 ? ids : null;
 }
 
-const resolveAttachFileMetadata$ = command(
+const resolveIncomingAttachFileMetadata$ = command(
   async (
     { set },
     args: {
@@ -701,104 +651,6 @@ const resolveAttachFileMetadata$ = command(
   },
 );
 
-function truncatePrior(value: string): string {
-  if (value.length <= WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP) {
-    return value;
-  }
-  return `${value.slice(0, WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
-}
-
-function formatAttachFileIds(
-  ids: readonly string[] | null | undefined,
-): string {
-  if (!ids || ids.length === 0) {
-    return "";
-  }
-  return ids
-    .map((id) => {
-      return `[Web file]\n   [ID] ${id}`;
-    })
-    .join("\n");
-}
-
-function formatPriorRunEvent(
-  event: WebChatPriorRunEvent,
-  inlineTemplatesEnabled: boolean,
-): string {
-  const roleLabel = event.role === "user" ? "User" : "Assistant";
-  const userMessage = requiredUserMessageForEvent(
-    event.eventType,
-    event.userMessage,
-  );
-  if (userMessage) {
-    const prompt = projectUserMessage(userMessage, {
-      inlineTemplates: inlineTemplatesEnabled,
-    }).agentPrompt;
-    return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
-  }
-  const attach = formatAttachFileIds(event.attachFiles);
-  const body = `${roleLabel}: ${
-    event.content === null
-      ? "[empty message]"
-      : truncatePrior(event.content) || "[empty message]"
-  }`;
-  return attach ? `${body}\n${attach}` : body;
-}
-
-function buildWebChatPriorRunsContext(
-  runs: readonly WebChatPriorRun[],
-  inlineTemplatesEnabled: boolean,
-): string {
-  if (runs.length === 0) {
-    return "";
-  }
-  const total = runs.length;
-  const blocks = runs.map((run, index) => {
-    const relativeIndex = index - total + 1;
-    const renderedEvents = run.events.map((event) => {
-      return formatPriorRunEvent(event, inlineTemplatesEnabled);
-    });
-    const hasUserEvent = run.events.some((event) => {
-      return event.role === "user";
-    });
-    const hasAssistantEvent = run.events.some((event) => {
-      return event.role === "assistant";
-    });
-    if (!hasUserEvent) {
-      renderedEvents.unshift(
-        `User: ${truncatePrior(run.prompt) || "[empty message]"}`,
-      );
-    }
-    if (!hasAssistantEvent) {
-      renderedEvents.push("Assistant: [no stored assistant message]");
-    }
-    return [
-      "---",
-      "",
-      `- RELATIVE_INDEX: ${relativeIndex}`,
-      `- RUN_ID: ${run.runId}`,
-      `- RUN_STATUS: ${run.status}`,
-      `- LOG_COMMAND: zero logs ${run.runId} --all`,
-      "",
-      ...renderedEvents,
-    ].join("\n");
-  });
-  return [
-    "# Web Chat Run Context",
-    "",
-    "The runs below are from the same web chat thread. When responding:",
-    "- Runs closer to RELATIVE_INDEX 0 are more recent -- prioritize them.",
-    "- Match the tone of the conversation -- casual messages deserve casual replies.",
-    "- Only provide technical analysis when explicitly asked a technical question.",
-    "- Keep responses proportional to the message length and complexity.",
-    "- Use the LOG_COMMAND for a run if you need more detailed agent log context.",
-    "",
-    blocks.join("\n\n"),
-    "",
-    "---",
-  ].join("\n");
-}
-
 async function loadAgentForChatSend(
   db: Db,
   agentId: string,
@@ -814,98 +666,6 @@ async function loadAgentForChatSend(
     .where(eq(zeroAgents.id, agentId))
     .limit(1);
   return agent;
-}
-
-async function getLatestRunsByThreadId(
-  db: Db,
-  threadId: string,
-  limit: number,
-): Promise<WebChatPriorRun[]> {
-  const runRows = await db
-    .select({
-      runId: zeroRuns.id,
-      status: agentRuns.status,
-      prompt: agentRuns.prompt,
-    })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(
-      and(
-        eq(zeroRuns.chatThreadId, threadId),
-        or(
-          sql`${agentRuns.status} IS DISTINCT FROM ${"cancelled"}`,
-          sql`${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR}`,
-        ),
-      ),
-    )
-    .orderBy(desc(agentRuns.createdAt))
-    .limit(limit);
-
-  const orderedRuns = runRows.reverse();
-  const runIds = orderedRuns.map((run) => {
-    return run.runId;
-  });
-  if (runIds.length === 0) {
-    return [];
-  }
-
-  const eventRows = await db
-    .select({
-      runId: chatEvents.runId,
-      eventType: chatEvents.eventType,
-      content: chatEvents.content,
-      userMessage: chatEvents.userMessage,
-      attachFiles: chatEvents.attachFiles,
-      createdAt: chatEvents.createdAt,
-      sequenceNumber: chatEvents.sequenceNumber,
-      generationTemplate: chatEvents.generationTemplate,
-    })
-    .from(chatEvents)
-    .where(
-      and(
-        eq(chatEvents.chatThreadId, threadId),
-        or(
-          and(
-            chatEventTypeIn(["input.prompt", "input.rejected"]),
-            isNotNull(chatEvents.userMessage),
-          ),
-          and(
-            not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-            isNotNull(chatEvents.content),
-          ),
-        ),
-        inArray(chatEvents.runId, runIds),
-        chatEventTypeIn(CHAT_EVENT_TYPES),
-        visibleChatEventCondition(db),
-      ),
-    )
-    .orderBy(asc(chatEvents.seqId));
-
-  const eventsByRunId = new Map<string, WebChatPriorRunEvent[]>();
-  for (const row of eventRows) {
-    if (row.runId === null) {
-      continue;
-    }
-    const existing = eventsByRunId.get(row.runId) ?? [];
-    existing.push({
-      eventType: row.eventType,
-      role: chatEventCompatibilityRole(row.eventType),
-      content: row.content,
-      userMessage: row.userMessage,
-      attachFiles: row.attachFiles,
-      generationTemplate: row.generationTemplate,
-    });
-    eventsByRunId.set(row.runId, existing);
-  }
-
-  return orderedRuns.map((run) => {
-    return {
-      runId: run.runId,
-      status: run.status,
-      prompt: run.prompt,
-      events: eventsByRunId.get(run.runId) ?? [],
-    };
-  });
 }
 
 async function resolveClientEventSend(params: {
@@ -1441,6 +1201,36 @@ function resolveInitialThreadModelPin(params: {
   return params.explicitRunConfiguration.modelPin;
 }
 
+function loadTimedExistingThreadSnapshot(params: {
+  readonly db: Db;
+  readonly userId: string;
+  readonly threadId: string;
+  readonly timing?: ApiDispatchTimingCollector;
+}) {
+  return measureApiDispatchTiming(
+    params.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
+    "nested",
+    () => {
+      return params.db
+        .select({
+          id: chatThreads.id,
+          computerUseHostId: chatThreads.computerUseHostId,
+          cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
+          ...persistedChatThreadModelSnapshotColumns(),
+        })
+        .from(chatThreads)
+        .where(
+          and(
+            eq(chatThreads.id, params.threadId),
+            eq(chatThreads.userId, params.userId),
+          ),
+        )
+        .limit(1);
+    },
+  );
+}
+
 async function resolveThread(params: {
   readonly db: Db;
   readonly orgId: string;
@@ -1454,7 +1244,7 @@ async function resolveThread(params: {
   readonly requestedCodexServiceTier: CodexServiceTier | undefined;
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
-  readonly userMessageInlineTemplatesEnabled: boolean;
+  readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
   if (!params.existingThreadId) {
     if (!params.explicitRunConfiguration) {
@@ -1476,7 +1266,6 @@ async function resolveThread(params: {
     return {
       thread: {
         threadId: thread.id,
-        incompleteContext: "",
         computerUseHostId: null,
         cloudBrowserEnabled: false,
         isNewThread: !thread.clientThreadAlreadyExisted,
@@ -1486,35 +1275,39 @@ async function resolveThread(params: {
     };
   }
 
-  const [thread] = await params.db
-    .select({
-      id: chatThreads.id,
-      computerUseHostId: chatThreads.computerUseHostId,
-      cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
-    })
-    .from(chatThreads)
-    .where(
-      and(
-        eq(chatThreads.id, params.existingThreadId),
-        eq(chatThreads.userId, params.userId),
-      ),
-    )
-    .limit(1);
+  const [thread] = await loadTimedExistingThreadSnapshot({
+    db: params.db,
+    userId: params.userId,
+    threadId: params.existingThreadId,
+    timing: params.timing,
+  });
   if (!thread) {
     return notFound("Chat thread not found");
   }
 
   let runConfiguration = params.explicitRunConfiguration;
+  let persistedModelResolutionPath:
+    | PersistedChatThreadModelResolutionPath
+    | undefined;
   if (!runConfiguration) {
-    const persisted = await resolvePersistedChatThreadModel({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
-      threadId: thread.id,
-      requestedCodexServiceTier: params.requestedCodexServiceTier,
-      persistRequestedCodexServiceTier: params.persistRequestedCodexServiceTier,
-      codexFastModeEnabled: params.codexFastModeEnabled,
-    });
+    const persisted = await measureApiDispatchTiming(
+      params.timing,
+      "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_persisted_model",
+      "nested",
+      () => {
+        return resolvePersistedChatThreadModel({
+          db: params.db,
+          orgId: params.orgId,
+          userId: params.userId,
+          threadId: thread.id,
+          threadSnapshot: thread,
+          requestedCodexServiceTier: params.requestedCodexServiceTier,
+          persistRequestedCodexServiceTier:
+            params.persistRequestedCodexServiceTier,
+          codexFastModeEnabled: params.codexFastModeEnabled,
+        });
+      },
+    );
     if (!persisted) {
       return notFound("Chat thread not found");
     }
@@ -1526,58 +1319,22 @@ async function resolveThread(params: {
       providerAdmission: persisted.providerAdmission,
       codexServiceTier: persisted.runCodexServiceTier,
     };
+    persistedModelResolutionPath = persisted.resolutionPath;
   }
 
-  const [sessionResolution, incompleteContext] = await Promise.all([
-    resolveChatThreadSession({
-      db: params.db,
-      threadId: thread.id,
-      userId: params.userId,
-      orgId: params.orgId,
-      agentComposeId: params.agentId,
-      route: {
-        selectedModel: runConfiguration.modelPin.selectedModel,
-        modelProvider:
-          runConfiguration.providerAdmission.effectiveModelProvider ?? null,
-        modelProviderId: runConfiguration.modelPin.modelProviderId,
-        cliAgentType: runConfiguration.providerAdmission.cliAgentType,
-      },
-    }),
-    loadWebChatIncompleteContext(params.db, thread.id),
-  ]);
-  const startNewSession = sessionResolution.action === "rotated";
   return {
     thread: {
       threadId: thread.id,
-      incompleteContext: startNewSession ? "" : incompleteContext,
       computerUseHostId: thread.computerUseHostId,
       cloudBrowserEnabled: thread.cloudBrowserEnabled,
       isNewThread: false,
       isClientThreadRetry: false,
     },
     runConfiguration,
+    ...(persistedModelResolutionPath
+      ? { modelResolutionPath: persistedModelResolutionPath }
+      : {}),
   };
-}
-
-async function prepareRecentChatContext(
-  db: Db,
-  threadId: string,
-  isNewThread: boolean,
-  incompleteContext: string,
-  options: {
-    readonly inlineTemplatesEnabled: boolean;
-  },
-): Promise<string> {
-  if (isNewThread) {
-    return "";
-  }
-  if (incompleteContext.length > 0) {
-    return "";
-  }
-  return buildWebChatPriorRunsContext(
-    await getLatestRunsByThreadId(db, threadId, RECENT_CHAT_RUN_LIMIT),
-    options.inlineTemplatesEnabled,
-  );
 }
 
 function appendUnassociatedUserMessage(params: {
@@ -1593,7 +1350,6 @@ function appendUnassociatedUserMessage(params: {
   readonly touchThreadSort: boolean;
   readonly userMessage: UserMessageDocument;
   readonly generationTemplate: IncomingGenerationTemplate;
-  readonly encryptedParams: string | undefined;
   readonly revokesEventId: string | undefined;
 }): Promise<ClientEventIdResolution> {
   return params.db.transaction(async (tx) => {
@@ -1620,9 +1376,7 @@ function appendUnassociatedUserMessage(params: {
       userMessage: params.userMessage,
       runId: null,
       triggerSource: "web",
-      encryptedParams: params.encryptedParams,
       attachFiles: fileIds,
-      attachFileMetadata: fileMetadata,
       generationTemplate: params.generationTemplate,
     };
     const inserted = params.revokesEventId
@@ -1744,7 +1498,6 @@ async function appendAssociatedUserMessage(params: {
       userMessage: params.userMessage,
       runId: params.runId,
       attachFiles: fileIds,
-      attachFileMetadata: fileMetadata,
       generationTemplate: params.generationTemplate,
     };
     const inserted = params.revokesEventId
@@ -2166,6 +1919,256 @@ const handleInterruptSend$ = command(
   },
 );
 
+interface AppendActiveInputParams {
+  readonly db: Db;
+  readonly body: SteerSendBody;
+  readonly userId: string;
+  readonly orgId: string;
+}
+
+async function lockActiveInputRun(
+  tx: ChatEventTransaction,
+  params: AppendActiveInputParams,
+): Promise<LockedActiveInputRun | undefined> {
+  if (!(await lockUserMessageQueueThread(tx, params.body.threadId))) {
+    return undefined;
+  }
+
+  const [thread] = await tx
+    .select({ id: chatThreads.id })
+    .from(chatThreads)
+    .where(
+      and(
+        eq(chatThreads.id, params.body.threadId),
+        eq(chatThreads.userId, params.userId),
+        eq(chatThreads.agentComposeId, params.body.agentId),
+      ),
+    )
+    .limit(1);
+  if (!thread) {
+    return undefined;
+  }
+
+  const [run] = await tx
+    .select({
+      id: agentRuns.id,
+      status: agentRuns.status,
+      activeInputEnabled: agentRuns.activeInputEnabled,
+      runnerGroup: agentRuns.runnerGroup,
+    })
+    .from(agentRuns)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(
+      and(
+        eq(agentRuns.id, params.body.steersRunId),
+        eq(agentRuns.userId, params.userId),
+        eq(agentRuns.orgId, params.orgId),
+        eq(zeroRuns.chatThreadId, params.body.threadId),
+      ),
+    )
+    .for("update", { of: agentRuns });
+  if (!run) {
+    return undefined;
+  }
+  return { ...run, status: runStatusSchema.parse(run.status) };
+}
+
+async function activeInputRetryResponse(
+  tx: ChatEventTransaction,
+  body: SteerSendBody,
+  run: LockedActiveInputRun,
+) {
+  if (!body.clientEventId) {
+    return undefined;
+  }
+  const [existing] = await tx
+    .select({
+      chatThreadId: chatEvents.chatThreadId,
+      eventType: chatEvents.eventType,
+      runId: chatEvents.runId,
+      revokesEventId: chatEvents.revokesEventId,
+      activeInputSequence: chatEvents.activeInputSequence,
+      createdAt: chatEvents.createdAt,
+    })
+    .from(chatEvents)
+    .where(eq(chatEvents.id, body.clientEventId))
+    .limit(1);
+  if (!existing) {
+    return undefined;
+  }
+  if (
+    existing.chatThreadId !== body.threadId ||
+    existing.eventType !== "input.prompt" ||
+    existing.runId !== body.steersRunId ||
+    existing.revokesEventId !== body.steersEventId ||
+    existing.activeInputSequence === null
+  ) {
+    return duplicateClientEventIdResponse();
+  }
+  return {
+    status: 201 as const,
+    body: {
+      runId: run.id,
+      threadId: body.threadId,
+      status: run.status,
+      createdAt: existing.createdAt.toISOString(),
+    },
+    runnerGroup: activeInputRunnerGroup(run),
+  };
+}
+
+function activeInputRunnerGroup(run: LockedActiveInputRun): string {
+  if (!run.runnerGroup) {
+    throw new Error("Active input run is missing its runner group");
+  }
+  return run.runnerGroup;
+}
+
+function appendActiveInput(params: AppendActiveInputParams) {
+  return params.db.transaction(async (tx) => {
+    const run = await lockActiveInputRun(tx, params);
+    if (!run) {
+      return notFound("Run not found");
+    }
+
+    const retryResponse = await activeInputRetryResponse(tx, params.body, run);
+    if (retryResponse) {
+      return retryResponse;
+    }
+
+    if (run.status !== "running" || !run.activeInputEnabled) {
+      return conflict("The active run does not support steering");
+    }
+
+    const pendingEvent = await loadPendingChatQueueEvent(tx, {
+      chatThreadId: params.body.threadId,
+      eventId: params.body.steersEventId,
+    });
+    if (pendingEvent?.eventType !== "input.prompt") {
+      return conflict("Queued message is no longer available");
+    }
+
+    const [target] = await tx
+      .select({
+        userMessage: chatEvents.userMessage,
+        attachFiles: chatEvents.attachFiles,
+        generationTemplate: chatEvents.generationTemplate,
+        triggerSource: chatEvents.triggerSource,
+      })
+      .from(chatEvents)
+      .where(eq(chatEvents.id, pendingEvent.id))
+      .limit(1);
+    if (
+      !target?.userMessage ||
+      (target.attachFiles !== null && target.attachFiles.length > 0) ||
+      target.generationTemplate !== null ||
+      !target.userMessage.parts.every((part) => {
+        return part.type === "text";
+      })
+    ) {
+      return badRequestMessage(
+        "Only plain text queued messages can be sent to an active run",
+      );
+    }
+    const activeInputText = projectUserMessage(target.userMessage).agentPrompt;
+    if (activeInputText.length === 0) {
+      return badRequestMessage(
+        "Only plain text queued messages can be sent to an active run",
+      );
+    }
+    if (
+      Buffer.byteLength(
+        JSON.stringify({ type: "active-input", text: activeInputText }),
+        "utf8",
+      ) > ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES
+    ) {
+      return badRequestMessage(
+        "Queued message is too large to send to the active run",
+      );
+    }
+
+    const [lastInput] = await tx
+      .select({ sequence: max(chatEvents.activeInputSequence) })
+      .from(chatEvents)
+      .where(eq(chatEvents.runId, run.id));
+    const activeInputSequence = (lastInput?.sequence ?? 0) + 1;
+    const inserted = await replaceChatEvent(
+      tx,
+      pendingEvent.id,
+      {
+        ...(params.body.clientEventId ? { id: params.body.clientEventId } : {}),
+        chatThreadId: params.body.threadId,
+        eventType: "input.prompt",
+        userMessage: target.userMessage,
+        runId: run.id,
+        triggerSource: target.triggerSource ?? undefined,
+        attachFiles: null,
+        generationTemplate: null,
+        activeInputSequence,
+      },
+      { preserveAssetRefs: false },
+    );
+    if (!inserted) {
+      return conflict("Queued message is no longer available");
+    }
+
+    return {
+      status: 201 as const,
+      body: {
+        runId: run.id,
+        threadId: params.body.threadId,
+        status: "running" as const,
+        createdAt: inserted.createdAt.toISOString(),
+      },
+      runnerGroup: activeInputRunnerGroup(run),
+    };
+  });
+}
+
+const handleSteerSend$ = command(
+  async (
+    { set },
+    args: {
+      readonly body: SteerSendBody;
+      readonly userId: string;
+      readonly orgId: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    const db = set(writeDb$);
+    const featureSwitchContext = await loadUserFeatureSwitchContext(
+      db,
+      args.orgId,
+      args.userId,
+    );
+    signal.throwIfAborted();
+    if (!isFeatureEnabled(FeatureSwitchKey.ChatSteer, featureSwitchContext)) {
+      return forbidden("Chat steer is not enabled");
+    }
+
+    const result = await appendActiveInput({
+      db,
+      body: args.body,
+      userId: args.userId,
+      orgId: args.orgId,
+    });
+    signal.throwIfAborted();
+    if (result.status !== 201) {
+      return result;
+    }
+    await Promise.all([
+      publishChatEventCreated(args.userId, args.body.threadId),
+      publishActiveInputToRunnerGroup(
+        result.runnerGroup,
+        args.body.steersRunId,
+      ),
+    ]);
+    signal.throwIfAborted();
+    const { runnerGroup: _runnerGroup, ...response } = result;
+    return response;
+  },
+);
+
 function loadTimedAuthorizedAgent(
   args: NormalSendArgs,
   db: Db,
@@ -2255,12 +2258,13 @@ function resolveTimedThread(
   explicitRunConfiguration: ResolvedRunConfiguration | undefined,
   featureSwitches: NormalSendFeatureSwitches,
 ): ReturnType<typeof resolveThread> {
+  let modelResolutionPath: PersistedChatThreadModelResolutionPath | undefined;
   return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
     "nested",
-    () => {
-      return resolveThread({
+    async () => {
+      const resolved = await resolveThread({
         db,
         orgId: args.orgId,
         userId: args.userId,
@@ -2275,31 +2279,17 @@ function resolveTimedThread(
           args.body.modelSelection !== undefined ||
           args.body.runOptions !== undefined,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-        userMessageInlineTemplatesEnabled:
-          featureSwitches.userMessageInlineTemplatesEnabled,
+        timing: args.timing,
       });
+      if (!("status" in resolved)) {
+        modelResolutionPath = resolved.modelResolutionPath;
+      }
+      return resolved;
     },
-  );
-}
-
-function prepareTimedRecentChatContext(
-  args: NormalSendArgs,
-  db: Db,
-  thread: ResolvedThread,
-  inlineTemplatesEnabled: boolean,
-): ReturnType<typeof prepareRecentChatContext> {
-  return measureApiDispatchTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_prepare_recent_chat_context",
-    "nested",
     () => {
-      return prepareRecentChatContext(
-        db,
-        thread.threadId,
-        thread.isNewThread,
-        thread.incompleteContext,
-        { inlineTemplatesEnabled },
-      );
+      return modelResolutionPath
+        ? { model_resolution_path: modelResolutionPath }
+        : undefined;
     },
   );
 }
@@ -2464,13 +2454,6 @@ const prepareNormalSend$ = command(
     }
     const { thread, runConfiguration } = threadAndRunConfiguration;
 
-    const priorContext = await prepareTimedRecentChatContext(
-      args,
-      db,
-      thread,
-      featureSwitches.userMessageInlineTemplatesEnabled,
-    );
-    signal.throwIfAborted();
     const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: runtimeBody.generationTemplate,
       explicitTemplates:
@@ -2490,7 +2473,7 @@ const prepareNormalSend$ = command(
       return computerAccess;
     }
     const attachFileMetadata = await set(
-      resolveAttachFileMetadata$,
+      resolveIncomingAttachFileMetadata$,
       {
         userId: args.userId,
         attachFiles: runtimeBody.attachFiles,
@@ -2504,7 +2487,8 @@ const prepareNormalSend$ = command(
       agent,
       thread,
       body: runtimeBody,
-      priorContext,
+      userMessageInlineTemplatesEnabled:
+        featureSwitches.userMessageInlineTemplatesEnabled,
       generationTemplatePrompt,
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
@@ -2530,17 +2514,6 @@ async function queueUnassociatedNormalEvent(params: {
   /** Set when this call inserted a queue-first message. */
   readonly queuedEventId: string | undefined;
 }> {
-  const encryptedParams = params.body.realAgentInPreview
-    ? await encryptQueuedUserMessageRunParams(
-        {
-          version: 1,
-          prompt: params.prepared.body.agentPrompt,
-          appendSystemPrompt: buildWebChatPrompt(),
-          realAgentInPreview: true,
-        },
-        { orgId: params.orgId, userId: params.userId },
-      )
-    : undefined;
   const resolution = await appendUnassociatedUserMessage({
     db: params.prepared.db,
     threadId: params.prepared.thread.threadId,
@@ -2554,7 +2527,6 @@ async function queueUnassociatedNormalEvent(params: {
     touchThreadSort: params.touchThreadSort,
     userMessage: params.body.userMessage,
     generationTemplate: params.body.generationTemplate,
-    encryptedParams,
     revokesEventId: params.body.revokesEventId,
   });
   if (resolution.kind === "queued" && resolution.inserted) {
@@ -2812,15 +2784,10 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
       .select({
         userMessage: chatEvents.userMessage,
         attachFiles: chatEvents.attachFiles,
-        attachFileMetadata: chatEventInputParams.attachFileMetadata,
         generationTemplate: chatEvents.generationTemplate,
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
-      .leftJoin(
-        chatEventInputParams,
-        eq(chatEventInputParams.eventId, chatEvents.id),
-      )
       .where(
         and(
           eq(chatEvents.id, params.eventId),
@@ -2848,13 +2815,10 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
       userMessage: queuedMessage.userMessage,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
-      sequenceNumber: 0,
+      runEventSequenceNumber: 0,
       createdAt: rejectedCreatedAt,
       attachFiles: queuedMessage.attachFiles
         ? [...queuedMessage.attachFiles]
-        : null,
-      attachFileMetadata: queuedMessage.attachFileMetadata
-        ? [...queuedMessage.attachFileMetadata]
         : null,
       generationTemplate: queuedMessage.generationTemplate,
     });
@@ -2864,7 +2828,7 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
         eventType: "output.error",
         content: params.assistantContent,
         error: INSUFFICIENT_CREDITS_MARKER,
-        sequenceNumber: 1,
+        runEventSequenceNumber: 1,
         createdAt: assistantCreatedAt,
         runId: null,
       });
@@ -2930,10 +2894,9 @@ async function appendInsufficientCreditsEvents(params: {
       userMessage: params.body.userMessage,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
-      sequenceNumber: 0,
+      runEventSequenceNumber: 0,
       createdAt: userCreatedAt,
       attachFiles: fileIds,
-      attachFileMetadata: fileMetadata,
     };
     const userMessage = params.body.revokesEventId
       ? await replaceChatEvent(tx, params.body.revokesEventId, userValues, {
@@ -2965,7 +2928,7 @@ async function appendInsufficientCreditsEvents(params: {
       eventType: "output.error",
       content: assistantContent,
       error: INSUFFICIENT_CREDITS_MARKER,
-      sequenceNumber: 1,
+      runEventSequenceNumber: 1,
       createdAt: assistantCreatedAt,
       runId: null,
     });
@@ -3038,10 +3001,17 @@ function codexServiceTierForRun(params: {
 function buildCreateZeroRunArgs(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
+  readonly realAgentInPreviewEnabled: boolean;
 }) {
   const { args, prepared } = params;
   const { modelPin, providerAdmission, codexServiceTier } =
     prepared.runConfiguration;
+  const webChatSessionPromptContext: WebChatSessionPromptContext = {
+    inlineTemplatesEnabled: prepared.userMessageInlineTemplatesEnabled,
+    generationTemplatePrompt: prepared.generationTemplatePrompt,
+    computerUseHostDisplayName:
+      prepared.computerUseHostGrant?.displayName ?? null,
+  };
   return {
     auth: args.auth,
     apiStartTime: args.apiStartTime,
@@ -3080,16 +3050,19 @@ function buildCreateZeroRunArgs(params: {
       ...(providerAdmission.effectiveModelProvider
         ? { modelProvider: providerAdmission.effectiveModelProvider }
         : {}),
-      ...(args.body.realAgentInPreview ? { realAgentInPreview: true } : {}),
+      ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
     },
     triggerSource: "web" as const,
     dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-    appendSystemPrompt: buildAppendSystemPrompt(
-      prepared.thread.incompleteContext,
-      prepared.priorContext,
-      prepared.generationTemplatePrompt,
-      prepared.computerUseHostGrant?.displayName ?? null,
-    ),
+    ...(prepared.thread.isNewThread
+      ? {
+          appendSystemPrompt: buildWebChatAppendSystemPrompt({
+            incompleteContext: "",
+            priorContext: "",
+            context: webChatSessionPromptContext,
+          }),
+        }
+      : { webChatSessionPromptContext }),
     ...(args.timing ? { timing: args.timing } : {}),
     ...(args.zeroPreCreateSource
       ? { zeroPreCreateSource: args.zeroPreCreateSource }
@@ -3100,6 +3073,7 @@ function buildCreateZeroRunArgs(params: {
 async function buildTimedCreateZeroRunArgs(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
+  readonly realAgentInPreviewEnabled: boolean;
 }): Promise<ReturnType<typeof buildCreateZeroRunArgs>> {
   return await measureApiDispatchTiming(
     params.args.timing,
@@ -3184,7 +3158,7 @@ const createNormalChatRun$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const { args, prepared } = params;
+    const { args, prepared, queueFirstEventId } = params;
     const createNormalRunStartedAt = now();
     const { modelPin, providerAdmission } = prepared.runConfiguration;
     if (providerAdmission.error) {
@@ -3200,17 +3174,49 @@ const createNormalChatRun$ = command(
           args.zeroPreCreateSource,
           prepared.thread.isNewThread,
         ),
-        queueFirstEventId: params.queueFirstEventId,
+        queueFirstEventId,
       });
     }
+
+    const queuedMessage = await loadNextUnclaimedQueuedUserMessage(
+      prepared.db,
+      prepared.thread.threadId,
+    );
+    signal.throwIfAborted();
+    if (!queuedMessage || queuedMessage.id !== queueFirstEventId) {
+      return await resolveQueueFirstEventAfterLostClaim({
+        db: prepared.db,
+        threadId: prepared.thread.threadId,
+        userId: args.userId,
+        eventId: queueFirstEventId,
+      });
+    }
+    const attachFileMetadata = await set(
+      resolveAttachFileMetadata$,
+      {
+        userId: args.userId,
+        attachFiles: queuedMessage.attachFiles,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    const featureSwitchContext = await loadUserFeatureSwitchContext(
+      prepared.db,
+      args.orgId,
+      args.userId,
+    );
+    signal.throwIfAborted();
 
     const createRunArgs = await buildTimedCreateZeroRunArgs({
       args,
       prepared,
+      realAgentInPreviewEnabled: isFeatureEnabled(
+        FeatureSwitchKey.RealAgentInPreview,
+        featureSwitchContext,
+      ),
     });
     signal.throwIfAborted();
-
-    const queueFirstEventId = params.queueFirstEventId;
 
     if (args.timing) {
       args.timing.recordElapsed(
@@ -3223,10 +3229,15 @@ const createNormalChatRun$ = command(
       createQueueFirstZeroRun$,
       {
         ...createRunArgs,
+        apiStartTime: queuedMessage.createdAt.getTime(),
         queueFirstAssociation: {
           kind: "user_message",
           threadId: prepared.thread.threadId,
           eventId: queueFirstEventId,
+          orgId: args.orgId,
+          userId: args.userId,
+          admissionTime: args.apiStartTime,
+          attachFileMetadata,
         },
       },
       signal,
@@ -3468,6 +3479,13 @@ const sendQueueFirstNormalEvent$ = command(
 const handleSendChatEvent$ = command(
   async ({ get, set }, body: SendBody, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    if (isSteerSendBody(body)) {
+      return await set(
+        handleSteerSend$,
+        { body, userId: auth.userId, orgId: auth.orgId },
+        signal,
+      );
+    }
     if (isRecallSendBody(body)) {
       return await set(
         handleRecallSend$,

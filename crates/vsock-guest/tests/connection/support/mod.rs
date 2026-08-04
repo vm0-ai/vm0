@@ -5,8 +5,10 @@ mod protocol;
 mod temp_paths;
 
 pub(crate) use connection::{
-    finish_guest_connection, join_guest_connection, start_guest_connection,
-    start_guest_connection_with_exec_drain_deadline,
+    accept_guest_connection, finish_guest_connection, guest_connection_completion_diagnostic,
+    join_guest_connection, listener_has_pending_connection, read_guest_ready,
+    start_guest_connection, start_guest_connection_with_exec_drain_deadline,
+    wait_for_guest_connection,
 };
 pub(crate) use exec::{
     DRAIN_DEADLINE_SECS, LARGE_ENV_COMMAND, LONG_RUNNING_EXEC_TIMEOUT_MS, assert_large_env_stdout,
@@ -18,7 +20,7 @@ pub(crate) use process::{
     OrphanProcessGuard, ProcessGroupFileGuard, orphan_sleep_command, pid_alive, wait_for_pid_exit,
 };
 pub(crate) use protocol::{
-    assert_ping_pong, read_and_discard_message, read_error_response, read_message,
-    send_control_payload, send_quiesce_operations, send_resume_operations,
+    assert_ping_pong, read_error_response, read_message, send_control_payload,
+    send_quiesce_operations, send_resume_operations,
 };
 pub(crate) use temp_paths::{unique_pid_path, unique_socket_path, unique_tmp_path};

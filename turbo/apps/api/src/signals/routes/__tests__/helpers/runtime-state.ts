@@ -96,6 +96,24 @@ export async function readFakeKmsDecryptCallCount(
   return response.decrypt_call_count ?? 0;
 }
 
+export async function readBrowserScreenshotSchemaAvailable(
+  context: TestContext,
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "read-browser-screenshot-schema-state",
+  });
+  if (response.browser_screenshot_schema_available === undefined) {
+    throw new Error(
+      "readBrowserScreenshotSchemaAvailable missing schema availability",
+    );
+  }
+  return response.browser_screenshot_schema_available;
+}
+
+export async function resetDatabasePool(context: TestContext): Promise<void> {
+  await postAction(context, { action: "reset-database-pool" });
+}
+
 export async function mutateRunnerJobSecretValueEnvironmentKeys(
   context: TestContext,
   runId: string,
@@ -165,6 +183,20 @@ export async function readRunnerJobStorageState(
     );
   }
   return response.runner_job_storage_state;
+}
+
+export async function readRunClaimOwner(
+  context: TestContext,
+  runId: string,
+): Promise<NonNullable<TestRuntimeStateActionResponse["runner_claim_owner"]>> {
+  const response = await postAction(context, {
+    action: "read-run-claim-owner",
+    run_id: runId,
+  });
+  if (!response.runner_claim_owner) {
+    throw new Error("readRunClaimOwner missing runner_claim_owner");
+  }
+  return response.runner_claim_owner;
 }
 
 export async function readStoragePersistenceState(

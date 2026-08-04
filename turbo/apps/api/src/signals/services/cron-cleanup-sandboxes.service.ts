@@ -32,6 +32,10 @@ import type { QueueMarkerRevokeNotification } from "./zero-chat-queue-marker.ser
 import { drainStaleCanonicalSlackIngress$ } from "./canonical-slack-ingress-processor.service";
 import { drainStaleCanonicalFeishuIngress$ } from "./canonical-feishu-ingress-processor.service";
 import { retryPendingFeishuConnectWelcomes$ } from "./zero-feishu-welcome.service";
+import {
+  cleanupThreadlessRuns$,
+  type ThreadlessRunCleanupResult,
+} from "./threadless-run-cleanup.service";
 
 const L = logger("CronCleanupSandboxes");
 
@@ -55,6 +59,7 @@ interface CleanupSandboxesResult {
   readonly results: readonly CleanupResult[];
   readonly exportJobsCleaned: number;
   readonly exportJobsStuck: number;
+  readonly threadlessRuns: ThreadlessRunCleanupResult;
 }
 
 interface StaleRun {
@@ -533,6 +538,12 @@ export const cleanupSandboxes$ = command(
       return isExpiredRun(run, cutoffs);
     });
 
+    // Run before generic queue maintenance so an active threadless run always
+    // takes the hard-cancel path and can never become terminal and be deleted
+    // within the same maintenance pass.
+    const threadlessRuns = await set(cleanupThreadlessRuns$, signal);
+    signal.throwIfAborted();
+
     const expiredQueueResult = await set(cleanupExpiredQueueEntries$, signal);
     signal.throwIfAborted();
     const queuedOrphanResult = await set(
@@ -548,15 +559,10 @@ export const cleanupSandboxes$ = command(
     signal.throwIfAborted();
     const drainedCount = await set(drainStaleQueues$, signal);
     signal.throwIfAborted();
-    await tapError(
-      set(
-        drainStaleChatThreadQueues$,
-        { dispatchFailedCallbacks: dispatchFailedRunCallbacks },
-        signal,
-      ),
-      (error) => {
-        L.error("Failed to drain stale chat thread queues", { error });
-      },
+    await set(
+      drainStaleChatThreadQueues$,
+      { dispatchFailedCallbacks: dispatchFailedRunCallbacks },
+      signal,
     );
     signal.throwIfAborted();
     await tapError(set(drainStaleCanonicalSlackIngress$, signal), (error) => {
@@ -624,6 +630,7 @@ export const cleanupSandboxes$ = command(
       results,
       exportJobsCleaned,
       exportJobsStuck,
+      threadlessRuns,
     };
   },
 );

@@ -1,13 +1,16 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
 
-import {
-  chatEventRunLifecycle,
-  isValidChatEventRevocation,
-} from "@vm0/api-contracts/contracts/chat-events";
+import { isValidChatEventRevocation } from "@vm0/api-contracts/contracts/chat-events";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
+import type {
+  ChatSlackMentionDisplayNames,
+  ChatSlackMessageFiles,
+} from "@vm0/db/jsonb-contracts/chat-slack-context";
+import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
+import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
-import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   chatEventTerminalPredicate,
   chatEvents,
@@ -15,6 +18,7 @@ import {
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
 import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
+import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
@@ -24,6 +28,10 @@ import { eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
+import type {
+  WorkflowAutomationEventPayload,
+  WorkflowAutomationEventType,
+} from "./workflow-automation-context.service";
 
 type ChatEventInsert = typeof chatEvents.$inferInsert;
 type ChatEventWriteTransaction = Parameters<
@@ -43,20 +51,45 @@ type ChatEventDisplayContext =
         readonly messagePermalink: string | null;
         readonly channelId: string;
         readonly messageTs: string;
+        readonly conversationContext: string;
+        readonly messageText: string;
+        readonly messageFiles: ChatSlackMessageFiles;
+        readonly mentionDisplayNames: ChatSlackMentionDisplayNames;
+        readonly senderDisplayName: string | null;
+        readonly senderUserId: string | null;
+        readonly channelType: "channel" | "dm" | "group_dm";
+        readonly threadTs: string;
+        readonly routeThreadTs: string | null;
       };
       readonly feishuContext?: never;
       readonly teamsContext?: never;
       readonly telegramContext?: never;
       readonly githubContext?: never;
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
     }
   | {
       readonly slackContext?: never;
       readonly feishuContext: {
         readonly chatOpenUrl: string;
+        readonly conversationHistory: string;
+        readonly messageText: string;
+        readonly messageFiles: ChatFeishuMessageFiles;
+        readonly chatType: "group" | "p2p" | "topic_group";
+        readonly chatId: string;
+        readonly messageId: string;
+        readonly threadId: string;
+        readonly replyInThread: boolean;
+        readonly reactionId: string | null;
+        readonly senderOpenId: string;
+        readonly connectionId: string;
+        readonly installationId: string;
       };
       readonly teamsContext?: never;
       readonly telegramContext?: never;
       readonly githubContext?: never;
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
     }
   | {
       readonly slackContext?: never;
@@ -68,9 +101,25 @@ type ChatEventDisplayContext =
         readonly conversationId: string;
         readonly conversationType: string | null;
         readonly activityId: string | null;
+        readonly threadContext: string;
+        readonly messageText: string;
+        readonly messageFiles: ChatTeamsMessageFiles;
+        readonly tenantName: string | null;
+        readonly teamName: string | null;
+        readonly threadId: string;
+        readonly serviceUrl: string;
+        readonly teamsAppId: string | null;
+        readonly botId: string | null;
+        readonly botName: string | null;
+        readonly senderUserId: string;
+        readonly senderDisplayName: string | null;
+        readonly senderPrincipalName: string | null;
+        readonly connectionId: string;
       };
       readonly telegramContext?: never;
       readonly githubContext?: never;
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
     }
   | {
       readonly slackContext?: never;
@@ -81,8 +130,21 @@ type ChatEventDisplayContext =
         readonly messageId: string;
         readonly isDm: boolean;
         readonly messageThreadId: number | null;
+        readonly messageText: string;
+        readonly threadContext: string;
+        readonly rootMessageId: string | null;
+        readonly thinkingMessageId: string | null;
+        readonly userLinkId: string;
+        readonly userLinkKind: "custom" | "official";
+        readonly chatType: string;
+        readonly senderUserId: string | null;
+        readonly senderDisplayName: string | null;
+        readonly senderUsername: string | null;
+        readonly senderLanguage: string | null;
       };
       readonly githubContext?: never;
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
     }
   | {
       readonly slackContext?: never;
@@ -94,6 +156,47 @@ type ChatEventDisplayContext =
         readonly subjectNumber: number;
         readonly subjectKind: "issue" | "pull_request";
         readonly triggerCommentId: string | null;
+        readonly issueContext: string;
+        readonly messageText: string;
+        readonly triggerReactionId: string | null;
+        readonly triggerCommentBody: string | null;
+      };
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
+    }
+  | {
+      readonly slackContext?: never;
+      readonly feishuContext?: never;
+      readonly teamsContext?: never;
+      readonly telegramContext?: never;
+      readonly githubContext?: never;
+      readonly morningBriefContext: {
+        readonly deliveryId: string;
+        readonly timezone: string;
+        readonly triggeredAt: Date;
+      };
+      readonly agentphoneContext?: never;
+    }
+  | {
+      readonly slackContext?: never;
+      readonly feishuContext?: never;
+      readonly teamsContext?: never;
+      readonly telegramContext?: never;
+      readonly githubContext?: never;
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext: {
+        readonly messageText: string;
+        readonly threadContext: string;
+        readonly messageId: string;
+        readonly rootMessageId: string;
+        readonly conversationId: string | null;
+        readonly channel: "imessage" | "sms" | "mms";
+        readonly isGroup: boolean;
+        readonly phoneHandle: string;
+        readonly fromNumber: string;
+        readonly toNumber: string;
+        readonly userLinkId: string;
+        readonly agentphoneAgentId: string;
       };
     }
   | {
@@ -102,19 +205,20 @@ type ChatEventDisplayContext =
       readonly teamsContext?: never;
       readonly telegramContext?: never;
       readonly githubContext?: never;
+      readonly morningBriefContext?: never;
+      readonly agentphoneContext?: never;
     };
 
 type ChatEventInputPayload = Pick<
   ChatEventInsert,
   "attachFiles" | "generationTemplate"
 > & {
-  readonly attachFileMetadata?: typeof chatEventInputParams.$inferInsert.attachFileMetadata;
   readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
 };
 
 type ChatEventOutputSequence = Pick<
   ChatEventInsert,
-  "sequenceNumber" | "runEventId"
+  "runEventSequenceNumber" | "runEventId"
 >;
 
 type InputPromptEvent = ChatEventIdentity &
@@ -123,7 +227,7 @@ type InputPromptEvent = ChatEventIdentity &
     readonly eventType: "input.prompt";
     readonly content?: null;
     readonly triggerSource?: TriggerSource;
-    readonly encryptedParams?: string | null;
+    readonly activeInputSequence?: number;
   };
 
 type InputAutomationEvent = ChatEventIdentity &
@@ -131,9 +235,11 @@ type InputAutomationEvent = ChatEventIdentity &
     readonly eventType: "input.automation";
     readonly content?: null;
     readonly automationId: string;
+    readonly workflowName?: string;
+    readonly workflowAutomationEventType?: WorkflowAutomationEventType;
+    readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
     readonly triggerSource: TriggerSource;
     readonly triggerBrief: string | null;
-    readonly encryptedParams: string;
   };
 
 type InputGoalEvent = ChatEventIdentity &
@@ -147,7 +253,7 @@ type InputGoalEvent = ChatEventIdentity &
 type InputRejectedEvent = ChatEventIdentity &
   ChatEventDisplayContext &
   ChatEventInputPayload &
-  Pick<ChatEventInsert, "sequenceNumber"> & {
+  Pick<ChatEventInsert, "runEventSequenceNumber"> & {
     readonly eventType: "input.rejected";
     readonly content?: null;
     readonly error: string;
@@ -163,7 +269,7 @@ type OutputMessageEvent = ChatEventIdentity &
   };
 
 type OutputErrorEvent = ChatEventIdentity &
-  Pick<ChatEventInsert, "sequenceNumber"> & {
+  Pick<ChatEventInsert, "runEventSequenceNumber"> & {
     readonly eventType: "output.error";
     readonly content: string | null;
     readonly error: string;
@@ -293,7 +399,10 @@ interface ChatEventBatchCommandResult {
 type InsertChatEventConflict = "none" | "any" | "id" | "run-lifecycle";
 type InsertChatEventsConflict = "any" | "run-sequence";
 
-type PersistedChatEvent = Omit<ChatEventInsert, "role" | "seqId">;
+type PersistedChatEvent = Omit<
+  ChatEventInsert,
+  "role" | "runLifecycleEvent" | "seqId"
+>;
 
 type ChatEventContextPointer = Pick<
   ChatEventInsert,
@@ -310,10 +419,6 @@ export interface LoadedChatEventReplacementTarget extends StoredChatEventContext
   readonly chatThreadId: string;
   readonly createdAt: Date;
   readonly eventType: NonNullable<ChatEventInsert["eventType"]>;
-  readonly encryptedParams: string | null;
-  readonly attachFileMetadata:
-    | typeof chatEventInputParams.$inferSelect.attachFileMetadata
-    | null;
 }
 
 type NewDisplayContext =
@@ -324,12 +429,33 @@ type NewDisplayContext =
       readonly messagePermalink: string | null;
       readonly channelId: string;
       readonly messageTs: string;
+      readonly conversationContext: string;
+      readonly messageText: string;
+      readonly messageFiles: ChatSlackMessageFiles;
+      readonly mentionDisplayNames: ChatSlackMentionDisplayNames;
+      readonly senderDisplayName: string | null;
+      readonly senderUserId: string | null;
+      readonly channelType: "channel" | "dm" | "group_dm";
+      readonly threadTs: string;
+      readonly routeThreadTs: string | null;
     }
   | {
       readonly type: "feishu";
       readonly id: string;
       readonly chatThreadId: string;
       readonly chatOpenUrl: string;
+      readonly conversationHistory: string;
+      readonly messageText: string;
+      readonly messageFiles: ChatFeishuMessageFiles;
+      readonly chatType: "group" | "p2p" | "topic_group";
+      readonly chatId: string;
+      readonly messageId: string;
+      readonly threadId: string;
+      readonly replyInThread: boolean;
+      readonly reactionId: string | null;
+      readonly senderOpenId: string;
+      readonly connectionId: string;
+      readonly installationId: string;
     }
   | {
       readonly type: "teams";
@@ -341,6 +467,20 @@ type NewDisplayContext =
       readonly conversationId: string;
       readonly conversationType: string | null;
       readonly activityId: string | null;
+      readonly threadContext: string;
+      readonly messageText: string;
+      readonly messageFiles: ChatTeamsMessageFiles;
+      readonly tenantName: string | null;
+      readonly teamName: string | null;
+      readonly threadId: string;
+      readonly serviceUrl: string;
+      readonly teamsAppId: string | null;
+      readonly botId: string | null;
+      readonly botName: string | null;
+      readonly senderUserId: string;
+      readonly senderDisplayName: string | null;
+      readonly senderPrincipalName: string | null;
+      readonly connectionId: string;
     }
   | {
       readonly type: "telegram";
@@ -350,6 +490,17 @@ type NewDisplayContext =
       readonly messageId: string;
       readonly isDm: boolean;
       readonly messageThreadId: number | null;
+      readonly messageText: string;
+      readonly threadContext: string;
+      readonly rootMessageId: string | null;
+      readonly thinkingMessageId: string | null;
+      readonly userLinkId: string;
+      readonly userLinkKind: "custom" | "official";
+      readonly chatType: string;
+      readonly senderUserId: string | null;
+      readonly senderDisplayName: string | null;
+      readonly senderUsername: string | null;
+      readonly senderLanguage: string | null;
     }
   | {
       readonly type: "github";
@@ -359,12 +510,36 @@ type NewDisplayContext =
       readonly subjectNumber: number;
       readonly subjectKind: "issue" | "pull_request";
       readonly triggerCommentId: string | null;
+      readonly issueContext: string;
+      readonly messageText: string;
+      readonly triggerReactionId: string | null;
+      readonly triggerCommentBody: string | null;
+    }
+  | {
+      readonly type: "agentphone";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly messageText: string;
+      readonly threadContext: string;
+      readonly messageId: string;
+      readonly rootMessageId: string;
+      readonly conversationId: string | null;
+      readonly channel: "imessage" | "sms" | "mms";
+      readonly isGroup: boolean;
+      readonly phoneHandle: string;
+      readonly fromNumber: string;
+      readonly toNumber: string;
+      readonly userLinkId: string;
+      readonly agentphoneAgentId: string;
     }
   | {
       readonly type: "automation";
       readonly id: string;
       readonly chatThreadId: string;
       readonly automationId: string;
+      readonly workflowName: string | null;
+      readonly workflowAutomationEventType: WorkflowAutomationEventType | null;
+      readonly workflowAutomationEventPayload: WorkflowAutomationEventPayload | null;
       readonly triggerBrief: string | null;
     }
   | {
@@ -372,53 +547,43 @@ type NewDisplayContext =
       readonly id: string;
       readonly chatThreadId: string;
       readonly objectiveBrief: string;
+    }
+  | {
+      readonly type: "morning_brief";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly deliveryId: string;
+      readonly timezone: string;
+      readonly triggeredAt: Date;
     };
 
-function isPendingInputEvent(values: NewChatEvent): boolean {
-  return (
-    (values.eventType === "input.prompt" ||
-      values.eventType === "input.automation" ||
-      values.eventType === "input.goal") &&
-    values.runId === null
-  );
-}
-
-function eventInputParams(values: NewChatEvent):
-  | {
-      readonly encryptedParams: string;
-      readonly attachFileMetadata:
-        | typeof chatEventInputParams.$inferInsert.attachFileMetadata
-        | undefined;
-    }
-  | undefined {
-  if (
-    !isPendingInputEvent(values) ||
-    !("encryptedParams" in values) ||
-    !values.encryptedParams
-  ) {
+function newAutomationDisplayContext(
+  eventId: string,
+  values: NewChatEvent,
+): Extract<NewDisplayContext, { readonly type: "automation" }> | undefined {
+  const automationId =
+    "automationId" in values ? values.automationId : undefined;
+  if (automationId === undefined) {
     return undefined;
   }
   return {
-    encryptedParams: values.encryptedParams,
-    attachFileMetadata:
-      "attachFileMetadata" in values ? values.attachFileMetadata : undefined,
+    type: "automation",
+    id: eventId,
+    chatThreadId: values.chatThreadId,
+    automationId,
+    workflowName:
+      "workflowName" in values ? (values.workflowName ?? null) : null,
+    workflowAutomationEventType:
+      "workflowAutomationEventType" in values
+        ? (values.workflowAutomationEventType ?? null)
+        : null,
+    workflowAutomationEventPayload:
+      "workflowAutomationEventPayload" in values
+        ? (values.workflowAutomationEventPayload ?? null)
+        : null,
+    triggerBrief:
+      "triggerBrief" in values ? (values.triggerBrief ?? null) : null,
   };
-}
-
-async function insertEventInputParams(
-  tx: ChatEventWriteTransaction,
-  eventId: string,
-  values: NewChatEvent,
-): Promise<void> {
-  const params = eventInputParams(values);
-  if (!params) {
-    return;
-  }
-  await tx.insert(chatEventInputParams).values({
-    eventId,
-    encryptedParams: params.encryptedParams,
-    attachFileMetadata: params.attachFileMetadata,
-  });
 }
 
 function newDisplayContext(
@@ -435,6 +600,15 @@ function newDisplayContext(
       messagePermalink: slackContext.messagePermalink,
       channelId: slackContext.channelId,
       messageTs: slackContext.messageTs,
+      conversationContext: slackContext.conversationContext,
+      messageText: slackContext.messageText,
+      messageFiles: slackContext.messageFiles,
+      mentionDisplayNames: slackContext.mentionDisplayNames,
+      senderDisplayName: slackContext.senderDisplayName,
+      senderUserId: slackContext.senderUserId,
+      channelType: slackContext.channelType,
+      threadTs: slackContext.threadTs,
+      routeThreadTs: slackContext.routeThreadTs,
     };
   }
 
@@ -445,7 +619,7 @@ function newDisplayContext(
       type: "feishu",
       id: eventId,
       chatThreadId: values.chatThreadId,
-      chatOpenUrl: feishuContext.chatOpenUrl,
+      ...feishuContext,
     };
   }
 
@@ -482,17 +656,31 @@ function newDisplayContext(
     };
   }
 
-  const automationId =
-    "automationId" in values ? values.automationId : undefined;
-  if (automationId !== undefined) {
+  const morningBriefContext =
+    "morningBriefContext" in values ? values.morningBriefContext : undefined;
+  if (morningBriefContext !== undefined) {
     return {
-      type: "automation",
+      type: "morning_brief",
       id: eventId,
       chatThreadId: values.chatThreadId,
-      automationId,
-      triggerBrief:
-        "triggerBrief" in values ? (values.triggerBrief ?? null) : null,
+      ...morningBriefContext,
     };
+  }
+
+  const agentphoneContext =
+    "agentphoneContext" in values ? values.agentphoneContext : undefined;
+  if (agentphoneContext !== undefined) {
+    return {
+      type: "agentphone",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      ...agentphoneContext,
+    };
+  }
+
+  const automationContext = newAutomationDisplayContext(eventId, values);
+  if (automationContext !== undefined) {
+    return automationContext;
   }
 
   const goalBrief = "goalBrief" in values ? values.goalBrief : undefined;
@@ -544,6 +732,72 @@ function replacementContext(
   };
 }
 
+async function insertMorningBriefContext(
+  tx: ChatEventWriteTransaction,
+  context: Extract<NewDisplayContext, { readonly type: "morning_brief" }>,
+  createdAt: Date,
+): Promise<void> {
+  await tx.insert(chatMorningBriefContext).values({
+    id: context.id,
+    chatThreadId: context.chatThreadId,
+    deliveryId: context.deliveryId,
+    timezone: context.timezone,
+    triggeredAt: context.triggeredAt,
+    createdAt,
+  });
+}
+
+async function insertAgentphoneDisplayContext(
+  tx: ChatEventWriteTransaction,
+  context: Extract<NewDisplayContext, { readonly type: "agentphone" }>,
+  createdAt: Date,
+): Promise<void> {
+  await tx.insert(chatAgentphoneContext).values({
+    id: context.id,
+    chatThreadId: context.chatThreadId,
+    messageText: context.messageText,
+    threadContext: context.threadContext,
+    messageId: context.messageId,
+    rootMessageId: context.rootMessageId,
+    conversationId: context.conversationId,
+    channel: context.channel,
+    isGroup: context.isGroup,
+    phoneHandle: context.phoneHandle,
+    fromNumber: context.fromNumber,
+    toNumber: context.toNumber,
+    userLinkId: context.userLinkId,
+    agentphoneAgentId: context.agentphoneAgentId,
+    createdAt,
+  });
+}
+
+async function insertTelegramDisplayContext(
+  tx: ChatEventWriteTransaction,
+  context: Extract<NewDisplayContext, { readonly type: "telegram" }>,
+  createdAt: Date,
+): Promise<void> {
+  await tx.insert(chatTelegramContext).values({
+    id: context.id,
+    chatThreadId: context.chatThreadId,
+    chatId: context.chatId,
+    messageId: context.messageId,
+    isDm: context.isDm,
+    messageThreadId: context.messageThreadId,
+    messageText: context.messageText,
+    threadContext: context.threadContext,
+    rootMessageId: context.rootMessageId,
+    thinkingMessageId: context.thinkingMessageId,
+    userLinkId: context.userLinkId,
+    userLinkKind: context.userLinkKind,
+    chatType: context.chatType,
+    senderUserId: context.senderUserId,
+    senderDisplayName: context.senderDisplayName,
+    senderUsername: context.senderUsername,
+    senderLanguage: context.senderLanguage,
+    createdAt,
+  });
+}
+
 async function insertDisplayContext(
   tx: ChatEventWriteTransaction,
   context: NewDisplayContext,
@@ -556,6 +810,15 @@ async function insertDisplayContext(
       messagePermalink: context.messagePermalink,
       channelId: context.channelId,
       messageTs: context.messageTs,
+      conversationContext: context.conversationContext,
+      messageText: context.messageText,
+      messageFiles: context.messageFiles,
+      mentionDisplayNames: context.mentionDisplayNames,
+      senderDisplayName: context.senderDisplayName,
+      senderUserId: context.senderUserId,
+      channelType: context.channelType,
+      threadTs: context.threadTs,
+      routeThreadTs: context.routeThreadTs,
       createdAt,
     });
     return;
@@ -565,6 +828,18 @@ async function insertDisplayContext(
       id: context.id,
       chatThreadId: context.chatThreadId,
       chatOpenUrl: context.chatOpenUrl,
+      conversationHistory: context.conversationHistory,
+      messageText: context.messageText,
+      messageFiles: context.messageFiles,
+      chatType: context.chatType,
+      chatId: context.chatId,
+      messageId: context.messageId,
+      threadId: context.threadId,
+      replyInThread: context.replyInThread,
+      reactionId: context.reactionId,
+      senderOpenId: context.senderOpenId,
+      connectionId: context.connectionId,
+      installationId: context.installationId,
       createdAt,
     });
     return;
@@ -579,20 +854,26 @@ async function insertDisplayContext(
       conversationId: context.conversationId,
       conversationType: context.conversationType,
       activityId: context.activityId,
+      threadContext: context.threadContext,
+      messageText: context.messageText,
+      messageFiles: context.messageFiles,
+      tenantName: context.tenantName,
+      teamName: context.teamName,
+      threadId: context.threadId,
+      serviceUrl: context.serviceUrl,
+      teamsAppId: context.teamsAppId,
+      botId: context.botId,
+      botName: context.botName,
+      senderUserId: context.senderUserId,
+      senderDisplayName: context.senderDisplayName,
+      senderPrincipalName: context.senderPrincipalName,
+      connectionId: context.connectionId,
       createdAt,
     });
     return;
   }
   if (context.type === "telegram") {
-    await tx.insert(chatTelegramContext).values({
-      id: context.id,
-      chatThreadId: context.chatThreadId,
-      chatId: context.chatId,
-      messageId: context.messageId,
-      isDm: context.isDm,
-      messageThreadId: context.messageThreadId,
-      createdAt,
-    });
+    await insertTelegramDisplayContext(tx, context, createdAt);
     return;
   }
   if (context.type === "github") {
@@ -603,19 +884,32 @@ async function insertDisplayContext(
       subjectNumber: context.subjectNumber,
       subjectKind: context.subjectKind,
       triggerCommentId: context.triggerCommentId,
+      issueContext: context.issueContext,
+      messageText: context.messageText,
+      triggerReactionId: context.triggerReactionId,
+      triggerCommentBody: context.triggerCommentBody,
       createdAt,
     });
     return;
+  }
+  if (context.type === "agentphone") {
+    return insertAgentphoneDisplayContext(tx, context, createdAt);
   }
   if (context.type === "automation") {
     await tx.insert(chatAutomationContext).values({
       id: context.id,
       chatThreadId: context.chatThreadId,
       automationId: context.automationId,
+      workflowName: context.workflowName,
+      eventType: context.workflowAutomationEventType,
+      eventPayload: context.workflowAutomationEventPayload,
       triggerBrief: context.triggerBrief,
       createdAt,
     });
     return;
+  }
+  if (context.type === "morning_brief") {
+    return insertMorningBriefContext(tx, context, createdAt);
   }
   await tx.insert(chatGoalContext).values({
     id: context.id,
@@ -631,7 +925,6 @@ function persistedChatEventValues(
     Pick<ChatEventInsert, "id" | "contextType" | "contextId">
   >,
 ): PersistedChatEvent {
-  const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
   const { goalBrief: _goalBrief, ...persistedValues } = {
     goalBrief: undefined,
     ...values,
@@ -646,7 +939,6 @@ function persistedChatEventValues(
       ? { content: null }
       : {}),
     eventType: values.eventType,
-    ...(runLifecycleEvent === null ? {} : { runLifecycleEvent }),
   };
 }
 
@@ -778,7 +1070,6 @@ export async function insertChatEvent(
     if (displayContext) {
       await insertDisplayContext(tx, displayContext, inserted.createdAt);
     }
-    await insertEventInputParams(tx, inserted.id, values);
   }
   return rows[0] ?? null;
 }
@@ -804,18 +1095,18 @@ export async function insertChatEvents(
       id: chatEvents.id,
       createdAt: chatEvents.createdAt,
       seqId: chatEvents.seqId,
-      sequenceNumber: chatEvents.sequenceNumber,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
     });
   }
   return await query
     .onConflictDoNothing({
-      target: [chatEvents.runId, chatEvents.sequenceNumber],
+      target: [chatEvents.runId, chatEvents.runEventSequenceNumber],
     })
     .returning({
       id: chatEvents.id,
       createdAt: chatEvents.createdAt,
       seqId: chatEvents.seqId,
-      sequenceNumber: chatEvents.sequenceNumber,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
     });
 }
 
@@ -834,14 +1125,8 @@ export async function replaceChatEvent(
       eventType: chatEvents.eventType,
       contextType: chatEvents.contextType,
       contextId: chatEvents.contextId,
-      encryptedParams: chatEventInputParams.encryptedParams,
-      attachFileMetadata: chatEventInputParams.attachFileMetadata,
     })
     .from(chatEvents)
-    .leftJoin(
-      chatEventInputParams,
-      eq(chatEventInputParams.eventId, chatEvents.id),
-    )
     .where(eq(chatEvents.id, eventId))
     .limit(1);
   if (!target) {
@@ -875,32 +1160,18 @@ export async function replaceLoadedChatEvent(
     );
   }
 
-  const replacementWithParams =
-    isPendingInputEvent(replacement) && target.encryptedParams
-      ? {
-          ...replacement,
-          encryptedParams:
-            "encryptedParams" in replacement && replacement.encryptedParams
-              ? replacement.encryptedParams
-              : target.encryptedParams,
-          attachFileMetadata:
-            "attachFileMetadata" in replacement
-              ? replacement.attachFileMetadata
-              : target.attachFileMetadata,
-        }
-      : replacement;
   const replacementId = replacement.id ?? randomUUID();
   const { pointer: contextPointer, displayContext } = replacementContext(
     target,
     replacementId,
-    replacementWithParams,
+    replacement,
   );
   const seqId = await reserveChatEventSeqIds(tx, replacement.chatThreadId, 1);
   const rows = await tx
     .insert(chatEvents)
     .values({
       ...persistedChatEventValues(
-        { ...replacementWithParams, createdAt },
+        { ...replacement, createdAt },
         {
           id: replacementId,
           ...contextPointer,
@@ -923,7 +1194,6 @@ export async function replaceLoadedChatEvent(
   if (displayContext) {
     await insertDisplayContext(tx, displayContext, inserted.createdAt);
   }
-  await insertEventInputParams(tx, inserted.id, replacementWithParams);
   if (options?.preserveAssetRefs !== false) {
     await tx
       .insert(chatEventAssetRefs)
@@ -944,9 +1214,6 @@ export async function replaceLoadedChatEvent(
       )
       .onConflictDoNothing();
   }
-  await tx
-    .delete(chatEventInputParams)
-    .where(eq(chatEventInputParams.eventId, target.id));
   return inserted;
 }
 

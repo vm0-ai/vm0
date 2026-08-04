@@ -1,5 +1,84 @@
 # Changelog
 
+## [0.63.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.0...guest-agent-v0.63.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** use process-owned mock build locks ([#24801](https://github.com/vm0-ai/vm0/issues/24801)) ([a4065d7](https://github.com/vm0-ai/vm0/commit/a4065d78e488b2ba4c518c292db362db081f2c2c))
+
+
+### Performance Improvements
+
+* **guest-agent:** use statx for reuse identity ([#24806](https://github.com/vm0-ai/vm0/issues/24806)) ([d3bbc05](https://github.com/vm0-ai/vm0/commit/d3bbc0578c5a00f44b1dfc063a9ae55d3ac1f139))
+
+## [0.63.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.7...guest-agent-v0.63.0) (2026-08-03)
+
+
+### Features
+
+* enable claude session pruning globally ([#24790](https://github.com/vm0-ai/vm0/issues/24790)) ([4798ff0](https://github.com/vm0-ai/vm0/commit/4798ff006f50e684214197f62e3ac3c29e66178a))
+
+## [0.62.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.6...guest-agent-v0.62.7) (2026-08-03)
+
+## [0.62.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.5...guest-agent-v0.62.6) (2026-08-03)
+
+
+### Refactoring
+
+* **rust:** centralize base cli agent session id validation ([#24759](https://github.com/vm0-ai/vm0/issues/24759)) ([da34435](https://github.com/vm0-ai/vm0/commit/da34435c6747be672914e4651c29d0abd2b47936))
+
+## [0.62.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.4...guest-agent-v0.62.5) (2026-08-03)
+
+
+### Documentation
+
+* **rust:** clarify session history diagnostic semantics ([#24671](https://github.com/vm0-ai/vm0/issues/24671)) ([ecf6630](https://github.com/vm0-ai/vm0/commit/ecf6630d6185b03b6de7bc606259a730dff462b4))
+
+
+### Performance Improvements
+
+* **guest-agent:** bound checkpoint history test fixtures ([#24682](https://github.com/vm0-ai/vm0/issues/24682)) ([200df14](https://github.com/vm0-ai/vm0/commit/200df141579bdc53a742747ff9c0099cf310a849))
+
+## [0.62.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.3...guest-agent-v0.62.4) (2026-08-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** redact overlapping secret matches ([#24639](https://github.com/vm0-ai/vm0/issues/24639)) ([dc20d30](https://github.com/vm0-ai/vm0/commit/dc20d300941918f11f98738142bca5fabfff6301))
+
+
+### Refactoring
+
+* **guest-agent:** split checkpoint integration tests ([#24626](https://github.com/vm0-ai/vm0/issues/24626)) ([40a7e1f](https://github.com/vm0-ai/vm0/commit/40a7e1f137751a8aeab2e9d1def2fefd49940572))
+
+## [0.62.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.2...guest-agent-v0.62.3) (2026-08-03)
+
+## [0.62.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.1...guest-agent-v0.62.2) (2026-08-02)
+
+
+### Documentation
+
+* **guest-agent:** document app-server event policy ([#24581](https://github.com/vm0-ai/vm0/issues/24581)) ([d9a27da](https://github.com/vm0-ai/vm0/commit/d9a27dad6d414438ec8af864b6e80e0c712fce7c))
+
+## [0.62.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.0...guest-agent-v0.62.1) (2026-08-02)
+
+## [0.62.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.6...guest-agent-v0.62.0) (2026-08-01)
+
+
+### Features
+
+* **guest-agent:** set fable effort to max ([#24483](https://github.com/vm0-ai/vm0/issues/24483)) ([f6e92b9](https://github.com/vm0-ai/vm0/commit/f6e92b97b32aec30c26e9e10eb613874d8cc6fff))
+
+## [0.61.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.5...guest-agent-v0.61.6) (2026-08-01)
+
+
+### Bug Fixes
+
+* **guest-agent:** ignore secondary codex thread events ([#24466](https://github.com/vm0-ai/vm0/issues/24466)) ([20ed365](https://github.com/vm0-ai/vm0/commit/20ed365bf6639fdce6c6b42cb64f5a45ed3d2562))
+
+## [0.61.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.4...guest-agent-v0.61.5) (2026-08-01)
+
 ## [0.61.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.3...guest-agent-v0.61.4) (2026-07-31)
 
 ## [0.61.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.61.2...guest-agent-v0.61.3) (2026-07-31)

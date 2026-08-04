@@ -38,15 +38,10 @@ import {
   type WorkflowEventRunTiming,
 } from "./workflow-event-source-timing.service";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
@@ -1252,6 +1247,12 @@ function googleCalendarTriggerContext(args: {
         : "was cancelled";
   return {
     workflowName: args.workflowName,
+    eventType:
+      args.event.changeType === "created"
+        ? "google-calendar-event-created"
+        : args.event.changeType === "updated"
+          ? "google-calendar-event-updated"
+          : "google-calendar-event-cancelled",
     trigger: `Google Calendar event ${args.event.eventId} on calendar ${args.event.calendarId} ${changed} (change ${args.eventChangeKey}).`,
     notes: [
       "Connected Google Calendar tools return further calendar event detail.",
@@ -1665,15 +1666,7 @@ export const dispatchGoogleCalendarWebhook$ = command(
                 event,
                 eventChangeKey,
               });
-              return {
-                prompt: workflowAutomationPrompt(context),
-                appendSystemPrompt:
-                  workflowAutomationAppendSystemPrompt(context),
-                callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-                  automation.chatThreadId,
-                  automation.agentId,
-                ),
-              };
+              return { context };
             },
           );
           const result = await set(
@@ -1682,17 +1675,11 @@ export const dispatchGoogleCalendarWebhook$ = command(
               due: {
                 automation: automation.automation,
                 agentId: automation.agentId,
-                workflowName: automation.workflowName,
                 chatThreadId: automation.chatThreadId,
               },
+              automationContext: runInput.context,
               apiStartTime: args.apiStartTime,
               triggerSource: "workflow-event",
-              prompt: runInput.prompt,
-              appendSystemPrompt: runInput.appendSystemPrompt,
-              callbacks: runInput.callbacks,
-              activePreviousRunPolicy: "allow",
-              recordLastRunId: false,
-              recordLastRunAt: true,
               dispatchFailedCallbacks: dispatchFailedRunCallbacks,
               timing: timing.collectorForRunStart(),
             },

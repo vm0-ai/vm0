@@ -1,8 +1,15 @@
 """Tests for URL reconstruction and rewrite utilities."""
 
+from collections.abc import Iterator
+
 import pytest
 
 import url_utils
+
+
+class _FailOnIterationQuery(str):
+    def __iter__(self) -> Iterator[str]:
+        raise AssertionError("original query must not be tokenized without trusted query sources")
 
 
 class TestBuildRewriteUrl:
@@ -174,6 +181,33 @@ class TestBuildRewriteUrl:
             "",
         )
         assert url == "https://example.com/hook"
+
+    @pytest.mark.parametrize(
+        "resolved_query",
+        [
+            pytest.param(None, id="absent"),
+            pytest.param({}, id="empty"),
+        ],
+    )
+    def test_query_free_trusted_sources_do_not_tokenize_original_query(
+        self,
+        resolved_query: dict[str, str] | None,
+    ):
+        query = _FailOnIterationQuery(
+            "blank=&;duplicate=first&&duplicate=second;encoded=%E8%AF%B7%E6%B1%82&unicode=请求"
+        )
+
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook",
+            "/",
+            query,
+            resolved_query,
+        )
+
+        assert url == (
+            "https://example.com/hook?blank=&;duplicate=first&&duplicate=second;"
+            "encoded=%E8%AF%B7%E6%B1%82&unicode=%E8%AF%B7%E6%B1%82"
+        )
 
     def test_base_query_allows_raw_at_sign(self):
         url = url_utils.build_rewrite_url(

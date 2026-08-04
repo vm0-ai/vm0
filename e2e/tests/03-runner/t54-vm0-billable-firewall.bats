@@ -17,6 +17,17 @@ setup_file() {
         skip "ANTHROPIC_API_KEY not set — required for real Claude calls"
     fi
 
+    use_e2e_api_credentials "runner-real-claude"
+    set_real_agent_in_preview true
+
+    # This file uses a dedicated real Claude identity so its claim-time preview
+    # mode cannot race other runner chunks. Mirror the runner bootstrap's
+    # model-first defaults for that otherwise uninitialized workspace.
+    e2e_api_curl "/api/zero/model-policies" \
+        -X PUT \
+        -d '{"policies":[{"model":"claude-opus-4-7","isDefault":false,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null},{"model":"claude-sonnet-4-6","isDefault":true,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null},{"model":"deepseek-v4-pro","isDefault":false,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null},{"model":"gpt-5.5","isDefault":false,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null}]}' \
+        >/dev/null
+
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export TEST_DIR="$(mktemp -d)"
     export RUN_AGENT_NAME="e2e-billable-runner-${UNIQUE_ID}"

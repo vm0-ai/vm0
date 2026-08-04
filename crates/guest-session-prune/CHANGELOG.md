@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.2...guest-session-prune-v0.3.3) (2026-08-03)
+
+
+### Performance Improvements
+
+* **guest-agent:** bound checkpoint history test fixtures ([#24682](https://github.com/vm0-ai/vm0/issues/24682)) ([200df14](https://github.com/vm0-ai/vm0/commit/200df141579bdc53a742747ff9c0099cf310a849))
+
 ## [0.3.2](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.1...guest-session-prune-v0.3.2) (2026-07-30)
 
 

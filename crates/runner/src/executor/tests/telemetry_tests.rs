@@ -449,7 +449,7 @@ const RUNNER_PRE_SPAWN_PHASE_ACTIONS: &[&str] = &[
     "runner_claim_session_history_materializer_start",
     "runner_claim_device_rate_limits",
     "runner_claim_idle_reuse_lookup",
-    "runner_claim_held_session_state_refresh",
+    "runner_claim_workspace_cache_state_lookup",
     "runner_claim_workspace_promotion_validation",
     "runner_claim_idle_unpark",
     "runner_claim_active_status_publish",
@@ -470,7 +470,7 @@ fn pre_spawn_timing_with_phases() -> RunnerPreSpawnTiming {
         (RunnerPreSpawnPhase::SessionHistoryMaterializerStart, 2),
         (RunnerPreSpawnPhase::DeviceRateLimits, 3),
         (RunnerPreSpawnPhase::IdleReuseLookup, 4),
-        (RunnerPreSpawnPhase::HeldSessionStateRefresh, 5),
+        (RunnerPreSpawnPhase::WorkspaceCacheStateLookup, 5),
         (RunnerPreSpawnPhase::WorkspacePromotionValidation, 6),
         (RunnerPreSpawnPhase::IdleUnpark, 7),
         (RunnerPreSpawnPhase::ActiveStatusPublish, 8),
@@ -494,7 +494,7 @@ fn record_reuse_result_emits_hit_for_reuse() {
 #[test]
 fn record_reuse_result_emits_miss_for_every_miss_variant() {
     let variants = [
-        SandboxReuseResult::NoSessionId,
+        SandboxReuseResult::NoReuseKey,
         SandboxReuseResult::PoolMiss,
         SandboxReuseResult::ProfileMismatch,
         SandboxReuseResult::DeviceLimitMismatch,
@@ -557,7 +557,7 @@ async fn execute_job_reuse_records_sandbox_reuse_hit_in_telemetry() {
         minimal_context(),
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),
@@ -884,7 +884,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
         minimal_context(),
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::NoSessionId,
+            reuse_result: SandboxReuseResult::NoReuseKey,
         },
         &config,
         &default_params(),

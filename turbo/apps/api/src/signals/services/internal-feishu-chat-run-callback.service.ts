@@ -195,6 +195,97 @@ async function countFeishuMentioners(args: {
   return row?.count ?? 0;
 }
 
+async function loadFeishuAdmissionFailureContext(args: {
+  readonly db: Db;
+  readonly chatThreadId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly target: FeishuDeliveryTarget;
+  readonly chatEventId: string;
+  readonly signal: AbortSignal;
+}): Promise<{ readonly messageContent: string }> {
+  const [eventRows, bindingRows] = await Promise.all([
+    args.db
+      .select({ content: chatEvents.content })
+      .from(chatEvents)
+      .where(
+        and(
+          eq(chatEvents.id, args.chatEventId),
+          eq(chatEvents.chatThreadId, args.chatThreadId),
+          chatEventTypeIn(["output.error"]),
+          isNotNull(chatEvents.content),
+        ),
+      )
+      .limit(1),
+    args.db
+      .select({ id: feishuChatThreadRoutes.id })
+      .from(feishuChatThreadRoutes)
+      .innerJoin(
+        feishuOrgConnections,
+        eq(feishuOrgConnections.id, feishuChatThreadRoutes.connectionId),
+      )
+      .innerJoin(
+        feishuOrgInstallations,
+        eq(feishuOrgInstallations.id, feishuOrgConnections.installationId),
+      )
+      .where(
+        and(
+          eq(feishuChatThreadRoutes.chatThreadId, args.chatThreadId),
+          eq(feishuChatThreadRoutes.chatId, args.target.chatId),
+          eq(feishuChatThreadRoutes.threadId, args.target.threadId),
+          eq(feishuChatThreadRoutes.userId, args.userId),
+          eq(feishuChatThreadRoutes.connectionId, args.target.connectionId),
+          eq(feishuOrgConnections.vm0UserId, args.userId),
+          eq(feishuOrgConnections.installationId, args.target.installationId),
+          eq(feishuOrgInstallations.id, args.target.installationId),
+          eq(feishuOrgInstallations.orgId, args.orgId),
+        ),
+      )
+      .limit(1),
+  ]);
+  args.signal.throwIfAborted();
+  const event = eventRows[0];
+  if (!event?.content || !bindingRows[0]) {
+    throw new Error("Feishu admission failure delivery context is unavailable");
+  }
+  return { messageContent: event.content };
+}
+
+export async function deliverFeishuChatAdmissionFailure(args: {
+  readonly db: Db;
+  readonly chatThreadId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly target: FeishuDeliveryTarget;
+  readonly chatEventId: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const context = await loadFeishuAdmissionFailureContext(args);
+  const message = buildFeishuAgentResponseMessage({
+    text: context.messageContent,
+  });
+  if (args.target.replyInThread) {
+    await replyWithFeishuMessage({
+      db: args.db,
+      installationId: args.target.installationId,
+      messageId: args.target.messageId,
+      message,
+      replyInThread: true,
+      signal: args.signal,
+    });
+    return;
+  }
+  await sendFeishuMessage({
+    db: args.db,
+    installationId: args.target.installationId,
+    receiveIdType: "chat_id",
+    receiveId: args.target.chatId,
+    message,
+    idempotencyKey: args.chatEventId,
+    signal: args.signal,
+  });
+}
+
 async function deliverClaimedFeishuChatCallback(args: {
   readonly db: Db;
   readonly callback: ClaimedFeishuChatDelivery;

@@ -115,7 +115,8 @@
       "runner": {
         "deviceLimitMismatch": "Idle pool entry exists but its device rate limiter state does not match.",
         "featureDisabled": "Sandbox reuse is disabled for this run.",
-        "noSessionId": "No session ID available to match against the idle pool.",
+        "noReuseKey": "No reuse key was available to match an idle sandbox.",
+        "noSessionId": "Legacy result: the exact reason the sandbox was not reused is unavailable.",
         "notReused": "Not reused",
         "poolMiss": "No matching sandbox found in the idle pool.",
         "profileMismatch": "Idle pool entry exists but its profile does not match.",
@@ -1227,7 +1228,6 @@
       "configureModel": "Configure model",
       "createWorkflow": "Create workflow",
       "message": "Message",
-      "modelConfigureAction": "Model Configure",
       "placeholder": "Ask me to automate workflows, manage tasks...",
       "selectedModelUnavailable": "The selected model is not available. Configure it before sending.",
       "selectedModelUnavailableToast": "The selected model is not available",
@@ -1364,6 +1364,7 @@
     },
     "newChat": "New chat",
     "origins": {
+      "agentphone": "AgentPhone",
       "feishu": "Feishu",
       "github": "GitHub",
       "openChat": "Open chat",
@@ -1425,6 +1426,7 @@
       "queuedMessage": "Queued message",
       "queuedMessageDescription": "Waits in line and sends once the current run finishes.",
       "removeQueuedMessage": "Remove queued message",
+      "sendQueuedMessageNow": "Send queued message now",
       "skipAutomationEvent": "Skip automation event"
     },
     "replaceDraft": {
@@ -4544,6 +4546,11 @@
       "action": "Refresh",
       "description": "This version of {{brandName}} is no longer supported. Refresh to load the latest version.",
       "title": "Update required"
+    },
+    "mermaid": {
+      "diagramLabel": "Diagram",
+      "expand": "Expand diagram",
+      "viewSource": "Diagram source"
     },
     "notFound": {
       "description": "The page you are looking for does not exist.",

@@ -32,6 +32,7 @@ import builtin_connector_diagnostics
 import claude_output_timing
 import codex_model_catalog_cache
 import codex_output_timing
+import firewall_auth_client
 import logging_utils
 import mitm_addon
 import platform_api
@@ -58,6 +59,7 @@ def _reset_module_state() -> Iterator[None]:
     reset them around each case to avoid cross-test callbacks.
     """
     auth_base_forwarder.reset_forward_request_state_for_tests()
+    firewall_auth_client.reset_transport_state_for_tests()
     aws_sigv4_body_admission.reset_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
     registry.reset_cache_for_tests()
@@ -82,6 +84,7 @@ def _reset_module_state() -> Iterator[None]:
     codex_output_timing.reset_for_tests()
     logging_utils.reset_log_writer_for_tests()
     auth_base_forwarder.reset_forward_request_state_for_tests()
+    firewall_auth_client.reset_transport_state_for_tests()
     aws_sigv4_body_admission.reset_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
@@ -320,7 +323,7 @@ def real_tcp_flow():
 
 
 class _StubOptions:
-    """Plain stand-in for addon-specific ``ctx.options`` fields."""
+    """Plain stand-in for ``ctx.options`` fields consumed by the addon."""
 
     def __init__(
         self,
@@ -330,6 +333,7 @@ class _StubOptions:
         builtin_firewall_catalog_cache_path: str,
         client_session_id: str,
         client_version: str,
+        ssl_insecure: bool,
     ) -> None:
         self.vm0_proxy_registry_path = registry_path
         self.vm0_api_url = api_url
@@ -337,6 +341,7 @@ class _StubOptions:
         self.vm0_client_session_id = client_session_id
         self.vm0_client_version = client_version
         self.vm0_usage_flush_interval_seconds = usage.DEFAULT_FLUSH_INTERVAL_SECONDS
+        self.ssl_insecure = ssl_insecure
 
 
 @pytest.fixture
@@ -344,11 +349,11 @@ def mitm_ctx(tmp_path):
     """Stub ``mitmproxy.ctx.options`` and ``ctx.log`` for a test block.
 
     Returns a context-manager factory: calling ``mitm_ctx(registry_path=...)``
-    patches in a concrete options stub for the addon-specific settings modeled
-    by these tests, plus a ``MagicMock`` log. The log stays on ``MagicMock`` so
-    tests that need to assert on warn/debug calls can do so; ``options`` stays
-    concrete so unexpected attribute access fails instead of silently creating
-    another mock.
+    patches in a concrete options stub for settings consumed by the addon and
+    modeled by these tests, plus a ``MagicMock`` log. The log stays on
+    ``MagicMock`` so tests that need to assert on warn/debug calls can do so;
+    ``options`` stays concrete so unexpected attribute access fails instead of
+    silently creating another mock.
 
     When the caller omits ``registry_path`` the default comes from pytest's
     per-test ``tmp_path`` fixture, so tests never share a /tmp path that
@@ -368,6 +373,7 @@ def mitm_ctx(tmp_path):
         builtin_firewall_catalog_cache_path: str | None = None,
         client_session_id: str = "runner-session-test",
         client_version: str = "runner-version-test",
+        ssl_insecure: bool = False,
     ) -> Iterator[MagicMock]:
         if registry_path is None:
             registry_path = default_registry_path
@@ -379,6 +385,7 @@ def mitm_ctx(tmp_path):
             builtin_firewall_catalog_cache_path=builtin_firewall_catalog_cache_path,
             client_session_id=client_session_id,
             client_version=client_version,
+            ssl_insecure=ssl_insecure,
         )
         log = MagicMock()
         with (

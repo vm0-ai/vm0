@@ -504,8 +504,8 @@ async fn heartbeat_tick_defers_past_first_select_poll() {
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
-    // `minimal_context` → no session → completion path does not trigger
-    // `park_notify`, so any heartbeat observed here came from the
+    // `minimal_context` → no reuse key → completion path does not trigger
+    // `reuse_state_notify`, so any heartbeat observed here came from the
     // interval tick (the path we want to prove did NOT fire).
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));

@@ -34,15 +34,10 @@ import {
   type WorkflowEventRunTiming,
 } from "./workflow-event-source-timing.service";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
-import {
-  workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
-  type WorkflowAutomationContext,
-} from "./workflow-automation-context.service";
+import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
 const log = logger("api:google-meet-workflow-event");
@@ -1253,6 +1248,7 @@ function googleMeetTriggerContext(args: {
 }): WorkflowAutomationContext {
   return {
     workflowName: args.workflowName,
+    eventType: "google-meet-transcript-generated",
     trigger: `Google Meet generated transcript ${args.event.transcriptName} for a meeting organized by the connected account (cloud event ${args.event.cloudEventId}).`,
     notes: [
       "Not included below: the transcript text. Connected Google Meet tools return transcript metadata and entries.",
@@ -1424,13 +1420,8 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
               event,
             });
             return {
-              prompt: workflowAutomationPrompt(context),
-              appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
+              context,
               triggerBrief: buildGoogleMeetWorkflowAutomationBrief(event),
-              callbacks: buildChatOnlyWorkflowAutomationCallbacks(
-                automation.chatThreadId,
-                automation.agentId,
-              ),
             };
           },
         );
@@ -1440,18 +1431,12 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
             due: {
               automation: automation.automation,
               agentId: automation.agentId,
-              workflowName: automation.workflowName,
               chatThreadId: automation.chatThreadId,
             },
+            automationContext: runInput.context,
             apiStartTime: args.apiStartTime,
             triggerSource: "workflow-event",
-            prompt: runInput.prompt,
-            appendSystemPrompt: runInput.appendSystemPrompt,
             triggerBrief: runInput.triggerBrief,
-            callbacks: runInput.callbacks,
-            activePreviousRunPolicy: "allow",
-            recordLastRunId: false,
-            recordLastRunAt: true,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
             timing: timing.collectorForRunStart(),
           },

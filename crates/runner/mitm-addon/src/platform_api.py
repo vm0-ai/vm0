@@ -38,7 +38,7 @@ def build_api_opener() -> urllib.request.OpenerDirector:
 
 
 def configure_client_headers(*, client_session_id: str, client_version: str) -> None:
-    """Snapshot runner-provided client header values for worker-thread requests."""
+    """Snapshot runner-provided client header values for platform API requests."""
     global _CLIENT_HEADERS
     _CLIENT_HEADERS = (client_session_id, client_version)
 
@@ -53,8 +53,9 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
 
     Centralises User-Agent, Authorization, Content-Type, and the optional
     Vercel bypass header so that callers cannot accidentally omit them. The
-    credentials are unredirected as defense in depth; callers must still use
-    :func:`build_api_opener` so redirects fail before contacting another URL.
+    credentials are unredirected as defense in depth; callers must still reject
+    redirects, using :func:`build_api_opener` or an equivalent transport policy,
+    before contacting another URL.
     """
     parsed_url = urllib.parse.urlsplit(url)
     if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:

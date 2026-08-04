@@ -344,6 +344,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     api.captureHostedSitesS3();
 
     const legacyActor = bdd.user();
+    await setHostedArtifactVersions(legacyActor, false);
     const occupied = await api.prepareHostedSite(legacyActor, {
       site: `bdd-alias-owner-${randomUUID().slice(0, 8)}`,
       slugSuffix: "fixed",
@@ -393,6 +394,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const bdd = createBddApi(context);
     const api = createHostMapsBddApi(context);
     const actor = bdd.user();
+    await setHostedArtifactVersions(actor, false);
     // First test in the file: install the S3 boundary explicitly before any
     // host call (mock defaults only arrive in afterEach resets).
     const capture = api.captureHostedSitesS3();
@@ -988,7 +990,8 @@ describe("CHAIN-BILLING-MEDIA/FILE-01: run-scoped zero-token attribution", () =>
       spaFallback: false,
       files: [hostedTextFile("/index.html", "<main>run artifact</main>")],
     });
-    expectHostedSitePublicSlug(prepared.publicSlug, site, "run-01");
+    expect(prepared.publicSlug).toBe(site);
+    expect(prepared.deploymentVersion).toBe(1);
 
     const completed = await api.completeHostedSite(
       bearer,

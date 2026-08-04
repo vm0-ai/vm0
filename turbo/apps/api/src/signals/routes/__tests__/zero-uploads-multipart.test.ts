@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
+import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
+  ListObjectsV2Command,
+  ListPartsCommand,
+} from "@aws-sdk/client-s3";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -23,7 +30,10 @@ describe("multipart user artifact uploads", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
     context.mocks.s3.send.mockImplementation((command: unknown) => {
-      if (command?.constructor.name === "CreateMultipartUploadCommand") {
+      if (command instanceof ListObjectsV2Command) {
+        return Promise.resolve({ Contents: [] });
+      }
+      if (command instanceof CreateMultipartUploadCommand) {
         return Promise.resolve({ UploadId: "multipart-upload-1" });
       }
       return Promise.resolve({});
@@ -74,10 +84,24 @@ describe("multipart user artifact uploads", () => {
         ],
       },
     });
-    expect(context.mocks.s3.send.mock.calls[0]?.[0]).toMatchObject({
-      input: {
-        Bucket: "test-user-artifacts",
-        ContentType: "video/mp4",
+    expect(response.body.url).toMatch(
+      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.mp4$/u,
+    );
+    const createCommand = context.mocks.s3.send.mock.calls
+      .map(([command]) => {
+        return command;
+      })
+      .find((command): command is CreateMultipartUploadCommand => {
+        return command instanceof CreateMultipartUploadCommand;
+      });
+    expect(createCommand?.input).toMatchObject({
+      Bucket: "test-user-artifacts",
+      Key: expect.stringMatching(/^artifacts\/[0-9a-z]{10}\.mp4$/u),
+      ContentType: "video/mp4",
+      Metadata: {
+        "artifact-id": response.body.id,
+        filename: "recording.mp4",
+        "user-id": encodeURIComponent(userId),
       },
     });
   });
@@ -86,6 +110,7 @@ describe("multipart user artifact uploads", () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
+    mocks.s3.listObjects([]);
 
     const response = await accept(
       apiClient().prepare({
@@ -102,6 +127,14 @@ describe("multipart user artifact uploads", () => {
 
     expect(response.body).toMatchObject({
       uploadUrl: "https://r2.example.com/upload?sig=test",
+      url: expect.stringMatching(
+        /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.mp4$/u,
+      ),
+      uploadHeaders: {
+        "x-amz-meta-artifact-id": response.body.id,
+        "x-amz-meta-filename": "small.mp4",
+        "x-amz-meta-user-id": encodeURIComponent(userId),
+      },
     });
     expect(response.body).not.toHaveProperty("multipart");
   });
@@ -119,7 +152,10 @@ describe("multipart user artifact uploads", () => {
     };
     mocks.clerk.session(userId, orgId);
     context.mocks.s3.send.mockImplementation((command: unknown) => {
-      if (command?.constructor.name === "CreateMultipartUploadCommand") {
+      if (command instanceof ListObjectsV2Command) {
+        return Promise.resolve({ Contents: [] });
+      }
+      if (command instanceof CreateMultipartUploadCommand) {
         controller.abort(abortError);
         return Promise.resolve({ UploadId: "multipart-upload-cancelled" });
       }
@@ -139,12 +175,18 @@ describe("multipart user artifact uploads", () => {
     });
 
     expect(response.status).toBe(500);
-    expect(context.mocks.s3.send).toHaveBeenCalledTimes(2);
-    expect(context.mocks.s3.send.mock.calls[1]?.[0]).toMatchObject({
-      input: {
-        Bucket: "test-user-artifacts",
-        UploadId: "multipart-upload-cancelled",
-      },
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(3);
+    const abortCommand = context.mocks.s3.send.mock.calls
+      .map(([command]) => {
+        return command;
+      })
+      .find((command): command is AbortMultipartUploadCommand => {
+        return command instanceof AbortMultipartUploadCommand;
+      });
+    expect(abortCommand?.input).toMatchObject({
+      Bucket: "test-user-artifacts",
+      Key: expect.stringMatching(/^artifacts\/[0-9a-z]{10}\.mp4$/u),
+      UploadId: "multipart-upload-cancelled",
     });
   });
 
@@ -153,7 +195,7 @@ describe("multipart user artifact uploads", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
     context.mocks.s3.send.mockImplementation((command: unknown) => {
-      if (command?.constructor.name === "ListPartsCommand") {
+      if (command instanceof ListPartsCommand) {
         return Promise.resolve({
           Parts: [
             { PartNumber: 1, ETag: '"etag-1"' },
@@ -179,18 +221,26 @@ describe("multipart user artifact uploads", () => {
 
     expect(response.body).toStrictEqual({
       id: "3a513aef-a376-49c4-8f15-61f7e8e40526",
-      url: `https://cdn.vm7.io/artifacts/${userId}/3a513aef-a376-49c4-8f15-61f7e8e40526/my_recording.mp4`,
+      url: expect.stringMatching(
+        /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.mp4$/u,
+      ),
     });
-    expect(context.mocks.s3.send.mock.calls[1]?.[0]).toMatchObject({
-      input: {
-        Bucket: "test-user-artifacts",
-        UploadId: "multipart-upload-1",
-        MultipartUpload: {
-          Parts: [
-            { PartNumber: 1, ETag: '"etag-1"' },
-            { PartNumber: 2, ETag: '"etag-2"' },
-          ],
-        },
+    const completeCommand = context.mocks.s3.send.mock.calls
+      .map(([command]) => {
+        return command;
+      })
+      .find((command): command is CompleteMultipartUploadCommand => {
+        return command instanceof CompleteMultipartUploadCommand;
+      });
+    expect(completeCommand?.input).toMatchObject({
+      Bucket: "test-user-artifacts",
+      Key: expect.stringMatching(/^artifacts\/[0-9a-z]{10}\.mp4$/u),
+      UploadId: "multipart-upload-1",
+      MultipartUpload: {
+        Parts: [
+          { PartNumber: 1, ETag: '"etag-1"' },
+          { PartNumber: 2, ETag: '"etag-2"' },
+        ],
       },
     });
   });
@@ -241,12 +291,17 @@ describe("multipart user artifact uploads", () => {
     expect(response.body).toStrictEqual({
       id: "ba428dc9-af58-4785-b45f-bbed9633ecde",
     });
-    expect(context.mocks.s3.send.mock.calls[0]?.[0]).toMatchObject({
-      input: {
-        Bucket: "test-user-artifacts",
-        Key: `artifacts/${userId}/ba428dc9-af58-4785-b45f-bbed9633ecde/my_recording.mp4`,
-        UploadId: "multipart-upload-3",
-      },
+    const abortCommand = context.mocks.s3.send.mock.calls
+      .map(([command]) => {
+        return command;
+      })
+      .find((command): command is AbortMultipartUploadCommand => {
+        return command instanceof AbortMultipartUploadCommand;
+      });
+    expect(abortCommand?.input).toMatchObject({
+      Bucket: "test-user-artifacts",
+      Key: expect.stringMatching(/^artifacts\/[0-9a-z]{10}\.mp4$/u),
+      UploadId: "multipart-upload-3",
     });
   });
 });

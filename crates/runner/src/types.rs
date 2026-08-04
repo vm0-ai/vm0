@@ -9,7 +9,8 @@ use unicode_normalization::UnicodeNormalization;
 use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
 
-pub(crate) const MAX_HELD_SESSION_STATES: usize = 1024;
+pub(crate) const MAX_HELD_SANDBOX_STATES: usize = 1024;
+pub(crate) const MAX_HELD_WORKSPACE_STATES: usize = 1024;
 pub(crate) const MAX_WORKSPACE_CACHES_PER_REUSE_KEY: usize = 8;
 pub(crate) const MAX_WORKSPACE_CACHES_PER_HEARTBEAT: usize = 1024;
 pub(crate) const WORKSPACE_AFFINITY_VERSION: u8 = 1;
@@ -34,24 +35,18 @@ pub struct Job {
     pub run_id: RunId,
     pub experimental_profile: String,
     #[serde(default)]
-    pub cli_agent_session_id: Option<String>,
-    #[serde(default)]
     pub reuse_key: Option<String>,
     #[serde(default)]
     pub history_generation_run_id: Option<RunId>,
     #[serde(default)]
-    pub history_generation_affinity_protected_until: Option<String>,
-    #[serde(default)]
-    pub affinity_protected_until: Option<String>,
-    #[serde(default)]
-    pub session_affinity_resource: Option<SessionAffinityResource>,
+    pub runner_preference: Option<serde_json::Value>,
 }
 
 pub(crate) fn reuse_key_kind(reuse_key: &str) -> &'static str {
     if reuse_key.starts_with("thread:") {
         "thread"
     } else {
-        "session"
+        "other"
     }
 }
 
@@ -59,13 +54,6 @@ impl Job {
     pub(crate) fn reuse_key(&self) -> Option<&str> {
         self.reuse_key.as_deref()
     }
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum SessionAffinityResource {
-    ReusableSandbox,
-    WorkspaceCache,
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +80,10 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub vars: Option<HashMap<String, String>>,
     pub sandbox_token: String,
+    #[serde(default)]
+    pub active_input: Option<bool>,
+    #[serde(default)]
+    pub active_input_ably: Option<bool>,
     #[serde(default)]
     pub(crate) storage_manifest: Option<StorageManifest>,
     #[serde(default)]
@@ -193,8 +185,14 @@ pub enum FirewallEntry {
     Inline { firewall: Firewall },
 }
 
-/// A single firewall config with its name and API entries.
-/// `name` is the canonical identifier (also used as the networkPolicies map key).
+/// A firewall definition shared by inline execution entries and builtin catalogs.
+///
+/// `name` is the canonical identifier and is also used as the `networkPolicies`
+/// map key. For builtin catalogs, changes to base URL, auth, `hostPolicy`,
+/// permission, or serialized-shape semantics must remain compatible with the
+/// TypeScript catalog producer and projection and the Python cache and runtime
+/// validators. Detailed validity rules belong in executable validators and
+/// shared behavioral contracts.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Firewall {
     pub name: String,
@@ -202,6 +200,16 @@ pub struct Firewall {
 }
 
 impl Firewall {
+    /// Validates an unresolved builtin firewall before cache publication.
+    ///
+    /// This gate checks the structural and syntax invariants available before
+    /// per-VM resolution. Catalog API IDs must be empty because the Python
+    /// registry resolver assigns run-scoped IDs after resolving the entries.
+    ///
+    /// The Python consumer still independently validates the cache file,
+    /// schema, and payload, then owns base-variable resolution, final
+    /// credentialed-destination and host-policy checks, matcher compilation,
+    /// and request-time enforcement.
     pub(crate) fn validate_for_cache(&self) -> Result<(), String> {
         if self.name.is_empty() {
             return Err("firewall name must be non-empty".to_string());
@@ -221,8 +229,8 @@ impl Firewall {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FirewallApi {
     /// Stable API identifier used as one component of mitm-addon auth cache keys.
-    /// Filled by the Python registry loader after built-in refs and inline firewalls
-    /// are resolved.
+    /// Filled by the Python registry loader after built-in catalog entries and
+    /// inline firewalls are resolved.
     #[serde(default)]
     pub id: String,
     pub base: String,
@@ -484,8 +492,20 @@ fn validate_firewall_base_for_cache(base: &str) -> Result<(), String> {
         return validate_parameterized_firewall_base_for_cache(base);
     }
     let parsed = url::Url::parse(base).map_err(|_| "base URL is invalid".to_string())?;
+    let authority = raw_url_authority(base)
+        .ok_or_else(|| "base URL must include :// after the scheme".to_string())?;
+    if authority.is_empty() {
+        return Err("base URL must include a host".to_string());
+    }
+    if raw_authority_has_empty_port(base) {
+        return Err("base URL authority must not include an empty port".to_string());
+    }
+    crate::firewall_hostname_policy::validate_base_host_for_cache(raw_host_from_authority(
+        authority,
+    ))?;
+
     let scheme = parsed.scheme();
-    if scheme != "http" && scheme != "https" {
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
         return Err("base URL scheme must be http or https".to_string());
     }
     if parsed.host_str().is_none() {
@@ -558,7 +578,7 @@ fn validate_parameterized_firewall_base_for_cache(base: &str) -> Result<(), Stri
     if scheme.contains('{') || scheme.contains('}') {
         return Err("base URL scheme must not contain parameters".to_string());
     }
-    if scheme != "http" && scheme != "https" {
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
         return Err("base URL scheme must be http or https".to_string());
     }
 
@@ -608,7 +628,9 @@ fn validate_parameterized_firewall_base_host(
     host: &str,
     param_names: &mut HashSet<String>,
 ) -> Result<String, String> {
-    let segments: Vec<&str> = host.split('.').collect();
+    let has_trailing_dot = host.ends_with('.');
+    let host_without_trailing_dot = host.strip_suffix('.').unwrap_or(host);
+    let segments: Vec<&str> = host_without_trailing_dot.split('.').collect();
     if segments.len() < 2 {
         return Err("base URL host must have at least two segments".to_string());
     }
@@ -655,6 +677,9 @@ fn validate_parameterized_firewall_base_host(
     if !has_static_segment {
         return Err("base URL host must have at least one static segment".to_string());
     }
+    if has_trailing_dot {
+        materialized_host.push('.');
+    }
     Ok(materialized_host)
 }
 
@@ -670,6 +695,7 @@ fn validate_parameterized_firewall_base_authority(
     materialized_host: &str,
     port_suffix: &str,
 ) -> Result<(), String> {
+    crate::firewall_hostname_policy::validate_base_host_for_cache(materialized_host)?;
     let syntax_target = format!("{scheme}://{materialized_host}{port_suffix}");
     let parsed = url::Url::parse(&syntax_target)
         .map_err(|_| "parameterized base URL authority is invalid".to_string())?;
@@ -785,7 +811,7 @@ fn validate_host_policy_hostname(value: &str, allow_leading_dot: bool) -> Result
     if host.parse::<IpAddr>().is_ok() {
         return Err("hostPolicy host must not be an IP address".to_string());
     }
-    if is_ipv4_literal_like(host) {
+    if crate::firewall_hostname_policy::is_ipv4_literal_like(host) {
         return Err("hostPolicy host must not look like an IPv4 address".to_string());
     }
     let labels: Vec<&str> = host.split('.').collect();
@@ -793,21 +819,6 @@ fn validate_host_policy_hostname(value: &str, allow_leading_dot: bool) -> Result
         return Err("hostPolicy host must have at least two non-empty labels".to_string());
     }
     Ok(())
-}
-
-fn is_ipv4_literal_like(host: &str) -> bool {
-    let labels: Vec<&str> = host.split('.').collect();
-    !labels.is_empty()
-        && labels.len() <= 4
-        && labels.iter().all(|label| {
-            let Some(rest) = label
-                .strip_prefix("0x")
-                .or_else(|| label.strip_prefix("0X"))
-            else {
-                return !label.is_empty() && label.chars().all(|ch| ch.is_ascii_digit());
-            };
-            !rest.is_empty() && rest.chars().all(|ch| ch.is_ascii_hexdigit())
-        })
 }
 
 /// Auth configuration for a firewall API entry.
@@ -1055,11 +1066,30 @@ fn hex_value(byte: u8) -> Option<u8> {
 }
 
 fn raw_authority_has_empty_port(value: &str) -> bool {
-    let Some(rest) = value.split_once("://").map(|(_, rest)| rest) else {
+    let Some(authority) = raw_url_authority(value) else {
         return false;
     };
+    authority.ends_with(':')
+}
+
+fn raw_url_authority(value: &str) -> Option<&str> {
+    let rest = value.split_once("://").map(|(_, rest)| rest)?;
     let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    rest[..authority_end].ends_with(':')
+    Some(&rest[..authority_end])
+}
+
+fn raw_host_from_authority(authority: &str) -> &str {
+    let without_userinfo = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    if without_userinfo.starts_with('[') {
+        return without_userinfo
+            .find(']')
+            .map_or(without_userinfo, |end| &without_userinfo[..=end]);
+    }
+    without_userinfo
+        .rsplit_once(':')
+        .map_or(without_userinfo, |(host, _)| host)
 }
 
 fn raw_url_path(value: &str) -> &str {
@@ -1107,7 +1137,7 @@ impl FirewallAwsSigv4Auth {
 
 /// Per-firewall grant configuration: which permissions are authorized and
 /// what policy applies to unknown endpoints (not matching any rule).
-/// Refs absent from the map are fully permissive (all granted + allow unknown).
+/// Firewall names absent from the map are fully permissive (all granted + allow unknown).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkPolicy {
@@ -1268,11 +1298,11 @@ impl ExecutionContext {
 // Heartbeat
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReusableSandboxState {
     pub profile: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub history_generation_run_id: Option<RunId>,
 }
 
@@ -1333,29 +1363,33 @@ impl SessionHistorySizeBucket {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkspaceCacheState {
+pub struct WorkspaceCacheCapability {
     pub profile: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace_affinity_version: Option<u8>,
+    pub workspace_affinity_version: u8,
+}
+
+/// Reusable sandbox state keyed by the runner-owned reuse identity.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HeldSandboxState {
+    pub reuse_key: String,
+    pub last_completed_at: String,
+    pub reusable_sandbox: ReusableSandboxState,
+}
+
+/// Workspace cache state owned by a runner reuse key rather than a provider
+/// session identity.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HeldWorkspaceState {
+    pub reuse_key: String,
+    pub last_completed_at: String,
+    pub workspace_caches: Vec<WorkspaceCacheCapability>,
 }
 
 /// Runner state snapshot sent to the server via heartbeat.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct HeldSessionState {
-    /// Compatibility wire name is `sessionId`; this remains the Claude/Codex
-    /// CLI agent session id for telemetry and diagnostics.
-    pub session_id: String,
-    pub reuse_key: String,
-    pub last_completed_at: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reusable_sandbox: Option<ReusableSandboxState>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub workspace_caches: Vec<WorkspaceCacheState>,
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HeartbeatState {
@@ -1371,7 +1405,8 @@ pub struct HeartbeatState {
     pub allocated_memory_mb: u32,
     pub running_count: usize,
     pub admittable_profiles: Vec<String>,
-    pub held_session_states: Vec<HeldSessionState>,
+    pub held_sandbox_states: Vec<HeldSandboxState>,
+    pub held_workspace_states: Vec<HeldWorkspaceState>,
     pub mode: String,
 }
 
@@ -1386,26 +1421,26 @@ pub struct CompleteRequest {
     pub exit_code: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-    /// Sandbox the run executed against. `None` when no sandbox was
-    /// provisioned (e.g. a pre-claim failure); otherwise set on every
-    /// completion regardless of reuse status.
+    /// Sandbox the run executed against. `None` when the run failed before
+    /// sandbox allocation; otherwise set on every completion regardless of
+    /// reuse status.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox_id: Option<SandboxId>,
     /// Outcome of the sandbox-reuse decision made before this run started.
-    /// `None` is reserved for callers that cannot determine it (tests, future
-    /// transports); the runner itself always sets this.
+    /// `None` means the run failed before the runner reached that decision, or
+    /// that the caller could not determine it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox_reuse_result: Option<SandboxReuseResult>,
 }
 
 /// Outcome of the sandbox-reuse decision made at job dispatch time. `Reused`
-/// means the VM was unparked from the idle pool; the other variants name the
-/// branch that caused a fresh create. Wire name: `sandboxReuseResult`.
+/// means the VM was unparked from the idle pool; the other variants describe
+/// why reuse did not happen. Wire name: `sandboxReuseResult`.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum SandboxReuseResult {
     Reused,
-    NoSessionId,
+    NoReuseKey,
     PoolMiss,
     ProfileMismatch,
     DeviceLimitMismatch,
@@ -1418,7 +1453,7 @@ impl SandboxReuseResult {
     pub const fn as_wire(self) -> &'static str {
         match self {
             Self::Reused => "reused",
-            Self::NoSessionId => "noSessionId",
+            Self::NoReuseKey => "noReuseKey",
             Self::PoolMiss => "poolMiss",
             Self::ProfileMismatch => "profileMismatch",
             Self::DeviceLimitMismatch => "deviceLimitMismatch",
@@ -1431,6 +1466,31 @@ impl SandboxReuseResult {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn firewall_base_url_validation_matches_shared_contract() {
+        let mismatches: Vec<String> =
+            crate::test_fixtures::firewall_base_url_contract::firewall_base_url_validation_cases()
+                .into_iter()
+                .filter_map(|test_case| {
+                    let result = validate_firewall_base_for_cache(&test_case.base);
+                    (result.is_ok() != test_case.expected_valid).then(|| {
+                        format!(
+                            "shared case {:?} produced unexpected result for {:?}: {:?}",
+                            test_case.name,
+                            test_case.base,
+                            result.err()
+                        )
+                    })
+                })
+                .collect();
+
+        assert!(
+            mismatches.is_empty(),
+            "firewall base URL contract mismatches:\n{}",
+            mismatches.join("\n")
+        );
+    }
 
     #[test]
     fn raw_url_path_does_not_treat_query_or_fragment_content_as_path() {
@@ -1450,7 +1510,14 @@ mod tests {
                 "runId": "550e8400-e29b-41d4-a716-446655440000",
                 "experimentalProfile": "browser",
                 "cliAgentSessionId": "legacy-session",
-                "sessionAffinityResource": "workspaceCache"
+                "runnerPreference": {
+                    "runnerIdentity": {
+                        "runnerId": "b85bb257-21c1-4b8f-8676-a4051f35b7b0",
+                        "heartbeatGeneration": 7
+                    },
+                    "reason": "matchingReuseKey",
+                    "expiresAt": "2026-08-03T12:00:00.000Z"
+                }
             }
         });
         let resp: PollResponse = serde_json::from_value(json).unwrap();
@@ -1462,10 +1529,7 @@ mod tests {
                 .unwrap()
         );
         assert_eq!(job.experimental_profile, "browser");
-        assert_eq!(
-            job.session_affinity_resource,
-            Some(SessionAffinityResource::WorkspaceCache)
-        );
+        assert!(job.runner_preference.is_some());
         assert!(job.reuse_key().is_none());
     }
 
@@ -1741,7 +1805,7 @@ mod tests {
     }
 
     #[test]
-    fn complete_request_with_error() {
+    fn complete_request_with_pre_sandbox_error_omits_sandbox_fields() {
         let req = CompleteRequest {
             run_id: "550e8400-e29b-41d4-a716-446655440000"
                 .parse::<RunId>()
@@ -1753,6 +1817,8 @@ mod tests {
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["error"], "timeout");
+        assert!(json.get("sandboxId").is_none());
+        assert!(json.get("sandboxReuseResult").is_none());
     }
 
     #[test]
@@ -1775,8 +1841,8 @@ mod tests {
     #[test]
     fn sandbox_reuse_result_serializes_camel_case() {
         assert_eq!(
-            serde_json::to_value(SandboxReuseResult::NoSessionId).unwrap(),
-            serde_json::json!("noSessionId"),
+            serde_json::to_value(SandboxReuseResult::NoReuseKey).unwrap(),
+            serde_json::json!("noReuseKey"),
         );
         assert_eq!(
             serde_json::to_value(SandboxReuseResult::PoolMiss).unwrap(),
@@ -1802,7 +1868,7 @@ mod tests {
     fn as_wire_matches_serde_serialization() {
         for variant in [
             SandboxReuseResult::Reused,
-            SandboxReuseResult::NoSessionId,
+            SandboxReuseResult::NoReuseKey,
             SandboxReuseResult::PoolMiss,
             SandboxReuseResult::ProfileMismatch,
             SandboxReuseResult::DeviceLimitMismatch,
@@ -2143,79 +2209,104 @@ mod tests {
             allocated_memory_mb: 6144,
             running_count: 2,
             admittable_profiles: vec!["vm0/default".into()],
-            held_session_states: vec![HeldSessionState {
-                session_id: "session-abc".into(),
+            held_sandbox_states: vec![HeldSandboxState {
                 reuse_key: "thread:thread-abc".into(),
                 last_completed_at: "2026-05-28T00:00:00.000Z".into(),
-                reusable_sandbox: Some(ReusableSandboxState {
+                reusable_sandbox: ReusableSandboxState {
                     profile: "vm0/default".into(),
                     history_generation_run_id: Some(
                         "11111111-1111-4111-8111-111111111111".parse().unwrap(),
                     ),
-                }),
-                workspace_caches: vec![WorkspaceCacheState {
+                },
+            }],
+            held_workspace_states: vec![HeldWorkspaceState {
+                reuse_key: "thread:thread-abc".into(),
+                last_completed_at: "2026-05-28T00:00:00.000Z".into(),
+                workspace_caches: vec![WorkspaceCacheCapability {
                     profile: "vm0/large".into(),
-                    workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                    workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
                 }],
             }],
             mode: "running".into(),
         };
         let json: serde_json::Value = serde_json::to_value(&state).unwrap();
-        assert_eq!(json["runnerId"], "550e8400-e29b-41d4-a716-446655440000");
-        assert_eq!(json["runnerName"], "runner-1");
-        assert_eq!(json["snapshotGeneration"], 7);
-        assert_eq!(json["snapshotSequence"], 42);
-        assert_eq!(json["totalVcpu"], 16);
-        assert_eq!(json["totalMemoryMb"], 32768);
-        assert_eq!(json["maxConcurrent"], 8);
-        assert_eq!(json["allocatedVcpu"], 6);
-        assert_eq!(json["allocatedMemoryMb"], 6144);
-        assert_eq!(json["runningCount"], 2);
-        assert_eq!(json["admittableProfiles"], json!(["vm0/default"]));
         assert_eq!(
-            json["heldSessionStates"],
-            json!([{
-                "sessionId": "session-abc",
-                "reuseKey": "thread:thread-abc",
-                "lastCompletedAt": "2026-05-28T00:00:00.000Z",
-                "reusableSandbox": {
-                    "profile": "vm0/default",
-                    "historyGenerationRunId": "11111111-1111-4111-8111-111111111111"
-                },
-                "workspaceCaches": [{
-                    "profile": "vm0/large",
-                    "workspaceAffinityVersion": 1
-                }]
-            }])
+            json,
+            json!({
+                "runnerId": "550e8400-e29b-41d4-a716-446655440000",
+                "runnerName": "runner-1",
+                "group": "vm0/production",
+                "snapshotGeneration": 7,
+                "snapshotSequence": 42,
+                "totalVcpu": 16,
+                "totalMemoryMb": 32768,
+                "maxConcurrent": 8,
+                "allocatedVcpu": 6,
+                "allocatedMemoryMb": 6144,
+                "runningCount": 2,
+                "admittableProfiles": ["vm0/default"],
+                "heldSandboxStates": [{
+                    "reuseKey": "thread:thread-abc",
+                    "lastCompletedAt": "2026-05-28T00:00:00.000Z",
+                    "reusableSandbox": {
+                        "profile": "vm0/default",
+                        "historyGenerationRunId": "11111111-1111-4111-8111-111111111111"
+                    }
+                }],
+                "heldWorkspaceStates": [{
+                    "reuseKey": "thread:thread-abc",
+                    "lastCompletedAt": "2026-05-28T00:00:00.000Z",
+                    "workspaceCaches": [{
+                        "profile": "vm0/large",
+                        "workspaceAffinityVersion": 1
+                    }]
+                }],
+                "mode": "running"
+            })
         );
-        assert_eq!(json["mode"], "running");
     }
 
     #[test]
-    fn held_session_state_accepts_minimal_shape_and_omits_absent_capability() {
-        let state: HeldSessionState = serde_json::from_value(json!({
-            "sessionId": "session-minimal",
-            "reuseKey": "session:session-minimal",
-            "lastCompletedAt": "2026-05-28T00:00:00.000Z",
-            "reusableSandbox": {
-                "profile": "vm0/default"
-            }
-        }))
-        .unwrap();
-        assert!(
-            state
-                .reusable_sandbox
-                .as_ref()
-                .is_some_and(|sandbox| sandbox.history_generation_run_id.is_none())
-        );
-        assert!(state.workspace_caches.is_empty());
-
+    fn held_sandbox_state_serializes_required_sandbox_without_optional_history_generation() {
+        let state = HeldSandboxState {
+            reuse_key: "thread:thread-current".into(),
+            last_completed_at: "2026-05-28T00:00:00.000Z".into(),
+            reusable_sandbox: ReusableSandboxState {
+                profile: "vm0/default".into(),
+                history_generation_run_id: None,
+            },
+        };
         let serialized = serde_json::to_value(state).unwrap();
+        assert_eq!(serialized["reusableSandbox"]["profile"], "vm0/default");
         assert!(
             serialized["reusableSandbox"]
                 .get("historyGenerationRunId")
                 .is_none()
         );
-        assert!(serialized.get("workspaceCaches").is_none());
+    }
+
+    #[test]
+    fn heartbeat_state_serializes_empty_held_state_arrays() {
+        let state = HeartbeatState {
+            runner_id: "550e8400-e29b-41d4-a716-446655440000".into(),
+            runner_name: "runner-1".into(),
+            group: "vm0/production".into(),
+            snapshot_generation: 7,
+            snapshot_sequence: 42,
+            total_vcpu: 16,
+            total_memory_mb: 32768,
+            max_concurrent: 8,
+            allocated_vcpu: 0,
+            allocated_memory_mb: 0,
+            running_count: 0,
+            admittable_profiles: vec!["vm0/default".into()],
+            held_sandbox_states: Vec::new(),
+            held_workspace_states: Vec::new(),
+            mode: "running".into(),
+        };
+
+        let serialized = serde_json::to_value(state).unwrap();
+        assert_eq!(serialized["heldSandboxStates"], json!([]));
+        assert_eq!(serialized["heldWorkspaceStates"], json!([]));
     }
 }

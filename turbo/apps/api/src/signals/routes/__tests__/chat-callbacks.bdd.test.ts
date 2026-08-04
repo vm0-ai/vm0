@@ -24,10 +24,12 @@ import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
-  invalidatePendingChatEventInputParamsFixture,
+  insertQueuedSlackMissingContextFixture,
   readChatEventContextFixture,
   removeAcknowledgedCancellationLifecycleFixture,
 } from "../../../test-fixtures/chat-events";
+import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -70,6 +72,17 @@ function goalsClient() {
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
 const CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX =
   "api_dispatch_pre_create_zero_chat_callback_";
+const GOAL_DRAIN_PRE_CREATE_TIMING_PREFIX =
+  "api_dispatch_pre_create_zero_goal_drain_";
+const GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
+  "api_dispatch_pre_create_zero_goal_drain_event_queue_age",
+  "api_dispatch_pre_create_zero_goal_drain_load_event",
+  "api_dispatch_pre_create_zero_goal_drain_load_target",
+  "api_dispatch_pre_create_zero_goal_drain_resolve_model_context",
+  "api_dispatch_pre_create_zero_goal_drain_build_run_input",
+  "api_dispatch_pre_create_zero_goal_drain_handoff_run",
+] as const;
 const CANCELLATION_RECOVERY_CRON_SECRET =
   "bdd-cancellation-recovery-cron-secret";
 const GOAL_CAPABILITIES = [
@@ -119,6 +132,22 @@ const FORBIDDEN_CHAT_CALLBACK_PRE_CREATE_TIMING_KEYS = [
   "presignedUrl",
   "archive_url",
   "archiveUrl",
+] as const;
+const FORBIDDEN_GOAL_DRAIN_PRE_CREATE_TIMING_KEYS = [
+  ...FORBIDDEN_CHAT_CALLBACK_PRE_CREATE_TIMING_KEYS,
+  "event_id",
+  "eventId",
+  "provider_id",
+  "providerId",
+  "model_provider_id",
+  "modelProviderId",
+  "run_group_id",
+  "runGroupId",
+  "callback",
+  "callback_payload",
+  "callbackPayload",
+  "token",
+  "authorization",
 ] as const;
 
 type UserMessage = Extract<
@@ -758,6 +787,144 @@ function chatCallbackPreCreateTimingEventsForRun(
   });
 }
 
+function goalDrainPreCreateTimingEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return (
+      typeof event.op_type === "string" &&
+      event.op_type.startsWith(GOAL_DRAIN_PRE_CREATE_TIMING_PREFIX)
+    );
+  });
+}
+
+function timingEventsForAction(
+  events: readonly Record<string, unknown>[],
+  actionType: string,
+): readonly Record<string, unknown>[] {
+  return events.filter((event) => {
+    return event.op_type === actionType;
+  });
+}
+
+function isGoalDrainWaitingTimingAction(actionType: string): boolean {
+  return (
+    actionType ===
+      "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap" ||
+    actionType === "api_dispatch_pre_create_zero_goal_drain_event_queue_age"
+  );
+}
+
+async function expectGoalDrainPreCreateTiming(args: {
+  readonly runId: string;
+  readonly forbiddenValues: readonly string[];
+}): Promise<void> {
+  await expect
+    .poll(() => {
+      const observed = new Set(
+        goalDrainPreCreateTimingEventsForRun(args.runId).map((event) => {
+          return event.op_type;
+        }),
+      );
+      return GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES.filter((actionType) => {
+        return !observed.has(actionType);
+      });
+    })
+    .toStrictEqual([]);
+
+  const allEvents = sandboxOperationEventsForRun(args.runId);
+  const goalDrainEvents = goalDrainPreCreateTimingEventsForRun(args.runId);
+  expect(goalDrainEvents).toHaveLength(
+    GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES.length,
+  );
+  for (const actionType of GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES) {
+    const matchingEvents = timingEventsForAction(goalDrainEvents, actionType);
+    expect(matchingEvents).toHaveLength(1);
+    const event = matchingEvents[0];
+    if (!event) {
+      throw new Error(`Expected goal drain timing for ${actionType}`);
+    }
+    expect(event).toStrictEqual(
+      expect.objectContaining({
+        source: "api",
+        op_type: actionType,
+        sandbox_type: "runner",
+        success: true,
+        run_id: args.runId,
+        span_kind: "nested",
+        trigger_source: "workflow-event",
+        zero_run_origin: "goal_continuation",
+        goal_drain_timing_role: isGoalDrainWaitingTimingAction(actionType)
+          ? "waiting"
+          : "phase",
+      }),
+    );
+    expect(event?.duration_ms).toStrictEqual(expect.any(Number));
+    expect(Number(event?.duration_ms)).toBeGreaterThanOrEqual(0);
+    expect(event.goal_drain_attempt).toBe(
+      actionType ===
+        "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap"
+        ? undefined
+        : "initial",
+    );
+  }
+
+  const entrypointGapEvents = timingEventsForAction(
+    allEvents,
+    "api_dispatch_pre_create_zero_entrypoint_gap",
+  );
+  expect(entrypointGapEvents).toHaveLength(1);
+  const entrypointGap = entrypointGapEvents[0];
+  if (!entrypointGap) {
+    throw new Error("Expected goal drain entrypoint timing");
+  }
+  expect(entrypointGap).toStrictEqual(
+    expect.objectContaining({
+      source: "api",
+      sandbox_type: "runner",
+      success: true,
+      run_id: args.runId,
+      span_kind: "nested",
+      trigger_source: "workflow-event",
+      zero_run_origin: "goal_continuation",
+      goal_drain_attempt: "initial",
+      goal_drain_timing_role: "aggregate",
+    }),
+  );
+  expect(
+    timingEventsForAction(
+      allEvents,
+      "api_dispatch_pre_create_zero_resolve_agent_id",
+    ),
+  ).toHaveLength(1);
+  const preCreateEvents = timingEventsForAction(
+    allEvents,
+    "api_dispatch_pre_create_agent_run",
+  );
+  expect(preCreateEvents).toHaveLength(1);
+  const preCreate = preCreateEvents[0];
+  if (!preCreate) {
+    throw new Error("Expected goal continuation pre-create timing");
+  }
+  expect(preCreate).toStrictEqual(
+    expect.objectContaining({
+      span_kind: "top_level",
+      trigger_source: "workflow-event",
+      zero_run_origin: "goal_continuation",
+    }),
+  );
+
+  for (const event of [...goalDrainEvents, entrypointGap]) {
+    for (const key of FORBIDDEN_GOAL_DRAIN_PRE_CREATE_TIMING_KEYS) {
+      expect(event).not.toHaveProperty(key);
+    }
+    const serialized = JSON.stringify(event);
+    for (const forbiddenValue of args.forbiddenValues) {
+      expect(serialized).not.toContain(forbiddenValue);
+    }
+  }
+}
+
 function expectNoForbiddenChatCallbackPreCreateTimingKeys(
   events: readonly Record<string, unknown>[],
 ): void {
@@ -1117,7 +1284,7 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it("uses the dequeue API start when a queued message auto-sends", async () => {
+  it("uses the queued event creation time when a message auto-sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -1134,7 +1301,7 @@ describe("CHAT-02: completed chat callback", () => {
       clearMockNow();
     });
 
-    await queueChatEvent(actor, {
+    const queuedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: first.threadId,
       prompt: queuedPrompt,
@@ -1169,10 +1336,17 @@ describe("CHAT-02: completed chat callback", () => {
     if (!claimed?.runId) {
       throw new Error("Expected the queued Web message to auto-send");
     }
+    const queuedMessage = userMessages(afterAutoSend.events).find((message) => {
+      return message.id === queuedEventId;
+    });
+    if (!queuedMessage) {
+      throw new Error("Expected the original queued Web message");
+    }
+    const apiStartedAt = Date.parse(queuedMessage.createdAt);
 
     const acknowledgedAt = dequeuedAt + 7000;
     const secondClaim = await claimChatRunJob(runnerGroup, claimed.runId);
-    expect(secondClaim.apiStartTime).toBe(dequeuedAt);
+    expect(secondClaim.apiStartTime).toBe(apiStartedAt);
     const secondHeaders = {
       authorization: `Bearer ${secondClaim.sandboxToken}`,
     };
@@ -1201,7 +1375,7 @@ describe("CHAT-02: completed chat callback", () => {
     expect(firstAssistantEventsForRun(claimed.runId)).toStrictEqual([
       expect.objectContaining({
         _time: new Date(acknowledgedAt).toISOString(),
-        duration_ms: acknowledgedAt - dequeuedAt,
+        duration_ms: acknowledgedAt - apiStartedAt,
         run_id: claimed.runId,
       }),
     ]);
@@ -1559,7 +1733,8 @@ describe("CHAT-02: completed chat callback", () => {
   }, 90_000);
 
   it("continues an active goal with the full objective in the run prompt and the brief in the user message snapshot", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
     await enableGoalWorkflows(actor);
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1611,6 +1786,21 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     if (!goalContinuation.runId) {
       throw new Error("Expected goal continuation run id");
     }
+    await expectGoalDrainPreCreateTiming({
+      runId: goalContinuation.runId,
+      forbiddenValues: [
+        goalBrief,
+        goalObjective,
+        noisySeparator,
+        "https://acme.example.com/treasury",
+        actor.userId,
+        ...(actor.orgId ? [actor.orgId] : []),
+        agentId,
+        providerId,
+        first.threadId,
+        goalContinuation.id,
+      ],
+    });
     const goalContext = await waitForRunContext(actor, goalContinuation.runId);
     expect(goalContext.body.prompt).toContain("# Active thread goal");
     expect(goalContext.body.prompt).toContain(goalObjective);
@@ -2399,6 +2589,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       threadId: run.threadId,
       prompt: "continue after the concurrent completion",
     });
+    await flushWaitUntilForTest();
     const checkpointGate = await holdCheckpointReadsFixture({
       signal: context.signal,
     });
@@ -2407,18 +2598,21 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       await checkpointGate.done;
     });
 
-    const completionPromise = webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
-      sandboxHeaders,
-      [200],
-    );
-    await expect
-      .poll(checkpointGate.blockedWaiterCount)
-      .toBeGreaterThanOrEqual(1);
-    await api.requestCancelRun(actor, run.runId, [200]);
-    checkpointGate.release();
-    await checkpointGate.done;
-    const completion = await completionPromise;
+    const [completion] = await Promise.all([
+      webhooks.requestAgentComplete(
+        { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+        sandboxHeaders,
+        [200],
+      ),
+      (async () => {
+        await expect
+          .poll(checkpointGate.blockedWaiterCount)
+          .toBeGreaterThanOrEqual(1);
+        await api.requestCancelRun(actor, run.runId, [200]);
+        checkpointGate.release();
+        await checkpointGate.done;
+      })(),
+    ]);
     expect(completion.body).toStrictEqual({
       success: true,
       status: "failed",
@@ -2536,10 +2730,9 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     });
     await claimChatRun(runnerGroup, poisonedRun.runId);
     await claimChatRun(runnerGroup, healthyRun.runId);
-    const poisonedEventId = await queueChatEvent(actor, {
-      agentId,
+    const poisonedEventId = await insertQueuedSlackMissingContextFixture({
       threadId: poisonedRun.threadId,
-      prompt: "fail this expired recovery drain",
+      content: "fail this expired recovery drain",
     });
     const healthyEventId = await queueChatEvent(actor, {
       agentId,
@@ -2550,8 +2743,6 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     await api.requestCancelRun(actor, poisonedRun.runId, [200]);
     await api.requestCancelRun(actor, healthyRun.runId, [200]);
     await flushWaitUntilForTest();
-    await invalidatePendingChatEventInputParamsFixture(poisonedEventId);
-
     mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
     await accept(
       cancellationRecoveryCronClient().reconcile({
@@ -3331,6 +3522,171 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     await expect(
       readThreadTitleFromEvents(actor, first.threadId),
     ).resolves.toBe(beforeTitle);
+  }, 90_000);
+});
+
+describe("CHAT-02: drain-time admission failure", () => {
+  it("terminalizes a queued Web message when credits are lost before drain", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped Web chat actor");
+    }
+    const startedAt = now();
+    mockNow(startedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    mockEnv("CRON_SECRET", CANCELLATION_RECOVERY_CRON_SECRET);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await startChatRun(actor, {
+      agentId,
+      prompt: "finish after queued Web credit loss",
+    });
+    const anchorHeaders = await claimChatRun(runnerGroup, anchor.runId);
+    const queuedEventId = randomUUID();
+    const queuedPrompt = "reject this queued Web message after credit loss";
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: queuedPrompt,
+        clientEventId: queuedEventId,
+      },
+      [201],
+    );
+    if ("error" in queued.body) {
+      throw new Error(queued.body.error.message);
+    }
+    expect(queued.body.runId).toBeNull();
+
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: actor.orgId,
+      status: "suspended",
+      canBuyCredits: true,
+    });
+    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValue(
+      new Error("Injected queued Web admission realtime failure"),
+    );
+
+    await completeChatRunOk(anchor.runId, anchorHeaders);
+    await flushWaitUntilForTest();
+    context.mocks.ably.publish.mockResolvedValue(undefined);
+    const terminal = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (events) => {
+        return (
+          userMessages(events).some((event) => {
+            return (
+              event.eventType === "input.rejected" &&
+              event.revokesEventId === queuedEventId &&
+              event.error === "insufficient_credits"
+            );
+          }) &&
+          assistantMessages(events).some((event) => {
+            return (
+              event.eventType === "output.error" &&
+              event.error === "insufficient_credits"
+            );
+          })
+        );
+      },
+    );
+    const original = userMessages(terminal.events).find((event) => {
+      return event.id === queuedEventId;
+    });
+    expect(original).toMatchObject({
+      eventType: "input.prompt",
+    });
+    expect(original ? chatEventDisplayText(original) : null).toBe(queuedPrompt);
+    const replacements = userMessages(terminal.events).filter((event) => {
+      return event.revokesEventId === queuedEventId;
+    });
+    expect(replacements).toStrictEqual([
+      expect.objectContaining({
+        eventType: "input.rejected",
+        error: "insufficient_credits",
+      }),
+    ]);
+    const errors = assistantMessages(terminal.events).filter((event) => {
+      return (
+        event.eventType === "output.error" &&
+        event.error === "insufficient_credits"
+      );
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.content).toContain("Add credits");
+    expect(errors[0]?.content).toContain("settings=billing");
+    expect(
+      (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === queuedPrompt;
+      }),
+    ).toHaveLength(0);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${anchor.threadId}`,
+      null,
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "threadListChanged",
+      null,
+    );
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `chatThreadRunCreated:${anchor.threadId}`,
+      null,
+    );
+
+    mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
+    await accept(
+      cancellationRecoveryCronClient().reconcile({
+        headers: {
+          authorization: `Bearer ${CANCELLATION_RECOVERY_CRON_SECRET}`,
+        },
+      }),
+      [200],
+    );
+    const retried = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: queuedPrompt,
+        clientEventId: queuedEventId,
+      },
+      [201],
+    );
+    if ("error" in retried.body) {
+      throw new Error(retried.body.error.message);
+    }
+    expect(retried.body.runId).toBeNull();
+    await flushWaitUntilForTest();
+
+    const afterRecovery = await chat.listThreadEvents(actor, anchor.threadId);
+    expect(
+      userMessages(afterRecovery.events).filter((event) => {
+        return event.revokesEventId === queuedEventId;
+      }),
+    ).toHaveLength(1);
+    expect(
+      assistantMessages(afterRecovery.events).filter((event) => {
+        return (
+          event.eventType === "output.error" &&
+          event.error === "insufficient_credits"
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === queuedPrompt;
+      }),
+    ).toHaveLength(0);
   }, 90_000);
 });
 

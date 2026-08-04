@@ -2,22 +2,19 @@ import { command } from "ccstate";
 
 import { writeDb$ } from "../external/db";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
-import {
-  admitWorkflowAutomationEvent,
-  type WorkflowQueueEventParams,
-} from "./workflow-chat-event-queue.service";
+import { admitWorkflowAutomationEvent } from "./workflow-chat-event-queue.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
+import { persistedWorkflowAutomationEventPayload } from "./workflow-automation-context.service";
 import type {
   RunWorkflowAutomationNowArgs,
   RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-launch.service";
 
 export {
-  buildChatOnlyWorkflowAutomationCallbacks,
   scheduleTriggerContext,
   type AutomationRow,
   type DueWorkflowAutomation,
@@ -25,32 +22,6 @@ export {
   type RunWorkflowAutomationNowArgs,
   type RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-launch.service";
-
-function queueEventParams(
-  args: RunWorkflowAutomationNowArgs,
-): WorkflowQueueEventParams {
-  return {
-    version: 1,
-    ...(args.prompt !== undefined ? { prompt: args.prompt } : {}),
-    ...(args.appendSystemPrompt !== undefined
-      ? { appendSystemPrompt: args.appendSystemPrompt }
-      : {}),
-    ...(args.callbacks ? { callbacks: args.callbacks } : {}),
-    ...(args.recordLastRunId !== undefined
-      ? { recordLastRunId: args.recordLastRunId }
-      : {}),
-    ...(args.recordLastRunAt !== undefined
-      ? { recordLastRunAt: args.recordLastRunAt }
-      : {}),
-    activePreviousRunPolicy: args.activePreviousRunPolicy ?? "block",
-    ...(args.due.allowClaimedOnceScheduleAutomation !== undefined
-      ? {
-          allowClaimedOnceScheduleAutomation:
-            args.due.allowClaimedOnceScheduleAutomation,
-        }
-      : {}),
-  };
-}
 
 /**
  * Durable workflow-event ingress. Every event enters the chat thread queue
@@ -64,7 +35,7 @@ export const runWorkflowAutomationNow$ = command(
     signal: AbortSignal,
   ): Promise<RunWorkflowAutomationResult> => {
     const db = set(writeDb$);
-    const { automation, chatThreadId, workflowName } = args.due;
+    const { automation, chatThreadId } = args.due;
     const timing = args.timing ?? new ApiDispatchTimingCollector();
     if (!args.timing) {
       timing.recordElapsed(
@@ -81,12 +52,16 @@ export const runWorkflowAutomationNow$ = command(
       async () => {
         return await admitWorkflowAutomationEvent(db, {
           automation,
-          workflowName,
+          workflowName: args.automationContext.workflowName,
+          workflowAutomationEventType: args.automationContext.eventType,
+          workflowAutomationEventPayload:
+            persistedWorkflowAutomationEventPayload(
+              args.automationContext.event,
+            ),
           chatThreadId,
           triggerSource: args.triggerSource ?? "workflow-schedule",
           triggerBrief: args.triggerBrief,
           coalescePendingScheduleRun: args.coalescePendingScheduleRun !== false,
-          params: queueEventParams(args),
           persistSourceTransition: args.persistSourceTransition,
         });
       },

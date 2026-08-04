@@ -4,6 +4,7 @@ import {
   chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { StoreProvider } from "ccstate-react";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -146,6 +147,151 @@ describe("assistant markdown", () => {
       expect(video).toBeInTheDocument();
       expect(video).toHaveAttribute("controls");
     });
+  });
+
+  it("renders mermaid code blocks as diagrams", async () => {
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-testid="mermaid-svg"]'),
+      ).toBeInTheDocument();
+    });
+    expect(document.querySelector("code.language-mermaid")).toBeNull();
+    // The source stays reachable next to the diagram.
+    expect(screen.getByText("Diagram source")).toBeInTheDocument();
+  });
+
+  it("uses redux themes for light and dark diagrams", async () => {
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
+
+    const settingsDialog = await openSettingsDialog();
+
+    click(getButtonByText(settingsDialog, "Light"));
+
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-testid="mermaid-svg"]'),
+      ).toHaveAttribute("data-mermaid-theme", "redux");
+    });
+
+    click(getButtonByText(settingsDialog, "Dark"));
+
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-testid="mermaid-svg"]'),
+      ).toHaveAttribute("data-mermaid-theme", "redux-dark");
+    });
+  });
+
+  it("opens a rendered mermaid diagram in the zoomable lightbox", async () => {
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
+
+    const expand = await screen.findByLabelText("Expand diagram");
+    await waitFor(() => {
+      expect(expand).toBeEnabled();
+    });
+
+    click(expand);
+
+    const lightboxImage = await screen.findByTestId(
+      "attachment-lightbox-image",
+    );
+    expect(lightboxImage.getAttribute("src")).toContain("data:image/svg+xml");
+  });
+
+  it("keeps a mermaid diagram in the lightbox while the artifact sidebar is open", async () => {
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: {
+        [FeatureSwitchKey.MermaidDiagrams]: true,
+        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
+      },
+    });
+
+    const artifactsButton = await waitFor(() => {
+      const found = queryAllByRoleFast("button").find((element) => {
+        return element.getAttribute("aria-label") === "Open artifacts";
+      });
+      if (!found) {
+        throw new Error("Expected the artifacts header button");
+      }
+      return found;
+    });
+    click(artifactsButton);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("thread-sidebar-artifacts"),
+      ).toBeInTheDocument();
+    });
+
+    const expand = await screen.findByLabelText("Expand diagram");
+    await waitFor(() => {
+      expect(expand).toBeEnabled();
+    });
+    click(expand);
+
+    // A rendered diagram is an inline data URL, so it opens the lightbox and
+    // leaves the artifact sidebar on its own content.
+    const lightboxImage = await screen.findByTestId(
+      "attachment-lightbox-image",
+    );
+    expect(lightboxImage.getAttribute("src")).toContain("data:image/svg+xml");
+    expect(screen.getByTestId("thread-sidebar-artifacts")).toBeInTheDocument();
+  });
+
+  it("keeps the source visible when a mermaid diagram cannot be parsed", async () => {
+    mockThread("```mermaid\nthis is not a diagram\n```");
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("mermaid-diagram-fallback"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("mermaid-diagram-fallback").textContent).toBe(
+      "this is not a diagram",
+    );
+    expect(document.querySelector('[data-testid="mermaid-svg"]')).toBeNull();
+  });
+
+  it("leaves mermaid blocks as code when the feature switch is off", async () => {
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+
+    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector("code.language-mermaid"),
+      ).toBeInTheDocument();
+    });
+    expect(document.querySelector(".mermaid-block")).toBeNull();
   });
 
   it("keeps external links safe", async () => {

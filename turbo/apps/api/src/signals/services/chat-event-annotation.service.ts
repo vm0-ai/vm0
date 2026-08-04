@@ -32,6 +32,9 @@ type ChatEventSourceContext =
       readonly subjectNumber: number | null;
       readonly subjectKind: "issue" | "pull_request" | null;
       readonly triggerCommentId: string | null;
+    }
+  | {
+      readonly kind: "agentphone";
     };
 
 function storedHref(value: string | null): string | undefined {
@@ -119,7 +122,7 @@ export function createChatEventSourcePart(
     href = teamsMessageUrl(context);
   } else if (context.kind === "telegram") {
     href = telegramMessageUrl(context);
-  } else {
+  } else if (context.kind === "github") {
     href = githubSubjectUrl(context);
   }
   return {

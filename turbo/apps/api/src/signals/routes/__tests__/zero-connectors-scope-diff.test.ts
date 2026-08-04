@@ -98,7 +98,7 @@ describe("GET /api/zero/connectors/:connectorSlug/scope-diff", () => {
     );
   });
 
-  it("returns 404 when no connector is configured for the type", async () => {
+  it("returns 404 when no connector is configured for the slug", async () => {
     const actor = bdd.user();
     const response = await connectorsApi.requestScopeDiff(
       actor,

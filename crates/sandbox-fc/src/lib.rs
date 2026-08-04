@@ -37,6 +37,7 @@ mod guest_dns_failure_diagnostics;
 mod guest_dns_netfilter_trace;
 mod guest_dns_network_evidence;
 mod guest_dns_readiness;
+mod guest_dns_veth_handoff_diagnostic;
 mod guest_operations;
 mod leaked_resources;
 mod network;

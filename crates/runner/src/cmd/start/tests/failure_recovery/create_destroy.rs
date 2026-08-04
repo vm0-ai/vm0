@@ -1,7 +1,7 @@
 use super::super::super::*;
 use super::super::support::{
     context_with_session, minimal_context, mock_run_config_with_overrides, push_job, shutdown,
-    status_idle_sessions_and_active_runs, test_profiles, wait_budget_count, wait_cancel_handle,
+    status_idle_reuse_keys_and_active_runs, test_profiles, wait_budget_count, wait_cancel_handle,
     wait_cancel_token_removed,
 };
 
@@ -147,7 +147,8 @@ async fn create_failure_completes_and_cleans_run_state() {
     wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
     wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(2)).await;
     assert_eq!(idle_pool.lock().await.len(), 0);
-    let (_idle_sessions, active_runs) = status_idle_sessions_and_active_runs(&status_path).await;
+    let (_idle_reuse_keys, active_runs) =
+        status_idle_reuse_keys_and_active_runs(&status_path).await;
     assert!(
         active_runs.is_empty(),
         "create failure should remove active run from status"

@@ -20,7 +20,7 @@ turbo-consumer:
   change booleans used by turbo.yml.
 
 playwright-consumer:
-  Computes whether Playwright needs a mock runner.
+  Computes whether Playwright needs a dedicated runner.
 
 crates-consumer:
   Computes whether Crates runner tests are a runner image consumer from the

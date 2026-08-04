@@ -7,6 +7,9 @@ import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
+import { MermaidDiagram } from "./mermaid-diagram.tsx";
+import { mermaidDiagramsEnabled$ } from "../../signals/external/feature-switch.ts";
+import { rehypeMermaid } from "../../lib/rehype-mermaid.ts";
 import { theme$ } from "../../signals/theme.ts";
 import {
   imageLoadStatusByKey$,
@@ -17,6 +20,8 @@ import {
 type MarkdownNodeProp = { node?: unknown };
 type MarkdownAnchorProps = ComponentPropsWithoutRef<"a"> & MarkdownNodeProp;
 type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & MarkdownNodeProp;
+type MarkdownDivProps = ComponentPropsWithoutRef<"div"> &
+  MarkdownNodeProp & { "data-mermaid-code"?: string };
 
 type RewriteArgs = Parameters<
   NonNullable<MarkdownPreviewProps["rehypeRewrite"]>
@@ -352,16 +357,29 @@ function MediaImageRenderer(props: MarkdownImageProps) {
   return <img {...omitMarkdownNodeProp(rest)} src={src} alt={alt} />;
 }
 
+// `rehypeMermaid` turns mermaid fences into `<div data-mermaid-code>`; every
+// other div renders as-is.
+function MarkdownDivRenderer(props: MarkdownDivProps) {
+  const { children, ...rest } = props;
+  const mermaidCode = props["data-mermaid-code"];
+  if (typeof mermaidCode === "string") {
+    return <MermaidDiagram code={mermaidCode} />;
+  }
+  return <div {...omitMarkdownNodeProp(rest)}>{children}</div>;
+}
+
 const PLAIN_MARKDOWN_COMPONENTS = {
   table: ResponsiveTable,
   a: PlainLinkRenderer,
   img: PlainImageRenderer,
+  div: MarkdownDivRenderer,
 } as const;
 
 const MEDIA_MARKDOWN_COMPONENTS = {
   table: ResponsiveTable,
   a: MediaLinkRenderer,
   img: MediaImageRenderer,
+  div: MarkdownDivRenderer,
 } as const;
 
 // Neutralize raw HTML by escaping only `<`: a tag cannot start without it, so
@@ -370,6 +388,23 @@ const MEDIA_MARKDOWN_COMPONENTS = {
 // which otherwise collapse into a literal `>` paragraph once escaped.
 function escapeHtmlTags(source: string): string {
   return source.replace(/</g, "&lt;");
+}
+
+type RehypePlugins = MarkdownPreviewProps["rehypePlugins"];
+
+// The mermaid plugin has to stay ahead of `rehype-prism-plus`, which
+// `@uiw/react-markdown-preview` appends after every caller-provided plugin.
+function buildRehypePlugins(args: {
+  mathEnabled: boolean;
+  mermaidEnabled: boolean;
+  rehypePlugins: RehypePlugins;
+}): RehypePlugins {
+  const plugins = [
+    ...(args.mathEnabled ? [rehypeKatex] : []),
+    ...(args.rehypePlugins ?? []),
+    ...(args.mermaidEnabled ? [rehypeMermaid] : []),
+  ];
+  return plugins.length > 0 ? plugins : undefined;
 }
 
 export function Markdown({
@@ -388,6 +423,7 @@ export function Markdown({
   escapeHtml?: boolean;
 }) {
   const theme = useGet(theme$);
+  const mermaidEnabled = useGet(mermaidDiagramsEnabled$);
   const components = mediaPreview
     ? MEDIA_MARKDOWN_COMPONENTS
     : PLAIN_MARKDOWN_COMPONENTS;
@@ -413,9 +449,11 @@ export function Markdown({
             ]
           : remarkPlugins
       }
-      rehypePlugins={
-        mathEnabled ? [rehypeKatex, ...(rehypePlugins ?? [])] : rehypePlugins
-      }
+      rehypePlugins={buildRehypePlugins({
+        mathEnabled,
+        mermaidEnabled,
+        rehypePlugins,
+      })}
       components={components}
       source={renderedSource}
       {...rest}

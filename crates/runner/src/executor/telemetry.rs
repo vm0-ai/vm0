@@ -18,7 +18,7 @@ pub(crate) enum RunnerPreSpawnPhase {
     SessionHistoryMaterializerStart,
     DeviceRateLimits,
     IdleReuseLookup,
-    HeldSessionStateRefresh,
+    WorkspaceCacheStateLookup,
     WorkspacePromotionValidation,
     IdleUnpark,
     ActiveStatusPublish,
@@ -31,7 +31,7 @@ impl RunnerPreSpawnPhase {
         Self::SessionHistoryMaterializerStart,
         Self::DeviceRateLimits,
         Self::IdleReuseLookup,
-        Self::HeldSessionStateRefresh,
+        Self::WorkspaceCacheStateLookup,
         Self::WorkspacePromotionValidation,
         Self::IdleUnpark,
         Self::ActiveStatusPublish,
@@ -46,7 +46,7 @@ impl RunnerPreSpawnPhase {
             }
             Self::DeviceRateLimits => "runner_claim_device_rate_limits",
             Self::IdleReuseLookup => "runner_claim_idle_reuse_lookup",
-            Self::HeldSessionStateRefresh => "runner_claim_held_session_state_refresh",
+            Self::WorkspaceCacheStateLookup => "runner_claim_workspace_cache_state_lookup",
             Self::WorkspacePromotionValidation => "runner_claim_workspace_promotion_validation",
             Self::IdleUnpark => "runner_claim_idle_unpark",
             Self::ActiveStatusPublish => "runner_claim_active_status_publish",
@@ -61,7 +61,7 @@ struct RunnerPreSpawnPhaseDurations {
     session_history_materializer_start: Option<Duration>,
     device_rate_limits: Option<Duration>,
     idle_reuse_lookup: Option<Duration>,
-    held_session_state_refresh: Option<Duration>,
+    workspace_cache_state_lookup: Option<Duration>,
     workspace_promotion_validation: Option<Duration>,
     idle_unpark: Option<Duration>,
     active_status_publish: Option<Duration>,
@@ -77,7 +77,9 @@ impl RunnerPreSpawnPhaseDurations {
             }
             RunnerPreSpawnPhase::DeviceRateLimits => &mut self.device_rate_limits,
             RunnerPreSpawnPhase::IdleReuseLookup => &mut self.idle_reuse_lookup,
-            RunnerPreSpawnPhase::HeldSessionStateRefresh => &mut self.held_session_state_refresh,
+            RunnerPreSpawnPhase::WorkspaceCacheStateLookup => {
+                &mut self.workspace_cache_state_lookup
+            }
             RunnerPreSpawnPhase::WorkspacePromotionValidation => {
                 &mut self.workspace_promotion_validation
             }
@@ -95,7 +97,7 @@ impl RunnerPreSpawnPhaseDurations {
             }
             RunnerPreSpawnPhase::DeviceRateLimits => self.device_rate_limits,
             RunnerPreSpawnPhase::IdleReuseLookup => self.idle_reuse_lookup,
-            RunnerPreSpawnPhase::HeldSessionStateRefresh => self.held_session_state_refresh,
+            RunnerPreSpawnPhase::WorkspaceCacheStateLookup => self.workspace_cache_state_lookup,
             RunnerPreSpawnPhase::WorkspacePromotionValidation => {
                 self.workspace_promotion_validation
             }
@@ -204,7 +206,7 @@ impl RunnerSpawnTiming {
 pub(super) fn record_reuse_result(telemetry: &mut JobTelemetry, result: SandboxReuseResult) {
     let action_type = match result {
         SandboxReuseResult::Reused => "sandbox_reuse_hit",
-        SandboxReuseResult::NoSessionId
+        SandboxReuseResult::NoReuseKey
         | SandboxReuseResult::PoolMiss
         | SandboxReuseResult::ProfileMismatch
         | SandboxReuseResult::DeviceLimitMismatch
@@ -220,7 +222,7 @@ pub(super) fn record_workspace_cache_result(
     let action_type = match result {
         WorkspaceCacheCheckoutResult::Hit => "workspace_image_cache_hit",
         WorkspaceCacheCheckoutResult::Miss => "workspace_image_cache_miss",
-        WorkspaceCacheCheckoutResult::NoSession => "workspace_image_cache_no_session",
+        WorkspaceCacheCheckoutResult::NoReuseKey => "workspace_image_cache_no_reuse_key",
         WorkspaceCacheCheckoutResult::InvalidWorkingDir => {
             "workspace_image_cache_invalid_working_dir"
         }

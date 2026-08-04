@@ -115,7 +115,8 @@
       "runner": {
         "deviceLimitMismatch": "Entri pool idle ada, tetapi status rate limiter perangkatnya tidak cocok.",
         "featureDisabled": "Penggunaan ulang sandbox dinonaktifkan untuk run ini.",
-        "noSessionId": "Tidak ada ID sesi yang tersedia untuk dicocokkan dengan pool idle.",
+        "noReuseKey": "Tidak ada kunci penggunaan ulang yang tersedia untuk mencocokkan sandbox idle.",
+        "noSessionId": "Hasil lama: alasan pasti sandbox tidak digunakan ulang tidak tersedia.",
         "notReused": "Tidak digunakan ulang",
         "poolMiss": "Tidak ada sandbox yang cocok ditemukan di pool idle.",
         "profileMismatch": "Entri pool idle ada, tetapi profilnya tidak cocok.",
@@ -1227,7 +1228,6 @@
       "configureModel": "Konfigurasikan model",
       "createWorkflow": "Buat alur kerja",
       "message": "Pesan",
-      "modelConfigureAction": "Konfigurasi Model",
       "placeholder": "Minta saya mengotomatiskan alur kerja, mengelola tugas...",
       "selectedModelUnavailable": "Model yang dipilih tidak tersedia. Konfigurasikan sebelum mengirim.",
       "selectedModelUnavailableToast": "Model yang dipilih tidak tersedia",
@@ -1364,6 +1364,7 @@
     },
     "newChat": "Chat baru",
     "origins": {
+      "agentphone": "AgentPhone",
       "feishu": "Feishu",
       "github": "GitHub",
       "openChat": "Buka chat",
@@ -1425,6 +1426,7 @@
       "queuedMessage": "Pesan dalam antrean",
       "queuedMessageDescription": "Menunggu giliran dan dikirim setelah eksekusi saat ini selesai.",
       "removeQueuedMessage": "Hapus pesan dalam antrean",
+      "sendQueuedMessageNow": "Kirim pesan antrean sekarang",
       "skipAutomationEvent": "Lewati peristiwa otomatisasi"
     },
     "replaceDraft": {
@@ -4544,6 +4546,11 @@
       "action": "Muat ulang",
       "description": "Versi {{brandName}} ini tidak lagi didukung. Muat ulang untuk memuat versi terbaru.",
       "title": "Pembaruan diperlukan"
+    },
+    "mermaid": {
+      "diagramLabel": "Diagram",
+      "expand": "Perbesar diagram",
+      "viewSource": "Sumber diagram"
     },
     "notFound": {
       "description": "Halaman yang Anda cari tidak ada.",

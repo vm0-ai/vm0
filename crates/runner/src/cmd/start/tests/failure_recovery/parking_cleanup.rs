@@ -2,13 +2,13 @@ use super::super::super::*;
 use super::super::support::{
     MockRunEnv, context_with_session, mock_run_config_with_overrides, push_job, seed_idle_pool,
     shutdown, test_profiles, wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
-    wait_status_idle_sessions_and_active_runs, wait_workspace_cache_sessions,
+    wait_status_idle_reuse_keys_and_active_runs, wait_workspace_cache_reuse_keys,
 };
 use super::support::assert_no_completion_for_run;
 
 use crate::idle_pool::ParkingState;
 use crate::paths::RunnerPaths;
-use crate::workspace_image_cache::SessionWorkspaceCache;
+use crate::workspace_image_cache::WorkspaceImageCache;
 use sandbox_mock::MockLifecycleGate;
 
 fn severe_memory_retention() -> sandbox::SandboxParkOutcome {
@@ -118,7 +118,7 @@ async fn assert_workspace_cache_after_park_cleanup(
     let (mut config, env) =
         mock_run_config_with_overrides(profiles, 8, 32768, 4, Arc::clone(&overrides));
     let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
-    let workspace_cache = SessionWorkspaceCache::shared(
+    let workspace_cache = WorkspaceImageCache::shared(
         runner_paths.clone(),
         &config.paths.home,
         &config.runner.group,
@@ -167,10 +167,10 @@ async fn assert_workspace_cache_after_park_cleanup(
     assert_eq!(counter.unpark_call_count(), expected_unpark_calls);
     assert_eq!(counter.destroy_call_count(), 1);
     if expect_cache {
-        wait_workspace_cache_sessions(&workspace_cache, &[session_id], Duration::from_secs(2))
+        wait_workspace_cache_reuse_keys(&workspace_cache, &[session_id], Duration::from_secs(2))
             .await;
     } else {
-        let held = workspace_cache.held_session_states().await;
+        let held = workspace_cache.held_workspace_states().await;
         assert!(held.is_empty());
     }
 
@@ -217,7 +217,7 @@ async fn non_reusable_park_keeps_budget_until_destroy_and_never_enters_idle_stat
         "non-reusable parked VM must never enter the idle pool",
     )
     .await;
-    wait_status_idle_sessions_and_active_runs(
+    wait_status_idle_reuse_keys_and_active_runs(
         &status_path,
         &[],
         &[run_id.to_string()],
@@ -239,7 +239,8 @@ async fn non_reusable_park_keeps_budget_until_destroy_and_never_enters_idle_stat
     .await;
 
     assert_post_destroy_cleanup(&budget, &idle_pool, None, run_id, 0, 0).await;
-    wait_status_idle_sessions_and_active_runs(&status_path, &[], &[], Duration::from_secs(5)).await;
+    wait_status_idle_reuse_keys_and_active_runs(&status_path, &[], &[], Duration::from_secs(5))
+        .await;
     assert_eq!(counter.park_call_count(), 1);
     assert_eq!(counter.destroy_call_count(), 1);
 
@@ -433,7 +434,7 @@ async fn assert_workspace_cache_after_late_cancellation(
     let (mut config, env) =
         mock_run_config_with_overrides(profiles, 8, 32768, 4, Arc::clone(&overrides));
     let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
-    let workspace_cache = SessionWorkspaceCache::shared(
+    let workspace_cache = WorkspaceImageCache::shared(
         runner_paths.clone(),
         &config.paths.home,
         &config.runner.group,
@@ -516,7 +517,7 @@ async fn assert_workspace_cache_after_late_cancellation(
     .await;
 
     assert_post_destroy_cleanup(&budget, &idle_pool, Some(&cancel_tokens), run_id, 0, 0).await;
-    wait_workspace_cache_sessions(&workspace_cache, &[session_id], Duration::from_secs(2)).await;
+    wait_workspace_cache_reuse_keys(&workspace_cache, &[session_id], Duration::from_secs(2)).await;
 
     shutdown(&env, run_handle).await;
 }
@@ -608,7 +609,7 @@ async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
     wait_budget_count(&budget, 1, Duration::from_secs(2)).await;
     let pool = idle_pool.lock().await;
     assert_eq!(pool.len(), 1);
-    assert_eq!(pool.held_sessions(), vec!["sess-existing"]);
+    assert_eq!(pool.held_reuse_keys(), vec!["sess-existing"]);
     drop(pool);
 
     shutdown(&env, run_handle).await;

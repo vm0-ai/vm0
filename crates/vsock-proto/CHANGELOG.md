@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.25](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.24...vsock-proto-v0.18.25) (2026-08-03)
+
+
+### Performance Improvements
+
+* **vsock:** encode exec results into one frame buffer ([#24754](https://github.com/vm0-ai/vm0/issues/24754)) ([eb7bd3a](https://github.com/vm0-ai/vm0/commit/eb7bd3a5947dc39748f96cd430f4283e2be1962e))
+
 ## [0.18.24](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.23...vsock-proto-v0.18.24) (2026-07-25)
 
 

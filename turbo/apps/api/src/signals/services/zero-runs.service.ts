@@ -33,7 +33,12 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import { z } from "zod";
 
+import {
+  nullableDriverValueDecoder,
+  zodDriverValueDecoder,
+} from "../../lib/db-structured-result";
 import { now } from "../../lib/time";
 import { db$, type Db } from "../external/db";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
@@ -47,6 +52,15 @@ import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const RECENT_RUNS_FOR_ETA = 10;
 const PROMPT_TRUNCATE_LENGTH = 200;
+const runDurationMillisecondsDecoder = zodDriverValueDecoder(
+  z
+    .string()
+    .regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/)
+    .transform((value) => {
+      return Number(value);
+    })
+    .pipe(z.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER)),
+);
 type ReadDb = Pick<Db, "select">;
 type QueueItem = QueueResponse["queue"][number];
 type RunningTaskItem = QueueResponse["runningTasks"][number];
@@ -157,7 +171,7 @@ async function estimatedTimePerRun(
     .select({
       durationMs:
         sql`EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000`
-          .mapWith(Number)
+          .mapWith(runDurationMillisecondsDecoder)
           .as("duration_ms"),
     })
     .from(agentRuns)
@@ -173,9 +187,16 @@ async function estimatedTimePerRun(
     .limit(RECENT_RUNS_FOR_ETA)
     .as("recent_runs");
   const [etaResult] = await db
-    .select({ avgMs: avg(recentRuns.durationMs) })
+    .select({
+      avgMs: avg(recentRuns.durationMs).mapWith(
+        nullableDriverValueDecoder(runDurationMillisecondsDecoder),
+      ),
+    })
     .from(recentRuns);
-  return etaResult?.avgMs ? Math.round(Number(etaResult.avgMs)) : null;
+  const averageMs = etaResult?.avgMs;
+  return averageMs === null || averageMs === undefined
+    ? null
+    : Math.round(averageMs);
 }
 
 async function userEmailMap(

@@ -54,6 +54,10 @@ import {
 } from "@vm0/api-contracts/contracts/zero-uploads";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
+import {
+  buildArtifactKey,
+  sanitizeArtifactFilename,
+} from "../../../../lib/file-url";
 import { createAgentComposeFixture } from "../../../../test-fixtures/agent-composes";
 import { zeroChatEventsRoutes } from "../../zero-chat-events";
 import { zeroArtifactCatalogRoutes } from "../../zero-artifact-catalog";
@@ -121,6 +125,13 @@ type BddSendEventBody =
       readonly agentId: string;
       readonly threadId: string;
       readonly interruptsRunId: string;
+      readonly clientEventId?: string;
+    }
+  | {
+      readonly agentId: string;
+      readonly threadId: string;
+      readonly steersRunId: string;
+      readonly steersEventId: string;
       readonly clientEventId?: string;
     };
 
@@ -210,6 +221,29 @@ export function persistedAttachment(
 
 export function createChatFilesBddApi(context: TestContext) {
   const mocks = createZeroRouteMocks(context);
+
+  function mockCompletedUploadObjects(
+    actor: ApiTestUser,
+    objects: readonly {
+      readonly id: string;
+      readonly filename: string;
+      readonly size: number;
+    }[],
+  ): void {
+    mocks.s3.listObjects(
+      objects.map((object) => {
+        return {
+          bucket: "test-user-artifacts",
+          key: buildArtifactKey(
+            actor.userId,
+            object.id,
+            sanitizeArtifactFilename(object.filename),
+          ),
+          size: object.size,
+        };
+      }),
+    );
+  }
 
   function threadsClient() {
     return chatFilesApp(context)(chatThreadsContract);
@@ -326,14 +360,10 @@ export function createChatFilesBddApi(context: TestContext) {
       filename: string,
       size: number,
     ): void {
-      mocks.s3.listObjects([
-        {
-          bucket: "test-user-artifacts",
-          key: `artifacts/${actor.userId}/${uploadId}/${filename}`,
-          size,
-        },
-      ]);
+      mockCompletedUploadObjects(actor, [{ id: uploadId, filename, size }]);
     },
+
+    mockCompletedUploadObjects,
 
     mockObjectStorageObjectsExist(): void {
       mockObjectStorageObjectsExist(context);
@@ -1194,23 +1224,33 @@ export function createChatFilesBddApi(context: TestContext) {
                   : { revokesEventId: body.revokesEventId }),
               };
             })()
-          : "interruptsRunId" in body
+          : "steersRunId" in body
             ? {
                 agentId: body.agentId,
                 threadId: body.threadId,
-                interruptsRunId: body.interruptsRunId,
+                steersRunId: body.steersRunId,
+                steersEventId: body.steersEventId,
                 ...(body.clientEventId === undefined
                   ? {}
                   : { clientEventId: body.clientEventId }),
               }
-            : {
-                agentId: body.agentId,
-                threadId: body.threadId,
-                revokesEventId: body.revokesEventId,
-                ...(body.clientEventId === undefined
-                  ? {}
-                  : { clientEventId: body.clientEventId }),
-              };
+            : "interruptsRunId" in body
+              ? {
+                  agentId: body.agentId,
+                  threadId: body.threadId,
+                  interruptsRunId: body.interruptsRunId,
+                  ...(body.clientEventId === undefined
+                    ? {}
+                    : { clientEventId: body.clientEventId }),
+                }
+              : {
+                  agentId: body.agentId,
+                  threadId: body.threadId,
+                  revokesEventId: body.revokesEventId,
+                  ...(body.clientEventId === undefined
+                    ? {}
+                    : { clientEventId: body.clientEventId }),
+                };
 
       return await accept(
         client.send({

@@ -1,4 +1,4 @@
-// Trigger another runner release on 2026-07-28.
+// Trigger another runner release on 2026-07-31.
 mod active_input;
 mod axiom_layer;
 mod ca;
@@ -10,6 +10,7 @@ mod dns;
 mod duration;
 mod error;
 mod executor;
+mod firewall_hostname_policy;
 mod group;
 mod helper_exec;
 mod host;
@@ -99,7 +100,7 @@ enum Command {
     Kill(cmd::KillArgs),
     /// Clean up unused runner resources, artifacts, logs, and caches
     Gc(cmd::GcArgs),
-    /// Inspect and clean up session workspace image cache entries
+    /// Inspect and clean up workspace image cache entries
     WorkspaceImageCache(cmd::WorkspaceImageCacheArgs),
     /// Runtime health diagnostics for all runners on the host
     Doctor(cmd::DoctorArgs),

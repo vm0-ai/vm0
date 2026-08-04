@@ -21,15 +21,13 @@ const variableStateSchema = z.object({
   connector_id: z.uuid(),
 });
 
-// TODO(#23619): Rename the test-only `connector_ref` wire fields with their
-// persisted connector lookup.
 export const testConnectorCredentialStorageStateActionBodySchema =
   z.discriminatedUnion("action", [
     z.object({
       action: z.literal("read"),
       org_id: z.string(),
       user_id: z.string(),
-      connector_ref: z.string(),
+      connector_slug: z.string(),
       secret_names: z.array(z.string()),
       variable_names: z.array(z.string()),
     }),
@@ -37,7 +35,7 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       action: z.literal("seed-owned-secret"),
       org_id: z.string(),
       user_id: z.string(),
-      connector_ref: z.string(),
+      connector_slug: z.string(),
       auth_method: z.string(),
       storage_version: z.number().int().positive(),
       name: z.string(),
@@ -48,7 +46,7 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       action: z.literal("seed-connector"),
       org_id: z.string(),
       user_id: z.string(),
-      connector_ref: z.string(),
+      connector_slug: z.string(),
       auth_method: z.string(),
       storage_version: z.number().int().positive(),
     }),
@@ -56,7 +54,7 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       action: z.literal("set-connector-state"),
       org_id: z.string(),
       user_id: z.string(),
-      connector_ref: z.string(),
+      connector_slug: z.string(),
       storage_version: z.number().int().positive(),
       token_expires_at: z.iso.datetime().nullable().optional(),
     }),

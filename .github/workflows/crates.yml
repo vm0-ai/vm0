@@ -66,6 +66,7 @@ jobs:
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
       mitm-addon-test-inputs-changed: ${{ steps.detect.outputs.mitm-addon-test-inputs-changed }}
       mitm-addon-pricing-seed-changed: ${{ steps.detect.outputs.mitm-addon-pricing-seed-changed }}
+      runner-firewall-contract-inputs-changed: ${{ steps.detect.outputs.runner-firewall-contract-inputs-changed }}
       api-contracts-rust-bindings-changed: ${{ steps.detect.outputs.api-contracts-rust-bindings-changed }}
       ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
       api-contracts-changed: ${{ steps.detect.outputs.api-contracts-changed }}
@@ -78,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Detect changed crates
         id: detect
@@ -158,6 +159,15 @@ jobs:
             echo "mitm-addon-test-inputs-changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "mitm-addon-test-inputs-changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # The Rust runner independently validates the shared firewall base
+          # URL contract. Run its focused conformance test when only the
+          # TypeScript-owned corpus changes, without selecting runner images.
+          if git diff --name-only "$BASE_REF" HEAD | grep -qx "turbo/packages/connectors/src/__tests__/firewall-base-url-validation-contract.json"; then
+            echo "runner-firewall-contract-inputs-changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "runner-firewall-contract-inputs-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           # test_x_billing.py checks X connector usage buckets against the
@@ -452,6 +462,28 @@ jobs:
         run: |
           pnpm -F @vm0/api-contracts generate:rust
           git diff --exit-code -- ../crates/api-contracts/src/generated
+
+  runner-firewall-contract-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
+    needs: [detect]
+    if: |
+      needs.detect.outputs.ci-changed == 'true' ||
+      needs.detect.outputs.runner-firewall-contract-inputs-changed == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
+        with:
+          workspaces: crates -> target
+          shared-key: runner-firewall-contract
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Check runner firewall base URL contract
+        working-directory: crates
+        run: cargo test -p runner types::tests::firewall_base_url_validation_matches_shared_contract -- --exact
 
   mitm-addon-test:
     runs-on: ubuntu-latest
@@ -861,6 +893,7 @@ jobs:
       - check
       - coverage
       - api-contracts-rust-bindings
+      - runner-firewall-contract-test
       - mitm-addon-test
       - runner-host-groups
       - runner-build
@@ -910,6 +943,7 @@ jobs:
           check_result "check" "${{ needs.check.result }}" "true"
           check_result "coverage" "${{ needs.coverage.result }}" "true"
           check_result "api-contracts-rust-bindings" "${{ needs.api-contracts-rust-bindings.result }}" "true"
+          check_result "runner-firewall-contract-test" "${{ needs.runner-firewall-contract-test.result }}" "true"
           check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
           check_result "runner-host-groups" "${{ needs.runner-host-groups.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"

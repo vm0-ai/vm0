@@ -142,6 +142,34 @@ async def test_failed_responses_etag_does_not_invalidate_catalog(real_flow):
     assert telemetry == {}
 
 
+async def test_fresh_hit_changes_count_bound_eviction_order(real_flow):
+    small_body = b'{"models":[]}'
+    for index in range(catalog_cache.MAX_ENTRIES):
+        await install_catalog(
+            catalog_flow(real_flow, version=f"lru-{index}"),
+            body=small_body,
+            etag=f'"lru-{index}"',
+        )
+
+    recently_used = catalog_flow(real_flow, version="lru-0")
+    await catalog_cache.prepare_request(recently_used, request_end_stream=True)
+    assert recently_used.response is not None
+
+    await install_catalog(
+        catalog_flow(real_flow, version="lru-overflow"),
+        body=small_body,
+        etag='"lru-overflow"',
+    )
+
+    untouched = catalog_flow(real_flow, version="lru-1")
+    await prepare_miss(untouched)
+    catalog_cache.handle_error(untouched)
+
+    retained = catalog_flow(real_flow, version="lru-0")
+    await catalog_cache.prepare_request(retained, request_end_stream=True)
+    assert retained.response is not None
+
+
 async def test_count_and_byte_bounds_evict_least_recent_entries(real_flow):
     small_body = b'{"models":[]}'
     for index in range(catalog_cache.MAX_ENTRIES + 1):

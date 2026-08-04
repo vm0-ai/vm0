@@ -74,19 +74,22 @@ encode_uri_component() {
 
 wait_for_auth_completion() {
   local auth_path="$1"
+  local completion_expression
 
   if [[ -n "${VM0_AUTH_REDIRECT_URL:-}" ]]; then
     local redirect_url_json
     redirect_url_json=$(node -e \
       'process.stdout.write(JSON.stringify(process.argv[1]))' \
       "$VM0_AUTH_REDIRECT_URL")
-    wait_for_browser_target --fn \
-      "window.location.href.startsWith(${redirect_url_json})"
-    return
+    completion_expression="window.location.href.startsWith(${redirect_url_json})"
+  else
+    completion_expression="!window.location.pathname.includes('/${auth_path}')"
   fi
 
-  wait_for_browser_target --fn \
-    "!window.location.pathname.includes('/${auth_path}')"
+  if ! wait_for_browser_target --fn "$completion_expression"; then
+    report_auth_page_failure
+    return 1
+  fi
 }
 
 open_auth_form() {

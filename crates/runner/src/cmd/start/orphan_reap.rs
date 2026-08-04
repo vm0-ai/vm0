@@ -361,13 +361,13 @@ mod tests {
 
         async fn park_idle_candidate(
             &self,
-            session_id: &str,
+            reuse_key: &str,
             sandbox_id: SandboxId,
             mock_name: &str,
         ) {
             let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
             let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
-            let candidate = ParkedIdleCandidateBuilder::new(session_id, lease)
+            let candidate = ParkedIdleCandidateBuilder::new(reuse_key, lease)
                 .with_mock_sandbox_name(mock_name)
                 .with_sandbox_id(sandbox_id)
                 .build();
@@ -475,7 +475,7 @@ mod tests {
             let (idle_vms, active_runs) = self.status_idle_vms_and_active_runs().await;
             let mut expected_idle_vms = expected_idle_vms
                 .iter()
-                .map(|(session_id, sandbox_id)| ((*session_id).to_string(), sandbox_id.to_string()))
+                .map(|(reuse_key, sandbox_id)| ((*reuse_key).to_string(), sandbox_id.to_string()))
                 .collect::<Vec<_>>();
             expected_idle_vms.sort_unstable();
             let mut expected_active_runs = expected_active_runs
@@ -520,15 +520,15 @@ mod tests {
                     idle_vms
                         .iter()
                         .map(|vm| {
-                            let session_id = vm
-                                .get("session_id")
-                                .and_then(|session| session.as_str())
-                                .expect("idle VM must include session_id");
+                            let reuse_key = vm
+                                .get("reuse_key")
+                                .and_then(|reuse_key| reuse_key.as_str())
+                                .expect("idle VM must include reuse_key");
                             let sandbox_id = vm
                                 .get("sandbox_id")
                                 .and_then(|sandbox| sandbox.as_str())
                                 .expect("idle VM must include sandbox_id");
-                            (session_id.to_string(), sandbox_id.to_string())
+                            (reuse_key.to_string(), sandbox_id.to_string())
                         })
                         .collect()
                 })

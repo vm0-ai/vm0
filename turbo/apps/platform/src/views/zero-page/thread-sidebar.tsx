@@ -13,13 +13,11 @@ import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
-  classifyChatAttachment,
-  previewAttachmentFromUrl,
-} from "../../signals/chat-page/parse-body-blocks.ts";
-import { openThreadArtifacts$ } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
+  artifactRefFromUrl,
+  openThreadArtifacts$,
+} from "../../signals/chat-page/thread-sidebar-coordinator.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import type {
-  ArtifactRef,
   ThreadSidebarArtifactSource,
   ThreadSidebarTarget,
 } from "../../signals/chat-page/thread-sidebar.ts";
@@ -46,15 +44,6 @@ const ARTIFACT_AUTO_LOAD_THRESHOLD_PX = 800;
 
 const THREAD_SIDEBAR_FULLSCREEN_CLASSNAME =
   "fixed inset-0 z-[100] flex min-h-0 flex-col bg-background pt-[var(--sat)] pb-[var(--sab)]";
-
-function artifactRefFromUrl(url: string): ArtifactRef {
-  const attachment = previewAttachmentFromUrl(url);
-  return {
-    url,
-    kind: classifyChatAttachment(attachment),
-    filename: attachment.filename,
-  };
-}
 
 /**
  * Open the thread's artifacts list and start its sidebar session (background

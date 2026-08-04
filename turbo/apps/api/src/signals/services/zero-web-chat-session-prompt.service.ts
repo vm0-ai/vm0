@@ -1,0 +1,300 @@
+import {
+  CHAT_EVENT_TYPES,
+  chatEventCompatibilityRole,
+  type ChatEventType,
+} from "@vm0/api-contracts/contracts/chat-events";
+import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatEvents } from "@vm0/db/schema/chat-event";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  not,
+  or,
+  sql,
+} from "drizzle-orm";
+
+import type { Db } from "../external/db";
+import { BEFORE_DISPATCH_CANCELLED_ERROR } from "./agent-run-create.service";
+import type { ChatThreadSessionResolutionAction } from "./chat-session-continuity.service";
+import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
+import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import {
+  projectUserMessage,
+  requiredUserMessageForEvent,
+} from "./zero-chat-user-message.service";
+
+const RECENT_CHAT_RUN_LIMIT = 10;
+const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
+
+interface WebChatPriorRunEvent {
+  readonly eventType: ChatEventType;
+  readonly role: "user" | "assistant";
+  readonly content: string | null;
+  readonly userMessage: UserMessageDocument | null;
+  readonly attachFiles: readonly string[] | null;
+}
+
+interface WebChatPriorRun {
+  readonly runId: string;
+  readonly status: string;
+  readonly prompt: string;
+  readonly events: readonly WebChatPriorRunEvent[];
+}
+
+export interface WebChatSessionPromptContext {
+  readonly inlineTemplatesEnabled: boolean;
+  readonly generationTemplatePrompt: string;
+  readonly computerUseHostDisplayName: string | null;
+}
+
+function buildWebChatPrompt(): string {
+  return [
+    "# Current Integration\nYou are currently running inside: Web",
+    "You are communicating with the user through the web chat UI.",
+  ].join("\n\n");
+}
+
+function buildComputerUseSystemPrompt(displayName: string): string {
+  return [
+    "# Computer Use",
+    `Computer Use is enabled for this run on ${displayName}.`,
+    "Use Zero CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
+    "The computer may go offline while this run is active. If a command reports that the computer is unavailable or offline, ask the user to reconnect Zero Computer Use on that computer, then retry.",
+  ].join("\n");
+}
+
+export function buildWebChatAppendSystemPrompt(args: {
+  readonly incompleteContext: string;
+  readonly priorContext: string;
+  readonly context: WebChatSessionPromptContext;
+}): string {
+  return [
+    buildWebChatPrompt(),
+    args.priorContext,
+    args.incompleteContext,
+    args.context.generationTemplatePrompt,
+    args.context.computerUseHostDisplayName
+      ? buildComputerUseSystemPrompt(args.context.computerUseHostDisplayName)
+      : "",
+  ]
+    .filter((part) => {
+      return part.length > 0;
+    })
+    .join("\n\n");
+}
+
+function truncatePrior(value: string): string {
+  if (value.length <= WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP) {
+    return value;
+  }
+  return `${value.slice(0, WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
+}
+
+function formatAttachFileIds(
+  ids: readonly string[] | null | undefined,
+): string {
+  if (!ids || ids.length === 0) {
+    return "";
+  }
+  return ids
+    .map((id) => {
+      return `[Web file]\n   [ID] ${id}`;
+    })
+    .join("\n");
+}
+
+function formatPriorRunEvent(
+  event: WebChatPriorRunEvent,
+  inlineTemplatesEnabled: boolean,
+): string {
+  const roleLabel = event.role === "user" ? "User" : "Assistant";
+  const userMessage = requiredUserMessageForEvent(
+    event.eventType,
+    event.userMessage,
+  );
+  if (userMessage) {
+    const prompt = projectUserMessage(userMessage, {
+      inlineTemplates: inlineTemplatesEnabled,
+    }).agentPrompt;
+    return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
+  }
+  const attach = formatAttachFileIds(event.attachFiles);
+  const body = `${roleLabel}: ${
+    event.content === null
+      ? "[empty message]"
+      : truncatePrior(event.content) || "[empty message]"
+  }`;
+  return attach ? `${body}\n${attach}` : body;
+}
+
+function buildWebChatPriorRunsContext(
+  runs: readonly WebChatPriorRun[],
+  inlineTemplatesEnabled: boolean,
+): string {
+  if (runs.length === 0) {
+    return "";
+  }
+  const total = runs.length;
+  const blocks = runs.map((run, index) => {
+    const relativeIndex = index - total + 1;
+    const renderedEvents = run.events.map((event) => {
+      return formatPriorRunEvent(event, inlineTemplatesEnabled);
+    });
+    const hasUserEvent = run.events.some((event) => {
+      return event.role === "user";
+    });
+    const hasAssistantEvent = run.events.some((event) => {
+      return event.role === "assistant";
+    });
+    if (!hasUserEvent) {
+      renderedEvents.unshift(
+        `User: ${truncatePrior(run.prompt) || "[empty message]"}`,
+      );
+    }
+    if (!hasAssistantEvent) {
+      renderedEvents.push("Assistant: [no stored assistant message]");
+    }
+    return [
+      "---",
+      "",
+      `- RELATIVE_INDEX: ${relativeIndex}`,
+      `- RUN_ID: ${run.runId}`,
+      `- RUN_STATUS: ${run.status}`,
+      `- LOG_COMMAND: zero logs ${run.runId} --all`,
+      "",
+      ...renderedEvents,
+    ].join("\n");
+  });
+  return [
+    "# Web Chat Run Context",
+    "",
+    "The runs below are from the same web chat thread. When responding:",
+    "- Runs closer to RELATIVE_INDEX 0 are more recent -- prioritize them.",
+    "- Match the tone of the conversation -- casual messages deserve casual replies.",
+    "- Only provide technical analysis when explicitly asked a technical question.",
+    "- Keep responses proportional to the message length and complexity.",
+    "- Use the LOG_COMMAND for a run if you need more detailed agent log context.",
+    "",
+    blocks.join("\n\n"),
+    "",
+    "---",
+  ].join("\n");
+}
+
+async function getLatestRunsByThreadId(
+  db: Db,
+  threadId: string,
+): Promise<WebChatPriorRun[]> {
+  const runRows = await db
+    .select({
+      runId: zeroRuns.id,
+      status: agentRuns.status,
+      prompt: agentRuns.prompt,
+    })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, threadId),
+        or(
+          sql`${agentRuns.status} IS DISTINCT FROM ${"cancelled"}`,
+          sql`${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR}`,
+        ),
+      ),
+    )
+    .orderBy(desc(agentRuns.createdAt))
+    .limit(RECENT_CHAT_RUN_LIMIT);
+
+  const orderedRuns = runRows.reverse();
+  const runIds = orderedRuns.map((run) => {
+    return run.runId;
+  });
+  if (runIds.length === 0) {
+    return [];
+  }
+
+  const eventRows = await db
+    .select({
+      runId: chatEvents.runId,
+      eventType: chatEvents.eventType,
+      content: chatEvents.content,
+      userMessage: chatEvents.userMessage,
+      attachFiles: chatEvents.attachFiles,
+    })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.chatThreadId, threadId),
+        or(
+          and(
+            chatEventTypeIn(["input.prompt", "input.rejected"]),
+            isNotNull(chatEvents.userMessage),
+          ),
+          and(
+            not(chatEventTypeIn(["input.prompt", "input.rejected"])),
+            isNotNull(chatEvents.content),
+          ),
+        ),
+        inArray(chatEvents.runId, runIds),
+        chatEventTypeIn(CHAT_EVENT_TYPES),
+        visibleChatEventCondition(db),
+      ),
+    )
+    .orderBy(asc(chatEvents.seqId));
+
+  const eventsByRunId = new Map<string, WebChatPriorRunEvent[]>();
+  for (const row of eventRows) {
+    if (row.runId === null) {
+      continue;
+    }
+    const existing = eventsByRunId.get(row.runId) ?? [];
+    existing.push({
+      eventType: row.eventType,
+      role: chatEventCompatibilityRole(row.eventType),
+      content: row.content,
+      userMessage: row.userMessage,
+      attachFiles: row.attachFiles,
+    });
+    eventsByRunId.set(row.runId, existing);
+  }
+
+  return orderedRuns.map((run) => {
+    return {
+      runId: run.runId,
+      status: run.status,
+      prompt: run.prompt,
+      events: eventsByRunId.get(run.runId) ?? [],
+    };
+  });
+}
+
+export async function resolveWebChatSessionPrompt(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly sessionAction: ChatThreadSessionResolutionAction;
+  readonly context: WebChatSessionPromptContext;
+}): Promise<string> {
+  const incompleteContext =
+    args.sessionAction === "rotated"
+      ? ""
+      : await loadWebChatIncompleteContext(args.db, args.threadId);
+  const priorContext =
+    incompleteContext.length > 0
+      ? ""
+      : buildWebChatPriorRunsContext(
+          await getLatestRunsByThreadId(args.db, args.threadId),
+          args.context.inlineTemplatesEnabled,
+        );
+  return buildWebChatAppendSystemPrompt({
+    incompleteContext,
+    priorContext,
+    context: args.context,
+  });
+}

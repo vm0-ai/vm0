@@ -1,7 +1,7 @@
 use super::super::super::*;
 use super::super::support::{
     context_with_session, mock_run_config, mock_run_config_with_overrides, publish_idle_status,
-    push_job, seed_idle_pool, seed_idle_pool_with_overrides, shutdown, status_idle_sessions,
+    push_job, seed_idle_pool, seed_idle_pool_with_overrides, shutdown, status_idle_reuse_keys,
     test_profiles, two_profiles, wait_discover_entered, wait_idle_pool_len,
     wait_status_idle_empty_with_active_run,
 };
@@ -75,7 +75,7 @@ async fn reuse_take_clears_idle_status_while_job_is_active() {
             .await
     );
     assert_eq!(
-        status_idle_sessions(&status_path).await,
+        status_idle_reuse_keys(&status_path).await,
         vec!["sess-reuse-status".to_string()],
         "pre-run status should list the seeded idle VM",
     );
@@ -109,11 +109,11 @@ async fn reuse_take_clears_idle_status_while_job_is_active() {
     assert!(
         post_take_heartbeats.iter().any(|heartbeat| {
             heartbeat
-                .held_session_states
+                .held_sandbox_states
                 .iter()
-                .all(|state| state.session_id != "sess-reuse-status")
+                .all(|state| state.reuse_key != "sess-reuse-status")
         }),
-        "post-take heartbeat should stop advertising the active session; heartbeats: {post_take_heartbeats:?}"
+        "post-take heartbeat should stop advertising the active reuse key; heartbeats: {post_take_heartbeats:?}"
     );
 
     gate.notify_one();
@@ -153,7 +153,7 @@ async fn profile_mismatch_status_switches_from_idle_to_active_while_job_runs() {
     .await;
     publish_idle_status(&idle_pool, &status).await;
     assert_eq!(
-        status_idle_sessions(&status_path).await,
+        status_idle_reuse_keys(&status_path).await,
         vec!["sess-mm-status".to_string()],
         "pre-run status should list the stale idle VM",
     );

@@ -135,6 +135,28 @@ class TestRegistryBuiltinBaseUrlVars:
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.zendesk.com"
 
+    def test_builtin_firewall_entry_resolves_ecmascript_whitespace_template(self, tmp_path):
+        name = "ecmascript-whitespace"
+        install_test_builtin_firewall(
+            name=name,
+            base="https://${{\ufeffvars.TENANT\ufeff}}.example.com",
+            host_policy={"kind": "providerOwned", "suffixes": ["example.com"]},
+        )
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id=f"run-{name}",
+            name=name,
+            base_url_vars={"TENANT": "acme"},
+        )
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.example.com"
+
     @pytest.mark.parametrize(
         ("base_url_vars", "expected_message"),
         [

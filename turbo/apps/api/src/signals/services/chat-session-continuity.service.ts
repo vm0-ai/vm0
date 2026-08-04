@@ -42,6 +42,7 @@ export interface ChatThreadSessionResolution {
   readonly sessionId: string | undefined;
   readonly action: ChatThreadSessionResolutionAction;
   readonly expected: ChatThreadSessionSnapshot;
+  readonly cloudBrowserEnabled: boolean;
 }
 
 interface HistoricalThreadSession {
@@ -308,6 +309,7 @@ export async function resolveChatThreadSession(args: {
       routeRunId: zeroRuns.id,
       routeRunCreatedAt: agentRuns.createdAt,
       cliAgentType: conversations.cliAgentType,
+      cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
     })
     .from(chatThreads)
     .leftJoin(
@@ -366,6 +368,7 @@ export async function resolveChatThreadSession(args: {
       sessionId: rotate ? undefined : thread.sessionId,
       action: rotate ? "rotated" : "reused",
       expected,
+      cloudBrowserEnabled: thread.cloudBrowserEnabled,
     };
   }
 
@@ -380,6 +383,7 @@ export async function resolveChatThreadSession(args: {
         sessionId: null,
         conversationId: null,
       },
+      cloudBrowserEnabled: thread.cloudBrowserEnabled,
     };
   }
 
@@ -399,5 +403,6 @@ export async function resolveChatThreadSession(args: {
       sessionId: historical.sessionId,
       conversationId: historical.conversationId,
     },
+    cloudBrowserEnabled: thread.cloudBrowserEnabled,
   };
 }

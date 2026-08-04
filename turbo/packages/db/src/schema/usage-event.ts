@@ -51,9 +51,8 @@ import { agentRuns } from "./agent-run";
  * Writers must keep the same UUID across retries of the same logical
  * event; the UNIQUE index blocks duplicate insertions.
  *
- * Healthy usage follows `pending -> processed -> compacted`. `compacted`
- * means that the settled event remains stored here while its finalized facts
- * are represented in `usage_event_hourly_rollup`.
+ * Healthy usage follows `pending -> processed -> hourly rollup`, after which
+ * the source event is deleted.
  */
 export const usageEvent = pgTable(
   "usage_event",

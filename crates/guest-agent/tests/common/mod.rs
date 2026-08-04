@@ -28,6 +28,7 @@ use std::io;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::process::{Output, Stdio};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU64, AtomicUsize, Ordering},
@@ -37,6 +38,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::process::Command;
 use tokio::sync::{mpsc, oneshot};
 
 pub type SystemLogOverrideGuard = system_log::SystemLogOverrideGuard;
@@ -55,6 +57,8 @@ pub const SIGKILL_EXIT: i32 = 137;
 pub const CLEAN_EXIT: i32 = 0;
 
 pub const MOCK_TERMINATION_READY_EVENT: &str = "vm0_mock_termination_ready";
+pub const MOCK_CODEX_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
+pub const MOCK_CODEX_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
 pub const MOCK_POST_RESULT_READY_EVENT: &str = "vm0_mock_post_result_ready";
 pub const MOCK_POST_RESULT_ACTIVITY_ONE_EVENT: &str = "vm0_mock_post_result_activity_1_ready";
 pub const MOCK_POST_RESULT_ACTIVITY_TWO_EVENT: &str = "vm0_mock_post_result_activity_2_ready";
@@ -86,6 +90,66 @@ pub fn unique_temp_path(prefix: &str) -> PathBuf {
         "{prefix}-{}-{timestamp_nanos}-{counter}",
         std::process::id()
     ))
+}
+
+pub async fn command_output_with_timeout(
+    command: &mut Command,
+    timeout: Duration,
+    timeout_context: &str,
+) -> io::Result<Output> {
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()?;
+    let (Some(mut stdout), Some(mut stderr)) = (child.stdout.take(), child.stderr.take()) else {
+        return match child.kill().await {
+            Ok(()) => Err(io::Error::other(
+                "captured child omitted its stdout or stderr pipe",
+            )),
+            Err(error) => Err(io::Error::new(
+                error.kind(),
+                format!(
+                    "captured child omitted its stdout or stderr pipe; failed to terminate and reap child: {error}"
+                ),
+            )),
+        };
+    };
+    let mut stdout_bytes = Vec::new();
+    let mut stderr_bytes = Vec::new();
+
+    let output = {
+        let wait_with_output = async {
+            let (status, stdout_result, stderr_result) = tokio::join!(
+                child.wait(),
+                stdout.read_to_end(&mut stdout_bytes),
+                stderr.read_to_end(&mut stderr_bytes),
+            );
+            let status = status?;
+            stdout_result?;
+            stderr_result?;
+            Ok(Output {
+                status,
+                stdout: stdout_bytes,
+                stderr: stderr_bytes,
+            })
+        };
+        tokio::time::timeout(timeout, wait_with_output).await
+    };
+
+    match output {
+        Ok(output) => output,
+        Err(_) => match child.kill().await {
+            Ok(()) => Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                timeout_context.to_string(),
+            )),
+            Err(error) => Err(io::Error::new(
+                error.kind(),
+                format!("{timeout_context}; failed to terminate and reap timed-out child: {error}"),
+            )),
+        },
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -578,63 +642,55 @@ fn build_and_locate_mock_package(package: &str, binary: &str) -> Result<PathBuf,
     let fingerprint = mock_fingerprint(&package_dir, profile_dir_name)?;
     let marker = target_dir.join(format!(".vm0-{package}-{profile_dir_name}.fingerprint"));
     let lock = target_dir.join(format!(".vm0-{package}-{profile_dir_name}.lock"));
+    let _lock = acquire_mock_build_lock(&lock)?;
 
-    while std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&lock)
-        .is_err()
-    {
-        if std::fs::metadata(&lock)
-            .and_then(|metadata| metadata.modified())
-            .ok()
-            .and_then(|modified| modified.elapsed().ok())
-            .is_some_and(|age| age > Duration::from_secs(600))
-        {
-            let _ = std::fs::remove_file(&lock);
-            continue;
-        }
-        std::thread::sleep(Duration::from_millis(25));
+    if mock.exists() && std::fs::read_to_string(&marker).ok().as_deref() == Some(&fingerprint) {
+        return Ok(mock);
     }
 
-    let result = (|| {
-        if mock.exists() && std::fs::read_to_string(&marker).ok().as_deref() == Some(&fingerprint) {
-            return Ok(mock.clone());
+    let mut cmd = std::process::Command::new("cargo");
+    cmd.args(["build", "-p", package, "--quiet"])
+        .arg("--target-dir")
+        .arg(target_dir);
+    // Cargo profile → output dir mapping:
+    //   --release            → target_dir/release
+    //   --profile <name>     → target_dir/<name>
+    //   (default / dev)      → target_dir/debug
+    // So pick the flag that lands the artifact beside our test binary.
+    match profile_dir_name {
+        "debug" => {}
+        "release" => {
+            cmd.arg("--release");
         }
+        other => {
+            cmd.args(["--profile", other]);
+        }
+    }
 
-        let mut cmd = std::process::Command::new("cargo");
-        cmd.args(["build", "-p", package, "--quiet"])
-            .arg("--target-dir")
-            .arg(target_dir);
-        // Cargo profile → output dir mapping:
-        //   --release            → target_dir/release
-        //   --profile <name>     → target_dir/<name>
-        //   (default / dev)      → target_dir/debug
-        // So pick the flag that lands the artifact beside our test binary.
-        match profile_dir_name {
-            "debug" => {}
-            "release" => {
-                cmd.arg("--release");
-            }
-            other => {
-                cmd.args(["--profile", other]);
-            }
-        }
+    let status = cmd
+        .status()
+        .map_err(|e| format!("invoke cargo build: {e}"))?;
+    if !status.success() {
+        return Err(format!("cargo build -p {package} failed"));
+    }
+    if !mock.exists() {
+        return Err(format!("mock binary not found at {}", mock.display()));
+    }
+    std::fs::write(&marker, fingerprint).map_err(|e| format!("write mock fingerprint: {e}"))?;
+    Ok(mock)
+}
 
-        let status = cmd
-            .status()
-            .map_err(|e| format!("invoke cargo build: {e}"))?;
-        if !status.success() {
-            return Err(format!("cargo build -p {package} failed"));
-        }
-        if !mock.exists() {
-            return Err(format!("mock binary not found at {}", mock.display()));
-        }
-        std::fs::write(&marker, fingerprint).map_err(|e| format!("write mock fingerprint: {e}"))?;
-        Ok(mock.clone())
-    })();
-    let _ = std::fs::remove_file(lock);
-    result
+pub fn acquire_mock_build_lock(lock: &Path) -> Result<std::fs::File, String> {
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(lock)
+        .map_err(|e| format!("open mock build lock {}: {e}", lock.display()))?;
+    file.lock()
+        .map_err(|e| format!("lock mock build file {}: {e}", lock.display()))?;
+    Ok(file)
 }
 
 fn mock_fingerprint(package_dir: &Path, profile: &str) -> Result<String, String> {

@@ -31,6 +31,7 @@ import {
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
 import {
+  runnersActiveInputsContract,
   runnersNetworkPolicyRefreshContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
@@ -243,7 +244,8 @@ function runnerHeartbeatBody(
     readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
     readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
     readonly runningCount?: RunnerHeartbeatBody["runningCount"];
-    readonly heldSessionStates?: RunnerHeartbeatBody["heldSessionStates"];
+    readonly heldSandboxStates?: RunnerHeartbeatBody["heldSandboxStates"];
+    readonly heldWorkspaceStates?: RunnerHeartbeatBody["heldWorkspaceStates"];
     readonly mode?: RunnerHeartbeatBody["mode"];
   } = {},
 ): RunnerHeartbeatBody {
@@ -260,12 +262,17 @@ function runnerHeartbeatBody(
     allocatedMemoryMb: args.allocatedMemoryMb ?? 0,
     runningCount: args.runningCount ?? 0,
     admittableProfiles: args.admittableProfiles ?? ["vm0/default"],
-    heldSessionStates: args.heldSessionStates ?? [],
+    heldSandboxStates: args.heldSandboxStates ?? [],
+    heldWorkspaceStates: args.heldWorkspaceStates ?? [],
     mode: args.mode ?? "running",
   };
 }
 
 export function createRunsApi(context: TestContext) {
+  const defaultRunnerIdentity = {
+    runnerId: randomUUID(),
+    heartbeatGeneration: 1,
+  };
   const applyUserPermissionGrantRequestBody = (
     body: {
       readonly agentId: string;
@@ -485,11 +492,26 @@ export function createRunsApi(context: TestContext) {
         runApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(true),
           params: { id: runId },
-          body,
+          body: { runnerIdentity: defaultRunnerIdentity, ...body },
         }),
         [200],
       );
       return response.body;
+    },
+
+    async readRunnerActiveInputs(
+      sandboxToken: string,
+      runId: string,
+      fromSequence: number,
+    ) {
+      const response = await accept(
+        runApp(context)(runnersActiveInputsContract).list({
+          headers: { authorization: `Bearer ${sandboxToken}` },
+          params: { runId, fromSequence },
+        }),
+        [200],
+      );
+      return response.body.entries;
     },
 
     async refreshRunnerNetworkPolicy(runId: string, connectorSlug: string) {
@@ -1087,7 +1109,8 @@ export function createRunsApi(context: TestContext) {
         readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
         readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
         readonly runningCount?: RunnerHeartbeatBody["runningCount"];
-        readonly heldSessionStates?: RunnerHeartbeatBody["heldSessionStates"];
+        readonly heldSandboxStates?: RunnerHeartbeatBody["heldSandboxStates"];
+        readonly heldWorkspaceStates?: RunnerHeartbeatBody["heldWorkspaceStates"];
         readonly mode?: RunnerHeartbeatBody["mode"];
       } = {},
     ) {
@@ -1165,7 +1188,7 @@ export function createRunsApi(context: TestContext) {
         runApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(validAuth),
           params: { id: runId },
-          body,
+          body: { runnerIdentity: defaultRunnerIdentity, ...body },
         }),
         statuses,
       );

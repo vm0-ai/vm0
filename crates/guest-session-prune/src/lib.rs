@@ -17,6 +17,7 @@ use uuid::Uuid;
 pub use codex::{
     CODEX_COMPACT_GENERATION_MAX_BYTES, CODEX_JSONL_RECORD_MAX_BYTES, CodexHistoryCandidate,
     CodexHistoryIneligibleReason, CodexHistorySelection, select_codex_compact_generation,
+    select_codex_compact_generation_with_candidate_limit_for_test,
 };
 
 /// Maximum decoded size of an accepted Claude compact generation.
@@ -291,6 +292,24 @@ pub fn select_claude_compact_generation(
         source_path.as_ref(),
         expected_session_id,
         SelectionLimits::PRODUCTION,
+        || {},
+    )
+}
+
+/// Select a Claude compact generation with a bounded integration-test window.
+#[doc(hidden)]
+pub fn select_claude_compact_generation_with_candidate_limit_for_test(
+    source_path: impl AsRef<Path>,
+    expected_session_id: &str,
+    candidate_max_bytes: u64,
+) -> io::Result<ClaudeHistorySelection> {
+    select_with_limits_and_hook(
+        source_path.as_ref(),
+        expected_session_id,
+        SelectionLimits {
+            candidate_max_bytes,
+            ..SelectionLimits::PRODUCTION
+        },
         || {},
     )
 }

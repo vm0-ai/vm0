@@ -1,10 +1,40 @@
 //! Runner-to-guest storage manifest wire contract.
+//!
+//! In the normal runner lifecycle, storage planning and cache-source resolution produce a
+//! [`Manifest`]. The runner serializes it for stdin or fallback-file transport to
+//! `guest-download`, which deserializes it before building its filesystem execution plan.
+//!
+//! ## Execution projection and canonical JSON
+//!
+//! Rust callers work with separate [`Manifest::storages`] and [`Manifest::artifacts`] collections.
+//! The custom Serde implementations project both collections into one canonical `storageMounts`
+//! JSON array and classify each incoming mount back into one of them. A mount with
+//! `writeback: true` is an artifact; `writeback: false` or an absent `writeback` identifies a
+//! read-only storage.
+//!
+//! During deserialization, writeback mounts cannot contain `extractPath` or
+//! `instructionsTargetFilename`, while read-only mounts cannot set `empty: true` or contain
+//! `missingRootPolicy`. Duplicate `mountPath` values are rejected across the complete canonical
+//! array. These checks validate incoming wire data; directly constructing and serializing a
+//! [`Manifest`] does not run the same validation.
+//!
+//! ## Compatibility behavior
+//!
+//! `storageMounts` is required, so a legacy object containing only `storages` and/or `artifacts`
+//! does not deserialize. Missing `cleanupPaths` and `instructionCleanups` arrays default to empty.
+//! Serialization always includes `cleanupPaths` and omits `instructionCleanups` when it is empty.
+//! Unknown top-level and mount fields are ignored during deserialization so future fields can be
+//! added compatibly.
 
 use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-/// Storage preparation manifest sent from the runner to `guest-download`.
+/// In-memory execution projection behind the canonical storage manifest wire contract.
+///
+/// Although this type separates storages from artifacts, its custom Serde implementations exchange
+/// them through the canonical `storageMounts` array. The module-level contract documents the wire
+/// classification, validation, and compatibility behavior.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Manifest {
     /// Volume storage entries.

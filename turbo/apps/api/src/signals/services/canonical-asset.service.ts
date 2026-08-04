@@ -16,6 +16,7 @@ import type { SlackFile } from "../../lib/slack-webhook-context";
 import { env } from "../../lib/env";
 import { buildFileUrlFromKey, isArtifactKeyV2 } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
+import { isForeignKeyViolation } from "../../lib/pg-errors";
 import { isAllowedUploadType } from "../../lib/uploads-constants";
 import { type Db, writeDb$ } from "../external/db";
 import {
@@ -30,7 +31,7 @@ import {
   s3MetadataHeaders,
   s3ObjectHead,
 } from "../external/s3";
-import { settleIncludingAbort } from "../utils";
+import { settle, settleIncludingAbort } from "../utils";
 import {
   allocateArtifactObject$,
   artifactObjectMetadata,
@@ -840,7 +841,7 @@ async function ensureCanonicalSlackDelivery(
   db: Db,
   assetId: string,
   args: PrepareCanonicalPublishedAssetArgs,
-): Promise<void> {
+): Promise<boolean> {
   await db
     .insert(canonicalAssetDeliveries)
     .values({
@@ -869,7 +870,7 @@ async function ensureCanonicalSlackDelivery(
     )
     .limit(1);
   if (!delivery) {
-    throw new Error("Canonical Slack delivery is missing");
+    return false;
   }
   if (
     delivery.destination.channelId !== args.destination.channelId ||
@@ -881,6 +882,7 @@ async function ensureCanonicalSlackDelivery(
       "Upload operation identity was reused for another Slack destination",
     );
   }
+  return true;
 }
 
 export const prepareCanonicalPublishedAsset$ = command(
@@ -888,7 +890,7 @@ export const prepareCanonicalPublishedAsset$ = command(
     { get, set },
     args: PrepareCanonicalPublishedAssetArgs,
     signal: AbortSignal,
-  ): Promise<PreparedCanonicalPublishedAsset> => {
+  ): Promise<PreparedCanonicalPublishedAsset | null> => {
     const db = set(writeDb$);
     const scope = `run:${args.runId}`;
     const source = await sourceForRun(db, args.runId, "slack", signal);
@@ -899,7 +901,7 @@ export const prepareCanonicalPublishedAsset$ = command(
       .limit(1);
     signal.throwIfAborted();
     if (!run) {
-      throw new Error("Canonical publication run does not exist");
+      return null;
     }
 
     const artifact = await set(
@@ -912,14 +914,35 @@ export const prepareCanonicalPublishedAsset$ = command(
       },
       signal,
     );
-    const asset = await ensureCanonicalPublishedAsset(db, args, artifact, {
-      scope,
-      source,
-      chatThreadId: run.chatThreadId,
-    });
+    const assetResult = await settle(
+      ensureCanonicalPublishedAsset(db, args, artifact, {
+        scope,
+        source,
+        chatThreadId: run.chatThreadId,
+      }),
+      signal,
+    );
+    if (!assetResult.ok) {
+      if (isForeignKeyViolation(assetResult.error)) {
+        return null;
+      }
+      throw assetResult.error;
+    }
+    const asset = assetResult.value;
     signal.throwIfAborted();
-    await ensureCanonicalSlackDelivery(db, asset.id, args);
-    signal.throwIfAborted();
+    const deliveryResult = await settle(
+      ensureCanonicalSlackDelivery(db, asset.id, args),
+      signal,
+    );
+    if (!deliveryResult.ok) {
+      if (isForeignKeyViolation(deliveryResult.error)) {
+        return null;
+      }
+      throw deliveryResult.error;
+    }
+    if (!deliveryResult.value) {
+      return null;
+    }
     const storageKey = asset.storageKey;
     if (!storageKey) {
       throw new Error("Canonical publication storage key is missing");

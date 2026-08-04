@@ -39,7 +39,7 @@ pub struct FailureDiagnostic {
     pub failure_detail_source: Option<FailureDetailSource>,
     /// Parsed detailed failure reason, when available.
     pub failure_reason: Option<FailureReason>,
-    /// Availability of session history at the time of failure.
+    /// Conservative session-history target status recorded during failure handling.
     pub session_history_status: SessionHistoryStatus,
     /// Content-safe shape classification for the submitted prompt.
     pub prompt_shape: PromptShape,
@@ -685,17 +685,25 @@ impl AgentFramework {
     }
 }
 
-/// Session-history availability observed during failure handling.
+/// Conservative filesystem-probe result for a session-history target.
+///
+/// When a probe runs, these states describe whether a producer could resolve a
+/// target and inspect its metadata. `Unknown` also covers diagnostics created
+/// before a probe can run. No status proves that the target is readable or can
+/// support a recovery checkpoint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionHistoryStatus {
-    /// Session history file was expected but missing.
+    /// No history target could be resolved, or the resolved target was not found.
     Missing,
-    /// Session history file existed but had no useful content.
+    /// The resolved target was a zero-byte regular file.
     Empty,
-    /// Session history file existed with content.
+    /// Metadata lookup succeeded for any other resolved target.
+    ///
+    /// This does not validate the target's file type, readability, or content.
     Present,
-    /// Session history status could not be determined.
+    /// No probe result was recorded, or target resolution or metadata lookup
+    /// failed for a reason other than absence.
     Unknown,
     /// Session history is not applicable to the framework or failure mode.
     NotApplicable,

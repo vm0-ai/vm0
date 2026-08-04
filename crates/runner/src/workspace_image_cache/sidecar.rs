@@ -1,3 +1,47 @@
+//! Opportunistic session-history storage attached to workspace image cache entries.
+//!
+//! A sidecar keeps the history bytes needed to resume the session associated
+//! with a cached workspace image. It is a local optimization, not an
+//! authoritative history store: a probe miss, or a non-cancellation failure to
+//! materialize or restore a probed body, falls back to the authoritative
+//! session-history materializer.
+//!
+//! ## Probe contract
+//!
+//! A probe accepts only supported metadata whose framework, hashed session ID,
+//! history reference kind, history hash, and raw history size exactly match the
+//! requested restored-session identity. A raw body is accepted only when its
+//! encoded length equals the raw history size; a `CodexZstd` body is accepted
+//! only for Codex. The encoded size must also be nonzero and within the
+//! resume-history limit. The referenced body must still be a regular file with
+//! the recorded file identity and encoded length. Probe failures are classified
+//! by `WorkspaceSessionHistorySidecarMiss`, whose stable values let callers
+//! record why remote materialization was used instead.
+//!
+//! ## Publication contract
+//!
+//! Publication runs while the workspace cache entry is guarded. Promotion can
+//! preserve the committed sidecar after consuming a cache hit, replace it from
+//! a staged source, or prune it when a non-hit workspace has no replacement. A
+//! replacement source must be a regular file whose actual length matches its
+//! declared nonzero encoded size, must fit the resume-history limit, and must
+//! carry complete restored-session cache identity fields. An invalid source is
+//! discarded without changing the committed metadata/body pair.
+//!
+//! Replacement alternates between two body slots. It writes new metadata to a
+//! temporary file, moves the staged body into the inactive slot, and atomically
+//! renames the metadata into place as the commit point. Before that rename, the
+//! previous metadata still selects the previous body, so a failed replacement
+//! leaves the last committed sidecar usable. Only after the metadata commit does
+//! publication attempt to remove the old body slot.
+//!
+//! Sidecar publication is best-effort relative to workspace image promotion. A
+//! sidecar failure does not reject an otherwise valid image promotion, but a
+//! failure to publish the enclosing workspace cache metadata removes the image
+//! and prunes the sidecar. The sidecar metadata and both body slots belong to
+//! the cache entry and participate in its inspection, allocated-byte accounting,
+//! garbage collection, and cleanup.
+
 use std::path::Path;
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
@@ -18,11 +62,42 @@ use super::fs::{
 use super::metadata::WorkspaceImageFileIdentity;
 use super::types::{
     WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarMiss,
-    WorkspaceSessionHistorySidecarPromotionSource, WorkspaceSessionHistorySidecarRepresentation,
+    WorkspaceSessionHistorySidecarPromotionSource, WorkspaceSessionHistorySidecarPublication,
+    WorkspaceSessionHistorySidecarRepresentation,
 };
-use super::{SessionWorkspaceCache, entry::CacheEntryPaths};
+use super::{WorkspaceImageCache, entry::CacheEntryPaths};
 
-const SESSION_HISTORY_SIDECAR_FORMAT_VERSION: u8 = 1;
+const SESSION_HISTORY_SIDECAR_FORMAT_VERSION: u8 = 2;
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+enum WorkspaceSessionHistorySidecarBodySlot {
+    First,
+    Second,
+}
+
+impl WorkspaceSessionHistorySidecarBodySlot {
+    const ALL: [Self; 2] = [Self::First, Self::Second];
+
+    fn next(metadata: Option<&WorkspaceSessionHistorySidecarMetadata>) -> Self {
+        match metadata.map(|metadata| metadata.body_slot) {
+            Some(Self::First) => Self::Second,
+            Some(Self::Second) | None => Self::First,
+        }
+    }
+
+    fn file_name(self) -> &'static str {
+        match self {
+            Self::First => "session-history.first.blob",
+            Self::Second => "session-history.second.blob",
+        }
+    }
+}
+
+fn session_history_sidecar_body_paths(paths: &CacheEntryPaths) -> [std::path::PathBuf; 2] {
+    WorkspaceSessionHistorySidecarBodySlot::ALL
+        .map(|body_slot| paths.entry_dir().join(body_slot.file_name()))
+}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,12 +111,14 @@ struct WorkspaceSessionHistorySidecarMetadata {
     representation: WorkspaceSessionHistorySidecarRepresentation,
     encoded_size: u64,
     body_file: WorkspaceImageFileIdentity,
+    body_slot: WorkspaceSessionHistorySidecarBodySlot,
 }
 
 impl WorkspaceSessionHistorySidecarMetadata {
     fn from_source(
         source: &WorkspaceSessionHistorySidecarPromotionSource,
         body_metadata: &std::fs::Metadata,
+        body_slot: WorkspaceSessionHistorySidecarBodySlot,
     ) -> Option<Self> {
         let RestoredSessionIdentityFields {
             framework,
@@ -60,7 +137,12 @@ impl WorkspaceSessionHistorySidecarMetadata {
             representation: source.representation,
             encoded_size: source.encoded_size,
             body_file: WorkspaceImageFileIdentity::from_metadata(body_metadata),
+            body_slot,
         })
+    }
+
+    fn body_path(&self, paths: &CacheEntryPaths) -> std::path::PathBuf {
+        paths.entry_dir().join(self.body_slot.file_name())
     }
 
     fn validate_for_request(
@@ -112,7 +194,7 @@ impl WorkspaceSessionHistorySidecarMetadata {
     }
 }
 
-impl SessionWorkspaceCache {
+impl WorkspaceImageCache {
     pub(super) async fn probe_session_history_sidecar(
         &self,
         cache_key: &str,
@@ -123,18 +205,17 @@ impl SessionWorkspaceCache {
             .read_session_history_sidecar_metadata(paths.session_history_sidecar_metadata())
             .await?;
         metadata.validate_for_request(expected)?;
-        let body_metadata = fs::symlink_metadata(paths.session_history_sidecar())
-            .await
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    WorkspaceSessionHistorySidecarMiss::BodyMissing
-                } else {
-                    WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch
-                }
-            })?;
+        let body_path = metadata.body_path(&paths);
+        let body_metadata = fs::symlink_metadata(&body_path).await.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                WorkspaceSessionHistorySidecarMiss::BodyMissing
+            } else {
+                WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch
+            }
+        })?;
         metadata.validate_body_metadata(&body_metadata)?;
         Ok(WorkspaceSessionHistorySidecar {
-            path: paths.session_history_sidecar().to_path_buf(),
+            path: body_path,
             representation: metadata.representation,
             encoded_size: metadata.encoded_size,
         })
@@ -144,20 +225,18 @@ impl SessionWorkspaceCache {
         &self,
         cache_key: &str,
         run_id: RunId,
-        source: Option<&WorkspaceSessionHistorySidecarPromotionSource>,
+        publication: WorkspaceSessionHistorySidecarPublication<'_>,
     ) -> RunnerResult<()> {
         let paths = self.entry_paths(cache_key);
-        match source {
-            Some(source) => {
-                if let Err(error) = self
-                    .publish_session_history_sidecar_source(cache_key, run_id, &paths, source)
-                    .await
-                {
-                    let _ = self.prune_session_history_sidecar(cache_key).await;
-                    return Err(error);
-                }
+        match publication {
+            WorkspaceSessionHistorySidecarPublication::PreserveExisting => {}
+            WorkspaceSessionHistorySidecarPublication::Replace(source) => {
+                self.publish_session_history_sidecar_source(cache_key, run_id, &paths, source)
+                    .await?;
             }
-            None => self.prune_session_history_sidecar(cache_key).await?,
+            WorkspaceSessionHistorySidecarPublication::Prune => {
+                self.prune_session_history_sidecar(cache_key).await?;
+            }
         }
         Ok(())
     }
@@ -171,18 +250,23 @@ impl SessionWorkspaceCache {
 
     pub(super) async fn session_history_sidecar_allocated_bytes(&self, cache_key: &str) -> u64 {
         let paths = self.entry_paths(cache_key);
-        let body = workspace_cache_existing_path_allocated_bytes(paths.session_history_sidecar())
-            .await
-            .ok()
-            .flatten()
-            .unwrap_or(0);
-        let metadata =
+        let mut allocated = 0_u64;
+        for body_path in session_history_sidecar_body_paths(&paths) {
+            allocated = allocated.saturating_add(
+                workspace_cache_existing_path_allocated_bytes(&body_path)
+                    .await
+                    .ok()
+                    .flatten()
+                    .unwrap_or(0),
+            );
+        }
+        allocated.saturating_add(
             workspace_cache_existing_path_allocated_bytes(paths.session_history_sidecar_metadata())
                 .await
                 .ok()
                 .flatten()
-                .unwrap_or(0);
-        body.saturating_add(metadata)
+                .unwrap_or(0),
+        )
     }
 
     async fn publish_session_history_sidecar_source(
@@ -199,21 +283,23 @@ impl SessionWorkspaceCache {
             || source.encoded_size > RESUME_SESSION_HISTORY_MAX_BYTES
         {
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
-            self.prune_session_history_sidecar(cache_key).await?;
             return Ok(());
         }
+        let previous_metadata = self
+            .read_session_history_sidecar_metadata(paths.session_history_sidecar_metadata())
+            .await
+            .ok();
+        let body_slot = WorkspaceSessionHistorySidecarBodySlot::next(previous_metadata.as_ref());
         let Some(sidecar_metadata) =
-            WorkspaceSessionHistorySidecarMetadata::from_source(source, &tmp_metadata)
+            WorkspaceSessionHistorySidecarMetadata::from_source(source, &tmp_metadata, body_slot)
         else {
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
-            self.prune_session_history_sidecar(cache_key).await?;
             return Ok(());
         };
         ensure_workspace_cache_entry_dir(paths.entry_dir()).await?;
-        let tmp_metadata_path =
-            self.session_workspace_cache_tmp_sidecar_metadata(cache_key, run_id);
+        let tmp_metadata_path = self.workspace_image_cache_tmp_sidecar_metadata(cache_key, run_id);
         let sidecar_metadata_path = paths.session_history_sidecar_metadata();
-        let sidecar_body_path = paths.session_history_sidecar();
+        let sidecar_body_path = paths.entry_dir().join(body_slot.file_name());
         let _ = remove_workspace_cache_path_if_exists(&tmp_metadata_path).await;
         let bytes = serde_json::to_vec_pretty(&sidecar_metadata).map_err(|e| {
             RunnerError::Internal(format!("serialize workspace session history sidecar: {e}"))
@@ -223,17 +309,20 @@ impl SessionWorkspaceCache {
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
             return Err(e.into());
         }
-        let _ = remove_workspace_cache_path_if_exists(sidecar_metadata_path).await;
-        let _ = remove_workspace_cache_path_if_exists(sidecar_body_path).await;
-        if let Err(e) = fs::rename(&source.tmp_path, sidecar_body_path).await {
+        if let Err(e) = fs::rename(&source.tmp_path, &sidecar_body_path).await {
             let _ = remove_workspace_cache_path_if_exists(&tmp_metadata_path).await;
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
             return Err(e.into());
         }
         if let Err(e) = fs::rename(&tmp_metadata_path, sidecar_metadata_path).await {
             let _ = remove_workspace_cache_path_if_exists(&tmp_metadata_path).await;
-            let _ = remove_workspace_cache_path_if_exists(sidecar_body_path).await;
+            let _ = remove_workspace_cache_path_if_exists(&sidecar_body_path).await;
             return Err(e.into());
+        }
+        for body_path in session_history_sidecar_body_paths(paths) {
+            if body_path != sidecar_body_path {
+                let _ = remove_workspace_cache_path_if_exists(&body_path).await;
+            }
         }
         Ok(())
     }
@@ -242,10 +331,12 @@ impl SessionWorkspaceCache {
         let paths = self.entry_paths(cache_key);
         let metadata_result =
             remove_workspace_cache_path_if_exists(paths.session_history_sidecar_metadata()).await;
-        let body_result =
-            remove_workspace_cache_path_if_exists(paths.session_history_sidecar()).await;
+        let [first_body_path, second_body_path] = session_history_sidecar_body_paths(&paths);
+        let first_body_result = remove_workspace_cache_path_if_exists(&first_body_path).await;
+        let second_body_result = remove_workspace_cache_path_if_exists(&second_body_path).await;
         metadata_result?;
-        body_result?;
+        first_body_result?;
+        second_body_result?;
         Ok(())
     }
 

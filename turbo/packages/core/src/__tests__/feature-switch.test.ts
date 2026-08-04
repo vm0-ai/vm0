@@ -3,10 +3,9 @@ import { FeatureSwitchKey } from "../feature-switch-key";
 import {
   isFeatureEnabled,
   getAllFeatureStates,
-  filterUserOverridableFeatureSwitchOverrides,
+  filterFeatureSwitchOverrides,
   getFeatureSwitchDescriptions,
   getFeatureSwitchMetadata,
-  getUserOverridableFeatureSwitchKeys,
 } from "../feature-switch";
 
 describe("isFeatureEnabled", () => {
@@ -15,13 +14,18 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
       true,
     );
-    expect(isFeatureEnabled(FeatureSwitchKey.ZeroMailReplyFollowUp, {})).toBe(
+    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.CustomConnectorCliCreate, {}),
+    ).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.CustomConnectorOAuth2, {})).toBe(
       true,
     );
     expect(
-      isFeatureEnabled(FeatureSwitchKey.ComposerSkillSubstringSearch, {}),
+      isFeatureEnabled(FeatureSwitchKey.CustomConnectorPermissions, {}),
     ).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.SlackDmSessionRouting, {})).toBe(
+    expect(isFeatureEnabled(FeatureSwitchKey.ArtifactKeyV2, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.HostedArtifactVersions, {})).toBe(
       true,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.HtmlResourceIndex, {})).toBe(true);
@@ -42,7 +46,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
       false,
     );
-    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
     );
@@ -55,7 +58,12 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
       false,
     );
-    expect(isFeatureEnabled(FeatureSwitchKey.DeepSeekV4Flash, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.ZeroImageRecognition, {})).toBe(
+      false,
+    );
+    expect(isFeatureEnabled(FeatureSwitchKey.ZeroMailReplyFollowUp, {})).toBe(
+      false,
+    );
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -129,18 +137,15 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroImageRecognition]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroMailReplyFollowUp]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
-      true,
-    );
-    expect(staffOrgStates[FeatureSwitchKey.SlackDmSessionRouting]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
@@ -154,7 +159,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.DeepSeekV4Flash]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -162,7 +166,8 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroImageRecognition]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroMailReplyFollowUp]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
@@ -173,11 +178,8 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
-      true,
-    );
-    expect(otherOrgStates[FeatureSwitchKey.SlackDmSessionRouting]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
@@ -190,7 +192,6 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.DeepSeekV4Flash]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -222,63 +223,20 @@ describe("getAllFeatureStates", () => {
   });
 });
 
-describe("user-overridable switches", () => {
-  it("excludes internal switches from user override helpers", () => {
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.ComposerUploadPopover,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.WorkflowConnectorReadiness,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.PwaChatKeyboardGestures,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.ZeroMailReplyFollowUp,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.ZeroBrowser,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.GithubWebhookAutomations,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.StrapiIntegration,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.DeepSeekV4Flash,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.StructuredPromptInlineTemplates,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.ComposerConnectorPermissions,
+describe("feature switch override filtering", () => {
+  it("keeps overrides for every registered switch", () => {
+    const switches = Object.fromEntries(
+      Object.values(FeatureSwitchKey).map((key) => {
+        return [key, true];
+      }),
     );
 
-    expect(
-      filterUserOverridableFeatureSwitchOverrides({
-        [FeatureSwitchKey.ComposerUploadPopover]: true,
-        [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
-        [FeatureSwitchKey.PwaChatKeyboardGestures]: true,
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-        [FeatureSwitchKey.ZeroBrowser]: true,
-        [FeatureSwitchKey.DeepSeekV4Flash]: true,
-        [FeatureSwitchKey.ComposerConnectorPermissions]: true,
-        [FeatureSwitchKey.Dummy]: false,
-      }),
-    ).toStrictEqual({
-      [FeatureSwitchKey.ZeroBrowser]: true,
-      [FeatureSwitchKey.DeepSeekV4Flash]: true,
-      [FeatureSwitchKey.ComposerConnectorPermissions]: true,
-      [FeatureSwitchKey.Dummy]: false,
-      [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
-    });
+    expect(filterFeatureSwitchOverrides(switches)).toStrictEqual(switches);
   });
 
   it("ignores persisted overrides for removed switches", () => {
     expect(
-      filterUserOverridableFeatureSwitchOverrides({
+      filterFeatureSwitchOverrides({
         zeroPeopleSearch: false,
       }),
     ).toStrictEqual({});

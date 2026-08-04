@@ -1,13 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
-  GenerateDataKeyCommand,
-  type GenerateDataKeyCommandOutput,
-} from "@aws-sdk/client-kms";
-import {
   chatEventsContract,
   chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
 import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { onTestFinished, test as vitestTest } from "vitest";
@@ -21,9 +18,8 @@ import {
   createActiveGoalQueueEventFixture,
   readGoalQueueStateFixture,
 } from "../../../test-fixtures/goal-queue";
-import { admitPreviousDeploymentWorkflowEventFixture } from "../../../test-fixtures/workflow-queue";
+import { admitWorkflowAutomationEventFixture } from "../../../test-fixtures/workflow-queue";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { createDeferredPromise } from "../../utils";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -34,17 +30,14 @@ import {
   chatEventDisplayText,
 } from "./helpers/chat-event";
 import { readThreadSessionBinding } from "./helpers/runtime-state";
-import {
-  generateDataKeyOutput,
-  useSecretKmsProbe,
-} from "./helpers/secret-kms-probe";
+import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import {
   completeRunWithoutCallbacksFixture,
   holdChatEventQueueAdmissionLockFixture,
   holdOrgAdmissionLockFixture,
   readChatEventContextFixture,
-  readChatEventInputParamsFixture,
   setQueuedUserMessageCreatedAtFixture,
   setWorkflowQueueEventCreatedAtFixture,
 } from "../../../test-fixtures/chat-events";
@@ -58,8 +51,6 @@ const chatCallbacks = createChatCallbacksApi(context);
 
 const WORKFLOW_NAME = "workflow-queue-workflow";
 const CRON_CLEANUP_SANDBOXES_ROUTE = "/api/cron/cleanup-sandboxes";
-const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
-  "/api/cron/execute-workflow-automations";
 const CRON_SECRET = "test-cron-secret";
 
 function it(name: string, test: () => Promise<void>, timeout?: number): void {
@@ -78,6 +69,13 @@ function authHeaders() {
 
 function automationsClient() {
   return setupApp({ context })(zeroWorkflowAutomationsContract);
+}
+
+function workflowAutomationExecutionClient() {
+  return setupApp({
+    context,
+    routes: testWorkflowAutomationExecutionRoutes,
+  })(testWorkflowAutomationExecutionContract);
 }
 
 function chatEventsClient() {
@@ -332,12 +330,16 @@ async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
   return claim;
 }
 
-async function executeDueWorkflowAutomations(): Promise<void> {
-  const response = await createApp({ signal: context.signal }).request(
-    CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE,
-    { headers: { authorization: `Bearer ${CRON_SECRET}` } },
+async function executeDueWorkflowAutomations(
+  automationId: string,
+): Promise<void> {
+  const response = await accept(
+    workflowAutomationExecutionClient().execute({
+      body: { automation_id: automationId },
+    }),
+    [200],
   );
-  expect(response.status).toBe(200);
+  expect(response.body.success).toBeTruthy();
 }
 
 async function cleanupSandboxes(): Promise<void> {
@@ -599,19 +601,19 @@ describe("workflow queue", () => {
 
     const first = await postWorkflowWebhook(automation, "first");
     const firstRunId = await expectAcceptedRunId(first, automation.threadId);
-    // Every workflow event is encrypted before admission; the launched run
-    // then uses a second data key for runner execution secrets.
-    expect(kms.generateDataKeyCalls).toBe(2);
+    // Workflow admission stores no encrypted launch blob. The only data key is
+    // for the launched run's execution secrets.
+    expect(kms.generateDataKeyCalls).toBe(1);
 
     // The workflow is busy: the next two events are accepted into the queue
     // without creating runs.
     const secondApiStartTime = now() + 60_000;
     mockNow(secondApiStartTime);
     expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "second"));
-    expect(kms.generateDataKeyCalls).toBe(3);
+    expect(kms.generateDataKeyCalls).toBe(1);
     mockNow(secondApiStartTime + 1000);
     expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "third"));
-    expect(kms.generateDataKeyCalls).toBe(4);
+    expect(kms.generateDataKeyCalls).toBe(1);
     const pendingEvents = await pendingWorkflowEvents(automation.threadId);
     expect(pendingEvents).toHaveLength(2);
     const secondEvent = pendingEvents[0];
@@ -619,18 +621,6 @@ describe("workflow queue", () => {
     if (!secondEvent || !thirdEvent) {
       throw new Error("Expected two pending workflow queue events");
     }
-    await expect(
-      readChatEventInputParamsFixture(secondEvent.id),
-    ).resolves.toMatchObject({
-      eventId: secondEvent.id,
-      encryptedParams: expect.any(String),
-    });
-    await expect(
-      readChatEventInputParamsFixture(thirdEvent.id),
-    ).resolves.toMatchObject({
-      eventId: thirdEvent.id,
-      encryptedParams: expect.any(String),
-    });
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
       firstRunId,
     ]);
@@ -641,17 +631,11 @@ describe("workflow queue", () => {
     await completeRunThroughSandbox(scenario, firstRunId);
     const afterFirst = await workflowRunIds(automation.threadId);
     expect(afterFirst).toHaveLength(2);
-    await expect(
-      readChatEventInputParamsFixture(secondEvent.id),
-    ).resolves.toBeNull();
     const secondClaim = await completeRunThroughSandbox(
       scenario,
       afterFirst[1]!,
     );
     expect(secondClaim.apiStartTime).toBe(dequeuedAt);
-    await expect(
-      readChatEventInputParamsFixture(thirdEvent.id),
-    ).resolves.toBeNull();
   });
 
   it("keeps workflow events queued until cancellation recovery completes", async () => {
@@ -690,7 +674,6 @@ describe("workflow queue", () => {
   });
 
   it("labels a queued schedule tick with the time it fired, not the time it drained", async () => {
-    // Keep this global cron scan before schedules created by parallel test files.
     mockNow(Date.UTC(2020, 0, 2));
     const scenario = await setup();
     const webhookAutomation = await createWebhookAutomation(scenario);
@@ -720,7 +703,7 @@ describe("workflow queue", () => {
 
     const firedAt = Date.parse(created.body.nextRunAt) + 60_000;
     mockNow(firedAt);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
     const pendingTick = await pendingWorkflowEventForAutomation(
       webhookAutomation.threadId,
       created.body.id,
@@ -739,6 +722,13 @@ describe("workflow queue", () => {
       contextId: expect.any(String),
       automationId: created.body.id,
       triggerBrief: admittedTriggerBrief,
+      workflowName: WORKFLOW_NAME,
+      workflowEventType: "schedule",
+      workflowEventPayload: expect.objectContaining({
+        automationId: created.body.id,
+        trigger: "schedule",
+        firedAt: new Date(firedAt).toISOString(),
+      }),
     });
 
     // A later, unrelated drain pass launches the tick. Its trigger line must
@@ -781,74 +771,7 @@ describe("workflow queue", () => {
     );
   });
 
-  it("drains an event row enqueued without a prompt by a previous deployment", async () => {
-    const scenario = await setup();
-    const automation = await createWebhookAutomation(scenario);
-    const busyRunId = await expectAcceptedRunId(
-      await postWorkflowWebhook(automation, "busy"),
-      automation.threadId,
-    );
-
-    const legacyAppendSystemPrompt = [
-      "# Current context",
-      "You are running because a signed workflow webhook automation received an HTTP POST.",
-    ].join("\n");
-    const legacyTriggerBrief =
-      "Legacy workflow delivery exact-trigger-brief-24111";
-    await admitPreviousDeploymentWorkflowEventFixture({
-      automationId: automation.automationId,
-      chatThreadId: automation.threadId,
-      agentId: scenario.agentId,
-      appendSystemPrompt: legacyAppendSystemPrompt,
-      triggerBrief: legacyTriggerBrief,
-    });
-    const [legacyEvent] = await pendingWorkflowEvents(automation.threadId);
-    if (!legacyEvent) {
-      throw new Error("Expected the previous-deployment event");
-    }
-    await expect(
-      pendingWorkflowEvents(automation.threadId),
-    ).resolves.toStrictEqual([
-      expect.objectContaining({
-        id: legacyEvent.id,
-        userMessage: {
-          version: 1,
-          parts: [
-            expect.objectContaining({
-              type: "automation",
-              workflowId: scenario.workflowId,
-              automationBrief: legacyTriggerBrief,
-            }),
-          ],
-        },
-      }),
-    ]);
-
-    await completeRunThroughSandbox(scenario, busyRunId);
-    const runIds = await workflowRunIds(automation.threadId);
-    expect(runIds).toHaveLength(2);
-
-    await runsApi.heartbeatRunner(scenario.runnerGroup);
-    const claim = await runsApi.claimRunnerJob(runIds[1]!);
-    const claimedEvent = (await wf.readThreadEvents(automation.threadId)).find(
-      (event) => {
-        return event.eventType === "input.prompt" && event.runId === runIds[1];
-      },
-    );
-    expect(
-      claimedEvent
-        ? chatEventAutomationPart(claimedEvent)?.automationBrief
-        : undefined,
-    ).toBe(legacyTriggerBrief);
-    // The row carries no prompt, so it renders the way its writer intended
-    // rather than picking up a schedule trigger line.
-    expect(claim.prompt).toBe(`/${WORKFLOW_NAME}`);
-    expect(claim.appendSystemPrompt).toContain(legacyAppendSystemPrompt);
-    expect(claim.appendSystemPrompt).not.toContain("Trigger: ");
-  });
-
   it("coalesces schedule ticks: at most one pending tick per automation", async () => {
-    // Keep this global cron scan before schedules created by parallel test files.
     mockNow(Date.UTC(2020, 0, 1));
     const scenario = await setup();
     const webhookAutomation = await createWebhookAutomation(scenario);
@@ -877,12 +800,12 @@ describe("workflow queue", () => {
       await postWorkflowWebhook(webhookAutomation, "busy"),
       webhookAutomation.threadId,
     );
-    expect(kms.generateDataKeyCalls).toBe(2);
+    expect(kms.generateDataKeyCalls).toBe(1);
 
     // Two due ticks while busy: the second coalesces into the pending one.
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
-    expect(kms.generateDataKeyCalls).toBe(3);
+    await executeDueWorkflowAutomations(created.body.id);
+    expect(kms.generateDataKeyCalls).toBe(1);
     const updated = await accept(
       automationsClient().update({
         headers: authHeaders(),
@@ -902,7 +825,7 @@ describe("workflow queue", () => {
     }
     const coalescedKms = useSecretKmsProbe();
     mockNow(Date.parse(updated.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
     expect(coalescedKms.generateDataKeyCalls).toBe(0);
     const coalescedEvents = await pendingWorkflowEvents(
       webhookAutomation.threadId,
@@ -916,12 +839,6 @@ describe("workflow queue", () => {
       readChatEventContextFixture(coalescedEvent.id),
     ).resolves.toMatchObject({
       automationId: created.body.id,
-    });
-    await expect(
-      readChatEventInputParamsFixture(coalescedEvent.id),
-    ).resolves.toMatchObject({
-      eventId: coalescedEvent.id,
-      encryptedParams: expect.any(String),
     });
     await completeRunThroughSandbox(scenario, busyRunId);
     const afterBusy = await workflowRunIds(webhookAutomation.threadId);
@@ -970,6 +887,138 @@ describe("workflow queue", () => {
     ).resolves.toHaveLength(1);
   });
 
+  it("uses full PostgreSQL timestamp precision for workflow queue FIFO", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const firstBrief = "First precise workflow event";
+    const firstEventId = await admitWorkflowAutomationEventFixture({
+      automationId: automation.automationId,
+      chatThreadId: automation.threadId,
+      triggerBrief: firstBrief,
+    });
+    const secondBrief = "Second precise workflow event";
+    const secondEventId = await admitWorkflowAutomationEventFixture({
+      automationId: automation.automationId,
+      chatThreadId: automation.threadId,
+      triggerBrief: secondBrief,
+    });
+    const firstSortsBeforeSecond =
+      firstEventId.localeCompare(secondEventId) < 0;
+    const databaseFirst = firstSortsBeforeSecond
+      ? { id: secondEventId, brief: secondBrief }
+      : { id: firstEventId, brief: firstBrief };
+    const databaseSecond = firstSortsBeforeSecond
+      ? { id: firstEventId, brief: firstBrief }
+      : { id: secondEventId, brief: secondBrief };
+
+    // Both values become the same JavaScript Date. The database-first event
+    // deliberately has the lexicographically later UUID, so a millisecond
+    // conversion followed by an id sort would choose the wrong queue head.
+    await setWorkflowQueueEventCreatedAtFixture({
+      eventId: databaseFirst.id,
+      createdAt: "2019-12-31 23:54:00.000100",
+    });
+    await setWorkflowQueueEventCreatedAtFixture({
+      eventId: databaseSecond.id,
+      createdAt: "2019-12-31 23:54:00.000900",
+    });
+
+    const result = await postWorkflowWebhook(
+      automation,
+      "drain the precise workflow queue",
+    );
+    expectAcceptedWithoutRun(result);
+
+    const [runId] = await workflowRunIds(automation.threadId);
+    if (!runId) {
+      throw new Error(
+        "Expected the database-first queue event to create a run",
+      );
+    }
+    const claimedEvent = (await wf.readThreadEvents(automation.threadId)).find(
+      (event) => {
+        return event.runId === runId && event.eventType === "input.prompt";
+      },
+    );
+    expect(
+      claimedEvent
+        ? chatEventAutomationPart(claimedEvent)?.automationBrief
+        : undefined,
+    ).toBe(databaseFirst.brief);
+    expect(
+      (await pendingWorkflowEvents(automation.threadId)).map((event) => {
+        return event.id;
+      }),
+    ).toContain(databaseSecond.id);
+  });
+
+  it("retries when an earlier workflow event becomes queue head during launch", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const originalEventId = await admitWorkflowAutomationEventFixture({
+      automationId: automation.automationId,
+      chatThreadId: automation.threadId,
+      triggerBrief: "Original queued workflow event",
+    });
+    await setWorkflowQueueEventCreatedAtFixture({
+      eventId: originalEventId,
+      createdAt: new Date("2019-12-31T23:55:00.000Z"),
+    });
+
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: scenario.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    const workflowRequest = postWorkflowWebhook(
+      automation,
+      "launch while queue head changes",
+    );
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+
+    const preemptingBrief = "Earlier workflow event admitted during launch";
+    const preemptingEventId = await admitWorkflowAutomationEventFixture({
+      automationId: automation.automationId,
+      chatThreadId: automation.threadId,
+      triggerBrief: preemptingBrief,
+    });
+    await setWorkflowQueueEventCreatedAtFixture({
+      eventId: preemptingEventId,
+      createdAt: new Date("2019-12-31T23:54:00.000Z"),
+    });
+
+    admissionLock.release();
+    const result = await workflowRequest;
+    await admissionLock.done;
+    expectAcceptedWithoutRun(result);
+
+    const [runId] = await workflowRunIds(automation.threadId);
+    if (!runId) {
+      throw new Error("Expected the replacement queue head to create a run");
+    }
+    const claimedEvent = (await wf.readThreadEvents(automation.threadId)).find(
+      (event) => {
+        return event.runId === runId && event.eventType === "input.prompt";
+      },
+    );
+    expect(
+      claimedEvent
+        ? chatEventAutomationPart(claimedEvent)?.automationBrief
+        : undefined,
+    ).toBe(preemptingBrief);
+    const pendingEventIds = (
+      await pendingWorkflowEvents(automation.threadId)
+    ).map((event) => {
+      return event.id;
+    });
+    expect(pendingEventIds).toHaveLength(2);
+    expect(pendingEventIds).toContain(originalEventId);
+  });
+
   it("keeps claimed automation context after the automation is deleted", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
@@ -1006,138 +1055,6 @@ describe("workflow queue", () => {
       readChatEventContextFixture(claimedEvent.id),
     ).resolves.toStrictEqual(contextBeforeDelete);
     await runsApi.requestCancelRun(scenario.actor, runId, [200]);
-  });
-
-  it("propagates queue encryption failure while persistence remains necessary", async () => {
-    const scenario = await setup();
-    const automation = await createWebhookAutomation(scenario);
-    const firstRunId = await expectAcceptedRunId(
-      await postWorkflowWebhook(automation, "first"),
-      automation.threadId,
-    );
-
-    const encryptionError = new Error("queue payload encryption failed");
-    const kms = useSecretKmsProbe((_command, callNumber) => {
-      return callNumber === 1 ? Promise.reject(encryptionError) : undefined;
-    });
-
-    const failed = await postWorkflowWebhook(automation, "second");
-    expect(failed).toStrictEqual({
-      status: 500,
-      body: { error: "Internal server error" },
-    });
-    expect(kms.generateDataKeyCalls).toBe(1);
-    expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(
-      encryptionError,
-    );
-
-    await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
-      firstRunId,
-    ]);
-    await completeRunThroughSandbox(scenario, firstRunId);
-    await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
-      firstRunId,
-    ]);
-  });
-
-  it("finishes required queue persistence when the request aborts during encryption", async () => {
-    const scenario = await setup();
-    const automation = await createWebhookAutomation(scenario);
-    const firstRunId = await expectAcceptedRunId(
-      await postWorkflowWebhook(automation, "first"),
-      automation.threadId,
-    );
-
-    const kmsStarted = createDeferredPromise<void>(context.signal);
-    const releaseKms = createDeferredPromise<void>(context.signal);
-    onTestFinished(() => {
-      if (!kmsStarted.settled()) {
-        kmsStarted.resolve(undefined);
-      }
-      if (!releaseKms.settled()) {
-        releaseKms.resolve(undefined);
-      }
-    });
-    async function encryptAfterRelease(
-      command: GenerateDataKeyCommand,
-    ): Promise<GenerateDataKeyCommandOutput> {
-      await releaseKms.promise;
-      return generateDataKeyOutput(command);
-    }
-    const kms = useSecretKmsProbe((command, callNumber) => {
-      if (callNumber !== 1) {
-        return undefined;
-      }
-      kmsStarted.resolve(undefined);
-      return encryptAfterRelease(command);
-    });
-
-    const requestController = new AbortController();
-    const secondRequest = postWorkflowWebhook(
-      automation,
-      "second",
-      requestController.signal,
-    );
-    await kmsStarted.promise;
-    const abortError = new Error("request aborted during queue encryption");
-    abortError.name = "AbortError";
-    requestController.abort(abortError);
-    releaseKms.resolve(undefined);
-
-    await expect(secondRequest).resolves.toStrictEqual({
-      status: 500,
-      body: { error: "Internal server error" },
-    });
-    expect(kms.generateDataKeyCalls).toBe(1);
-
-    await completeRunThroughSandbox(scenario, firstRunId);
-    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
-  });
-
-  it("requires queue persistence even when encryption finishes after the thread becomes idle", async () => {
-    const scenario = await setup();
-    const automation = await createWebhookAutomation(scenario);
-    const firstRunId = await expectAcceptedRunId(
-      await postWorkflowWebhook(automation, "first"),
-      automation.threadId,
-    );
-
-    const kmsStarted = createDeferredPromise<void>(context.signal);
-    const releaseKms = createDeferredPromise<void>(context.signal);
-    onTestFinished(() => {
-      if (!kmsStarted.settled()) {
-        kmsStarted.resolve(undefined);
-      }
-      if (!releaseKms.settled()) {
-        releaseKms.resolve(undefined);
-      }
-    });
-    async function failKmsAfterRelease(): Promise<GenerateDataKeyCommandOutput> {
-      await releaseKms.promise;
-      throw new Error("queue payload encryption failed");
-    }
-    const kms = useSecretKmsProbe((_command, callNumber) => {
-      if (callNumber !== 1) {
-        return undefined;
-      }
-      kmsStarted.resolve(undefined);
-      return failKmsAfterRelease();
-    });
-
-    const secondRequest = postWorkflowWebhook(automation, "second");
-    await kmsStarted.promise;
-    expect(kms.generateDataKeyCalls).toBe(1);
-    await completeRunThroughSandbox(scenario, firstRunId);
-    releaseKms.resolve(undefined);
-
-    await expect(secondRequest).resolves.toStrictEqual({
-      status: 500,
-      body: { error: "Internal server error" },
-    });
-    expect(kms.generateDataKeyCalls).toBe(1);
-    await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
-      firstRunId,
-    ]);
   });
 
   it("rejects only the failed webhook trigger and accepts the next event", async () => {
@@ -1208,10 +1125,6 @@ describe("workflow queue", () => {
     if (!rejectedEvent?.revokesEventId) {
       throw new Error("Expected the rejected event to revoke its queue input");
     }
-    await expect(
-      readChatEventInputParamsFixture(rejectedEvent.revokesEventId),
-    ).resolves.toBeNull();
-
     await runsApi.ensureOrgModelProvider(scenario.actor);
     const runId = await expectAcceptedRunId(
       await postWorkflowWebhook(automation, "next trigger"),
@@ -1245,8 +1158,8 @@ describe("workflow queue", () => {
     );
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
+    await executeDueWorkflowAutomations(created.body.id);
 
     const automation = await wf.readAutomation(created.body.id);
     expect(automation.nextRunAt).not.toBeNull();
@@ -1260,7 +1173,7 @@ describe("workflow queue", () => {
       throw new Error("Expected the failed recurring schedule to re-arm");
     }
     mockNow(Date.parse(automation.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
     await expect(
       workflowRunIds(created.body.chatThreadId),
     ).resolves.toHaveLength(1);
@@ -1294,7 +1207,7 @@ describe("workflow queue", () => {
     expect(created.body.chatThreadId).toBe(webhookAutomation.threadId);
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations();
+    await executeDueWorkflowAutomations(created.body.id);
     const claimed = await wf.readAutomation(created.body.id);
     expect(claimed.enabled).toBeTruthy();
     expect(claimed.nextRunAt).toBeNull();

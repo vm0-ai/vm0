@@ -7,7 +7,7 @@ Do not hand-edit. Runtime code uses this checked-in snapshot so
 billing never depends on live network access inside the sandbox.
 """
 
-IANA_TLD_VERSION = "2026042600"
+IANA_TLD_VERSION = "2026080300"
 
 IANA_TLDS = frozenset(
     {
@@ -1245,6 +1245,7 @@ IANA_TLDS = frozenset(
         "watches",
         "weather",
         "weatherchannel",
+        "web",
         "webcam",
         "weber",
         "website",

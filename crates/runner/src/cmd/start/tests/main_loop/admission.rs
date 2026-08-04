@@ -1,59 +1,111 @@
 use super::super::super::*;
 use super::super::support::{
-    assert_run_exits_within, context_with_session, minimal_context, mock_run_config,
-    mock_run_config_with_overrides, push_job, seed_idle_pool,
+    TEST_HEARTBEAT_GENERATION, TEST_RUNNER_ID, assert_run_exits_within, context_with_session,
+    minimal_context, mock_run_config, mock_run_config_with_overrides, push_job, seed_idle_pool,
     seed_idle_pool_with_history_generation, seed_idle_pool_with_overrides,
     seed_workspace_cache_state, shutdown, test_profiles, wait_budget_count, wait_cancel_token,
     wait_cancel_token_removed, wait_discover_entered,
 };
-use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use std::sync::Arc;
 
+use super::super::super::active_reuse_keys::ActiveReuseKeyGuard;
 use crate::paths::RunnerPaths;
-use crate::types::{SandboxReuseResult, SessionAffinityResource};
-use crate::workspace_image_cache::SessionWorkspaceCache;
+use crate::provider::{RunnerPreference, RunnerPreferenceReason};
+use crate::types::SandboxReuseResult;
+use crate::workspace_image_cache::WorkspaceImageCache;
 
-const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
+const NON_SELECTED_RUNNER_ID: u128 = 1;
 
-fn affinity_protected_candidate(run_id: RunId, session_id: &str) -> crate::provider::JobCandidate {
-    crate::provider::JobCandidate::new(run_id, "vm0/default".into()).with_affinity_metadata(
-        Some(session_id.to_string()),
-        Some(session_id.to_string()),
-        Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
+fn preferred_candidate(
+    run_id: RunId,
+    reuse_key: Option<&str>,
+    reason: RunnerPreferenceReason,
+) -> crate::provider::JobCandidate {
+    preferred_candidate_until(
+        run_id,
+        reuse_key,
+        reason,
+        std::time::Instant::now() + Duration::from_secs(30),
     )
 }
 
-fn reusable_affinity_protected_candidate(
+fn preferred_candidate_until(
     run_id: RunId,
-    session_id: &str,
+    reuse_key: Option<&str>,
+    reason: RunnerPreferenceReason,
+    deadline: std::time::Instant,
 ) -> crate::provider::JobCandidate {
-    affinity_protected_candidate(run_id, session_id)
-        .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox))
+    crate::provider::JobCandidate::new(run_id, "vm0/default".into())
+        .with_reuse_key(reuse_key.map(str::to_owned))
+        .with_runner_preference(Some(RunnerPreference::for_test(
+            uuid::Uuid::from_u128(NON_SELECTED_RUNNER_ID),
+            1,
+            reason,
+            deadline,
+        )))
 }
 
-fn workspace_affinity_protected_candidate(
-    run_id: RunId,
-    session_id: &str,
-) -> crate::provider::JobCandidate {
-    affinity_protected_candidate(run_id, session_id)
-        .with_session_affinity_resource(Some(SessionAffinityResource::WorkspaceCache))
+fn matching_preference_candidate(run_id: RunId, session_id: &str) -> crate::provider::JobCandidate {
+    preferred_candidate(
+        run_id,
+        Some(session_id),
+        RunnerPreferenceReason::MatchingReuseKey,
+    )
 }
 
-fn generation_affinity_protected_candidate(
+fn exact_generation_preference_candidate(
     run_id: RunId,
     session_id: &str,
     target_generation_run_id: RunId,
 ) -> crate::provider::JobCandidate {
+    preferred_candidate(
+        run_id,
+        Some(session_id),
+        RunnerPreferenceReason::ExactHistoryGeneration,
+    )
+    .with_history_generation_run_id(Some(target_generation_run_id))
+}
+
+fn finalizing_candidate(
+    run_id: RunId,
+    reuse_key: &str,
+    history_generation_run_id: RunId,
+    runner_id: &str,
+    heartbeat_generation: u64,
+) -> crate::provider::JobCandidate {
+    finalizing_candidate_until(
+        run_id,
+        reuse_key,
+        history_generation_run_id,
+        runner_id,
+        heartbeat_generation,
+        std::time::Instant::now() + Duration::from_secs(30),
+    )
+}
+
+fn finalizing_candidate_until(
+    run_id: RunId,
+    reuse_key: &str,
+    history_generation_run_id: RunId,
+    runner_id: &str,
+    heartbeat_generation: u64,
+    deadline: std::time::Instant,
+) -> crate::provider::JobCandidate {
     crate::provider::JobCandidate::new(run_id, "vm0/default".into())
-        .with_affinity_metadata(
-            Some(session_id.to_string()),
-            Some(session_id.to_string()),
-            Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
-        )
-        .with_history_generation_run_id(Some(target_generation_run_id))
-        .with_history_generation_affinity_protected_until(Some(
-            FUTURE_AFFINITY_PROTECTED_UNTIL.to_string(),
-        ))
+        .with_reuse_key(Some(reuse_key.to_owned()))
+        .with_history_generation_run_id(Some(history_generation_run_id))
+        .with_runner_preference(Some(RunnerPreference::for_test(
+            runner_id.parse().unwrap(),
+            heartbeat_generation,
+            RunnerPreferenceReason::FinalizingPredecessor,
+            deadline,
+        )))
+}
+
+fn context_with_reuse_key(run_id: RunId, reuse_key: &str) -> crate::types::ExecutionContext {
+    let mut context = minimal_context(run_id);
+    context.reuse_key = Some(reuse_key.to_owned());
+    context
 }
 
 /// TOCTOU regression: soft drain can arrive after the main loop has selected
@@ -287,7 +339,7 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
     env.provider.set_claim_result(conflict_run_id, None);
     env.handle
         .discover_tx
-        .send(generation_affinity_protected_candidate(
+        .send(exact_generation_preference_candidate(
             conflict_run_id,
             session_id,
             reserved_generation_run_id,
@@ -297,7 +349,7 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     wait_cancel_token_removed(&env.cancel_tokens, conflict_run_id, Duration::from_secs(5)).await;
     assert_eq!(
-        idle_pool.lock().await.held_sessions(),
+        idle_pool.lock().await.held_reuse_keys(),
         vec![session_id.to_string()],
         "claim conflict should restore the exact idle reservation"
     );
@@ -315,7 +367,7 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
     env.handle
         .discover_tx
         .send(
-            reusable_affinity_protected_candidate(followup_run_id, session_id)
+            matching_preference_candidate(followup_run_id, session_id)
                 .with_history_generation_run_id(Some(followup_target_generation_run_id)),
         )
         .unwrap();
@@ -329,7 +381,7 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn reusable_affinity_reservation_is_restored_after_claim_conflict() {
+async fn matching_preference_reservation_is_restored_after_claim_conflict() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&env.idle_pool);
@@ -342,13 +394,13 @@ async fn reusable_affinity_reservation_is_restored_after_claim_conflict() {
     env.provider.set_claim_result(run_id, None);
     env.handle
         .discover_tx
-        .send(reusable_affinity_protected_candidate(run_id, session_id))
+        .send(matching_preference_candidate(run_id, session_id))
         .unwrap();
 
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
     assert_eq!(
-        idle_pool.lock().await.held_sessions(),
+        idle_pool.lock().await.held_reuse_keys(),
         vec![session_id.to_string()],
         "lost claim should restore the generic reusable reservation"
     );
@@ -382,7 +434,7 @@ async fn reusable_claim_without_generation_target_reuses_sandbox() {
         .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
     env.handle
         .discover_tx
-        .send(reusable_affinity_protected_candidate(run_id, session_id))
+        .send(matching_preference_candidate(run_id, session_id))
         .unwrap();
 
     let completion = env
@@ -397,8 +449,8 @@ async fn reusable_claim_without_generation_target_reuses_sandbox() {
         .find(|candidate| candidate.run_id() == run_id)
         .expect("missing-target reusable candidate should reach claim");
     assert_eq!(
-        candidate.session_affinity_resource(),
-        Some(SessionAffinityResource::ReusableSandbox)
+        candidate.runner_preference().map(RunnerPreference::reason),
+        Some(RunnerPreferenceReason::MatchingReuseKey)
     );
 
     shutdown(&env, run_handle).await;
@@ -430,7 +482,7 @@ async fn generation_protected_different_idle_sandbox_defers_before_claim() {
         .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
     env.handle
         .discover_tx
-        .send(generation_affinity_protected_candidate(
+        .send(exact_generation_preference_candidate(
             run_id,
             session_id,
             target_generation_run_id,
@@ -442,14 +494,13 @@ async fn generation_protected_different_idle_sandbox_defers_before_claim() {
         env.handle.claim_candidates().is_empty(),
         "a different reusable generation must not reach claim during exact protection"
     );
-    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+    assert_eq!(env.handle.deferred_poll_deadlines().len(), 1);
     let pool = idle_pool.lock().await;
-    assert_eq!(pool.held_sessions(), vec![session_id.to_string()]);
+    assert_eq!(pool.held_reuse_keys(), vec![session_id.to_string()]);
     assert_eq!(
-        pool.held_session_states()[0]
+        pool.held_sandbox_states()[0]
             .reusable_sandbox
-            .as_ref()
-            .and_then(|sandbox| sandbox.history_generation_run_id),
+            .history_generation_run_id,
         Some(held_generation_run_id),
         "the different generation must remain available for fallback after expiry"
     );
@@ -459,7 +510,7 @@ async fn generation_protected_different_idle_sandbox_defers_before_claim() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn affinity_protected_candidate_without_local_session_defers_before_claim() {
+async fn matching_preference_without_local_resource_defers_before_claim() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
@@ -473,7 +524,7 @@ async fn affinity_protected_candidate_without_local_session_defers_before_claim(
     );
     env.handle
         .discover_tx
-        .send(reusable_affinity_protected_candidate(
+        .send(matching_preference_candidate(
             run_id,
             "sess-owned-elsewhere",
         ))
@@ -485,19 +536,361 @@ async fn affinity_protected_candidate_without_local_session_defers_before_claim(
 
     assert!(
         env.handle.claim_candidates().is_empty(),
-        "runner must not claim a protected same-session candidate unless it holds the session"
+        "runner must not claim a protected same-reuse-key candidate without local reusable state"
     );
     assert_eq!(
-        env.handle.deferred_poll_delays().len(),
+        env.handle.deferred_poll_deadlines().len(),
         1,
-        "runner should schedule a follow-up poll after the affinity protection expires"
+        "runner should schedule a follow-up poll after the preference expires"
     );
 
     shutdown(&env, run_handle).await;
 }
 
+#[tokio::test]
+async fn selected_finalizing_candidate_keeps_reactor_live_and_claims_after_key_release() {
+    let (config, env) = mock_run_config(test_profiles(), 4, 8192, 2);
+    let reuse_key = "thread:pending-finalization";
+    let history_generation_run_id = RunId::new_v4();
+    let predecessor_guard = ActiveReuseKeyGuard::new(
+        env.active_reuse_keys.clone(),
+        Arc::clone(&env.reuse_state_notify),
+        Some(reuse_key.to_owned()),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let pending_run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        pending_run_id,
+        Some(context_with_reuse_key(pending_run_id, reuse_key)),
+    );
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate(
+            pending_run_id,
+            reuse_key,
+            history_generation_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+        ))
+        .unwrap();
+
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(
+        env.handle.claim_candidates().is_empty(),
+        "selected finalizing candidate should remain unclaimed while the key is active"
+    );
+
+    let unrelated_run_id = RunId::new_v4();
+    push_job(
+        &env,
+        unrelated_run_id,
+        "vm0/default",
+        Some(minimal_context(unrelated_run_id)),
+    );
+    assert!(
+        env.handle
+            .wait_completion(unrelated_run_id, Duration::from_secs(5))
+            .await
+            .is_some(),
+        "unrelated work should continue while a finalizing candidate is pending"
+    );
+
+    drop(predecessor_guard);
+    assert!(
+        env.handle
+            .wait_completion(pending_run_id, Duration::from_secs(5))
+            .await
+            .is_some(),
+        "active-key release without a reusable resource should wake ordinary admission"
+    );
+    assert_eq!(env.handle.deferred_poll_deadlines().len(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn selected_finalizing_candidate_claims_exact_resource_on_reuse_state_wakeup() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = "thread:pending-exact-resource";
+    let history_generation_run_id = RunId::new_v4();
+    let predecessor_guard = ActiveReuseKeyGuard::new(
+        env.active_reuse_keys.clone(),
+        Arc::clone(&env.reuse_state_notify),
+        Some(reuse_key.to_owned()),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate(
+            run_id,
+            reuse_key,
+            history_generation_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    seed_idle_pool_with_history_generation(
+        &env.idle_pool,
+        &budget,
+        reuse_key,
+        "vm0/default",
+        2,
+        4096,
+        history_generation_run_id,
+    )
+    .await;
+    env.reuse_state_notify.notify_one();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("exact resource state should wake the retained candidate");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    drop(predecessor_guard);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn non_selected_finalizing_candidate_is_not_retained() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let reuse_key = "thread:non-selected-finalization";
+    let predecessor_guard = ActiveReuseKeyGuard::new(
+        env.active_reuse_keys.clone(),
+        Arc::clone(&env.reuse_state_notify),
+        Some(reuse_key.to_owned()),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate(
+            run_id,
+            reuse_key,
+            RunId::new_v4(),
+            &uuid::Uuid::from_u128(NON_SELECTED_RUNNER_ID).to_string(),
+            1,
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    drop(predecessor_guard);
+    tokio::task::yield_now().await;
+    assert!(env.handle.claim_candidates().is_empty());
+    assert_eq!(env.handle.deferred_poll_deadlines().len(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
 #[tokio::test(start_paused = true)]
-async fn affinity_protected_candidate_without_session_metadata_defers_before_claim() {
+async fn same_run_duplicate_does_not_renew_pending_finalizing_deadline() {
+    let (config, env) = mock_run_config(test_profiles(), 4, 8192, 2);
+    let reuse_key = "thread:pending-duplicate";
+    let history_generation_run_id = RunId::new_v4();
+    let predecessor_guard = ActiveReuseKeyGuard::new(
+        env.active_reuse_keys.clone(),
+        Arc::clone(&env.reuse_state_notify),
+        Some(reuse_key.to_owned()),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    let original_deadline = std::time::Instant::now() + Duration::from_millis(100);
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate_until(
+            run_id,
+            reuse_key,
+            history_generation_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+            original_deadline,
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate_until(
+            run_id,
+            reuse_key,
+            history_generation_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+            std::time::Instant::now() + Duration::from_secs(30),
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    assert!(env.handle.claim_candidates().is_empty());
+    assert_eq!(
+        env.handle.deferred_poll_deadlines(),
+        vec![original_deadline, original_deadline],
+        "duplicate rechecks must forward the original absolute deadline"
+    );
+
+    tokio::time::advance(Duration::from_millis(101)).await;
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await;
+    assert!(
+        completion.is_some(),
+        "the original deadline should enter ordinary admission despite a later duplicate"
+    );
+    let claimed = env
+        .handle
+        .claim_candidates()
+        .into_iter()
+        .find(|candidate| candidate.run_id() == run_id)
+        .expect("expired pending candidate should reach claim");
+    assert!(
+        claimed.runner_preference().is_none(),
+        "expiry should clear the advisory preference before ordinary admission"
+    );
+
+    drop(predecessor_guard);
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn pending_slot_overflow_does_not_retain_a_distinct_candidate() {
+    let (config, env) = mock_run_config(test_profiles(), 6, 12288, 3);
+    let first_reuse_key = "thread:pending-slot-first";
+    let second_reuse_key = "thread:pending-slot-second";
+    let first_guard = ActiveReuseKeyGuard::new(
+        env.active_reuse_keys.clone(),
+        Arc::clone(&env.reuse_state_notify),
+        Some(first_reuse_key.to_owned()),
+    );
+    let second_guard = ActiveReuseKeyGuard::new(
+        env.active_reuse_keys.clone(),
+        Arc::clone(&env.reuse_state_notify),
+        Some(second_reuse_key.to_owned()),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let first_run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        first_run_id,
+        Some(context_with_reuse_key(first_run_id, first_reuse_key)),
+    );
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate(
+            first_run_id,
+            first_reuse_key,
+            RunId::new_v4(),
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let second_run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        second_run_id,
+        Some(context_with_reuse_key(second_run_id, second_reuse_key)),
+    );
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate(
+            second_run_id,
+            second_reuse_key,
+            RunId::new_v4(),
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    drop(second_guard);
+    tokio::task::yield_now().await;
+    assert!(
+        !env.handle
+            .claim_candidates()
+            .iter()
+            .any(|candidate| candidate.run_id() == second_run_id),
+        "a distinct overflow candidate should rely on durable provider fallback"
+    );
+
+    drop(first_guard);
+    assert!(
+        env.handle
+            .wait_completion(first_run_id, Duration::from_secs(5))
+            .await
+            .is_some(),
+        "the original pending slot should still wake and claim"
+    );
+    assert!(
+        !env.handle
+            .claim_candidates()
+            .iter()
+            .any(|candidate| candidate.run_id() == second_run_id)
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn drain_discards_pending_finalizing_candidate_without_claiming() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let reuse_key = "thread:pending-drain";
+    let predecessor_guard = ActiveReuseKeyGuard::new(
+        env.active_reuse_keys.clone(),
+        Arc::clone(&env.reuse_state_notify),
+        Some(reuse_key.to_owned()),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate(
+            run_id,
+            reuse_key,
+            RunId::new_v4(),
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    env.drain();
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "drain should discard process-local pending admission and exit",
+    )
+    .await;
+    assert!(env.handle.claim_candidates().is_empty());
+
+    drop(predecessor_guard);
+}
+
+#[tokio::test(start_paused = true)]
+async fn preference_without_reuse_key_uses_ordinary_admission() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
@@ -509,31 +902,29 @@ async fn affinity_protected_candidate_without_session_metadata_defers_before_cla
         .set_claim_result(run_id, Some(minimal_context(run_id)));
     env.handle
         .discover_tx
-        .send(
-            crate::provider::JobCandidate::new(run_id, "vm0/default".into())
-                .with_affinity_metadata(
-                    None,
-                    None,
-                    Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
-                )
-                .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox)),
-        )
+        .send(preferred_candidate(
+            run_id,
+            None,
+            RunnerPreferenceReason::MatchingReuseKey,
+        ))
         .unwrap();
 
-    wait_discover_entered(&env, Duration::from_secs(5)).await;
-    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
-    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await;
     assert!(
-        env.handle.claim_candidates().is_empty(),
-        "a protected candidate without session metadata must not reach claim"
+        completion.is_some(),
+        "incomplete preference metadata is advisory"
     );
-    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+    assert!(env.handle.deferred_poll_deadlines().is_empty());
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
 
     shutdown(&env, run_handle).await;
 }
 
 #[tokio::test(start_paused = true)]
-async fn affinity_protected_candidate_without_resource_defers_even_when_session_is_local() {
+async fn matching_preference_uses_actual_local_sandbox_without_resource_class() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&env.idle_pool);
@@ -548,26 +939,22 @@ async fn affinity_protected_candidate_without_resource_defers_even_when_session_
         .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
     env.handle
         .discover_tx
-        .send(affinity_protected_candidate(run_id, session_id))
+        .send(matching_preference_candidate(run_id, session_id))
         .unwrap();
 
-    wait_discover_entered(&env, Duration::from_secs(5)).await;
-    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
-    assert!(
-        env.handle.claim_candidates().is_empty(),
-        "a protected candidate without a typed resource must not use legacy local admission"
-    );
-    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
-    assert_eq!(
-        idle_pool.lock().await.held_sessions(),
-        vec![session_id.to_string()]
-    );
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("actual compatible sandbox should satisfy matching preference");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    assert!(env.handle.deferred_poll_deadlines().is_empty());
 
     shutdown(&env, run_handle).await;
 }
 
 #[tokio::test(start_paused = true)]
-async fn ready_direct_drain_continues_after_affinity_defer() {
+async fn ready_direct_drain_continues_after_preference_defer() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let run_handle = tokio::spawn(run(config));
 
@@ -586,7 +973,7 @@ async fn ready_direct_drain_continues_after_affinity_defer() {
     env.provider
         .set_claim_result(followup_run_id, Some(minimal_context(followup_run_id)));
     env.handle
-        .push_ready_candidate(affinity_protected_candidate(
+        .push_ready_candidate(matching_preference_candidate(
             protected_run_id,
             "sess-owned-elsewhere",
         ));
@@ -641,7 +1028,7 @@ async fn ready_direct_drain_continues_after_affinity_defer() {
         "protected ready candidate should be deferred before claim"
     );
     assert_eq!(
-        env.handle.deferred_poll_delays().len(),
+        env.handle.deferred_poll_deadlines().len(),
         1,
         "protected ready candidate should schedule one follow-up poll"
     );
@@ -743,11 +1130,13 @@ async fn expired_generation_protection_preserves_local_session_claim() {
     env.handle
         .discover_tx
         .send(
-            workspace_affinity_protected_candidate(run_id, "sess-held-local")
-                .with_history_generation_run_id(Some(RunId::new_v4()))
-                .with_history_generation_affinity_protected_until(Some(
-                    "2000-01-01T00:00:00Z".to_string(),
-                )),
+            preferred_candidate_until(
+                run_id,
+                Some("sess-held-local"),
+                RunnerPreferenceReason::ExactHistoryGeneration,
+                std::time::Instant::now() - Duration::from_secs(1),
+            )
+            .with_history_generation_run_id(Some(RunId::new_v4())),
         )
         .unwrap();
 
@@ -769,7 +1158,7 @@ async fn expired_generation_protection_preserves_local_session_claim() {
             .is_some()
     );
     assert!(
-        env.handle.deferred_poll_delays().is_empty(),
+        env.handle.deferred_poll_deadlines().is_empty(),
         "runner holding the protected session should not defer the claim"
     );
 
@@ -777,14 +1166,15 @@ async fn expired_generation_protection_preserves_local_session_claim() {
 }
 
 #[tokio::test]
-async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspace() {
-    let session_id = "sess-cache-local";
+async fn exact_preference_defers_for_cache_then_matching_preference_claims_it() {
+    let reuse_key = "thread:cache-local";
+    let provider_session_id = "provider-session-cache-local";
     let image_size_bytes = 1024 * 1024;
     let mut profiles = test_profiles();
     profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 1;
     let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
     let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
-    let workspace_cache = SessionWorkspaceCache::shared(
+    let workspace_cache = WorkspaceImageCache::shared(
         runner_paths.clone(),
         &config.paths.home,
         &config.runner.group,
@@ -792,23 +1182,11 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
     seed_workspace_cache_state(
         &workspace_cache,
         &runner_paths,
-        session_id,
+        reuse_key,
         "vm0/default",
         image_size_bytes,
     )
     .await;
-    let cache_key = crate::paths::scoped_session_workspace_cache_key(
-        &config.runner.group,
-        "vm0/default",
-        session_id,
-        CANONICAL_WORKING_DIR,
-        image_size_bytes,
-    );
-    let cache_entry_dir = config
-        .paths
-        .home
-        .workspace_image_cache_dir()
-        .join(cache_key);
     Arc::get_mut(&mut config.exec_config)
         .unwrap()
         .workspace_cache = Some(workspace_cache);
@@ -816,58 +1194,34 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
-    let reusable_protected_run_id = RunId::new_v4();
-    env.provider.set_claim_result(
-        reusable_protected_run_id,
-        Some(context_with_session(reusable_protected_run_id, session_id)),
-    );
+    let exact_run_id = RunId::new_v4();
+    let mut exact_context = context_with_session(exact_run_id, provider_session_id);
+    exact_context.reuse_key = Some(reuse_key.into());
+    env.provider
+        .set_claim_result(exact_run_id, Some(exact_context));
     env.handle
         .discover_tx
-        .send(reusable_affinity_protected_candidate(
-            reusable_protected_run_id,
-            session_id,
-        ))
-        .unwrap();
-    wait_discover_entered(&env, Duration::from_secs(5)).await;
-    assert!(
-        env.handle.claim_candidates().is_empty(),
-        "workspace-only state must not satisfy reusable-sandbox selection"
-    );
-    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
-
-    tokio::fs::remove_dir_all(&cache_entry_dir).await.unwrap();
-    let generation_protected_run_id = RunId::new_v4();
-    env.provider.set_claim_result(
-        generation_protected_run_id,
-        Some(context_with_session(
-            generation_protected_run_id,
-            session_id,
-        )),
-    );
-    env.handle
-        .discover_tx
-        .send(generation_affinity_protected_candidate(
-            generation_protected_run_id,
-            session_id,
+        .send(exact_generation_preference_candidate(
+            exact_run_id,
+            reuse_key,
             RunId::new_v4(),
         ))
         .unwrap();
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     assert!(
         env.handle.claim_candidates().is_empty(),
-        "workspace-cache state and fresh capacity must not impersonate an exact reusable generation"
+        "workspace-cache state must not impersonate an exact reusable generation"
     );
-    assert_eq!(env.handle.deferred_poll_delays().len(), 2);
+    assert_eq!(env.handle.deferred_poll_deadlines().len(), 1);
 
     let run_id = RunId::new_v4();
+    let mut workspace_context = context_with_session(run_id, provider_session_id);
+    workspace_context.reuse_key = Some(reuse_key.into());
     env.provider
-        .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
+        .set_claim_result(run_id, Some(workspace_context));
     env.handle
         .discover_tx
-        .send(
-            workspace_affinity_protected_candidate(run_id, session_id)
-                .with_history_generation_run_id(Some(RunId::new_v4())),
-        )
+        .send(matching_preference_candidate(run_id, reuse_key))
         .unwrap();
 
     let completion = env
@@ -879,18 +1233,9 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
         "runner should claim from the startup workspace-cache snapshot even if a later scan would miss"
     );
 
-    let claim_candidates = env.handle.claim_candidates();
-    let claimed_candidate = claim_candidates
-        .iter()
-        .find(|candidate| candidate.run_id() == run_id)
-        .expect("claim should record the protected candidate");
     assert_eq!(
-        claimed_candidate.session_affinity_resource(),
-        Some(SessionAffinityResource::WorkspaceCache)
-    );
-    assert_eq!(
-        env.handle.deferred_poll_delays().len(),
-        2,
+        env.handle.deferred_poll_deadlines().len(),
+        1,
         "the workspace-selected candidate should not add another deferral"
     );
 
@@ -899,13 +1244,14 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
 
 #[tokio::test]
 async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
-    let session_id = "sess-cache-saturated";
+    let reuse_key = "thread:cache-saturated";
+    let provider_session_id = "provider-session-cache-saturated";
     let image_size_bytes = 1024 * 1024;
     let mut profiles = test_profiles();
     profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 1;
     let (mut config, env) = mock_run_config(profiles, 2, 4096, 1);
     let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
-    let workspace_cache = SessionWorkspaceCache::shared(
+    let workspace_cache = WorkspaceImageCache::shared(
         runner_paths.clone(),
         &config.paths.home,
         &config.runner.group,
@@ -913,7 +1259,7 @@ async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
     seed_workspace_cache_state(
         &workspace_cache,
         &runner_paths,
-        session_id,
+        reuse_key,
         "vm0/default",
         image_size_bytes,
     )
@@ -937,27 +1283,28 @@ async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     let run_id = RunId::new_v4();
-    env.provider
-        .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
+    let mut context = context_with_session(run_id, provider_session_id);
+    context.reuse_key = Some(reuse_key.into());
+    env.provider.set_claim_result(run_id, Some(context));
     env.handle
         .discover_tx
-        .send(workspace_affinity_protected_candidate(run_id, session_id))
+        .send(matching_preference_candidate(run_id, reuse_key))
         .unwrap();
 
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     assert!(
         env.handle.claim_candidates().is_empty(),
-        "cache-only affinity must not bypass exhausted fresh admission"
+        "a cache-only preference must not bypass exhausted fresh admission"
     );
     assert_eq!(
-        env.handle.deferred_poll_delays().len(),
+        env.handle.deferred_poll_deadlines().len(),
         1,
         "workspace-selected work should defer when fresh budget is unavailable"
     );
     assert_eq!(
-        idle_pool.lock().await.held_sessions(),
+        idle_pool.lock().await.held_reuse_keys(),
         vec!["sess-unrelated-idle".to_string()],
-        "affinity deferral must happen before candidate-aware reclamation"
+        "preference deferral must happen before candidate-aware reclamation"
     );
     assert_eq!(budget.allocated(), (2, 4096, 1));
 
@@ -965,7 +1312,7 @@ async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn ready_direct_drain_batches_session_affinity_heartbeat() {
+async fn ready_direct_drain_batches_reuse_state_heartbeat() {
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
@@ -1038,7 +1385,7 @@ async fn ready_direct_drain_batches_session_affinity_heartbeat() {
     assert_eq!(
         env.handle.heartbeat_count(),
         heartbeat_count + 1,
-        "direct-candidate drain should batch session-affinity refresh into one heartbeat"
+        "direct-candidate drain should batch reuse-state refresh into one heartbeat"
     );
 
     let claimed_run_ids: std::collections::HashSet<RunId> = env
@@ -1140,16 +1487,16 @@ async fn duplicate_discovery_deduplicated() {
     let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
     wait_discover_entered(&env, Duration::from_secs(5)).await;
 
-    // Push the same run_id again with reusable affinity. The duplicate first
+    // Push the same run_id again with a matching-reuse preference. The duplicate first
     // owns the idle reservation, then must restore it when the cancellation
     // registry reports that the original run already owns local admission.
     env.handle
         .discover_tx
-        .send(reusable_affinity_protected_candidate(run_id, session_id))
+        .send(matching_preference_candidate(run_id, session_id))
         .unwrap();
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     assert_eq!(
-        idle_pool.lock().await.held_sessions(),
+        idle_pool.lock().await.held_reuse_keys(),
         vec![session_id.to_string()],
         "duplicate rejection should restore the reusable reservation"
     );

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import {
@@ -252,7 +253,7 @@ describe("chat lifecycle", () => {
     expect(screen.getAllByText("Feishu")).toHaveLength(2);
   });
 
-  it("renders Teams, Telegram, and GitHub annotations through one source line", async () => {
+  it("renders generic source annotations with precise link behavior", async () => {
     const threadId = "thread-generic-message-annotations";
     const teamsHref =
       "https://teams.microsoft.com/l/message/19%3Achannel%40thread.tacv2/activity-1?tenantId=tenant-1";
@@ -303,6 +304,20 @@ describe("chat lifecycle", () => {
           },
           createdAt: "2026-07-23T01:02:00Z",
         },
+        {
+          id: "msg-agentphone-annotation",
+          role: "user",
+          content: "AgentPhone source",
+          runId: "run-agentphone-annotation",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "AgentPhone source" },
+              { type: "source", kind: "agentphone" },
+            ],
+          },
+          createdAt: "2026-07-23T01:03:00Z",
+        },
       ],
     });
 
@@ -338,6 +353,7 @@ describe("chat lifecycle", () => {
         );
       }),
     ).toBeUndefined();
+    expect(screen.getByText("AgentPhone").closest("a")).toBeNull();
   });
 
   it("keeps an existing thread composer in its footer while idle and working", async () => {
@@ -513,17 +529,25 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("starts a new chat with a visual attachment", async () => {
+  it("starts a new fallback-enabled text-only chat with an image above the direct recognition limit", async () => {
     const user = userEvent.setup({ delay: null });
+    let sentAttachFiles:
+      | {
+          id: string;
+          filename: string;
+          contentType: string;
+          size: number;
+        }[]
+      | undefined;
     context.mocks.data.userModelPreference({
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "glm-5.1",
       updatedAt: "2026-03-10T00:00:00Z",
     });
     context.mocks.data.orgModelPolicies([
       {
         id: "00000000-0000-4000-a000-000000000719",
-        model: "claude-sonnet-4-6",
-        modelLabel: "Claude Sonnet 4.6",
+        model: "glm-5.1",
+        modelLabel: "GLM-5.1",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -534,16 +558,122 @@ describe("chat lifecycle", () => {
         updatedAt: "2026-07-14T00:00:00.000Z",
       },
     ]);
-    mockChatLifecycle(context);
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        sentAttachFiles = body.attachFiles;
+      },
+    });
     context.mocks.upload.success({
       id: "upload-visual-brief",
       filename: "brief.png",
       contentType: "image/png",
-      size: 128,
+      size: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
       url: "https://cdn.vm7.io/artifacts/test/upload-visual-brief/brief.png",
     });
 
-    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+    detachedSetupPage({
+      context,
+      path: AGENT_CHAT_PATH,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroImageRecognition]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
+
+    const brief = new File(["image"], "brief.png", { type: "image/png" });
+    Object.defineProperty(brief, "size", {
+      configurable: true,
+      value: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+    });
+    await user.upload(fileInput, brief);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "GLM-5.1" }),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove brief.png")).toBeInTheDocument();
+    });
+    await screen.findByLabelText("Send");
+
+    const textarea = screen.getByPlaceholderText(PLACEHOLDER);
+    await sendMessageInUI(user, textarea, "Summarize this visual brief");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize this visual brief"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(sentAttachFiles).toStrictEqual([
+        {
+          id: "upload-visual-brief",
+          filename: "brief.png",
+          contentType: "image/png",
+          size: ZERO_RECOGNITION_MAX_FILE_BYTES + 1,
+        },
+      ]);
+    });
+  });
+
+  it("sends a video attachment in an existing fallback-enabled text-only chat", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000994";
+    let sentAttachFiles:
+      | {
+          id: string;
+          filename: string;
+          contentType: string;
+          size: number;
+        }[]
+      | undefined;
+    context.mocks.data.userModelPreference({
+      selectedModel: "glm-5.1",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    context.mocks.data.orgModelPolicies([
+      {
+        id: "00000000-0000-4000-a000-000000000720",
+        model: "glm-5.1",
+        modelLabel: "GLM-5.1",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: "2026-07-14T00:00:00.000Z",
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel: "glm-5.1",
+      onRunCreate: (body) => {
+        sentAttachFiles = body.attachFiles;
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload-existing-visual",
+      filename: "existing.mov",
+      contentType: "video/quicktime",
+      size: 64,
+      url: "https://cdn.vm7.io/artifacts/test/upload-existing-visual/existing.mov",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroImageRecognition]: true,
+      },
+    });
 
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
@@ -553,23 +683,28 @@ describe("chat lifecycle", () => {
     if (!fileInput) {
       throw new Error("file input not found");
     }
-
     await user.upload(
       fileInput,
-      new File(["image-bytes"], "brief.png", { type: "image/png" }),
+      new File([new Uint8Array(64)], "existing.mov", {
+        type: "video/quicktime",
+      }),
     );
 
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove brief.png")).toBeInTheDocument();
-    });
+    await expect(
+      screen.findByLabelText("Remove existing.mov"),
+    ).resolves.toBeInTheDocument();
 
-    await sendMessageInUI(user, textarea, "Summarize this visual brief");
+    await sendMessageInUI(user, textarea, "Inspect this existing video");
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Summarize this visual brief"),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(sentAttachFiles).toStrictEqual([
+        {
+          id: "upload-existing-visual",
+          filename: "existing.mov",
+          contentType: "video/quicktime",
+          size: 64,
+        },
+      ]);
     });
   });
 

@@ -9,7 +9,8 @@ import {
   elapsedSinceApiStartMs,
   executionContextSchema,
   heartbeatBodySchema,
-  heldSessionStateSchema,
+  heldSandboxStateSchema,
+  heldWorkspaceStateSchema,
   jobSchema,
   NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
@@ -19,6 +20,7 @@ import {
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   resumeSessionSchema,
+  runnersActiveInputsContract,
   runnersBuiltinFirewallsResolveContract,
   runnersJobClaimContract,
   runnersNetworkPolicyRefreshContract,
@@ -105,6 +107,39 @@ describe("runner claim response contract", () => {
     });
 
     expect(context).not.toHaveProperty("connectorPermissionBaseline");
+  });
+
+  it("accepts the optional active input capability", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+
+    expect(
+      executionContextSchema.parse({
+        ...fixture,
+        activeInput: true,
+        activeInputAbly: true,
+      }).activeInput,
+    ).toBe(true);
+    expect(
+      executionContextSchema.parse({
+        ...fixture,
+        activeInput: true,
+        activeInputAbly: true,
+      }).activeInputAbly,
+    ).toBe(true);
+    expect(
+      executionContextSchema.safeParse({
+        ...fixture,
+        activeInput: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      executionContextSchema.safeParse({
+        ...fixture,
+        activeInputAbly: false,
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -436,7 +471,6 @@ describe("runner resume session contract", () => {
   });
 
   it("keeps generation metadata in stable discovery and reusable shapes", () => {
-    const historyGenerationAffinityProtectedUntil = "2026-07-15T00:00:00.500Z";
     const storedResumeSession = {
       sessionId: "sess-123",
       historyGenerationRunId,
@@ -466,47 +500,37 @@ describe("runner resume session contract", () => {
       vars: null,
       experimentalProfile: "vm0/default",
       historyGenerationRunId,
-      historyGenerationAffinityProtectedUntil,
-      sessionAffinityResource: "reusableSandbox",
     });
     expect(job.historyGenerationRunId).toBe(historyGenerationRunId);
-    expect(job.historyGenerationAffinityProtectedUntil).toBe(
-      historyGenerationAffinityProtectedUntil,
-    );
-    expect(job.sessionAffinityResource).toBe("reusableSandbox");
 
-    const heldSessionState = heldSessionStateSchema.parse({
-      sessionId: "sess-123",
+    const heldSandboxState = heldSandboxStateSchema.parse({
       reuseKey: "thread:22222222-2222-4222-8222-222222222223",
       lastCompletedAt: "2026-07-15T00:00:00.000Z",
       reusableSandbox: {
         profile: "vm0/default",
         historyGenerationRunId,
       },
-      workspaceCaches: [
-        {
-          profile: "vm0/default",
-          workspaceAffinityVersion: 1,
-        },
-        { profile: "vm0/large" },
-      ],
     });
-    expect(heldSessionState.reusableSandbox?.historyGenerationRunId).toBe(
+    expect(heldSandboxState).not.toHaveProperty("sessionId");
+    expect(heldSandboxState.reusableSandbox.historyGenerationRunId).toBe(
       historyGenerationRunId,
     );
-    expect(heldSessionState.reuseKey).toBe(
-      "thread:22222222-2222-4222-8222-222222222223",
-    );
-    expect(heldSessionState.workspaceCaches).toEqual([
-      {
-        profile: "vm0/default",
-        workspaceAffinityVersion: 1,
-      },
-      { profile: "vm0/large" },
+
+    const heldWorkspaceState = heldWorkspaceStateSchema.parse({
+      reuseKey: "thread:22222222-2222-4222-8222-222222222223",
+      lastCompletedAt: "2026-07-15T00:00:00.000Z",
+      workspaceCaches: [
+        { profile: "vm0/default", workspaceAffinityVersion: 1 },
+        { profile: "vm0/large", workspaceAffinityVersion: 1 },
+      ],
+    });
+    expect(heldWorkspaceState.workspaceCaches).toEqual([
+      { profile: "vm0/default", workspaceAffinityVersion: 1 },
+      { profile: "vm0/large", workspaceAffinityVersion: 1 },
     ]);
   });
 
-  it("keeps generation-affinity additions optional for legacy runners", () => {
+  it("keeps the canonical runner preference optional", () => {
     const job = jobSchema.parse({
       runId: "22222222-2222-4222-8222-222222222222",
       prompt: "continue",
@@ -514,21 +538,74 @@ describe("runner resume session contract", () => {
       agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
-      historyGenerationAffinityProtectedUntil: null,
     });
-    expect(job.historyGenerationAffinityProtectedUntil).toBeNull();
-    expect(job.sessionAffinityResource).toBeUndefined();
+    expect(job.runnerPreference).toBeUndefined();
+  });
 
-    const heldSessionState = heldSessionStateSchema.parse({
-      sessionId: "sess-legacy",
-      lastCompletedAt: "2026-07-15T00:00:00.000Z",
-      reusableSandbox: { profile: "vm0/default" },
-    });
-    expect(heldSessionState.reusableSandbox).toEqual({
-      profile: "vm0/default",
-    });
-    expect(heldSessionState.workspaceCaches).toBeUndefined();
-    expect(heldSessionState.reuseKey).toBeUndefined();
+  it("accepts one strict optional runner preference", () => {
+    const runnerPreference = {
+      runnerIdentity: {
+        runnerId: "22222222-2222-4222-8222-222222222222",
+        heartbeatGeneration: 7,
+      },
+      expiresAt: "2026-08-03T00:00:01.000Z",
+    };
+    const jobInput = {
+      runId: "33333333-3333-4333-8333-333333333333",
+      prompt: "continue",
+      appendSystemPrompt: null,
+      agentComposeVersionId: null,
+      vars: null,
+      experimentalProfile: "vm0/default",
+    };
+
+    for (const reason of [
+      "exactHistoryGeneration",
+      "matchingReuseKey",
+      "finalizingPredecessor",
+    ] as const) {
+      const job = jobSchema.parse({
+        ...jobInput,
+        runnerPreference: { ...runnerPreference, reason },
+      });
+      expect(job.runnerPreference).toStrictEqual({
+        ...runnerPreference,
+        reason,
+      });
+    }
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreference: {
+          ...runnerPreference,
+          reason: "matchingReuseKey",
+          expiresAt: undefined,
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreference: {
+          ...runnerPreference,
+          reason: "matchingReuseKey",
+          resource: "reusableSandbox",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreference: {
+          ...runnerPreference,
+          reason: "matchingReuseKey",
+          runnerIdentity: {
+            ...runnerPreference.runnerIdentity,
+            resource: "reusableSandbox",
+          },
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts ordered heartbeat snapshots", () => {
@@ -545,7 +622,8 @@ describe("runner resume session contract", () => {
       allocatedMemoryMb: 0,
       runningCount: 0,
       admittableProfiles: ["vm0/default"],
-      heldSessionStates: [],
+      heldSandboxStates: [],
+      heldWorkspaceStates: [],
       mode: "running",
     } as const;
 
@@ -554,6 +632,13 @@ describe("runner resume session contract", () => {
         ...heartbeat,
         snapshotGeneration: 7,
         snapshotSequence: 42,
+        heldSandboxStates: [
+          {
+            reuseKey: "thread:current",
+            lastCompletedAt: "2026-07-15T00:00:00.000Z",
+            reusableSandbox: { profile: "vm0/default" },
+          },
+        ],
       }).success,
     ).toBe(true);
     expect(
@@ -587,6 +672,46 @@ describe("runner resume session contract", () => {
     ).toBe(false);
   });
 
+  it("requires canonical heartbeat state", () => {
+    const heartbeat = {
+      runnerId: "33333333-3333-4333-8333-333333333333",
+      runnerName: "runner-contract-test",
+      group: "vm0/test",
+      snapshotGeneration: 1,
+      snapshotSequence: 1,
+      totalVcpu: 8,
+      totalMemoryMb: 16_384,
+      maxConcurrent: 4,
+      allocatedVcpu: 0,
+      allocatedMemoryMb: 0,
+      runningCount: 0,
+      admittableProfiles: ["vm0/default"],
+      heldSandboxStates: [],
+      heldWorkspaceStates: [],
+      mode: "running",
+    } as const;
+
+    expect(
+      heartbeatBodySchema.safeParse({
+        ...heartbeat,
+        heldSandboxStates: undefined,
+      }).success,
+    ).toBe(false);
+
+    const parsed = heartbeatBodySchema.parse({
+      ...heartbeat,
+      heldSandboxStates: [
+        {
+          reuseKey: "thread:canonical",
+          lastCompletedAt: "2026-07-15T00:00:00.000Z",
+          reusableSandbox: { profile: "vm0/default" },
+        },
+      ],
+    });
+    expect(parsed.heldSandboxStates).toHaveLength(1);
+    expect(parsed.heldSandboxStates[0]?.reuseKey).toBe("thread:canonical");
+  });
+
   it("bounds profile-qualified workspace cache heartbeat state", () => {
     const heartbeat = {
       runnerId: "33333333-3333-4333-8333-333333333333",
@@ -601,49 +726,68 @@ describe("runner resume session contract", () => {
       allocatedMemoryMb: 0,
       runningCount: 0,
       admittableProfiles: ["vm0/default"],
+      heldSandboxStates: [],
+      heldWorkspaceStates: [],
       mode: "running",
     } as const;
     const workspaceCaches = Array.from({ length: 8 }, (_, index) => {
-      return { profile: `vm0/profile-${index}` };
-    });
-    const heldSessionStates = Array.from({ length: 128 }, (_, index) => {
       return {
-        sessionId: `sess-${index}`,
+        profile: `vm0/profile-${index}`,
+        workspaceAffinityVersion: 1 as const,
+      };
+    });
+    const heldWorkspaceStates = Array.from({ length: 128 }, (_, index) => {
+      return {
+        reuseKey: `thread:${index}`,
         lastCompletedAt: "2026-07-15T00:00:00.000Z",
         workspaceCaches,
       };
     });
 
     expect(
-      heartbeatBodySchema.safeParse({ ...heartbeat, heldSessionStates })
-        .success,
+      heartbeatBodySchema.safeParse({
+        ...heartbeat,
+        heldWorkspaceStates,
+      }).success,
     ).toBe(true);
     expect(
       heartbeatBodySchema.safeParse({
         ...heartbeat,
-        heldSessionStates: [
-          ...heldSessionStates,
+        heldWorkspaceStates: [
+          ...heldWorkspaceStates,
           {
-            sessionId: "sess-over-global-cap",
+            reuseKey: "thread:over-global-cap",
             lastCompletedAt: "2026-07-15T00:00:00.000Z",
-            workspaceCaches: [{ profile: "vm0/default" }],
+            workspaceCaches: [
+              { profile: "vm0/default", workspaceAffinityVersion: 1 },
+            ],
           },
         ],
       }).success,
     ).toBe(false);
     expect(
-      heldSessionStateSchema.safeParse({
-        sessionId: "sess-over-parent-cap",
+      heldWorkspaceStateSchema.safeParse({
+        reuseKey: "thread:over-parent-cap",
         lastCompletedAt: "2026-07-15T00:00:00.000Z",
         workspaceCaches: [
           ...workspaceCaches,
-          { profile: "vm0/profile-over-cap" },
+          {
+            profile: "vm0/profile-over-cap",
+            workspaceAffinityVersion: 1,
+          },
         ],
       }).success,
     ).toBe(false);
     expect(
-      heldSessionStateSchema.safeParse({
-        sessionId: "sess-invalid-capability",
+      heldWorkspaceStateSchema.safeParse({
+        reuseKey: "thread:without-workspace",
+        lastCompletedAt: "2026-07-15T00:00:00.000Z",
+        workspaceCaches: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      heldWorkspaceStateSchema.safeParse({
+        reuseKey: "thread:invalid-capability",
         lastCompletedAt: "2026-07-15T00:00:00.000Z",
         workspaceCaches: [
           { profile: "vm0/default", workspaceAffinityVersion: 2 },
@@ -815,6 +959,52 @@ describe("runner resume session contract", () => {
 });
 
 describe("runner claim request contract", () => {
+  it("accepts omitted or complete runner identity", () => {
+    expect(runnersJobClaimContract.claim.body.parse({})).toEqual({});
+    expect(
+      runnersJobClaimContract.claim.body.parse({
+        runnerIdentity: {
+          runnerId: "11111111-1111-4111-8111-111111111111",
+          heartbeatGeneration: Number.MAX_SAFE_INTEGER,
+        },
+      }),
+    ).toStrictEqual({
+      runnerIdentity: {
+        runnerId: "11111111-1111-4111-8111-111111111111",
+        heartbeatGeneration: Number.MAX_SAFE_INTEGER,
+      },
+    });
+  });
+
+  it("accepts only an affirmative active input capability", () => {
+    expect(
+      runnersJobClaimContract.claim.body.parse({ activeInput: true }),
+    ).toStrictEqual({ activeInput: true });
+    expect(
+      runnersJobClaimContract.claim.body.safeParse({ activeInput: false })
+        .success,
+    ).toBe(false);
+  });
+
+  it("requires a strict all-or-nothing runner identity", () => {
+    const runnerId = "11111111-1111-4111-8111-111111111111";
+    for (const runnerIdentity of [
+      { runnerId },
+      { heartbeatGeneration: 1 },
+      { runnerId: "not-a-uuid", heartbeatGeneration: 1 },
+      { runnerId, heartbeatGeneration: 0 },
+      { runnerId, heartbeatGeneration: -1 },
+      { runnerId, heartbeatGeneration: 1.5 },
+      { runnerId, heartbeatGeneration: Number.MAX_SAFE_INTEGER + 1 },
+      { runnerId, heartbeatGeneration: 1, unexpected: true },
+    ]) {
+      expect(
+        runnersJobClaimContract.claim.body.safeParse({ runnerIdentity })
+          .success,
+      ).toBe(false);
+    }
+  });
+
   it("accepts optional direct candidate timing telemetry", () => {
     const result = runnersJobClaimContract.claim.body.safeParse({
       telemetry: {
@@ -831,19 +1021,6 @@ describe("runner claim request contract", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts and strips previous runner telemetry", () => {
-    const body = runnersJobClaimContract.claim.body.parse({
-      telemetry: {
-        sessionAffinityResource: "workspaceCache",
-        sessionAffinityLocalResource: "workspaceCache",
-        localAdmissionResource: "fresh",
-        sessionHistoryGenerationRelationship: "fresh",
-      },
-    });
-
-    expect(body.telemetry).toEqual({});
-  });
-
   it("discards malformed diagnostic telemetry", () => {
     const body = runnersJobClaimContract.claim.body.parse({
       telemetry: {
@@ -853,6 +1030,25 @@ describe("runner claim request contract", () => {
     });
 
     expect(body.telemetry).toEqual({});
+  });
+});
+
+describe("runner active input contract", () => {
+  it("coerces the sequence cursor and validates entries", () => {
+    const runId = "11111111-1111-4111-8111-111111111111";
+    const messageId = "22222222-2222-4222-8222-222222222222";
+
+    expect(
+      runnersActiveInputsContract.list.pathParams.parse({
+        runId,
+        fromSequence: "3",
+      }),
+    ).toStrictEqual({ runId, fromSequence: 3 });
+    expect(
+      runnersActiveInputsContract.list.responses[200].safeParse({
+        entries: [{ sequence: 3, messageId, text: "steer this run" }],
+      }).success,
+    ).toBe(true);
   });
 });
 

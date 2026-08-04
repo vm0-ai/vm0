@@ -119,7 +119,7 @@ pub(crate) struct StatusActiveRun {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct StatusIdleVm {
-    pub(crate) session_id: String,
+    pub(crate) reuse_key: String,
     pub(crate) sandbox_id: String,
 }
 
@@ -163,7 +163,7 @@ mod tests {
                 }
             ],
             "idle_vms": [
-                {"session_id":"sess-1","sandbox_id":"bbbbbbbb-0000-7000-8000-000000000001"}
+                {"reuse_key":"sess-1","sandbox_id":"bbbbbbbb-0000-7000-8000-000000000001"}
             ],
             "proxy_port": 8080,
             "dns_port": 5300,
@@ -194,7 +194,7 @@ mod tests {
             "2026-04-13T00:00:01.000Z"
         );
         assert_eq!(status.idle_vms.len(), 1);
-        assert_eq!(status.idle_vms[0].session_id, "sess-1");
+        assert_eq!(status.idle_vms[0].reuse_key, "sess-1");
     }
 
     #[tokio::test]

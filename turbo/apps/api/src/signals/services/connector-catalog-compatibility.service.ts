@@ -405,36 +405,6 @@ async function persistConnectorCatalogCompatibilityEvaluation(args: {
     });
 }
 
-async function deleteLegacyConnectorCatalogCompatibilityEvaluations(args: {
-  readonly db: Db;
-  readonly sourceId: string;
-  readonly identity: ConnectorCatalogCompatibilityIdentity;
-}): Promise<void> {
-  await args.db
-    .delete(connectorCatalogCompatibilityEvaluation)
-    .where(
-      and(
-        eq(connectorCatalogCompatibilityEvaluation.sourceId, args.sourceId),
-        eq(
-          connectorCatalogCompatibilityEvaluation.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-        ),
-        eq(
-          connectorCatalogCompatibilityEvaluation.catalogVersion,
-          args.identity.catalogVersion,
-        ),
-        eq(
-          connectorCatalogCompatibilityEvaluation.catalogDigest,
-          args.identity.catalogDigest,
-        ),
-        eq(
-          sql`jsonb_typeof(${connectorCatalogCompatibilityEvaluation.filteredAuthMethods})`,
-          "array",
-        ),
-      ),
-    );
-}
-
 export async function persistConnectorCatalogCompatibility(args: {
   readonly db: Db;
   readonly sourceId: string;
@@ -461,11 +431,6 @@ export async function persistConnectorCatalogCompatibility(args: {
     capabilityDigest: args.capability.digest,
     evaluatedAt,
     payload,
-  });
-  await deleteLegacyConnectorCatalogCompatibilityEvaluations({
-    db: args.db,
-    sourceId: args.sourceId,
-    identity: args.identity,
   });
 }
 
@@ -580,11 +545,6 @@ async function reconcileCompatibility(args: {
       validator: args.validator,
     })
   ) {
-    await deleteLegacyConnectorCatalogCompatibilityEvaluations({
-      db: args.db,
-      sourceId: args.sourceId,
-      identity: snapshot,
-    });
     return;
   }
 

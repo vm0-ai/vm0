@@ -8,7 +8,10 @@ import {
 } from "@vm0/db/schema/run-uploaded-file";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
+import { logger } from "../../lib/log";
+import { isForeignKeyViolation } from "../../lib/pg-errors";
 import { type Db, writeDb$ } from "../external/db";
+import { settle } from "../utils";
 import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
 import {
@@ -80,6 +83,24 @@ interface RecordedUploadedFile {
   readonly previewImageUrl: string | null;
 }
 
+const L = logger("RunUploadedFiles");
+
+async function recordRunUploadedFileWrite(
+  write: Promise<readonly RecordedUploadedFile[]>,
+  runId: string,
+  signal: AbortSignal,
+): Promise<RecordedUploadedFile | undefined> {
+  const result = await settle(write, signal);
+  if (result.ok) {
+    return result.value[0];
+  }
+  if (!isForeignKeyViolation(result.error)) {
+    throw result.error;
+  }
+  L.debug("Ignored uploaded-file association for deleted run", { runId });
+  return undefined;
+}
+
 function videoArtifactPreviewArgs(
   args: {
     readonly runId: string;
@@ -134,7 +155,7 @@ export const recordHostedSiteArtifact$ = command(
         ? `${args.publicSlug}.html`
         : `${args.site}-v${args.deploymentVersion}.html`;
 
-    const [row] = await writeDb
+    const write = writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -207,11 +228,16 @@ export const recordHostedSiteArtifact$ = command(
         id: runUploadedFiles.id,
         previewImageUrl: runUploadedFiles.previewImageUrl,
       });
+    const row = await recordRunUploadedFileWrite(write, args.runId, signal);
     signal.throwIfAborted();
 
-    await set(syncArtifactCatalogForFile$, row?.id, signal);
+    if (!row) {
+      return null;
+    }
+
+    await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
-    return row ?? null;
+    return row;
   },
 );
 
@@ -241,7 +267,7 @@ export const recordWebUploadedFile$ = command(
       s3Key: args.s3Key,
     };
 
-    const [row] = await writeDb
+    const write = writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -276,9 +302,14 @@ export const recordWebUploadedFile$ = command(
         id: runUploadedFiles.id,
         previewImageUrl: runUploadedFiles.previewImageUrl,
       });
+    const row = await recordRunUploadedFileWrite(write, args.runId, signal);
     signal.throwIfAborted();
 
-    await set(syncArtifactCatalogForFile$, row?.id, signal);
+    if (!row) {
+      return;
+    }
+
+    await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -330,7 +361,7 @@ export const recordTelegramUploadedFile$ = command(
     const writeDb = set(writeDb$);
     const source = await sourceForRun(writeDb, args.runId, "telegram", signal);
 
-    const [row] = await writeDb
+    const write = writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -365,9 +396,14 @@ export const recordTelegramUploadedFile$ = command(
         id: runUploadedFiles.id,
         previewImageUrl: runUploadedFiles.previewImageUrl,
       });
+    const row = await recordRunUploadedFileWrite(write, args.runId, signal);
     signal.throwIfAborted();
 
-    await set(syncArtifactCatalogForFile$, row?.id, signal);
+    if (!row) {
+      return;
+    }
+
+    await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -457,7 +493,7 @@ export const recordGithubUploadedFile$ = command(
     const writeDb = set(writeDb$);
     const source = await sourceForRun(writeDb, args.runId, "github", signal);
 
-    const [row] = await writeDb
+    const write = writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -492,9 +528,14 @@ export const recordGithubUploadedFile$ = command(
         id: runUploadedFiles.id,
         previewImageUrl: runUploadedFiles.previewImageUrl,
       });
+    const row = await recordRunUploadedFileWrite(write, args.runId, signal);
     signal.throwIfAborted();
 
-    await set(syncArtifactCatalogForFile$, row?.id, signal);
+    if (!row) {
+      return;
+    }
+
+    await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -524,7 +565,7 @@ export const recordFeishuUploadedFile$ = command(
     const writeDb = set(writeDb$);
     const source = await sourceForRun(writeDb, args.runId, "feishu", signal);
 
-    const [row] = await writeDb
+    const write = writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -559,9 +600,14 @@ export const recordFeishuUploadedFile$ = command(
         id: runUploadedFiles.id,
         previewImageUrl: runUploadedFiles.previewImageUrl,
       });
+    const row = await recordRunUploadedFileWrite(write, args.runId, signal);
     signal.throwIfAborted();
 
-    await set(syncArtifactCatalogForFile$, row?.id, signal);
+    if (!row) {
+      return;
+    }
+
+    await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -591,7 +637,7 @@ export const recordTeamsUploadedFile$ = command(
     const writeDb = set(writeDb$);
     const source = await sourceForRun(writeDb, args.runId, "teams", signal);
 
-    const [row] = await writeDb
+    const write = writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -626,9 +672,14 @@ export const recordTeamsUploadedFile$ = command(
         id: runUploadedFiles.id,
         previewImageUrl: runUploadedFiles.previewImageUrl,
       });
+    const row = await recordRunUploadedFileWrite(write, args.runId, signal);
     signal.throwIfAborted();
 
-    await set(syncArtifactCatalogForFile$, row?.id, signal);
+    if (!row) {
+      return;
+    }
+
+    await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -669,7 +720,7 @@ export const recordAgentPhoneUploadedFile$ = command(
       signal,
     );
 
-    const [row] = await writeDb
+    const write = writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -704,9 +755,14 @@ export const recordAgentPhoneUploadedFile$ = command(
         id: runUploadedFiles.id,
         previewImageUrl: runUploadedFiles.previewImageUrl,
       });
+    const row = await recordRunUploadedFileWrite(write, args.runId, signal);
     signal.throwIfAborted();
 
-    await set(syncArtifactCatalogForFile$, row?.id, signal);
+    if (!row) {
+      return;
+    }
+
+    await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,
@@ -747,7 +803,7 @@ export const recordSlackUploadedFile$ = command(
     const writeDb = set(writeDb$);
     const source = await sourceForRun(writeDb, args.runId, "slack", signal);
 
-    const [row] = await writeDb
+    const write = writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -782,9 +838,14 @@ export const recordSlackUploadedFile$ = command(
         id: runUploadedFiles.id,
         previewImageUrl: runUploadedFiles.previewImageUrl,
       });
+    const row = await recordRunUploadedFileWrite(write, args.runId, signal);
     signal.throwIfAborted();
 
-    await set(syncArtifactCatalogForFile$, row?.id, signal);
+    if (!row) {
+      return;
+    }
+
+    await set(syncArtifactCatalogForFile$, row.id, signal);
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
     set(
       scheduleVideoArtifactPreviewRender$,

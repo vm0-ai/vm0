@@ -53,12 +53,12 @@ overrides:
   "@tiptap/suggestion": 3.21.0
   "@types/node": 24.3.0
   axios: ">=1.18.0"
-  brace-expansion: 5.0.8
+  brace-expansion: 5.0.9
   dompurify: 3.4.12
   esbuild: 0.28.1
   "esbuild@>=0.17.0 <0.28.1": ">=0.28.1"
   "esbuild@>=0.27.3 <0.28.1": ">=0.28.1"
-  fast-uri: 3.1.4
+  fast-uri: 3.1.5
   fast-xml-builder: ">=1.1.7"
   fast-xml-parser: ">=5.5.7"
   flatted: ">=3.4.2"
@@ -66,6 +66,7 @@ overrides:
   form-data: ">=4.0.6"
   glob: ">=10.5.0"
   hono: 4.12.27
+  ip-address: 10.4.0
   "jayson>uuid": 11.1.1
   js-cookie: ">=3.0.7"
   js-yaml: 4.3.0

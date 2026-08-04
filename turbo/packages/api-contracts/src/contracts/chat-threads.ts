@@ -376,7 +376,14 @@ const userMessagePartSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("source"),
-      kind: z.enum(["slack", "feishu", "teams", "telegram", "github"]),
+      kind: z.enum([
+        "slack",
+        "feishu",
+        "teams",
+        "telegram",
+        "github",
+        "agentphone",
+      ]),
       href: z.string().url().optional(),
     })
     .strict(),
@@ -1293,6 +1300,27 @@ export const chatEventsContract = c.router({
         attachFiles: z.undefined().optional(),
         realAgentInPreview: z.undefined().optional(),
         revokesEventId: z.undefined().optional(),
+      }),
+      z.object({
+        agentId: z.string().min(1),
+        threadId: z.string().uuid(),
+        steersRunId: z.string().uuid(),
+        steersEventId: z.string().uuid(),
+        clientEventId: z.string().uuid().optional(),
+        prompt: z.undefined().optional(),
+        clientThreadId: z.undefined().optional(),
+        chatThreadEventId: z.undefined().optional(),
+        chatThreadSortEventId: z.undefined().optional(),
+        model: z.undefined().optional(),
+        runOptions: z.undefined().optional(),
+        userMessage: z.undefined().optional(),
+        generationTemplate: z.undefined().optional(),
+        computerUseHostId: z.undefined().optional(),
+        hasTextContent: z.undefined().optional(),
+        attachFiles: z.undefined().optional(),
+        realAgentInPreview: z.undefined().optional(),
+        revokesEventId: z.undefined().optional(),
+        interruptsRunId: z.undefined().optional(),
       }),
     ]),
     responses: {

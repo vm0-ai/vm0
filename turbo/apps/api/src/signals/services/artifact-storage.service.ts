@@ -43,7 +43,7 @@ type StoredGeneratedArtifactObject = Omit<
   readonly metadata: Readonly<Record<string, string>>;
 };
 
-interface ResolvedArtifactObject {
+export interface ResolvedArtifactObject {
   readonly key: string;
   readonly url: string;
   readonly filename: string;

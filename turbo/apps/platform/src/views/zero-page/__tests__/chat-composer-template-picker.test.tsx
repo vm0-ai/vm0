@@ -15,7 +15,6 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { templateCardThemeIdBySlug$ } from "../../../signals/zero-page/zero-chat-composer.ts";
 import {
   click,
   detachedSetupPage,
@@ -1062,10 +1061,6 @@ describe("chat composer templates", () => {
     expect(
       within(templateDialog).getByLabelText("Select style Candy party"),
     ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      context.store.get(templateCardThemeIdBySlug$)[template.slug],
-    ).toBeUndefined();
-
     const prismDetailImage = within(templateDialog).getByTestId(
       `${template.title} detail image preview`,
     );
@@ -1192,10 +1187,6 @@ describe("chat composer templates", () => {
         screen.getByLabelText(`Remove template ${template.title}`),
       ).toBeInTheDocument();
     });
-    expect(context.store.get(templateCardThemeIdBySlug$)).toMatchObject({
-      [template.slug]: "prism",
-    });
-
     await user.click(
       screen.getByLabelText(`Preview template ${template.title}`),
     );

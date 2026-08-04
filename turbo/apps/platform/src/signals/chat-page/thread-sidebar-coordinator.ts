@@ -1,5 +1,6 @@
 import { command, computed } from "ccstate";
 
+import { artifactSidebarInlineOpenEnabled$ } from "../external/feature-switch.ts";
 import {
   classifyChatAttachment,
   previewAttachmentFromUrl,
@@ -116,6 +117,15 @@ export const openThreadBrowserSession$ = command(
   },
 );
 
+export function artifactRefFromUrl(url: string): ArtifactRef {
+  const attachment = previewAttachmentFromUrl(url);
+  return {
+    url,
+    kind: classifyChatAttachment(attachment),
+    filename: attachment.filename,
+  };
+}
+
 /**
  * Promote a message attachment from the lightbox into split view. The lightbox
  * is page-global, so the main (left) thread hosts the sidebar.
@@ -126,16 +136,37 @@ export const openThreadArtifactSplitView$ = command(
     if (!thread) {
       return;
     }
-    const attachment = previewAttachmentFromUrl(url);
-    const ref: ArtifactRef = {
-      url,
-      kind: classifyChatAttachment(attachment),
-      filename: attachment.filename,
-    };
     set(openOnThread$, thread, {
       type: "artifact",
-      source: { kind: "attachment", ref },
+      source: { kind: "attachment", ref: artifactRefFromUrl(url) },
     });
+  },
+);
+
+/**
+ * Route an artifact click into an artifact sidebar the page already has open,
+ * replacing its content in place. Returns false when the page has no artifact
+ * sidebar, leaving the caller on its own preview surface.
+ */
+export const openArtifactInOpenSidebar$ = command(
+  ({ get, set }, url: string): boolean => {
+    if (!get(artifactSidebarInlineOpenEnabled$)) {
+      return false;
+    }
+    const active = get(activeThreadSidebar$);
+    if (
+      active?.target.type !== "artifacts" &&
+      active?.target.type !== "artifact"
+    ) {
+      return false;
+    }
+    // The owning thread already holds the page's only utility sidebar, so this
+    // swaps its content without closing and reopening the pane.
+    set(active.thread.sidebar.open$, {
+      type: "artifact",
+      source: { kind: "attachment", ref: artifactRefFromUrl(url) },
+    });
+    return true;
   },
 );
 

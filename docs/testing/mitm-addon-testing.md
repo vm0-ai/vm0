@@ -55,6 +55,15 @@ uv run --no-sync python -m pytest \
 uv run --no-sync python -m pytest -v tests/
 ```
 
+Run auth.base forwarder contracts independently when working on one ownership
+area:
+
+```bash
+uv run --no-sync python -m pytest tests/test_auth_base_forwarder_security.py
+uv run --no-sync python -m pytest tests/test_auth_base_forwarder_protocol.py
+uv run --no-sync python -m pytest tests/test_auth_base_forwarder_lifecycle.py
+```
+
 Run the same static checks used by CI:
 
 ```bash
@@ -95,6 +104,7 @@ tests must not resolve a different mitmproxy version from production.
 | `test_addon_configuration.py`                           | Addon option registration and configuration updates                                                                  |
 | `test_builtin_host_policy_contract.py`                  | Cross-stage malformed built-in host policy contracts                                                                 |
 | `test_connection_endpoints.py`                          | Connection endpoint shape validation and IPv6 tuple normalization                                                    |
+| `test_content_length.py`                                | Shared bounded Content-Length field parsing contract                                                                 |
 | `codex_model_catalog_cache_helpers.py`                  | Shared Codex catalog flow, response, and cache lifecycle test builders                                               |
 | `test_codex_model_catalog_cache_coordination.py`        | Codex catalog prefetch, single-flight, wait, cancellation, and active-request capacity behavior                      |
 | `test_codex_model_catalog_cache_hooks.py`               | Codex catalog request admission, firewall hook integration, telemetry, and cleanup                                   |
@@ -104,10 +114,11 @@ tests must not resolve a different mitmproxy version from production.
 | `test_request_handler_authority_validation.py`          | Request-hook Host/SNI/`:authority` validation and denial effects                                                     |
 | `test_request_handler_builtin_host_policy.py`           | Request-hook runtime built-in host-policy enforcement and compiled-policy reuse                                      |
 | `test_request_handler_connector_admission.py`           | Request-hook connector destination admission, TLS evidence, test-endpoint bypass, and API binding interaction        |
-| `test_request_handler_api_admission.py`                 | Request-hook platform API auto-allow, port scoping, registry gate, and destination binding                            |
+| `test_request_handler_api_admission.py`                 | Request-hook platform API auto-allow, port scoping, registry gate, and destination binding                           |
 | `test_request_handler_tls_admission.py`                 | Request-hook connection-scoped TLS admission revalidation and cleanup                                                |
 | `test_request_handler_registry_admission.py`            | Request-hook proxy-registry availability and VM entry admission                                                      |
 | `test_request_handler_firewall_dispatch.py`             | Core firewall dispatch, permission blocks, malformed config/policy handling, block responses, and unsafe-path blocks |
+| `test_request_handler_firewall_auth.py`                 | Request-hook firewall auth identity, credential guards, upstream-binding lifetime, and cancellation                  |
 | `test_request_handler_public_destination.py`            | Request-hook public destination validation and revalidation                                                          |
 | `test_request_handler_connector_diagnostics.py`         | Request-hook connector diagnostics and inactive built-in connector diagnostics                                       |
 | `test_request_handler_auth_base_body.py`                | Request-hook auth-base body admission and cleanup                                                                    |
@@ -164,8 +175,13 @@ tests must not resolve a different mitmproxy version from production.
 | `test_compiled_firewall_malformed_rules.py`             | Compiled firewall malformed rule and rule-shape behavior                                                             |
 | `test_compiled_firewall_permission_aggregation.py`      | Compiled firewall denied-permission aggregation and deduplication                                                    |
 | `test_compiled_firewall_rule_specificity_precedence.py` | Compiled firewall rule ordering and rule specificity precedence                                                      |
-| `test_firewall_auth.py`                                 | Firewall auth header resolution, fetching, forwarding, and cleanup                                                   |
-| `test_auth_base_forwarder.py`                           | Low-level auth.base forwarding, header filtering, and cleanup                                                        |
+| `test_auth_cache.py`                                    | Firewall auth cache expiry, refresh, coalescing, cancellation, identity, and eviction                                |
+| `test_firewall_auth_handling.py`                        | Direct firewall auth request mutation, identity, error mapping, metadata, admission, and cancellation                |
+| `test_firewall_auth_client.py`                          | Firewall auth webhook serialization, transport, parsing, body limits, structured errors, and resource cleanup        |
+| `test_platform_api.py`                                  | Shared platform API request headers, unredirected credentials, and URL validation                                    |
+| `test_auth_base_forwarder_security.py`                  | Auth-base destination validation, SSRF rejection, and validated TCP/TLS construction                                 |
+| `test_auth_base_forwarder_protocol.py`                  | Auth-base HTTP framing, header filtering, body bounds, and synchronous cleanup                                       |
+| `test_auth_base_forwarder_lifecycle.py`                 | Auth-base abort, admission, deadlines, cancellation, concurrency, worker, and shutdown behavior                      |
 | `test_firewall_rewrite_success.py`                      | Firewall auth URL rewrite success behavior                                                                           |
 | `test_firewall_rewrite_forwarding.py`                   | Firewall auth URL rewrite forwarding behavior                                                                        |
 | `test_firewall_rewrite_safety.py`                       | Firewall auth URL rewrite fail-closed and safety behavior                                                            |
@@ -174,7 +190,6 @@ tests must not resolve a different mitmproxy version from production.
 | `test_url_utils.py`                                     | Rewrite URL, path, query, and auth-base URL utility cases                                                            |
 | `test_url_utils_trusted_authority.py`                   | Trusted request authority success and URL reconstruction                                                             |
 | `test_url_utils_trusted_authority_rejection.py`         | Trusted request authority rejection matrices                                                                         |
-| `test_auth_cache.py`                                    | Firewall auth cache behavior                                                                                         |
 | `test_body_capture_decompression.py`                    | Capture-level body decompression integration                                                                         |
 | `test_body_capture_encoding.py`                         | Body capture text detection, encoding, and UTF-8 truncation helpers                                                  |
 | `test_body_capture_fields.py`                           | Ordinary request/response body capture fields                                                                        |
@@ -197,6 +212,7 @@ tests must not resolve a different mitmproxy version from production.
 | `test_model_provider_websocket_lifecycle.py`            | Model provider WebSocket HTTP upgrade and terminal usage lifecycle                                                   |
 | `test_codex_output_timing.py`                           | Default Codex provider-output timing observations over WebSocket                                                     |
 | `test_claude_output_timing.py`                          | Claude Code provider-output lifecycle timing over Anthropic SSE                                                      |
+| `test_provider_output_timing.py`                        | Cross-provider output-timing store capacity and lifecycle independence                                               |
 | `test_websocket_retention.py`                           | Registered WebSocket message retention and cleanup                                                                   |
 | `test_model_provider_websocket_metadata.py`             | Model provider WebSocket usage metadata parsing                                                                      |
 | `test_model_provider_usage.py`                          | Model provider usage reporter                                                                                        |

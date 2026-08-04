@@ -1,6 +1,7 @@
 use super::super::*;
 use super::shared::{ExecResultLayout, set_byte_at, write_u16_at, write_u32_at};
 use crate::wire::MAX_PAYLOAD_SIZE;
+use crate::{HEADER_SIZE, MAX_MESSAGE_SIZE, MSG_EXEC_RESULT, encode};
 use proptest::prelude::*;
 use proptest::test_runner::{Config as ProptestConfig, RngSeed, TestCaseResult};
 
@@ -358,6 +359,20 @@ fn exec_result_roundtrips_structural_and_scalar_boundaries() {
                     let payload =
                         encode_exec_result(termination, duration_ms, stdout, stderr, "边界")
                             .unwrap();
+                    let expected_frame = encode(MSG_EXEC_RESULT, 42, &payload).unwrap();
+                    let mut frame = Vec::new();
+                    encode_exec_result_frame_into(
+                        &mut frame,
+                        42,
+                        termination,
+                        duration_ms,
+                        stdout,
+                        stderr,
+                        "边界",
+                    )
+                    .unwrap();
+
+                    assert_eq!(frame, expected_frame);
                     assert_eq!(
                         decode_exec_result(&payload).unwrap(),
                         DecodedExecResult {
@@ -432,4 +447,61 @@ fn exec_result_roundtrips_max_payload_length() {
             diagnostic: "",
         }
     );
+
+    let expected_frame = encode(MSG_EXEC_RESULT, 42, &payload).unwrap();
+    drop(payload);
+    let mut frame = Vec::new();
+    encode_exec_result_frame_into(
+        &mut frame,
+        42,
+        ExecTermination::Cancelled,
+        0,
+        ExecCapturedOutput::Captured {
+            bytes: &stdout,
+            truncated: true,
+        },
+        ExecCapturedOutput::Discarded,
+        "",
+    )
+    .unwrap();
+
+    assert_eq!(frame.len(), HEADER_SIZE + MAX_MESSAGE_SIZE);
+    assert_eq!(frame, expected_frame);
+}
+
+#[test]
+fn exec_result_frame_rejects_one_byte_over_max_payload() {
+    let empty_payload = encode_exec_result(
+        ExecTermination::Cancelled,
+        0,
+        ExecCapturedOutput::Captured {
+            bytes: &[],
+            truncated: true,
+        },
+        ExecCapturedOutput::Discarded,
+        "",
+    )
+    .unwrap();
+    let stdout = vec![0xA5; MAX_PAYLOAD_SIZE - empty_payload.len() + 1];
+    let mut frame = b"stale frame bytes".to_vec();
+
+    let err = encode_exec_result_frame_into(
+        &mut frame,
+        42,
+        ExecTermination::Cancelled,
+        0,
+        ExecCapturedOutput::Captured {
+            bytes: &stdout,
+            truncated: true,
+        },
+        ExecCapturedOutput::Discarded,
+        "",
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        err,
+        ProtocolError::MessageTooLarge(size) if size == MAX_MESSAGE_SIZE + 1
+    ));
+    assert!(frame.is_empty());
 }

@@ -12,12 +12,12 @@ use chrono::SecondsFormat;
 
 use crate::error::{RunnerError, RunnerResult};
 
-use super::SessionWorkspaceCache;
+use super::WorkspaceImageCache;
 use super::types::{CacheBudget, FsStats};
 
 pub(super) const WORKSPACE_IMAGE_COPY_TIMEOUT: Duration = Duration::from_secs(300);
 
-impl SessionWorkspaceCache {
+impl WorkspaceImageCache {
     pub(super) async fn fs_stats(&self) -> RunnerResult<FsStats> {
         #[cfg(test)]
         {

@@ -192,7 +192,7 @@ async function cancellationLifecyclePublished(
     .where(
       and(
         eq(chatEvents.runId, runId),
-        eq(chatEvents.runLifecycleEvent, "cancelled"),
+        eq(chatEvents.eventType, "run.cancelled"),
       ),
     )
     .limit(1);

@@ -110,6 +110,14 @@ not add or replace its decoder. A PostgreSQL cast such as `::int` changes the
 server-side value representation, while `.mapWith(...)` defines the client-side
 runtime decoder. A TypeScript assertion changes neither one.
 
+Use only statically inspectable decoder provenance in `.mapWith(...)`: a real
+schema column, a reviewed decoder from `db-structured-result.ts`, or a decoder
+constructed through its Zod, enum, or nullable factories. Immutable local
+`const` alias chains may preserve that provenance. Built-in coercers such as
+`Number` and `String`, inline callbacks, assertions, mutable aliases, and opaque
+values declared as `DriverValueDecoder` do not establish a reviewed runtime
+contract and are rejected by lint.
+
 The same rule applies to `db.query.<table>.findMany(...)` and
 `findFirst(...)`, including callback-form `extras` and `extras` nested below
 `with`. Keep relational configs inline or in inspectable local variables so

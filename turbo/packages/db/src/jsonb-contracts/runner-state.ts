@@ -1,20 +1,28 @@
 export type RunnerAdmittableProfiles = string[];
 
-export interface RunnerHeldSessionState {
-  // Compatibility JSON field name. Semantically this is the CLI agent session
-  // id retained for telemetry and diagnostics.
-  readonly sessionId: string;
-  // Optional while older runners drain during deployment.
-  readonly reuseKey?: string;
+export interface RunnerHeldSandboxState {
+  readonly reuseKey: string;
   readonly lastCompletedAt: string;
-  readonly reusableSandbox?: {
+  readonly reusableSandbox: {
     readonly profile: string;
     readonly historyGenerationRunId?: string;
   };
-  readonly workspaceCaches?: readonly {
-    readonly profile: string;
-    readonly workspaceAffinityVersion?: 1;
-  }[];
 }
 
-export type RunnerHeldSessionStates = RunnerHeldSessionState[];
+export type RunnerHeldSandboxStates = RunnerHeldSandboxState[];
+
+interface RunnerHeldWorkspaceCache {
+  readonly profile: string;
+  readonly workspaceAffinityVersion: 1;
+}
+
+export interface RunnerHeldWorkspaceState {
+  readonly reuseKey: string;
+  readonly lastCompletedAt: string;
+  readonly workspaceCaches: readonly [
+    RunnerHeldWorkspaceCache,
+    ...RunnerHeldWorkspaceCache[],
+  ];
+}
+
+export type RunnerHeldWorkspaceStates = RunnerHeldWorkspaceState[];

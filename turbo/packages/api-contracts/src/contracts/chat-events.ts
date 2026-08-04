@@ -137,36 +137,6 @@ export function chatEventCompatibilityRole(
   }
 }
 
-export function chatEventRunLifecycle(
-  eventType: ChatEventType,
-): ChatEventRunLifecycle | null {
-  switch (eventType) {
-    case "run.completed":
-      return "completed";
-    case "run.failed":
-      return "failed";
-    case "run.cancelled":
-      return "cancelled";
-    case "input.prompt":
-    case "input.automation":
-    case "input.goal":
-    case "input.rejected":
-    case "output.message":
-    case "output.error":
-    case "output.thinking":
-    case "output.followups":
-    case "run.queued":
-    case "run.dequeued":
-    case "control.interrupt":
-    case "control.revoke":
-    case "browser.started":
-    case "browser.stopped":
-    case "goal.changed":
-    case "usage.recorded":
-      return null;
-  }
-}
-
 export function isChatRunTerminalEventType(
   eventType: ChatEventType,
 ): eventType is "run.completed" | "run.failed" | "run.cancelled" {

@@ -1,5 +1,4 @@
 import {
-  findFirewallMetadataPermission,
   permissionGrantsToFirewallPolicies,
   resolveFirewallMetadataPolicies,
 } from "@vm0/connectors/firewall-metadata/policy";
@@ -117,11 +116,4 @@ export function connectorPermissionGrantsToFirewallPolicies(
   grants: readonly ZeroUserPermissionGrant[],
 ): FirewallPolicies | null {
   return permissionGrantsToFirewallPolicies(grants);
-}
-
-export function hasConnectorFirewallMetadataPermission(
-  metadata: ZeroConnectorCatalogPermissionDetail,
-  permission: string,
-): boolean {
-  return findFirewallMetadataPermission(metadata, permission) !== null;
 }

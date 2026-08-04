@@ -67,7 +67,7 @@ export interface InsertAssistantEventsInput {
   readonly threadId: string;
   readonly userId: string;
   readonly items: readonly {
-    readonly sequenceNumber: number;
+    readonly runEventSequenceNumber: number;
     readonly content: string;
     readonly runEventId?: string;
   }[];
@@ -231,7 +231,7 @@ export async function insertAssistantEventsInTransaction(
     (
       item,
     ): item is {
-      readonly sequenceNumber: number;
+      readonly runEventSequenceNumber: number;
       readonly content: string;
       readonly runEventId: string;
     } => {
@@ -257,7 +257,7 @@ export async function insertAssistantEventsInTransaction(
               runGroupId: runContext.runGroupId,
               eventType: "output.message",
               content: item.content,
-              sequenceNumber: item.sequenceNumber,
+              runEventSequenceNumber: item.runEventSequenceNumber,
               runEventId: item.runEventId,
             };
           }),
@@ -277,7 +277,7 @@ export async function insertAssistantEventsInTransaction(
               runGroupId: runContext.runGroupId,
               eventType: "output.message",
               content: item.content,
-              sequenceNumber: item.sequenceNumber,
+              runEventSequenceNumber: item.runEventSequenceNumber,
               runEventId: null,
             };
           }),

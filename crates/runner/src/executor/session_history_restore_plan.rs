@@ -16,8 +16,8 @@
 //!
 //! The executor consumes the resulting plan immediately before restore.
 //! `Default` and any still-deferred safety path start normal materialization,
-//! `Prestarted` finishes its owned work, and `LocalSidecar` attempts local
-//! restore before falling back to remote materialization. `SkipVerified` still
+//! `Prestarted` finishes its owned work, and `LocalSidecar` finishes prestarted
+//! local work before falling back to remote materialization. `SkipVerified` still
 //! verifies final metadata inside the live sandbox; failed verification records
 //! the stale-identity fallback and starts remote materialization.
 //!
@@ -34,12 +34,12 @@ use super::cli_framework::effective_cli_framework;
 use super::session_history_cpu::SessionHistoryCpuPool;
 use super::session_history_download::{SessionHistoryMaterializer, SessionHistoryProbe};
 use super::telemetry::{RunnerPreSpawnPhase, RunnerPreSpawnTiming};
+use super::workspace_session_history_materializer::WorkspaceSessionHistoryMaterializer;
 use crate::http::HttpClient;
 use crate::restored_session_identity::{
     RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
 };
 use crate::types::{ExecutionContext, SandboxReuseResult};
-use crate::workspace_image_cache::WorkspaceSessionHistorySidecar;
 
 /// Stable telemetry classification for a restore that cannot use verified
 /// history already present in an idle sandbox.
@@ -97,7 +97,7 @@ impl SessionHistoryRestoreFallback {
 ///
 /// The plan moves from post-reuse discovery through optional fresh-workspace
 /// resolution and into executor consumption. Its payload owns any asynchronous
-/// materializer work, validated local sidecar, or verified identity needed by
+/// materializer work or verified identity needed by
 /// the next stage.
 #[derive(Default)]
 #[must_use = "restore plans decide whether resume history download can be skipped"]
@@ -131,17 +131,18 @@ pub(crate) enum SessionHistoryRestorePlan {
         /// Classification recorded when the executor consumes this plan.
         fallback: Option<SessionHistoryRestoreFallback>,
     },
-    /// Attempt restore from a sidecar validated against the cached workspace
-    /// and requested session history.
+    /// Attempt restore from prestarted host work for a sidecar validated
+    /// against the cached workspace and requested session history.
     ///
     /// Retrying sandbox preparation without that workspace image invalidates
     /// the sidecar and replaces this plan with `Prestarted`. During executor
     /// consumption, a non-cancellation materialization or restore failure also
-    /// falls back to remote materialization.
+    /// falls back to remote materialization. The owned materializer cancels
+    /// unfinished work when this plan is dropped.
     LocalSidecar {
-        /// Validated descriptor owned until local materialization is attempted
-        /// or the cached workspace is discarded.
-        sidecar: WorkspaceSessionHistorySidecar,
+        /// Cancellable local materializer owned until executor consumption or
+        /// cached-workspace invalidation.
+        materializer: WorkspaceSessionHistoryMaterializer,
         /// Classification retained until this strategy reaches the executor.
         fallback: Option<SessionHistoryRestoreFallback>,
     },
@@ -161,7 +162,6 @@ pub(crate) enum SessionHistoryRestorePlan {
 /// to start early materialization, but leaves fresh-workspace sidecar probing
 /// and live sandbox verification to later stages.
 pub(crate) struct SessionHistoryRestorePlanInput<'a> {
-    pub(crate) resume_session_valid: bool,
     pub(crate) http: &'a HttpClient,
     pub(crate) cpu: &'a SessionHistoryCpuPool,
     pub(crate) context: &'a ExecutionContext,
@@ -174,7 +174,7 @@ pub(crate) struct SessionHistoryRestorePlanInput<'a> {
 
 /// Builds the initial restore strategy after sandbox reuse is resolved.
 ///
-/// Invalid or non-hash-backed resume state uses the ordinary `Default` path. A
+/// Absent or non-hash-backed resume state uses the ordinary `Default` path. A
 /// reused sandbox can select `SkipVerified` or start a `Prestarted`
 /// materializer. Non-reuse produces `DeferredHashBacked` so fresh-workspace
 /// preparation gets the first opportunity to use a matching local sidecar.
@@ -182,7 +182,6 @@ pub(crate) fn build_session_history_restore_plan(
     input: SessionHistoryRestorePlanInput<'_>,
 ) -> SessionHistoryRestorePlan {
     let SessionHistoryRestorePlanInput {
-        resume_session_valid,
         http,
         cpu,
         context,
@@ -192,9 +191,6 @@ pub(crate) fn build_session_history_restore_plan(
         pre_spawn_timing,
         probe,
     } = input;
-    if !resume_session_valid {
-        return SessionHistoryRestorePlan::Default;
-    }
     let Some(resume_session) = context.resume_session.as_ref() else {
         return SessionHistoryRestorePlan::Default;
     };
@@ -238,7 +234,7 @@ pub(crate) fn build_session_history_restore_plan(
                 )))
             }
         }
-        SandboxReuseResult::NoSessionId
+        SandboxReuseResult::NoReuseKey
         | SandboxReuseResult::PoolMiss
         | SandboxReuseResult::ProfileMismatch
         | SandboxReuseResult::DeviceLimitMismatch
@@ -355,7 +351,6 @@ mod tests {
     }
 
     fn build_plan(
-        resume_session_valid: bool,
         context: &ExecutionContext,
         reuse_result: SandboxReuseResult,
         restored_identity: Option<&RestoredSessionIdentity>,
@@ -364,7 +359,6 @@ mod tests {
         let cpu = SessionHistoryCpuPool::with_capacity(1);
         let mut pre_spawn_timing = RunnerPreSpawnTiming::start_after_claim();
         build_session_history_restore_plan(SessionHistoryRestorePlanInput {
-            resume_session_valid,
             http: &http,
             cpu: &cpu,
             context,
@@ -374,15 +368,6 @@ mod tests {
             pre_spawn_timing: &mut pre_spawn_timing,
             probe: None,
         })
-    }
-
-    #[test]
-    fn restore_plan_defaults_for_invalid_resume_session() {
-        let context = context_with_history_ref("history-hash-a");
-
-        let plan = build_plan(false, &context, SandboxReuseResult::Reused, None);
-
-        assert!(matches!(plan, SessionHistoryRestorePlan::Default));
     }
 
     #[test]
@@ -396,7 +381,7 @@ mod tests {
         ));
 
         for context in [&context_without_resume, &context_with_inline_history] {
-            let plan = build_plan(true, context, SandboxReuseResult::Reused, None);
+            let plan = build_plan(context, SandboxReuseResult::Reused, None);
 
             assert!(matches!(plan, SessionHistoryRestorePlan::Default));
         }
@@ -411,7 +396,6 @@ mod tests {
         let restored_identity = final_metadata_identity(history_hash, 12);
 
         let plan = build_plan(
-            true,
             &context,
             SandboxReuseResult::Reused,
             Some(&restored_identity),
@@ -465,7 +449,6 @@ mod tests {
                 .expect("checkpointed final identity");
 
         let plan = build_plan(
-            true,
             &context,
             SandboxReuseResult::Reused,
             Some(&restored_identity),
@@ -487,7 +470,6 @@ mod tests {
         let restored_identity = RestoredSessionIdentity::from_context(&context).unwrap();
 
         let plan = build_plan(
-            true,
             &context,
             SandboxReuseResult::Reused,
             Some(&restored_identity),
@@ -511,7 +493,6 @@ mod tests {
         let restored_identity = final_metadata_identity(history_hash, 13);
 
         let plan = build_plan(
-            true,
             &context,
             SandboxReuseResult::Reused,
             Some(&restored_identity),
@@ -534,7 +515,7 @@ mod tests {
     async fn restore_plan_falls_back_when_reused_identity_is_missing() {
         let context = context_with_history_ref("history-hash-a");
 
-        let plan = build_plan(true, &context, SandboxReuseResult::Reused, None);
+        let plan = build_plan(&context, SandboxReuseResult::Reused, None);
 
         match plan {
             SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
@@ -576,7 +557,6 @@ mod tests {
             let restored_identity = final_metadata_identity(restored_hash.clone(), 12);
 
             let plan = build_plan(
-                true,
                 &context,
                 SandboxReuseResult::Reused,
                 Some(&restored_identity),
@@ -604,7 +584,6 @@ mod tests {
         let restored_identity = RestoredSessionIdentity::claude_code_for_test("history-hash-b");
 
         let plan = build_plan(
-            true,
             &context,
             SandboxReuseResult::Reused,
             Some(&restored_identity),
@@ -629,7 +608,7 @@ mod tests {
     fn restore_plan_defers_hash_backed_history_for_non_reuse() {
         let context = context_with_history_ref("history-hash-a");
 
-        let plan = build_plan(true, &context, SandboxReuseResult::PoolMiss, None);
+        let plan = build_plan(&context, SandboxReuseResult::PoolMiss, None);
 
         match plan {
             SessionHistoryRestorePlan::DeferredHashBacked { fallback } => {
@@ -652,7 +631,6 @@ mod tests {
         );
 
         let plan = build_plan(
-            true,
             &context,
             SandboxReuseResult::Reused,
             Some(&restored_identity),
@@ -684,7 +662,6 @@ mod tests {
         );
 
         let plan = build_plan(
-            true,
             &context,
             SandboxReuseResult::Reused,
             Some(&restored_identity),

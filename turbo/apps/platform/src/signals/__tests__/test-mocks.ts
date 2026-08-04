@@ -575,7 +575,8 @@ function mockAudioContext(signal: AbortSignal): void {
 interface VoiceInputMockOptions {
   readonly audioContextReady?: Promise<void>;
   readonly getUserMediaReady?: Promise<void>;
-  readonly rms?: number | readonly number[];
+  readonly onRecorderStop?: () => void;
+  readonly rms?: number | readonly number[] | (() => number);
 }
 
 function mockVoiceInput(
@@ -608,6 +609,9 @@ function mockVoiceInput(
 
   function nextRms(): number {
     const rms = options.rms;
+    if (typeof rms === "function") {
+      return rms();
+    }
     if (typeof rms === "number") {
       return rms;
     }
@@ -696,6 +700,7 @@ function mockVoiceInput(
       this.state = "inactive";
       this.emitData(true);
       this.dispatchEvent(new Event("stop"));
+      options.onRecorderStop?.();
     }
   }
 
