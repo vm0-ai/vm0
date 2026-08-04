@@ -300,13 +300,21 @@ async function resolveChatAgentRunSource(
           runId: source.runId,
           threadId: source.threadId,
           agentId: source.agentId,
-          titleSnapshot: source.title?.trim() || "New thread",
+          titleSnapshot: agentRunSourceTitleSnapshot(source.title),
         };
   return {
     annotation,
     autonomyBudget: source.autonomyBudget,
     schemaAvailable,
   };
+}
+
+function agentRunSourceTitleSnapshot(title: string | null): string {
+  const normalizedTitle = title?.trim();
+  if (!normalizedTitle || normalizedTitle.toLowerCase() === "now") {
+    return "New thread";
+  }
+  return normalizedTitle;
 }
 
 async function resolveNormalSendAgentRunSource(params: {

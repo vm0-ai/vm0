@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-imports, no-restricted-syntax -- No production endpoint can construct a pre-migration schema; this transaction is the narrow rollout-safety exception. */
 import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";

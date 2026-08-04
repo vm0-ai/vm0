@@ -6912,6 +6912,50 @@ describe("CHAT-02: shared user message queue", () => {
       titleSnapshot: "Delegation source",
       href: `/chats/${source.threadId}#run-${source.runId}`,
     });
+
+    await chat.renameThread(actor, source.threadId, "now");
+    const nowTargetThread = await chat.createThread(actor, { agentId });
+    const nowEventId = randomUUID();
+    const nowSend = await requestSendEventWithBearer(
+      sourceToken,
+      {
+        agentId,
+        clientEventId: nowEventId,
+        threadId: nowTargetThread.id,
+        prompt: "delegated prompt from a placeholder thread title",
+      },
+      [201],
+    );
+    if (nowSend.status !== 201) {
+      throw new Error("Expected the placeholder-title prompt to be accepted");
+    }
+    if (!nowSend.body.runId) {
+      throw new Error("Expected the placeholder-title prompt to queue a run");
+    }
+    const nowTargetRunId = nowSend.body.runId;
+    const nowMessages = await waitForThreadMessages(
+      actor,
+      nowTargetThread.id,
+      (events) => {
+        return userMessages(events).some((event) => {
+          return event.id === nowEventId;
+        });
+      },
+    );
+    const nowInput = userMessages(nowMessages.events).find(
+      (event): event is PromptMessage => {
+        return event.eventType === "input.prompt" && event.id === nowEventId;
+      },
+    );
+    expect(nowInput?.userMessage.parts).toContainEqual({
+      type: "source",
+      kind: "agent",
+      runId: source.runId,
+      threadId: source.threadId,
+      agentId,
+      titleSnapshot: "New thread",
+      href: `/chats/${source.threadId}#run-${source.runId}`,
+    });
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
@@ -7011,6 +7055,7 @@ describe("CHAT-02: shared user message queue", () => {
       contextId: source.runId,
     });
     await cancelChatRun(actor, gatedTargetRunId);
+    await cancelChatRun(actor, nowTargetRunId);
     await cancelChatRun(actor, secondTargetRunId);
     await cancelChatRun(actor, firstTargetRunId);
     await cancelChatRun(actor, source.runId, sourceSandboxHeaders);
