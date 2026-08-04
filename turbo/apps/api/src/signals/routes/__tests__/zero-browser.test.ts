@@ -1997,7 +1997,7 @@ describe("zero browser route", () => {
     );
   }, 120_000);
 
-  it("reuses one thread browser and records open-close UI lifecycle events", async () => {
+  it("records browser close events for UI actions and automatic reclamation", async () => {
     const { routeMocks, runs, chat, actor, agent } =
       await setupBrowserScenario();
     const first = await createClaimedChatRun(
@@ -2055,6 +2055,17 @@ describe("zero browser route", () => {
       [200],
     );
 
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const beforeReclaimCloseEventId = randomUUID();
+    await accept(
+      client().close({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: first.threadId },
+        body: { eventId: beforeReclaimCloseEventId },
+      }),
+      [200],
+    );
+
     mockNow(STARTED_AT_MS + 11 * MINUTE_MS);
     const reclaimed = await reconcileBrowsers();
     expect(reclaimed.body).toMatchObject({
@@ -2075,7 +2086,6 @@ describe("zero browser route", () => {
     });
     expect(providerCreates).toBe(2);
 
-    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const noOpEventId = randomUUID();
     const alreadyActive = await accept(
       client().open({
@@ -2138,6 +2148,16 @@ describe("zero browser route", () => {
       {
         id: firstStart.body.lifecycleEventId,
         eventType: "browser.open",
+        content: null,
+      },
+      {
+        id: beforeReclaimCloseEventId,
+        eventType: "browser.close",
+        content: null,
+      },
+      {
+        id: expect.any(String),
+        eventType: "browser.close",
         content: null,
       },
       {
