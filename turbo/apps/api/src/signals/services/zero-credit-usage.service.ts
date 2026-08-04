@@ -143,7 +143,17 @@ interface ProcessOrgUsageEventsResult {
   readonly lowBalanceAlert: CreditLowBalanceAlertArgs | null;
 }
 
-type UsageEventRecord = typeof usageEvent.$inferSelect;
+interface UsageEventRecord {
+  readonly id: string;
+  readonly runId: string | null;
+  readonly idempotencyKey: string;
+  readonly userId: string;
+  readonly kind: string;
+  readonly provider: string;
+  readonly category: string;
+  readonly quantity: number;
+  readonly createdAt: Date;
+}
 type UsagePricingRecord = typeof usagePricing.$inferSelect;
 type UsageEventBillingError = "missing_pricing" | "fallback_pricing" | null;
 
@@ -168,14 +178,6 @@ function priceUsageEvents(
   );
   const pricedEvents: PricedUsageEvent[] = [];
   for (const record of records) {
-    if (record.kind === "model" && record.grossCredits !== null) {
-      pricedEvents.push({
-        record,
-        grossCredits: record.grossCredits,
-        billingError: null,
-      });
-      continue;
-    }
     const exactPricing = pricingByKey.get(
       `${record.kind}|${record.provider}|${record.category}`,
     );
@@ -282,7 +284,17 @@ async function processOrgUsageEventsInTransaction(
   );
 
   const pendingRecords = await tx
-    .select()
+    .select({
+      id: usageEvent.id,
+      runId: usageEvent.runId,
+      idempotencyKey: usageEvent.idempotencyKey,
+      userId: usageEvent.userId,
+      kind: usageEvent.kind,
+      provider: usageEvent.provider,
+      category: usageEvent.category,
+      quantity: usageEvent.quantity,
+      createdAt: usageEvent.createdAt,
+    })
     .from(usageEvent)
     .where(and(eq(usageEvent.orgId, orgId), eq(usageEvent.status, "pending")));
 
@@ -301,11 +313,7 @@ async function processOrgUsageEventsInTransaction(
     ),
   ];
 
-  const pricingRecords = pendingRecords.some((record) => {
-    return record.kind !== "model" || record.grossCredits === null;
-  })
-    ? await tx.select().from(usagePricing)
-    : [];
+  const pricingRecords = await tx.select().from(usagePricing);
   const pricedEvents = priceUsageEvents(pendingRecords, pricingRecords, orgId);
 
   const allowanceByUsageEvent =
