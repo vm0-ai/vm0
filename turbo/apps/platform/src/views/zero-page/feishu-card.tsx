@@ -736,6 +736,12 @@ function FeishuRedirectStep({ data }: { data: FeishuDialogData | null }) {
           )}
         </p>
       </div>
+      <FeishuGuideImage
+        src={platformFeishuSecuritySettingsRedirectUrlImg}
+        alt={t(($) => {
+          return $.connectors.providerSettings.feishu.redirect.imageAlt;
+        })}
+      />
       <div className="flex gap-2">
         <Input value={data?.oauthRedirectUrl ?? ""} readOnly />
         {data?.oauthRedirectUrl ? (
@@ -747,12 +753,6 @@ function FeishuRedirectStep({ data }: { data: FeishuDialogData | null }) {
           />
         ) : null}
       </div>
-      <FeishuGuideImage
-        src={platformFeishuSecuritySettingsRedirectUrlImg}
-        alt={t(($) => {
-          return $.connectors.providerSettings.feishu.redirect.imageAlt;
-        })}
-      />
     </div>
   );
 }
@@ -836,12 +836,12 @@ function FeishuPermissionsStep({ data }: { data: FeishuDialogData | null }) {
             {scopeImportJson}
           </code>
         </div>
+        <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">
+          {t(($) => {
+            return $.connectors.providerSettings.feishu.permissions.hint;
+          })}
+        </p>
       </div>
-      <p className="text-sm text-muted-foreground">
-        {t(($) => {
-          return $.connectors.providerSettings.feishu.permissions.hint;
-        })}
-      </p>
     </div>
   );
 }

@@ -593,16 +593,20 @@ describe("works page", () => {
     ).toBeInTheDocument();
     expect(queryRole("button", "Show next Feishu guide image")).toBeNull();
     expect(screen.getByText("User token scope JSON")).toBeInTheDocument();
-    expect(
-      JSON.parse(
-        screen.getByTestId("feishu-user-scope-import-json").textContent ?? "",
-      ),
-    ).toStrictEqual({
+    const scopeImportJson = screen.getByTestId("feishu-user-scope-import-json");
+    expect(JSON.parse(scopeImportJson.textContent ?? "")).toStrictEqual({
       scopes: {
         tenant: [],
         user: [...FEISHU_OAUTH_SCOPES],
       },
     });
+    const permissionWarning = screen.getByText(
+      "Keep every imported User identity permission, then create and publish a new app version so the OAuth consent screen can grant them. Removing any permission prevents the integration from working, and Feishu administrator approval may be required.",
+    );
+    expect(scopeImportJson.parentElement?.parentElement).toContainElement(
+      permissionWarning,
+    );
+    expect(permissionWarning).toHaveClass("text-amber-600");
 
     click(getRole("button", "Next"));
     expect(screen.getByText("Configure event delivery")).toBeInTheDocument();
@@ -774,6 +778,16 @@ describe("works page", () => {
     expect(
       screen.getByText("Configure the OAuth redirect URL"),
     ).toBeInTheDocument();
+    const redirectGuideImage = screen.getByRole("img", {
+      name: "Feishu Security Settings page showing where to add an OAuth redirect URL",
+    });
+    const redirectUrlInput = screen.getByDisplayValue(
+      "https://app.vm0.test/connectors/feishu/callback",
+    );
+    expect(
+      redirectGuideImage.compareDocumentPosition(redirectUrlInput) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     click(getRole("button", "Next"));
     expect(screen.getByText("Import user token scopes")).toBeInTheDocument();
     click(getRole("button", "Next"));
