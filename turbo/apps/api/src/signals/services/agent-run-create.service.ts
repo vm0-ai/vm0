@@ -405,6 +405,7 @@ interface ZeroRunMetadata {
   readonly triggerBrief?: string;
   // Run provenance for autonomous thread-goal continuation.
   readonly goalId?: string;
+  readonly autonomyBudget?: number;
 }
 
 interface AgentConfig {
@@ -5143,6 +5144,9 @@ function launchZeroRunValues(
     triggerBrief: metadata.triggerBrief ?? null,
     runGroupId: metadata.goalId ?? null,
     goalId: metadata.goalId ?? null,
+    ...(metadata.autonomyBudget === undefined
+      ? {}
+      : { autonomyBudget: metadata.autonomyBudget }),
     ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
     chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),

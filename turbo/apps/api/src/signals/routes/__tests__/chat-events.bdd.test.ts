@@ -74,6 +74,10 @@ import { overwriteModelProviderSecretForTests } from "./helpers/zero-model-provi
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import {
+  readRunAutonomyBudgetFixture,
+  setRunAutonomyBudgetFixture,
+} from "../../../test-fixtures/autonomy-budget";
+import {
   createUnassociatedThreadBoundAgentRunFixture,
   createUnassociatedThreadBoundZeroRunFixture,
 } from "../../../test-fixtures/thread-bound-run-admission";
@@ -942,7 +946,7 @@ async function requestSendEventWithBearer(
     readonly prompt: string;
     readonly threadId?: string;
   },
-  statuses: readonly (201 | 401 | 403)[],
+  statuses: readonly (201 | 401 | 403 | 409)[],
 ) {
   return await accept(
     chatEventsClient().send({
@@ -6107,6 +6111,10 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
       runId: immediate.body.runId,
       prompt: "immediate run-scoped handoff",
     });
+    await expect(readRunAutonomyBudgetFixture(caller.runId)).resolves.toBe(10);
+    await expect(
+      readRunAutonomyBudgetFixture(immediate.body.runId),
+    ).resolves.toBe(9);
     // Neither callback internals nor retired provenance are public API fields.
     // The test-only state route is the only boundary that can prove their
     // absence without importing database schemas or production services.
@@ -6173,6 +6181,7 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
       runId: promoted.runId,
       prompt: "queued run-scoped handoff",
     });
+    await expect(readRunAutonomyBudgetFixture(promoted.runId)).resolves.toBe(9);
     const promotedState = await runStateStore.set(
       readAgentRunState$,
       {
@@ -6620,6 +6629,10 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected the first delegated prompt to launch a run");
     }
     const firstTargetRunId = firstSend.body.runId;
+    await expect(readRunAutonomyBudgetFixture(source.runId)).resolves.toBe(10);
+    await expect(readRunAutonomyBudgetFixture(firstTargetRunId)).resolves.toBe(
+      9,
+    );
     const firstMessages = await waitForThreadMessages(
       actor,
       firstTargetThread.id,
@@ -6712,6 +6725,9 @@ describe("CHAT-02: shared user message queue", () => {
     }
     const secondTargetRunId = secondSend.body.runId;
     expect(secondSend.body.status).toBe("queued");
+    await expect(readRunAutonomyBudgetFixture(secondTargetRunId)).resolves.toBe(
+      9,
+    );
     const secondMessages = await waitForThreadMessages(
       actor,
       secondTargetThread.id,
@@ -6772,6 +6788,9 @@ describe("CHAT-02: shared user message queue", () => {
     }
     const gatedTargetRunId = gatedSend.body.runId;
     expect(gatedSend.body.status).toBe("queued");
+    await expect(readRunAutonomyBudgetFixture(gatedTargetRunId)).resolves.toBe(
+      9,
+    );
     const gatedMessages = await waitForThreadMessages(
       actor,
       gatedTargetThread.id,
@@ -6795,12 +6814,82 @@ describe("CHAT-02: shared user message queue", () => {
     });
     await expect(
       readChatEventContextFixture(gatedEventId),
-    ).resolves.toMatchObject({ contextType: null, contextId: null });
+    ).resolves.toMatchObject({
+      contextType: "agent_run",
+      contextId: source.runId,
+      agentRunSourceChatThreadId: source.threadId,
+      agentRunSourceAgentId: agentId,
+    });
 
     await cancelChatRun(actor, gatedTargetRunId);
     await cancelChatRun(actor, secondTargetRunId);
     await cancelChatRun(actor, firstTargetRunId);
     await cancelChatRun(actor, source.runId, sourceSandboxHeaders);
+  }, 90_000);
+
+  it("blocks cross-thread delegation from a zero-budget run", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const target = await chat.createThread(actor, { agentId });
+    const blockedTarget = await chat.createThread(actor, { agentId });
+    const root = await sendChatRun(actor, {
+      agentId,
+      prompt: "start bounded delegation",
+    });
+    const rootClaim = await claimChatRun(runnerGroup, root.runId);
+    await setRunAutonomyBudgetFixture(root.runId, 1);
+
+    const delegated = await requestSendEventWithBearer(
+      zeroTokenFromClaim(rootClaim.claim),
+      {
+        agentId,
+        clientEventId: randomUUID(),
+        threadId: target.id,
+        prompt: "last allowed delegation",
+      },
+      [201],
+    );
+    if (delegated.status !== 201 || delegated.body.runId === null) {
+      throw new Error("Expected the last allowed delegation to create a run");
+    }
+    await expect(
+      readRunAutonomyBudgetFixture(delegated.body.runId),
+    ).resolves.toBe(0);
+
+    await completeChatRunOk(root.runId, rootClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+    const delegatedClaim = await claimChatRun(
+      runnerGroup,
+      delegated.body.runId,
+    );
+
+    const blockedEventId = randomUUID();
+    const blocked = await requestSendEventWithBearer(
+      zeroTokenFromClaim(delegatedClaim.claim),
+      {
+        agentId,
+        clientEventId: blockedEventId,
+        threadId: blockedTarget.id,
+        prompt: "delegation beyond the limit",
+      },
+      [409],
+    );
+    expect(blocked).toMatchObject({
+      status: 409,
+      body: {
+        error: { code: "AUTONOMY_BUDGET_EXHAUSTED" },
+      },
+    });
+    const targetMessages = await chat.listThreadEvents(actor, blockedTarget.id);
+    expect(targetMessages.events).not.toContainEqual(
+      expect.objectContaining({ id: blockedEventId }),
+    );
+
+    await completeChatRunOk(
+      delegated.body.runId,
+      delegatedClaim.sandboxHeaders,
+    );
+    await flushWaitUntilForTest();
   }, 90_000);
 
   it("derives real-agent preview mode when queued messages are claimed", async () => {

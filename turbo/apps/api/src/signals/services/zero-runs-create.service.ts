@@ -140,6 +140,7 @@ interface ZeroRunMetadata {
   readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
   readonly goalId?: string;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateZeroRunCommandArgs {

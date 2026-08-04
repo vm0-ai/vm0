@@ -15,6 +15,7 @@ import {
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   and,
   asc,
@@ -55,6 +56,11 @@ import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import { noGoalChangeAfterQueueEvent } from "./chat-goal-queue.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
 import { attachCanonicalWebInputAssetsToEvent } from "./canonical-asset.service";
+import {
+  childAutonomyBudget,
+  INITIAL_AUTONOMY_BUDGET,
+  type ChildAutonomyBudget,
+} from "./autonomy-budget.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -101,6 +107,9 @@ export interface QueuedUserMessage {
     | "agentphone"
     | "github"
     | "workflow-schedule";
+  readonly autonomyBudget:
+    | ChildAutonomyBudget
+    | { readonly kind: "unavailable"; readonly message: string };
 }
 
 export type QueueFirstRunAssociation =
@@ -262,9 +271,18 @@ export async function loadNextUnclaimedQueuedUserMessage(
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
       triggerSource: chatEvents.triggerSource,
+      contextType: chatEvents.contextType,
+      sourceAutonomyBudget: zeroRuns.autonomyBudget,
     })
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+    .leftJoin(
+      zeroRuns,
+      and(
+        eq(chatEvents.contextType, "agent_run"),
+        eq(zeroRuns.id, chatEvents.contextId),
+      ),
+    )
     .where(
       and(
         eq(chatEvents.id, head.id),
@@ -289,10 +307,20 @@ export async function loadNextUnclaimedQueuedUserMessage(
   if (!triggerSource.success) {
     return null;
   }
+  const autonomyBudget: QueuedUserMessage["autonomyBudget"] =
+    event.contextType !== "agent_run"
+      ? { kind: "ok", autonomyBudget: INITIAL_AUTONOMY_BUDGET }
+      : event.sourceAutonomyBudget === null
+        ? {
+            kind: "unavailable",
+            message: "Agent source run no longer exists",
+          }
+        : childAutonomyBudget(event.sourceAutonomyBudget);
   return {
     ...event,
     userMessage: event.userMessage,
     triggerSource: triggerSource.data,
+    autonomyBudget,
   };
 }
 

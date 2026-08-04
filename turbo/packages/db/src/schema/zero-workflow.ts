@@ -216,6 +216,7 @@ export const zeroWorkflowAutomations = pgTable(
     lastRunAt: timestamp("last_run_at"),
     lastRunId: uuid("last_run_id"),
     consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    autonomyBudget: integer("autonomy_budget").notNull().default(10),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -249,6 +250,10 @@ export const zeroWorkflowAutomations = pgTable(
             AND interval_seconds IS NULL
             AND at_time IS NULL
           )`,
+      ),
+      check(
+        "zero_workflow_automations_autonomy_budget_check",
+        sql`${table.autonomyBudget} BETWEEN 0 AND 10`,
       ),
     ];
   },

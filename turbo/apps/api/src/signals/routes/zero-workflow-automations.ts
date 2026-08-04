@@ -6,11 +6,16 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$ } from "../external/db";
 import {
+  autonomyBudgetExhausted,
   badRequestMessage,
   conflict,
   notFound,
   teamRequired,
 } from "../../lib/error";
+import {
+  childAutonomyBudget,
+  loadOwnedRunAutonomyBudget,
+} from "../services/autonomy-budget.service";
 import {
   loadVisibleWorkflowById,
   type WorkflowMember,
@@ -151,11 +156,30 @@ const createAutomationInner$ = command(
       return bodyResult.response;
     }
 
+    let autonomyBudget: number | undefined;
+    if (auth.tokenType === "zero") {
+      const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(get(db$), {
+        runId: auth.runId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+      });
+      signal.throwIfAborted();
+      if (sourceAutonomyBudget === null) {
+        return notFound("Source run not found");
+      }
+      const derived = childAutonomyBudget(sourceAutonomyBudget);
+      if (derived.kind === "exhausted") {
+        return autonomyBudgetExhausted();
+      }
+      autonomyBudget = derived.autonomyBudget;
+    }
+
     const automationInputBase = {
       orgId: auth.orgId,
       member: memberFromAuth(auth),
       workflowId: params.workflowId,
       enabled: bodyResult.data.enabled ?? true,
+      ...(autonomyBudget === undefined ? {} : { autonomyBudget }),
     };
     const result = await set(
       createWorkflowAutomation$,

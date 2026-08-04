@@ -40,6 +40,7 @@ export interface GoalQueueTarget {
   readonly agentId: string;
   readonly objective: string;
   readonly objectiveBrief: string;
+  readonly autonomyBudget: number;
 }
 
 async function pendingGoalEventExists(
@@ -178,6 +179,7 @@ export async function loadGoalQueueTarget(
       agentId: threadGoals.agentId,
       objective: threadGoals.objective,
       objectiveBrief: threadGoals.objectiveBrief,
+      autonomyBudget: threadGoals.autonomyBudget,
       status: threadGoals.status,
     })
     .from(threadGoals)
@@ -209,6 +211,7 @@ export async function loadGoalQueueTarget(
     agentId: goal.agentId,
     objective: goal.objective,
     objectiveBrief: goal.objectiveBrief,
+    autonomyBudget: goal.autonomyBudget,
   };
 }
 

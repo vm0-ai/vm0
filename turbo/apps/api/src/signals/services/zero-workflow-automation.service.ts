@@ -1187,6 +1187,7 @@ interface CreateScheduleAutomationInput {
   readonly workflowId: string;
   readonly schedule: ZeroWorkflowSchedule;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateGmailEventAutomationInput {
@@ -1196,6 +1197,7 @@ interface CreateGmailEventAutomationInput {
   readonly eventType: GmailWorkflowEventType;
   readonly eventConfig: GmailWorkflowEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateGithubEventAutomationInputBase {
@@ -1203,6 +1205,7 @@ interface CreateGithubEventAutomationInputBase {
   readonly member: WorkflowMember;
   readonly workflowId: string;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 type CreateGithubEventAutomationInput =
   | (CreateGithubEventAutomationInputBase & {
@@ -1255,6 +1258,7 @@ interface CreateChatRunFinishedEventAutomationInput {
   readonly eventType: ChatRunFinishedWorkflowEventType;
   readonly eventConfig: ChatRunFinishedEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateGoogleCalendarEventAutomationInput {
@@ -1264,6 +1268,7 @@ interface CreateGoogleCalendarEventAutomationInput {
   readonly eventType: GoogleCalendarWorkflowEventType;
   readonly eventConfig: GoogleCalendarWorkflowEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateGoogleMeetEventAutomationInput {
@@ -1273,6 +1278,7 @@ interface CreateGoogleMeetEventAutomationInput {
   readonly eventType: GoogleMeetWorkflowEventType;
   readonly eventConfig: GoogleMeetWorkflowEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateNotionEventAutomationInput {
@@ -1288,6 +1294,7 @@ interface CreateNotionEventAutomationInput {
     | NotionPageContentUpdatedEventCreateConfig
     | NotionPageContentUpdatedEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateStrapiEventAutomationInput {
@@ -1297,6 +1304,7 @@ interface CreateStrapiEventAutomationInput {
   readonly eventType: StrapiWorkflowEventType;
   readonly eventConfig: StrapiEntryPublishedEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateWebhookEventAutomationInput {
@@ -1306,6 +1314,7 @@ interface CreateWebhookEventAutomationInput {
   readonly eventType: "webhook-received";
   readonly eventConfig?: WebhookReceivedEventConfig;
   readonly enabled: boolean;
+  readonly autonomyBudget?: number;
 }
 
 type CreateAutomationInput =
@@ -1418,6 +1427,9 @@ async function insertWorkflowEventAutomation(
         timezone: "UTC",
         enabled: args.input.enabled,
         nextRunAt: null,
+        ...(args.input.autonomyBudget === undefined
+          ? {}
+          : { autonomyBudget: args.input.autonomyBudget }),
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
       })
@@ -1475,6 +1487,9 @@ async function insertWebhookEventAutomation(
         timezone: "UTC",
         enabled: args.input.enabled,
         nextRunAt: null,
+        ...(args.input.autonomyBudget === undefined
+          ? {}
+          : { autonomyBudget: args.input.autonomyBudget }),
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
       })
@@ -1605,6 +1620,9 @@ async function insertScheduleAutomation(
         timezone: args.columns.timezone,
         enabled: args.input.enabled,
         nextRunAt: args.nextRunAt,
+        ...(args.input.autonomyBudget === undefined
+          ? {}
+          : { autonomyBudget: args.input.autonomyBudget }),
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
       })
@@ -1976,6 +1994,9 @@ async function createStrapiEventAutomationForWorkflow(args: {
         timezone: "UTC",
         enabled: args.input.enabled,
         nextRunAt: null,
+        ...(args.input.autonomyBudget === undefined
+          ? {}
+          : { autonomyBudget: args.input.autonomyBudget }),
         createdAt: currentTime,
         updatedAt: currentTime,
       })
