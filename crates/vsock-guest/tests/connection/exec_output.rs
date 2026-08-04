@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTermination};
 
 use super::exec_helpers::{EXEC_OPERATION_TIMEOUT_TEST_MS, read_exec_stdout_output};
@@ -354,7 +355,7 @@ fn exec_operation_captures_grandchild_output_before_drain_deadline() {
         "stderr-early\nstderr-late\n"
     );
     assert!(
-        elapsed < Duration::from_secs(DRAIN_DEADLINE_SECS),
+        elapsed < EXEC_OUTPUT_DRAIN_DEADLINE,
         "late output should be captured before drain deadline, took {elapsed:?}",
     );
 
