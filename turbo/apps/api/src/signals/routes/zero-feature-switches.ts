@@ -19,6 +19,8 @@ const featureSwitchesAuthOptions = {
   missingOrganizationStatus: 401,
 } as const;
 
+const LEGACY_IMAGE_RECOGNITION_SWITCH = "zeroImageRecognition";
+
 function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
@@ -27,12 +29,19 @@ function featureSwitchResponseBody(params: {
   readonly supportsCustomConnectorOAuth2: boolean;
   readonly supportsCustomModelGateways: boolean;
   readonly supportsImageRecognition: boolean;
+  readonly imageRecognitionRolloutComplete: true;
 }) {
-  const effectiveSwitches = getAllFeatureStates({
+  const registeredEffectiveSwitches = getAllFeatureStates({
     orgId: params.orgId,
     userId: params.userId,
     overrides: params.switches,
   });
+  // Pre-rollout Platform bundles still read the removed switch key. Keep the
+  // positive effective value while those bundles can remain open in browsers.
+  const effectiveSwitches = {
+    ...registeredEffectiveSwitches,
+    [LEGACY_IMAGE_RECOGNITION_SWITCH]: true,
+  };
 
   return {
     switches: params.switches,
@@ -41,6 +50,7 @@ function featureSwitchResponseBody(params: {
     supportsCustomConnectorOAuth2: params.supportsCustomConnectorOAuth2,
     supportsCustomModelGateways: params.supportsCustomModelGateways,
     supportsImageRecognition: params.supportsImageRecognition,
+    imageRecognitionRolloutComplete: params.imageRecognitionRolloutComplete,
   };
 }
 
@@ -62,6 +72,7 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       supportsCustomConnectorOAuth2: true,
       supportsCustomModelGateways,
       supportsImageRecognition: true,
+      imageRecognitionRolloutComplete: true,
     }),
   };
 });
@@ -102,6 +113,7 @@ const updateFeatureSwitchesInner$ = command(
         supportsCustomConnectorOAuth2: true,
         supportsCustomModelGateways,
         supportsImageRecognition: true,
+        imageRecognitionRolloutComplete: true,
       }),
     };
   },

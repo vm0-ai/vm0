@@ -13,7 +13,7 @@ import {
 } from "../chat-page/resolve-draft-attachments.ts";
 import {
   featureSwitch$,
-  zeroImageRecognitionEnabled$,
+  imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ZeroChatAttachment } from "./chat-draft.ts";
@@ -631,7 +631,7 @@ function createComposerSubmissionSignals(
       let hasContent = get(workflowComposer.hasInput$);
       if (!hasContent && attachments.length > 0) {
         const modelSelection = await get(options.modelSelection$);
-        const imageRecognitionEnabled = get(zeroImageRecognitionEnabled$);
+        const imageRecognitionEnabled = get(imageRecognitionAvailable$);
         hasContent = hasVisibleAttachment(
           modelSelection,
           attachments,
@@ -685,7 +685,7 @@ function createComposerSubmissionSignals(
             }
             const modelSelection = await get(options.modelSelection$);
             signal.throwIfAborted();
-            const imageRecognitionEnabled = get(zeroImageRecognitionEnabled$);
+            const imageRecognitionEnabled = get(imageRecognitionAvailable$);
             if (
               !hasVisibleAttachment(
                 modelSelection,

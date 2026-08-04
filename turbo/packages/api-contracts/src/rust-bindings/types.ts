@@ -1,6 +1,18 @@
 import type { z } from "zod";
+import { buildInfoResponseSchema } from "../contracts/build-info";
+import { MODEL_PROVIDER_TYPE_IDS } from "../contracts/model-provider-types";
+import { SUPPORTED_RUN_MODELS } from "../contracts/model-price-tiers";
+import {
+  modelProviderCredentialScopeSchema,
+  modelProviderTypeSchema,
+  orgModelPoliciesResponseSchema,
+  orgModelPolicySchema,
+  orgModelPolicyRouteStatusSchema,
+  supportedRunModelSchema,
+} from "../contracts/model-providers";
 import {
   artifactMissingRootPolicySchema,
+  runnerZeroCliCompatibilitySchema,
   storageMountEntrySchema,
 } from "../contracts/runners";
 import { fileEntryWithHashSchema } from "../contracts/storages";
@@ -9,6 +21,7 @@ import {
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
 } from "../contracts/webhooks";
+import { userModelPreferenceResponseSchema } from "../contracts/zero-user-model-preference";
 
 export interface RustTypeBinding {
   readonly schema: z.ZodType;
@@ -34,10 +47,26 @@ export interface RustTypeModuleDoc {
 export const rustTypeRootDoc = [
   "Generated Rust DTOs for selected `@vm0/api-contracts` request and response bodies.",
   "Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.",
-  "These types preserve the TypeScript wire contract for Rust runner and guest-agent code.",
+  "These types preserve the TypeScript wire contract for Rust runner, native Zero CLI, and guest-agent code.",
 ] as const;
 
 export const rustTypeModuleDocs = [
+  {
+    rustModulePath: ["build_info"],
+    rustDoc: ["API build identity returned to native clients."],
+  },
+  {
+    rustModulePath: ["models"],
+    rustDoc: ["Model and model-provider discovery DTOs for native clients."],
+  },
+  {
+    rustModulePath: ["models", "policies"],
+    rustDoc: ["Workspace model routing policies visible to native clients."],
+  },
+  {
+    rustModulePath: ["models", "preference"],
+    rustDoc: ["Current user's selected model preference."],
+  },
   {
     rustModulePath: ["runners"],
     rustDoc: ["Runner-facing DTOs generated from TypeScript API contracts."],
@@ -46,6 +75,12 @@ export const rustTypeModuleDocs = [
     rustModulePath: ["runners", "storage"],
     rustDoc: [
       "Storage manifest DTOs used by runners to mount volumes and artifacts.",
+    ],
+  },
+  {
+    rustModulePath: ["runners", "zero_cli"],
+    rustDoc: [
+      "Bundled Zero CLI availability and build identity reported by runners.",
     ],
   },
   {
@@ -76,7 +111,198 @@ export const rustTypeModuleDocs = [
   },
 ] satisfies readonly RustTypeModuleDoc[];
 
+function enumVariantDocs(
+  values: readonly string[],
+  subject: string,
+): Readonly<Record<string, readonly string[]>> {
+  return Object.fromEntries(
+    values.map((value) => {
+      return [value, [`${subject} \`${value}\`.`]];
+    }),
+  );
+}
+
 export const rustTypeBindings = [
+  {
+    schema: buildInfoResponseSchema,
+    rustModulePath: ["build_info"],
+    rustTypeName: "Response",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "Response",
+        rustDoc: ["Build identity reported by the current API deployment."],
+        fields: {
+          commitSha: ["Optional source commit SHA for the API deployment."],
+          version: ["Optional release version for the API deployment."],
+        },
+      },
+    ],
+  },
+  {
+    schema: supportedRunModelSchema,
+    rustModulePath: ["models"],
+    rustTypeName: "SupportedRunModel",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "SupportedRunModel",
+        rustDoc: ["Canonical model identifiers accepted for new runs."],
+        variants: enumVariantDocs(SUPPORTED_RUN_MODELS, "Model identifier"),
+      },
+    ],
+  },
+  {
+    schema: modelProviderTypeSchema,
+    rustModulePath: ["models"],
+    rustTypeName: "ModelProviderType",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "ModelProviderType",
+        rustDoc: ["Canonical model-provider credential and runtime types."],
+        variants: enumVariantDocs(
+          MODEL_PROVIDER_TYPE_IDS,
+          "Model-provider type",
+        ),
+      },
+    ],
+  },
+  {
+    schema: modelProviderCredentialScopeSchema,
+    rustModulePath: ["models"],
+    rustTypeName: "ModelProviderCredentialScope",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "ModelProviderCredentialScope",
+        rustDoc: ["Ownership scope for model-provider credentials."],
+        variants: {
+          org: ["Credentials owned by the organization."],
+          member: ["Credentials owned by the current member."],
+        },
+      },
+    ],
+  },
+  {
+    schema: orgModelPolicyRouteStatusSchema,
+    rustModulePath: ["models", "policies"],
+    rustTypeName: "OrgModelPolicyRouteStatus",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "OrgModelPolicyRouteStatus",
+        rustDoc: ["Resolution status for a workspace model route."],
+        variants: {
+          valid: ["The model route can resolve a usable provider."],
+          missing_provider: ["The model route has no usable provider."],
+          invalid: ["The configured model route is invalid."],
+        },
+      },
+    ],
+  },
+  {
+    schema: orgModelPolicySchema,
+    rustModulePath: ["models", "policies"],
+    rustTypeName: "Policy",
+    direction: "response",
+    fieldTypeOverrides: {
+      model: "super::SupportedRunModel",
+      defaultProviderType: "super::ModelProviderType",
+      credentialScope: "super::ModelProviderCredentialScope",
+      routeStatus: "OrgModelPolicyRouteStatus",
+    },
+    declarations: [
+      {
+        rustTypeName: "Policy",
+        rustDoc: ["Resolved model routing policy visible to the current user."],
+        fields: {
+          id: ["Stable identifier for the model policy."],
+          model: ["Canonical model selected by the policy."],
+          modelLabel: ["Display label for the model."],
+          isDefault: ["Whether this policy is the workspace default."],
+          defaultProviderType: [
+            "Provider type selected when no explicit provider is configured.",
+          ],
+          credentialScope: ["Ownership scope for the provider credentials."],
+          modelProviderId: ["Optional configured model-provider identifier."],
+          modelProviderSurfaceId: [
+            "Optional configured model-provider surface identifier.",
+          ],
+          routeStatus: ["Current provider resolution status."],
+          routeStatusReason: [
+            "Optional explanation when the provider route is unavailable.",
+          ],
+          createdAt: ["Timestamp when the policy was created."],
+          updatedAt: ["Timestamp when the policy was last updated."],
+        },
+      },
+    ],
+  },
+  {
+    schema: orgModelPoliciesResponseSchema,
+    rustModulePath: ["models", "policies"],
+    rustTypeName: "Response",
+    direction: "response",
+    fieldTypeOverrides: {
+      policies: "Vec<Policy>",
+      workspaceDefaultModel: "Option<super::SupportedRunModel>",
+    },
+    declarations: [
+      {
+        rustTypeName: "Response",
+        rustDoc: ["Workspace model policies available to the current user."],
+        fields: {
+          policies: ["Resolved workspace model routing policies."],
+          workspaceDefaultModel: ["Optional workspace default model."],
+          workspaceDefaultPolicyId: [
+            "Optional identifier for the workspace default policy.",
+          ],
+        },
+      },
+    ],
+  },
+  {
+    schema: userModelPreferenceResponseSchema,
+    rustModulePath: ["models", "preference"],
+    rustTypeName: "Response",
+    direction: "response",
+    fieldTypeOverrides: {
+      selectedModel: "Option<super::SupportedRunModel>",
+    },
+    declarations: [
+      {
+        rustTypeName: "Response",
+        rustDoc: ["Current user's selected model preference."],
+        fields: {
+          selectedModel: ["Optional model explicitly selected by the user."],
+          updatedAt: ["Optional timestamp of the last preference update."],
+        },
+      },
+    ],
+  },
+  {
+    schema: runnerZeroCliCompatibilitySchema,
+    rustModulePath: ["runners", "zero_cli"],
+    rustTypeName: "CompatibilityDescriptor",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "CompatibilityDescriptor",
+        rustDoc: [
+          "Bundled Zero CLI availability and non-sensitive build identity reported by a runner.",
+        ],
+        fields: {
+          available: ["Whether the runner embeds the native Zero CLI binary."],
+          version: ["Optional native Zero CLI crate version."],
+          buildId: ["Optional runner build containing the native CLI binary."],
+          checksumSha256: [
+            "Optional lowercase SHA-256 checksum of the embedded CLI bytes.",
+          ],
+        },
+      },
+    ],
+  },
   {
     schema: artifactMissingRootPolicySchema,
     rustModulePath: ["runners", "storage"],

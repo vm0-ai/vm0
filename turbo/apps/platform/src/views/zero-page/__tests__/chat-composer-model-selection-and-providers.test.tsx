@@ -21,6 +21,7 @@ import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
@@ -82,6 +83,16 @@ import {
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
+
+function mockPreRolloutImageRecognitionApi(): void {
+  context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    return respond(200, {
+      switches: {},
+      effectiveSwitches: {},
+      supportsImageRecognition: true,
+    });
+  });
+}
 
 afterEach(async () => {
   document.documentElement.lang = DEFAULT_LOCALE;
@@ -1902,10 +1913,11 @@ describe("chat composer models", () => {
     });
   });
 
-  it("keeps unsupported visual files out of text-only model sends while accepting text files", async () => {
+  it("keeps unsupported visual files out when the API has not completed rollout", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("glm-5.1");
     mockAgent();
+    mockPreRolloutImageRecognitionApi();
     context.mocks.upload.success({
       id: "notes-upload",
       filename: "notes.txt",
@@ -2076,9 +2088,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
     });
 
     await expectComposerModel("GLM-5.1");
@@ -2173,9 +2182,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
     });
 
     await expectComposerModel("GLM-5.1");
@@ -2213,10 +2219,11 @@ describe("chat composer models", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("hides an accepted visual attachment after switching to a text-only model", async () => {
+  it("hides an accepted visual attachment against a pre-rollout API", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
+    mockPreRolloutImageRecognitionApi();
     context.mocks.upload.success({
       id: "visual-model-switch",
       filename: "storyboard.png",
@@ -2270,9 +2277,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
     });
 
     await expectComposerModel("Claude Sonnet 4.6");

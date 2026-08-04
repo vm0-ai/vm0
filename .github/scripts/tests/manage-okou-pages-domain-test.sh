@@ -34,10 +34,22 @@ while (( $# > 0 )); do
   esac
 done
 
+if [[ "${MOCK_CURL_FAIL_DNS_DELETE:-false}" == "true" ]] &&
+  [[ "$url" == */dns_records/record-id ]] &&
+  [[ "$method" == "DELETE" ]]; then
+  printf '{"success":false,"errors":[{"code":81058,"message":"conflicting dns record"}]}\n'
+  exit 22
+fi
+
 case "$url" in
   */pages/projects/okou-app/domains)
     if [[ "$method" != "POST" ]]; then
       echo "the paginated Pages domain list must not be used for existence checks" >&2
+      exit 1
+    fi
+    if [[ "${MOCK_PAGES_REQUIRE_DNS_DELETE:-false}" == "true" ]] &&
+      ! grep -q -- '--request DELETE' "$MOCK_CURL_LOG"; then
+      echo "expected the conflicting DNS record to be deleted before creating the Pages domain" >&2
       exit 1
     fi
     printf '{"success":true,"result":{"name":"pr-22239-app.omby.ai"}}\n'
@@ -59,22 +71,34 @@ case "$url" in
       printf '{"success":true,"result":{"status":"active","verification_data":{"status":"active"}}}\n'
     fi
     ;;
-  *'/dns_records?type=CNAME&name=pr-22239-app.omby.ai')
-    jq -n --arg content "$MOCK_DNS_CONTENT" '{result:[{
+  *'/dns_records?name=pr-22239-app.omby.ai')
+    jq -n \
+      --arg content "$MOCK_DNS_CONTENT" \
+      --arg type "${MOCK_DNS_TYPE:-CNAME}" \
+      '{result:[{
       id: "record-id",
-      type: "CNAME",
+      type: $type,
       name: "pr-22239-app.omby.ai",
       content: $content,
       proxied: true,
       ttl: 1
     }]}'
     ;;
-  */dns_records/record-id)
-    if [[ "$method" != "PUT" ]]; then
-      echo "expected a PUT for the existing DNS record" >&2
+  */dns_records)
+    if [[ "$method" != "POST" ]]; then
+      echo "expected a POST for the new DNS record" >&2
       exit 1
     fi
     printf '{"success":true}\n'
+    ;;
+  */dns_records/record-id)
+    case "$method" in
+      DELETE | PUT) printf '{"success":true}\n' ;;
+      *)
+        echo "expected a DELETE or PUT for the existing DNS record" >&2
+        exit 1
+        ;;
+    esac
     ;;
   *)
     echo "unexpected Cloudflare request: ${method} ${url}" >&2
@@ -115,6 +139,28 @@ test "$status" = "active"
 grep -q -- '--request PUT' "$request_log"
 
 : > "$request_log"
+export MOCK_DNS_TYPE="A"
+export MOCK_DNS_CONTENT="192.0.2.1"
+status="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  begin account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
+test "$status" = "active"
+grep -q -- '--request DELETE' "$request_log"
+grep -q -- '--request POST' "$request_log"
+unset MOCK_DNS_TYPE
+
+: > "$request_log"
+export MOCK_CURL_FAIL_DNS_DELETE="true"
+export MOCK_DNS_TYPE="A"
+export MOCK_DNS_CONTENT="192.0.2.1"
+if output="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  begin account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app 2>&1)"; then
+  echo "expected the DNS delete failure to propagate" >&2
+  exit 1
+fi
+grep -q 'conflicting dns record' <<< "$output"
+unset MOCK_CURL_FAIL_DNS_DELETE MOCK_DNS_TYPE
+
+: > "$request_log"
 pages_state_file="${tmp_dir}/pages-state-count"
 printf '0\n' > "$pages_state_file"
 export MOCK_PAGES_PENDING_RESPONSES="31"
@@ -138,10 +184,13 @@ unset MOCK_PAGES_PENDING_RESPONSES MOCK_PAGES_STATE_FILE
 
 : > "$request_log"
 export MOCK_PAGES_DOMAIN_EXISTS="false"
-export MOCK_DNS_CONTENT="pr-22239-app.okou-app.pages.dev"
+export MOCK_PAGES_REQUIRE_DNS_DELETE="true"
+export MOCK_DNS_TYPE="A"
+export MOCK_DNS_CONTENT="192.0.2.1"
 status="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
   begin account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
 test "$status" = "active"
 grep -q -- '--request POST' "$request_log"
+unset MOCK_PAGES_REQUIRE_DNS_DELETE MOCK_DNS_TYPE
 
 echo "manage-okou-pages-domain tests passed"

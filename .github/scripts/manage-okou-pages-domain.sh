@@ -27,7 +27,14 @@ cloudflare_response() {
 }
 
 cloudflare_request() {
-  cloudflare_response --fail-with-body "$@"
+  local response
+
+  if ! response="$(cloudflare_response --fail-with-body "$@")"; then
+    printf '%s\n' "$response" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$response"
 }
 
 pages_domain_state() {
@@ -47,18 +54,31 @@ require_cloudflare_success() {
 
 dns_record() {
   cloudflare_request \
-    "${dns_records_url}?type=CNAME&name=${domain}" |
+    "${dns_records_url}?name=${domain}" |
     jq -c '.result[0] // null'
+}
+
+delete_dns_record() {
+  local record_id
+
+  record_id="$(dns_record | jq -r '.id // empty')"
+  if [[ -n "$record_id" ]]; then
+    cloudflare_request \
+      --request DELETE \
+      "${dns_records_url}/${record_id}" >/dev/null
+  fi
 }
 
 upsert_cname() {
   local target="$1"
   local record
   local record_id
+  local record_type
   local body
 
   record="$(dns_record)"
   record_id="$(jq -r '.id // empty' <<< "$record")"
+  record_type="$(jq -r '.type // empty' <<< "$record")"
   body="$(jq -n \
     --arg name "$domain" \
     --arg target "$target" \
@@ -79,16 +99,23 @@ upsert_cname() {
       return
     fi
 
+    if [[ "$record_type" == "CNAME" ]]; then
+      cloudflare_request \
+        --request PUT \
+        "${dns_records_url}/${record_id}" \
+        --data "$body" >/dev/null
+      return
+    fi
+
     cloudflare_request \
-      --request PUT \
-      "${dns_records_url}/${record_id}" \
-      --data "$body" >/dev/null
-  else
-    cloudflare_request \
-      --request POST \
-      "$dns_records_url" \
-      --data "$body" >/dev/null
+      --request DELETE \
+      "${dns_records_url}/${record_id}" >/dev/null
   fi
+
+  cloudflare_request \
+    --request POST \
+    "$dns_records_url" \
+    --data "$body" >/dev/null
 }
 
 domain_is_active() {
@@ -103,6 +130,7 @@ begin_domain_validation() {
 
   domain_state="$(pages_domain_state)"
   if pages_domain_missing <<< "$domain_state"; then
+    delete_dns_record
     cloudflare_request \
       --request POST \
       "$pages_domains_url" \
@@ -181,12 +209,7 @@ case "$action" in
         "${pages_domains_url}/${domain}" >/dev/null
     fi
 
-    record_id="$(dns_record | jq -r '.id // empty')"
-    if [[ -n "$record_id" ]]; then
-      cloudflare_request \
-        --request DELETE \
-        "${dns_records_url}/${record_id}" >/dev/null
-    fi
+    delete_dns_record
     echo "Cloudflare Pages custom branch domain deleted: ${domain}"
     ;;
   *)

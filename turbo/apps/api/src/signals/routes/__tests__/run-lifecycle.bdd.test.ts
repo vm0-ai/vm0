@@ -6059,10 +6059,9 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, sent.body.runId, [200]);
   });
 
-  it("offers image recognition only for enabled image-unsupported models", async () => {
+  it("offers image recognition only for image-unsupported models", async () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
-    const connectors = createConnectorBddApi(context);
     const unsupportedModel = "deepseek-v4-flash";
     const supportedModel = "claude-sonnet-4-6";
     const unknownModel = "gpt-5.6-sol";
@@ -6128,61 +6127,46 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       };
     }
 
-    const disabledUnsupported = await claimModel(unsupportedModel);
-    const disabledToken = disabledUnsupported.claim.environment?.ZERO_TOKEN;
-    if (!disabledToken) {
-      throw new Error("Expected the disabled run to expose ZERO_TOKEN");
+    const unsupported = await claimModel(unsupportedModel);
+    const unsupportedToken = unsupported.claim.environment?.ZERO_TOKEN;
+    if (!unsupportedToken) {
+      throw new Error(
+        "Expected the unsupported-model run to expose ZERO_TOKEN",
+      );
     }
-    expect(disabledUnsupported.claim.appendSystemPrompt ?? "").not.toContain(
-      "zero recognize",
-    );
-    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
-      "image-recognition:write",
-    );
-    await api.requestCancelRun(actor, disabledUnsupported.runId, [200]);
-
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ZeroImageRecognition]: true,
-    });
-
-    const enabledUnsupported = await claimModel(unsupportedModel);
-    const enabledToken = enabledUnsupported.claim.environment?.ZERO_TOKEN;
-    if (!enabledToken) {
-      throw new Error("Expected the enabled run to expose ZERO_TOKEN");
-    }
-    expect(enabledUnsupported.claim.appendSystemPrompt ?? "").toContain(
+    expect(unsupported.claim.appendSystemPrompt ?? "").toContain(
       'zero recognize --file <image-path> --prompt "<instruction>"',
     );
-    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+    expect(verifyZeroToken(unsupportedToken)?.capabilities).toContain(
       "image-recognition:write",
     );
-    await api.requestCancelRun(actor, enabledUnsupported.runId, [200]);
+    await api.requestCancelRun(actor, unsupported.runId, [200]);
 
-    const enabledSupported = await claimModel(supportedModel);
-    const supportedToken = enabledSupported.claim.environment?.ZERO_TOKEN;
+    const supported = await claimModel(supportedModel);
+    const supportedToken = supported.claim.environment?.ZERO_TOKEN;
     if (!supportedToken) {
       throw new Error("Expected the supported-model run to expose ZERO_TOKEN");
     }
-    expect(enabledSupported.claim.appendSystemPrompt ?? "").not.toContain(
+    expect(supported.claim.appendSystemPrompt ?? "").not.toContain(
       "zero recognize",
     );
     expect(verifyZeroToken(supportedToken)?.capabilities).not.toContain(
       "image-recognition:write",
     );
-    await api.requestCancelRun(actor, enabledSupported.runId, [200]);
+    await api.requestCancelRun(actor, supported.runId, [200]);
 
-    const enabledUnknown = await claimModel(unknownModel);
-    const unknownToken = enabledUnknown.claim.environment?.ZERO_TOKEN;
+    const unknown = await claimModel(unknownModel);
+    const unknownToken = unknown.claim.environment?.ZERO_TOKEN;
     if (!unknownToken) {
       throw new Error("Expected the unknown-model run to expose ZERO_TOKEN");
     }
-    expect(enabledUnknown.claim.appendSystemPrompt ?? "").not.toContain(
+    expect(unknown.claim.appendSystemPrompt ?? "").not.toContain(
       "zero recognize",
     );
     expect(verifyZeroToken(unknownToken)?.capabilities).not.toContain(
       "image-recognition:write",
     );
-    await api.requestCancelRun(actor, enabledUnknown.runId, [200]);
+    await api.requestCancelRun(actor, unknown.runId, [200]);
   });
 
   it("injects codex multi-auth provider credentials and proves them via firewall auth", async () => {

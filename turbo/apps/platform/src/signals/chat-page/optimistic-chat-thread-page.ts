@@ -38,7 +38,7 @@ import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
   featureSwitch$,
-  zeroImageRecognitionEnabled$,
+  imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
 import { codexFastModeLocalDefault$ } from "../zero-page/codex-fast-local-default.ts";
 import { logger } from "../log.ts";
@@ -507,7 +507,7 @@ const sendNewThreadMessage$ = command(
       {
         excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
           resolvedModelSelection.selectedModel,
-          get(zeroImageRecognitionEnabled$),
+          get(imageRecognitionAvailable$),
         ),
       },
       signal,

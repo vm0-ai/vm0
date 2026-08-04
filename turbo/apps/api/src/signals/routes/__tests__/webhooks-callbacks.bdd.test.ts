@@ -2715,6 +2715,73 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     });
   });
 
+  it("reads the usage allowance subscription period for a forever Custom plan", async () => {
+    const bdd = createBddApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const suffix = randomUUID().slice(0, 8);
+    const customerId = `cus_bdd_custom_allowance_${suffix}`;
+    const allowanceStartsAtUnix = epochSeconds(-1);
+    const allowanceEndsAtUnix = epochSeconds(29);
+    api.configureStripeBillingEnv();
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
+    await completeOnboardingWithoutCredits(actor);
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_atom_custom_forever_${suffix}`,
+          customer: customerId,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_entitlement",
+            orgId,
+            tier: "custom",
+            duration: "forever",
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_atom_custom_forever_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: epochSeconds(0),
+                  end: epochSeconds(30),
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    await postUsageAllowanceInvoicePaid(context.signal, {
+      orgId,
+      userId: actor.userId,
+      customerId,
+      subscriptionId: `sub_bdd_custom_allowance_${suffix}`,
+      effectiveAt: new Date(allowanceStartsAtUnix * 1000),
+      expiresAt: new Date(allowanceEndsAtUnix * 1000),
+      shortWindowSeconds: 5 * 60 * 60,
+      shortWindowUnits: 625_000,
+      weeklyWindowSeconds: 7 * 86_400,
+      weeklyWindowUnits: 5_000_000,
+    });
+
+    expect((await billing.readBillingStatus(actor)).tier).toBe("custom");
+    expect((await billing.readUsageMembers(actor)).body.period).toStrictEqual({
+      start: isoOf(allowanceStartsAtUnix),
+      end: isoOf(allowanceEndsAtUnix),
+    });
+  });
+
   it("rejects lower Atom grants after a Custom grant without canceling subscriptions", async () => {
     const bdd = createBddApi(context);
     const billing = createBillingMediaApi(context);

@@ -29,6 +29,7 @@ import webClientCompatibility from "../../../lib/web-client-compatibility.json";
 import { server } from "../../../mocks/server";
 import { deleteAgentRunRootFixture } from "../../../test-fixtures/run-deletion";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { createDeferredPromise } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -1718,9 +1719,25 @@ describe("zero browser route", () => {
         );
       }),
     );
+    const releaseSecondScreenshotUpload = createDeferredPromise<void>(
+      context.signal,
+    );
+    const releaseThirdScreenshotUpload = createDeferredPromise<void>(
+      context.signal,
+    );
+    let screenshotUploadCount = 0;
     let failNextScreenshotDelete = true;
     context.mocks.s3.send.mockImplementation((command: unknown) => {
       const input = commandInput(command);
+      if (input.ContentType === "image/webp") {
+        screenshotUploadCount += 1;
+        if (screenshotUploadCount === 2) {
+          return releaseSecondScreenshotUpload.promise;
+        }
+        if (screenshotUploadCount === 3) {
+          return releaseThirdScreenshotUpload.promise;
+        }
+      }
       if ("Delete" in input && failNextScreenshotDelete) {
         failNextScreenshotDelete = false;
         return Promise.reject(new Error("transient screenshot delete failure"));
@@ -1847,6 +1864,7 @@ describe("zero browser route", () => {
     expect(secondReconcile.body).toMatchObject({
       errors: 0,
     });
+    releaseSecondScreenshotUpload.resolve(undefined);
     await flushWaitUntilForTest();
 
     const afterSecondCapture = await accept(
@@ -1930,6 +1948,7 @@ describe("zero browser route", () => {
         );
       }),
     ).toHaveLength(2);
+    releaseThirdScreenshotUpload.resolve(undefined);
     await flushWaitUntilForTest();
 
     const afterThirdCapture = await accept(

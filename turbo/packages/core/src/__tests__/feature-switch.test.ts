@@ -11,6 +11,12 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.GoogleContactsConnector, {})).toBe(
+      true,
+    );
+    expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
+      true,
+    );
     expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.CustomConnectorCliCreate, {}),
@@ -37,12 +43,6 @@ describe("isFeatureEnabled", () => {
   it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.GoogleContactsConnector, {})).toBe(
-      false,
-    );
-    expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
-      false,
-    );
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
     );
@@ -53,9 +53,6 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.ChatThreadSidebarAutoOpen, {}),
     ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
-      false,
-    );
-    expect(isFeatureEnabled(FeatureSwitchKey.ZeroImageRecognition, {})).toBe(
       false,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.RustZeroCli, {})).toBe(false);
@@ -133,7 +130,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroImageRecognition]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(true);
@@ -162,7 +158,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroImageRecognition]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,

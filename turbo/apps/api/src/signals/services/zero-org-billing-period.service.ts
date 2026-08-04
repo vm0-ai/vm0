@@ -1,7 +1,8 @@
 import { command } from "ccstate";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
-import { eq } from "drizzle-orm";
+import { orgUsageAllowanceEntitlements } from "@vm0/db/schema/org-usage-allowance";
+import { and, eq, gt, inArray, isNotNull, lte } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
@@ -9,10 +10,35 @@ import { nowDate } from "../external/time";
 import { logger } from "../../lib/log";
 
 const L = logger("OrgBillingPeriod");
+const ACTIVE_USAGE_ALLOWANCE_STATUSES = [
+  "active",
+  "manual_active",
+  "trialing",
+  "past_due",
+  "unpaid",
+] as const;
 
 interface OrgBillingPeriod {
   readonly start: Date;
   readonly end: Date;
+}
+
+function resolveUsageAllowancePeriod(
+  row:
+    | {
+        readonly allowancePeriodStart: Date | null;
+        readonly allowancePeriodEnd: Date | null;
+      }
+    | undefined,
+): OrgBillingPeriod | null {
+  if (!row?.allowancePeriodStart || !row.allowancePeriodEnd) {
+    return null;
+  }
+
+  return {
+    start: row.allowancePeriodStart,
+    end: row.allowancePeriodEnd,
+  };
 }
 
 interface StoredBillingPeriod {
@@ -41,8 +67,10 @@ function resolveStoredBillingPeriod(args: {
 /**
  * Resolve an org's current billing period `{ start, end }`.
  *
- * Reads the exact period stored in `orgPlanEntitlements` first, including
- * non-monthly Custom plan grants. Falls back to
+ * Reads the exact period stored for an active usage-allowance subscription
+ * first because that subscription owns the credit-usage billing cycle across
+ * plan tiers. Falls back to `orgPlanEntitlements`, including non-monthly
+ * Custom plan grants, and then to
  * `orgMetadata.currentPeriodEnd`; if missing or expired AND a
  * `stripeSubscriptionId` exists, retrieves the Stripe subscription and writes
  * the refreshed value back to orgMetadata. This API service owns the runtime
@@ -68,9 +96,12 @@ export const getOrgBillingPeriod$ = command(
     signal: AbortSignal,
   ): Promise<OrgBillingPeriod | null> => {
     const writeDb = set(writeDb$);
+    const now = nowDate();
 
     const [orgRow] = await writeDb
       .select({
+        allowancePeriodStart: orgUsageAllowanceEntitlements.effectiveAt,
+        allowancePeriodEnd: orgUsageAllowanceEntitlements.expiresAt,
         planPeriodStart: orgPlanEntitlements.currentPeriodStart,
         planPeriodEnd: orgPlanEntitlements.currentPeriodEnd,
         currentPeriodEnd: orgMetadata.currentPeriodEnd,
@@ -81,9 +112,32 @@ export const getOrgBillingPeriod$ = command(
         orgPlanEntitlements,
         eq(orgPlanEntitlements.orgId, orgMetadata.orgId),
       )
+      .leftJoin(
+        orgUsageAllowanceEntitlements,
+        and(
+          eq(orgUsageAllowanceEntitlements.orgId, orgMetadata.orgId),
+          inArray(orgUsageAllowanceEntitlements.status, [
+            ...ACTIVE_USAGE_ALLOWANCE_STATUSES,
+          ]),
+          isNotNull(orgUsageAllowanceEntitlements.stripeSubscriptionId),
+          lte(orgUsageAllowanceEntitlements.effectiveAt, now),
+          gt(orgUsageAllowanceEntitlements.expiresAt, now),
+        ),
+      )
       .where(eq(orgMetadata.orgId, orgId))
       .limit(1);
     signal.throwIfAborted();
+
+    const allowancePeriod = resolveUsageAllowancePeriod(orgRow);
+    if (allowancePeriod) {
+      L.debug("billing period resolved", {
+        orgId,
+        source: "usage_allowance",
+        periodStart: allowancePeriod.start,
+        periodEnd: allowancePeriod.end,
+      });
+      return allowancePeriod;
+    }
 
     const storedPeriod = resolveStoredBillingPeriod({
       planStart: orgRow?.planPeriodStart ?? null,
@@ -92,7 +146,6 @@ export const getOrgBillingPeriod$ = command(
     });
     let periodStart = storedPeriod.start;
     let periodEnd = storedPeriod.end;
-    const now = nowDate();
 
     if ((!periodEnd || periodEnd < now) && orgRow?.stripeSubscriptionId) {
       if (periodEnd && periodEnd < now) {
