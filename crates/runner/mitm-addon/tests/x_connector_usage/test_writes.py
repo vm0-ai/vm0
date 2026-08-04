@@ -633,13 +633,19 @@ def test_tweet_create_with_url_stays_on_with_url_bucket(x_usage, tmp_path, real_
     [
         "Email support@example.com",
         "Mention @twitter.com",
+        "Unicode mention @éexample.com",
         "Tag #twitter.com",
+        "Unicode tag #éexample.com",
         "Cash $twitter.com",
+        "Unicode cash $éexample.com",
         "Path /twitter.com",
+        "Unicode path /éexample.com",
         "Archive long.test.tar.bz2",
         "Word abcHTTPS://example.com",
         "Fullwidth mention \uff20twitter.com",
+        "Unicode fullwidth mention \uff20éexample.com",
         "Fullwidth tag \uff03twitter.com",
+        "Unicode fullwidth tag \uff03éexample.com",
         "Plus suffix example.com+tag",
         "Fullwidth terminal plus suffix example.\uff23\uff2f\uff2d+tag",
         "At suffix example.com@user",
@@ -650,6 +656,7 @@ def test_tweet_create_with_url_stays_on_with_url_bucket(x_usage, tmp_path, real_
         "TLD-only prefix com.notatld",
         "Fullwidth unknown \uff26\uff2f\uff2f.notatld",
         "Underscore foo_bar.example.com",
+        "Unicode underscore _éexample.com",
         "Leading hyphen -bad.com",
         "Trailing hyphen bad-.com",
         "Invalid prefix bad-.com.notatld",
@@ -706,6 +713,38 @@ def test_tweet_create_long_dotted_ascii_candidate_skips_idna_normalization(
         p = x_usage.call_and_get_single_billing(flow)
 
     normalize_idna_label.assert_not_called()
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_long_unicode_label_does_not_restart_candidate_search(
+    x_usage, tmp_path, real_flow
+):
+    """Failed Unicode candidates do not restart inside the same label."""
+    interior_candidate = "éexample.com"
+    assert x_billing._BARE_DOMAIN_CANDIDATE_RE.match(interior_candidate, 1) is None
+
+    text = "é" * 16_000 + "."
+    request_body = json.dumps(
+        {"text": text},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode()
+    assert len(request_body) < REQUEST_BODY_BILLING_INSPECTION_LIMIT
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.content = request_body
+
+    p = x_usage.call_and_get_single_billing(flow)
+
     assert p["category"] == "content.create"
     assert p["quantity"] == 1
 
