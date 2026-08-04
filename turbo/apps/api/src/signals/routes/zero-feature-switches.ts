@@ -19,9 +19,7 @@ const featureSwitchesAuthOptions = {
   missingOrganizationStatus: 401,
 } as const;
 
-const LEGACY_IMAGE_RECOGNITION_SWITCH = "zeroImageRecognition";
 const LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH = "zeroMailReplyFollowUp";
-
 function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
@@ -30,7 +28,6 @@ function featureSwitchResponseBody(params: {
   readonly supportsCustomConnectorOAuth2: boolean;
   readonly supportsCustomModelGateways: boolean;
   readonly supportsImageRecognition: boolean;
-  readonly imageRecognitionRolloutComplete: true;
   readonly supportsAvatarTemplates: boolean;
 }) {
   const registeredEffectiveSwitches = getAllFeatureStates({
@@ -44,7 +41,6 @@ function featureSwitchResponseBody(params: {
   const effectiveSwitches = {
     ...registeredEffectiveSwitches,
     [LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH]: false,
-    [LEGACY_IMAGE_RECOGNITION_SWITCH]: true,
   };
 
   return {
@@ -54,7 +50,6 @@ function featureSwitchResponseBody(params: {
     supportsCustomConnectorOAuth2: params.supportsCustomConnectorOAuth2,
     supportsCustomModelGateways: params.supportsCustomModelGateways,
     supportsImageRecognition: params.supportsImageRecognition,
-    imageRecognitionRolloutComplete: params.imageRecognitionRolloutComplete,
     supportsAvatarTemplates: params.supportsAvatarTemplates,
   };
 }
@@ -77,7 +72,6 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       supportsCustomConnectorOAuth2: true,
       supportsCustomModelGateways,
       supportsImageRecognition: true,
-      imageRecognitionRolloutComplete: true,
       supportsAvatarTemplates: true,
     }),
   };
@@ -119,7 +113,6 @@ const updateFeatureSwitchesInner$ = command(
         supportsCustomConnectorOAuth2: true,
         supportsCustomModelGateways,
         supportsImageRecognition: true,
-        imageRecognitionRolloutComplete: true,
         supportsAvatarTemplates: true,
       }),
     };
