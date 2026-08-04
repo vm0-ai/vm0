@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { DEFAULT_LOCALE, initializeI18n } from "../../i18n/index.ts";
+import { initializeI18n } from "../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../i18n/resources.ts";
 import { getCreditUsageDisplayName } from "../credit-usage-display.ts";
 
 describe("getCreditUsageDisplayName", () => {

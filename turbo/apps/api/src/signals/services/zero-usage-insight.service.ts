@@ -44,9 +44,11 @@ import {
   type FinalizedUsageRelation,
 } from "./finalized-usage-relation";
 import { normalizeFinalizedUsagePeriod } from "./finalized-usage-time";
-import { MODEL_TOKEN_CATEGORIES } from "./model-token-categories";
+import {
+  MODEL_TOKEN_CATEGORIES,
+  MODEL_TOKEN_USAGE_KINDS,
+} from "./model-token-categories";
 
-const MODEL_USAGE_KIND = "model";
 const CHANNEL_SOURCES = ["email", "slack"] as const;
 const channelSourceDecoder = zodEnumDriverValueDecoder(z.enum(CHANNEL_SOURCES));
 
@@ -320,7 +322,7 @@ function usageBucketExpr(activityTime: SQLWrapper, p: UsageInsightSqlParams) {
 function usageRowTokenExpr(usage: FinalizedUsageRelation) {
   return sql`CASE
     WHEN ${and(
-      eq(usage.kind, MODEL_USAGE_KIND),
+      inArray(usage.kind, MODEL_TOKEN_USAGE_KINDS),
       inArray(usage.category, MODEL_TOKEN_CATEGORIES),
     )}
     THEN ${usage.quantity}
