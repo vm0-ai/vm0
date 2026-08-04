@@ -8,10 +8,10 @@ from mitmproxy.flow import Error
 from mitmproxy.test import tutils
 
 import builtin_connector_diagnostics
-import builtin_firewall_cache
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_classification
+import state_file
 from tests.connector_diagnostic_helpers import (
     record_connector_diagnostic_requestheaders_context,
     write_connector_diagnostic_catalog_cache,
@@ -235,7 +235,7 @@ async def test_repeated_preferred_catalog_does_not_reopen_cache(
     registry_path = _builtin_shared_registry(tmp_path)
     first_flow = _flow(real_flow, host="unmatched.example.com")
     second_flow = _flow(real_flow, host="unmatched.example.com")
-    original_open_cache_for_read = builtin_firewall_cache._open_cache_for_read
+    original_open_state_file = state_file.open_state_file
 
     with (
         mitm_ctx(
@@ -243,10 +243,10 @@ async def test_repeated_preferred_catalog_does_not_reopen_cache(
             builtin_firewall_catalog_cache_path=str(cache_path),
         ),
         patch.object(
-            builtin_firewall_cache,
-            "_open_cache_for_read",
-            wraps=original_open_cache_for_read,
-        ) as open_cache_for_read,
+            state_file,
+            "open_state_file",
+            wraps=original_open_state_file,
+        ) as open_state_file,
     ):
         await mitm_addon.request(first_flow)
         await mitm_addon.request(second_flow)
@@ -257,9 +257,12 @@ async def test_repeated_preferred_catalog_does_not_reopen_cache(
         for value in flow.metadata.values()
         if isinstance(value, builtin_connector_diagnostics.DiagnosticCatalogSnapshot)
     ]
+    catalog_open_calls = [
+        call for call in open_state_file.call_args_list if call.args[0] == cache_path
+    ]
     assert first_flow.response is None
     assert second_flow.response is None
-    assert open_cache_for_read.call_count == 1
+    assert len(catalog_open_calls) == 1
     assert len(pinned_snapshots) == 2
     assert pinned_snapshots[0] is pinned_snapshots[1]
     assert pinned_snapshots[0].catalog_identity is not None

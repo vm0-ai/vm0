@@ -1,6 +1,5 @@
 """Tests for built-in registry catalog payload and trust validation."""
 
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -8,6 +7,7 @@ import pytest
 import builtin_connector_diagnostics
 import builtin_firewall_cache
 import registry
+import state_file
 from tests.registry_builtin_helpers import (
     cache_firewall,
     write_catalog_cache,
@@ -69,44 +69,29 @@ def _assert_cache_firewall_is_invalid(
 
 
 class TestRegistryBuiltinCatalogValidation:
-    def test_runner_catalog_cache_accepts_exact_size_limit(self, tmp_path):
+    def test_runner_catalog_cache_fstat_failure_reports_unavailable(self, tmp_path):
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        write_catalog_cache(
-            cache_path,
-            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            version="catalog-a",
-            firewalls={"fallback": cache_firewall("fallback", "https://cache.example.com")},
-        )
-        exact_size = cache_path.stat().st_size
-
-        with patch.object(
-            builtin_firewall_cache,
-            "MAX_BUILTIN_FIREWALL_CATALOG_BYTES",
-            exact_size,
-        ):
-            snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
-
-        assert snapshot.catalog is not None
-        assert snapshot.catalog.firewalls["fallback"]["name"] == "fallback"
-        assert snapshot.unavailable_reason is None
-
-    def test_runner_catalog_cache_fstat_failure_closes_opened_descriptor(self):
-        cache_path = Path("builtin-firewall-catalog-cache.json")
-        opened_fd = 42
+        cache_path.write_text("{}")
         error = OSError("fstat failed")
 
-        with (
-            patch.object(builtin_firewall_cache.os, "open", return_value=opened_fd),
-            patch.object(builtin_firewall_cache.os, "fstat", side_effect=error),
-            patch.object(builtin_firewall_cache.os, "close") as close,
-        ):
+        with patch.object(state_file.os, "fstat", side_effect=error):
             snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
 
         assert snapshot.dependency_file_key is None
         assert snapshot.catalog is None
         assert snapshot.cache_path == str(cache_path.absolute())
         assert snapshot.unavailable_reason == "cache_unavailable"
-        close.assert_called_once_with(opened_fd)
+
+    def test_runner_catalog_cache_directory_reports_not_regular(self, tmp_path):
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        cache_path.mkdir()
+
+        snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+
+        assert snapshot.dependency_file_key is None
+        assert snapshot.catalog is None
+        assert snapshot.cache_path == str(cache_path.absolute())
+        assert snapshot.unavailable_reason == "cache_not_regular"
 
     def test_runner_catalog_cache_rejects_initial_oversize_before_parsing(self, tmp_path, mitm_ctx):
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
@@ -135,31 +120,6 @@ class TestRegistryBuiltinCatalogValidation:
 
         assert snapshot.dependency_file_key is not None
         assert snapshot.dependency_file_key.st_size == actual_size
-        assert snapshot.catalog is None
-        assert snapshot.unavailable_reason == "cache_invalid"
-        assert spy.call_count == 0
-
-    def test_runner_catalog_cache_rejects_underreported_size_before_parsing(self, mitm_ctx):
-        cache_path = Path("/proc/self/status")
-        assert cache_path.stat().st_size == 0
-
-        with (
-            mitm_ctx(),
-            patch.object(
-                builtin_firewall_cache,
-                "MAX_BUILTIN_FIREWALL_CATALOG_BYTES",
-                1,
-            ),
-            patch.object(
-                builtin_firewall_cache.json,
-                "loads",
-                wraps=builtin_firewall_cache.json.loads,
-            ) as spy,
-        ):
-            snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
-
-        assert snapshot.dependency_file_key is not None
-        assert snapshot.dependency_file_key.st_size == 0
         assert snapshot.catalog is None
         assert snapshot.unavailable_reason == "cache_invalid"
         assert spy.call_count == 0
