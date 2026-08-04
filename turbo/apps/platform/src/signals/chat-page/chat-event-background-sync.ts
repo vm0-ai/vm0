@@ -1,22 +1,19 @@
 import { command } from "ccstate";
 import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
-import { currentChatThreadId$ } from "../agent-chat.ts";
 import { logger } from "../log.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";
-import { searchParams$ } from "../route.ts";
 import {
   loadIndexedDbChatEventBounds$,
   writeIndexedDbChatEvents$,
 } from "./chat-event-indexed-db.ts";
 import {
-  currentLeftThread$,
-  currentRightThread$,
-  SIDEBAR_PARAM,
-} from "./chat-thread-panes.ts";
-import {
   CHAT_EVENTS_PAGE_LIMIT,
   listEventsAfter$,
-} from "./remote-chat-thread-data-source.ts";
+} from "./remote-chat-event-data-source.ts";
+import {
+  activeChatEventThreadIds$,
+  receiveActiveChatEvents$,
+} from "./chat-event-signal-registry.ts";
 
 const L = logger("ChatEventBackgroundSync");
 const CHAT_THREAD_MESSAGE_CREATED_PREFIX = "chatThreadMessageCreated:";
@@ -119,46 +116,6 @@ const syncChatThreadEventsToIndexedDb$ = command(
   },
 );
 
-const receiveSyncedEventsInVisibleThreads$ = command(
-  async (
-    { get, set },
-    {
-      threadId,
-      events,
-    }: {
-      threadId: string;
-      events: ChatEvent[];
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const mainThreadId = get(currentChatThreadId$);
-    if (mainThreadId === null) {
-      return;
-    }
-
-    const sidebarThreadId = get(searchParams$).get(SIDEBAR_PARAM);
-    const leftThread = get(currentLeftThread$);
-    const rightThread = get(currentRightThread$);
-    const visibleThreads = [
-      mainThreadId === threadId && leftThread?.threadId === threadId
-        ? leftThread
-        : null,
-      sidebarThreadId === threadId && rightThread?.threadId === threadId
-        ? rightThread
-        : null,
-    ].filter((thread) => {
-      return thread !== null;
-    });
-
-    await Promise.all(
-      visibleThreads.map((thread) => {
-        return set(thread.receiveSyncedEvents$, events, signal);
-      }),
-    );
-    signal.throwIfAborted();
-  },
-);
-
 const handleUserChannelMessage$ = command(
   async ({ set }, message: unknown, signal: AbortSignal): Promise<boolean> => {
     const threadId = createdMessageThreadId(message);
@@ -173,11 +130,7 @@ const handleUserChannelMessage$ = command(
       signal,
     );
     signal.throwIfAborted();
-    await set(
-      receiveSyncedEventsInVisibleThreads$,
-      { threadId, events },
-      signal,
-    );
+    await set(receiveActiveChatEvents$, threadId, events, signal);
     signal.throwIfAborted();
     return false;
   },
@@ -185,32 +138,15 @@ const handleUserChannelMessage$ = command(
 
 const catchUpVisibleChatThreadEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
-    const mainThreadId = get(currentChatThreadId$);
-    const sidebarThreadId = get(searchParams$).get(SIDEBAR_PARAM);
-    const leftThreadId = get(currentLeftThread$)?.threadId;
-    const rightThreadId = get(currentRightThread$)?.threadId;
-    const visibleThreadIds = new Set<string>();
-
-    if (mainThreadId !== null && leftThreadId === mainThreadId) {
-      visibleThreadIds.add(mainThreadId);
-    }
-    if (sidebarThreadId !== null && rightThreadId === sidebarThreadId) {
-      visibleThreadIds.add(sidebarThreadId);
-    }
-
     await Promise.all(
-      Array.from(visibleThreadIds, async (threadId) => {
+      get(activeChatEventThreadIds$).map(async (threadId) => {
         const events = await set(
           syncChatThreadEventsToIndexedDb$,
           { threadId, syncThroughSeqId: null },
           signal,
         );
         signal.throwIfAborted();
-        await set(
-          receiveSyncedEventsInVisibleThreads$,
-          { threadId, events },
-          signal,
-        );
+        await set(receiveActiveChatEvents$, threadId, events, signal);
       }),
     );
     signal.throwIfAborted();

@@ -32,6 +32,7 @@ import {
 } from "../chat-thread-event-sourcing.ts";
 import { loadIndexedDbChatEvents$ } from "../chat-event-indexed-db.ts";
 import { createRemoteChatThreadDataSource } from "../remote-chat-thread-data-source.ts";
+import { listEventsAfter$ } from "../remote-chat-event-data-source.ts";
 import { openChatIdb } from "../../external/chat-idb-store.ts";
 import { createIdbChatThreadEventStores } from "../../external/idb-chat-thread-event-store.ts";
 import type { OptimisticChatThreadEvent } from "../chat-thread-event-types.ts";
@@ -717,7 +718,7 @@ describe("chat thread event sourcing local-first list", () => {
     });
     await expect(
       context.store.set(
-        dataSource.listEventsAfter$,
+        listEventsAfter$,
         { threadId: OPTIMISTIC_THREAD_ID, sinceSeqId: undefined },
         context.signal,
       ),

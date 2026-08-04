@@ -1,9 +1,8 @@
 import type { Command, Computed } from "ccstate";
 import type {
-  ChatEvent,
-  GenerationTemplateRequest,
   ChatFollowupsEvent,
   ChatPromptEvent,
+  GenerationTemplateRequest,
   ChatThreadArtifactRun,
   ChatThreadDraft,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -21,7 +20,10 @@ import type { BrowserSessionSignals } from "./browser-session-block.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
 import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
-import type { ThreadScrollPosition } from "./chat-thread-scroll.ts";
+import type {
+  createChatThreadScrollSignals,
+  ThreadScrollPosition,
+} from "./chat-thread-scroll.ts";
 import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
 import type { ComposerSignals } from "../zero-page/composer-signals.ts";
 import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
@@ -49,6 +51,50 @@ export interface EventImageGroupProjection {
     readonly attachFiles?: ChatPromptEvent["attachFiles"];
     readonly blocks: readonly BodyRenderBlock[];
   }[];
+}
+
+/**
+ * Message rendering and interaction signals owned by a chat thread.
+ *
+ * These are derived from chat events but are not part of the chat event data
+ * source consumed by other features such as the composer.
+ */
+export interface ChatThreadMessageSignals {
+  readonly setup$: Command<Promise<void>, [AbortSignal]>;
+  readonly scroll: ReturnType<typeof createChatThreadScrollSignals>;
+  readonly sidebar: ThreadSidebarSignals;
+  readonly latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
+  readonly latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
+  readonly visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
+  readonly visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
+  readonly chatSkeletonVisible$: Computed<boolean>;
+  readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
+  readonly artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
+  readonly agentReferenceSignalsForId: (
+    agentId: string,
+  ) => AgentReferenceSignals;
+  readonly mailDraftCardSignalsById$: Computed<
+    ReadonlyMap<string, MailDraftSignals>
+  >;
+  readonly reloadMailDrafts$: Command<void, []>;
+  readonly browserSessionSignals: BrowserSessionSignals;
+  readonly subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
+  readonly hasEvents$: Computed<Promise<boolean>>;
+  readonly thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;
+  readonly thinkingEventId$: Computed<Promise<string | null>>;
+  readonly thinkingText$: Computed<Promise<string | null>>;
+  readonly recommendedFollowupSource$: Computed<
+    Promise<RecommendedFollowupSource | null>
+  >;
+  readonly historyBackfillPending$: Computed<boolean>;
+  readonly donePhrase$: Computed<Promise<string>>;
+  readonly loadMoreRenderedChatGroups$: Command<
+    Promise<boolean>,
+    [AbortSignal]
+  >;
+  readonly resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
+  readonly artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
+  readonly reloadArtifacts$: Command<void, []>;
 }
 
 export interface SendMessageOptions {
@@ -165,7 +211,6 @@ export interface ChatThreadSignals {
   historyBackfillPending$: Computed<boolean>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;
   resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
-  receiveSyncedEvents$: Command<Promise<void>, [ChatEvent[], AbortSignal]>;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
   // -- Thinking indicator ---------------------------------------------------
   blockColors$: Computed<[string, string, string]>;
@@ -180,3 +225,5 @@ export interface ChatThreadSignals {
   artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
   reloadArtifacts$: Command<void, []>;
 }
+
+export type ChatThreadCoreSignals = Omit<ChatThreadSignals, "composer">;
