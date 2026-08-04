@@ -1625,10 +1625,38 @@ def websocket_end(flow: http.HTTPFlow) -> None:
         _release_terminal_flow_state(flow, release_tracking=True)
 
 
-def response(flow: http.HTTPFlow) -> None:
+def response(flow: http.HTTPFlow) -> Awaitable[None] | None:
+    try:
+        continuation = _handle_response(flow)
+    except BaseException:
+        _release_terminal_flow_state(
+            flow,
+            release_tracking=True,
+            release_aws_sigv4_body_admission=flow.websocket is None,
+        )
+        raise
+    if continuation is not None:
+        return _complete_response(flow, continuation)
+
     release_tracking = True
     try:
-        _handle_response(flow)
+        release_tracking = not response_streaming.is_model_websocket_usage_enabled(flow)
+    finally:
+        _release_terminal_flow_state(
+            flow,
+            release_tracking=release_tracking,
+            release_aws_sigv4_body_admission=flow.websocket is None,
+        )
+    return None
+
+
+async def _complete_response(
+    flow: http.HTTPFlow,
+    continuation: Awaitable[None],
+) -> None:
+    release_tracking = True
+    try:
+        await continuation
         release_tracking = not response_streaming.is_model_websocket_usage_enabled(flow)
     finally:
         _release_terminal_flow_state(
@@ -1638,7 +1666,7 @@ def response(flow: http.HTTPFlow) -> None:
         )
 
 
-def _handle_response(flow: http.HTTPFlow) -> None:
+def _handle_response(flow: http.HTTPFlow) -> Awaitable[None] | None:
     """
     Handle response and log network activity.
     """
@@ -1649,14 +1677,60 @@ def _handle_response(flow: http.HTTPFlow) -> None:
     if not run_id:
         # Unregistered VM: the request handler returned before populating
         # metadata, so none of this handler's work applies.
-        return
+        return None
 
     latency_ms = elapsed_ms(start_time)
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     firewall_action = flow_metadata.firewall_action(flow.metadata)
 
     connector_diagnostics.maybe_replace_response(flow, original_url=original_url)
-    codex_model_catalog_cache.finalize_response(flow)
+    validation = codex_model_catalog_cache.finalize_response(flow)
+    if validation is not None:
+        return _finish_response_after_catalog_validation(
+            flow,
+            validation,
+            run_id=run_id,
+            latency_ms=latency_ms,
+            original_url=original_url,
+            firewall_action=firewall_action,
+        )
+    _finish_response_handling(
+        flow,
+        run_id=run_id,
+        latency_ms=latency_ms,
+        original_url=original_url,
+        firewall_action=firewall_action,
+    )
+    return None
+
+
+async def _finish_response_after_catalog_validation(
+    flow: http.HTTPFlow,
+    validation: Awaitable[None],
+    *,
+    run_id: str,
+    latency_ms: int,
+    original_url: str,
+    firewall_action: str,
+) -> None:
+    await validation
+    _finish_response_handling(
+        flow,
+        run_id=run_id,
+        latency_ms=latency_ms,
+        original_url=original_url,
+        firewall_action=firewall_action,
+    )
+
+
+def _finish_response_handling(
+    flow: http.HTTPFlow,
+    *,
+    run_id: str,
+    latency_ms: int,
+    original_url: str,
+    firewall_action: str,
+) -> None:
 
     request_size = _request_size(flow)
     stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)

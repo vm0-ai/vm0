@@ -33,6 +33,11 @@ export const featureSwitchesResponseSchema = z.object({
    * Remove after APIs with the pre-rollout semantics are no longer reachable.
    */
   imageRecognitionRolloutComplete: z.literal(true).optional(),
+  /**
+   * Optional capability handshake for API-backed avatar templates.
+   * Older API deployments omit this field.
+   */
+  supportsAvatarTemplates: z.boolean().optional(),
 });
 
 export type FeatureSwitchesResponse = z.infer<

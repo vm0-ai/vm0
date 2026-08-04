@@ -41,6 +41,10 @@ import {
   setShowTeamsUninstallDialog$,
   uninstallTeamsOrg$,
 } from "../../signals/zero-page/zero-teams.ts";
+import {
+  connectGithubInstallation$,
+  githubIntegrationData$,
+} from "../../signals/zero-page/zero-github.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
@@ -54,6 +58,7 @@ import { i18n } from "../../i18n/index.ts";
 
 const slackIconImg = settingsIconAssetUrl("slack");
 const teamsIconImg = settingsIconAssetUrl("teams");
+const githubIconImg = settingsIconAssetUrl("github");
 const telegramIconImg = settingsIconAssetUrl("telegram");
 
 /** Append a cache-busting timestamp and forward ?prompt= so the OAuth flow can
@@ -716,6 +721,100 @@ function TeamsCard({ displayName }: { displayName: string }) {
   );
 }
 
+function GithubCard() {
+  const { t } = useTranslation();
+  const githubDataLoadable = useLastLoadable(githubIntegrationData$);
+  const githubData =
+    githubDataLoadable.state === "hasData" ? githubDataLoadable.data : null;
+  const [connectLoadable, connect] = useLoadableSet(connectGithubInstallation$);
+  const pageSignal = useGet(pageSignal$);
+  const connecting = connectLoadable.state === "loading";
+  const connectedUsername = githubData?.connectedGithubUsername?.trim();
+  const connectedDetail = connectedUsername
+    ? connectedUsername.startsWith("@")
+      ? connectedUsername
+      : `@${connectedUsername}`
+    : null;
+  const adminInstallRequired =
+    githubData !== null && !githubData.isInstalled && !githubData.installUrl;
+
+  return (
+    <div
+      data-testid="github-integration-card"
+      className="zero-card flex flex-col"
+    >
+      <div className="flex items-center gap-4 p-4">
+        <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
+          <img src={githubIconImg} alt="" className="h-7 w-7" />
+        </div>
+        <div className="flex flex-1 flex-col gap-1 min-w-0">
+          <div className="text-sm font-medium text-foreground">
+            {t(($) => {
+              return $.works.github.title;
+            })}
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {adminInstallRequired
+              ? t(($) => {
+                  return $.works.github.adminInstall;
+                })
+              : t(($) => {
+                  return $.works.github.description;
+                })}
+          </div>
+        </div>
+        {githubData?.isConnected ? (
+          <ConnectedIndicator
+            testId="github-connected-indicator"
+            connectedDetail={connectedDetail}
+          />
+        ) : null}
+        {githubData && !githubData.isInstalled && githubData.installUrl ? (
+          <Button
+            asChild
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 shrink-0 gap-1.5 rounded-lg"
+          >
+            <a
+              data-testid="github-install-button"
+              href={githubData.installUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <IconDownload size={14} stroke={1.5} />
+              {t(($) => {
+                return $.works.github.install;
+              })}
+            </a>
+          </Button>
+        ) : null}
+        {githubData?.isInstalled && !githubData.isConnected ? (
+          <Button
+            data-testid="github-connect-button"
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 shrink-0 gap-1.5 rounded-lg"
+            disabled={connecting}
+            onClick={() => {
+              return detach(
+                connect(githubData.connectUrl, pageSignal),
+                Reason.DomCallback,
+              );
+            }}
+          >
+            {t(($) => {
+              return $.works.actions.connect;
+            })}
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function TelegramCard() {
   const { t } = useTranslation();
   return (
@@ -828,6 +927,7 @@ export function ZeroWorksPage() {
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
           {teamsEnabled ? <TeamsCard displayName={displayName} /> : null}
+          <GithubCard />
           {feishuEnabled ? <FeishuCard /> : null}
           {strapiEnabled ? <StrapiCard /> : null}
           <TelegramCard />

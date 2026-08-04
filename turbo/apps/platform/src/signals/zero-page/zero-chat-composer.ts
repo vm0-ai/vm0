@@ -11,6 +11,7 @@ import {
   type PresentationPreviewDraft,
 } from "../../views/zero-page/presentation-html-preview.ts";
 import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attachment-url.ts";
+import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -346,6 +347,7 @@ function createTemplatePickerDialogSignals() {
 }
 
 function createTemplatePickerListSignals() {
+  const avatarTemplates = createAvatarTemplatePickerSignals();
   const internalTemplatePickerCategory$ = state("slides");
   const templatePickerCategory$ = computed((get) => {
     return get(internalTemplatePickerCategory$);
@@ -428,6 +430,7 @@ function createTemplatePickerListSignals() {
       restoreTemplatePickerPresentationScroll$,
       illustrationVariantIndex$,
       setIllustrationVariantIndex$,
+      ...avatarTemplates,
     },
     internalTemplatePickerPreviewSlug$,
   };

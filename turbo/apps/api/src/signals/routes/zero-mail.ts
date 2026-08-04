@@ -2,7 +2,6 @@ import { command } from "ccstate";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
-import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
@@ -23,16 +22,6 @@ import {
   type ZeroMailDraftMutationResult,
   type ZeroMailFollowUpSetupResult,
 } from "../services/zero-mail.service";
-
-const zeroMailReplyFollowUpDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Zero Mail reply follow-up is not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
 
 function forbidden(message: string) {
   return {
@@ -234,13 +223,11 @@ const sendDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const createFollowUpBody$ = bodyResultOf(zeroMailContract.createFollowUp);
 const createFollowUpParams$ = pathParamsOf(zeroMailContract.createFollowUp);
+// Compatibility bridge for Platform bundles loaded before the Mail follow-up
+// action was removed. Delete this route after that frontend release drains.
 const createFollowUpInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    if (!isZeroMailReplyFollowUpRolloutEnabled()) {
-      return zeroMailReplyFollowUpDisabled;
-    }
-    signal.throwIfAborted();
     const bodyResult = await get(createFollowUpBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {

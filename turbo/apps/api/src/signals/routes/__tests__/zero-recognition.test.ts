@@ -34,21 +34,21 @@ const STARTING_CREDITS = 1000;
 const EXPECTED_CHARGE = 13;
 const RECOGNITION_PRICING_ROWS = [
   {
-    kind: "model",
+    kind: "image-recognition",
     provider: "google/gemini-3.5-flash",
     category: "tokens.input",
     unitPrice: 1500,
     unitSize: 1_000_000,
   },
   {
-    kind: "model",
+    kind: "image-recognition",
     provider: "google/gemini-3.5-flash",
     category: "tokens.cache_read",
     unitPrice: 150,
     unitSize: 1_000_000,
   },
   {
-    kind: "model",
+    kind: "image-recognition",
     provider: "google/gemini-3.5-flash",
     category: "tokens.output",
     unitPrice: 9000,
@@ -375,7 +375,7 @@ describe("POST /api/zero/recognize", () => {
     });
     await trackPricing(
       deleteUsagePricingRows({
-        kind: "model",
+        kind: "image-recognition",
         provider: "google/gemini-3.5-flash",
         categories: ["tokens.input", "tokens.cache_read", "tokens.output"],
       }),
@@ -531,7 +531,7 @@ describe("POST /api/zero/recognize", () => {
       http.post(OPENROUTER_URL, async () => {
         await trackPricing(
           deleteUsagePricingRows({
-            kind: "model",
+            kind: "image-recognition",
             provider: "google/gemini-3.5-flash",
             categories: ["tokens.output"],
           }),

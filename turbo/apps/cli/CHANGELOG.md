@@ -1,5 +1,41 @@
 # Changelog
 
+## [9.277.0](https://github.com/vm0-ai/vm0/compare/cli-v9.276.3...cli-v9.277.0) (2026-08-04)
+
+
+### Features
+
+* **cli:** generate a machine-readable zero cli surface inventory ([#24988](https://github.com/vm0-ai/vm0/issues/24988)) ([2ff2967](https://github.com/vm0-ai/vm0/commit/2ff29676ec7512c960809511391f051e9ecfddcc))
+
+
+### Refactoring
+
+* stop showing org slugs and drop dead slug payloads ([#25008](https://github.com/vm0-ai/vm0/issues/25008)) ([9676511](https://github.com/vm0-ai/vm0/commit/9676511282db6694e300e1a8fa4a40bb5c5d1e41))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.269.2
+    * @vm0/core bumped to 8.509.1
+
+## [9.276.3](https://github.com/vm0-ai/vm0/compare/cli-v9.276.2...cli-v9.276.3) (2026-08-04)
+
+
+### Refactoring
+
+* **cli:** remove unsupported user config commands ([#25022](https://github.com/vm0-ai/vm0/issues/25022)) ([a3380fc](https://github.com/vm0-ai/vm0/commit/a3380fc52e819c70ee3f2994e5495a7d51ab5d37))
+* **org:** confirm workspace deletion with a literal and drop the cli delete command ([#25002](https://github.com/vm0-ai/vm0/issues/25002)) ([1a21a62](https://github.com/vm0-ai/vm0/commit/1a21a628d642e86840ee3739ccb86fcbffd8dd02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.269.1
+    * @vm0/core bumped to 8.509.0
+
 ## [9.276.2](https://github.com/vm0-ai/vm0/compare/cli-v9.276.1...cli-v9.276.2) (2026-08-04)
 
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.156.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.156.1...runner-rs-v0.156.2) (2026-08-04)
+
+
+### Performance Improvements
+
+* **runner:** move codex catalog validation off event loop ([#25038](https://github.com/vm0-ai/vm0/issues/25038)) ([432f466](https://github.com/vm0-ai/vm0/commit/432f4664bbf6b0877c0d00ed3910793648ed72a1))
+
+## [0.156.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.156.0...runner-rs-v0.156.1) (2026-08-04)
+
 ## [0.156.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.155.1...runner-rs-v0.156.0) (2026-08-04)
 
 

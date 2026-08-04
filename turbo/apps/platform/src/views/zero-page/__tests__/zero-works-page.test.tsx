@@ -12,8 +12,9 @@ import {
   type FeishuConnectStatus,
 } from "@vm0/api-contracts/contracts/zero-feishu-connect";
 import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
+import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -52,6 +53,14 @@ function getRole(role: "button" | "link", name: string): HTMLElement {
   return element;
 }
 
+function getIntegrationCard(title: string): HTMLElement {
+  const card = screen.getByText(title).closest(".zero-card");
+  if (!(card instanceof HTMLElement)) {
+    throw new Error(`Expected integration card titled "${title}"`);
+  }
+  return card;
+}
+
 function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}): void {
   const defaults: SlackOrgStatus = {
     isConnected: false,
@@ -62,7 +71,6 @@ function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}): void {
     reinstallUrl: null,
     scopeMismatch: false,
     workspaceName: null,
-    agentOrgSlug: null,
     environment: {
       requiredSecrets: [],
       requiredVars: [],
@@ -198,6 +206,8 @@ describe("works page", () => {
   });
 
   it("shows integration cards with current connection status and realtime refreshes", async () => {
+    const githubConnectUrl =
+      "https://github.com/login/oauth/authorize?client_id=github-oauth-client-id";
     mockSlackAPI({
       isConnected: true,
       isInstalled: true,
@@ -206,12 +216,26 @@ describe("works page", () => {
       reinstallUrl: "https://slack.com/oauth/reinstall?state=xyz",
       workspaceName: "VM0 HQ",
     });
+    context.mocks.data.githubIntegration(
+      context.mocks.data.defaultGithubIntegration({
+        isConnected: false,
+        connectedGithubUserId: null,
+        connectedGithubUsername: null,
+        connectUrl: githubConnectUrl,
+      }),
+    );
     context.mocks.data.agentPhoneIntegration({
       linked: true,
       phoneHandle: "+15555551212",
       agentPhoneNumber: "+19039853128",
       configured: true,
     });
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    const browserOpen = context.mocks.browser.open(authWindow);
 
     setupWorksPage();
 
@@ -220,6 +244,7 @@ describe("works page", () => {
       expect(screen.queryByText("Microsoft Teams")).not.toBeInTheDocument();
       expect(screen.queryByText("Feishu")).not.toBeInTheDocument();
       expect(screen.queryByText("Strapi")).not.toBeInTheDocument();
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
       expect(screen.getByText("Telegram")).toBeInTheDocument();
       expect(screen.getByText("Phone")).toBeInTheDocument();
       expect(screen.getByText(/update permissions/i)).toBeInTheDocument();
@@ -227,6 +252,42 @@ describe("works page", () => {
       expect(
         screen.getByTestId("agentphone-connected-indicator"),
       ).toHaveTextContent("+15555551212");
+      expect(screen.getByTestId("github-connect-button")).toBeInTheDocument();
+      expect(context.mocks.ably.hasSubscription("github:changed")).toBeTruthy();
+    });
+
+    click(screen.getByTestId("github-connect-button"));
+    await waitFor(() => {
+      const openedUrl = new URL(authWindow.location.href);
+      expect(openedUrl.origin + openedUrl.pathname).toBe(
+        "https://github.com/login/oauth/authorize",
+      );
+      expect(openedUrl.searchParams.get("client_id")).toBe(
+        "github-oauth-client-id",
+      );
+      expect(openedUrl.searchParams.has("_t")).toBeTruthy();
+    });
+    expect(browserOpen.calls).toStrictEqual([
+      {
+        url: "about:blank",
+        target: "_blank",
+        features: "width=600,height=700",
+      },
+    ]);
+
+    context.mocks.data.githubIntegration(
+      context.mocks.data.defaultGithubIntegration({
+        isConnected: true,
+        connectedGithubUserId: "98765",
+        connectedGithubUsername: "octocat",
+      }),
+    );
+    context.mocks.ably.trigger("github:changed");
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("github-connected-indicator"),
+      ).toHaveTextContent("Connected (@octocat)");
     });
   });
 
@@ -257,7 +318,57 @@ describe("works page", () => {
     await waitFor(() => {
       expect(screen.getByText("Microsoft Teams")).toBeInTheDocument();
       expect(screen.getByText("Connected (Core Team)")).toBeInTheDocument();
+      expect(screen.getByTestId("github-integration-card")).toBeInTheDocument();
     });
+
+    const slackCard = getIntegrationCard("Slack");
+    const teamsCard = getIntegrationCard("Microsoft Teams");
+    const githubCard = getIntegrationCard("GitHub");
+    expect(
+      slackCard.compareDocumentPosition(teamsCard) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      teamsCard.compareDocumentPosition(githubCard) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      within(githubCard).getByTestId("github-install-button"),
+    ).toHaveAttribute(
+      "href",
+      "https://github.com/apps/vm0-test/installations/new?state=abc",
+    );
+  });
+
+  it("asks workspace members to contact an admin before installing GitHub", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: false });
+    context.mocks.api(
+      integrationsGithubContract.getInstallation,
+      ({ respond }) => {
+        return respond(404, {
+          error: {
+            message: "GitHub installation not found",
+            code: "NOT_FOUND",
+          },
+          installUrl: null,
+        });
+      },
+    );
+
+    setupWorksPage();
+
+    const githubCard = await screen.findByTestId("github-integration-card");
+    expect(
+      within(githubCard).getByText(
+        "Ask an organization admin to install the GitHub App",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(githubCard).queryByTestId("github-install-button"),
+    ).toBeNull();
+    expect(
+      within(githubCard).queryByTestId("github-connect-button"),
+    ).toBeNull();
   });
 
   it("shows Feishu only when its integration switch is enabled", async () => {

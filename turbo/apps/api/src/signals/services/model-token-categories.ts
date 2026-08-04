@@ -44,3 +44,11 @@ export const MODEL_CACHE_CREATION_TOKEN_CATEGORIES = [
   TOKEN_CATEGORY_CACHE_CREATION,
   TOKEN_CATEGORY_CACHE_CREATION_LONG_CONTEXT,
 ] as const;
+
+// Usage kinds whose quantities are model tokens: the base "model" kind plus
+// managed tasks that bill a backing model's tokens under a task-scoped kind.
+export const MODEL_TOKEN_USAGE_KINDS = [
+  "model",
+  "image-recognition",
+  "image-interpret-marks",
+] as const;

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { ARTIFACT_CATALOG_KINDS } from "@vm0/api-contracts/contracts/artifact-catalog";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -446,6 +447,7 @@ describe("GET /api/zero/artifacts/catalog", () => {
     await expect(chat.listArtifactCatalog(owner.actor)).resolves.toStrictEqual({
       artifacts: [],
       nextCursor: null,
+      supportedKinds: [...ARTIFACT_CATALOG_KINDS],
     });
   }, 180_000);
 
@@ -799,6 +801,7 @@ describe("GET /api/zero/artifacts/catalog", () => {
     ).resolves.toStrictEqual({
       artifacts: [],
       nextCursor: null,
+      supportedKinds: [...ARTIFACT_CATALOG_KINDS],
     });
     const secondCatalog = await chat.listArtifactCatalog(secondOwner.actor);
     expect(secondCatalog.artifacts).toStrictEqual([
@@ -821,6 +824,7 @@ describe("GET /api/zero/artifacts/catalog", () => {
     ).resolves.toStrictEqual({
       artifacts: [],
       nextCursor: null,
+      supportedKinds: [...ARTIFACT_CATALOG_KINDS],
     });
     const finalCatalog = await chat.listArtifactCatalog(firstOwner.actor);
     expect(finalCatalog.artifacts).toStrictEqual([

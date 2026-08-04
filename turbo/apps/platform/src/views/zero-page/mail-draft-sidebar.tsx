@@ -5,7 +5,6 @@ import {
   IconPaperclip,
   IconPencil,
   IconPlayerPlay,
-  IconRoute,
   IconSend,
   IconTrash,
   IconX,
@@ -15,7 +14,6 @@ import type {
   ZeroMailDraft,
   ZeroMailInlineImage,
 } from "@vm0/api-contracts/contracts/zero-mail";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Button } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
@@ -23,12 +21,8 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import type {
-  MailDraftFollowUpState,
-  MailDraftSignals,
-} from "../../signals/chat-page/mail-draft.ts";
+import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
 import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   openImageLightbox$,
@@ -1046,55 +1040,6 @@ function MailDraftDetails({
   );
 }
 
-function isReplyFollowUpEnabled(
-  featureSwitches: Readonly<Record<FeatureSwitchKey, boolean>>,
-): boolean {
-  return featureSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp];
-}
-
-function MailFollowUpButton({
-  state,
-  pending,
-  onClick,
-}: {
-  readonly state: MailDraftFollowUpState;
-  readonly pending: boolean;
-  readonly onClick: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <Button
-      type="button"
-      size="sm"
-      disabled={pending || state !== "idle"}
-      onClick={onClick}
-    >
-      {state === "submitting" ? (
-        <IconLoader2 size={15} className="animate-spin" />
-      ) : state === "active" ? (
-        <IconCircleCheck size={15} />
-      ) : (
-        <IconRoute size={15} />
-      )}
-      {state === "active"
-        ? t(($) => {
-            return $.chat.mail.followUp.tracking;
-          })
-        : state === "paused"
-          ? t(($) => {
-              return $.chat.mail.followUp.paused;
-            })
-          : state === "submitting"
-            ? t(($) => {
-                return $.chat.mail.followUp.settingUp;
-              })
-            : t(($) => {
-                return $.chat.mail.followUp.action;
-              })}
-    </Button>
-  );
-}
-
 function MailDraftDetail({
   draft,
   signals,
@@ -1106,22 +1051,11 @@ function MailDraftDetail({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const featureSwitches = useGet(featureSwitch$);
   const [deleteLoadable, deleteDraft] = useLoadableSet(signals.delete$);
   const [sendLoadable, send] = useLoadableSet(signals.send$);
-  const localFollowUpState = useGet(signals.followUpState$);
-  const followUp = useSet(signals.followUp$);
-  const followUpState =
-    localFollowUpState === "submitting"
-      ? localFollowUpState
-      : (draft.followUp?.status ?? localFollowUpState);
-  const followUpSubmitting = followUpState === "submitting";
-  const followUpEnabled = isReplyFollowUpEnabled(featureSwitches);
   const active = draft.status === "draft";
   const pending =
-    deleteLoadable.state === "loading" ||
-    sendLoadable.state === "loading" ||
-    followUpSubmitting;
+    deleteLoadable.state === "loading" || sendLoadable.state === "loading";
   const gmailAccount = encodeURIComponent(draft.from);
   const openInGmail =
     draft.status === "draft"
@@ -1146,10 +1080,6 @@ function MailDraftDetail({
     };
     detach(sendAndNotify(), Reason.DomCallback);
   };
-  const onFollowUp = () => {
-    detach(followUp(pageSignal), Reason.DomCallback);
-  };
-
   return (
     <aside
       aria-label={t(($) => {
@@ -1202,13 +1132,6 @@ function MailDraftDetail({
                 return $.chat.actions.send;
               })}
             </Button>
-          ) : null}
-          {!active && followUpEnabled ? (
-            <MailFollowUpButton
-              state={followUpState}
-              pending={pending}
-              onClick={onFollowUp}
-            />
           ) : null}
         </div>
       </footer>

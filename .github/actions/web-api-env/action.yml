@@ -184,7 +184,6 @@ runs:
           add_env FEISHU_CALLBACK_BASE_URL "$api_backend_url"
           add_env VM0_WEB_URL "$web_url"
           add_env ENV "$deploy_env"
-          add_env ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED "true"
           if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
             add_secret CLOUDFLARE_BROWSER_RENDERING_API_TOKEN CLOUDFLARE_BROWSER_RENDERING_API_TOKEN
             add_secret ARTIFACT_PREVIEW_WAF_SECRET ARTIFACT_PREVIEW_WAF_SECRET
@@ -246,6 +245,7 @@ runs:
         add_secret OPENROUTER_API_KEY OPENROUTER_API_KEY
         add_secret OPENAI_API_KEY OPENAI_API_KEY
         add_secret FAL_KEY FAL_KEY
+        add_secret JOGGAI_API_KEY JOGGAI_API_KEY
         add_secret BYTEPLUS_API_KEY BYTEPLUS_API_KEY
         add_secret BYTEPLUS_STT_API_KEY BYTEPLUS_STT_API_KEY
         add_secret UNSPLASH_ACCESS_KEY UNSPLASH_ACCESS_KEY

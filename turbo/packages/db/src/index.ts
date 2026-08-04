@@ -20,7 +20,6 @@ import * as chatAgentphoneContextSchema from "./schema/chat-agentphone-context";
 import * as chatAutomationContextSchema from "./schema/chat-automation-context";
 import * as chatFeishuContextSchema from "./schema/chat-feishu-context";
 import * as chatGithubContextSchema from "./schema/chat-github-context";
-import * as chatGoalContextSchema from "./schema/chat-goal-context";
 import * as chatMorningBriefContextSchema from "./schema/chat-morning-brief-context";
 import * as chatSlackContextSchema from "./schema/chat-slack-context";
 import * as chatTeamsContextSchema from "./schema/chat-teams-context";
@@ -147,7 +146,6 @@ export const schema = {
   ...chatAutomationContextSchema,
   ...chatFeishuContextSchema,
   ...chatGithubContextSchema,
-  ...chatGoalContextSchema,
   ...chatMorningBriefContextSchema,
   ...chatSlackContextSchema,
   ...chatTeamsContextSchema,

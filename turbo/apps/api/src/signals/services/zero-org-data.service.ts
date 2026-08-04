@@ -564,11 +564,11 @@ export function zeroOrgList(
     return {
       orgs: memberships.data.map((membership) => {
         return {
-          slug: membership.organization.slug,
+          id: membership.organization.id,
+          name: membership.organization.name,
           role: mapClerkOrgRole(membership.role),
         };
       }),
-      active: undefined,
     };
   });
 }
@@ -774,7 +774,7 @@ export function zeroOrgMembersList(
     }
 
     return {
-      slug: org.slug ?? args.orgId,
+      name: org.name,
       role: args.callerRole,
       members: memberList,
       pendingInvitations,

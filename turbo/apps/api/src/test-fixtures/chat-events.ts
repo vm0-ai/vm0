@@ -16,7 +16,6 @@ import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
-import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
@@ -146,7 +145,6 @@ interface ChatEventContextFixture {
   readonly morningBriefDeliveryId: string | null;
   readonly morningBriefTimezone: string | null;
   readonly morningBriefTriggeredAt: Date | null;
-  readonly goalObjectiveBrief: string | null;
 }
 
 export async function readChatEventContextFixture(
@@ -245,7 +243,6 @@ export async function readChatEventContextFixture(
       morningBriefDeliveryId: chatMorningBriefContext.deliveryId,
       morningBriefTimezone: chatMorningBriefContext.timezone,
       morningBriefTriggeredAt: chatMorningBriefContext.triggeredAt,
-      goalObjectiveBrief: chatGoalContext.objectiveBrief,
     })
     .from(chatEvents)
     .leftJoin(chatAgentRunContext, eq(chatAgentRunContext.id, contextId))
@@ -260,7 +257,6 @@ export async function readChatEventContextFixture(
       chatMorningBriefContext,
       eq(chatMorningBriefContext.id, contextId),
     )
-    .leftJoin(chatGoalContext, eq(chatGoalContext.id, contextId))
     .where(eq(chatEvents.id, eventId))
     .limit(1);
   return event ?? null;
@@ -659,23 +655,6 @@ export async function setTelegramThinkingMessageIdFixture(
     .update(chatTelegramContext)
     .set({ thinkingMessageId })
     .where(eq(chatTelegramContext.id, event.contextId));
-}
-
-export async function clearGitHubTriggerCommentBodyFixture(
-  eventId: string,
-): Promise<void> {
-  const [event] = await db()
-    .select({ contextId: chatEvents.contextId })
-    .from(chatEvents)
-    .where(eq(chatEvents.id, eventId))
-    .limit(1);
-  if (!event?.contextId) {
-    throw new Error("Expected pending GitHub event context");
-  }
-  await db()
-    .update(chatGithubContext)
-    .set({ triggerCommentBody: null })
-    .where(eq(chatGithubContext.id, event.contextId));
 }
 
 interface AgentphoneChatEventByPromptFixture {

@@ -70,8 +70,6 @@ export const usageEvent = pgTable(
     provider: varchar("provider", { length: 100 }).notNull(),
     category: varchar("category", { length: 100 }).notNull(),
     quantity: bigint("quantity", { mode: "number" }).notNull(),
-    // Remove with the physical column after this code-only rollout drains.
-    grossCredits: bigint("gross_credits", { mode: "number" }),
     creditsCharged: bigint("credits_charged", { mode: "number" }),
     status: varchar("status", { length: 20 }).notNull().default("pending"),
     billingError: varchar("billing_error", { length: 50 }),

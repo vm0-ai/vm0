@@ -537,6 +537,8 @@
       "emptyTitle": "Keine Artefakte gefunden",
       "error": "Artefakte konnten nicht geladen werden. Versuchen Sie es später noch einmal.",
       "filters": {
+        "avatar": "Avatare",
+        "avatarAria": "Avatar-Artefakte anzeigen",
         "file": "Dateien",
         "fileAria": "Dateiartefakte anzeigen",
         "image": "Bilder",
@@ -578,6 +580,7 @@
     },
     "kinds": {
       "audio": "Audio",
+      "avatar": "Avatar",
       "code": "Code",
       "csv": "CSV",
       "data": "Daten",
@@ -625,8 +628,25 @@
     "templates": {
       "activeHtmlPreview": "{{title}} aktive HTML-Vorschau",
       "all": "Alle",
+      "avatar": "Avatar",
+      "avatarWithId": "Avatar {{id}}",
+      "backToAvatars": "Zurück zu den Avataren",
       "categories": "Vorlagenkategorien",
       "category": "Vorlagenkategorie",
+      "chooseVoice": "Stimme für {{title}} auswählen",
+      "filters": {
+        "age": "Alter",
+        "all": "Alle",
+        "aspectRatio": "Seitenverhältnis",
+        "clear": "Zurücksetzen",
+        "ethnicity": "Ethnische Zugehörigkeit",
+        "gender": "Geschlecht",
+        "language": "Sprache",
+        "scene": "Szene",
+        "style": "Stil",
+        "title": "Filter",
+        "useCase": "Anwendungsfall"
+      },
       "fullPreview": "Vollständige Vorschau der Website {{title}}",
       "htmlPreview": "{{title}} HTML-Vorschau",
       "illustration": "Illustration",
@@ -636,8 +656,10 @@
       "noMatches": "Keine Übereinstimmungen",
       "placeholder": "{{title}} Platzhalter für die Website-Vorschau",
       "playVideo": "Vorschau der Videovorlage abspielen {{title}}",
+      "previewAvatarVideo": "Avatar-Video {{title}} ansehen",
       "previewCurrentSlide": "Vorschau von {{title}} auf der aktuellen Folie",
       "previewSlide": "Vorschaufolie {{slideNumber}}",
+      "previewVoice": "Stimme {{title}} anhören",
       "previewWebsite": "Vorschau der Website-Vorlage {{title}}",
       "previousHtmlPreview": "{{title}} vorherige HTML-Vorschau",
       "previousSlide": "Vorschau der vorherigen Folie",
@@ -647,6 +669,7 @@
       "selectStyle": "Stil auswählen {{style}}",
       "selectTemplate": "Wählen Sie die Vorlage {{title}} aus.",
       "selectVideo": "Wählen Sie die Videovorlage {{title}} aus.",
+      "selectVoice": "Stimme {{title}} auswählen",
       "selectWebsite": "Wählen Sie die Website-Vorlage {{title}} aus.",
       "selectWorkflow": "Wählen Sie die Workflow-Vorlage {{title}} aus.",
       "showVariant": "Variante {{variantNumber}} anzeigen",
@@ -1321,18 +1344,6 @@
       "deletedEmail": "Gelöschte E-Mail: {{subject}}",
       "details": "E-Mail-Details",
       "email": "E-Mail",
-      "followUp": {
-        "action": "Nachverfolgen",
-        "active": "Antworten verfolgen",
-        "activeDescription": "Antworten werden verfolgt und in diesem Chat gemeldet.",
-        "idleDescription": "Verfolgen Sie Antworten und werden Sie in diesem Chat benachrichtigt.",
-        "paused": "Tracking pausiert",
-        "pausedDescription": "Die Antwortverfolgung ist derzeit pausiert.",
-        "settingUp": "Einrichten…",
-        "submitting": "Einrichten…",
-        "submittingDescription": "Antwortverfolgung einrichten…",
-        "tracking": "Antworten verfolgen"
-      },
       "loadingDetails": "E-Mail-Details werden geladen",
       "needReconnect": "Erneute Verbindung erforderlich",
       "noMessage": "(Keine Nachricht)",
@@ -4582,6 +4593,7 @@
     "displayNames": {
       "auto": "Auto",
       "finance": "Finanzen",
+      "imageRecognize": "Bilderkennung",
       "maps": "Karten",
       "peopleSearch": "Personensuche",
       "usage": "Nutzung",
@@ -5285,6 +5297,12 @@
     "connectedWithDetail": "Verbunden ({{detail}})",
     "documentTitle": "Funktioniert",
     "feishuConnected": "Feishu hat erfolgreich eine Verbindung hergestellt",
+    "github": {
+      "adminInstall": "Bitten Sie einen Organisationsadministrator, die GitHub-App zu installieren",
+      "description": "Workflow-Automatisierungen durch GitHub-Ereignisse auslösen",
+      "install": "GitHub-App installieren",
+      "title": "GitHub"
+    },
     "header": {
       "description": "Verbinden Sie sich über diese Kanäle mit {{displayName}}",
       "title": "Wo {{displayName}} funktioniert"

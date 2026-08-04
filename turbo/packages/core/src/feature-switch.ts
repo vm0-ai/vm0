@@ -365,6 +365,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatSteer]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Steer pending chat prompts into active runs and render them inline.",
+    enabled: false,
+  },
   [FeatureSwitchKey.PwaChatKeyboardGestures]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -451,13 +457,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Show the manual connector readiness check on workflow settings pages.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ZeroMailReplyFollowUp]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Enable Zero Mail reply follow-up for staff after all API deployments can read Gmail event configurations with threadId.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
