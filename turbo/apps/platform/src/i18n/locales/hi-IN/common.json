@@ -5285,6 +5285,12 @@
     "connectedWithDetail": "कनेक्टेड ({{detail}})",
     "documentTitle": "काम करता है",
     "feishuConnected": "Feishu सफलतापूर्वक कनेक्ट हुआ",
+    "github": {
+      "adminInstall": "किसी संगठन एडमिन से GitHub ऐप इंस्टॉल करने के लिए कहें",
+      "description": "GitHub इवेंट से वर्कफ़्लो ऑटोमेशन ट्रिगर करें",
+      "install": "GitHub ऐप इंस्टॉल करें",
+      "title": "GitHub"
+    },
     "header": {
       "description": "इन चैनलों के माध्यम से {{displayName}} से जुड़ें",
       "title": "जहां {{displayName}} काम करता है"

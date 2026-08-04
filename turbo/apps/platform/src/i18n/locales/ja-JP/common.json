@@ -5285,6 +5285,12 @@
     "connectedWithDetail": "接続されました ({{detail}})",
     "documentTitle": "連携先",
     "feishuConnected": "Feishu は正常に接続されました",
+    "github": {
+      "adminInstall": "組織管理者に GitHub App のインストールを依頼してください",
+      "description": "GitHub イベントからワークフローオートメーションを起動",
+      "install": "GitHub App をインストール",
+      "title": "GitHub"
+    },
     "header": {
       "description": "これらのチャネルを通じて {{displayName}} に接続します",
       "title": "{{displayName}}の連携先"
