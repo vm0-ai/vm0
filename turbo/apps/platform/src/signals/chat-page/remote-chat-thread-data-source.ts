@@ -35,7 +35,6 @@ import type {
   PatchModelSelectionArgs,
   PatchDraftArgs,
   RecallEventArgs,
-  SteerQueuedEventArgs,
   SubscribeRealtimeArgs,
 } from "./chat-thread-data-source.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
@@ -224,28 +223,6 @@ const recallEvent$ = command(
       signal,
     );
     signal.throwIfAborted();
-  },
-);
-
-const steerQueuedEvent$ = command(
-  async (
-    { get },
-    { threadId, agentId, runId, eventId, clientEventId }: SteerQueuedEventArgs,
-    signal: AbortSignal,
-  ) => {
-    const result = await sendChatEvent(
-      get(zeroClient$),
-      {
-        agentId,
-        threadId,
-        steersRunId: runId,
-        steersEventId: eventId,
-        clientEventId,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    return result;
   },
 );
 
@@ -460,7 +437,6 @@ export function createRemoteChatThreadDataSource(threadId: string) {
     patchComputerUseHost$,
     appendQueuedEvent$,
     recallEvent$,
-    steerQueuedEvent$,
     listEventsAfter$,
     listEventsBefore$,
     cancelRuns$,

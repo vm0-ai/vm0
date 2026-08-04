@@ -1426,7 +1426,6 @@
       "queuedMessage": "キューに入れられたメッセージ",
       "queuedMessageDescription": "列に並んで待機し、現在の実行が終了したら送信します。",
       "removeQueuedMessage": "キューに入れられたメッセージを削除する",
-      "sendQueuedMessageNow": "キュー内のメッセージを今すぐ送信",
       "skipAutomationEvent": "オートメーションイベントをスキップする"
     },
     "replaceDraft": {

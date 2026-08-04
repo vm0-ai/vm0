@@ -126,13 +126,6 @@ type BddSendEventBody =
       readonly threadId: string;
       readonly interruptsRunId: string;
       readonly clientEventId?: string;
-    }
-  | {
-      readonly agentId: string;
-      readonly threadId: string;
-      readonly steersRunId: string;
-      readonly steersEventId: string;
-      readonly clientEventId?: string;
     };
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
@@ -1224,33 +1217,23 @@ export function createChatFilesBddApi(context: TestContext) {
                   : { revokesEventId: body.revokesEventId }),
               };
             })()
-          : "steersRunId" in body
+          : "interruptsRunId" in body
             ? {
                 agentId: body.agentId,
                 threadId: body.threadId,
-                steersRunId: body.steersRunId,
-                steersEventId: body.steersEventId,
+                interruptsRunId: body.interruptsRunId,
                 ...(body.clientEventId === undefined
                   ? {}
                   : { clientEventId: body.clientEventId }),
               }
-            : "interruptsRunId" in body
-              ? {
-                  agentId: body.agentId,
-                  threadId: body.threadId,
-                  interruptsRunId: body.interruptsRunId,
-                  ...(body.clientEventId === undefined
-                    ? {}
-                    : { clientEventId: body.clientEventId }),
-                }
-              : {
-                  agentId: body.agentId,
-                  threadId: body.threadId,
-                  revokesEventId: body.revokesEventId,
-                  ...(body.clientEventId === undefined
-                    ? {}
-                    : { clientEventId: body.clientEventId }),
-                };
+            : {
+                agentId: body.agentId,
+                threadId: body.threadId,
+                revokesEventId: body.revokesEventId,
+                ...(body.clientEventId === undefined
+                  ? {}
+                  : { clientEventId: body.clientEventId }),
+              };
 
       return await accept(
         client.send({

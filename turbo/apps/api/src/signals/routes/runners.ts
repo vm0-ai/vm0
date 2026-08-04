@@ -1,12 +1,10 @@
 import { command } from "ccstate";
 import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-identity";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   compatibleStoredExecutionContextSchema,
   elapsedSinceApiStartMs,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
-  runnersActiveInputsContract,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -29,7 +27,6 @@ import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realti
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
-import { chatEvents } from "@vm0/db/schema/chat-event";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import {
   runnerState,
@@ -38,13 +35,10 @@ import {
 } from "@vm0/db/schema/runner-state";
 import {
   and,
-  asc,
   desc,
   eq,
-  gte,
   gt,
   inArray,
-  isNotNull,
   lt,
   lte,
   notInArray,
@@ -55,8 +49,6 @@ import {
 import { z } from "zod";
 
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
-import { authContext$ } from "../auth/auth-context";
-import { authRoute } from "../auth/auth-route";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
@@ -87,7 +79,6 @@ import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
-import { projectUserMessage } from "../services/zero-chat-user-message.service";
 import {
   networkPolicyRefreshesRecord,
   mergeNetworkPolicyRefreshes,
@@ -988,17 +979,13 @@ async function lockRunnerJob(
 
 async function transitionClaimedJobToRunning(
   db: Db,
-  args: {
-    readonly runId: string;
-    readonly runnerIdentity: RunnerClaimIdentity | undefined;
-    readonly activeInputEnabled: boolean;
-  },
+  runId: string,
+  runnerIdentity: RunnerClaimIdentity | undefined,
   signal: AbortSignal,
   timing: ClaimRouteTimingCollector,
 ): Promise<ClaimTransitionResult> {
-  const runnerId = args.runnerIdentity?.runnerId ?? null;
-  const runnerHeartbeatGeneration =
-    args.runnerIdentity?.heartbeatGeneration ?? null;
+  const runnerId = runnerIdentity?.runnerId ?? null;
+  const runnerHeartbeatGeneration = runnerIdentity?.heartbeatGeneration ?? null;
   return await db.transaction(async (tx) => {
     const result = await timing.measure(
       "claim_route_transition_execute",
@@ -1013,7 +1000,7 @@ async function transitionClaimedJobToRunning(
               ${agentRuns.id} AS "id",
               ${agentRuns.status} AS "status"
             FROM ${agentRuns}
-            WHERE ${eq(agentRuns.id, args.runId)}
+            WHERE ${eq(agentRuns.id, runId)}
             FOR UPDATE
           ),
           locked_job AS MATERIALIZED (
@@ -1046,8 +1033,7 @@ async function transitionClaimedJobToRunning(
               last_heartbeat_at = claim_clock."claimedAt",
               cancellation_recovery_completed = false,
               runner_id = ${runnerId},
-              runner_heartbeat_generation = ${runnerHeartbeatGeneration},
-              active_input_enabled = ${args.activeInputEnabled}
+              runner_heartbeat_generation = ${runnerHeartbeatGeneration}
             FROM locked_run
             INNER JOIN locked_job
               ON locked_job."runId" = locked_run."id"
@@ -1713,7 +1699,6 @@ async function buildClaimResponseBody(args: {
   readonly reuseKey: string | null;
   readonly storedContext: StoredExecutionContext;
   readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
-  readonly activeInputSupported: boolean;
   readonly timing: ClaimRouteTimingCollector;
   readonly signal: AbortSignal;
   readonly loadIdentityRepresentation: (
@@ -1806,10 +1791,6 @@ async function buildClaimResponseBody(args: {
         },
         resumeSession,
         sandboxToken,
-        ...(args.activeInputSupported &&
-        args.storedContext.featureFlags?.[FeatureSwitchKey.ChatSteer] === true
-          ? { activeInput: true as const, activeInputAbly: true as const }
-          : {}),
         secretValues,
         networkPolicies: refreshedPolicies.networkPolicies,
         networkPolicyRefreshes: refreshedPolicies.networkPolicyRefreshes,
@@ -1827,7 +1808,6 @@ const buildClaimResponseBodyForClaim$ = command(
       readonly reuseKey: string | null;
       readonly storedContext: StoredExecutionContext;
       readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
-      readonly activeInputSupported: boolean;
       readonly timing: ClaimRouteTimingCollector;
       readonly signal: AbortSignal;
     },
@@ -1838,7 +1818,6 @@ const buildClaimResponseBodyForClaim$ = command(
       reuseKey: args.reuseKey,
       storedContext: args.storedContext,
       connectorPermissionBaseline: args.connectorPermissionBaseline,
-      activeInputSupported: args.activeInputSupported,
       timing: args.timing,
       signal: args.signal,
       loadIdentityRepresentation(hash: string) {
@@ -2250,7 +2229,6 @@ const claimAuthorizedJob$ = command(
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
       readonly runnerIdentity: RunnerClaimIdentity | undefined;
-      readonly activeInputSupported: boolean;
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
@@ -2298,7 +2276,6 @@ const claimAuthorizedJob$ = command(
         reuseKey: jobWithRun.job.reuseKey,
         storedContext,
         connectorPermissionBaseline,
-        activeInputSupported: args.activeInputSupported,
         timing: claimRouteTiming,
         signal,
       }),
@@ -2329,11 +2306,8 @@ const claimAuthorizedJob$ = command(
       async () => {
         return await transitionClaimedJobToRunning(
           db,
-          {
-            runId,
-            runnerIdentity: args.runnerIdentity,
-            activeInputEnabled: responseBodyResult.value.activeInput === true,
-          },
+          runId,
+          args.runnerIdentity,
           signal,
           claimRouteTiming,
         );
@@ -2411,7 +2385,6 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     authType: auth.type,
     runnerIdentity:
       auth.type === "official-runner" ? body.data.runnerIdentity : undefined,
-    activeInputSupported: body.data.activeInput === true,
     jobWithRun,
     telemetry: body.data.telemetry,
     claimRequestStartedAtMs,
@@ -2568,72 +2541,6 @@ const builtinFirewallsResolveInner$ = command(
   },
 );
 
-const activeInputsInner$ = command(async ({ get }, signal: AbortSignal) => {
-  const auth = get(authContext$);
-  const { runId, fromSequence } = get(
-    pathParamsOf(runnersActiveInputsContract.list),
-  );
-  if (auth.tokenType !== "sandbox" || auth.runId !== runId) {
-    return notFound("Run not found");
-  }
-
-  const db = get(db$);
-  const [run] = await db
-    .select({ id: agentRuns.id })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.id, runId),
-        eq(agentRuns.userId, auth.userId),
-        eq(agentRuns.orgId, auth.orgId),
-        eq(agentRuns.status, "running"),
-        eq(agentRuns.activeInputEnabled, true),
-      ),
-    );
-  signal.throwIfAborted();
-  if (!run) {
-    return notFound("Run not found");
-  }
-
-  const rows = await db
-    .select({
-      sequence: chatEvents.activeInputSequence,
-      messageId: chatEvents.id,
-      userMessage: chatEvents.userMessage,
-    })
-    .from(chatEvents)
-    .where(
-      and(
-        eq(chatEvents.runId, runId),
-        eq(chatEvents.eventType, "input.prompt"),
-        isNotNull(chatEvents.activeInputSequence),
-        gte(chatEvents.activeInputSequence, fromSequence),
-      ),
-    )
-    .orderBy(asc(chatEvents.activeInputSequence));
-  signal.throwIfAborted();
-
-  return {
-    status: 200 as const,
-    body: {
-      entries: rows.map((row) => {
-        if (row.sequence === null || row.userMessage === null) {
-          throw new Error("Active input event is missing required data");
-        }
-        const text = projectUserMessage(row.userMessage).agentPrompt;
-        if (text.length === 0) {
-          throw new Error("Active input event has an empty prompt");
-        }
-        return {
-          sequence: row.sequence,
-          messageId: row.messageId,
-          text,
-        };
-      }),
-    },
-  };
-});
-
 export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersHeartbeatContract.heartbeat,
@@ -2646,13 +2553,6 @@ export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersJobClaimContract.claim,
     handler: claimInner$,
-  },
-  {
-    route: runnersActiveInputsContract.list,
-    handler: authRoute(
-      { accept: ["sandbox"], acceptAnySandboxCapability: true },
-      activeInputsInner$,
-    ),
   },
   {
     route: runnersNetworkPolicyRefreshContract.refresh,
