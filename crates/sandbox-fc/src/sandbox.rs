@@ -3201,8 +3201,10 @@ fn idle_transition_error(
 
 /// Maximum time to wait for balloon inflation before pausing vCPUs.
 const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
-/// Poll interval while waiting for balloon inflation.
-const BALLOON_SETTLE_POLL: Duration = Duration::from_millis(500);
+/// Initial poll interval while waiting for balloon inflation.
+const BALLOON_SETTLE_INITIAL_POLL: Duration = Duration::from_millis(25);
+/// Maximum poll interval while waiting for balloon inflation.
+const BALLOON_SETTLE_MAX_POLL: Duration = Duration::from_millis(500);
 /// Upper bound for accepting residual differences between requested and
 /// reported balloon size. Current 4 GiB production profiles commonly settle
 /// with low-hundreds MiB residuals when the guest reports little available
@@ -3395,6 +3397,60 @@ fn park_admission_action(outcome: SandboxParkOutcome) -> &'static str {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+enum BalloonSettleOutcome {
+    SkippedZeroTarget,
+    TargetReached,
+    WithinTolerance,
+    PressureLimited,
+    Deadline,
+    StatsUnavailable,
+}
+
+impl BalloonSettleOutcome {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::SkippedZeroTarget => "skipped_zero_target",
+            Self::TargetReached => "target_reached",
+            Self::WithinTolerance => "within_tolerance",
+            Self::PressureLimited => "pressure_limited",
+            Self::Deadline => "deadline",
+            Self::StatsUnavailable => "stats_unavailable",
+        }
+    }
+}
+
+fn emit_balloon_settle_summary(
+    settle_outcome: BalloonSettleOutcome,
+    elapsed_ms: u64,
+    sample_count: u32,
+    park_outcome: SandboxParkOutcome,
+) {
+    info!(
+        target: crate::BALLOON_SETTLE_AXIOM_TARGET,
+        measurement = "balloon_settle",
+        outcome = settle_outcome.as_str(),
+        elapsed_ms,
+        sample_count,
+        admission_action = park_admission_action(park_outcome),
+        "balloon settle completed"
+    );
+}
+
+fn complete_balloon_settle(
+    summary: &BalloonSettleSummary,
+    settle_outcome: BalloonSettleOutcome,
+    park_outcome: SandboxParkOutcome,
+) -> SandboxParkOutcome {
+    emit_balloon_settle_summary(
+        settle_outcome,
+        summary.elapsed_ms(),
+        summary.sample_count,
+        park_outcome,
+    );
+    park_outcome
+}
+
 /// Wait until the guest balloon driver inflates close enough to `target_mib`.
 ///
 /// The guest needs running vCPUs to inflate, so this must be called
@@ -3409,11 +3465,12 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
     let deadline = tokio::time::Instant::now() + BALLOON_SETTLE_TIMEOUT;
     let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
     let mut summary = BalloonSettleSummary::new(target_mib);
+    let mut poll_interval = BALLOON_SETTLE_INITIAL_POLL;
     loop {
         if tokio::time::Instant::now() >= deadline {
             let outcome = summary.park_outcome();
             log_balloon_settle_timeout(log_id, target_mib, tolerance_mib, &summary, outcome);
-            return outcome;
+            return complete_balloon_settle(&summary, BalloonSettleOutcome::Deadline, outcome);
         }
 
         match tokio::time::timeout_at(deadline, client.get_balloon_statistics()).await {
@@ -3440,7 +3497,11 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                         reported_total_mib = ?summary.reported_total_mib(),
                         "balloon fully inflated, proceeding to pause"
                     );
-                    return SandboxParkOutcome::Reusable;
+                    return complete_balloon_settle(
+                        &summary,
+                        BalloonSettleOutcome::TargetReached,
+                        SandboxParkOutcome::Reusable,
+                    );
                 }
 
                 if deficit_mib <= tolerance_mib {
@@ -3464,7 +3525,11 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                         reported_total_mib = ?summary.reported_total_mib(),
                         "balloon inflated within tolerance, proceeding to pause"
                     );
-                    return SandboxParkOutcome::Reusable;
+                    return complete_balloon_settle(
+                        &summary,
+                        BalloonSettleOutcome::WithinTolerance,
+                        SandboxParkOutcome::Reusable,
+                    );
                 }
 
                 if summary.is_pressure_limited_partial_reclaim(deficit_mib, tolerance_mib) {
@@ -3489,7 +3554,11 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                         reason = BALLOON_PRESSURE_LIMITED_REASON,
                         "balloon pressure-limited partial reclaim, proceeding to pause"
                     );
-                    return SandboxParkOutcome::Reusable;
+                    return complete_balloon_settle(
+                        &summary,
+                        BalloonSettleOutcome::PressureLimited,
+                        SandboxParkOutcome::Reusable,
+                    );
                 }
 
                 trace!(
@@ -3528,22 +3597,27 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                     %e,
                     "balloon stats unavailable, proceeding to pause"
                 );
-                return outcome;
+                return complete_balloon_settle(
+                    &summary,
+                    BalloonSettleOutcome::StatsUnavailable,
+                    outcome,
+                );
             }
             Err(_) => {
                 let outcome = summary.park_outcome();
                 log_balloon_settle_timeout(log_id, target_mib, tolerance_mib, &summary, outcome);
-                return outcome;
+                return complete_balloon_settle(&summary, BalloonSettleOutcome::Deadline, outcome);
             }
         }
 
-        let next_poll = tokio::time::Instant::now() + BALLOON_SETTLE_POLL;
+        let next_poll = tokio::time::Instant::now() + poll_interval;
         tokio::time::sleep_until(if next_poll < deadline {
             next_poll
         } else {
             deadline
         })
         .await;
+        poll_interval = poll_interval.saturating_mul(2).min(BALLOON_SETTLE_MAX_POLL);
     }
 }
 
@@ -3598,6 +3672,12 @@ async fn park_inner(
         // savings.
         wait_for_balloon(&client, target, log_id).await
     } else {
+        emit_balloon_settle_summary(
+            BalloonSettleOutcome::SkippedZeroTarget,
+            0,
+            0,
+            SandboxParkOutcome::Reusable,
+        );
         SandboxParkOutcome::Reusable
     };
 
