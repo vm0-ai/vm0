@@ -60,6 +60,7 @@ export interface EventImageGroupProjection {
  * source consumed by other features such as the composer.
  */
 export interface ChatThreadMessageSignals {
+  readonly setup$: Command<Promise<void>, [AbortSignal]>;
   readonly scroll: ReturnType<typeof createChatThreadScrollSignals>;
   readonly sidebar: ThreadSidebarSignals;
   readonly latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;

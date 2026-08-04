@@ -1,31 +1,23 @@
-import {
-  command,
-  computed,
-  state,
-  type Command,
-  type Computed,
-  type State,
-} from "ccstate";
-import {
-  chatThreadArtifactsContract,
-  type AttachFile,
-  type ChatPromptEvent,
-  type ChatRunOptionsRequest,
-  type ChatThreadArtifactRun,
-  type GenerationTemplateRequest,
-  type UserMessageDocument,
-  type ChatEvent as PersistedChatEvent,
+import { command, type Command, type Computed, type State } from "ccstate";
+import type {
+  AttachFile,
+  ChatPromptEvent,
+  ChatRunOptionsRequest,
+  GenerationTemplateRequest,
+  UserMessageDocument,
+  ChatEvent as PersistedChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ChatEvent } from "./chat-event-types.ts";
-import type { ChatThreadMessageSignals } from "./chat-thread-signals.ts";
 import {
   listEventsAfter$,
   listEventsBefore$,
-  markChatThreadRead$,
 } from "./remote-chat-event-data-source.ts";
-import { createChatEventPipeline } from "./create-chat-thread.ts";
+import {
+  createChatEventStorageSignals,
+  type AppendOptimisticEventCommand,
+  type ChatEventDataSource,
+} from "./chat-event-storage-signals.ts";
 import { nowDate } from "../../lib/time.ts";
-import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 import { sendChatEvent } from "./chat-event-api.ts";
@@ -34,55 +26,9 @@ import {
   touchOptimisticChatThreadSort$,
 } from "./chat-thread-event-sourcing.ts";
 import { registerActiveChatEventSignals$ } from "./chat-event-signal-registry.ts";
-import type { OptimisticChatEventInput } from "./optimistic-chat-events.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ChatEventSignals");
-
-function createArtifacts(threadId: string) {
-  const internalArtifactsReload$ = state(0);
-  const artifacts$ = computed(async (get): Promise<ChatThreadArtifactRun[]> => {
-    get(internalArtifactsReload$);
-    const client = get(zeroClient$)(chatThreadArtifactsContract);
-    const result = await accept(client.list({ params: { threadId } }), [200]);
-    return result.body.runs;
-  });
-
-  const reloadArtifacts$ = command(({ set }) => {
-    set(internalArtifactsReload$, (version) => {
-      return version + 1;
-    });
-  });
-
-  return { artifacts$, reloadArtifacts$ };
-}
-
-function createArtifactPreviewImageUrls(
-  artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>,
-): Computed<Promise<ReadonlyMap<string, string>>> {
-  return computed(async (get) => {
-    const runs = await get(artifacts$);
-    const previewImageUrlsByUrl = new Map<string, string>();
-    for (const run of runs) {
-      for (const file of run.files) {
-        if (!file.previewImageUrl) {
-          continue;
-        }
-        previewImageUrlsByUrl.set(file.url, file.previewImageUrl);
-        if (file.aliasUrl) {
-          previewImageUrlsByUrl.set(file.aliasUrl, file.previewImageUrl);
-        }
-      }
-    }
-    return previewImageUrlsByUrl;
-  });
-}
-
-export interface ChatEventDataSource {
-  readonly listEventsAfter$: typeof listEventsAfter$;
-  readonly listEventsBefore$: typeof listEventsBefore$;
-  readonly markRead$: typeof markChatThreadRead$;
-}
 
 export interface SendInputChatEvent {
   readonly kind: "input";
@@ -122,21 +68,22 @@ export interface SendSteerChatEvent {
   readonly userMessage: UserMessageDocument;
 }
 
+export interface SendBrowserLifecycleChatEvent {
+  readonly kind: "browser-lifecycle";
+  readonly eventId: string;
+  readonly eventType: "browser.started" | "browser.stopped";
+}
+
 export type SendChatEventInput =
   | SendInputChatEvent
   | SendRevokeChatEvent
   | SendInterruptChatEvent
-  | SendSteerChatEvent;
+  | SendSteerChatEvent
+  | SendBrowserLifecycleChatEvent;
 
 export interface SendChatEventResult {
   readonly runId: string | null;
 }
-
-export type OptimisticScrollBehavior = "preserve" | "bottom";
-export type AppendOptimisticEventCommand = Command<
-  Promise<void>,
-  [OptimisticChatEventInput, OptimisticScrollBehavior, AbortSignal]
->;
 
 interface SendChatEventDependencies {
   readonly threadId: string;
@@ -366,6 +313,39 @@ function createSendSteerChatEvent({
   );
 }
 
+function createSendBrowserLifecycleChatEvent({
+  threadId,
+  appendOptimisticEvent$,
+}: SendChatEventDependencies): Command<
+  Promise<SendChatEventResult>,
+  [SendBrowserLifecycleChatEvent, AbortSignal]
+> {
+  return command(
+    async (
+      { set },
+      input: SendBrowserLifecycleChatEvent,
+      signal: AbortSignal,
+    ): Promise<SendChatEventResult> => {
+      await set(
+        appendOptimisticEvent$,
+        {
+          threadId,
+          event: {
+            id: input.eventId,
+            threadId,
+            eventType: input.eventType,
+            content: null,
+            createdAt: nowDate().toISOString(),
+          },
+        },
+        "preserve",
+        signal,
+      );
+      return { runId: null };
+    },
+  );
+}
+
 function createSendChatEvent(
   dependencies: SendChatEventDependencies,
 ): Command<Promise<SendChatEventResult>, [SendChatEventInput, AbortSignal]> {
@@ -373,6 +353,8 @@ function createSendChatEvent(
   const sendRevoke$ = createSendRevokeChatEvent(dependencies);
   const sendInterrupt$ = createSendInterruptChatEvent(dependencies);
   const sendSteer$ = createSendSteerChatEvent(dependencies);
+  const sendBrowserLifecycle$ =
+    createSendBrowserLifecycleChatEvent(dependencies);
   return command(
     async ({ set }, input: SendChatEventInput, signal: AbortSignal) => {
       switch (input.kind) {
@@ -387,6 +369,9 @@ function createSendChatEvent(
         }
         case "steer": {
           return await set(sendSteer$, input, signal);
+        }
+        case "browser-lifecycle": {
+          return await set(sendBrowserLifecycle$, input, signal);
         }
       }
     },
@@ -447,27 +432,14 @@ export interface ChatEventSignals {
   >;
 }
 
-export interface CreatedChatEventSignals {
-  readonly signals: ChatEventSignals;
-  readonly threadMessages: ChatThreadMessageSignals;
-}
-
-export function createChatEventSignals(
-  threadId: string,
-): CreatedChatEventSignals {
+export function createChatEventSignals(threadId: string): ChatEventSignals {
   const dataSource: ChatEventDataSource = {
     listEventsAfter$,
     listEventsBefore$,
-    markRead$: markChatThreadRead$,
   };
-  const artifact = createArtifacts(threadId);
-  const previewImageUrlsByUrl$ = createArtifactPreviewImageUrls(
-    artifact.artifacts$,
-  );
-  const events = createChatEventPipeline({
+  const events = createChatEventStorageSignals({
     threadId,
     dataSource,
-    previewImageUrlsByUrl$,
   });
   const sendEvent$ = createSendChatEvent({
     threadId,
@@ -482,37 +454,8 @@ export function createChatEventSignals(
     syncRemoteEvents$: events.syncRemoteEvents$,
   });
   return {
-    signals: {
-      chatEvents$: events.chatEvents$,
-      setup$,
-      sendEvent$,
-    },
-    threadMessages: {
-      scroll: events.scroll,
-      sidebar: events.sidebar,
-      latestRunFinishCreatedAt$: events.latestRunFinishCreatedAt$,
-      latestAssistantTextCreatedAt$: events.latestAssistantTextCreatedAt$,
-      visibleRenderedChatGroups$: events.visibleRenderedChatGroups$,
-      visibleRenderedChatGroupsReady$: events.visibleRenderedChatGroupsReady$,
-      chatSkeletonVisible$: events.chatSkeletonVisible$,
-      eventImageGroups$: events.eventImageGroups$,
-      artifactSignalsForUrl: events.artifactSignalsForUrl,
-      agentReferenceSignalsForId: events.agentReferenceSignalsForId,
-      mailDraftCardSignalsById$: events.mailDraftCardSignalsById$,
-      reloadMailDrafts$: events.reloadMailDrafts$,
-      browserSessionSignals: events.browserSessionSignals,
-      subscribeBrowserSessions$: events.subscribeBrowserSessions$,
-      hasEvents$: events.hasEvents$,
-      thinkingIndicatorMode$: events.thinkingIndicatorMode$,
-      thinkingEventId$: events.thinkingEventId$,
-      thinkingText$: events.thinkingText$,
-      recommendedFollowupSource$: events.recommendedFollowupSource$,
-      historyBackfillPending$: events.historyBackfillPending$,
-      donePhrase$: events.donePhrase$,
-      loadMoreRenderedChatGroups$: events.loadMoreRenderedChatGroups$,
-      resetRenderedChatGroupsIfAtBottom$:
-        events.resetRenderedChatGroupsIfAtBottom$,
-      ...artifact,
-    },
+    chatEvents$: events.chatEvents$,
+    setup$,
+    sendEvent$,
   };
 }

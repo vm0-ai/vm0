@@ -10,7 +10,7 @@ import { delay } from "signal-timers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { IN_VITEST } from "../../env.ts";
 import { i18n } from "../../i18n/index.ts";
-import { onRef, onRejection, resetSignal, settle, setLoop } from "../utils.ts";
+import { onRef, onRejection, resetSignal, setLoop } from "../utils.ts";
 import { createHeaderAutomationSignals } from "./header-automation-menu.ts";
 import { createThreadSidebarSignals } from "./thread-sidebar.ts";
 import {
@@ -34,22 +34,20 @@ import {
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
-import {
-  appendOptimisticChatEvent$,
-  createOptimisticChatEventEntry,
-  createOptimisticChatEventsForThread,
-  reconcileOptimisticChatEvents$,
-  type OptimisticChatEventEntry,
-  type OptimisticChatEventInput,
-} from "./optimistic-chat-events.ts";
-import type { ChatEvent } from "./chat-event-types.ts";
 import type {
-  AttachFile,
-  GenerationTemplateRequest,
-  ChatEvent as PersistedChatEvent,
-  ChatPromptEvent,
-  ChatUserMessageEvent,
-  UserMessageDocument,
+  ChatEvent,
+  OptimisticChatEvent,
+  OptimisticUserMessageAssociation,
+} from "./chat-event-types.ts";
+import {
+  chatThreadArtifactsContract,
+  type AttachFile,
+  type GenerationTemplateRequest,
+  type ChatEvent as PersistedChatEvent,
+  type ChatPromptEvent,
+  type ChatThreadArtifactRun,
+  type ChatUserMessageEvent,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import {
@@ -61,8 +59,8 @@ import {
 
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
-import { nowDate } from "../../lib/time.ts";
-import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
+import { accept } from "../../lib/accept.ts";
+import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import {
   chatThreadSidebarAutoOpenEnabled$,
@@ -98,11 +96,7 @@ import {
 } from "./chat-event-state.ts";
 import { logger } from "../log.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
-import { CHAT_EVENTS_PAGE_LIMIT } from "./remote-chat-event-data-source.ts";
-import {
-  loadIndexedDbChatEvents$,
-  writeIndexedDbChatEvents$,
-} from "./chat-event-indexed-db.ts";
+import { markChatThreadRead$ } from "./remote-chat-event-data-source.ts";
 import {
   classifyChatAttachment,
   type BodyRenderBlock,
@@ -195,14 +189,14 @@ import {
 } from "./chat-goal.ts";
 import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import type {
-  AppendOptimisticEventCommand,
-  ChatEventDataSource,
   ChatEventSignals,
-  CreatedChatEventSignals,
-  OptimisticScrollBehavior,
   SendChatEventInput,
   SendChatEventResult,
 } from "./chat-event-signals.ts";
+import {
+  registerChatEventChangeHandler$,
+  type ChatEventChange,
+} from "./chat-event-change-registry.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
@@ -223,16 +217,6 @@ function chatEventAttachFiles(
   event: ChatEvent,
 ): ChatPromptEvent["attachFiles"] {
   return isInputChatEvent(event) ? event.attachFiles : undefined;
-}
-
-function completedRunIdsFromEvents(events: readonly ChatEvent[]): string[] {
-  const ids = new Set<string>();
-  for (const event of events) {
-    if (event.eventType === "run.completed" && event.runId !== undefined) {
-      ids.add(event.runId);
-    }
-  }
-  return Array.from(ids);
 }
 
 // ---------------------------------------------------------------------------
@@ -1082,11 +1066,9 @@ function createRenderedChatGroups(
 }
 
 interface RegisteredChatEvent {
-  readonly event: PersistedChatEvent;
+  readonly event: ChatEvent;
   readonly blocks: BodyRenderBlock[];
 }
-
-type PersistentChatEvents$ = State<RegisteredChatEvent[]>;
 
 type BodyBlocksRenderer = (
   blocks: readonly ParsedBodyBlock[],
@@ -1112,20 +1094,6 @@ function compareCreatedAt(left: string, right: string): number {
     return compareCursorString(left, right);
   }
   return leftTime - rightTime;
-}
-
-function mergeRegisteredEvents(
-  eventSets: readonly (readonly RegisteredChatEvent[])[],
-): RegisteredChatEvent[] {
-  const byId = new Map<string, RegisteredChatEvent>();
-  for (const entries of eventSets) {
-    for (const entry of entries) {
-      byId.set(entry.event.id, entry);
-    }
-  }
-  return Array.from(byId.values()).sort((left, right) => {
-    return left.event.seqId - right.event.seqId;
-  });
 }
 
 function skipsEventBodyRendering(event: ChatEvent): boolean {
@@ -1176,7 +1144,7 @@ function registerEventAgentReferences(
 
 function registerChatEvent(
   threadId: string,
-  event: PersistedChatEvent,
+  event: ChatEvent,
   registerBodyBlocks: BodyBlocksRenderer,
   artifactCardSignals: ArtifactCardSignalsRegistry,
   agentReferenceSignals: AgentReferenceSignalsRegistry,
@@ -1189,47 +1157,6 @@ function registerChatEvent(
   return { event, blocks };
 }
 
-function registerPersistentEvents({
-  threadId,
-  persistentEvents,
-  events,
-  registerBodyBlocks,
-  artifactCardSignals,
-  agentReferenceSignals,
-}: {
-  threadId: string;
-  persistentEvents: readonly RegisteredChatEvent[];
-  events: readonly PersistedChatEvent[];
-  registerBodyBlocks: BodyBlocksRenderer;
-  artifactCardSignals: ArtifactCardSignalsRegistry;
-  agentReferenceSignals: AgentReferenceSignalsRegistry;
-}): RegisteredChatEvent[] {
-  const reportedCompletedRunIds = new Set(
-    completedRunIdsFromEvents(
-      persistentEvents.map((entry) => {
-        return entry.event;
-      }),
-    ),
-  );
-  const newlyCompletedRunIds = completedRunIdsFromEvents(events).filter(
-    (runId) => {
-      return !reportedCompletedRunIds.has(runId);
-    },
-  );
-  for (const _ of newlyCompletedRunIds) {
-    captureTaskCompletedSuccessfully();
-  }
-  return events.map((event) => {
-    return registerChatEvent(
-      threadId,
-      event,
-      registerBodyBlocks,
-      artifactCardSignals,
-      agentReferenceSignals,
-    );
-  });
-}
-
 interface ServerChatEventProjectionEntry {
   event: PersistedChatEvent;
   source: "server";
@@ -1238,81 +1165,36 @@ interface ServerChatEventProjectionEntry {
 }
 
 interface OptimisticChatEventProjectionEntry {
-  event: OptimisticChatEventEntry["event"];
+  event: OptimisticChatEvent;
   source: "optimistic";
   blocks: BodyRenderBlock[];
-  optimisticUserMessageAssociation?: OptimisticChatEventEntry["optimisticUserMessageAssociation"];
+  optimisticUserMessageAssociation?: OptimisticUserMessageAssociation;
 }
 
 type ChatEventProjectionEntry =
   | ServerChatEventProjectionEntry
   | OptimisticChatEventProjectionEntry;
 
-function projectRawEvents({
-  persistentEvents,
-  optimisticEntries,
-  resolveBodyBlocks,
-}: {
-  persistentEvents: readonly RegisteredChatEvent[];
-  optimisticEntries: readonly OptimisticChatEventEntry[];
-  resolveBodyBlocks: BodyBlocksRenderer;
-}): ChatEventProjectionEntry[] {
-  const serverIds = new Set(
-    persistentEvents.map((entry) => {
-      return entry.event.id;
-    }),
-  );
-  const optimistic = optimisticEntries.filter((entry) => {
-    return !serverIds.has(entry.event.id);
-  });
-  // Optimistic events do not have a server sequence yet. Keep their array
-  // order and append them after every persistent event.
-  return [
-    ...persistentEvents.map((entry) => {
-      return { ...entry, source: "server" as const };
-    }),
-    ...optimistic.map((entry) => {
-      return {
-        event: entry.event,
-        blocks: resolveBodyBlocks(entry.parsedBodyBlocks),
-        source: "optimistic" as const,
-        optimisticUserMessageAssociation:
-          entry.optimisticUserMessageAssociation,
-      };
-    }),
-  ];
+function isPersistedChatEvent(event: ChatEvent): event is PersistedChatEvent {
+  return event.seqId !== undefined;
 }
 
-function createRawEventsComputed({
-  persistentEvents$,
-  optimisticEvents$,
-  resolveBodyBlocks,
-}: {
-  persistentEvents$: PersistentChatEvents$;
-  optimisticEvents$: Computed<OptimisticChatEventEntry[]>;
-  resolveBodyBlocks: BodyBlocksRenderer;
-}): Computed<ChatEventProjectionEntry[]> {
+function createRawEventsComputed(
+  registeredEvents$: State<RegisteredChatEvent[]>,
+): Computed<ChatEventProjectionEntry[]> {
   return computed((get): ChatEventProjectionEntry[] => {
-    return projectRawEvents({
-      persistentEvents: get(persistentEvents$),
-      optimisticEntries: get(optimisticEvents$),
-      resolveBodyBlocks,
-    });
-  });
-}
-
-function createChatEventsComputed(
-  rawEvents$: Computed<ChatEventProjectionEntry[]>,
-): Computed<ChatEvent[]> {
-  return computed((get): ChatEvent[] => {
-    return get(rawEvents$).map((entry) => {
-      const association = entry.optimisticUserMessageAssociation;
-      return association === undefined
-        ? entry.event
-        : {
-            ...entry.event,
-            optimisticUserMessageAssociation: association,
-          };
+    return get(registeredEvents$).map((entry) => {
+      const { event } = entry;
+      if (isPersistedChatEvent(event)) {
+        return { ...entry, event, source: "server" };
+      }
+      return {
+        ...entry,
+        event,
+        source: "optimistic",
+        optimisticUserMessageAssociation:
+          event.optimisticUserMessageAssociation,
+      };
     });
   });
 }
@@ -1697,147 +1579,8 @@ function createLatestEventSignals(
   };
 }
 
-const HISTORY_BACKFILL_MERGE_BATCH_SIZE = 300;
-
 /** Per-thread chat event sequences start at 1, so this marks the oldest event. */
 const FIRST_CHAT_EVENT_SEQ_ID = 1;
-
-function createSyncRemoteEventsCommand({
-  threadId,
-  persistentEvents$,
-  hasReachedOldestEvent$,
-  initialRemoteEventsResolved$,
-  mergePersistentEvents$,
-  dataSource,
-}: {
-  threadId: string;
-  persistentEvents$: PersistentChatEvents$;
-  hasReachedOldestEvent$: Computed<boolean>;
-  initialRemoteEventsResolved$: State<boolean>;
-  mergePersistentEvents$: Command<
-    Promise<void>,
-    [PersistedChatEvent[], AbortSignal]
-  >;
-  dataSource: ChatEventDataSource;
-}): Command<Promise<void>, [AbortSignal]> {
-  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const mergeEvents = async (events: PersistedChatEvent[]): Promise<void> => {
-      await set(mergePersistentEvents$, events, signal);
-      signal.throwIfAborted();
-    };
-    const persistentEvents = get(persistentEvents$);
-    const accumulatedEvents: PersistedChatEvent[] = [];
-    let mergedEventCount = 0;
-    const latestPersistentEvent = persistentEvents.at(-1);
-    let sinceSeqId = latestPersistentEvent?.event.seqId;
-    let initialPageOldestEvent: PersistedChatEvent | undefined;
-
-    async function syncEventsAfter(): Promise<void> {
-      const requestedSinceSeqId = sinceSeqId;
-      const isInitialPage = requestedSinceSeqId === undefined;
-      const resolvesInitialRemoteEvents = !get(initialRemoteEventsResolved$);
-      const events = await set(
-        dataSource.listEventsAfter$,
-        { threadId, sinceSeqId: requestedSinceSeqId },
-        signal,
-      );
-      signal.throwIfAborted();
-      if (resolvesInitialRemoteEvents) {
-        set(initialRemoteEventsResolved$, true);
-      }
-      L.debug("syncRemoteMessages$ listEventsAfter result", {
-        threadId,
-        sinceSeqId: requestedSinceSeqId ?? null,
-        gotCount: events.length,
-      });
-
-      if (events.length === 0) {
-        return;
-      }
-
-      await set(writeIndexedDbChatEvents$, threadId, events, signal);
-      signal.throwIfAborted();
-      if (isInitialPage) {
-        initialPageOldestEvent = events[0]!;
-        await mergeEvents(events);
-      } else {
-        accumulatedEvents.push(...events);
-      }
-      sinceSeqId = events.at(-1)!.seqId;
-
-      if (
-        requestedSinceSeqId !== undefined &&
-        events.length < CHAT_EVENTS_PAGE_LIMIT
-      ) {
-        return;
-      }
-      return syncEventsAfter();
-    }
-    await syncEventsAfter();
-    signal.throwIfAborted();
-    await mergeEvents(accumulatedEvents.slice(mergedEventCount));
-    signal.throwIfAborted();
-    mergedEventCount = accumulatedEvents.length;
-
-    if (!get(hasReachedOldestEvent$)) {
-      const oldestEvent =
-        persistentEvents[0]?.event ??
-        initialPageOldestEvent ??
-        accumulatedEvents[0];
-      if (oldestEvent !== undefined) {
-        let beforeSeqId = oldestEvent.seqId;
-        async function syncEventsBefore(): Promise<void> {
-          const events = await set(
-            dataSource.listEventsBefore$,
-            { threadId, beforeSeqId },
-            signal,
-          );
-          signal.throwIfAborted();
-          L.debug("syncRemoteMessages$ listEventsBefore result", {
-            threadId,
-            beforeSeqId,
-            gotCount: events.length,
-          });
-
-          const oldestInPage = events[0];
-          if (oldestInPage !== undefined) {
-            accumulatedEvents.push(...events);
-            await set(writeIndexedDbChatEvents$, threadId, events, signal);
-            signal.throwIfAborted();
-            // Flush periodically so long backfills surface incrementally
-            // (e.g. the history backfill skeleton) instead of appearing
-            // only after every page has been fetched.
-            if (
-              accumulatedEvents.length - mergedEventCount >=
-              HISTORY_BACKFILL_MERGE_BATCH_SIZE
-            ) {
-              await mergeEvents(accumulatedEvents.slice(mergedEventCount));
-              signal.throwIfAborted();
-              mergedEventCount = accumulatedEvents.length;
-            }
-          }
-
-          // A thread's first event always carries seqId 1, so reaching it is
-          // the only stop condition for walking history backwards. An empty
-          // page leaves no usable cursor, which also ends the walk.
-          if (
-            oldestInPage === undefined ||
-            oldestInPage.seqId <= FIRST_CHAT_EVENT_SEQ_ID
-          ) {
-            return;
-          }
-
-          beforeSeqId = oldestInPage.seqId;
-
-          return syncEventsBefore();
-        }
-        await syncEventsBefore();
-      }
-    }
-    signal.throwIfAborted();
-    await mergeEvents(accumulatedEvents.slice(mergedEventCount));
-  });
-}
 
 interface BodyBlockRegistries {
   readonly artifactCardSignals: ArtifactCardSignalsRegistry;
@@ -1960,49 +1703,6 @@ function createBodyBlocksRenderer({
   };
 }
 
-function createIndexedDbEventCacheSignals({
-  artifactCardSignals,
-  agentReferenceSignals,
-  threadId,
-  persistentEvents$,
-  registerBodyBlocks,
-}: {
-  artifactCardSignals: ArtifactCardSignalsRegistry;
-  agentReferenceSignals: AgentReferenceSignalsRegistry;
-  threadId: string;
-  persistentEvents$: PersistentChatEvents$;
-  registerBodyBlocks: BodyBlocksRenderer;
-}) {
-  const loadIndexedDbEventsIntoPersistentEvents$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      const result = await settle(
-        set(loadIndexedDbChatEvents$, threadId, signal),
-        signal,
-      );
-      if (!result.ok) {
-        throw result.error;
-      }
-      if (result.value.length > 0) {
-        const registeredEvents = result.value.map((event) => {
-          return registerChatEvent(
-            threadId,
-            event,
-            registerBodyBlocks,
-            artifactCardSignals,
-            agentReferenceSignals,
-          );
-        });
-        set(persistentEvents$, (previous) => {
-          return mergeRegisteredEvents([previous, registeredEvents]);
-        });
-      }
-      signal.throwIfAborted();
-    },
-  );
-
-  return { loadIndexedDbEventsIntoPersistentEvents$ };
-}
-
 function createMailDraftCardSignalsById(
   rawEvents$: Computed<ChatEventProjectionEntry[]>,
   mailDraftCardSignals: MailDraftCardSignalsRegistry,
@@ -2014,11 +1714,50 @@ function createMailDraftCardSignalsById(
 }
 
 function createEventHistoryBackfillPending(
-  persistentEvents$: PersistentChatEvents$,
+  rawEvents$: Computed<ChatEventProjectionEntry[]>,
 ): Computed<boolean> {
   return computed((get): boolean => {
-    const first = get(persistentEvents$)[0];
+    const first = get(rawEvents$).find(isServerProjectionEntry);
     return first !== undefined && first.event.seqId !== FIRST_CHAT_EVENT_SEQ_ID;
+  });
+}
+
+function createArtifacts(threadId: string) {
+  const internalArtifactsReload$ = state(0);
+  const artifacts$ = computed(async (get): Promise<ChatThreadArtifactRun[]> => {
+    get(internalArtifactsReload$);
+    const client = get(zeroClient$)(chatThreadArtifactsContract);
+    const result = await accept(client.list({ params: { threadId } }), [200]);
+    return result.body.runs;
+  });
+
+  const reloadArtifacts$ = command(({ set }) => {
+    set(internalArtifactsReload$, (version) => {
+      return version + 1;
+    });
+  });
+
+  return { artifacts$, reloadArtifacts$ };
+}
+
+function createArtifactPreviewImageUrls(
+  artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>,
+): Computed<Promise<ReadonlyMap<string, string>>> {
+  return computed(async (get) => {
+    const runs = await get(artifacts$);
+    const previewImageUrlsByUrl = new Map<string, string>();
+    for (const run of runs) {
+      for (const file of run.files) {
+        if (!file.previewImageUrl) {
+          continue;
+        }
+        previewImageUrlsByUrl.set(file.url, file.previewImageUrl);
+        if (file.aliasUrl) {
+          previewImageUrlsByUrl.set(file.aliasUrl, file.previewImageUrl);
+        }
+      }
+    }
+    return previewImageUrlsByUrl;
   });
 }
 
@@ -2048,13 +1787,31 @@ function createPagedEventResources(
     browserSessionSignals,
   });
   const registerBodyBlocks = bodyBlocksRenderer("register");
-  const registerOptimisticEventResources = (
-    entry: OptimisticChatEventEntry,
-  ): void => {
-    registerBodyBlocks(entry.parsedBodyBlocks);
-    registerEventAttachments(entry.event, artifactCardSignals);
-    registerEventAgentReferences(entry.event, agentReferenceSignals);
-  };
+  const registeredEvents$ = state<RegisteredChatEvent[]>([]);
+  const registerChatEvents$ = command(
+    ({ set }, events: readonly ChatEvent[]): void => {
+      set(registeredEvents$, (previous) => {
+        const previousById = new Map(
+          previous.map((entry) => {
+            return [entry.event.id, entry] as const;
+          }),
+        );
+        return events.map((event) => {
+          const existing = previousById.get(event.id);
+          if (existing?.event === event) {
+            return existing;
+          }
+          return registerChatEvent(
+            threadId,
+            event,
+            registerBodyBlocks,
+            artifactCardSignals,
+            agentReferenceSignals,
+          );
+        });
+      });
+    },
+  );
   return {
     agentReferenceSignals,
     artifactCardSignals,
@@ -2070,9 +1827,8 @@ function createPagedEventResources(
         return agentReferenceSignals.resolve(agentId);
       },
     },
-    registerBodyBlocks,
-    registerOptimisticEventResources,
-    resolveBodyBlocks: bodyBlocksRenderer("resolve"),
+    registeredEvents$,
+    registerChatEvents$,
   };
 }
 
@@ -2081,50 +1837,22 @@ interface BrowserLifecycleOptimisticEvent {
   readonly eventType: "browser.started" | "browser.stopped";
 }
 
-function browserLifecycleOptimisticEventInput(
-  threadId: string,
-  { eventId, eventType }: BrowserLifecycleOptimisticEvent,
-): OptimisticChatEventInput {
-  return {
-    threadId,
-    event: {
-      id: eventId,
-      threadId,
-      eventType,
-      content: null,
-      createdAt: nowDate().toISOString(),
-    },
-  };
-}
-
 function createPagedEventProjections({
-  persistentEvents$,
-  optimisticEvents$,
-  resolveBodyBlocks,
+  chatEvents$,
+  registeredEvents$,
   mailDraftCardSignals,
 }: {
-  persistentEvents$: PersistentChatEvents$;
-  optimisticEvents$: Computed<OptimisticChatEventEntry[]>;
-  resolveBodyBlocks: BodyBlocksRenderer;
+  chatEvents$: Computed<ChatEvent[]>;
+  registeredEvents$: State<RegisteredChatEvent[]>;
   mailDraftCardSignals: MailDraftCardSignalsRegistry;
 }) {
-  const rawEvents$ = createRawEventsComputed({
-    persistentEvents$,
-    optimisticEvents$,
-    resolveBodyBlocks,
-  });
-  const chatEvents$ = createChatEventsComputed(rawEvents$);
-  const hasReachedOldestEvent$ = computed((get): boolean => {
-    return get(persistentEvents$)[0]?.event.seqId === FIRST_CHAT_EVENT_SEQ_ID;
-  });
-  const historyBackfillPending$ =
-    createEventHistoryBackfillPending(persistentEvents$);
+  const rawEvents$ = createRawEventsComputed(registeredEvents$);
+  const historyBackfillPending$ = createEventHistoryBackfillPending(rawEvents$);
   const semanticEvents$ = computed((get): SemanticChatEvent[] => {
     return semanticTranscriptEventsFromRaw(get(rawEvents$), get(chatEvents$));
   });
   const eventRunIndicatorState$ = createEventRunIndicatorState(chatEvents$);
   return {
-    hasReachedOldestEvent$,
     rawEvents$,
     chatEvents$,
     historyBackfillPending$,
@@ -2139,59 +1867,16 @@ function createPagedEventProjections({
   };
 }
 
-function createRemoteEventSyncSignals({
-  threadId,
-  persistentEvents$,
-  projections,
-  mergePersistentEvents$,
-  dataSource,
-}: {
-  threadId: string;
-  persistentEvents$: PersistentChatEvents$;
-  projections: Pick<
-    ReturnType<typeof createPagedEventProjections>,
-    "hasReachedOldestEvent$" | "rawEvents$"
-  >;
-  mergePersistentEvents$: Command<
-    Promise<void>,
-    [PersistedChatEvent[], AbortSignal]
-  >;
-  dataSource: ChatEventDataSource;
-}) {
-  const initialRemoteEventsResolved$ = state(false);
-  const chatSkeletonVisible$ = computed((get): boolean => {
-    return (
-      !get(initialRemoteEventsResolved$) &&
-      get(projections.rawEvents$).length === 0
-    );
-  });
-  const syncRemoteEvents$ = createSyncRemoteEventsCommand({
-    threadId,
-    persistentEvents$,
-    hasReachedOldestEvent$: projections.hasReachedOldestEvent$,
-    initialRemoteEventsResolved$,
-    mergePersistentEvents$,
-    dataSource,
-  });
-  return {
-    initialRemoteEventsResolved$,
-    chatSkeletonVisible$,
-    syncRemoteEvents$,
-  };
-}
-
 interface MarkThreadReadDeps {
   threadId: string;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   locallyMarkedReadAt$: State<string | undefined>;
-  dataSource: ChatEventDataSource;
 }
 
 function createMarkThreadReadIfNeeded({
   threadId,
   latestRunFinishCreatedAt$,
   locallyMarkedReadAt$,
-  dataSource,
 }: MarkThreadReadDeps) {
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
@@ -2217,7 +1902,7 @@ function createMarkThreadReadIfNeeded({
       return;
     }
 
-    const newLastReadAt = await set(dataSource.markRead$, { threadId }, sig);
+    const newLastReadAt = await set(markChatThreadRead$, { threadId }, sig);
     sig.throwIfAborted();
     if (newLastReadAt !== null) {
       set(locallyMarkedReadAt$, newLastReadAt);
@@ -2230,11 +1915,12 @@ function createMarkThreadReadIfNeeded({
 
 function createEventChangeEffects(
   threadId: string,
+  chatEvents: ChatEventSignals,
   projections: Pick<
     ReturnType<typeof createPagedEventProjections>,
     "rawEvents$" | "latestRunFinishCreatedAt$"
   >,
-  dataSource: ChatEventDataSource,
+  registerChatEvents$: Command<void, [readonly ChatEvent[]]>,
 ) {
   const scroll = createChatThreadScrollSignals(threadId);
   const sidebar = createThreadSidebarSignals(threadId);
@@ -2243,7 +1929,6 @@ function createEventChangeEffects(
     threadId,
     latestRunFinishCreatedAt$: projections.latestRunFinishCreatedAt$,
     locallyMarkedReadAt$,
-    dataSource,
   });
   const sidebarAutoOpenCandidate$ = createThreadSidebarAutoOpenCandidate(
     projections.rawEvents$,
@@ -2276,10 +1961,18 @@ function createEventChangeEffects(
   );
   const afterEventsChange$ = command(
     async (
-      { set },
-      scrollPosition: ThreadScrollPosition | null,
+      { get, set },
+      change: ChatEventChange,
       signal: AbortSignal,
     ): Promise<void> => {
+      const scrollPosition =
+        change === "follow-tail"
+          ? null
+          : set(scroll.captureThreadScrollPosition$);
+      set(registerChatEvents$, get(chatEvents.chatEvents$));
+      if (change === "initialize") {
+        set(sidebar.enableEntryAnimations$);
+      }
       await Promise.all([
         set(autoOpenSidebar$, signal),
         set(scroll.autoScroll$, scrollPosition, signal),
@@ -2291,13 +1984,15 @@ function createEventChangeEffects(
   return { scroll, sidebar, afterEventsChange$ };
 }
 
-function createPagedEvents(
-  threadId: string,
-  dataSource: ChatEventDataSource,
-  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
-) {
-  const persistentChatEvents$ = state<RegisteredChatEvent[]>([]);
-  const optimisticEvents$ = createOptimisticChatEventsForThread(threadId);
+function createChatThreadMessagePipeline({
+  threadId,
+  chatEvents,
+  previewImageUrlsByUrl$,
+}: {
+  threadId: string;
+  chatEvents: ChatEventSignals;
+  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
+}) {
   const browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents = {
     append$: command(
       async (
@@ -2306,9 +2001,8 @@ function createPagedEvents(
         signal: AbortSignal,
       ): Promise<void> => {
         await set(
-          appendOptimisticEvent$,
-          browserLifecycleOptimisticEventInput(threadId, event),
-          "preserve",
+          chatEvents.sendEvent$,
+          { kind: "browser-lifecycle", ...event },
           signal,
         );
       },
@@ -2320,146 +2014,63 @@ function createPagedEvents(
     browserLifecycleOptimisticEvents,
   );
   const projections = createPagedEventProjections({
-    persistentEvents$: persistentChatEvents$,
-    optimisticEvents$,
-    resolveBodyBlocks: resources.resolveBodyBlocks,
+    chatEvents$: chatEvents.chatEvents$,
+    registeredEvents$: resources.registeredEvents$,
     mailDraftCardSignals: resources.mailDraftCardSignals,
   });
-  const effects = createEventChangeEffects(threadId, projections, dataSource);
-  const appendOptimisticEvent$: AppendOptimisticEventCommand = command(
-    async (
-      { get, set },
-      input: OptimisticChatEventInput,
-      scrollBehavior: OptimisticScrollBehavior,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      const scrollPosition =
-        scrollBehavior === "preserve"
-          ? get(effects.scroll.threadScrollPosition$)
-          : null;
-      const entry = createOptimisticChatEventEntry(input);
-      resources.registerOptimisticEventResources(entry);
-      set(appendOptimisticChatEvent$, entry);
-      await set(effects.afterEventsChange$, scrollPosition, signal);
-    },
-  );
-  const indexedDbEventCache = createIndexedDbEventCacheSignals({
-    artifactCardSignals: resources.artifactCardSignals,
-    agentReferenceSignals: resources.agentReferenceSignals,
+  const effects = createEventChangeEffects(
     threadId,
-    persistentEvents$: persistentChatEvents$,
-    registerBodyBlocks: resources.registerBodyBlocks,
-  });
-  const mergePersistentEvents$ = command(
-    async (
-      { get, set },
-      events: PersistedChatEvent[],
-      signal: AbortSignal,
-    ): Promise<void> => {
-      if (events.length === 0) {
-        return;
-      }
-      const scrollPosition = get(effects.scroll.threadScrollPosition$);
-      const registeredEvents = registerPersistentEvents({
-        threadId,
-        persistentEvents: get(persistentChatEvents$),
-        events,
-        registerBodyBlocks: resources.registerBodyBlocks,
-        artifactCardSignals: resources.artifactCardSignals,
-        agentReferenceSignals: resources.agentReferenceSignals,
-      });
-      set(persistentChatEvents$, (previous) => {
-        return mergeRegisteredEvents([previous, registeredEvents]);
-      });
-      set(reconcileOptimisticChatEvents$, { threadId, events });
-      await set(effects.afterEventsChange$, scrollPosition, signal);
-      signal.throwIfAborted();
-    },
-  );
-  const remoteEventSync = createRemoteEventSyncSignals({
-    threadId,
-    persistentEvents$: persistentChatEvents$,
+    chatEvents,
     projections,
-    mergePersistentEvents$,
-    dataSource,
+    resources.registerChatEvents$,
+  );
+  const setupCompleted$ = state(false);
+  const chatSkeletonVisible$ = computed((get): boolean => {
+    return !get(setupCompleted$) && get(projections.rawEvents$).length === 0;
   });
-  const initializeIndexedDbEvents$ = command(
+  const setup$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      for (const entry of get(optimisticEvents$)) {
-        resources.registerOptimisticEventResources(entry);
-      }
-      const scrollPosition = get(effects.scroll.threadScrollPosition$);
-      const result = await settle(
-        set(
-          indexedDbEventCache.loadIndexedDbEventsIntoPersistentEvents$,
-          signal,
-        ),
+      set(
+        registerChatEventChangeHandler$,
+        chatEvents.chatEvents$,
+        effects.afterEventsChange$,
         signal,
       );
-      if (!result.ok) {
-        set(effects.sidebar.enableEntryAnimations$);
-        throw result.error;
-      }
-      const afterEventsChangePromise =
-        get(projections.rawEvents$).length === 0
-          ? Promise.resolve()
-          : set(effects.afterEventsChange$, scrollPosition, signal);
-      set(effects.sidebar.enableEntryAnimations$);
-      await afterEventsChangePromise;
+      set(resources.registerChatEvents$, get(chatEvents.chatEvents$));
+      await set(chatEvents.setup$, signal);
       signal.throwIfAborted();
+      set(setupCompleted$, true);
     },
-  );
-
-  return {
-    scroll: effects.scroll,
-    sidebar: effects.sidebar,
-    ...remoteEventSync,
-    initializeIndexedDbEvents$,
-    mergePersistentEvents$,
-    appendOptimisticEvent$,
-    ...projections,
-    ...resources.publicSignals,
-  };
-}
-
-export function createChatEventPipeline({
-  threadId,
-  dataSource,
-  previewImageUrlsByUrl$,
-}: {
-  threadId: string;
-  dataSource: ChatEventDataSource;
-  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
-}) {
-  const pagedEvents = createPagedEvents(
-    threadId,
-    dataSource,
-    previewImageUrlsByUrl$,
   );
   const renderWindow = createChatRenderWindow({
     threadId,
-    allRenderedChatGroups$: pagedEvents.allRenderedChatGroups$,
-    threadScrollPosition$: pagedEvents.scroll.threadScrollPosition$,
-    awayFromBottom$: pagedEvents.scroll.awayFromBottom$,
+    allRenderedChatGroups$: projections.allRenderedChatGroups$,
+    threadScrollPosition$: effects.scroll.threadScrollPosition$,
+    awayFromBottom$: effects.scroll.awayFromBottom$,
   });
 
   const loadMoreRenderedChatGroups$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
-      const scrollPosition = get(pagedEvents.scroll.threadScrollPosition$);
+    async ({ set }, signal: AbortSignal): Promise<boolean> => {
+      const scrollPosition = set(effects.scroll.captureThreadScrollPosition$);
       const didPrepend = await set(
         renderWindow.loadMoreRenderedChatGroups$,
         signal,
       );
       signal.throwIfAborted();
       if (didPrepend) {
-        await set(pagedEvents.scroll.autoScroll$, scrollPosition, signal);
+        await set(effects.scroll.autoScroll$, scrollPosition, signal);
         signal.throwIfAborted();
       }
       return didPrepend;
     },
   );
   return {
-    ...pagedEvents,
+    scroll: effects.scroll,
+    sidebar: effects.sidebar,
+    setup$,
+    chatSkeletonVisible$,
+    ...projections,
+    ...resources.publicSignals,
     ...renderWindow,
     loadMoreRenderedChatGroups$,
   };
@@ -3949,11 +3560,20 @@ export function createChatThreadSignals(
   threadId: string,
   draft: DraftSignals,
   dataSource: ChatThreadRemote,
-  chatEvents: CreatedChatEventSignals,
+  chatEvents: ChatEventSignals,
   options: CreateChatThreadSignalsOptions,
 ): ChatThreadCoreSignals {
-  const events = chatEvents.signals;
-  const messages = chatEvents.threadMessages;
+  const artifact = createArtifacts(threadId);
+  const messages: ChatThreadMessageSignals = {
+    ...createChatThreadMessagePipeline({
+      threadId,
+      chatEvents,
+      previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
+        artifact.artifacts$,
+      ),
+    }),
+    ...artifact,
+  };
   const threadDraft$ = createRemoteThreadDraft(dataSource);
   const threadMeta$ = createThreadMeta(threadId);
   const threadTitle = createThreadTitleParts(threadMeta$);
@@ -3975,7 +3595,7 @@ export function createChatThreadSignals(
     createDraftSync(threadId, draft, dataSource);
   const runTracking = createRunTracking({
     threadId,
-    setupChatEvents$: events.setup$,
+    setupChatEvents$: messages.setup$,
     reloadArtifacts$: messages.reloadArtifacts$,
     reloadMailDrafts$: messages.reloadMailDrafts$,
     subscribeBrowserSessions$: messages.subscribeBrowserSessions$,
@@ -3986,12 +3606,12 @@ export function createChatThreadSignals(
     threadId,
     agentId$: threadOwned.agentId$,
     modelSelectionForSend$,
-    chatEvents$: events.chatEvents$,
+    chatEvents$: chatEvents.chatEvents$,
     draft,
     queueDraftSync$,
     cancelDraftSync$,
     flushDraftClear$,
-    sendEvent$: events.sendEvent$,
+    sendEvent$: chatEvents.sendEvent$,
   });
   const assistantErrorRecovery = createAssistantErrorRecoverySignals({
     visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
