@@ -148,6 +148,12 @@ export const initProfileName$ = command(
 // Workspace danger zone
 // ---------------------------------------------------------------------------
 
+/**
+ * Literal the user must type to confirm workspace deletion. It is deliberately
+ * untranslated so the same token works in every locale.
+ */
+export const WORKSPACE_DELETE_CONFIRMATION = "confirm";
+
 const internalDeleteConfirm$ = state("");
 
 export const deleteConfirm$ = computed((get) => {
@@ -427,11 +433,11 @@ export const leaveOrg$ = command(
 );
 
 export const deleteOrg$ = command(
-  async ({ get }, slug: string, signal: AbortSignal): Promise<void> => {
+  async ({ get }, signal: AbortSignal): Promise<void> => {
     const client = get(zeroClient$)(zeroOrgDeleteContract);
     await accept(
       client.delete({
-        body: { slug },
+        body: { confirm: WORKSPACE_DELETE_CONFIRMATION },
         fetchOptions: { signal },
       }),
       [200],

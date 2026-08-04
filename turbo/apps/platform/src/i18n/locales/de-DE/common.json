@@ -4412,7 +4412,7 @@
       "danger": {
         "delete": {
           "button": "Arbeitsbereich löschen",
-          "confirmDescription": "Dadurch werden {{workspace}} und alle seine Daten dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden. Geben Sie zur Bestätigung den Namen des Arbeitsbereichs ein.",
+          "confirmDescription": "Dadurch werden dieser Arbeitsbereich und alle seine Daten dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden. Geben Sie confirm ein, um fortzufahren.",
           "description": "Löschen Sie diesen Arbeitsbereich und alle seine Daten dauerhaft. Diese Aktion kann nicht rückgängig gemacht werden.",
           "progress": "Löschen...",
           "title": "Arbeitsbereich löschen",

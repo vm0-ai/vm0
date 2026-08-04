@@ -2,9 +2,9 @@
 
 load '../../helpers/setup'
 
-# CLI validation and CRUD behavior is covered by command integration tests.
-# These runner tests keep the deployed variable-expansion boundary and use the
-# E2E-only API credential for host-side fixture setup.
+# Variable CRUD is covered by API integration tests. These runner tests keep
+# the deployed variable-expansion boundary and use the E2E-only API credential
+# for host-side fixture setup.
 
 setup_file() {
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"

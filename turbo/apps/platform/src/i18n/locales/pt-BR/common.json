@@ -4481,7 +4481,7 @@
       "danger": {
         "delete": {
           "button": "Excluir espaço de trabalho",
-          "confirmDescription": "Isso excluirá permanentemente {{workspace}} e todos os dados dele. Esta ação não pode ser desfeita. Digite o nome do espaço de trabalho para confirmar.",
+          "confirmDescription": "Isso excluirá permanentemente este espaço de trabalho e todos os dados dele. Esta ação não pode ser desfeita. Digite confirm para continuar.",
           "description": "Exclua permanentemente este espaço de trabalho e todos os dados dele. Esta ação não pode ser desfeita.",
           "progress": "Excluindo...",
           "title": "Excluir espaço de trabalho",

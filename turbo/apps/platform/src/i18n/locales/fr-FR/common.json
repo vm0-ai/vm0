@@ -4481,7 +4481,7 @@
       "danger": {
         "delete": {
           "button": "Supprimer l'espace de travail",
-          "confirmDescription": "Cela supprimera définitivement {{workspace}} et toutes ses données. Cette action est irréversible. Tapez le nom de l'espace de travail pour confirmer.",
+          "confirmDescription": "Cela supprimera définitivement cet espace de travail et toutes ses données. Cette action est irréversible. Tapez confirm pour continuer.",
           "description": "Supprimer définitivement cet espace de travail et toutes ses données. Cette action est irréversible.",
           "progress": "Suppression en cours...",
           "title": "Supprimer l'espace de travail",
