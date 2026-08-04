@@ -537,6 +537,8 @@
       "emptyTitle": "Tidak ada artefak ditemukan",
       "error": "Tidak dapat memuat artefak. Coba lagi nanti.",
       "filters": {
+        "avatar": "Avatar",
+        "avatarAria": "Tampilkan artefak avatar",
         "file": "File",
         "fileAria": "Tampilkan artefak file",
         "image": "Gambar",
@@ -578,6 +580,7 @@
     },
     "kinds": {
       "audio": "Audio",
+      "avatar": "Avatar",
       "code": "Kode",
       "csv": "CSV",
       "data": "Data",

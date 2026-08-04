@@ -537,6 +537,8 @@
       "emptyTitle": "No artifacts found",
       "error": "Could not load artifacts. Try again later.",
       "filters": {
+        "avatar": "Avatars",
+        "avatarAria": "Show avatar artifacts",
         "file": "Files",
         "fileAria": "Show file artifacts",
         "image": "Images",
@@ -578,6 +580,7 @@
     },
     "kinds": {
       "audio": "Audio",
+      "avatar": "Avatar",
       "code": "Code",
       "csv": "CSV",
       "data": "Data",

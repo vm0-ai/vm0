@@ -8,6 +8,7 @@ import {
   IconFile,
   IconPhoto,
   IconPresentationAnalytics,
+  IconUser,
   IconVideo,
   IconWorld,
 } from "@tabler/icons-react";
@@ -46,6 +47,7 @@ const ARTIFACT_KIND_OPTIONS: readonly ArtifactCatalogKind[] = [
   "hosted-site",
   "image",
   "video",
+  "avatar",
   "file",
 ];
 
@@ -60,6 +62,8 @@ function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
       <IconPhoto size={16} stroke={1.7} />
     ) : kind === "video" ? (
       <IconVideo size={16} stroke={1.7} />
+    ) : kind === "avatar" ? (
+      <IconUser size={16} stroke={1.7} />
     ) : (
       <IconFile size={16} stroke={1.7} />
     );
@@ -80,9 +84,13 @@ function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
             ? t(($) => {
                 return $.artifacts.kinds.video;
               })
-            : t(($) => {
-                return $.artifacts.kinds.file;
-              });
+            : kind === "avatar"
+              ? t(($) => {
+                  return $.artifacts.kinds.avatar;
+                })
+              : t(($) => {
+                  return $.artifacts.kinds.file;
+                });
 
   return (
     <span
@@ -287,12 +295,19 @@ export function ArtifactCatalogEmpty() {
 
 function ArtifactCatalogKindFilter({
   selectedKind,
+  supportedKinds,
   onKindChange,
 }: {
   readonly selectedKind: ArtifactCatalogKind | null;
+  readonly supportedKinds: readonly ArtifactCatalogKind[] | undefined;
   readonly onKindChange: (value: ArtifactCatalogKind | null) => void;
 }) {
   const { t } = useTranslation();
+  const options = supportedKinds?.includes("avatar")
+    ? ARTIFACT_KIND_OPTIONS
+    : ARTIFACT_KIND_OPTIONS.filter((kind) => {
+        return kind !== "avatar";
+      });
   return (
     <div
       className="flex flex-wrap items-center gap-1.5"
@@ -300,7 +315,7 @@ function ArtifactCatalogKindFilter({
         return $.artifacts.catalog.filters.label;
       })}
     >
-      {ARTIFACT_KIND_OPTIONS.map((kind) => {
+      {options.map((kind) => {
         const selected = kind === selectedKind;
         const label =
           kind === "presentation"
@@ -319,9 +334,13 @@ function ArtifactCatalogKindFilter({
                   ? t(($) => {
                       return $.artifacts.catalog.filters.video;
                     })
-                  : t(($) => {
-                      return $.artifacts.catalog.filters.file;
-                    });
+                  : kind === "avatar"
+                    ? t(($) => {
+                        return $.artifacts.catalog.filters.avatar;
+                      })
+                    : t(($) => {
+                        return $.artifacts.catalog.filters.file;
+                      });
         const ariaLabel =
           kind === "presentation"
             ? t(($) => {
@@ -339,9 +358,13 @@ function ArtifactCatalogKindFilter({
                   ? t(($) => {
                       return $.artifacts.catalog.filters.videoAria;
                     })
-                  : t(($) => {
-                      return $.artifacts.catalog.filters.fileAria;
-                    });
+                  : kind === "avatar"
+                    ? t(($) => {
+                        return $.artifacts.catalog.filters.avatarAria;
+                      })
+                    : t(($) => {
+                        return $.artifacts.catalog.filters.fileAria;
+                      });
         return (
           <button
             key={kind}
@@ -421,6 +444,11 @@ export function ArtifactCatalogPage() {
         <div className="mx-auto flex w-full max-w-[900px] flex-col gap-4">
           <ArtifactCatalogKindFilter
             selectedKind={selectedKind}
+            supportedKinds={
+              catalog.state === "hasData"
+                ? catalog.data.supportedKinds
+                : undefined
+            }
             onKindChange={setKind}
           />
           {catalog.state === "loading" ? (
