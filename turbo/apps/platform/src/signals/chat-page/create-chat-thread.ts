@@ -67,7 +67,7 @@ import {
   codexFastModeEnabled$,
   featureSwitch$,
   zeroBrowserEnabled$,
-  zeroImageRecognitionEnabled$,
+  imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
@@ -2517,7 +2517,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
                 excludeVisualAttachments:
                   shouldExcludeVisualAttachmentsForModel(
                     request.modelSelection?.selectedModel,
-                    get(zeroImageRecognitionEnabled$),
+                    get(imageRecognitionAvailable$),
                   ),
               },
               signal,
@@ -2675,7 +2675,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         {
           excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
             modelSelection?.selectedModel,
-            get(zeroImageRecognitionEnabled$),
+            get(imageRecognitionAvailable$),
           ),
         },
         signal,

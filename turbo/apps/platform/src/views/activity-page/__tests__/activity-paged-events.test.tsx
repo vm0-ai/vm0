@@ -22,7 +22,6 @@ function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
     modelProvider: null,
     selectedModel: null,
     triggerSource: "web",
-    triggerAgentName: null,
     status: "running",
     prompt: "Hello",
     appendSystemPrompt: null,

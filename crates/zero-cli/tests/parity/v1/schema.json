@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vm0.ai/schemas/zero-cli-parity-case-v1.json",
+  "title": "Zero CLI parity case v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "name",
+    "description",
+    "argv",
+    "environment",
+    "stdin",
+    "workingDirectory",
+    "terminalMode",
+    "timeoutMs",
+    "mockHttp",
+    "filesystem",
+    "normalizations"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "../schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "argv": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "stdin": {
+      "type": "string"
+    },
+    "workingDirectory": {
+      "type": "string",
+      "minLength": 1
+    },
+    "terminalMode": {
+      "enum": ["pipe", "pty"]
+    },
+    "timeoutMs": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "mockHttp": {
+      "$ref": "#/$defs/mockHttp"
+    },
+    "filesystem": {
+      "$ref": "#/$defs/filesystem"
+    },
+    "normalizations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/normalization"
+      }
+    }
+  },
+  "$defs": {
+    "mockHttp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["captureHeaders", "exchanges"],
+      "properties": {
+        "captureHeaders": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9!#$%&'*+.^_`|~-]+$"
+          }
+        },
+        "exchanges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/httpExchange"
+          }
+        }
+      }
+    },
+    "httpExchange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request", "response"],
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/expectedRequest"
+        },
+        "response": {
+          "$ref": "#/$defs/mockResponse"
+        }
+      }
+    },
+    "expectedRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "path", "query", "body"],
+      "properties": {
+        "method": {
+          "type": "string",
+          "pattern": "^[A-Z]+$"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^?].*$|^$"
+        },
+        "body": {
+          "type": "string"
+        }
+      }
+    },
+    "mockResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "headers", "body"],
+      "properties": {
+        "status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "headers": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9!#$%&'*+.^_`|~-]+$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[^\\r\\n]*$"
+          }
+        },
+        "body": {
+          "type": "string"
+        }
+      }
+    },
+    "filesystem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seed"],
+      "properties": {
+        "seed": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/seedEntry"
+          }
+        }
+      }
+    },
+    "seedEntry": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "path", "content", "mode"],
+          "properties": {
+            "kind": {
+              "const": "file"
+            },
+            "path": {
+              "$ref": "#/$defs/relativePath"
+            },
+            "content": {
+              "type": "string"
+            },
+            "mode": {
+              "$ref": "#/$defs/unixMode"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "path", "mode"],
+          "properties": {
+            "kind": {
+              "const": "directory"
+            },
+            "path": {
+              "$ref": "#/$defs/relativePath"
+            },
+            "mode": {
+              "$ref": "#/$defs/unixMode"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "path", "target"],
+          "properties": {
+            "kind": {
+              "const": "symlink"
+            },
+            "path": {
+              "$ref": "#/$defs/relativePath"
+            },
+            "target": {
+              "$ref": "#/$defs/relativePath"
+            }
+          }
+        }
+      ]
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "unixMode": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4095
+    },
+    "normalization": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value", "targets"],
+          "properties": {
+            "kind": {
+              "const": "runtime-value"
+            },
+            "value": {
+              "enum": [
+                "workspace-path",
+                "mock-http-url",
+                "home-path",
+                "temp-path"
+              ]
+            },
+            "targets": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "stdout",
+                  "stderr",
+                  "http-request-body",
+                  "filesystem-file-content"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "header"],
+          "properties": {
+            "kind": {
+              "const": "uuid-http-header"
+            },
+            "header": {
+              "type": "string",
+              "pattern": "^[a-z0-9!#$%&'*+.^_`|~-]+$"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

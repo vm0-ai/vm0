@@ -176,7 +176,6 @@ function prepareInspectData(data: InspectLogData, fallbackName: string) {
     displayName: stringValue(meta?.displayName) ?? fallbackName,
     status: logStatusValue(meta?.status),
     triggerSource: triggerSourceValue(meta?.triggerSource),
-    triggerAgentName: nullableStringValue(meta?.triggerAgentName),
     detail,
     duration: formatDuration(
       nullableStringValue(meta?.startedAt),
@@ -342,16 +341,8 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
       return $.activity.inspect.fallbackName;
     }),
   );
-  const {
-    displayName,
-    status,
-    triggerSource,
-    triggerAgentName,
-    detail,
-    duration,
-    time,
-    events,
-  } = prepared;
+  const { displayName, status, triggerSource, detail, duration, time, events } =
+    prepared;
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
@@ -362,7 +353,6 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
             displayName={displayName}
             status={status}
             triggerSource={triggerSource}
-            triggerAgentName={triggerAgentName}
             detail={detail}
             duration={duration}
             time={time}

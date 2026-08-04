@@ -565,7 +565,6 @@ describe("chat lifecycle", () => {
         modelProvider: null,
         selectedModel: null,
         triggerSource: "web",
-        triggerAgentName: null,
         status: "running",
         prompt: "Active task prompt",
         appendSystemPrompt: null,

@@ -1,6 +1,6 @@
 [package]
 name = "runner"
-version = "0.155.1"
+version = "0.156.0"
 edition.workspace = true
 
 [dependencies]
@@ -47,8 +47,11 @@ zstd = { workspace = true, features = ["zstdmt"] }
 vsock-proto = { workspace = true }
 
 [build-dependencies]
+hex = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
+zero-cli = { workspace = true }
 
 # These dev-dependencies exist solely for release-please version tracking:
 # cargo-workspace plugin includes dev-dependencies in its dependency graph,

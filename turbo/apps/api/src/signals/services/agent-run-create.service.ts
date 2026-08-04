@@ -70,10 +70,8 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
-  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomConnectorSkillName,
@@ -7622,15 +7620,10 @@ function prepareRunOutputMetadata(args: {
 
 function isImageRecognitionAvailableForRun(args: {
   readonly includeZeroTokenSecret: boolean | undefined;
-  readonly featureSwitchContext: FeatureSwitchContext;
   readonly selectedModel: string | undefined;
 }): boolean {
   return (
     args.includeZeroTokenSecret === true &&
-    isFeatureEnabled(
-      FeatureSwitchKey.ZeroImageRecognition,
-      args.featureSwitchContext,
-    ) &&
     getModelImageInputSupport(args.selectedModel) === "unsupported"
   );
 }
@@ -7755,7 +7748,6 @@ function prepareRunContext(input: {
         featureSwitchContext: bodyContext.featureSwitchContext,
         imageRecognitionAvailable: isImageRecognitionAvailableForRun({
           includeZeroTokenSecret: args.includeZeroTokenSecret,
-          featureSwitchContext: bodyContext.featureSwitchContext,
           selectedModel:
             runtimeContext.modelProvider?.selectedModel ??
             args.selectedModelOverride,

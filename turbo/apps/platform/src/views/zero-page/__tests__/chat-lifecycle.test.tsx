@@ -574,9 +574,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: AGENT_CHAT_PATH,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
     });
 
     await waitFor(() => {
@@ -670,9 +667,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroImageRecognition]: true,
-      },
     });
 
     const textarea = await waitFor(() => {

@@ -79,10 +79,7 @@ function LogRow({
         {showSource && (
           <div className="text-left text-sm text-muted-foreground truncate">
             {entry.triggerSource
-              ? getTriggerSourceLabel(
-                  entry.triggerSource,
-                  entry.triggerAgentName,
-                )
+              ? getTriggerSourceLabel(entry.triggerSource)
               : "\u2014"}
           </div>
         )}

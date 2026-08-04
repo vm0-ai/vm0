@@ -332,7 +332,6 @@
     "sources": {
       "agent": "एजेंट",
       "agentphone": "AgentPhone",
-      "agentWithName": "एजेंट ({{name}})",
       "email": "ईमेल",
       "feishu": "Feishu",
       "github": "GitHub",

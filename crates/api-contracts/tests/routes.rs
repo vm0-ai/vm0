@@ -41,6 +41,20 @@ fn exposes_generated_runner_route_constants() {
 }
 
 #[test]
+fn exposes_native_zero_cli_read_only_routes() {
+    let build_info = routes::build_info::GET;
+    let model_policies = routes::zero::model_policies::LIST;
+    let model_preference = routes::zero::user_model_preference::GET;
+
+    assert_eq!(build_info.method, Method::Get);
+    assert_eq!(build_info.path, "/api/build-info");
+    assert_eq!(model_policies.method, Method::Get);
+    assert_eq!(model_policies.path, "/api/zero/model-policies");
+    assert_eq!(model_preference.method, Method::Get);
+    assert_eq!(model_preference.path, "/api/zero/user-model-preference");
+}
+
+#[test]
 fn generated_routes_build_urls_from_base_api_url() {
     let route = routes::webhooks::agent::telemetry::SEND;
 
