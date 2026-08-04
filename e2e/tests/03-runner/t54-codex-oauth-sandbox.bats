@@ -99,7 +99,7 @@ teardown_file() {
 # (per plan phase Q1 decision: A2 — synthetic + MSW for CI).
 @test "t54-1: codex agent run completes with codex-oauth provider" {
     run run_compose_fixture "$AGENT_NAME" \
-        "Reply with exactly RESULT=579" \
+        "Reply only RESULT=579" \
         '{"modelProviderType":"codex-oauth-token"}'
 
     assert_success
@@ -180,7 +180,7 @@ teardown_file() {
     seed_codex_oauth_via_authjson "$raw_json"
 
     run run_compose_fixture "$AGENT_NAME" \
-        "Reply with exactly RESULT=579" \
+        "Reply only RESULT=579" \
         '{"modelProviderType":"codex-oauth-token"}'
 
     assert_success
@@ -240,9 +240,8 @@ teardown_file() {
     fi
 
     run run_compose_fixture "$AGENT_NAME" \
-        "Run this exact Bash command and include its output:
-curl -sS -m 10 -o /tmp/curl-out.txt -w 'HTTP_CODE=%{http_code} EXIT=%{exitcode}' https://auth.openai.com/oauth/token; echo
-cat /tmp/curl-out.txt 2>/dev/null || echo 'NO_RESPONSE_BODY'" \
+        "Use Bash; return its output:
+curl -sS -m 10 -o /tmp/r -w 'HTTP_CODE=%{http_code} EXIT=%{exitcode}\n' https://auth.openai.com/oauth/token; cat /tmp/r 2>/dev/null || echo NO_BODY" \
         '{"modelProviderType":"codex-oauth-token","realAgentInPreview":true}'
 
     assert_success

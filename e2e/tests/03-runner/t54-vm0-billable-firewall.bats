@@ -76,7 +76,7 @@ teardown_file() {
 
 @test "t54-0: BYOK provider — firewall not billable" {
     run run_compose_fixture "$RUN_AGENT_NAME" \
-        "Reply with exactly: DONE" \
+        "Reply only DONE" \
         '{"modelProviderType":"anthropic-api-key","realAgentInPreview":true}'
 
     echo "$output"
@@ -98,7 +98,7 @@ teardown_file() {
 @test "t54-1: vm0 meta-provider — firewall billable" {
     zero_chat_run_with_model \
         "$AGENT_ID" \
-        "Reply with exactly: DONE" \
+        "Reply only DONE" \
         "claude-sonnet-4-6" \
         true
     THREAD_IDS="$THREAD_IDS $LAST_THREAD_ID"
