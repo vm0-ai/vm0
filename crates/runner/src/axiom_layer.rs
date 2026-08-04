@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use reqwest::Client;
+use sandbox_fc::BALLOON_SETTLE_AXIOM_TARGET;
 use serde_json::{Map, Value};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -171,13 +172,14 @@ pub(crate) struct AxiomLayer {
 }
 
 fn should_ingest(metadata: &Metadata<'_>) -> bool {
-    // Errors and warnings remain the general threshold. One exact INFO target
-    // carries the bounded selected-candidate measurements required before a
-    // successor has an authenticated per-job telemetry owner. DEBUG/TRACE and
-    // all other INFO events stay local-only.
+    // Errors and warnings remain the general threshold. Two exact INFO targets
+    // carry bounded production measurements that have no authenticated
+    // per-job telemetry owner. DEBUG/TRACE and all other INFO events stay
+    // local-only.
     (*metadata.level() <= tracing::Level::WARN && metadata.target() != INTERNAL_TARGET)
         || (*metadata.level() == tracing::Level::INFO
-            && metadata.target() == PRE_PARK_HANDOFF_AXIOM_TARGET)
+            && (metadata.target() == PRE_PARK_HANDOFF_AXIOM_TARGET
+                || metadata.target() == BALLOON_SETTLE_AXIOM_TARGET))
 }
 
 fn ingest_filter() -> FilterFn<fn(&Metadata<'_>) -> bool> {

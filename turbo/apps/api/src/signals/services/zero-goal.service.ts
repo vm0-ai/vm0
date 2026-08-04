@@ -8,7 +8,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals, type ThreadGoalStatus } from "@vm0/db/schema/thread-goal";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
@@ -21,6 +21,7 @@ import {
 } from "./zero-chat-goal-marker.service";
 import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import { generateGoalObjectiveBrief } from "./zero-goal-objective-brief.service";
+import { lockGoalThread } from "./zero-goal-lock.service";
 import {
   appendChatThreadEvent,
   type ChatThreadEventTransaction,
@@ -102,15 +103,6 @@ function goalResponse(row: GoalRow): ZeroGoalResponse {
     }),
     status: row.status as ZeroGoalStatus,
   };
-}
-
-async function lockGoalThread(
-  tx: Pick<Db, "execute">,
-  threadId: string,
-): Promise<void> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext('goal:' || ${threadId}))`,
-  );
 }
 
 async function currentGoalContext(
