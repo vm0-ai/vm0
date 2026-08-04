@@ -6,10 +6,15 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Instant;
+
+use guest_common::telemetry::record_sandbox_op;
 
 use crate::error::AgentError;
 
 const MODEL_CATALOG_FILENAME: &str = "codex-model-catalog.json";
+const MODEL_CATALOG_PREPARE_ACTION: &str = "codex_model_catalog_prepare";
+const MODEL_CATALOG_BUNDLED_LOAD_ACTION: &str = "codex_model_catalog_bundled_load";
 
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -103,19 +108,29 @@ pub(super) fn write_model_catalog(
     let Some(model_catalog) = &config.model_catalog else {
         return Ok(());
     };
-    let hydrated_model_catalog = if model_catalog_needs_default_instructions(model_catalog)? {
-        Some(inherit_default_model_instructions(
-            model_catalog,
-            load_bundled_model_catalog()?,
-        )?)
-    } else {
-        None
-    };
-    let model_catalog = hydrated_model_catalog.as_ref().unwrap_or(model_catalog);
-    std::fs::create_dir_all(codex_home)?;
-    let path = model_catalog_path(codex_home);
-    write_model_catalog_json_atomic(codex_home, &path, &serde_json::to_vec(model_catalog)?)?;
-    Ok(())
+    let started_at = Instant::now();
+    let result = (|| {
+        let hydrated_model_catalog = if model_catalog_needs_default_instructions(model_catalog)? {
+            Some(inherit_default_model_instructions(
+                model_catalog,
+                load_bundled_model_catalog()?,
+            )?)
+        } else {
+            None
+        };
+        let model_catalog = hydrated_model_catalog.as_ref().unwrap_or(model_catalog);
+        std::fs::create_dir_all(codex_home)?;
+        let path = model_catalog_path(codex_home);
+        write_model_catalog_json_atomic(codex_home, &path, &serde_json::to_vec(model_catalog)?)?;
+        Ok(())
+    })();
+    record_sandbox_op(
+        MODEL_CATALOG_PREPARE_ACTION,
+        started_at.elapsed(),
+        result.is_ok(),
+        None,
+    );
+    result
 }
 
 fn model_catalog_needs_default_instructions(
@@ -144,15 +159,25 @@ fn model_catalog_needs_default_instructions(
 }
 
 fn load_bundled_model_catalog() -> Result<BundledModelCatalog, AgentError> {
-    let output = Command::new("codex")
-        .args(["debug", "models", "--bundled"])
-        .output()?;
-    if !output.status.success() {
-        return Err(AgentError::Execution(
-            "failed to read the bundled Codex model catalog".to_string(),
-        ));
-    }
-    Ok(serde_json::from_slice(&output.stdout)?)
+    let started_at = Instant::now();
+    let result = (|| {
+        let output = Command::new("codex")
+            .args(["debug", "models", "--bundled"])
+            .output()?;
+        if !output.status.success() {
+            return Err(AgentError::Execution(
+                "failed to read the bundled Codex model catalog".to_string(),
+            ));
+        }
+        Ok(serde_json::from_slice(&output.stdout)?)
+    })();
+    record_sandbox_op(
+        MODEL_CATALOG_BUNDLED_LOAD_ACTION,
+        started_at.elapsed(),
+        result.is_ok(),
+        None,
+    );
+    result
 }
 
 fn inherit_default_model_instructions(
