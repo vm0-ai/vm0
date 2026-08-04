@@ -43,6 +43,13 @@
       "when": 1785811708107,
       "tag": "0813_relax_feishu_chat_open_url",
       "breakpoints": true
+    },
+    {
+      "idx": 814,
+      "version": "7",
+      "when": 1785814884941,
+      "tag": "0814_drop_feishu_chat_open_url",
+      "breakpoints": true
     }
   ]
 }
