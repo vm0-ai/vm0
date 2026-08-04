@@ -608,6 +608,8 @@ pub(super) async fn create_single_namespace(
     let ns_idx_str = format_hex_index(ns_index);
     let ns_name = make_ns_name(&pool_idx_str, &ns_idx_str);
     let host_device = make_host_device(&pool_idx_str, &ns_idx_str);
+    // Pool and namespace bytes keep the root-veth MAC unique on this host.
+    // Supplying it in RTM_NEWLINK prevents a later udev rewrite after neighbor learning.
     let host_mac = format!("02:56:4d:{pool_idx_str}:{ns_idx_str}:01");
     let (host_ip, peer_ip) = generate_veth_ip_pair(pool_index, ns_index);
 
