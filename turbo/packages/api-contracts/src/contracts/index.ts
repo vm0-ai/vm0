@@ -503,7 +503,6 @@ export {
   type CronTelegramCleanupContract,
 } from "./cron";
 export {
-  orgSlugSchema,
   orgResponseSchema,
   updateOrgRequestSchema,
   orgTierSchema,

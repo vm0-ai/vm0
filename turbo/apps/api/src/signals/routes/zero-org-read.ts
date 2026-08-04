@@ -39,9 +39,7 @@ const getOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const updateOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);
   if (!auth.orgId) {
-    return badRequestMessage(
-      "No org configured. Set your org with: zero org set <slug>",
-    );
+    return badRequestMessage("No organization is selected for this request");
   }
 
   const bodyResult = await get(bodyResultOf(zeroOrgContract.update));
@@ -55,9 +53,7 @@ const updateOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       orgId: auth.orgId,
       userId: auth.userId,
-      slug: bodyResult.data.slug,
       name: bodyResult.data.name,
-      force: bodyResult.data.force,
     },
     signal,
   );

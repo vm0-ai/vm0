@@ -18,7 +18,6 @@ export {
 // Domain modules - Zero Organizations
 export {
   getZeroOrg,
-  updateZeroOrg,
   listZeroOrgs,
   getZeroOrgMembers,
   inviteZeroOrgMember,
