@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.154.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.154.2...runner-rs-v0.154.3) (2026-08-04)
+
+
+### Performance Improvements
+
+* **python:** bound anthropic json usage inspection ([#24918](https://github.com/vm0-ai/vm0/issues/24918)) ([e1630b9](https://github.com/vm0-ai/vm0/commit/e1630b93fa79206dd0bd0b6c1f9760e548389bee))
+
 ## [0.154.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.154.1...runner-rs-v0.154.2) (2026-08-04)
 
 
