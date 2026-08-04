@@ -217,16 +217,6 @@ function connectorManualGrantResponse(
 }
 
 export const apiHandlers = [
-  // GET /api/zero/secrets - listZeroSecrets
-  http.get("http://localhost:3000/api/zero/secrets", () => {
-    return HttpResponse.json({ secrets: [] }, { status: 200 });
-  }),
-
-  // GET /api/zero/variables - listZeroVariables
-  http.get("http://localhost:3000/api/zero/variables", () => {
-    return HttpResponse.json({ variables: [] }, { status: 200 });
-  }),
-
   // GET /api/zero/connectors - listZeroConnectors
   http.get("http://localhost:3000/api/zero/connectors", () => {
     return HttpResponse.json(
