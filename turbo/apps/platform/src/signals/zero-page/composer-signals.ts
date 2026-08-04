@@ -4,7 +4,6 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { foldActiveChatGoalObjective } from "@vm0/api-contracts/contracts/chat-events";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef, withCleanup } from "../utils.ts";
 import {
@@ -12,7 +11,7 @@ import {
   shouldExcludeVisualAttachmentsForModel,
 } from "../chat-page/resolve-draft-attachments.ts";
 import {
-  featureSwitch$,
+  structuredPromptInlineTemplatesEnabled$,
   zeroImageRecognitionEnabled$,
 } from "../external/feature-switch.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
@@ -440,16 +439,10 @@ export function createComposerSignals(
     return (await get(options.agent$)).agentId;
   });
   const feedback = createComposerFeedbackModel(options.threadId);
-  const inlineTemplatesEnabled$ = computed((get): boolean => {
-    return (
-      get(featureSwitch$)[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
-      false
-    );
-  });
   const workflowComposer = createWorkflowComposerSignals(
     draft,
     agentId$,
-    inlineTemplatesEnabled$,
+    structuredPromptInlineTemplatesEnabled$,
     {
       // Existing threads must not steal selection while cached events hydrate.
       // Empty new chats live in the agent composer, which still auto-focuses.

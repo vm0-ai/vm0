@@ -3,6 +3,7 @@ import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-provider
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { currentChatAgent$, currentChatAgentId$ } from "../agent-chat.ts";
 import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
+import { structuredPromptInlineTemplatesEnabled$ } from "../external/feature-switch.ts";
 import { updateUserModelPreference$ } from "../external/user-model-preference.ts";
 import { queueCurrentAgentDraftSync$ } from "./agent-draft.ts";
 import { talkDraft$ } from "./chat-draft.ts";
@@ -150,6 +151,8 @@ const openActiveGoal$ = command((): void => {
 });
 
 export const agentChatComposerSignals$ = computed((get) => {
+  // Recreate the editor when delayed feature-switch bootstrap changes its semantics.
+  get(structuredPromptInlineTemplatesEnabled$);
   const draft = get(talkDraft$);
 
   return createComposerSignals({
