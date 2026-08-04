@@ -1492,8 +1492,6 @@ interface CanonicalTeamsLaunchContext {
   readonly activityId: string | null;
   readonly serviceUrl: string;
   readonly teamsAppId: string | null;
-  readonly botId: string | null;
-  readonly botName: string | null;
   readonly senderUserId: string;
   readonly senderDisplayName: string | null;
   readonly senderPrincipalName: string | null;
@@ -1522,8 +1520,6 @@ function canonicalTeamsLaunchContext(args: {
     activityId: args.activity.activityId,
     serviceUrl: args.activity.serviceUrl,
     teamsAppId: args.activity.teamsAppId,
-    botId: args.activity.recipient?.id ?? null,
-    botName: args.activity.recipient?.name ?? null,
     senderUserId: args.activity.sender.id,
     senderDisplayName: args.activity.sender.name,
     senderPrincipalName: args.activity.sender.userPrincipalName,
