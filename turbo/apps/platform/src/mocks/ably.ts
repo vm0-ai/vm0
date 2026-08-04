@@ -48,6 +48,7 @@ let hasConnected = false;
 let failedStateChange: FailedStateChange | null = null;
 let connectionClosed = false;
 let nextSubscribeError: Error | null = null;
+const subscribeErrors = new Map<string, Error>();
 
 /**
  * Fire all callbacks subscribed to `topic`. Call this from test helpers
@@ -97,6 +98,7 @@ export function resetAblySubscriptions(): void {
   failedStateChange = null;
   connectionClosed = false;
   nextSubscribeError = null;
+  subscribeErrors.clear();
   connectedListeners.clear();
 }
 
@@ -140,6 +142,10 @@ export function rejectNextAblySubscribe(message: string): void {
   nextSubscribeError = new Error(message);
 }
 
+export function rejectAblySubscribe(topic: string, message: string): void {
+  subscribeErrors.set(topic, new Error(message));
+}
+
 function invokeAuthCallback(cb: AuthCallback): Promise<AuthCallbackToken> {
   const deferred = createDeferredPromise<AuthCallbackToken>(
     AbortSignal.any([]),
@@ -177,6 +183,13 @@ const fakeChannel = {
     await Promise.resolve();
     if (connectionClosed) {
       throw new Error("Connection closed");
+    }
+    if (typeof topicOrCallback === "string") {
+      const error = subscribeErrors.get(topicOrCallback);
+      if (error) {
+        subscribeErrors.delete(topicOrCallback);
+        throw error;
+      }
     }
     if (nextSubscribeError) {
       const error = nextSubscribeError;

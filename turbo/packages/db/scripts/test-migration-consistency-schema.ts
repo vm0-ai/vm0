@@ -3438,6 +3438,137 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
   }
 }
 
+async function validateTeamsMessageFileScopeBackfill(): Promise<void> {
+  console.log(
+    "=== Phase 1.4: Validate Teams message file scope backfill ===\n",
+  );
+  const testDb = "migration_teams_message_file_scope_test";
+  await createDatabase(testDb);
+  const testDbUrl = createTestDbUrl(testDb);
+
+  try {
+    await runMigrationsUpToTag(testDbUrl, "0815_clammy_wendigo");
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+
+    try {
+      const composeId = "00000000-0000-4000-8000-000000081301";
+      const threadId = "00000000-0000-4000-8000-000000081302";
+      const contextId = "00000000-0000-4000-8000-000000081303";
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, 'teams-file-scope-user', 'teams-file-scope', 'teams-file-scope-org')
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "last_chat_event_seq_id"
+          )
+          VALUES ($1, 'teams-file-scope-user', $2, 1)
+        `,
+        [threadId, composeId],
+      );
+
+      const legacyMessageFiles = [
+        {
+          fileId: "teams-current-file",
+          sourceId: "current-source",
+          name: "current.txt",
+          contentType: "text/plain",
+          payload: {
+            tenantId: "teams-file-scope-tenant",
+            url: "https://files.example.test/current.txt",
+          },
+        },
+        {
+          fileId: "teams-context-file",
+          sourceId: "context-source",
+          name: "context.txt",
+          contentType: "text/plain",
+          payload: {
+            tenantId: "teams-file-scope-tenant",
+            url: "https://files.example.test/context.txt",
+          },
+        },
+      ];
+      await client.query(
+        `
+          INSERT INTO "chat_teams_context" (
+            "id",
+            "chat_thread_id",
+            "tenant_id",
+            "conversation_id",
+            "message_files"
+          )
+          VALUES ($1, $2, 'teams-file-scope-tenant', 'teams-file-scope-conversation', $3::jsonb)
+        `,
+        [contextId, threadId, JSON.stringify(legacyMessageFiles)],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "event_type",
+            "context_type",
+            "context_id",
+            "trigger_source",
+            "user_message",
+            "seq_id"
+          )
+          VALUES ($1, 'input.prompt', 'teams', $2, 'teams', $3::jsonb, 1)
+        `,
+        [
+          threadId,
+          contextId,
+          JSON.stringify({
+            version: 1,
+            parts: [
+              {
+                type: "file",
+                fileId: "teams-current-file",
+                filenameSnapshot: "current.txt",
+                contentType: "text/plain",
+              },
+              { type: "text", text: "legacy Teams file scope" },
+            ],
+          }),
+        ],
+      );
+
+      await applyMigrationsUpToTag(
+        client,
+        "0816_backfill_teams_message_file_scope",
+      );
+
+      const result = await client.query<{ messageFiles: unknown }>(
+        `
+          SELECT "message_files" AS "messageFiles"
+          FROM "chat_teams_context"
+          WHERE "id" = $1
+        `,
+        [contextId],
+      );
+      assert.deepEqual(result.rows[0]?.messageFiles, [
+        { ...legacyMessageFiles[0], inCurrentMessage: true },
+        { ...legacyMessageFiles[1], inCurrentMessage: false },
+      ]);
+      console.log(
+        "   ✅ Legacy Teams message files receive exact scope flags\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log("=== Phase 1.5: Validate Latest Snapshot Accuracy ===\n");
 
@@ -3548,6 +3679,7 @@ async function main(): Promise<void> {
 
     await validateRunEventSequenceNumberRollout();
     await validateGoalOnlyRunGroupsCleanup();
+    await validateTeamsMessageFileScopeBackfill();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -3609,6 +3741,7 @@ async function main(): Promise<void> {
       console.log(
         "   ✅ Custom connector OAuth mode constraints reject mismatched configuration",
       );
+      console.log("   ✅ Legacy Teams message file scope is backfilled");
       console.log("   ✅ Permanent trigger and function inventories match");
       console.log(
         "   ✅ Permanent artifact triggers preserve cascade, queue, and scope behavior",

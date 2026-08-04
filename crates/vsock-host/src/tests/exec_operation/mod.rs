@@ -1,8 +1,21 @@
 use std::time::Duration;
 
+use tokio::sync::mpsc::{self, error::TryRecvError};
 use vsock_proto::ExecOutputPolicy;
 
-use crate::{ExecOperationHandle, ExecOperationRequest};
+use crate::{ExecOperationHandle, ExecOperationRequest, ExecOutputEvent};
+
+fn assert_stream_closed(receiver: &mut mpsc::Receiver<ExecOutputEvent>, scenario: &str) {
+    match receiver.try_recv() {
+        Err(TryRecvError::Disconnected) => {}
+        Err(TryRecvError::Empty) => {
+            panic!("{scenario}: stream sender remained open after terminal state")
+        }
+        Ok(event) => {
+            panic!("{scenario}: expected stream closure, received unexpected event: {event:?}")
+        }
+    }
+}
 
 async fn start_capture_operation(host: &crate::VsockHost, command: &str) -> ExecOperationHandle {
     host.start_exec_operation(ExecOperationRequest {

@@ -13,6 +13,7 @@ export interface ChatTeamsMessageFile {
   readonly sourceId?: string;
   readonly name: string;
   readonly contentType: string;
+  readonly inCurrentMessage: boolean;
   readonly payload: ChatTeamsFileTokenPayload;
 }
 

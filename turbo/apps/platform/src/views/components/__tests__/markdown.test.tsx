@@ -261,6 +261,39 @@ describe("assistant markdown", () => {
     expect(screen.getByTestId("thread-sidebar-artifacts")).toBeInTheDocument();
   });
 
+  it("leaves a streaming mermaid fence as code until it closes", async () => {
+    mockThread("```mermaid\nflowchart TD\n  A --> B");
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector("code.language-mermaid"),
+      ).toBeInTheDocument();
+    });
+    expect(document.querySelector(".mermaid-block")).toBeNull();
+  });
+
+  it("renders a closed mermaid fence that ends the message", async () => {
+    mockThread("Here is the flow:\n\n```mermaid\nflowchart TD\n  A --> B\n```");
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-testid="mermaid-svg"]'),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("keeps the source visible when a mermaid diagram cannot be parsed", async () => {
     mockThread("```mermaid\nthis is not a diagram\n```");
 

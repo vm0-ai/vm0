@@ -12,6 +12,7 @@ use super::super::support::{
     assert_connection_accepts_exec_operation, is_connected, operation_count, read_guest_message,
     send_discarded_exec_result, send_exec_output, send_exec_result, setup_host_and_guest,
 };
+use super::assert_stream_closed;
 use crate::{
     ConnectionState, ExecOperationRequest, ExecStreamRequest, exec_operation as exec_operation_impl,
 };
@@ -444,7 +445,7 @@ async fn exec_operation_stream_dispatches_stdout_stderr_and_closes_on_result() {
     .await;
     let result = handle.wait(Duration::from_secs(5)).await.unwrap();
     assert!(!result.stream_overflowed);
-    assert!(rx.recv().await.is_none());
+    assert_stream_closed(&mut rx, "stdout and stderr result");
 }
 
 #[tokio::test]
@@ -483,7 +484,7 @@ async fn exec_operation_stream_handles_output_and_result_from_one_write() {
     let result = handle.wait(Duration::from_secs(5)).await.unwrap();
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
     assert!(!result.stream_overflowed);
-    assert!(rx.recv().await.is_none());
+    assert_stream_closed(&mut rx, "coalesced output and result");
 }
 
 #[tokio::test]
@@ -529,7 +530,7 @@ async fn exec_operation_stream_handles_output_and_pending_response_from_one_writ
     let result = handle.wait(Duration::from_secs(5)).await.unwrap();
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
     assert!(!result.stream_overflowed);
-    assert!(rx.recv().await.is_none());
+    assert_stream_closed(&mut rx, "pending response and result");
 }
 
 #[tokio::test]
@@ -625,13 +626,13 @@ async fn exec_operation_stream_full_channel_closes_stream_and_marks_result() {
     )
     .await;
 
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert!(result.stream_overflowed);
+
     let first = rx.recv().await.unwrap();
     assert_eq!(first.output_seq, 0);
     assert_eq!(first.chunk, b"first");
-    assert!(rx.recv().await.is_none());
-
-    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
-    assert!(result.stream_overflowed);
+    assert_stream_closed(&mut rx, "stream queue overflow");
 }
 
 #[tokio::test]

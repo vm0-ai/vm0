@@ -1563,6 +1563,12 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       sandboxToken: firstClaim.sandboxToken,
     });
     expect(telegramMocks.sentMessages).toHaveLength(1);
+    expect(telegramMocks.sentMessages[0]).toMatchObject({
+      chat_id: String(chatId),
+    });
+    expect(telegramMocks.sentMessages[0]).not.toHaveProperty(
+      "reply_parameters",
+    );
     const completedRun = await postTelegramStateAction({
       action: "get-run",
       run_id: firstState.run!.id,

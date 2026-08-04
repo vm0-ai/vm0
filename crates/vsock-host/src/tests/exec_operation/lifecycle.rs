@@ -10,7 +10,7 @@ use super::super::support::{
     normal_operation_readiness, operation_count, read_guest_message, send_exec_output,
     send_exec_result, setup_host_and_guest,
 };
-use super::start_capture_operation;
+use super::{assert_stream_closed, start_capture_operation};
 use crate::{
     ExecOperationRequest, ExecOwnedCapturedOutput, ExecStreamRequest,
     operation_tracker::NormalOperationReadiness,
@@ -83,7 +83,7 @@ async fn exec_operation_connection_close_wakes_result_and_stream() {
     drop(guest);
     let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
-    assert!(rx.recv().await.is_none());
+    assert_stream_closed(&mut rx, "connection close");
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::NotParkable
@@ -154,7 +154,7 @@ async fn host_drop_closes_active_exec_result_and_stream() {
         .unwrap()
         .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
-    assert!(rx.recv().await.is_none());
+    assert_stream_closed(&mut rx, "host drop");
 }
 
 #[tokio::test]

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.678.4](https://github.com/vm0-ai/vm0/compare/app-v0.678.3...app-v0.678.4) (2026-08-04)
+
+
+### Bug Fixes
+
+* **platform:** separate cloud browser from your computer in connector menu ([#24876](https://github.com/vm0-ai/vm0/issues/24876)) ([26bfa1f](https://github.com/vm0-ai/vm0/commit/26bfa1f35ea4976988ac1deacd55f13d6fa789e3))
+
 ## [0.678.3](https://github.com/vm0-ai/vm0/compare/app-v0.678.2...app-v0.678.3) (2026-08-04)
 
 

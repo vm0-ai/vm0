@@ -1140,6 +1140,68 @@ describe("chat scroll position", () => {
     });
   });
 
+  it("captures the current anchor after events change but before rendering", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000818";
+    const initialEvents = simpleUserEvents(threadId, "after-change", 8);
+    const appendedEvents = simpleUserEvents(threadId, "after-change", 9).slice(
+      8,
+    );
+    const { publishAppendedEvents } = mockLiveThread({
+      threadId,
+      initialEvents,
+      appendedEvents,
+    });
+    let contentShift = 0;
+    installChatLayout(
+      new Map([
+        [
+          threadId,
+          {
+            clientHeight: () => {
+              return 300;
+            },
+            scrollHeight: () => {
+              return document.body.textContent?.includes(
+                "after-change message 8",
+              )
+                ? 1100
+                : 1000;
+            },
+            eventRect: (eventId) => {
+              const index = Number(eventId.split("-").at(-1));
+              return Number.isFinite(index)
+                ? { top: index * 100 + contentShift, height: 80 }
+                : undefined;
+            },
+          },
+        ],
+      ]),
+    );
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const container = await waitFor(() => {
+      expect(screen.getByText("after-change message 7")).toBeInTheDocument();
+      return chatScrollContainer();
+    });
+    scrollTo(container, 420);
+    expect(viewportOffsetTop("after-change-4")).toBe(-20);
+
+    // Content can move between the last scroll event and the event mutation.
+    // The change handler samples this old DOM synchronously, before React has
+    // rendered the newly appended message.
+    contentShift = 50;
+    expect(viewportOffsetTop("after-change-4")).toBe(30);
+
+    await publishAppendedEvents();
+
+    await waitFor(() => {
+      expect(screen.getByText("after-change message 8")).toBeInTheDocument();
+      expect(viewportOffsetTop("after-change-4")).toBe(30);
+      expect(container.scrollTop).toBe(420);
+    });
+  });
+
   it("preserves a non-bottom anchor when reconnect catch-up appends messages", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000805";
     const initialEvents = simpleUserEvents(threadId, "reconnect-preserve", 8);

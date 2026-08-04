@@ -1,8 +1,6 @@
 import type { Command } from "ccstate";
 import type {
-  ChatRunOptionsRequest,
   CodexServiceTier,
-  GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -33,54 +31,6 @@ export interface PatchComputerUseHostArgs {
   threadId: string;
   computerUseHostId: string | null;
   cloudBrowserEnabled: boolean;
-}
-
-export interface AppendQueuedEventArgs {
-  threadId: string;
-  agentId: string;
-  content: string | null;
-  attachments: PersistedAttachment[] | null;
-  clientEventId: string;
-  chatThreadSortEventId: string;
-  hasTextContent: boolean;
-  runOptions?: ChatRunOptionsRequest;
-  realAgentInPreview?: boolean;
-  generationTemplate: GenerationTemplateRequest | undefined;
-  userMessage: UserMessageDocument;
-  computerUseHostId?: string | null;
-  cloudBrowserEnabled?: boolean;
-}
-
-export interface RecallEventArgs {
-  threadId: string;
-  agentId: string;
-  revokesEventId: string;
-  clientEventId: string;
-}
-
-export interface InterruptRunArgs {
-  runId: string;
-  clientEventId: string;
-}
-
-export interface ListEventsAfterArgs {
-  threadId: string;
-  sinceSeqId: number | undefined;
-}
-
-export interface ListEventsBeforeArgs {
-  threadId: string;
-  beforeSeqId: number;
-}
-
-export interface CancelRunsArgs {
-  threadId: string;
-  agentId: string;
-  interrupts: InterruptRunArgs[];
-}
-
-export interface MarkReadArgs {
-  threadId: string;
 }
 
 export interface SubscribeRealtimeArgs {

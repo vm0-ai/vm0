@@ -17,10 +17,6 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import {
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
-import {
   and,
   asc,
   eq,
@@ -387,10 +383,7 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
       ...queueFirstReplacementTargetFields,
       automationId: chatAutomationContext.automationId,
       triggerSource: chatEvents.triggerSource,
-      triggerBrief: chatAutomationContext.triggerBrief,
       userMessage: chatEvents.userMessage,
-      workflowId: zeroWorkflows.id,
-      workflowName: zeroWorkflows.name,
     })
     .from(chatEvents)
     .leftJoin(
@@ -399,14 +392,6 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
         eq(chatEvents.contextType, "automation"),
         eq(chatAutomationContext.id, chatEvents.contextId),
       ),
-    )
-    .leftJoin(
-      zeroWorkflowAutomations,
-      eq(zeroWorkflowAutomations.id, chatAutomationContext.automationId),
-    )
-    .leftJoin(
-      zeroWorkflows,
-      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
     )
     .where(
       and(
@@ -429,24 +414,7 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
   ) {
     return null;
   }
-  const userMessage =
-    head.userMessage ??
-    (head.workflowName === null
-      ? null
-      : createUserMessageDocument({
-          text: null,
-          nonContentPart: {
-            type: "automation",
-            workflowName: head.workflowName,
-            ...(head.workflowId === null
-              ? {}
-              : { workflowId: head.workflowId }),
-            ...(head.triggerBrief === null
-              ? {}
-              : { automationBrief: head.triggerBrief }),
-          },
-        }));
-  if (!userMessage) {
+  if (!head.userMessage) {
     throw new Error("Workflow queue event is missing its user message");
   }
   return {
@@ -454,7 +422,7 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
     replacement: {
       chatThreadId: args.threadId,
       eventType: "input.prompt",
-      userMessage,
+      userMessage: head.userMessage,
       runId: args.runId,
       ...(head.triggerSource ? { triggerSource: head.triggerSource } : {}),
     },

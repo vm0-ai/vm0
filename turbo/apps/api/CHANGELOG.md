@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.370.6](https://github.com/vm0-ai/vm0/compare/api-v1.370.5...api-v1.370.6) (2026-08-04)
+
+
+### Refactoring
+
+* **db:** drop teams context bot identity columns ([#24911](https://github.com/vm0-ai/vm0/issues/24911)) ([08e148e](https://github.com/vm0-ai/vm0/commit/08e148eb0166e1e0c85fc3a40d28b097c796945a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.163.8
+
+## [1.370.5](https://github.com/vm0-ai/vm0/compare/api-v1.370.4...api-v1.370.5) (2026-08-04)
+
+
+### Refactoring
+
+* **db:** require telegram chat type ([#24874](https://github.com/vm0-ai/vm0/issues/24874)) ([2dc9c55](https://github.com/vm0-ai/vm0/commit/2dc9c55ab09d3025985f4f720396599379eb26bb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.163.7
+
+## [1.370.4](https://github.com/vm0-ai/vm0/compare/api-v1.370.3...api-v1.370.4) (2026-08-04)
+
+
+### Refactoring
+
+* **api:** read Teams launch context from canonical sources ([#24863](https://github.com/vm0-ai/vm0/issues/24863)) ([0f30583](https://github.com/vm0-ai/vm0/commit/0f3058355b9f5c07a26e3e84f2984b744497d9e9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.163.6
+
 ## [1.370.3](https://github.com/vm0-ai/vm0/compare/api-v1.370.2...api-v1.370.3) (2026-08-04)
 
 
