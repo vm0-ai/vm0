@@ -148,9 +148,9 @@ function setSvgSize(svg: SVGSVGElement, width: number, height: number): void {
 /**
  * mermaid sizes its SVG with `width="100%"` plus an inline `max-width`, which an
  * <img> cannot resolve — the lightbox would stretch the diagram to the stage
- * width. Both copies therefore get an explicit pixel size: the markup is
- * serialized at lightbox scale, then the element is restored to the size the
- * message shows inline.
+ * width. The markup therefore gets an explicit pixel size at lightbox scale.
+ * SVG is vector, so the same copy serves the box in the message, which scales
+ * it down, and the lightbox, which shows it at full size.
  */
 function sizeDiagramAndSerialize(svg: SVGSVGElement): string {
   svg.style.maxWidth = "";
@@ -161,9 +161,7 @@ function sizeDiagramAndSerialize(svg: SVGSVGElement): string {
 
   const scale = Math.max(1, LIGHTBOX_SVG_WIDTH / size.width);
   setSvgSize(svg, size.width * scale, size.height * scale);
-  const markup = new XMLSerializer().serializeToString(svg);
-  setSvgSize(svg, size.width, size.height);
-  return markup;
+  return new XMLSerializer().serializeToString(svg);
 }
 
 /**
@@ -176,8 +174,12 @@ function svgDataUrl(markup: string): string {
 }
 
 /**
- * Renders one diagram into its mounted canvas. mermaid 11 isolates concurrent
- * `render` calls, so several diagrams in one message can render in parallel.
+ * Renders one diagram into a data URL. mermaid 11 isolates concurrent `render`
+ * calls, so several diagrams in one message can render in parallel.
+ *
+ * `el` carries the source and theme to render and anchors the render to the
+ * element's lifetime; the diagram itself is shown by an <img> and never enters
+ * the document.
  */
 const renderMermaidDiagram$ = command(
   async ({ get, set }, el: HTMLElement, signal: AbortSignal) => {
@@ -209,10 +211,12 @@ const renderMermaidDiagram$ = command(
       return;
     }
 
-    // Safe to assign: mermaid sanitized the markup, and React owns no children
-    // inside this element.
-    el.innerHTML = rendered.value;
-    const svg = el.querySelector("svg");
+    // Parsed in a detached element. The markup never reaches the document, so
+    // the only thing that ever shows it is an <img>, where a data URL SVG
+    // cannot run scripts or resolve page-level CSS custom properties.
+    const host = document.createElement("div");
+    host.innerHTML = rendered.value;
+    const svg = host.querySelector("svg");
     if (!svg) {
       set(setMermaidDiagramResult$, key, { status: "error" });
       return;

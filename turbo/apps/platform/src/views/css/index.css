@@ -1060,13 +1060,23 @@ body {
   margin-bottom: 16px;
 }
 
+/* The box is reserved at this size before the render starts, so every diagram
+   in a thread is the same height and none of them changes the height of the
+   message it sits in once it appears. Below the max width the box keeps its
+   ratio, so diagrams stay equally tall as the column narrows. */
 .wmde-markdown .mermaid-diagram-expand {
-  display: block;
-  width: fit-content;
-  max-width: 100%;
-  padding: 0;
-  border: 0;
-  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 4 / 3;
+  margin: 4px 0;
+  padding: 8px;
+  border: 1px solid hsl(var(--foreground) / 0.1);
+  border-radius: 8px;
+  background: hsl(var(--muted) / 0.3);
+  overflow: hidden;
   cursor: zoom-in;
 }
 
@@ -1074,19 +1084,27 @@ body {
   cursor: default;
 }
 
-.wmde-markdown .mermaid-diagram-canvas {
-  overflow-x: auto;
-}
-
+/* A source that mermaid cannot render shows as source instead of an empty box. */
 .wmde-markdown
-  .mermaid-block[data-mermaid-status="rendering"]
-  .mermaid-diagram-canvas {
-  min-height: 2rem;
+  .mermaid-block[data-mermaid-status="error"]
+  .mermaid-diagram-expand {
+  display: none;
 }
 
-.wmde-markdown .mermaid-diagram-canvas svg {
-  max-width: 100%;
-  height: auto;
+/* Letterboxed rather than stretched: diagrams differ in aspect ratio, and a
+   fixed box can only hold all of them undistorted by leaving margins. */
+.wmde-markdown .mermaid-diagram-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  /* github-markdown-css paints every image on an opaque canvas colour, which
+     would cover the box behind the letterboxed diagram. */
+  background: none;
+}
+
+.wmde-markdown .mermaid-diagram-pending {
+  display: flex;
+  color: hsl(var(--muted-foreground));
 }
 
 .wmde-markdown .mermaid-diagram-source > summary {

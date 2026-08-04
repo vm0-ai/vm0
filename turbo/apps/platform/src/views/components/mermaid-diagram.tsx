@@ -1,3 +1,4 @@
+import { IconLoader2 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -12,10 +13,17 @@ import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chip
 /**
  * Renders a ```mermaid fenced block as a diagram.
  *
- * The canvas element is keyed by theme and source so a theme switch remounts
- * it, which re-runs the render command (and aborts the previous render). The
- * canvas keeps its position in the tree across statuses so the ref is not
- * re-attached when the render finishes.
+ * The diagram is shown by an <img> inside a box whose size is reserved before
+ * the render starts, so a message keeps the same height whatever the diagram's
+ * own aspect ratio turns out to be, and the render cannot move the thread under
+ * a reader. The SVG is letterboxed inside that box and opens at full size in
+ * the lightbox.
+ *
+ * The button is keyed by theme and source so a theme switch remounts it, which
+ * re-runs the render command (and aborts the previous render). It keeps its
+ * position in the tree across statuses so the ref is not re-attached when the
+ * render finishes — re-attaching would abort the render that just produced the
+ * result and start it again.
  */
 export function MermaidDiagram({ code }: { code: string }) {
   const { t } = useTranslation();
@@ -30,7 +38,11 @@ export function MermaidDiagram({ code }: { code: string }) {
   return (
     <div className="mermaid-block" data-mermaid-status={result.status}>
       <button
+        key={`${theme}:${code}`}
+        ref={diagramRef}
         type="button"
+        data-mermaid-code={code}
+        data-mermaid-theme={theme}
         className="mermaid-diagram-expand"
         disabled={result.status !== "rendered"}
         aria-label={t(($) => {
@@ -49,18 +61,19 @@ export function MermaidDiagram({ code }: { code: string }) {
           });
         }}
       >
-        <div
-          key={`${theme}:${code}`}
-          ref={diagramRef}
-          data-mermaid-code={code}
-          data-mermaid-theme={theme}
-          data-testid="mermaid-diagram-canvas"
-          className="mermaid-diagram-canvas"
-          role="img"
-          aria-label={t(($) => {
-            return $.shared.mermaid.diagramLabel;
-          })}
-        />
+        {result.status === "rendered" ? (
+          <img
+            src={result.url}
+            alt={t(($) => {
+              return $.shared.mermaid.diagramLabel;
+            })}
+            className="mermaid-diagram-image"
+          />
+        ) : (
+          <span className="mermaid-diagram-pending" aria-hidden="true">
+            <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
+          </span>
+        )}
       </button>
       {result.status === "error" ? (
         <pre data-testid="mermaid-diagram-fallback">

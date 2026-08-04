@@ -48,6 +48,11 @@ function mockThread(content: string): void {
   });
 }
 
+/** The SVG a rendered diagram shows, read back out of the image's data URL. */
+function renderedDiagramMarkup(diagram: HTMLElement): string {
+  return decodeURIComponent(diagram.getAttribute("src") ?? "");
+}
+
 function getButtonByText(container: ParentNode, text: string): HTMLElement {
   const button = queryAllByRoleFast("button", container).find((el) => {
     return el.textContent?.trim() === text;
@@ -158,11 +163,13 @@ describe("assistant markdown", () => {
       featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
-    await waitFor(() => {
-      expect(
-        document.querySelector('[data-testid="mermaid-svg"]'),
-      ).toBeInTheDocument();
-    });
+    // The diagram is shown by an <img>, so the SVG itself never reaches the
+    // document — its markup is the image's data URL.
+    const diagram = await screen.findByAltText("Diagram");
+    expect(diagram.getAttribute("src")).toContain("data:image/svg+xml");
+    expect(renderedDiagramMarkup(diagram)).toContain(
+      'data-testid="mermaid-svg"',
+    );
     expect(document.querySelector("code.language-mermaid")).toBeNull();
     // The source stays reachable next to the diagram.
     expect(screen.getByText("Diagram source")).toBeInTheDocument();
@@ -182,17 +189,17 @@ describe("assistant markdown", () => {
     click(getButtonByText(settingsDialog, "Light"));
 
     await waitFor(() => {
-      expect(
-        document.querySelector('[data-testid="mermaid-svg"]'),
-      ).toHaveAttribute("data-mermaid-theme", "redux");
+      expect(renderedDiagramMarkup(screen.getByAltText("Diagram"))).toContain(
+        'data-mermaid-theme="redux"',
+      );
     });
 
     click(getButtonByText(settingsDialog, "Dark"));
 
     await waitFor(() => {
-      expect(
-        document.querySelector('[data-testid="mermaid-svg"]'),
-      ).toHaveAttribute("data-mermaid-theme", "redux-dark");
+      expect(renderedDiagramMarkup(screen.getByAltText("Diagram"))).toContain(
+        'data-mermaid-theme="redux-dark"',
+      );
     });
   });
 
@@ -278,7 +285,11 @@ describe("assistant markdown", () => {
     expect(screen.getByTestId("mermaid-diagram-fallback").textContent).toBe(
       "this is not a diagram",
     );
-    expect(document.querySelector('[data-testid="mermaid-svg"]')).toBeNull();
+    expect(screen.queryByAltText("Diagram")).toBeNull();
+    // The box stays mounted across the transition to the fallback: it carries
+    // the ref that drives the render, and re-attaching it would abort the
+    // render that produced this result and start the same one again.
+    expect(screen.getByLabelText("Expand diagram")).toBeInTheDocument();
   });
 
   it("leaves mermaid blocks as code when the feature switch is off", async () => {
