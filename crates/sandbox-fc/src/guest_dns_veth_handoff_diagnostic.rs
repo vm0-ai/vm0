@@ -10,19 +10,18 @@ use crate::guest_dns_netfilter_trace::{
     GuestDnsNetfilterTraceAttachment, GuestDnsNetfilterTraceCaptureTarget,
     GuestDnsNetfilterTraceReport,
 };
-use crate::guest_dns_readiness::GUEST_DNS_READINESS_PACKET_BYTES;
-use crate::network::{
-    DNS_DIAGNOSTIC_SOURCE_PORT, DNS_READINESS_RESOLVER_IPV4, DnsDiagnosticProbeReport,
-    probe_namespace_dns_diagnostic,
+use crate::guest_dns_probe::{
+    DNS_DIAGNOSTIC_SOURCE_PORT, DNS_PROBE_DESTINATION_PORT, DNS_PROBE_RESOLVER_IPV4,
+    GUEST_DNS_PROBE_PACKET_BYTES,
 };
+use crate::network::{DnsDiagnosticProbeReport, probe_namespace_dns_diagnostic};
 
 const PEER_DEVICE: &str = "veth0";
-const DNS_PORT: u16 = 53;
 // TC egress accounts the Ethernet header still present before veth transmit;
 // TC ingress runs after eth_type_trans has removed that header.
 const ETHERNET_HEADER_BYTES: u64 = 14;
-const NAMESPACE_EGRESS_PACKET_BYTES: u64 = GUEST_DNS_READINESS_PACKET_BYTES + ETHERNET_HEADER_BYTES;
-const ROOT_INGRESS_PACKET_BYTES: u64 = GUEST_DNS_READINESS_PACKET_BYTES;
+const NAMESPACE_EGRESS_PACKET_BYTES: u64 = GUEST_DNS_PROBE_PACKET_BYTES + ETHERNET_HEADER_BYTES;
+const ROOT_INGRESS_PACKET_BYTES: u64 = GUEST_DNS_PROBE_PACKET_BYTES;
 const TC_COMMAND_TIMEOUT: Duration = Duration::from_millis(500);
 const PROBE_TIMEOUT: Duration = Duration::from_millis(500);
 const FILTER_PRIORITY_BASE: u16 = 49_152;
@@ -648,13 +647,13 @@ fn filter_add_args(
         "src_ip".to_string(),
         format!("{peer_ip}/32"),
         "dst_ip".to_string(),
-        format!("{DNS_READINESS_RESOLVER_IPV4}/32"),
+        format!("{DNS_PROBE_RESOLVER_IPV4}/32"),
         "ip_proto".to_string(),
         "udp".to_string(),
         "src_port".to_string(),
         DNS_DIAGNOSTIC_SOURCE_PORT.to_string(),
         "dst_port".to_string(),
-        DNS_PORT.to_string(),
+        DNS_PROBE_DESTINATION_PORT.to_string(),
         "action".to_string(),
         "gact".to_string(),
         "continue".to_string(),
