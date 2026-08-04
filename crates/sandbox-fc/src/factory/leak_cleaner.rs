@@ -244,18 +244,17 @@ mod tests {
         }
     }
 
-    async fn cleanup_paths_after_cow_outcome(
-        cow_cleanup_outcome: CowCleanupOutcome,
+    async fn leaked_resource_with_paths(
         delete_workspace: bool,
-    ) -> tempfile::TempDir {
+    ) -> (tempfile::TempDir, LeakedResources) {
         let tmp = tempfile::tempdir().unwrap();
         let sock_dir = tmp.path().join("sock");
         let workspace = tmp.path().join("workspace");
         tokio::fs::create_dir_all(&sock_dir).await.unwrap();
         tokio::fs::create_dir_all(&workspace).await.unwrap();
-        let netns_pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
 
-        cleanup_leaked_resource_after_cow_cleanup(
+        (
+            tmp,
             LeakedResources {
                 sandbox_id: "sandbox".into(),
                 cow_device: None,
@@ -264,19 +263,15 @@ mod tests {
                 workspace,
                 delete_workspace,
             },
-            &netns_pool,
-            cow_cleanup_outcome,
         )
-        .await;
-
-        tmp
     }
 
     #[tokio::test]
     async fn safe_cow_cleanup_deletes_workspace() {
-        let tmp =
-            cleanup_paths_after_cow_outcome(CowCleanupOutcome::BackingFilesSafeToDelete, true)
-                .await;
+        let (tmp, leaked) = leaked_resource_with_paths(true).await;
+        let netns_pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
+
+        cleanup_leaked_resource(leaked, &netns_pool).await;
 
         assert!(!tmp.path().join("sock").exists());
         assert!(!tmp.path().join("workspace").exists());
@@ -284,9 +279,13 @@ mod tests {
 
     #[tokio::test]
     async fn unsafe_cow_cleanup_preserves_workspace() {
-        let tmp = cleanup_paths_after_cow_outcome(
+        let (tmp, leaked) = leaked_resource_with_paths(true).await;
+        let netns_pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
+
+        cleanup_leaked_resource_after_cow_cleanup(
+            leaked,
+            &netns_pool,
             CowCleanupOutcome::DeviceMayStillReferenceBackingFiles,
-            true,
         )
         .await;
 
@@ -296,9 +295,15 @@ mod tests {
 
     #[tokio::test]
     async fn disabled_workspace_deletion_preserves_workspace_after_safe_cow_cleanup() {
-        let tmp =
-            cleanup_paths_after_cow_outcome(CowCleanupOutcome::BackingFilesSafeToDelete, false)
-                .await;
+        let (tmp, leaked) = leaked_resource_with_paths(false).await;
+        let netns_pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
+
+        cleanup_leaked_resource_after_cow_cleanup(
+            leaked,
+            &netns_pool,
+            CowCleanupOutcome::BackingFilesSafeToDelete,
+        )
+        .await;
 
         assert!(!tmp.path().join("sock").exists());
         assert!(tmp.path().join("workspace").exists());
