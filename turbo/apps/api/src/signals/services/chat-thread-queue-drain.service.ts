@@ -1,12 +1,17 @@
 import { command } from "ccstate";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq } from "drizzle-orm";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatEvents } from "@vm0/db/schema/chat-event";
+import { and, eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { publishChatThreadDetailChangedSafely } from "../external/realtime";
+import {
+  publishActiveInputToRunnerGroup,
+  publishChatThreadDetailChangedSafely,
+} from "../external/realtime";
 import { tapError } from "../utils";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import { staleChatThreadQueueThreadIds } from "./workflow-chat-event-queue.service";
@@ -21,6 +26,7 @@ import {
 import { expiredCancellationRecoveryThreads } from "./zero-chat-active-run.service";
 import { drainGoalQueueForThread$ } from "./zero-goal-queue-drain.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
+import { pendingActiveInputPromptCondition } from "./chat-event-queue.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
 export const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
@@ -51,6 +57,52 @@ interface DrainChatThreadQueueInput {
   };
 }
 
+async function notifyRunningChatRunOfPendingInput(
+  db: Db,
+  chatThreadId: string,
+): Promise<boolean> {
+  const [run] = await db
+    .select({ id: agentRuns.id, runnerGroup: agentRuns.runnerGroup })
+    .from(agentRuns)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, chatThreadId),
+        eq(agentRuns.status, "running"),
+      ),
+    )
+    .limit(1);
+  if (!run) {
+    return false;
+  }
+  const [pendingInput] = await db
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.chatThreadId, chatThreadId),
+        pendingActiveInputPromptCondition(db),
+      ),
+    )
+    .limit(1);
+  if (!pendingInput) {
+    return false;
+  }
+  if (run.runnerGroup) {
+    await tapError(
+      publishActiveInputToRunnerGroup(run.runnerGroup, run.id),
+      (error) => {
+        L.warn("Failed to notify runner about active input", {
+          chatThreadId,
+          runId: run.id,
+          error,
+        });
+      },
+    );
+  }
+  return true;
+}
+
 /**
  * The single per-thread scheduler entry: terminal run callbacks, cancel,
  * resume, and the stale sweep all converge here. User messages are attempted
@@ -69,6 +121,12 @@ export const drainChatThreadQueueForThread$ = command(
     signal: AbortSignal,
   ): Promise<WorkflowQueueDrainResult | null> => {
     const apiStartTime = input.apiStartTime ?? now();
+    const db = set(writeDb$);
+    if (await notifyRunningChatRunOfPendingInput(db, input.chatThreadId)) {
+      signal.throwIfAborted();
+      return null;
+    }
+    signal.throwIfAborted();
     await set(
       drainQueuedUserMessagesForThread$,
       {

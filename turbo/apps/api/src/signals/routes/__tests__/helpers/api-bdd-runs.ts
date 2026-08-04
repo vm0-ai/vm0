@@ -31,6 +31,7 @@ import {
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
 import {
+  runnersActiveInputsContract,
   runnersNetworkPolicyRefreshContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
@@ -496,6 +497,33 @@ export function createRunsApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async listRunnerActiveInputs(sandboxToken: string, runId: string) {
+      const response = await accept(
+        runApp(context)(runnersActiveInputsContract).list({
+          headers: { authorization: `Bearer ${sandboxToken}` },
+          params: { runId },
+        }),
+        [200],
+      );
+      return response.body.eventIds;
+    },
+
+    async claimRunnerActiveInputs(
+      sandboxToken: string,
+      runId: string,
+      eventIds: string[],
+    ) {
+      const response = await accept(
+        runApp(context)(runnersActiveInputsContract).claim({
+          headers: { authorization: `Bearer ${sandboxToken}` },
+          params: { runId },
+          body: { eventIds },
+        }),
+        [200],
+      );
+      return response.body.prompt;
     },
 
     async refreshRunnerNetworkPolicy(runId: string, connectorSlug: string) {

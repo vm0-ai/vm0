@@ -1404,6 +1404,75 @@ describe("CHAT-02: interrupting active chat runs", () => {
 });
 
 describe("CHAT-02: queueing and recalling messages", () => {
+  it("lets a running runner claim pending input prompts for steer", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor active input run",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(active.runId);
+
+    const firstPendingEventId = randomUUID();
+    const secondPendingEventId = randomUUID();
+    context.mocks.ably.publish.mockClear();
+    const firstPending = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "first steer message",
+        clientEventId: firstPendingEventId,
+      },
+      [201],
+    );
+    const secondPending = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "second steer message",
+        clientEventId: secondPendingEventId,
+      },
+      [201],
+    );
+    if (firstPending.status !== 201 || secondPending.status !== 201) {
+      throw new Error("Expected both pending sends to be accepted");
+    }
+    expect(firstPending.body.runId).toBeNull();
+    expect(secondPending.body.runId).toBeNull();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("active-input", {
+      runId: active.runId,
+    });
+
+    await expect(
+      api.listRunnerActiveInputs(claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([firstPendingEventId, secondPendingEventId]);
+    await expect(
+      api.claimRunnerActiveInputs(claim.sandboxToken, active.runId, [
+        secondPendingEventId,
+        firstPendingEventId,
+      ]),
+    ).resolves.toBe("first steer message\n\nsecond steer message");
+    await expect(
+      api.listRunnerActiveInputs(claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([]);
+
+    const events = await chat.listThreadEvents(actor, active.threadId);
+    for (const pendingEventId of [firstPendingEventId, secondPendingEventId]) {
+      expect(userMessages(events.events)).toContainEqual(
+        expect.objectContaining({
+          runId: active.runId,
+          revokesEventId: pendingEventId,
+        }),
+      );
+    }
+
+    await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
   it("queues, retries, and recalls messages behind an active run", async () => {
     const { actor, agentId, providerId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

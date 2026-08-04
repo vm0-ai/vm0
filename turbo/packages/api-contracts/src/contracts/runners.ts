@@ -732,6 +732,50 @@ export const runnersJobClaimContract = c.router({
   },
 });
 
+export const runnersActiveInputsContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/runners/runs/:runId/active-inputs",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      runId: z.uuid(),
+    }),
+    responses: {
+      200: z.object({
+        eventIds: z.array(z.uuid()),
+      }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "List pending input prompts for a running agent run",
+  },
+  claim: {
+    method: "POST",
+    path: "/api/runners/runs/:runId/active-inputs/claim",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      runId: z.uuid(),
+    }),
+    body: z.object({
+      eventIds: z.array(z.uuid()).min(1),
+    }),
+    responses: {
+      200: z.object({
+        prompt: z.string().min(1),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Claim pending input prompts for a running agent run",
+  },
+});
+
 export const runnersNetworkPolicyRefreshContract = c.router({
   refresh: {
     method: "POST",
@@ -851,6 +895,7 @@ export const runnersHeartbeatContract = c.router({
 
 export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
+export type RunnersActiveInputsContract = typeof runnersActiveInputsContract;
 export type RunnersNetworkPolicyRefreshContract =
   typeof runnersNetworkPolicyRefreshContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;

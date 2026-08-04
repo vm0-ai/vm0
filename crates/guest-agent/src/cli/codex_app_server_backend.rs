@@ -667,8 +667,8 @@ async fn steer_active_input(
     let params = turn_steer_params(thread_id, turn_id, &frame);
     log_info!(
         LOG_TAG,
-        "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} message_id={} outcome=attempt",
-        frame.message_id
+        "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} input_uuid={} outcome=attempt",
+        frame.uuid
     );
     active_input.mark_writing(&frame.uuid);
     let result = race_with_heartbeat(
@@ -683,8 +683,8 @@ async fn steer_active_input(
             active_input.mark_written_without_replay(&frame.uuid);
             log_info!(
                 LOG_TAG,
-                "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} message_id={} outcome=active_turn_advanced",
-                frame.message_id
+                "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} input_uuid={} outcome=active_turn_advanced",
+                frame.uuid
             );
             Ok(())
         }
@@ -692,12 +692,12 @@ async fn steer_active_input(
             active_input.close_terminal();
             log_warn!(
                 LOG_TAG,
-                "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} message_id={} outcome=failed error={error}",
-                frame.message_id
+                "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} input_uuid={} outcome=failed error={error}",
+                frame.uuid
             );
             Err(AgentError::Execution(format!(
-                "codex app-server active input steer failed for message {}: {error}",
-                frame.message_id
+                "codex app-server active input steer failed for input {}: {error}",
+                frame.uuid
             )))
         }
     }
@@ -707,7 +707,7 @@ fn turn_steer_params(thread_id: &str, turn_id: &str, frame: &ActiveInputFrame) -
     json!({
         "threadId": thread_id,
         "expectedTurnId": turn_id,
-        "clientUserMessageId": frame.message_id.as_str(),
+        "clientUserMessageId": frame.uuid.as_str(),
         "input": [{
             "type": "text",
             "text": frame.text.as_str(),

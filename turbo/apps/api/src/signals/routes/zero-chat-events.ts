@@ -3074,23 +3074,6 @@ export const sendNormalEvent$ = command(
       return badRequestMessage("Client thread id is already in use");
     }
 
-    if (args.body.revokesEventId) {
-      const hasActiveRun = await measureApiDispatchTiming(
-        args.timing,
-        "api_dispatch_pre_create_zero_web_chat_check_active_run",
-        "nested",
-        async () => {
-          return await chatThreadAdmissionBlocked(prepared.db, {
-            threadId: prepared.thread.threadId,
-          });
-        },
-      );
-      signal.throwIfAborted();
-      if (hasActiveRun) {
-        return badRequestMessage("Recommended follow-up cannot be queued");
-      }
-    }
-
     // Every web chat send persists its input before the inline drain attempts
     // an atomic queue claim, including recommended follow-up replacements.
     return await set(sendQueueFirstNormalEvent$, { args, prepared }, signal);
@@ -3156,6 +3139,15 @@ const sendQueueFirstNormalEvent$ = command(
     signal.throwIfAborted();
     if (dispatch === "wait") {
       await publishChatEventCreated(args.userId, threadId);
+      signal.throwIfAborted();
+      await set(
+        drainChatThreadQueueForThread$,
+        {
+          chatThreadId: threadId,
+          dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+        },
+        signal,
+      );
       signal.throwIfAborted();
       return response;
     }
