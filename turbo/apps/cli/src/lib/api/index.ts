@@ -12,7 +12,6 @@ export { getRegistryResourceDownload } from "./domains/registry-resources";
 // Domain modules - Zero Organizations
 export {
   getZeroOrg,
-  updateZeroOrg,
   listZeroOrgs,
   getZeroOrgMembers,
   inviteZeroOrgMember,

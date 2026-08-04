@@ -111,7 +111,6 @@ export {
   cronCleanupSandboxesContract,
   cleanupResultSchema,
   cleanupResponseSchema,
-  orgSlugSchema,
   orgResponseSchema,
   updateOrgRequestSchema,
   orgTierSchema,
