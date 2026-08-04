@@ -109,6 +109,10 @@ const browserMutationResponseSchema = browserResponseSchema.extend({
   lifecycleEventId: z.uuid().nullable(),
 });
 
+const browserCloseResponseSchema = z.object({
+  lifecycleEventId: z.uuid(),
+});
+
 const browserResizeRequestSchema = z.object({
   aspectRatio: z.number().positive().finite(),
 });
@@ -196,9 +200,9 @@ export const zeroBrowserContract = c.router({
     },
     summary: "Extend the idle lease of a live browser from its viewer",
   },
-  start: {
+  open: {
     method: "POST",
-    path: "/api/zero/chat-threads/:threadId/browser/start",
+    path: "/api/zero/chat-threads/:threadId/browser/open",
     headers: authHeadersSchema,
     pathParams: browserThreadParamsSchema,
     body: browserLifecycleRequestSchema,
@@ -206,19 +210,19 @@ export const zeroBrowserContract = c.router({
       200: browserMutationResponseSchema,
       ...commonErrorResponses,
     },
-    summary: "Create, reuse, or resume a chat thread's managed browser",
+    summary: "Open a chat thread's managed browser",
   },
-  stop: {
+  close: {
     method: "POST",
-    path: "/api/zero/chat-threads/:threadId/browser/stop",
+    path: "/api/zero/chat-threads/:threadId/browser/close",
     headers: authHeadersSchema,
     pathParams: browserThreadParamsSchema,
     body: browserLifecycleRequestSchema,
     responses: {
-      200: browserMutationResponseSchema,
+      200: browserCloseResponseSchema,
       ...commonErrorResponses,
     },
-    summary: "Stop a chat thread's live managed browser",
+    summary: "Record that the managed browser sidebar was closed",
   },
   resizeByThread: {
     method: "POST",

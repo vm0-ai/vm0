@@ -621,16 +621,16 @@ const controlRevokeEventSchema = chatEventBaseSchema
   })
   .strict();
 
-const browserStartedEventSchema = chatEventBaseSchema
+const browserOpenEventSchema = chatEventBaseSchema
   .extend({
-    eventType: z.literal("browser.started"),
+    eventType: z.literal("browser.open"),
     content: z.null(),
   })
   .strict();
 
-const browserStoppedEventSchema = chatEventBaseSchema
+const browserCloseEventSchema = chatEventBaseSchema
   .extend({
-    eventType: z.literal("browser.stopped"),
+    eventType: z.literal("browser.close"),
     content: z.null(),
   })
   .strict();
@@ -672,8 +672,8 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   runCancelledEventSchema,
   controlInterruptEventSchema,
   controlRevokeEventSchema,
-  browserStartedEventSchema,
-  browserStoppedEventSchema,
+  browserOpenEventSchema,
+  browserCloseEventSchema,
   goalChangedEventSchema,
   usageRecordedEventSchema,
 ]);

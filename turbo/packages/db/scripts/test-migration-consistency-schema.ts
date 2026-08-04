@@ -1472,9 +1472,17 @@ async function validateThreadBrowserIdentityAfterMigration(
     assert.equal(lifecycleConstraint.rows.length, 1);
     assert.match(
       lifecycleConstraint.rows[0]?.definition ?? "",
-      /browser\.started/u,
+      /browser\.open/u,
     );
     assert.match(
+      lifecycleConstraint.rows[0]?.definition ?? "",
+      /browser\.close/u,
+    );
+    assert.doesNotMatch(
+      lifecycleConstraint.rows[0]?.definition ?? "",
+      /browser\.started/u,
+    );
+    assert.doesNotMatch(
       lifecycleConstraint.rows[0]?.definition ?? "",
       /browser\.stopped/u,
     );
@@ -18870,6 +18878,128 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
   }
 }
 
+const BROWSER_LIFECYCLE_RENAME_PREVIOUS_MIGRATION = 812;
+const BROWSER_LIFECYCLE_RENAME_MIGRATION = 813;
+
+async function validateBrowserLifecycleEventRename(): Promise<void> {
+  console.log("=== Validate browser lifecycle event rename ===\n");
+
+  const testDb = "migration_browser_lifecycle_event_rename_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const startedEventId = "00000000-0000-4000-8000-000000081301";
+  const stoppedEventId = "00000000-0000-4000-8000-000000081302";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      BROWSER_LIFECYCLE_RENAME_PREVIOUS_MIGRATION,
+    );
+
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const agentCompose = await client.query<{ id: string }>(`
+        INSERT INTO "agent_composes" ("user_id", "name", "org_id")
+        VALUES (
+          'browser-lifecycle-rename-user',
+          'browser-lifecycle-rename-test',
+          'browser-lifecycle-rename-org'
+        )
+        RETURNING "id"
+      `);
+      const agentComposeId = agentCompose.rows[0]?.id;
+      assert.ok(agentComposeId);
+
+      const thread = await client.query<{ id: string }>(
+        `
+          INSERT INTO "chat_threads" (
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES (
+            'browser-lifecycle-rename-user',
+            $1,
+            'browser lifecycle rename test'
+          )
+          RETURNING "id"
+        `,
+        [agentComposeId],
+      );
+      const threadId = thread.rows[0]?.id;
+      assert.ok(threadId);
+
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "content",
+            "seq_id"
+          )
+          VALUES
+            ($1, $3, 'browser.started', NULL, 1),
+            ($2, $3, 'browser.stopped', NULL, 2)
+        `,
+        [startedEventId, stoppedEventId, threadId],
+      );
+
+      await applyMigrationsUpTo(client, BROWSER_LIFECYCLE_RENAME_MIGRATION);
+
+      const events = await client.query<{
+        eventType: string;
+        id: string;
+      }>(
+        `
+          SELECT "id", "event_type" AS "eventType"
+          FROM "chat_events"
+          WHERE "id" IN ($1, $2)
+          ORDER BY "seq_id"
+        `,
+        [startedEventId, stoppedEventId],
+      );
+      assert.deepEqual(events.rows, [
+        { id: startedEventId, eventType: "browser.open" },
+        { id: stoppedEventId, eventType: "browser.close" },
+      ]);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_events",
+        query: `UPDATE "chat_events" SET "content" = 'forbidden' WHERE "id" = $1`,
+        rowId: startedEventId,
+      });
+
+      await assert.rejects(
+        client.query(
+          `
+            INSERT INTO "chat_events" (
+              "chat_thread_id",
+              "event_type",
+              "content",
+              "seq_id"
+            )
+            VALUES ($1, 'browser.started', NULL, 3)
+          `,
+          [threadId],
+        ),
+        (error: unknown) => {
+          return databaseErrorCode(error) === "23514";
+        },
+      );
+
+      console.log("   ✅ Historical browser lifecycle events are renamed");
+      console.log("   ✅ Legacy event inserts are rejected after contraction");
+      console.log("   ✅ Strict append-only protection is restored\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log("=== Phase 1.5: Validate Latest Snapshot Accuracy ===\n");
 
@@ -19004,6 +19134,7 @@ async function main(): Promise<void> {
     await validateChatEventRevokeIndex();
     await validateRunEventSequenceNumberRollout();
     await validateGoalOnlyRunGroupsCleanup();
+    await validateBrowserLifecycleEventRename();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();

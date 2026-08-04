@@ -212,8 +212,8 @@ export const chatEvents = pgTable(
           'run.cancelled',
           'control.interrupt',
           'control.revoke',
-          'browser.started',
-          'browser.stopped',
+          'browser.open',
+          'browser.close',
           'goal.changed',
           'usage.recorded'
         )`,

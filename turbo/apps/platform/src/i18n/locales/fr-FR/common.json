@@ -1030,6 +1030,7 @@
     "cardTitle": "Navigateur cloud",
     "close": "Fermer le navigateur en direct",
     "documentTitle": "Navigateur en direct",
+    "fitAction": "Adapter",
     "fitWindow": "Adapter le navigateur à la fenêtre",
     "iframeTitle": "Navigateur en direct : {{name}}",
     "invalidLink": "Lien de navigateur invalide",
@@ -1050,7 +1051,6 @@
       "starting": "Démarrage",
       "stopped": "Arrêté"
     },
-    "stop": "Arrêter le navigateur",
     "title": "Navigateur en direct",
     "unavailable": {
       "description": "Ce navigateur n'appartient pas à ce chat ou a été supprimé.",

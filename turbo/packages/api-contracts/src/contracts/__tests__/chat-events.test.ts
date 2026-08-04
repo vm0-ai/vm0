@@ -192,18 +192,18 @@ const chatEvents = [
     createdAt: CREATED_AT,
   },
   {
-    id: "browser-started",
+    id: "browser-open",
     seqId: 16,
     threadId: THREAD_ID,
-    eventType: "browser.started",
+    eventType: "browser.open",
     content: null,
     createdAt: CREATED_AT,
   },
   {
-    id: "browser-stopped",
+    id: "browser-close",
     seqId: 17,
     threadId: THREAD_ID,
-    eventType: "browser.stopped",
+    eventType: "browser.close",
     content: null,
     createdAt: CREATED_AT,
   },
@@ -328,12 +328,12 @@ describe("ChatEvent catalog", () => {
         callbackSecret: "must-stay-server-side",
       }).success,
     ).toBe(false);
-    const browserStarted = chatEvents.find((event) => {
-      return event.eventType === "browser.started";
+    const browserOpen = chatEvents.find((event) => {
+      return event.eventType === "browser.open";
     });
     expect(
       chatEventSchema.safeParse({
-        ...browserStarted,
+        ...browserOpen,
         browserId: "must-not-exist",
       }).success,
     ).toBe(false);

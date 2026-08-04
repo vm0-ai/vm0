@@ -1,4 +1,6 @@
+import type { ReactNode } from "react";
 import {
+  IconAspectRatio,
   IconBrowser,
   IconBrowserOff,
   IconLoader2,
@@ -8,7 +10,7 @@ import {
   ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
   ZERO_BROWSER_SCREEN_WIDTH,
 } from "@vm0/api-contracts/contracts/zero-browser";
-import { cn } from "@vm0/ui";
+import { Button, cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 
@@ -25,11 +27,114 @@ interface BrowserSessionPanelProps {
   readonly containLiveFrame?: boolean;
 }
 
+const BROWSER_FIT_GAP_TOLERANCE_PX = 2;
+
+interface ViewportSize {
+  readonly width: number;
+  readonly height: number;
+}
+
+function browserFrameNeedsFit(
+  viewport: ViewportSize | null,
+  browserAspectRatio: number,
+): boolean {
+  if (
+    !viewport ||
+    !Number.isFinite(viewport.width) ||
+    !Number.isFinite(viewport.height) ||
+    viewport.width <= 0 ||
+    viewport.height <= 0 ||
+    !Number.isFinite(browserAspectRatio) ||
+    browserAspectRatio <= 0
+  ) {
+    return false;
+  }
+  const fittedWidth = Math.min(
+    viewport.width,
+    viewport.height * browserAspectRatio,
+  );
+  const fittedHeight = Math.min(
+    viewport.height,
+    viewport.width / browserAspectRatio,
+  );
+  return (
+    viewport.width - fittedWidth > BROWSER_FIT_GAP_TOLERANCE_PX ||
+    viewport.height - fittedHeight > BROWSER_FIT_GAP_TOLERANCE_PX
+  );
+}
+
+function measuredViewport(element: HTMLElement | null): ViewportSize | null {
+  if (!element) {
+    return null;
+  }
+  const { width, height } = element.getBoundingClientRect();
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    return null;
+  }
+  return { width, height };
+}
+
+function createBrowserFitController({
+  browserAspectRatio,
+  canFitWindow,
+}: {
+  readonly browserAspectRatio: number;
+  readonly canFitWindow: boolean;
+}): {
+  readonly viewportRef: (element: HTMLDivElement | null) => void;
+  readonly actionRef: (element: HTMLDivElement | null) => void;
+  readonly viewportAspectRatio: () => number | null;
+} {
+  let viewport: HTMLDivElement | null = null;
+  let action: HTMLDivElement | null = null;
+  let observer: ResizeObserver | null = null;
+
+  const syncActionVisibility = () => {
+    if (!action) {
+      return;
+    }
+    action.hidden = !(
+      canFitWindow &&
+      browserFrameNeedsFit(measuredViewport(viewport), browserAspectRatio)
+    );
+  };
+  const viewportRef = (element: HTMLDivElement | null) => {
+    observer?.disconnect();
+    observer = null;
+    window.removeEventListener("resize", syncActionVisibility);
+    viewport = element;
+    if (viewport && canFitWindow) {
+      window.addEventListener("resize", syncActionVisibility);
+      if (typeof ResizeObserver !== "undefined") {
+        observer = new ResizeObserver(syncActionVisibility);
+        observer.observe(viewport);
+      }
+    }
+    syncActionVisibility();
+  };
+  return {
+    viewportRef,
+    actionRef: (element) => {
+      action = element;
+      syncActionVisibility();
+    },
+    viewportAspectRatio: () => {
+      const size = measuredViewport(viewport);
+      return size ? size.width / size.height : null;
+    },
+  };
+}
+
 function PanelFrame({
   children,
   panelRef,
 }: {
-  readonly children: React.ReactNode;
+  readonly children: ReactNode;
   readonly panelRef?: (element: HTMLDivElement | null) => void;
 }) {
   return (
@@ -50,10 +155,10 @@ function PanelMessage({
   action,
   className,
 }: {
-  readonly icon: React.ReactNode;
+  readonly icon: ReactNode;
   readonly title: string;
   readonly description: string;
-  readonly action?: React.ReactNode;
+  readonly action?: ReactNode;
   readonly className?: string;
 }) {
   return (
@@ -105,6 +210,75 @@ function LiveBrowserFrame({
           : "w-full min-h-0 flex-1",
       )}
     />
+  );
+}
+
+function ContainedLiveBrowserViewport({
+  signals,
+  browserAspectRatio,
+  canFitWindow,
+  children,
+}: {
+  readonly signals: BrowserSessionSignals;
+  readonly browserAspectRatio: number;
+  readonly canFitWindow: boolean;
+  readonly children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const fitWindow = useSet(signals.fitWindow$);
+  const fittingWindow = useGet(signals.fittingWindow$);
+  const pageSignal = useGet(pageSignal$);
+  const fitController = createBrowserFitController({
+    browserAspectRatio,
+    canFitWindow,
+  });
+
+  return (
+    <div
+      ref={fitController.viewportRef}
+      data-browser-session-viewport
+      style={{ containerType: "size" }}
+      className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/20"
+    >
+      {children}
+      <div
+        ref={fitController.actionRef}
+        hidden
+        className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3"
+      >
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-browser-session-fit
+          disabled={fittingWindow}
+          onClick={() => {
+            const aspectRatio = fitController.viewportAspectRatio();
+            if (aspectRatio === null) {
+              return;
+            }
+            detach(
+              fitWindow(aspectRatio, pageSignal),
+              Reason.DomCallback,
+              "fit browser to sidebar window",
+            );
+          }}
+          aria-label={t(($) => {
+            return $.browserSession.fitWindow;
+          })}
+          className="pointer-events-auto rounded-full border-border/70 bg-background/90 px-3 text-xs text-foreground backdrop-blur-sm hover:bg-gray-50"
+        >
+          {fittingWindow ? (
+            <IconLoader2 className="animate-spin" size={14} />
+          ) : (
+            <IconAspectRatio size={14} />
+          )}
+          {t(($) => {
+            return $.browserSession.fitAction;
+          })}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -261,13 +435,13 @@ export function BrowserSessionPanel({
   return (
     <PanelFrame panelRef={keepAliveRef}>
       {containLiveFrame ? (
-        <div
-          data-browser-session-viewport
-          style={{ containerType: "size" }}
-          className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/20"
+        <ContainedLiveBrowserViewport
+          signals={signals}
+          browserAspectRatio={browserAspectRatio}
+          canFitWindow={session.screen?.resizable === true}
         >
           {liveFrame}
-        </div>
+        </ContainedLiveBrowserViewport>
       ) : (
         liveFrame
       )}

@@ -1008,6 +1008,7 @@
     "cardTitle": "Cloud-Browser",
     "close": "Schließen Sie den Live-Browser",
     "documentTitle": "Live-Browser",
+    "fitAction": "Anpassen",
     "fitWindow": "Browser an Fenster anpassen",
     "iframeTitle": "Live-Browser: {{name}}",
     "invalidLink": "Ungültiger Browser-Link",
@@ -1027,7 +1028,6 @@
       "starting": "Beginnt",
       "stopped": "Angehalten"
     },
-    "stop": "Browser stoppen",
     "title": "Live-Browser",
     "unavailable": {
       "description": "Dieser Browser gehört nicht zu diesem Chat oder wurde entfernt.",

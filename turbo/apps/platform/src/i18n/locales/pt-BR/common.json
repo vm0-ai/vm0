@@ -1030,6 +1030,7 @@
     "cardTitle": "Navegador na nuvem",
     "close": "Fechar navegador ao vivo",
     "documentTitle": "Navegador ao vivo",
+    "fitAction": "Ajustar",
     "fitWindow": "Ajustar navegador à janela",
     "iframeTitle": "Navegador ao vivo: {{name}}",
     "invalidLink": "Link de navegador inválido",
@@ -1050,7 +1051,6 @@
       "starting": "Iniciando",
       "stopped": "Parado"
     },
-    "stop": "Parar navegador",
     "title": "Navegador ao vivo",
     "unavailable": {
       "description": "Este navegador não pertence a este chat ou foi removido.",

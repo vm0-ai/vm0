@@ -420,7 +420,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     await runtimeDb.put(CHAT_MESSAGES_STORE, {
       id: "00000000-0000-4000-8000-000000000094",
       threadId: THREAD_ID,
-      eventType: "browser.started",
+      eventType: "browser.open",
       content: null,
       seqId: 1,
       createdAt: "2026-03-10T00:00:00Z",
@@ -431,7 +431,7 @@ describe("zero chat thread IndexedDB fallback", () => {
           {
             id: "00000000-0000-4000-8000-000000000095",
             threadId: THREAD_ID,
-            eventType: "browser.stopped",
+            eventType: "browser.close",
             content: null,
             seqId: 2,
             createdAt: "2026-03-10T00:00:01Z",

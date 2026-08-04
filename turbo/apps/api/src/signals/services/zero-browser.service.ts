@@ -106,7 +106,7 @@ type BrowserInstanceRow = typeof browserSessionInstances.$inferSelect;
 type BrowserThreadProfileRow = typeof browserThreadProfiles.$inferSelect;
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-class BrowserStartedEventIdConflictError extends Error {}
+class BrowserOpenEventIdConflictError extends Error {}
 
 export interface BrowserServiceError {
   readonly kind: "error";
@@ -131,6 +131,10 @@ interface BrowserConnection {
 interface BrowserMutation {
   readonly browser: ZeroBrowserSession;
   readonly lifecycleEventId: string | null;
+}
+
+interface BrowserCloseMutation {
+  readonly lifecycleEventId: string;
 }
 
 interface BrowserScreen {
@@ -577,11 +581,9 @@ async function stopActiveBrowserInstance(
   signal: AbortSignal,
   options: {
     readonly stopProvider: boolean;
-    readonly lifecycleEventId?: string;
-    readonly emitLifecycleEvent?: boolean;
     readonly saveTabSnapshot?: boolean;
   } = { stopProvider: true },
-): Promise<{ readonly lifecycleEventId: string | null } | null> {
+): Promise<boolean> {
   if (options.saveTabSnapshot ?? options.stopProvider) {
     await saveBrowserTabSnapshot(db, target, signal);
   }
@@ -608,7 +610,7 @@ async function stopActiveBrowserInstance(
         providerSessionId: browserSessionInstances.providerSessionId,
       });
     if (!instance) {
-      return null;
+      return false;
     }
     await tx
       .update(browserSessions)
@@ -619,56 +621,31 @@ async function stopActiveBrowserInstance(
         updatedAt: nowDate(),
       })
       .where(eq(browserSessions.chatThreadId, target.chatThreadId));
-    if (options.emitLifecycleEvent === false) {
-      return { eventId: null, seqId: null };
-    }
-    const lifecycleEventId = options.lifecycleEventId ?? randomUUID();
-    const event = await insertChatEvent(
-      tx,
-      {
-        id: lifecycleEventId,
-        chatThreadId: target.chatThreadId,
-        eventType: "browser.stopped",
-        content: null,
-      },
-      "id",
-    );
-    if (!event) {
-      throw new Error("Failed to persist managed browser stopped event");
-    }
-    return { eventId: event.id, seqId: event.seqId };
+    return true;
   });
   if (stopped && options.stopProvider) {
     stopProviderSessionLater(target.providerSessionId);
   }
   signal.throwIfAborted();
   if (!stopped) {
-    return null;
+    return false;
   }
   await publishBrowserSessionChangedSafely(target.userId, {
     threadId: target.chatThreadId,
   });
-  if (stopped.eventId !== null && stopped.seqId !== null) {
-    await publishChatThreadMessageCreatedSafely(
-      target.userId,
-      target.chatThreadId,
-      stopped.seqId,
-    );
-  }
   signal.throwIfAborted();
-  return { lifecycleEventId: stopped.eventId };
+  return true;
 }
 
 async function suspendBrowserWithoutActiveInstance(
   db: Db,
   browser: BrowserSessionRow,
   reason: ZeroBrowserSuspensionReason,
-  lifecycleEventId: string,
   signal: AbortSignal,
 ): Promise<BrowserSessionRow | null> {
-  const suspendedResult = await db.transaction(async (tx) => {
+  const suspended = await db.transaction(async (tx) => {
     await lockBrowserThread(tx, browser.chatThreadId);
-    const [suspended] = await tx
+    const [next] = await tx
       .update(browserSessions)
       .set({
         status: "suspended",
@@ -683,40 +660,17 @@ async function suspendBrowserWithoutActiveInstance(
         ),
       )
       .returning();
-    if (!suspended) {
-      return null;
-    }
-    const event = await insertChatEvent(
-      tx,
-      {
-        id: lifecycleEventId,
-        chatThreadId: browser.chatThreadId,
-        eventType: "browser.stopped",
-        content: null,
-      },
-      "id",
-    );
-    if (!event) {
-      throw new Error("Failed to persist managed browser stopped event");
-    }
-    return { suspended, event };
+    return next ?? null;
   });
   signal.throwIfAborted();
-  if (!suspendedResult) {
+  if (!suspended) {
     return null;
   }
-  await Promise.all([
-    publishBrowserSessionChangedSafely(browser.userId, {
-      threadId: browser.chatThreadId,
-    }),
-    publishChatThreadMessageCreatedSafely(
-      browser.userId,
-      browser.chatThreadId,
-      suspendedResult.event.seqId,
-    ),
-  ]);
+  await publishBrowserSessionChangedSafely(browser.userId, {
+    threadId: browser.chatThreadId,
+  });
   signal.throwIfAborted();
-  return suspendedResult.suspended;
+  return suspended;
 }
 
 async function browserConcurrencyLimit(db: Db, orgId: string): Promise<number> {
@@ -1514,14 +1468,14 @@ async function claimStartedProviderInstance(
       {
         id: args.lifecycleEventId,
         chatThreadId: current.chatThreadId,
-        eventType: "browser.started",
+        eventType: "browser.open",
         content: null,
       },
       "id",
     );
     if (!event) {
-      throw new BrowserStartedEventIdConflictError(
-        "Managed browser start event ID is already in use",
+      throw new BrowserOpenEventIdConflictError(
+        "Managed browser open event ID is already in use",
       );
     }
     return {
@@ -1608,7 +1562,7 @@ async function createAndClaimProviderInstance(
     // Provider creation is irreversible. Any failed claim must reclaim the
     // provider because the transaction rolls back every durable owner row.
     stopProviderSessionLater(provider.value.id);
-    if (claimResult.error instanceof BrowserStartedEventIdConflictError) {
+    if (claimResult.error instanceof BrowserOpenEventIdConflictError) {
       return conflict(
         "The managed browser lifecycle event ID is already in use",
         "BROWSER_EVENT_ID_CONFLICT",
@@ -1878,7 +1832,6 @@ const inspectActiveConnection$ = command(
         db,
         browser,
         "provider",
-        randomUUID(),
         signal,
       );
       if (!suspended) {
@@ -2227,7 +2180,7 @@ export const useZeroBrowser$ = command(
   },
 );
 
-export const startZeroBrowserForThread$ = command(
+export const openZeroBrowserForThread$ = command(
   async (
     { set },
     args: BrowserSessionAccess & { readonly lifecycleEventId: string },
@@ -2261,12 +2214,12 @@ export const startZeroBrowserForThread$ = command(
   },
 );
 
-export const stopZeroBrowserForThread$ = command(
+export const closeZeroBrowserForThread$ = command(
   async (
     { set },
     args: BrowserSessionAccess & { readonly lifecycleEventId: string },
     signal: AbortSignal,
-  ): Promise<BrowserServiceResult<BrowserMutation>> => {
+  ): Promise<BrowserServiceResult<BrowserCloseMutation>> => {
     const db = set(writeDb$);
     const browser = await loadOwnedBrowser(db, args);
     signal.throwIfAborted();
@@ -2278,68 +2231,35 @@ export const stopZeroBrowserForThread$ = command(
     if (accessError) {
       return accessError;
     }
-    const screenshotUrl = await loadBrowserScreenshotUrl(
-      db,
-      browser.chatThreadId,
-      signal,
-    );
-    if (browser.status !== "active") {
-      return {
-        kind: "ok",
-        value: {
-          browser: publicBrowser(browser, null, screenshotUrl),
-          lifecycleEventId: null,
+    const event = await db.transaction(async (tx) => {
+      return await insertChatEvent(
+        tx,
+        {
+          id: args.lifecycleEventId,
+          chatThreadId: browser.chatThreadId,
+          eventType: "browser.close",
+          content: null,
         },
-      };
-    }
-    const instance = await loadActiveInstance(db, browser.chatThreadId);
-    signal.throwIfAborted();
-    if (!instance) {
-      const suspended = await suspendBrowserWithoutActiveInstance(
-        db,
-        browser,
-        "user",
-        args.lifecycleEventId,
-        signal,
+        "id",
       );
-      if (!suspended) {
-        return conflict("The managed browser is busy", "BROWSER_BUSY");
-      }
-      return {
-        kind: "ok",
-        value: {
-          browser: publicBrowser(suspended, null, screenshotUrl),
-          lifecycleEventId: args.lifecycleEventId,
-        },
-      };
-    }
-    const stopped = await stopActiveBrowserInstance(
-      db,
-      {
-        chatThreadId: browser.chatThreadId,
-        providerSessionId: instance.providerSessionId,
-        userId: browser.userId,
-      },
-      "user",
-      signal,
-      {
-        stopProvider: true,
-        lifecycleEventId: args.lifecycleEventId,
-      },
-    );
-    if (!stopped?.lifecycleEventId) {
-      return conflict("The managed browser is busy", "BROWSER_BUSY");
-    }
-    const stoppedBrowser = await loadOwnedBrowser(db, args);
+    });
     signal.throwIfAborted();
-    if (!stoppedBrowser) {
-      throw new Error("Managed browser disappeared during stop");
+    if (!event) {
+      return conflict(
+        "The managed browser close event ID is already in use",
+        "BROWSER_EVENT_ID_CONFLICT",
+      );
     }
+    await publishChatThreadMessageCreatedSafely(
+      browser.userId,
+      browser.chatThreadId,
+      event.seqId,
+    );
+    signal.throwIfAborted();
     return {
       kind: "ok",
       value: {
-        browser: publicBrowser(stoppedBrowser, null, screenshotUrl),
-        lifecycleEventId: stopped.lifecycleEventId,
+        lifecycleEventId: event.id,
       },
     };
   },
@@ -2419,11 +2339,7 @@ export const leaseZeroBrowserByThread$ = command(
     if (accessError) {
       return accessError;
     }
-    const leased = await set(leaseInstanceForBrowser$, browser, signal);
-    if (leased.kind === "ok") {
-      set(scheduleBrowserScreenshotCapture$, browser);
-    }
-    return leased;
+    return await set(leaseInstanceForBrowser$, browser, signal);
   },
 );
 
@@ -2702,7 +2618,6 @@ export const stopThreadZeroBrowsers$ = command(
       if (
         await stopActiveBrowserInstance(db, target, "reconcile", signal, {
           stopProvider: false,
-          emitLifecycleEvent: false,
           saveTabSnapshot: false,
         })
       ) {
@@ -3086,6 +3001,7 @@ const reconcileBrowserInstance$ = command(
         row.instance.providerSessionId,
         signal,
       );
+      set(scheduleBrowserScreenshotCapture$, row.browser);
       return { stopped: 0, errors: 0, healthy: 1 };
     }
 
@@ -3100,7 +3016,6 @@ const reconcileBrowserInstance$ = command(
       signal,
       {
         stopProvider,
-        emitLifecycleEvent: row.chatThreadId !== null,
       },
     );
     return {

@@ -808,17 +808,17 @@ const chatEventBuilders = {
       ),
     };
   },
-  "browser.started": (_row, event) => {
+  "browser.open": (_row, event) => {
     return {
       ...event,
-      eventType: "browser.started",
+      eventType: "browser.open",
       content: null,
     };
   },
-  "browser.stopped": (_row, event) => {
+  "browser.close": (_row, event) => {
     return {
       ...event,
-      eventType: "browser.stopped",
+      eventType: "browser.close",
       content: null,
     };
   },

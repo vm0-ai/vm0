@@ -340,7 +340,7 @@ type BrowserLifecycleEvent = Pick<
   ChatEventIdentity,
   "id" | "chatThreadId" | "createdAt"
 > & {
-  readonly eventType: "browser.started" | "browser.stopped";
+  readonly eventType: "browser.open" | "browser.close";
   readonly content?: null;
 };
 

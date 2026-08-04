@@ -7,13 +7,13 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import {
   createZeroBrowser$,
+  closeZeroBrowserForThread$,
   getCurrentZeroBrowser$,
   getZeroBrowser$,
   leaseCurrentZeroBrowser$,
   leaseZeroBrowserByThread$,
+  openZeroBrowserForThread$,
   resizeZeroBrowserByThread$,
-  startZeroBrowserForThread$,
-  stopZeroBrowserForThread$,
   useZeroBrowser$,
   type BrowserServiceError,
 } from "../services/zero-browser.service";
@@ -129,22 +129,47 @@ const leaseBrowserByThreadInner$ = command(
   },
 );
 
-const startParams$ = pathParamsOf(zeroBrowserContract.start);
-const startBody$ = bodyResultOf(zeroBrowserContract.start);
-const startBrowserInner$ = command(
+const openParams$ = pathParamsOf(zeroBrowserContract.open);
+const openBody$ = bodyResultOf(zeroBrowserContract.open);
+const openBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const body = await get(openBody$);
+  signal.throwIfAborted();
+  if (!body.ok) {
+    return body.response;
+  }
+  const auth = get(organizationAuthContext$);
+  const result = await set(
+    openZeroBrowserForThread$,
+    {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      chatThreadId: get(openParams$).threadId,
+      lifecycleEventId: body.data.eventId,
+      ...("runId" in auth ? { runId: auth.runId } : {}),
+    },
+    signal,
+  );
+  return result.kind === "error"
+    ? errorResponse(result)
+    : { status: 200 as const, body: result.value };
+});
+
+const closeParams$ = pathParamsOf(zeroBrowserContract.close);
+const closeBody$ = bodyResultOf(zeroBrowserContract.close);
+const closeBrowserInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const body = await get(startBody$);
+    const body = await get(closeBody$);
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
     }
     const auth = get(organizationAuthContext$);
     const result = await set(
-      startZeroBrowserForThread$,
+      closeZeroBrowserForThread$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        chatThreadId: get(startParams$).threadId,
+        chatThreadId: get(closeParams$).threadId,
         lifecycleEventId: body.data.eventId,
         ...("runId" in auth ? { runId: auth.runId } : {}),
       },
@@ -155,31 +180,6 @@ const startBrowserInner$ = command(
       : { status: 200 as const, body: result.value };
   },
 );
-
-const stopParams$ = pathParamsOf(zeroBrowserContract.stop);
-const stopBody$ = bodyResultOf(zeroBrowserContract.stop);
-const stopBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const body = await get(stopBody$);
-  signal.throwIfAborted();
-  if (!body.ok) {
-    return body.response;
-  }
-  const auth = get(organizationAuthContext$);
-  const result = await set(
-    stopZeroBrowserForThread$,
-    {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      chatThreadId: get(stopParams$).threadId,
-      lifecycleEventId: body.data.eventId,
-      ...("runId" in auth ? { runId: auth.runId } : {}),
-    },
-    signal,
-  );
-  return result.kind === "error"
-    ? errorResponse(result)
-    : { status: 200 as const, body: result.value };
-});
 
 const resizeByThreadParams$ = pathParamsOf(zeroBrowserContract.resizeByThread);
 const resizeByThreadBody$ = bodyResultOf(zeroBrowserContract.resizeByThread);
@@ -292,12 +292,12 @@ export const zeroBrowserRoutes: readonly RouteEntry[] = [
     handler: authRoute(browserViewerWriteAuth, leaseBrowserByThreadInner$),
   },
   {
-    route: zeroBrowserContract.start,
-    handler: authRoute(browserViewerWriteAuth, startBrowserInner$),
+    route: zeroBrowserContract.open,
+    handler: authRoute(browserViewerWriteAuth, openBrowserInner$),
   },
   {
-    route: zeroBrowserContract.stop,
-    handler: authRoute(browserViewerWriteAuth, stopBrowserInner$),
+    route: zeroBrowserContract.close,
+    handler: authRoute(browserViewerWriteAuth, closeBrowserInner$),
   },
   {
     route: zeroBrowserContract.resizeByThread,

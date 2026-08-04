@@ -232,10 +232,10 @@ const mockChatEventOverrides = {
       revokesEventId,
     };
   },
-  "browser.started": () => {
+  "browser.open": () => {
     return { content: null };
   },
-  "browser.stopped": () => {
+  "browser.close": () => {
     return { content: null };
   },
   "goal.changed": (message) => {

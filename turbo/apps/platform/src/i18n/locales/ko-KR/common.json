@@ -1008,6 +1008,7 @@
     "cardTitle": "클라우드 브라우저",
     "close": "라이브 브라우저 닫기",
     "documentTitle": "라이브 브라우저",
+    "fitAction": "맞춤",
     "fitWindow": "브라우저 창에 맞춤",
     "iframeTitle": "라이브 브라우저: {{name}}",
     "invalidLink": "잘못된 브라우저 링크",
@@ -1027,7 +1028,6 @@
       "starting": "시작 중",
       "stopped": "중지됨"
     },
-    "stop": "브라우저 중지",
     "title": "라이브 브라우저",
     "unavailable": {
       "description": "이 브라우저는 이 채팅에 속하지 않거나 제거되었습니다.",
