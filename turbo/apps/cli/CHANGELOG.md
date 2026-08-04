@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.277.0](https://github.com/vm0-ai/vm0/compare/cli-v9.276.3...cli-v9.277.0) (2026-08-04)
+
+
+### Features
+
+* **cli:** generate a machine-readable zero cli surface inventory ([#24988](https://github.com/vm0-ai/vm0/issues/24988)) ([2ff2967](https://github.com/vm0-ai/vm0/commit/2ff29676ec7512c960809511391f051e9ecfddcc))
+
+
+### Refactoring
+
+* stop showing org slugs and drop dead slug payloads ([#25008](https://github.com/vm0-ai/vm0/issues/25008)) ([9676511](https://github.com/vm0-ai/vm0/commit/9676511282db6694e300e1a8fa4a40bb5c5d1e41))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.269.2
+    * @vm0/core bumped to 8.509.1
+
 ## [9.276.3](https://github.com/vm0-ai/vm0/compare/cli-v9.276.2...cli-v9.276.3) (2026-08-04)
 
 

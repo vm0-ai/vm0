@@ -9,6 +9,7 @@ use guest_agent::active_input::{ActiveInputControlOutcome, ActiveInputRuntime};
 use guest_agent::masker::SecretMasker;
 use serde_json::Value;
 use std::time::Duration;
+use uuid::Uuid;
 
 #[tokio::test]
 async fn codex_app_server_backend_steers_accepted_input_before_buffered_completion()
@@ -38,9 +39,7 @@ async fn codex_app_server_backend_steers_accepted_input_before_buffered_completi
     );
     let payload = common::active_input_payload("follow-up before buffered completion")?;
     assert_eq!(
-        active_input
-            .controller()
-            .handle_control_payload("active-msg-before-completion", &payload),
+        active_input.controller().handle_control_payload(&payload),
         ActiveInputControlOutcome::Accepted
     );
 
@@ -70,10 +69,10 @@ async fn codex_app_server_backend_steers_accepted_input_before_buffered_completi
         input_events[1]["text"],
         "follow-up before buffered completion"
     );
-    assert_eq!(
-        input_events[1]["turn_request_client_user_message_id"],
-        "active-msg-before-completion"
-    );
+    let client_user_message_id = input_events[1]["turn_request_client_user_message_id"]
+        .as_str()
+        .expect("steered input should carry an internal UUID");
+    assert!(Uuid::parse_str(client_user_message_id).is_ok());
 
     Ok(())
 }

@@ -8,6 +8,7 @@ import {
   isChatUserMessageEventType,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
+import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 
 interface UserMessageProjection {
   readonly agentPrompt: string;
@@ -184,7 +185,20 @@ function generationTemplatePrompt(part: {
   readonly titleSnapshot: string;
   readonly template: GenerationTemplateRequest;
 }): string {
-  return `Select ${part.titleSnapshot} ${part.template.type} template`;
+  return `Select ${part.titleSnapshot} ${generationTemplateTypeLabel(part.template)} template`;
+}
+
+function generationTemplateTypeLabel(
+  template: GenerationTemplateRequest,
+): string {
+  if (
+    template.type === "video" &&
+    parseAvatarTemplateStylePresetId(template.selection.stylePresetId) !==
+      undefined
+  ) {
+    return "avatar";
+  }
+  return template.type;
 }
 
 function inlineGenerationTemplatePrompt(
@@ -194,7 +208,7 @@ function inlineGenerationTemplatePrompt(
   },
   referenceNumber: number,
 ): string {
-  return `[Template #${referenceNumber}: ${part.titleSnapshot} (${part.template.type})]`;
+  return `[Template #${referenceNumber}: ${part.titleSnapshot} (${generationTemplateTypeLabel(part.template)})]`;
 }
 
 function formatFeedbackParts(

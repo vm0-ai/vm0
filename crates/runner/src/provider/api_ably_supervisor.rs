@@ -28,6 +28,7 @@ use super::api_direct_candidates::{
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{RunnerPreference, parse_runner_preference};
+use crate::active_input::ActiveInputNotifications;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
@@ -434,6 +435,7 @@ pub(super) struct AblySupervisorConfig {
     pub(super) direct_candidates: Arc<DirectCandidateInbox>,
     pub(super) cancel_tokens: RunCancellationRegistry,
     pub(super) network_policy_refresh: NetworkPolicyRefreshHandle,
+    pub(super) active_input_notifications: ActiveInputNotifications,
     pub(super) provider_cancel: CancellationToken,
 }
 
@@ -445,6 +447,7 @@ struct SupervisorTaskConfig {
     direct_candidates: Arc<DirectCandidateInbox>,
     cancel_tokens: RunCancellationRegistry,
     network_policy_refresh: NetworkPolicyRefreshHandle,
+    active_input_notifications: ActiveInputNotifications,
     provider_cancel: CancellationToken,
     shutdown: CancellationToken,
 }
@@ -461,6 +464,7 @@ impl AblySupervisor {
             direct_candidates: config.direct_candidates,
             cancel_tokens: config.cancel_tokens,
             network_policy_refresh: config.network_policy_refresh,
+            active_input_notifications: config.active_input_notifications,
             provider_cancel: config.provider_cancel,
             shutdown: task_shutdown,
         };
@@ -539,6 +543,10 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
             event = recv_ably(&mut ably) => {
                 match event {
                     Some(ably_subscriber::Event::Message(msg)) => {
+                        if let Some(run_id) = parse_active_input_notification(&msg) {
+                            config.active_input_notifications.notify(run_id);
+                            continue;
+                        }
                         handle_ably_message_with_network_policy_refresh(
                             &msg,
                             &config.profiles,
@@ -748,6 +756,20 @@ struct JobNotification<'a> {
 struct NetworkPolicyRefreshNotification {
     run_id: RunId,
     connector_slug: String,
+}
+
+fn parse_active_input_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
+    if msg.name.as_deref() != Some("active-input") {
+        return None;
+    }
+    let raw = msg.data.get("runId").and_then(|value| value.as_str())?;
+    match raw.parse() {
+        Ok(run_id) => Some(run_id),
+        Err(error) => {
+            warn!(value = %raw, error = %error, "ably: invalid active-input runId");
+            None
+        }
+    }
 }
 
 fn supports_profile(profiles: &[String], profile: &str) -> bool {
@@ -2277,6 +2299,23 @@ mod tests {
                 "{case}"
             );
         }
+    }
+
+    #[test]
+    fn parse_active_input_notification_reads_run_id() {
+        let msg = make_message(
+            Some("active-input"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000004"
+            }),
+        );
+
+        assert_eq!(
+            parse_active_input_notification(&msg)
+                .expect("active-input notification should parse")
+                .to_string(),
+            "00000000-0000-0000-0000-000000000004"
+        );
     }
 
     #[test]

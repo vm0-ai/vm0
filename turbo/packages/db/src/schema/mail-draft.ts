@@ -36,6 +36,9 @@ export const mailDrafts = pgTable(
     gmailThreadId: text("gmail_thread_id"),
     gmailMessageId: text("gmail_message_id"),
     sentGmailMessageId: text("sent_gmail_message_id"),
+    // Compatibility declaration for Platform bundles loaded before Mail
+    // follow-up removal. Delete it with the legacy API bridge and physical
+    // column after those clients and the pre-cleanup API release have drained.
     followUpAutomationId: uuid("follow_up_automation_id").references(
       () => {
         return zeroWorkflowAutomations.id;

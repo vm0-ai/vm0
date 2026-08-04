@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.680.0](https://github.com/vm0-ai/vm0/compare/app-v0.679.3...app-v0.680.0) (2026-08-04)
+
+
+### Features
+
+* **platform:** give mermaid diagrams a fixed-size box ([#24950](https://github.com/vm0-ai/vm0/issues/24950)) ([ea09aa4](https://github.com/vm0-ai/vm0/commit/ea09aa4ce420a2353eadb24df09ab9cf7c598eb6))
+
+
+### Refactoring
+
+* stop showing org slugs and drop dead slug payloads ([#25008](https://github.com/vm0-ai/vm0/issues/25008)) ([9676511](https://github.com/vm0-ai/vm0/commit/9676511282db6694e300e1a8fa4a40bb5c5d1e41))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.269.2
+    * @vm0/core bumped to 8.509.1
+
 ## [0.679.3](https://github.com/vm0-ai/vm0/compare/app-v0.679.2...app-v0.679.3) (2026-08-04)
 
 

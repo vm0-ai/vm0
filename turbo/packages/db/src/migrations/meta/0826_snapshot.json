@@ -1,5 +1,5 @@
 {
-  "id": "add51e57-4337-4f17-8aa3-d62222a77fd9",
+  "id": "504d3651-93ed-45c8-be18-57da11a045f9",
   "prevId": "e98616bf-0a70-46e2-8782-32fab6c57ea5",
   "version": "7",
   "dialect": "postgresql",
@@ -4118,44 +4118,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.chat_agent_run_context": {
-      "name": "chat_agent_run_context",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "source_chat_thread_id": {
-          "name": "source_chat_thread_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source_agent_id": {
-          "name": "source_agent_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.chat_agentphone_context": {
       "name": "chat_agentphone_context",
       "schema": "",
@@ -4817,7 +4779,7 @@
         },
         "chat_events_context_type_check": {
           "name": "chat_events_context_type_check",
-          "value": "\"chat_events\".\"context_type\" IN (\n          'slack',\n          'feishu',\n          'teams',\n          'telegram',\n          'github',\n          'agentphone',\n          'automation',\n          'goal',\n          'morning_brief',\n          'agent_run'\n        )"
+          "value": "\"chat_events\".\"context_type\" IN (\n          'slack',\n          'feishu',\n          'teams',\n          'telegram',\n          'github',\n          'agentphone',\n          'automation',\n          'goal',\n          'morning_brief'\n        )"
         }
       },
       "isRLSEnabled": false
@@ -21430,12 +21392,6 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
-        },
-        "gross_credits": {
-          "name": "gross_credits",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
         },
         "credits_charged": {
           "name": "credits_charged",

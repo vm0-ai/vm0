@@ -22,18 +22,11 @@ import {
   getOrCreateCardSignals,
   registeredCardSignals,
 } from "./card-signal-map.ts";
-import { onRef, withCleanup } from "../utils.ts";
+import { onRef } from "../utils.ts";
 import {
   createTextPreviewComputedFromBlob,
   type TextPreviewComputed,
 } from "../text-preview.ts";
-import { i18n } from "../../i18n/index.ts";
-
-export type MailDraftFollowUpState =
-  | "idle"
-  | "submitting"
-  | "active"
-  | "paused";
 
 export interface MailDraftDescriptor {
   readonly mailDraftId: string;
@@ -58,15 +51,12 @@ export interface MailDraftSignals extends MailDraftDescriptor {
   readonly reloadDraft$: Command<void, []>;
   readonly delete$: Command<Promise<void>, [AbortSignal]>;
   readonly send$: Command<Promise<void>, [AbortSignal]>;
-  readonly followUpState$: Computed<MailDraftFollowUpState>;
-  readonly followUp$: Command<Promise<void>, [AbortSignal]>;
 }
 
 export interface MailDraftCardSignalsRegistry {
   register(descriptor: MailDraftDescriptor): MailDraftSignals;
   resolve(resourceKey: string): MailDraftSignals;
   entries(): ReadonlyMap<string, MailDraftSignals>;
-  readonly reload$: Command<void, []>;
 }
 
 function browserOrigin(): string | null {
@@ -263,19 +253,14 @@ function createAttachmentPreviews(
 
 interface MailDraftResourceSignals extends Pick<
   MailDraftSignals,
-  "draft$" | "sidebarDraft$" | "reloadDraft$" | "followUpState$"
+  "draft$" | "sidebarDraft$" | "reloadDraft$"
 > {
-  readonly followUpStateValue$: State<MailDraftFollowUpState>;
   readonly draftOverride$: State<ZeroMailDraft | null | undefined>;
 }
 
 function createMailDraftResourceSignals(
   descriptor: MailDraftDescriptor,
 ): MailDraftResourceSignals {
-  const followUpStateValue$ = state<MailDraftFollowUpState>("idle");
-  const followUpState$ = computed((get) => {
-    return get(followUpStateValue$);
-  });
   const draftOverride$ = state<ZeroMailDraft | null | undefined>(undefined);
   const draftReloadVersion$ = state(0);
   const draft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
@@ -296,27 +281,22 @@ function createMailDraftResourceSignals(
   const sidebarDraft$ = draft$;
   const reloadDraft$ = command(({ set }) => {
     set(draftOverride$, undefined);
-    set(followUpStateValue$, (current) => {
-      return current === "submitting" ? current : "idle";
-    });
     set(draftReloadVersion$, (version) => {
       return version + 1;
     });
   });
   return {
-    followUpStateValue$,
     draftOverride$,
     draft$,
     sidebarDraft$,
     reloadDraft$,
-    followUpState$,
   };
 }
 
 function createMailDraftMutationSignals(
   descriptor: MailDraftDescriptor,
   resources: MailDraftResourceSignals,
-): Pick<MailDraftSignals, "delete$" | "send$" | "followUp$"> {
+): Pick<MailDraftSignals, "delete$" | "send$"> {
   const delete$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       await accept(
@@ -341,47 +321,7 @@ function createMailDraftMutationSignals(
     signal.throwIfAborted();
     set(resources.draftOverride$, response.body.mailDraft);
   });
-  const followUp$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      if (get(resources.followUpStateValue$) !== "idle") {
-        return;
-      }
-      set(resources.followUpStateValue$, "submitting");
-      await withCleanup(
-        (async () => {
-          const draft = await get(resources.draft$);
-          signal.throwIfAborted();
-          if (!draft) {
-            throw new Error(
-              i18n.t(($) => {
-                return $.chat.mail.unavailable;
-              }),
-            );
-          }
-          if (draft.followUp) {
-            set(resources.followUpStateValue$, draft.followUp.status);
-            return;
-          }
-          await accept(
-            get(zeroClient$)(zeroMailContract).createFollowUp({
-              params: { mailDraftId: descriptor.mailDraftId },
-              body: {},
-              fetchOptions: { signal },
-            }),
-            [200],
-          );
-          set(resources.reloadDraft$);
-          set(resources.followUpStateValue$, "active");
-        })(),
-        () => {
-          set(resources.followUpStateValue$, (current) => {
-            return current === "submitting" ? "idle" : current;
-          });
-        },
-      );
-    },
-  );
-  return { delete$, send$, followUp$ };
+  return { delete$, send$ };
 }
 
 function createMailDraftSignals(
@@ -405,8 +345,6 @@ function createMailDraftSignals(
     reloadDraft$: resources.reloadDraft$,
     delete$: mutations.delete$,
     send$: mutations.send$,
-    followUpState$: resources.followUpState$,
-    followUp$: mutations.followUp$,
   };
 }
 
@@ -414,13 +352,7 @@ export function createMailDraftCardSignalsRegistry(
   threadId: string,
 ): MailDraftCardSignalsRegistry {
   const signalsByResourceKey = new Map<string, MailDraftSignals>();
-  const reload$ = command(({ set }) => {
-    for (const signals of signalsByResourceKey.values()) {
-      set(signals.reloadDraft$);
-    }
-  });
   return {
-    reload$,
     register(descriptor) {
       return getOrCreateCardSignals(
         signalsByResourceKey,

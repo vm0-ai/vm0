@@ -551,6 +551,8 @@
       "emptyTitle": "Nessun artefatto trovato",
       "error": "Impossibile caricare gli artefatti. Riprova più tardi.",
       "filters": {
+        "avatar": "Avatar",
+        "avatarAria": "Mostra artefatti avatar",
         "file": "File",
         "fileAria": "Mostra gli artefatti del file",
         "image": "Immagini",
@@ -595,6 +597,7 @@
     },
     "kinds": {
       "audio": "Audio",
+      "avatar": "Avatar",
       "code": "Codice",
       "csv": "CSV",
       "data": "Dati",
@@ -642,8 +645,25 @@
     "templates": {
       "activeHtmlPreview": "{{title}} attivo HTML anteprima",
       "all": "Tutto",
+      "avatar": "Avatar",
+      "avatarWithId": "Avatar {{id}}",
+      "backToAvatars": "Torna agli avatar",
       "categories": "Categorie di modelli",
       "category": "Categoria modello",
+      "chooseVoice": "Scegli una voce per {{title}}",
+      "filters": {
+        "age": "Età",
+        "all": "Tutti",
+        "aspectRatio": "Proporzioni",
+        "clear": "Cancella",
+        "ethnicity": "Etnia",
+        "gender": "Genere",
+        "language": "Lingua",
+        "scene": "Scena",
+        "style": "Stile",
+        "title": "Filtri",
+        "useCase": "Caso d’uso"
+      },
       "fullPreview": "{{title}} anteprima completa del sito web",
       "htmlPreview": "{{title}} HTML anteprima",
       "illustration": "Illustrazione",
@@ -653,8 +673,10 @@
       "noMatches": "Nessuna corrispondenza",
       "placeholder": "{{title}} segnaposto anteprima sito web",
       "playVideo": "Riproduci l'anteprima del modello video {{title}}",
+      "previewAvatarVideo": "Anteprima del video avatar {{title}}",
       "previewCurrentSlide": "Anteprima {{title}} nella diapositiva corrente",
       "previewSlide": "Diapositiva di anteprima {{slideNumber}}",
+      "previewVoice": "Ascolta la voce {{title}}",
       "previewWebsite": "Anteprima del modello di sito web {{title}}",
       "previousHtmlPreview": "{{title}} anteprima HTML precedente",
       "previousSlide": "Anteprima della diapositiva precedente",
@@ -664,6 +686,7 @@
       "selectStyle": "Seleziona lo stile {{style}}",
       "selectTemplate": "Seleziona il modello {{title}}",
       "selectVideo": "Seleziona il modello video {{title}}",
+      "selectVoice": "Seleziona la voce {{title}}",
       "selectWebsite": "Seleziona il modello di sito web {{title}}",
       "selectWorkflow": "Seleziona il modello di flusso di lavoro {{title}}",
       "showVariant": "Mostra variante {{variantNumber}}",
@@ -1350,18 +1373,6 @@
       "deletedEmail": "E-mail eliminata: {{subject}}",
       "details": "Dettagli e-mail",
       "email": "E-mail",
-      "followUp": {
-        "action": "Segui",
-        "active": "Monitoraggio delle risposte",
-        "activeDescription": "Le risposte vengono tracciate e verranno riportate in questa chat.",
-        "idleDescription": "Tieni traccia delle risposte e ricevi notifiche in questa chat.",
-        "paused": "Monitoraggio sospeso",
-        "pausedDescription": "Il monitoraggio delle risposte è attualmente sospeso.",
-        "settingUp": "Impostazione…",
-        "submitting": "Impostazione…",
-        "submittingDescription": "Configurazione del monitoraggio delle risposte…",
-        "tracking": "Monitoraggio delle risposte"
-      },
       "loadingDetails": "Caricamento dei dettagli dell'e-mail",
       "needReconnect": "È necessario riconnettersi",
       "noMessage": "(Nessun messaggio)",
@@ -4655,6 +4666,7 @@
     "displayNames": {
       "auto": "Automatico",
       "finance": "Finanza",
+      "imageRecognize": "Riconoscimento immagini",
       "maps": "Mappe",
       "peopleSearch": "Ricerca persone",
       "usage": "Utilizzo",
@@ -5365,6 +5377,12 @@
     "connectedWithDetail": "Connesso ({{detail}})",
     "documentTitle": "Integrazioni",
     "feishuConnected": "Feishu si è connesso correttamente",
+    "github": {
+      "adminInstall": "Chiedi a un amministratore dell'organizzazione di installare l'app GitHub",
+      "description": "Attiva le automazioni dei workflow dagli eventi GitHub",
+      "install": "Installa l'app GitHub",
+      "title": "GitHub"
+    },
     "header": {
       "description": "Connettiti con {{displayName}} attraverso questi canali",
       "title": "Dove lavora {{displayName}}"

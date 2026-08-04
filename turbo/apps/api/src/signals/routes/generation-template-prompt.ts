@@ -13,6 +13,7 @@ import {
   type WebsiteTemplateItem,
 } from "@vm0/core/website-template-items";
 import { findWorkflowTemplateItem } from "@vm0/core/workflow-template-items";
+import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -27,6 +28,8 @@ interface VideoGenerationTemplateInput {
   readonly type: "video";
   readonly selection: {
     readonly stylePresetId: string;
+    readonly voiceId?: string;
+    readonly aspectRatio?: "portrait" | "landscape" | "square";
   };
 }
 
@@ -67,6 +70,20 @@ type GenerationTemplatePromptResult =
       readonly status: "invalid";
       readonly message: string;
     };
+
+function generationTemplateTypeLabel(
+  generationTemplate: GenerationTemplateInput,
+): string {
+  if (
+    generationTemplate.type === "video" &&
+    parseAvatarTemplateStylePresetId(
+      generationTemplate.selection.stylePresetId,
+    ) !== undefined
+  ) {
+    return "avatar";
+  }
+  return generationTemplate.type;
+}
 
 export function buildGenerationTemplatePrompt(
   generationTemplate: GenerationTemplateInput | null | undefined,
@@ -119,7 +136,7 @@ export function buildGenerationTemplatesPrompt(
     }
     details.push(
       [
-        `## Template #${index + 1} (${generationTemplate.type})`,
+        `## Template #${index + 1} (${generationTemplateTypeLabel(generationTemplate)})`,
         "",
         stripGenerationTemplateContext(built.prompt),
       ].join("\n"),
@@ -255,6 +272,17 @@ function buildWebsiteTemplatePackagePrompt(
 function buildVideoGenerationTemplatePrompt(
   generationTemplate: VideoGenerationTemplateInput,
 ): GenerationTemplatePromptResult {
+  const avatarId = parseAvatarTemplateStylePresetId(
+    generationTemplate.selection.stylePresetId,
+  );
+  if (avatarId !== undefined) {
+    return buildAvatarGenerationTemplatePrompt(
+      avatarId,
+      generationTemplate.selection.voiceId,
+      generationTemplate.selection.aspectRatio,
+    );
+  }
+
   const template = findVideoTemplate(
     generationTemplate.selection.stylePresetId,
   );
@@ -282,6 +310,45 @@ function buildVideoGenerationTemplatePrompt(
       "- Then run final direct video generation from the resolved prompt and parameters without `--template`.",
       "- If a connector/provider is requested, follow connector guidance instead.",
       "- If a flag above no longer applies, run `zero generate video -h` to discover the current flags, models, and providers.",
+    ].join("\n"),
+  };
+}
+
+function buildAvatarGenerationTemplatePrompt(
+  avatarId: number,
+  voiceId: string | undefined,
+  aspectRatio: "portrait" | "landscape" | "square" | undefined,
+): GenerationTemplatePromptResult {
+  const selectedVoiceLines = voiceId
+    ? [`- Public JoggAI voice ID: ${voiceId}`]
+    : [];
+  const voiceInstructionLines = voiceId
+    ? [
+        `- Keep voice ID ${voiceId} exactly; do not list voices or substitute a different voice.`,
+      ]
+    : [
+        "- List the available voices with `zero generate avatar-video --provider built-in --list-voices --json`, applying a voice-language filter when the user specifies a language, then choose a suitable voice.",
+      ];
+  const generationVoiceId = voiceId ?? "<voice-id>";
+  const generationAspectRatio = aspectRatio ?? "portrait";
+  return {
+    status: "resolved",
+    prompt: [
+      ...templateFraming("a talking-avatar video"),
+      "Selected talking-avatar template:",
+      "- Artifact type: talking-avatar video",
+      `- Public JoggAI avatar ID: ${avatarId}`,
+      ...selectedVoiceLines,
+      `- Aspect ratio: ${generationAspectRatio}`,
+      "",
+      "When you produce a talking-avatar video from the user's request:",
+      `- Keep avatar ID ${avatarId} exactly; do not list avatars or substitute a different avatar.`,
+      "- Run `zero generate avatar-video -h` to inspect the current supported flags.",
+      ...voiceInstructionLines,
+      `- Generate with \`zero generate avatar-video --provider built-in --avatar-id ${avatarId} --voice-id ${generationVoiceId} --aspect-ratio ${generationAspectRatio} --script "<script>"\`.`,
+      "- If the user provides a public audio URL, use `--audio-url` instead of `--script`.",
+      "- Return the generated `/f/` video URL as the final deliverable.",
+      "- Use a connector/provider only when the user explicitly requests one.",
     ].join("\n"),
   };
 }

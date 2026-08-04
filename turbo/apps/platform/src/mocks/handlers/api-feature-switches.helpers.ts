@@ -28,7 +28,7 @@ export function setMockFeatureSwitches(
         supportsCustomConnectorOAuth2: true,
         supportsCustomModelGateways: true,
         supportsImageRecognition: true,
-        imageRecognitionRolloutComplete: true,
+        supportsAvatarTemplates: true,
       });
     }),
   );
