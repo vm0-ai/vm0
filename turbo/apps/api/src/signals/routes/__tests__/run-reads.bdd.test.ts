@@ -3554,7 +3554,6 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       }),
     ).toMatchObject({
       triggerSource: "agent",
-      triggerAgentName: null,
     });
     expect(listed.body.filters.sources).toContain("agent");
 
@@ -3566,7 +3565,6 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     expect(detail.body).toMatchObject({
       id: historicalAgentRun.runId,
       triggerSource: "agent",
-      triggerAgentName: null,
     });
   });
 

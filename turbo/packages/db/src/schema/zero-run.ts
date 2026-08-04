@@ -9,7 +9,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
-import { agentComposes } from "./agent-compose";
 import { chatThreads } from "./chat-thread";
 import { zeroWorkflowAutomations } from "./zero-workflow";
 import { threadGoals } from "./thread-goal";
@@ -44,13 +43,6 @@ export const zeroRuns = pgTable(
     goalId: uuid("goal_id").references(
       (): AnyPgColumn => {
         return threadGoals.id;
-      },
-      { onDelete: "set null" },
-    ),
-    // References agent_composes.id of the agent that triggered this run (agent-to-agent delegation)
-    triggerAgentId: uuid("trigger_agent_id").references(
-      () => {
-        return agentComposes.id;
       },
       { onDelete: "set null" },
     ),
