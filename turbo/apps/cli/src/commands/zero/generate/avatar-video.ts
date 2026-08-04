@@ -471,13 +471,19 @@ export const avatarVideoCommand = new Command()
     "after",
     `
 Examples:
-  List providers:        zero generate avatar-video
-  List avatars:          zero generate avatar-video --list-avatars
-  List voices:           zero generate avatar-video --list-voices --voice-language english
-  Generate from script:  zero generate avatar-video --avatar-id 81 --voice-id en-US-ChristopherNeural --script "Welcome to vm0"
-  Pipe a script:         cat script.txt | zero generate avatar-video --avatar-id 81 --voice-id en-US-ChristopherNeural
-  Generate from audio:   zero generate avatar-video --avatar-id 81 --voice-id en-US-ChristopherNeural --audio-url https://example.com/voice.mp3
-  Use BYOK connector:    zero generate avatar-video --provider joggai
+  List provider choices: zero generate avatar-video
+  Generate from audio:   zero generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural --audio-url https://example.com/voice.mp3
+  Pipe a script:         cat script.txt | zero generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural
+
+Built-in workflow (vm0 credits):
+  1. zero generate avatar-video --provider built-in --list-avatars
+  2. zero generate avatar-video --provider built-in --list-voices --voice-language english
+  3. zero generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural --script "Welcome to vm0"
+
+JoggAI connector workflow (BYOK):
+  1. zero connector status joggai
+  2. zero generate avatar-video --provider joggai
+     Follow the printed JoggAI skill guidance for direct provider operations.
 
 Output:
   Prints the generated /f/ video URL and metadata. Use --json for a complete,
@@ -488,6 +494,7 @@ Notes:
   - Use exactly one of --script (or piped stdin) and --audio-url.
   - Public avatar and voice IDs are discoverable with the list flags.
   - Built-in generation uses vm0-managed JoggAI credentials and charges org credits.
+  - Connector generation uses the connected JoggAI account and provider credits.
   - Authenticates via ZERO_TOKEN and requires file:write capability.`,
   )
   .action(withErrorHandler(runAvatarVideoCommand));

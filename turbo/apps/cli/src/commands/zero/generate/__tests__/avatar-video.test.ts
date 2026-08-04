@@ -3,6 +3,7 @@ import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "../../../../mocks/server";
+import { avatarVideoCommand } from "../avatar-video";
 import { generateCommand } from "../index";
 
 const AVATARS_URL = "http://localhost:3000/api/zero/avatar-video/avatars";
@@ -71,6 +72,30 @@ describe("zero generate avatar-video command", () => {
   afterEach(() => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+  });
+
+  it("documents built-in and connector workflows in help", () => {
+    let helpOutput = "";
+    avatarVideoCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    avatarVideoCommand.outputHelp();
+
+    expect(helpOutput).toContain("Built-in workflow (vm0 credits):");
+    expect(helpOutput).toContain(
+      "zero generate avatar-video --provider built-in --list-avatars",
+    );
+    expect(helpOutput).toContain(
+      "zero generate avatar-video --provider built-in --list-voices",
+    );
+    expect(helpOutput).toContain("JoggAI connector workflow (BYOK):");
+    expect(helpOutput).toContain("zero connector status joggai");
+    expect(helpOutput).toContain(
+      "zero generate avatar-video --provider joggai",
+    );
   });
 
   it("lists filtered public avatars as JSON", async () => {
