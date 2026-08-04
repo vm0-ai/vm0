@@ -50,6 +50,13 @@
       "when": 1785814884941,
       "tag": "0814_drop_feishu_chat_open_url",
       "breakpoints": true
+    },
+    {
+      "idx": 815,
+      "version": "7",
+      "when": 1785816291872,
+      "tag": "0815_clammy_wendigo",
+      "breakpoints": true
     }
   ]
 }
