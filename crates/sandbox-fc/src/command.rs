@@ -19,6 +19,7 @@ const PIPE_READ_CHUNK_BYTES: usize = 8192;
 #[error("command failed: {command}\n{detail}")]
 pub struct CommandError {
     pub command: String,
+    pub exit_code: Option<i32>,
     pub detail: String,
 }
 
@@ -180,6 +181,7 @@ pub async fn exec_with_timeout(
         .await
         .map_err(|e| CommandError {
             command: cmd_display.clone(),
+            exit_code: None,
             detail: e.to_string(),
         })?;
 
@@ -190,6 +192,7 @@ pub async fn exec_with_timeout(
         let stderr = output.stderr.to_lossy_trimmed_string();
         Err(CommandError {
             command: cmd_display,
+            exit_code: output.status.code(),
             detail: stderr,
         })
     }
@@ -209,6 +212,7 @@ pub async fn exec_status_with_timeout(
             .await
             .map_err(|e| CommandError {
                 command: cmd_display.clone(),
+                exit_code: None,
                 detail: e.to_string(),
             })?;
 
@@ -218,6 +222,7 @@ pub async fn exec_status_with_timeout(
         let stderr = output.stderr.to_lossy_trimmed_string();
         Err(CommandError {
             command: cmd_display,
+            exit_code: output.status.code(),
             detail: stderr,
         })
     }
@@ -760,6 +765,7 @@ mod tests {
             "command was: {}",
             err.command
         );
+        assert_eq!(err.exit_code, Some(1));
     }
 
     #[tokio::test]
@@ -888,6 +894,7 @@ mod tests {
         .unwrap_err();
 
         assert!(err.detail.contains("status-failed"), "err was: {err}");
+        assert_eq!(err.exit_code, Some(7));
     }
 
     #[test]
