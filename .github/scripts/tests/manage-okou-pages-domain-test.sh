@@ -40,11 +40,13 @@ case "$url" in
       echo "the paginated Pages domain list must not be used for existence checks" >&2
       exit 1
     fi
-    if [[ "${MOCK_PAGES_CREATE_ERROR:-false}" == "true" ]]; then
+    if [[ "${MOCK_PAGES_DUPLICATE_CREATE:-false}" == "true" ]]; then
+      printf '{"success":false,"errors":[{"code":8000018,"message":"domain already added"}],"result":null}\n'
+    elif [[ "${MOCK_PAGES_CREATE_ERROR:-false}" == "true" ]]; then
       printf '{"success":false,"errors":[{"code":8000042,"message":"domain create failed"}],"result":null}\n'
-      exit 22
+    else
+      printf '{"success":true,"result":{"name":"pr-22239-app.omby.ai","status":"active","verification_data":{"status":"active"}}}\n'
     fi
-    printf '{"success":true,"result":{"name":"pr-22239-app.omby.ai","status":"active","verification_data":{"status":"active"}}}\n'
     ;;
   */pages/projects/okou-app/domains/pr-22239-app.omby.ai)
     if [[ -n "${MOCK_PAGES_PENDING_RESPONSES:-}" ]]; then
@@ -148,6 +150,19 @@ status="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
 test "$status" = "active"
 grep -q -- '--request POST' "$request_log"
 test "$(grep -c '/pages/projects/okou-app/domains/pr-22239-app.omby.ai' "$request_log")" = "1"
+
+: > "$request_log"
+export MOCK_PAGES_DUPLICATE_CREATE="true"
+export MOCK_DNS_CONTENT="pr-22239-app.okou-app.pages.dev"
+status="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  begin account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
+test "$status" = "pending"
+grep -q -- '--request POST' "$request_log"
+grep -q 'okou-app.pages.dev' "$request_log"
+output="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  finish account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
+grep -q 'Cloudflare Pages custom branch domain configured' <<< "$output"
+unset MOCK_PAGES_DUPLICATE_CREATE
 
 : > "$request_log"
 export MOCK_PAGES_CREATE_ERROR="true"
