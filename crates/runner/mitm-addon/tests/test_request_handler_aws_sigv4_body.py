@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import json
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -16,6 +17,7 @@ import aws_sigv4_body_admission
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_streaming
+from aws_sigv4 import AwsSigV4BodyHash, hash_request_body
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.aws_sigv4_helpers import (
     RESOLVED_AWS_ACCESS_KEY_ID,
@@ -36,6 +38,43 @@ from tests.upstream_connection_helpers import mark_connected_tls_upstream
 
 _CLIENT_IP = "10.200.0.5"
 _AWS_PERMISSION = "aws-request"
+_HASH_WAIT_TIMEOUT_SECONDS = 2.0
+
+
+class _ControlledBodyHasher:
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+        self.started = asyncio.Event()
+        self.release = threading.Event()
+        self.thread_id: int | None = None
+        self._loop = loop
+
+    def __call__(self, body: bytes | None) -> AwsSigV4BodyHash:
+        self.thread_id = threading.get_ident()
+        self._loop.call_soon_threadsafe(self.started.set)
+        if not self.release.wait(timeout=_HASH_WAIT_TIMEOUT_SECONDS):
+            raise AssertionError("controlled SigV4 body hash was not released before timeout")
+        return hash_request_body(body)
+
+
+async def _wait_for_hash_start(
+    hasher: _ControlledBodyHasher,
+    request_task: asyncio.Task[None],
+) -> None:
+    started_task = asyncio.create_task(hasher.started.wait())
+    try:
+        done, _pending = await asyncio.wait(
+            (started_task, request_task),
+            return_when=asyncio.FIRST_COMPLETED,
+            timeout=_HASH_WAIT_TIMEOUT_SECONDS,
+        )
+        if started_task in done and started_task.result():
+            return
+        if request_task in done:
+            _ = await request_task
+            raise AssertionError("request finished before SigV4 body hashing started")
+        raise AssertionError("SigV4 body hashing did not start before timeout")
+    finally:
+        await cancel_pending_task(started_task)
 
 
 def _resolved_token_meta() -> dict[str, object]:
@@ -139,6 +178,11 @@ async def test_payload_independent_sigv4_signs_before_streaming(
     with (
         mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
+        patch.object(
+            auth,
+            "hash_request_body",
+            side_effect=AssertionError("body-independent signing submitted a body hash"),
+        ),
     ):
         await await_requestheaders_result(mitm_addon.requestheaders(flow))
 
@@ -300,6 +344,160 @@ async def test_payload_dependent_sigv4_holds_admission_until_terminal_cleanup(
     get_headers.assert_awaited_once()
     assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
     assert metadata_keys.AWS_SIGV4_BODY_ADMISSION not in flow.metadata
+
+
+async def test_payload_dependent_sigv4_hashing_allows_event_loop_progress(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    body = b"body"
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        body=body,
+        content_length=str(len(body)),
+    )
+    get_headers = AsyncMock(return_value=_resolved_token_meta())
+    event_loop_thread_id = threading.get_ident()
+    hasher = _ControlledBodyHasher(asyncio.get_running_loop())
+    request_task: asyncio.Task[None] | None = None
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+        patch.object(auth, "hash_request_body", hasher),
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        request_task = asyncio.create_task(mitm_addon.request(flow))
+        try:
+            await _wait_for_hash_start(hasher, request_task)
+
+            assert hasher.thread_id is not None
+            assert hasher.thread_id != event_loop_thread_id
+            assert not request_task.done()
+            assert RESOLVED_AWS_ACCESS_KEY_ID not in flow.request.headers["authorization"]
+
+            progressed = asyncio.create_task(asyncio.sleep(0, result=True))
+            assert await progressed is True
+            assert not request_task.done()
+
+            hasher.release.set()
+            _ = await request_task
+
+            assert (
+                f"Credential={RESOLVED_AWS_ACCESS_KEY_ID}/" in flow.request.headers["authorization"]
+            )
+            assert aws_sigv4_body_admission.state_for_tests() == (1, len(body))
+
+            flow.response = http.Response.make(200, b"ok")
+            mitm_addon.response(flow)
+        finally:
+            hasher.release.set()
+            await cancel_pending_task(request_task)
+
+    get_headers.assert_awaited_once()
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+
+
+async def test_payload_dependent_sigv4_cancellation_waits_for_hash_completion(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    body = b"body"
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        body=body,
+        content_length=str(len(body)),
+    )
+    get_headers = AsyncMock(return_value=_resolved_token_meta())
+    hasher = _ControlledBodyHasher(asyncio.get_running_loop())
+    request_task: asyncio.Task[None] | None = None
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+        patch.object(auth, "hash_request_body", hasher),
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        request_task = asyncio.create_task(mitm_addon.request(flow))
+        try:
+            await _wait_for_hash_start(hasher, request_task)
+
+            request_task.cancel()
+            await asyncio.sleep(0)
+            assert not request_task.done()
+            request_task.cancel()
+            await asyncio.sleep(0)
+            assert not request_task.done()
+            assert aws_sigv4_body_admission.state_for_tests() == (1, len(body))
+            assert metadata_keys.AWS_SIGV4_BODY_ADMISSION in flow.metadata
+
+            hasher.release.set()
+            with pytest.raises(asyncio.CancelledError):
+                _ = await request_task
+        finally:
+            hasher.release.set()
+            await cancel_pending_task(request_task)
+
+    get_headers.assert_awaited_once()
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+    assert metadata_keys.AWS_SIGV4_BODY_ADMISSION not in flow.metadata
+
+
+async def test_payload_dependent_sigv4_revalidates_upstream_after_hashing(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    body = b"body"
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        body=body,
+        content_length=str(len(body)),
+    )
+    get_headers = AsyncMock(return_value=_resolved_token_meta())
+    hasher = _ControlledBodyHasher(asyncio.get_running_loop())
+    request_task: asyncio.Task[None] | None = None
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+        patch.object(auth, "hash_request_body", hasher),
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        request_task = asyncio.create_task(mitm_addon.request(flow))
+        try:
+            await _wait_for_hash_start(hasher, request_task)
+
+            flow.server_conn.state = connection.ConnectionState.CLOSED
+            mitm_addon.server_disconnected(SimpleNamespace(server=flow.server_conn))
+            hasher.release.set()
+            _ = await request_task
+
+            assert flow.response is not None
+            assert flow.response.status_code == 403
+            assert flow.response.content is not None
+            assert json.loads(flow.response.content)["error"] == "upstream_destination_unbound"
+            assert RESOLVED_AWS_ACCESS_KEY_ID not in flow.request.headers["authorization"]
+            assert aws_sigv4_body_admission.state_for_tests() == (1, len(body))
+
+            mitm_addon.response(flow)
+        finally:
+            hasher.release.set()
+            await cancel_pending_task(request_task)
+
+    get_headers.assert_awaited_once()
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
 
 
 async def test_payload_dependent_sigv4_holds_admission_until_websocket_end(
