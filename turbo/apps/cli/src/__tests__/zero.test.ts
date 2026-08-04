@@ -48,6 +48,7 @@ describe("zero CLI program", () => {
       "scrape",
       "web-search",
       "people-search",
+      "recognize",
       "finance",
       "banking",
     ];
@@ -72,7 +73,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 39 commands", () => {
-    expect(commandNames).toHaveLength(39);
+  it("should have exactly 40 commands", () => {
+    expect(commandNames).toHaveLength(40);
   });
 });

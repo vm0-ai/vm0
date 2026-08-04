@@ -21,6 +21,8 @@ export const apiFeatureSwitchesHandlers = [
       switches: DEFAULT_SWITCH_OVERRIDES,
       effectiveSwitches: DEFAULT_SWITCH_OVERRIDES,
       supportsCustomConnectorOAuth2: true,
+      supportsImageRecognition: true,
+      imageRecognitionRolloutComplete: true,
     });
   }),
 
@@ -29,6 +31,8 @@ export const apiFeatureSwitchesHandlers = [
       switches: body.switches,
       effectiveSwitches: body.switches,
       supportsCustomConnectorOAuth2: true,
+      supportsImageRecognition: true,
+      imageRecognitionRolloutComplete: true,
     });
   }),
 
