@@ -13,8 +13,47 @@ use crate::paths::RunnerPaths;
 use crate::provider::{RunnerPreference, RunnerPreferenceReason};
 use crate::types::SandboxReuseResult;
 use crate::workspace_image_cache::WorkspaceImageCache;
+use tracing::instrument::WithSubscriber;
+use tracing_subscriber::prelude::*;
+use tracing_test_support::CapturedEvents;
 
 const NON_SELECTED_RUNNER_ID: u128 = 1;
+
+fn spawn_run_with_candidate_observations(
+    config: RunConfig,
+) -> (tokio::task::JoinHandle<RunnerResult<()>>, CapturedEvents) {
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    (
+        tokio::spawn(run(config).with_subscriber(subscriber)),
+        captured,
+    )
+}
+
+fn assert_candidate_observation(
+    captured: &CapturedEvents,
+    successor_run_id: RunId,
+    predecessor_run_id: RunId,
+    outcome: &str,
+) {
+    let successor_run_id = successor_run_id.to_string();
+    let predecessor_run_id = predecessor_run_id.to_string();
+    let heartbeat_generation = TEST_HEARTBEAT_GENERATION.to_string();
+    assert!(
+        captured.entries().iter().any(|event| {
+            event.level == tracing::Level::INFO
+                && event.fields.get("measurement").map(String::as_str)
+                    == Some("pre_park_successor_handoff")
+                && event.fields.get("successor_run_id") == Some(&successor_run_id)
+                && event.fields.get("predecessor_run_id") == Some(&predecessor_run_id)
+                && event.fields.get("runner_id").map(String::as_str) == Some(TEST_RUNNER_ID)
+                && event.fields.get("heartbeat_generation") == Some(&heartbeat_generation)
+                && event.fields.get("outcome").map(String::as_str) == Some(outcome)
+        }),
+        "missing {outcome} candidate observation for {successor_run_id}; events={:#?}",
+        captured.entries()
+    );
+}
 
 fn preferred_candidate(
     run_id: RunId,
@@ -621,7 +660,7 @@ async fn selected_finalizing_candidate_claims_exact_resource_on_reuse_state_wake
         Arc::clone(&env.reuse_state_notify),
         Some(reuse_key.to_owned()),
     );
-    let run_handle = tokio::spawn(run(config));
+    let (run_handle, captured) = spawn_run_with_candidate_observations(config);
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     let run_id = RunId::new_v4();
@@ -657,7 +696,54 @@ async fn selected_finalizing_candidate_claims_exact_resource_on_reuse_state_wake
         .await
         .expect("exact resource state should wake the retained candidate");
     assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    for outcome in ["received", "retained", "claimed"] {
+        assert_candidate_observation(&captured, run_id, history_generation_run_id, outcome);
+    }
     drop(predecessor_guard);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn selected_finalizing_candidate_records_claim_loss_and_restores_exact_resource() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = "thread:finalizing-claim-loss";
+    let history_generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_history_generation(
+        &env.idle_pool,
+        &budget,
+        reuse_key,
+        "vm0/default",
+        2,
+        4096,
+        history_generation_run_id,
+    )
+    .await;
+    let (run_handle, captured) = spawn_run_with_candidate_observations(config);
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(run_id, None);
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate(
+            run_id,
+            reuse_key,
+            history_generation_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+        ))
+        .unwrap();
+
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    assert_candidate_observation(&captured, run_id, history_generation_run_id, "claim_lost");
+    assert_eq!(
+        env.idle_pool.lock().await.held_reuse_keys(),
+        vec![reuse_key.to_string()],
+        "lost claim should restore the exact reusable resource"
+    );
 
     shutdown(&env, run_handle).await;
 }
@@ -707,7 +793,7 @@ async fn same_run_duplicate_does_not_renew_pending_finalizing_deadline() {
         Arc::clone(&env.reuse_state_notify),
         Some(reuse_key.to_owned()),
     );
-    let run_handle = tokio::spawn(run(config));
+    let (run_handle, captured) = spawn_run_with_candidate_observations(config);
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     let run_id = RunId::new_v4();
@@ -765,6 +851,7 @@ async fn same_run_duplicate_does_not_renew_pending_finalizing_deadline() {
         claimed.runner_preference().is_none(),
         "expiry should clear the advisory preference before ordinary admission"
     );
+    assert_candidate_observation(&captured, run_id, history_generation_run_id, "expired");
 
     drop(predecessor_guard);
     shutdown(&env, run_handle).await;
@@ -785,7 +872,7 @@ async fn pending_slot_overflow_does_not_retain_a_distinct_candidate() {
         Arc::clone(&env.reuse_state_notify),
         Some(second_reuse_key.to_owned()),
     );
-    let run_handle = tokio::spawn(run(config));
+    let (run_handle, captured) = spawn_run_with_candidate_observations(config);
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     let first_run_id = RunId::new_v4();
@@ -806,6 +893,7 @@ async fn pending_slot_overflow_does_not_retain_a_distinct_candidate() {
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     let second_run_id = RunId::new_v4();
+    let second_history_generation_run_id = RunId::new_v4();
     env.provider.set_claim_result(
         second_run_id,
         Some(context_with_reuse_key(second_run_id, second_reuse_key)),
@@ -815,7 +903,7 @@ async fn pending_slot_overflow_does_not_retain_a_distinct_candidate() {
         .send(finalizing_candidate(
             second_run_id,
             second_reuse_key,
-            RunId::new_v4(),
+            second_history_generation_run_id,
             TEST_RUNNER_ID,
             TEST_HEARTBEAT_GENERATION,
         ))
@@ -846,6 +934,12 @@ async fn pending_slot_overflow_does_not_retain_a_distinct_candidate() {
             .iter()
             .any(|candidate| candidate.run_id() == second_run_id)
     );
+    assert_candidate_observation(
+        &captured,
+        second_run_id,
+        second_history_generation_run_id,
+        "slot_occupied",
+    );
 
     shutdown(&env, run_handle).await;
 }
@@ -859,10 +953,11 @@ async fn drain_discards_pending_finalizing_candidate_without_claiming() {
         Arc::clone(&env.reuse_state_notify),
         Some(reuse_key.to_owned()),
     );
-    let run_handle = tokio::spawn(run(config));
+    let (run_handle, captured) = spawn_run_with_candidate_observations(config);
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     let run_id = RunId::new_v4();
+    let history_generation_run_id = RunId::new_v4();
     env.provider
         .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
     env.handle
@@ -870,7 +965,7 @@ async fn drain_discards_pending_finalizing_candidate_without_claiming() {
         .send(finalizing_candidate(
             run_id,
             reuse_key,
-            RunId::new_v4(),
+            history_generation_run_id,
             TEST_RUNNER_ID,
             TEST_HEARTBEAT_GENERATION,
         ))
@@ -885,6 +980,7 @@ async fn drain_discards_pending_finalizing_candidate_without_claiming() {
     )
     .await;
     assert!(env.handle.claim_candidates().is_empty());
+    assert_candidate_observation(&captured, run_id, history_generation_run_id, "cancelled");
 
     drop(predecessor_guard);
 }

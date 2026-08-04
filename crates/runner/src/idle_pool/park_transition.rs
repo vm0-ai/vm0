@@ -4,8 +4,8 @@ use std::sync::Arc;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use futures_util::FutureExt;
 use sandbox::{
-    DeviceRateLimits, Sandbox, SandboxFactory, SandboxId, SandboxParkNonReusableReason,
-    SandboxParkOutcome,
+    DeviceRateLimits, Sandbox, SandboxFactory, SandboxFinalExecParkObserver, SandboxId,
+    SandboxParkNonReusableReason, SandboxParkOutcome,
 };
 
 use crate::idle_reuse_preparation::IdleReusePreparation;
@@ -101,7 +101,23 @@ impl IdleParkRequest {
         Self { parts }
     }
 
+    #[cfg(test)]
     pub(crate) async fn park_for_idle(self) -> Result<IdleParkOutcome, IdleParkFailure> {
+        self.park_for_idle_with_optional_observer(None).await
+    }
+
+    pub(crate) async fn park_for_idle_with_observer(
+        self,
+        observer: &mut dyn SandboxFinalExecParkObserver,
+    ) -> Result<IdleParkOutcome, IdleParkFailure> {
+        self.park_for_idle_with_optional_observer(Some(observer))
+            .await
+    }
+
+    async fn park_for_idle_with_optional_observer(
+        self,
+        observer: Option<&mut dyn SandboxFinalExecParkObserver>,
+    ) -> Result<IdleParkOutcome, IdleParkFailure> {
         let IdleParkRequestParts {
             run_id,
             mut sandbox,
@@ -195,11 +211,15 @@ impl IdleParkRequest {
 
         let final_exec_and_park = {
             let request = preparation.exec_request();
-            AssertUnwindSafe(
-                sandbox.final_exec_and_park(&request, "idle-reuse-preparation-and-park"),
-            )
-            .catch_unwind()
-            .await
+            let transition = match observer {
+                Some(observer) => sandbox.final_exec_and_park_with_observer(
+                    &request,
+                    "idle-reuse-preparation-and-park",
+                    observer,
+                ),
+                None => sandbox.final_exec_and_park(&request, "idle-reuse-preparation-and-park"),
+            };
+            AssertUnwindSafe(transition).catch_unwind().await
         };
         match final_exec_and_park {
             Ok(Ok(outcome)) => {

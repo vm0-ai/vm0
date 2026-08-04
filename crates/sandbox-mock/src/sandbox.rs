@@ -4,7 +4,7 @@ use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ::sandbox::*;
 use async_trait::async_trait;
@@ -357,6 +357,59 @@ impl Sandbox for MockSandbox {
             .exec_with_diagnostic_label(request, diagnostic_label)
             .await?;
         let park_outcome = self.park().await?;
+        Ok(SandboxFinalExecParkOutcome {
+            exec_result,
+            park_outcome,
+        })
+    }
+
+    async fn final_exec_and_park_with_observer(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+        observer: &mut dyn SandboxFinalExecParkObserver,
+    ) -> Result<SandboxFinalExecParkOutcome> {
+        let preparation_started = Instant::now();
+        let exec_result = match self
+            .exec_with_diagnostic_label(request, diagnostic_label)
+            .await
+        {
+            Ok(exec_result) => {
+                observer.record_stage(
+                    SandboxFinalExecParkStage::ReusePreparation,
+                    preparation_started.elapsed(),
+                    true,
+                );
+                exec_result
+            }
+            Err(error) => {
+                observer.record_stage(
+                    SandboxFinalExecParkStage::ReusePreparation,
+                    preparation_started.elapsed(),
+                    false,
+                );
+                return Err(error);
+            }
+        };
+        let physical_park_started = Instant::now();
+        let park_outcome = match self.park().await {
+            Ok(park_outcome) => {
+                observer.record_stage(
+                    SandboxFinalExecParkStage::PhysicalPark,
+                    physical_park_started.elapsed(),
+                    true,
+                );
+                park_outcome
+            }
+            Err(error) => {
+                observer.record_stage(
+                    SandboxFinalExecParkStage::PhysicalPark,
+                    physical_park_started.elapsed(),
+                    false,
+                );
+                return Err(error);
+            }
+        };
         Ok(SandboxFinalExecParkOutcome {
             exec_result,
             park_outcome,

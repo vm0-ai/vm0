@@ -107,6 +107,27 @@ pub trait SandboxStartObserver: Send {
     fn record_stage(&mut self, stage: SandboxStartStage, duration: Duration, success: bool);
 }
 
+/// Fixed low-cardinality stages of the final reuse preparation and park path.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxFinalExecParkStage {
+    /// Fences normal operations, runs the final guest preparation, and reaches
+    /// the provider's safe pre-park boundary.
+    ReusePreparation,
+    /// Commits the provider-specific physical park after preparation succeeds.
+    PhysicalPark,
+}
+
+/// Receives optional final preparation and physical-park timing records.
+///
+/// Callbacks describe completed stages only and are informational: they never
+/// own lifecycle transitions, cleanup, or cancellation. A cancelled attempt
+/// can therefore omit the stage that was in progress. Implementations using
+/// the default observer-aware method report no stages.
+pub trait SandboxFinalExecParkObserver: Send {
+    /// Records one completed final-exec/park stage.
+    fn record_stage(&mut self, stage: SandboxFinalExecParkStage, duration: Duration, success: bool);
+}
+
 /// A process-isolation environment that runs guest workloads for the runner.
 ///
 /// Implementations are created by a [`SandboxFactory`](crate::SandboxFactory)
@@ -283,6 +304,20 @@ pub trait Sandbox: Send + Sync + Any {
             message: "final guest exec during park is not supported by this sandbox provider"
                 .to_string(),
         })
+    }
+
+    /// Run the final guest preparation and park while reporting provider stages.
+    ///
+    /// This has the same lifecycle and error contract as
+    /// [`final_exec_and_park`](Self::final_exec_and_park). The default method
+    /// preserves provider behavior and emits no callbacks.
+    async fn final_exec_and_park_with_observer(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+        _observer: &mut dyn SandboxFinalExecParkObserver,
+    ) -> Result<SandboxFinalExecParkOutcome> {
+        self.final_exec_and_park(request, diagnostic_label).await
     }
 
     /// Transition the sandbox back to the active state.

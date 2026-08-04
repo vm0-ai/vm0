@@ -6,10 +6,13 @@
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use chrono::SecondsFormat;
 use futures_util::FutureExt;
-use sandbox::{Sandbox, SandboxFactory, SandboxId};
+use sandbox::{
+    Sandbox, SandboxFactory, SandboxFinalExecParkObserver, SandboxFinalExecParkStage, SandboxId,
+};
 use tracing::{info, warn};
 
 use super::heartbeat::WorkspaceCacheStateSnapshot;
@@ -37,6 +40,7 @@ use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::run_cancellation::RunCancellationHandle;
 use crate::status::StatusTracker;
 use crate::storage_fingerprints::StorageFingerprints;
+use crate::telemetry::JobTelemetry;
 use crate::types::reuse_key_kind;
 use crate::types::{HeldWorkspaceState, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheCapability};
 use crate::workspace_image_cache::{
@@ -44,6 +48,74 @@ use crate::workspace_image_cache::{
     WorkspaceImagePromotionRequest,
 };
 use crate::workspace_promotion::prepare_workspace_image_from_active_sandbox;
+
+struct FinalizationTelemetry<'a> {
+    telemetry: Option<&'a mut JobTelemetry>,
+    physical_park_completed_at: Option<Instant>,
+}
+
+impl<'a> FinalizationTelemetry<'a> {
+    fn new(telemetry: &'a mut JobTelemetry) -> Self {
+        Self {
+            telemetry: Some(telemetry),
+            physical_park_completed_at: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn disabled() -> Self {
+        Self {
+            telemetry: None,
+            physical_park_completed_at: None,
+        }
+    }
+
+    fn record_idle_publication(&mut self, success: bool, error: Option<&'static str>) {
+        let Some(started_at) = self.physical_park_completed_at else {
+            return;
+        };
+        if let Some(telemetry) = self.telemetry.as_deref_mut() {
+            telemetry.record(
+                "runner_host_idle_publication",
+                started_at.elapsed(),
+                success,
+                error,
+            );
+        }
+    }
+
+    fn record_outcome(&mut self, action_type: &'static str, error: &'static str) {
+        if let Some(telemetry) = self.telemetry.as_deref_mut() {
+            telemetry.record(action_type, Duration::ZERO, false, Some(error));
+        }
+    }
+}
+
+impl SandboxFinalExecParkObserver for FinalizationTelemetry<'_> {
+    fn record_stage(
+        &mut self,
+        stage: SandboxFinalExecParkStage,
+        duration: Duration,
+        success: bool,
+    ) {
+        let (action_type, error) = match stage {
+            SandboxFinalExecParkStage::ReusePreparation => (
+                "runner_host_reuse_preparation",
+                (!success).then_some("reuse preparation failed"),
+            ),
+            SandboxFinalExecParkStage::PhysicalPark => (
+                "runner_host_physical_park",
+                (!success).then_some("physical park failed"),
+            ),
+        };
+        if let Some(telemetry) = self.telemetry.as_deref_mut() {
+            telemetry.record(action_type, duration, success, error);
+        }
+        if stage == SandboxFinalExecParkStage::PhysicalPark && success {
+            self.physical_park_completed_at = Some(Instant::now());
+        }
+    }
+}
 
 fn local_completed_at() -> String {
     chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
@@ -118,10 +190,45 @@ pub(super) struct FinalizeContext {
 /// cancellation is not active, the parking gate is open, and a reuse key is
 /// available. Otherwise, or if hard cancellation wins before ownership
 /// transfer or parking cannot complete, the sandbox is stopped and destroyed.
-pub(super) async fn finalize_sandbox_for_completion(
+pub(super) async fn finalize_sandbox_for_completion_with_telemetry(
     sandbox: Option<Box<dyn Sandbox>>,
     active_lease: ActiveBudgetLease,
     completion_payload: CompletionPayload,
+    telemetry: &mut JobTelemetry,
+    ctx: FinalizeContext,
+) -> CompletionReady {
+    finalize_sandbox_for_completion_inner(
+        sandbox,
+        active_lease,
+        completion_payload,
+        FinalizationTelemetry::new(telemetry),
+        ctx,
+    )
+    .await
+}
+
+#[cfg(test)]
+async fn finalize_sandbox_for_completion(
+    sandbox: Option<Box<dyn Sandbox>>,
+    active_lease: ActiveBudgetLease,
+    completion_payload: CompletionPayload,
+    ctx: FinalizeContext,
+) -> CompletionReady {
+    finalize_sandbox_for_completion_inner(
+        sandbox,
+        active_lease,
+        completion_payload,
+        FinalizationTelemetry::disabled(),
+        ctx,
+    )
+    .await
+}
+
+async fn finalize_sandbox_for_completion_inner(
+    sandbox: Option<Box<dyn Sandbox>>,
+    active_lease: ActiveBudgetLease,
+    completion_payload: CompletionPayload,
+    mut telemetry: FinalizationTelemetry<'_>,
     ctx: FinalizeContext,
 ) -> CompletionReady {
     let Some(sandbox) = sandbox else {
@@ -168,6 +275,9 @@ pub(super) async fn finalize_sandbox_for_completion(
     };
     let cancelled = cancel.is_cancelled();
     let hard_cancelled = cancel.is_hard_cancelled();
+    if cancelled {
+        telemetry.record_outcome("runner_host_finalization_cancelled", "cancelled");
+    }
     let terminal_status = workspace_terminal_status(exit_code, cancelled);
     let completed_at = local_completed_at();
     let resolved_cli_agent_session_id = cli_agent_session_id
@@ -229,7 +339,10 @@ pub(super) async fn finalize_sandbox_for_completion(
             workspace_image_size_bytes,
             workspace_promotion,
         });
-        let park_outcome = match park_request.park_for_idle().await {
+        let park_outcome = match park_request
+            .park_for_idle_with_observer(&mut telemetry)
+            .await
+        {
             Ok(outcome) => outcome,
             Err(failure) => match failure.into_parts() {
                 IdleParkFailureParts::Active {
@@ -237,6 +350,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     reason,
                     error,
                 } => {
+                    telemetry.record_idle_publication(false, Some(reason));
                     let IdleParkActiveParts {
                         sandbox,
                         factory: failure_factory,
@@ -289,6 +403,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     reason,
                     error,
                 } => {
+                    telemetry.record_idle_publication(false, Some(reason));
                     warn!(
                         run_id = %run_id,
                         reuse_key_fingerprint = %reuse_key_fingerprint,
@@ -327,6 +442,8 @@ pub(super) async fn finalize_sandbox_for_completion(
         };
         let (candidate, non_reusable_reason) = park_outcome.into_parts();
         if cancel.is_hard_cancelled() {
+            telemetry.record_outcome("runner_host_finalization_cancelled", "cancelled");
+            telemetry.record_idle_publication(false, Some("cancelled"));
             let (payload, budget_lease) = candidate.into_active_destroy_parts();
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             info!(
@@ -351,6 +468,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             );
             destroy_result.budget
         } else if let Some(reason) = non_reusable_reason {
+            telemetry.record_idle_publication(false, Some("non_reusable"));
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             info!(
                 run_id = %run_id,
@@ -390,6 +508,8 @@ pub(super) async fn finalize_sandbox_for_completion(
                     drop(pool);
                     let transfer_guard = cancel.transfer_guard().await;
                     if cancel.is_hard_cancelled() {
+                        telemetry.record_outcome("runner_host_finalization_cancelled", "cancelled");
+                        telemetry.record_idle_publication(false, Some("cancelled"));
                         info!(
                             run_id = %run_id,
                             reuse_key_fingerprint = %reuse_key_fingerprint,
@@ -421,6 +541,8 @@ pub(super) async fn finalize_sandbox_for_completion(
                     continue;
                 };
                 if cancel.is_hard_cancelled() {
+                    telemetry.record_outcome("runner_host_finalization_cancelled", "cancelled");
+                    telemetry.record_idle_publication(false, Some("cancelled"));
                     info!(
                         run_id = %run_id,
                         reuse_key_fingerprint = %reuse_key_fingerprint,
@@ -482,6 +604,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                             .publish_idle_status_after_pool_transfer(snapshot)
                             .await;
                         reuse_state_changed = true;
+                        telemetry.record_idle_publication(true, None);
                         reuse_state_notify.notify_one();
                         BudgetOwnership::idle_owned()
                     }
@@ -507,6 +630,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                             .publish_idle_status_after_pool_transfer(snapshot)
                             .await;
                         reuse_state_changed = true;
+                        telemetry.record_idle_publication(true, None);
                         reuse_state_notify.notify_one();
                         // The replaced VM was park()ed when it entered the
                         // pool; destroying a parked sandbox is safe — Drop
@@ -518,6 +642,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         BudgetOwnership::idle_owned()
                     }
                     ParkResult::Rejected(rejected) => {
+                        telemetry.record_idle_publication(false, Some("idle_pool_rejected"));
                         info!(
                             run_id = %run_id,
                             reuse_key_fingerprint = %reuse_key_fingerprint,
