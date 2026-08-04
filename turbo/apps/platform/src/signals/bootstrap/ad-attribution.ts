@@ -8,6 +8,8 @@ import {
 const AD_ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 
 const STORED_AD_ATTRIBUTION_KEY = "vm0.adAttribution";
+const GOOGLE_ANALYTICS_CLIENT_ID_COOKIE = "_ga";
+const GOOGLE_ANALYTICS_CLIENT_ID_METADATA_PARAM = "ga_client_id";
 
 const AD_ATTRIBUTION_PARAMS = [
   "source_type",
@@ -99,6 +101,23 @@ function readCookie(name: string, cookieString: string): string | null {
   return null;
 }
 
+function googleAnalyticsClientIdFromCookie(
+  cookieString: string,
+): string | undefined {
+  const value = readCookie(GOOGLE_ANALYTICS_CLIENT_ID_COOKIE, cookieString);
+  if (!value) {
+    return undefined;
+  }
+
+  const parts = value.split(".");
+  if (parts.length < 4 || !/^GA\d+$/.test(parts[0] ?? "")) {
+    return undefined;
+  }
+
+  const clientId = parts.slice(2).join(".");
+  return /^\d+\.\d+$/.test(clientId) ? clientId : undefined;
+}
+
 // First-touch attribution forwarded across the www.vm0.ai -> app.vm0.ai hop in
 // the shared .vm0.ai cookie. A satellite on another registrable domain cannot
 // read this cookie, so its URL params remain the handoff mechanism and are
@@ -165,17 +184,14 @@ export function applyStoredAdAttribution(
 
 export function getStoredAdAttributionMetadata(
   storage: Storage | null = getSessionStorage(),
+  cookieString: string = getCookieString(),
 ): AdAttributionMetadata | undefined {
   if (!storage) {
     return undefined;
   }
 
   const stored = storage.getItem(STORED_AD_ATTRIBUTION_KEY);
-  if (!stored) {
-    return undefined;
-  }
-
-  const attributionParams = new URLSearchParams(stored);
+  const attributionParams = new URLSearchParams(stored ?? "");
   const metadata: AdAttributionMetadata = {};
 
   const sourceType = attributionParams.get("source_type");
@@ -196,6 +212,11 @@ export function getStoredAdAttributionMetadata(
       metadata[clickIdParam] = value;
       metadata[metadataParam] = "true";
     }
+  }
+
+  const gaClientId = googleAnalyticsClientIdFromCookie(cookieString);
+  if (gaClientId) {
+    metadata[GOOGLE_ANALYTICS_CLIENT_ID_METADATA_PARAM] = gaClientId;
   }
 
   return Object.keys(metadata).length > 0 ? metadata : undefined;
