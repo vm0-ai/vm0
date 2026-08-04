@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.370.0](https://github.com/vm0-ai/vm0/compare/api-v1.369.0...api-v1.370.0) (2026-08-03)
+
+
+### Features
+
+* **api:** prefer finalizing predecessor ([#24811](https://github.com/vm0-ai/vm0/issues/24811)) ([3bbf0f5](https://github.com/vm0-ai/vm0/commit/3bbf0f5b5662863a9e805f7122a2828e41b9e501))
+
+
+### Bug Fixes
+
+* **api:** reject oversized active inputs ([#24812](https://github.com/vm0-ai/vm0/issues/24812)) ([af6d086](https://github.com/vm0-ai/vm0/commit/af6d0867f75708e49848e6cfb6d5fa057cba3a47))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.266.0
+    * @vm0/connectors bumped to 1.202.7
+    * @vm0/core bumped to 8.506.1
+    * @vm0/db bumped to 1.163.2
+
 ## [1.369.0](https://github.com/vm0-ai/vm0/compare/api-v1.368.0...api-v1.369.0) (2026-08-03)
 
 
