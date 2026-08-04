@@ -25,6 +25,19 @@ const cleanupResponseSchema = z.object({
   results: z.array(cleanupResultSchema),
   exportJobsCleaned: z.number(),
   exportJobsStuck: z.number(),
+  threadlessRuns: z.object({
+    discovered: z.number().int().nonnegative(),
+    cancelled: z.number().int().nonnegative(),
+    waiting: z.number().int().nonnegative(),
+    deleted: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    errors: z.array(
+      z.object({
+        runId: z.string().uuid(),
+        error: z.string(),
+      }),
+    ),
+  }),
 });
 
 /**

@@ -1,5 +1,96 @@
 # Changelog
 
+## [0.678.2](https://github.com/vm0-ai/vm0/compare/app-v0.678.1...app-v0.678.2) (2026-08-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.266.0
+    * @vm0/connectors bumped to 1.202.7
+    * @vm0/core bumped to 8.506.1
+
+## [0.678.1](https://github.com/vm0-ai/vm0/compare/app-v0.678.0...app-v0.678.1) (2026-08-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.265.1
+    * @vm0/core bumped to 8.506.0
+
+## [0.678.0](https://github.com/vm0-ai/vm0/compare/app-v0.677.1...app-v0.678.0) (2026-08-03)
+
+
+### Features
+
+* **chat:** steer queued messages into active runs ([#24768](https://github.com/vm0-ai/vm0/issues/24768)) ([20e5855](https://github.com/vm0-ai/vm0/commit/20e5855c729bea0db9f7f4a2e3914b2adf4c26dd))
+
+
+### Bug Fixes
+
+* **platform:** scope browser cards to chat threads ([#24793](https://github.com/vm0-ai/vm0/issues/24793)) ([9d6583b](https://github.com/vm0-ai/vm0/commit/9d6583bb41e9aef9c9bf20f7d77a85873b6cbee3))
+* restrict run group ids to goals ([#24697](https://github.com/vm0-ai/vm0/issues/24697)) ([d7ef99d](https://github.com/vm0-ai/vm0/commit/d7ef99d9514f71434bf0239e3e9cd855328cfbd7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.265.0
+    * @vm0/core bumped to 8.505.0
+
+## [0.677.1](https://github.com/vm0-ai/vm0/compare/app-v0.677.0...app-v0.677.1) (2026-08-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.264.1
+    * @vm0/core bumped to 8.504.1
+
+## [0.677.0](https://github.com/vm0-ai/vm0/compare/app-v0.676.1...app-v0.677.0) (2026-08-03)
+
+
+### Features
+
+* **browser:** persist browser session screenshots ([#24667](https://github.com/vm0-ai/vm0/issues/24667)) ([3c8faad](https://github.com/vm0-ai/vm0/commit/3c8faadaeef149d2db77910b4a7d1b4547cd4d0d))
+* **core:** enable custom connector features globally ([#24696](https://github.com/vm0-ai/vm0/issues/24696)) ([7ccc87b](https://github.com/vm0-ai/vm0/commit/7ccc87bcfb0e2f51e88dad0fbd64b3bd957ac088))
+* **platform:** follow chat content growth back to the tail ([#24658](https://github.com/vm0-ai/vm0/issues/24658)) ([3ad2efd](https://github.com/vm0-ai/vm0/commit/3ad2efdfd149ace542f429bc112a9cbdcd2019fc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.264.0
+    * @vm0/core bumped to 8.504.0
+
+## [0.676.1](https://github.com/vm0-ai/vm0/compare/app-v0.676.0...app-v0.676.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **platform:** allow feature-gated visual attachments ([#24642](https://github.com/vm0-ai/vm0/issues/24642)) ([cca8c69](https://github.com/vm0-ai/vm0/commit/cca8c692ecf4f074d9327064da6d1411c116cc59))
+* **platform:** keep chat autoscroll following the tail after late growth ([#24651](https://github.com/vm0-ai/vm0/issues/24651)) ([8b17e1b](https://github.com/vm0-ai/vm0/commit/8b17e1b1014267bad15ba151db21e4458811902e))
+* stabilize segmented voice transcription ([#24689](https://github.com/vm0-ai/vm0/issues/24689)) ([647e207](https://github.com/vm0-ai/vm0/commit/647e20737f71596b422653f5233396ba2043aea4))
+
+
+### Refactoring
+
+* remove graduated composer and slack switches ([#24692](https://github.com/vm0-ai/vm0/issues/24692)) ([6634fc0](https://github.com/vm0-ai/vm0/commit/6634fc03fc79cb0439b3242ffaaa1e4817774eb8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.263.1
+    * @vm0/core bumped to 8.503.1
+
 ## [0.676.0](https://github.com/vm0-ai/vm0/compare/app-v0.675.13...app-v0.676.0) (2026-08-03)
 
 

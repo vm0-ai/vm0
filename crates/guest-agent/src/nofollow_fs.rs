@@ -16,7 +16,7 @@ use std::fs::{self, File, OpenOptions};
 #[cfg(target_os = "linux")]
 use std::io;
 #[cfg(target_os = "linux")]
-use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd};
 #[cfg(target_os = "linux")]
 use std::os::unix::ffi::OsStrExt;
 #[cfg(target_os = "linux")]
@@ -25,10 +25,13 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "linux")]
+use rustix::fs::{AtFlags, StatxFlags};
+
+#[cfg(target_os = "linux")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FileIdentity {
-    device: libc::dev_t,
-    inode: libc::ino_t,
+    device: (u32, u32),
+    inode: u64,
     mount_id: u64,
 }
 
@@ -155,40 +158,18 @@ impl Dir {
 
 #[cfg(target_os = "linux")]
 fn file_identity(file: &File) -> io::Result<FileIdentity> {
-    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
-    // SAFETY: `stat` points to writable memory and `file` owns a live
-    // descriptor for the duration of the call.
-    let result = unsafe { libc::fstat(file.as_raw_fd(), stat.as_mut_ptr()) };
-    if result != 0 {
-        return Err(io::Error::last_os_error());
+    let mask = StatxFlags::INO | StatxFlags::MNT_ID;
+    let stat = rustix::fs::statx(file, c"", AtFlags::EMPTY_PATH, mask)?;
+    if !StatxFlags::from_bits_retain(stat.stx_mask).contains(mask) {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "filesystem identity is unavailable",
+        ));
     }
-    // SAFETY: successful `fstat` initialized the full structure.
-    let stat = unsafe { stat.assume_init() };
-    let mount_id = mount_id_for_fd(file.as_raw_fd())?;
     Ok(FileIdentity {
-        device: stat.st_dev,
-        inode: stat.st_ino,
-        mount_id,
-    })
-}
-
-#[cfg(target_os = "linux")]
-fn mount_id_for_fd(fd: RawFd) -> io::Result<u64> {
-    let fdinfo = fs::read_to_string(format!("/proc/self/fdinfo/{fd}"))?;
-    let value = fdinfo
-        .lines()
-        .find_map(|line| line.strip_prefix("mnt_id:"))
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::Unsupported,
-                "filesystem mount identity is unavailable",
-            )
-        })?;
-    value.trim().parse().map_err(|error| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("invalid filesystem mount identity: {error}"),
-        )
+        device: (stat.stx_dev_major, stat.stx_dev_minor),
+        inode: stat.stx_ino,
+        mount_id: stat.stx_mnt_id,
     })
 }
 

@@ -269,6 +269,24 @@ class TestAuthBaseForwarderResponseBodyLimit:
         assert upstream.socket.response_file is not None
         assert upstream.socket.response_file.read_sizes == [5]
 
+    async def test_accepts_complete_fixed_length_body_at_limit(self):
+        with (
+            patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
+            fake_forwarder_upstream(
+                body=b"1234",
+                headers=[("Content-Length", "4")],
+            ),
+        ):
+            status, body, _headers = await forwarder.forward_request(
+                "https://example.com",
+                "GET",
+                [],
+                None,
+            )
+
+        assert status == 200
+        assert body == b"1234"
+
     async def test_rejects_body_over_limit_and_closes_resources(self):
         with (
             patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
@@ -281,6 +299,47 @@ class TestAuthBaseForwarderResponseBodyLimit:
         assert upstream.socket.response_file.read_sizes == [5]
         assert upstream.socket.response_file.closed
         assert upstream.socket.closed
+
+    async def test_rejects_truncated_fixed_length_body_and_closes_resources(self):
+        with (
+            patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
+            fake_forwarder_upstream(
+                body=b"123",
+                headers=[("Content-Length", "4")],
+            ) as upstream,
+            pytest.raises(http_client.IncompleteRead) as exc_info,
+        ):
+            await forwarder.forward_request("https://example.com", "GET", [], None)
+
+        assert exc_info.value.partial == b"123"
+        assert exc_info.value.expected == 1
+        assert upstream.socket.response_file is not None
+        assert upstream.socket.response_file.closed
+        assert upstream.socket.closed
+
+    @pytest.mark.parametrize(
+        ("method", "status"),
+        [
+            pytest.param("HEAD", 200, id="head"),
+            pytest.param("GET", 204, id="no-content"),
+            pytest.param("GET", 304, id="not-modified"),
+        ],
+    )
+    async def test_accepts_no_body_semantics_with_content_length(self, method: str, status: int):
+        with fake_forwarder_upstream(
+            status=status,
+            body=b"",
+            headers=[("Content-Length", "4")],
+        ):
+            response_status, body, _headers = await forwarder.forward_request(
+                "https://example.com",
+                method,
+                [],
+                None,
+            )
+
+        assert response_status == status
+        assert body == b""
 
 
 class TestAuthBaseForwarderRequestBodyLimit:

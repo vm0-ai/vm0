@@ -6,6 +6,7 @@ TEST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Load BATS libraries
 load "${TEST_ROOT}/test/libs/bats-support/load"
 load "${TEST_ROOT}/test/libs/bats-assert/load"
+load "${TEST_ROOT}/helpers/http"
 load "${TEST_ROOT}/helpers/storage-fixtures"
 load "${TEST_ROOT}/helpers/compose-fixtures"
 load "${TEST_ROOT}/helpers/run-fixtures"
@@ -149,7 +150,7 @@ e2e_api_curl() {
     if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
         hdrs+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
     fi
-    curl -fsS "${hdrs[@]}" "$@" "$base$path"
+    e2e_curl "${hdrs[@]}" "$@" "$base$path"
 }
 
 e2e_cron_curl() {
@@ -164,7 +165,7 @@ e2e_cron_curl() {
     if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
         hdrs+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
     fi
-    curl -fsS "${hdrs[@]}" "$@" "$base$path"
+    e2e_curl "${hdrs[@]}" "$@" "$base$path"
 }
 
 configure_e2e_model_provider() {

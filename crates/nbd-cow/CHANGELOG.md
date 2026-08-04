@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.71](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.70...nbd-cow-v0.4.71) (2026-08-03)
+
+
+### Performance Improvements
+
+* **nbd-cow:** decode bitmaps in chunks ([#24727](https://github.com/vm0-ai/vm0/issues/24727)) ([0280a52](https://github.com/vm0-ai/vm0/commit/0280a52383a7002aad480b0f3d34305adaaba31d))
+
 ## [0.4.70](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.69...nbd-cow-v0.4.70) (2026-07-31)
 
 

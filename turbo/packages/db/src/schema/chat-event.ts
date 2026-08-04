@@ -99,8 +99,7 @@ export const chatEvents = pgTable(
       { onDelete: "no action" },
     ),
     interruptsRunId: uuid("interrupts_run_id"),
-    // Stable grouping key for repeated automation/workflow/goal-triggered
-    // runs rendered in a chat thread.
+    // Stable grouping key for autonomous goal continuations rendered in chat.
     runGroupId: uuid("run_group_id"),
     eventType: text("event_type").$type<ChatEventType>().notNull(),
     /**
@@ -130,6 +129,7 @@ export const chatEvents = pgTable(
     userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),
     thinking: text("thinking"),
     error: text("error"),
+    activeInputSequence: integer("active_input_sequence"),
     runEventSequenceNumber: integer("run_event_sequence_number"),
     /**
      * Upstream run-event ID or a deterministic seed for synthesized rows.
@@ -181,6 +181,9 @@ export const chatEvents = pgTable(
         table.runId,
         table.runEventSequenceNumber,
       ),
+      uniqueIndex("chat_events_run_active_input_seq_unique")
+        .on(table.runId, table.activeInputSequence)
+        .where(sql`${table.activeInputSequence} IS NOT NULL`),
       uniqueIndex("chat_events_thread_seq_unique").on(
         table.chatThreadId,
         table.seqId,

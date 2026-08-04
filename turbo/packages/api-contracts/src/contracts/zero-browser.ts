@@ -51,6 +51,9 @@ export const zeroBrowserSessionSchema = z
     status: zeroBrowserStatusSchema,
     viewerUrl: z.url(),
     liveUrl: z.url().nullable(),
+    // Additive for frontend/backend rollout compatibility. Old API versions
+    // omit this field; new versions return the latest captured foreground tab.
+    screenshotUrl: z.url().nullable().optional(),
     proxyCountryCode: z.string().length(2).nullable(),
     timeoutMinutes: z.number().int().positive(),
     // Only live provider instances have persisted window dimensions.

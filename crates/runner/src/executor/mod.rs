@@ -9,10 +9,12 @@
 //! kept-alive idle VM.
 //!
 //! Both paths return `ExecuteOutcome` plus a pending `JobTelemetry`
-//! buffer. When `ExecuteOutcome::sandbox` is `Some`, the sandbox is still alive
-//! and the caller decides whether to park it for reuse or destroy it. The
-//! caller also flushes telemetry after firing `provider.complete`, so the
-//! user-visible completion signal is not blocked on best-effort uploads.
+//! buffer. When `ExecuteOutcome::sandbox` is `Some`, the executor transfers
+//! ownership of a still-live sandbox that the caller must finalize through the
+//! runner's park-or-destroy path. Presence alone does not mean the sandbox can
+//! be parked. The caller also flushes telemetry after firing
+//! `provider.complete`, so the user-visible completion signal is not blocked on
+//! best-effort uploads.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -111,6 +113,8 @@ const STDOUT_STREAM_LIMIT_MARKER: &[u8] =
     b"[vm0] stdout stream reached the guest stream limit; later output was omitted\n";
 const STDOUT_STREAM_OVERFLOW_MARKER: &[u8] =
     b"[vm0] stdout stream overflowed the host queue; some output was dropped\n";
+const STDOUT_STREAM_INCOMPLETE_MARKER: &[u8] =
+    b"[vm0] stdout stream capture ended before clean EOF; some output may be missing\n";
 fn job_supervisor_timeout() -> Duration {
     JOB_TIMEOUT + JOB_FINALIZATION_GRACE_TIMEOUT
 }
@@ -234,12 +238,20 @@ impl ExecutionHooks {
     }
 }
 
-/// Outcome of a job execution, including the sandbox for possible reuse.
+/// Outcome of a job execution and ownership of any sandbox still alive afterward.
 pub struct ExecuteOutcome {
     pub failure: Option<ExecutionFailure>,
-    /// The sandbox after execution. `Some` when the sandbox is still alive
-    /// and eligible for keep-alive parking. `None` when execution failed
-    /// during create/start (sandbox was destroyed inline).
+    /// Sandbox ownership after execution.
+    ///
+    /// `Some` transfers a still-live sandbox to the caller for finalization; it
+    /// does not imply the sandbox is eligible for reuse. Finalization considers
+    /// parking only when the exit code is zero, cancellation is not active, the
+    /// parking gate is open, and a reuse key is available. Cancellation before
+    /// ownership transfer or an unsuccessful park still destroys the sandbox.
+    ///
+    /// `None` means no live sandbox ownership is returned, either because no
+    /// sandbox was created or because executor-side cleanup already consumed
+    /// it.
     pub sandbox: Option<Box<dyn Sandbox>>,
     pub source_ip: String,
     pub network_log_session: Option<NetworkLogSession>,

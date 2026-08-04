@@ -2611,12 +2611,14 @@ async function expectDatabaseError(
 }
 
 type PermanentTrigger = {
+  readonly definition: string;
   readonly schemaName: string;
   readonly tableName: string;
   readonly triggerName: string;
 };
 
 type PermanentFunction = {
+  readonly bodyHash: string;
   readonly functionName: string;
   readonly identityArguments: string;
   readonly kind: string;
@@ -2627,171 +2629,234 @@ type PermanentFunction = {
 // pgcrypto and vector functions are deliberately absent from the function list.
 const EXPECTED_PERMANENT_TRIGGERS = [
   {
+    definition:
+      "CREATE TRIGGER bridge_goal_only_chat_event_run_group_0810 BEFORE INSERT ON public.chat_events FOR EACH ROW EXECUTE FUNCTION bridge_goal_only_chat_event_run_group_0810()",
     schemaName: "public",
     tableName: "chat_events",
-    triggerName: "bridge_chat_event_run_event_sequence_number_0807",
+    triggerName: "bridge_goal_only_chat_event_run_group_0810",
   },
   {
+    definition:
+      "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
     schemaName: "public",
     tableName: "chat_events",
     triggerName: "chat_events_reject_update",
   },
   {
+    definition:
+      "CREATE TRIGGER allocate_legacy_chat_thread_event_seq_id BEFORE INSERT ON public.chat_thread_events FOR EACH ROW EXECUTE FUNCTION allocate_legacy_chat_thread_event_seq_id()",
     schemaName: "public",
     tableName: "chat_thread_events",
     triggerName: "allocate_legacy_chat_thread_event_seq_id",
   },
   {
+    definition:
+      "CREATE TRIGGER chat_thread_events_reject_update BEFORE UPDATE ON public.chat_thread_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
     schemaName: "public",
     tableName: "chat_thread_events",
     triggerName: "chat_thread_events_reject_update",
   },
   {
+    definition:
+      "CREATE TRIGGER fill_legacy_chat_thread_snapshot_event_seq_id BEFORE INSERT OR UPDATE ON public.chat_thread_snapshots FOR EACH ROW EXECUTE FUNCTION fill_legacy_chat_thread_snapshot_event_seq_id()",
     schemaName: "public",
     tableName: "chat_thread_snapshots",
     triggerName: "fill_legacy_chat_thread_snapshot_event_seq_id",
   },
   {
+    definition:
+      "CREATE TRIGGER chat_threads_normalize_computer_access BEFORE INSERT OR UPDATE OF computer_use_host_id, cloud_browser_enabled ON public.chat_threads FOR EACH ROW EXECUTE FUNCTION chat_threads_normalize_computer_access()",
     schemaName: "public",
     tableName: "chat_threads",
     triggerName: "chat_threads_normalize_computer_access",
   },
   {
+    definition:
+      "CREATE TRIGGER enforce_hosted_deployment_scope_0753 BEFORE INSERT ON public.hosted_deployments FOR EACH ROW EXECUTE FUNCTION enforce_hosted_deployment_scope_0753()",
     schemaName: "public",
     tableName: "hosted_deployments",
     triggerName: "enforce_hosted_deployment_scope_0753",
   },
   {
+    definition:
+      "CREATE TRIGGER canonicalize_hosted_site_scope_0753 BEFORE INSERT OR UPDATE OF created_from_run_id, requested_slug, chat_thread_id ON public.hosted_sites FOR EACH ROW EXECUTE FUNCTION canonicalize_hosted_site_scope_0753()",
     schemaName: "public",
     tableName: "hosted_sites",
     triggerName: "canonicalize_hosted_site_scope_0753",
   },
   {
+    definition:
+      "CREATE TRIGGER hosted_sites_delete_artifact_registry AFTER DELETE ON public.hosted_sites FOR EACH ROW EXECUTE FUNCTION delete_artifact_registry_entity('hosted-site')",
     schemaName: "public",
     tableName: "hosted_sites",
     triggerName: "hosted_sites_delete_artifact_registry",
   },
   {
+    definition:
+      "CREATE TRIGGER image_artifacts_delete_artifact_registry AFTER DELETE ON public.image_artifacts FOR EACH ROW EXECUTE FUNCTION delete_artifact_registry_entity('image')",
     schemaName: "public",
     tableName: "image_artifacts",
     triggerName: "image_artifacts_delete_artifact_registry",
   },
   {
+    definition:
+      "CREATE CONSTRAINT TRIGGER trg_org_custom_connector_oauth_configs_mode AFTER INSERT OR DELETE OR UPDATE ON public.org_custom_connector_oauth_configs DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_org_custom_connector_oauth_mode()",
     schemaName: "public",
     tableName: "org_custom_connector_oauth_configs",
     triggerName: "trg_org_custom_connector_oauth_configs_mode",
   },
   {
+    definition:
+      "CREATE CONSTRAINT TRIGGER trg_org_custom_connectors_oauth_mode AFTER INSERT OR UPDATE ON public.org_custom_connectors DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_org_custom_connector_oauth_mode()",
     schemaName: "public",
     tableName: "org_custom_connectors",
     triggerName: "trg_org_custom_connectors_oauth_mode",
   },
   {
+    definition:
+      "CREATE TRIGGER ensure_legacy_org_metadata_plan_entitlement AFTER INSERT ON public.org_metadata FOR EACH ROW EXECUTE FUNCTION ensure_legacy_org_metadata_plan_entitlement()",
     schemaName: "public",
     tableName: "org_metadata",
     triggerName: "ensure_legacy_org_metadata_plan_entitlement",
   },
   {
+    definition:
+      "CREATE TRIGGER sync_legacy_org_plan_entitlement_can_buy_credits BEFORE INSERT OR UPDATE OF plan_key ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_can_buy_credits()",
     schemaName: "public",
     tableName: "org_plan_entitlements",
     triggerName: "sync_legacy_org_plan_entitlement_can_buy_credits",
   },
   {
+    definition:
+      "CREATE TRIGGER presentation_artifacts_delete_artifact_registry AFTER DELETE ON public.presentation_artifacts FOR EACH ROW EXECUTE FUNCTION delete_artifact_registry_entity('presentation')",
     schemaName: "public",
     tableName: "presentation_artifacts",
     triggerName: "presentation_artifacts_delete_artifact_registry",
   },
   {
+    definition:
+      "CREATE TRIGGER run_uploaded_files_delete_artifact_registry AFTER DELETE ON public.run_uploaded_files FOR EACH ROW EXECUTE FUNCTION delete_artifact_registry_entity('file')",
     schemaName: "public",
     tableName: "run_uploaded_files",
     triggerName: "run_uploaded_files_delete_artifact_registry",
   },
   {
+    definition:
+      "CREATE TRIGGER run_uploaded_files_queue_artifact_catalog AFTER INSERT OR UPDATE OF run_id, chat_thread_id, user_id, org_id, external_id, filename, content_type, url, preview_image_url, metadata ON public.run_uploaded_files FOR EACH ROW EXECUTE FUNCTION queue_artifact_catalog_file()",
     schemaName: "public",
     tableName: "run_uploaded_files",
     triggerName: "run_uploaded_files_queue_artifact_catalog",
   },
   {
+    definition:
+      "CREATE TRIGGER video_artifacts_delete_artifact_registry AFTER DELETE ON public.video_artifacts FOR EACH ROW EXECUTE FUNCTION delete_artifact_registry_entity('video')",
     schemaName: "public",
     tableName: "video_artifacts",
     triggerName: "video_artifacts_delete_artifact_registry",
+  },
+  {
+    definition:
+      "CREATE TRIGGER bridge_goal_only_zero_run_group_0810 BEFORE INSERT OR UPDATE OF run_group_id, goal_id ON public.zero_runs FOR EACH ROW EXECUTE FUNCTION bridge_goal_only_zero_run_group_0810()",
+    schemaName: "public",
+    tableName: "zero_runs",
+    triggerName: "bridge_goal_only_zero_run_group_0810",
   },
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
   {
+    bodyHash: "6b1b5ad47ec35bcbaad3fa95d86ef027",
     functionName: "allocate_legacy_chat_thread_event_seq_id",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "4886a7314cbaa815a4f8290a16a2f528",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
     kind: "f",
     schemaName: "public",
   },
   {
-    functionName: "bridge_chat_event_run_event_sequence_number_0807",
+    bodyHash: "d222c803fed6a784bf53288dd866f2a2",
+    functionName: "bridge_goal_only_chat_event_run_group_0810",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "24620b451e6c4d3c61ca9e449f5faa19",
+    functionName: "bridge_goal_only_zero_run_group_0810",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "28abc81d6fe2975374d21c68ee6ac1a7",
     functionName: "canonicalize_hosted_site_scope_0753",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "7f12cb6026b4e6d6638aaa22e0a93514",
     functionName: "chat_threads_normalize_computer_access",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "3879e0228971b9f64e4bf8439ec5df4b",
     functionName: "delete_artifact_registry_entity",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "8531b56175d6c695da79c88e7b5c34cf",
     functionName: "enforce_hosted_deployment_scope_0753",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "15e3309d90f7237e3b5c28fbf23a439d",
     functionName: "enforce_org_custom_connector_oauth_mode",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "903925177de13d29257fec494957b1cd",
     functionName: "ensure_legacy_org_metadata_plan_entitlement",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "7740cf65befb5e06a73e1f21bcfdd5cc",
     functionName: "fill_legacy_chat_thread_snapshot_event_seq_id",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "bcc84b560ab4bb6a1d2ebcc8090ceab1",
     functionName: "queue_artifact_catalog_file",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "519c7504c787a49c4c6bea8a588711fc",
     functionName: "reject_chat_event_source_update",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
   {
+    bodyHash: "daf97695043bdbafd864f7ff7a8f8d5d",
     functionName: "sync_legacy_org_plan_entitlement_can_buy_credits",
     identityArguments: "",
     kind: "f",
@@ -2834,11 +2899,14 @@ async function validatePermanentTriggerAndFunctionInventory(
   await client.connect();
 
   try {
+    // pg_get_triggerdef output depends on search_path.
+    await client.query(`SET search_path TO public, pg_catalog`);
     const triggers = await client.query<PermanentTrigger>(`
       SELECT
         namespace."nspname" AS "schemaName",
         relation."relname" AS "tableName",
-        catalog_trigger."tgname" AS "triggerName"
+        catalog_trigger."tgname" AS "triggerName",
+        pg_catalog.pg_get_triggerdef(catalog_trigger."oid") AS "definition"
       FROM pg_catalog."pg_trigger" AS catalog_trigger
       INNER JOIN pg_catalog."pg_class" AS relation
         ON relation."oid" = catalog_trigger."tgrelid"
@@ -2858,7 +2926,8 @@ async function validatePermanentTriggerAndFunctionInventory(
         catalog_function."proname" AS "functionName",
         pg_catalog.pg_get_function_identity_arguments(catalog_function."oid")
           AS "identityArguments",
-        catalog_function."prokind"::text AS "kind"
+        catalog_function."prokind"::text AS "kind",
+        pg_catalog.md5(catalog_function."prosrc") AS "bodyHash"
       FROM pg_catalog."pg_proc" AS catalog_function
       INNER JOIN pg_catalog."pg_namespace" AS namespace
         ON namespace."oid" = catalog_function."pronamespace"
@@ -2879,10 +2948,10 @@ async function validatePermanentTriggerAndFunctionInventory(
     `);
 
     const triggerKey = (trigger: PermanentTrigger): string => {
-      return `${trigger.schemaName}.${trigger.tableName}.${trigger.triggerName}`;
+      return `${trigger.schemaName}.${trigger.tableName}.${trigger.triggerName} [${trigger.definition}]`;
     };
     const functionKey = (catalogFunction: PermanentFunction): string => {
-      return `${catalogFunction.schemaName}.${catalogFunction.functionName}(${catalogFunction.identityArguments}) [${catalogFunction.kind}]`;
+      return `${catalogFunction.schemaName}.${catalogFunction.functionName}(${catalogFunction.identityArguments}) [${catalogFunction.kind}] [body md5=${catalogFunction.bodyHash}]`;
     };
 
     assertPermanentInventory({
@@ -8351,6 +8420,7 @@ async function validateChatEventPropertyColumnRollout(): Promise<void> {
       for (const statement of runEventSequenceMigrationStatements) {
         await client.query(statement);
       }
+      await addCurrentChatEventAdditiveStorage(client);
       await validateChatEventPropertyColumnRuntimeCutover(client);
       await validateChatEventPropertyColumnContraction(client);
       await validateLegacyChatEventSeqIdAllocatorDrop(client);
@@ -17776,10 +17846,20 @@ async function validateRunnerSandboxStatePersistence(): Promise<void> {
 
 const RUN_EVENT_SEQUENCE_NUMBER_PREVIOUS_MIGRATION = 806;
 const RUN_EVENT_SEQUENCE_NUMBER_EXPANSION_MIGRATION = 807;
+const RUN_EVENT_SEQUENCE_NUMBER_CONTRACTION_MIGRATION = 810;
 
-async function validateRunEventSequenceNumberExpansion(): Promise<void> {
+async function addCurrentChatEventAdditiveStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    ADD COLUMN "active_input_sequence" integer
+  `);
+}
+
+async function validateRunEventSequenceNumberRollout(): Promise<void> {
   console.log(
-    "=== Validate populated run event sequence expansion and runtime cutover ===\n",
+    "=== Validate populated run event sequence expand, switch, and contract rollout ===\n",
   );
   const testDb = "migration_run_event_sequence_number_test";
   const testDbUrl = createTestDbUrl(testDb);
@@ -17788,6 +17868,7 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
   const historicalRunId = "00000000-0000-4000-8000-000000080703";
   const previousApiRunId = "00000000-0000-4000-8000-000000080704";
   const currentApiRunId = "00000000-0000-4000-8000-000000080705";
+  const contractedRunId = "00000000-0000-4000-8000-000000080706";
 
   const migrationSql = await fs.readFile(
     path.join(MIGRATIONS_DIR, "0807_expand_run_event_sequence_number.sql"),
@@ -17811,6 +17892,37 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
   assert.match(migrationSql, /\bLIMIT 10000\b/u);
   assert.match(migrationSql, /\bFOR UPDATE SKIP LOCKED\b/u);
   assert.match(migrationSql, /\bCOMMIT\b/u);
+
+  const contractionSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0810_small_sway.sql"),
+    "utf8",
+  );
+  assert.ok(contractionSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.equal(
+    (
+      contractionSql.match(
+        /DROP INDEX CONCURRENTLY IF EXISTS "chat_events_run_seq_unique"/gu,
+      ) ?? []
+    ).length,
+    1,
+  );
+  assert.match(
+    contractionSql,
+    /DROP TRIGGER IF EXISTS "bridge_chat_event_run_event_sequence_number_0807"/u,
+  );
+  assert.match(
+    contractionSql,
+    /DROP FUNCTION IF EXISTS "bridge_chat_event_run_event_sequence_number_0807"\(\)/u,
+  );
+  assert.match(contractionSql, /DROP COLUMN IF EXISTS "sequence_number"/u);
+  assert.doesNotMatch(
+    contractionSql,
+    /CREATE OR REPLACE FUNCTION "reject_chat_event_source_update"/u,
+  );
+  assert.doesNotMatch(
+    contractionSql,
+    /"seq_id"|"last_chat_event_seq_id"|"run_event_id"|"chat_events_run_event_seq_unique"/u,
+  );
 
   const schemaSource = await fs.readFile(
     path.join(PACKAGE_DIR, "src/schema/chat-event.ts"),
@@ -17887,6 +17999,7 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
         client,
         RUN_EVENT_SEQUENCE_NUMBER_EXPANSION_MIGRATION,
       );
+      await addCurrentChatEventAdditiveStorage(client);
       const database = drizzle(client);
 
       const historicalRows = await client.query<{
@@ -18157,6 +18270,8 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
         rejectFunction.rows[0]?.definition ?? "",
         /run_event_sequence_number/u,
       );
+      const strictRejectFunctionDefinition = rejectFunction.rows[0]?.definition;
+      assert.ok(strictRejectFunctionDefinition);
 
       const migrationStatements = migrationSql
         .split("--> statement-breakpoint")
@@ -18213,6 +18328,180 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
       ]);
       await assertChatEventsAppendOnlyProtection(client, previousApiEventId);
 
+      await applyMigrationsUpTo(
+        client,
+        RUN_EVENT_SEQUENCE_NUMBER_CONTRACTION_MIGRATION,
+      );
+
+      const preservedRows = await client.query<{
+        maximumSequence: number;
+        minimumSequence: number;
+        rows: string;
+      }>(
+        `
+          SELECT
+            count(*)::text AS "rows",
+            min("run_event_sequence_number") AS "minimumSequence",
+            max("run_event_sequence_number") AS "maximumSequence"
+          FROM "chat_events"
+          WHERE "run_id" = $1
+        `,
+        [historicalRunId],
+      );
+      assert.deepEqual(preservedRows.rows, [
+        {
+          maximumSequence: 10001,
+          minimumSequence: 1,
+          rows: "10001",
+        },
+      ]);
+
+      const switchedRows = await client.query<{
+        runEventSequenceNumber: number;
+        runId: string;
+      }>(
+        `
+          SELECT
+            "run_id" AS "runId",
+            "run_event_sequence_number" AS "runEventSequenceNumber"
+          FROM "chat_events"
+          WHERE "run_id" IN ($1, $2)
+          ORDER BY "run_id"
+        `,
+        [previousApiRunId, currentApiRunId],
+      );
+      assert.deepEqual(switchedRows.rows, [
+        {
+          runEventSequenceNumber: 7,
+          runId: previousApiRunId,
+        },
+        {
+          runEventSequenceNumber: 9,
+          runId: currentApiRunId,
+        },
+      ]);
+
+      const contractedInsert = await database
+        .insert(chatEvents)
+        .values({
+          chatThreadId: threadId,
+          runId: contractedRunId,
+          eventType: "output.message",
+          runEventSequenceNumber: 11,
+          seqId: 10007,
+        })
+        .returning({
+          id: chatEvents.id,
+          sequenceNumber: chatEvents.runEventSequenceNumber,
+        });
+      assert.equal(contractedInsert.length, 1);
+      assert.equal(contractedInsert[0]?.sequenceNumber, 11);
+      const contractedEventId = contractedInsert[0]?.id;
+      assert.ok(contractedEventId);
+
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "chat_events_run_event_seq_unique",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_event_sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'output.message', 11, 10008)
+        `,
+        values: [threadId, contractedRunId],
+      });
+      await assertChatEventsAppendOnlyProtection(client, contractedEventId);
+
+      const contractionStatements = contractionSql
+        .split("--> statement-breakpoint")
+        .map((statement) => {
+          return statement.trim();
+        })
+        .filter((statement) => {
+          return statement.length > 0;
+        });
+      for (const statement of contractionStatements) {
+        await client.query(statement);
+      }
+
+      const contractedCatalog = await client.query<{
+        backfillProcedurePresent: boolean;
+        bridgeFunctionPresent: boolean;
+        bridgeTriggerPresent: boolean;
+        canonicalIndexValid: boolean;
+        legacyColumnPresent: boolean;
+        legacyIndexPresent: boolean;
+        rejectTriggerEnabled: string;
+      }>(`
+        SELECT
+          EXISTS (
+            SELECT 1
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'chat_events'
+              AND "column_name" = 'sequence_number'
+          ) AS "legacyColumnPresent",
+          to_regclass('public.chat_events_run_seq_unique') IS NOT NULL
+            AS "legacyIndexPresent",
+          EXISTS (
+            SELECT 1
+            FROM "pg_index"
+            WHERE "indexrelid" =
+              'public.chat_events_run_event_seq_unique'::regclass
+              AND "indisunique"
+              AND "indisvalid"
+          ) AS "canonicalIndexValid",
+          to_regprocedure(
+            'public.bridge_chat_event_run_event_sequence_number_0807()'
+          ) IS NOT NULL AS "bridgeFunctionPresent",
+          to_regprocedure(
+            'public.backfill_chat_event_run_event_sequence_number_0807()'
+          ) IS NOT NULL AS "backfillProcedurePresent",
+          EXISTS (
+            SELECT 1
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'public.chat_events'::regclass
+              AND "tgname" =
+                'bridge_chat_event_run_event_sequence_number_0807'
+              AND NOT "tgisinternal"
+          ) AS "bridgeTriggerPresent",
+          (
+            SELECT "tgenabled"::text
+            FROM "pg_trigger"
+            WHERE "tgrelid" = 'public.chat_events'::regclass
+              AND "tgname" = 'chat_events_reject_update'
+              AND NOT "tgisinternal"
+          ) AS "rejectTriggerEnabled"
+      `);
+      assert.deepEqual(contractedCatalog.rows, [
+        {
+          backfillProcedurePresent: false,
+          bridgeFunctionPresent: false,
+          bridgeTriggerPresent: false,
+          canonicalIndexValid: true,
+          legacyColumnPresent: false,
+          legacyIndexPresent: false,
+          rejectTriggerEnabled: "O",
+        },
+      ]);
+
+      const preservedRejectFunction = await client.query<{
+        definition: string;
+      }>(`
+        SELECT pg_get_functiondef(
+          'public.reject_chat_event_source_update()'::regprocedure
+        ) AS "definition"
+      `);
+      assert.equal(
+        preservedRejectFunction.rows[0]?.definition,
+        strictRejectFunctionDefinition,
+      );
+      await assertChatEventsAppendOnlyProtection(client, contractedEventId);
+
       console.log("   ✅ 10,001 historical rows backfill across batches");
       console.log(
         "   ✅ Draining legacy and current Drizzle inserts coexist with mirrored columns",
@@ -18222,7 +18511,357 @@ async function validateRunEventSequenceNumberExpansion(): Promise<void> {
       );
       console.log("   ✅ Both unique index paths reject duplicates with 23505");
       console.log("   ✅ Strict append-only protection is restored");
-      console.log("   ✅ A full non-transactional retry is idempotent\n");
+      console.log(
+        "   ✅ Contract preserves canonical rows and new writes while the canonical index independently rejects duplicates",
+      );
+      console.log(
+        "   ✅ Legacy column, index, bridge, and backfill procedure are absent",
+      );
+      console.log(
+        "   ✅ Full expansion and contraction non-transactional retries are idempotent\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+const GOAL_ONLY_RUN_GROUPS_PREVIOUS_MIGRATION = 810;
+const GOAL_ONLY_RUN_GROUPS_MIGRATION = 811;
+
+async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
+  console.log("=== Validate goal-only run group cleanup ===\n");
+  const testDb = "migration_goal_only_run_groups_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    composeId: "00000000-0000-4000-8000-000000081001",
+    sessionId: "00000000-0000-4000-8000-000000081002",
+    threadId: "00000000-0000-4000-8000-000000081003",
+    goalId: "00000000-0000-4000-8000-000000081004",
+    automationGroupId: "00000000-0000-4000-8000-000000081005",
+    workflowRunId: "00000000-0000-4000-8000-000000081006",
+    goalRunId: "00000000-0000-4000-8000-000000081007",
+    workflowEventId: "00000000-0000-4000-8000-000000081008",
+    goalEventId: "00000000-0000-4000-8000-000000081009",
+    drainingWorkflowRunId: "00000000-0000-4000-8000-000000081010",
+    drainingWorkflowEventId: "00000000-0000-4000-8000-000000081011",
+    orgId: "goal-only-run-groups-org",
+    userId: "goal-only-run-groups-user",
+  } as const;
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0811_clear_non_goal_run_groups.sql"),
+    "utf8",
+  );
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.doesNotMatch(migrationSql, /\bLOCK\s+TABLE\b/u);
+  assert.doesNotMatch(
+    migrationSql,
+    /(?:DROP|DISABLE)\s+TRIGGER\s+"chat_events_reject_update"/u,
+  );
+  assert.equal((migrationSql.match(/\bLIMIT 10000\b/gu) ?? []).length, 2);
+  assert.equal(
+    (migrationSql.match(/\bFOR UPDATE OF "candidate" SKIP LOCKED\b/gu) ?? [])
+      .length,
+    2,
+  );
+  assert.equal((migrationSql.match(/\bCOMMIT\b/gu) ?? []).length, 2);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, GOAL_ONLY_RUN_GROUPS_PREVIOUS_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, $2, 'goal-only-run-groups', $3)
+        `,
+        [fixture.composeId, fixture.userId, fixture.orgId],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+          VALUES ($1, $2, $3, 'goal-only-run-groups')
+        `,
+        [fixture.composeId, fixture.orgId, fixture.userId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_sessions" (
+            "id",
+            "user_id",
+            "org_id",
+            "agent_compose_id"
+          )
+          VALUES ($1, $2, $3, $4)
+        `,
+        [fixture.sessionId, fixture.userId, fixture.orgId, fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_runs" (
+            "id",
+            "user_id",
+            "session_id",
+            "status",
+            "prompt",
+            "org_id"
+          )
+          VALUES
+            ($1, $3, $4, 'running', 'legacy workflow run', $5),
+            ($2, $3, $4, 'running', 'goal continuation run', $5)
+        `,
+        [
+          fixture.workflowRunId,
+          fixture.goalRunId,
+          fixture.userId,
+          fixture.sessionId,
+          fixture.orgId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES ($1, $2, $3, 'goal-only run groups')
+        `,
+        [fixture.threadId, fixture.userId, fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "thread_goals" (
+            "id",
+            "org_id",
+            "owner_user_id",
+            "agent_id",
+            "chat_thread_id",
+            "status",
+            "objective",
+            "objective_brief"
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            'active',
+            'Keep this goal running',
+            'Keep this goal running'
+          )
+        `,
+        [
+          fixture.goalId,
+          fixture.orgId,
+          fixture.userId,
+          fixture.composeId,
+          fixture.threadId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_runs" (
+            "id",
+            "trigger_source",
+            "chat_thread_id",
+            "run_group_id",
+            "goal_id"
+          )
+          VALUES
+            ($1, 'workflow-schedule', $3, $4, NULL),
+            ($2, 'workflow-event', $3, $5, $5)
+        `,
+        [
+          fixture.workflowRunId,
+          fixture.goalRunId,
+          fixture.threadId,
+          fixture.automationGroupId,
+          fixture.goalId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "run_group_id",
+            "event_type",
+            "content",
+            "run_event_sequence_number",
+            "seq_id"
+          )
+          VALUES
+            ($1, $3, $4, $6, 'output.message', 'workflow result', 1, 1),
+            ($2, $3, $5, $7, 'output.message', 'goal result', 1, 2)
+        `,
+        [
+          fixture.workflowEventId,
+          fixture.goalEventId,
+          fixture.threadId,
+          fixture.workflowRunId,
+          fixture.goalRunId,
+          fixture.automationGroupId,
+          fixture.goalId,
+        ],
+      );
+
+      await applyMigrationsUpTo(client, GOAL_ONLY_RUN_GROUPS_MIGRATION);
+
+      const runGroups = await client.query<{
+        id: string;
+        runGroupId: string | null;
+      }>(
+        `
+          SELECT "id", "run_group_id" AS "runGroupId"
+          FROM "zero_runs"
+          WHERE "id" IN ($1, $2)
+          ORDER BY "id"
+        `,
+        [fixture.workflowRunId, fixture.goalRunId],
+      );
+      assert.deepEqual(runGroups.rows, [
+        { id: fixture.workflowRunId, runGroupId: null },
+        { id: fixture.goalRunId, runGroupId: fixture.goalId },
+      ]);
+
+      const eventGroups = await client.query<{
+        id: string;
+        runGroupId: string | null;
+      }>(
+        `
+          SELECT "id", "run_group_id" AS "runGroupId"
+          FROM "chat_events"
+          WHERE "id" IN ($1, $2)
+          ORDER BY "id"
+        `,
+        [fixture.workflowEventId, fixture.goalEventId],
+      );
+      assert.deepEqual(eventGroups.rows, [
+        { id: fixture.workflowEventId, runGroupId: null },
+        { id: fixture.goalEventId, runGroupId: fixture.goalId },
+      ]);
+
+      // Simulate the draining API after migration completion. Its legacy
+      // insert shape still sends the automation id as run_group_id to both
+      // tables; the compatibility bridges must normalize both writes.
+      await client.query(
+        `
+          INSERT INTO "agent_runs" (
+            "id",
+            "user_id",
+            "session_id",
+            "status",
+            "prompt",
+            "org_id"
+          )
+          VALUES ($1, $2, $3, 'running', 'draining workflow run', $4)
+        `,
+        [
+          fixture.drainingWorkflowRunId,
+          fixture.userId,
+          fixture.sessionId,
+          fixture.orgId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_runs" (
+            "id",
+            "trigger_source",
+            "chat_thread_id",
+            "run_group_id",
+            "goal_id"
+          )
+          VALUES ($1, 'workflow-schedule', $2, $3, NULL)
+        `,
+        [
+          fixture.drainingWorkflowRunId,
+          fixture.threadId,
+          fixture.automationGroupId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "run_group_id",
+            "event_type",
+            "content",
+            "run_event_sequence_number",
+            "seq_id"
+          )
+          VALUES ($1, $2, $3, $4, 'output.message', 'draining result', 1, 3)
+        `,
+        [
+          fixture.drainingWorkflowEventId,
+          fixture.threadId,
+          fixture.drainingWorkflowRunId,
+          fixture.automationGroupId,
+        ],
+      );
+
+      const drainingGroups = await client.query<{
+        eventRunGroupId: string | null;
+        zeroRunGroupId: string | null;
+      }>(
+        `
+          SELECT
+            "event"."run_group_id" AS "eventRunGroupId",
+            "run"."run_group_id" AS "zeroRunGroupId"
+          FROM "zero_runs" AS "run"
+          INNER JOIN "chat_events" AS "event"
+            ON "event"."run_id" = "run"."id"
+          WHERE "run"."id" = $1
+        `,
+        [fixture.drainingWorkflowRunId],
+      );
+      assert.deepEqual(drainingGroups.rows, [
+        { eventRunGroupId: null, zeroRunGroupId: null },
+      ]);
+
+      const migrationStatements = migrationSql
+        .split("--> statement-breakpoint")
+        .map((statement) => {
+          return statement.trim();
+        })
+        .filter((statement) => {
+          return statement.length > 0;
+        });
+      for (const statement of migrationStatements) {
+        await client.query(statement);
+      }
+
+      await assertChatEventsAppendOnlyProtection(
+        client,
+        fixture.workflowEventId,
+      );
+      const rejectFunction = await client.query<{ definition: string }>(`
+        SELECT pg_get_functiondef(
+          'public.reject_chat_event_source_update()'::regprocedure
+        ) AS "definition"
+      `);
+      assert.doesNotMatch(
+        rejectFunction.rows[0]?.definition ?? "",
+        /run_group_id/u,
+      );
+
+      console.log("   ✅ Legacy workflow run groups are cleared");
+      console.log("   ✅ Goal continuation run groups are preserved");
+      console.log("   ✅ Draining automation writes are normalized");
+      console.log(
+        "   ✅ Cleanup is batched, retryable, and append-only safe\n",
+      );
     } finally {
       await client.end();
     }
@@ -18363,7 +19002,8 @@ async function main(): Promise<void> {
     await validateChatEventRunLifecycleContraction();
     await validateChatEventLowTrafficIndexes();
     await validateChatEventRevokeIndex();
-    await validateRunEventSequenceNumberExpansion();
+    await validateRunEventSequenceNumberRollout();
+    await validateGoalOnlyRunGroupsCleanup();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();

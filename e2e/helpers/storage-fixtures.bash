@@ -92,9 +92,10 @@ seed_storage_fixture() (
                 --file="$archive_path" \
                 --directory="$source_directory" \
                 --files-from="$file_list"
-            if ! curl -fsS \
+            if ! e2e_curl \
                 --retry 2 \
                 --retry-delay 1 \
+                --retry-max-time "${E2E_STORAGE_FIXTURE_RETRY_MAX_TIME_SECONDS:-60}" \
                 -X PUT \
                 -H "Content-Type: application/gzip" \
                 --upload-file "$archive_path" \
@@ -108,9 +109,10 @@ seed_storage_fixture() (
             --arg createdAt "$created_at" \
             --slurpfile files "$files_json" \
             '{version: 1, files: $files[0], createdAt: $createdAt}' > "$manifest_payload"
-        if ! curl -fsS \
+        if ! e2e_curl \
             --retry 2 \
             --retry-delay 1 \
+            --retry-max-time "${E2E_STORAGE_FIXTURE_RETRY_MAX_TIME_SECONDS:-60}" \
             -X PUT \
             -H "Content-Type: application/json" \
             --data-binary "@$manifest_payload" \

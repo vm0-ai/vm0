@@ -1,8 +1,9 @@
 use crate::scenario::{echo_session_id, parse_echo_jsonl};
 use crate::transcript::{
-    JsonlTranscript, assistant_text_event, generate_session_id, init_event,
-    is_valid_session_history_id, result_event, tool_use_event,
+    JsonlTranscript, assistant_text_event, generate_session_id, init_event, result_event,
+    tool_use_event,
 };
+use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -59,7 +60,7 @@ pub(super) fn run_echo_jsonl_mode(payload: &str, hang_after_output: bool) -> Exi
 
     let session_id = echo_session_id(&events).map(str::to_owned);
     if let Some(session_id) = session_id.as_deref()
-        && !is_valid_session_history_id(session_id)
+        && !is_valid_cli_agent_session_id(session_id)
     {
         eprintln!("invalid @ECHO@ session_id: {session_id:?}");
         return ExitCode::from(1);

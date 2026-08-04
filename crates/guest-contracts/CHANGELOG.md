@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.3...guest-contracts-v0.5.4) (2026-08-03)
+
+
+### Refactoring
+
+* **rust:** centralize base cli agent session id validation ([#24759](https://github.com/vm0-ai/vm0/issues/24759)) ([da34435](https://github.com/vm0-ai/vm0/commit/da34435c6747be672914e4651c29d0abd2b47936))
+
+## [0.5.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.2...guest-contracts-v0.5.3) (2026-08-03)
+
+
+### Documentation
+
+* **rust:** clarify session history diagnostic semantics ([#24671](https://github.com/vm0-ai/vm0/issues/24671)) ([ecf6630](https://github.com/vm0-ai/vm0/commit/ecf6630d6185b03b6de7bc606259a730dff462b4))
+
 ## [0.5.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.1...guest-contracts-v0.5.2) (2026-08-02)
 
 

@@ -27,11 +27,12 @@ use super::api_direct_candidates::{
     DirectJobCandidate,
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
+use super::{RunnerPreference, parse_runner_preference};
+use crate::active_input::ActiveInputAblyNotifications;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::RunCancellationRegistry;
-use crate::types::SessionAffinityResource;
 
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
 const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
@@ -170,6 +171,12 @@ impl PollWakeups {
     pub(super) async fn request_deferred_poll_after(&self, delay: Duration) {
         let now = tokio::time::Instant::now();
         self.request_deferred_poll_capped_at(now + delay, now + DEFERRED_POLL_MAX)
+            .await;
+    }
+
+    pub(super) async fn request_deferred_poll_until(&self, deadline: StdInstant) {
+        let now = tokio::time::Instant::now();
+        self.request_deferred_poll_capped_at(deadline.into(), now + DEFERRED_POLL_MAX)
             .await;
     }
 
@@ -426,6 +433,7 @@ pub(super) struct AblySupervisorConfig {
     pub(super) profiles: Vec<String>,
     pub(super) poll_wakeups: Arc<PollWakeups>,
     pub(super) direct_candidates: Arc<DirectCandidateInbox>,
+    pub(super) active_input_ably_notifications: ActiveInputAblyNotifications,
     pub(super) cancel_tokens: RunCancellationRegistry,
     pub(super) network_policy_refresh: NetworkPolicyRefreshHandle,
     pub(super) provider_cancel: CancellationToken,
@@ -437,6 +445,7 @@ struct SupervisorTaskConfig {
     profiles: Vec<String>,
     poll_wakeups: Arc<PollWakeups>,
     direct_candidates: Arc<DirectCandidateInbox>,
+    active_input_ably_notifications: ActiveInputAblyNotifications,
     cancel_tokens: RunCancellationRegistry,
     network_policy_refresh: NetworkPolicyRefreshHandle,
     provider_cancel: CancellationToken,
@@ -453,6 +462,7 @@ impl AblySupervisor {
             profiles: config.profiles,
             poll_wakeups: config.poll_wakeups,
             direct_candidates: config.direct_candidates,
+            active_input_ably_notifications: config.active_input_ably_notifications,
             cancel_tokens: config.cancel_tokens,
             network_policy_refresh: config.network_policy_refresh,
             provider_cancel: config.provider_cancel,
@@ -535,12 +545,16 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                     Some(ably_subscriber::Event::Message(msg)) => {
                         handle_ably_message_with_network_policy_refresh(
                             &msg,
-                            &config.profiles,
-                            &config.poll_wakeups,
-                            &config.direct_candidates,
-                            &config.cancel_tokens,
-                            Some(&config.network_policy_refresh),
-                            Some(&config.shutdown),
+                            AblyMessageTargets {
+                                profiles: &config.profiles,
+                                poll_wakeups: &config.poll_wakeups,
+                                direct_candidates: &config.direct_candidates,
+                                active_input_ably_notifications: &config
+                                    .active_input_ably_notifications,
+                                cancel_tokens: &config.cancel_tokens,
+                                network_policy_refresh: Some(&config.network_policy_refresh),
+                                network_policy_refresh_cancel: Some(&config.shutdown),
+                            },
                         )
                         .await;
                     }
@@ -550,17 +564,20 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                         }
                         disconnect.mark_connected();
                         config.poll_wakeups.mark_ably_connected().await;
+                        config.active_input_ably_notifications.mark_connected();
                     }
                     Some(ably_subscriber::Event::Disconnected { reason }) => {
                         let reason = reason.unwrap_or_else(|| "unknown".to_string());
                         disconnect.record_disconnected(reason.clone());
                         config.poll_wakeups.mark_ably_disconnected().await;
+                        config.active_input_ably_notifications.mark_disconnected();
                         info!(reason = %reason, "ably disconnected, switching to fast poll");
                     }
                     Some(ably_subscriber::Event::Error { code, message }) => {
                         error!(code, message = %message, "ably fatal error, will reconnect");
                         disconnect.record_disconnected(message.clone());
                         config.poll_wakeups.mark_ably_disconnected().await;
+                        config.active_input_ably_notifications.mark_disconnected();
                         ably = None;
                         ably_retry.schedule();
                     }
@@ -568,6 +585,7 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                         warn!("ably subscription closed, will reconnect");
                         disconnect.record_disconnected("subscription closed".to_string());
                         config.poll_wakeups.mark_ably_disconnected().await;
+                        config.active_input_ably_notifications.mark_disconnected();
                         ably = None;
                         ably_retry.schedule();
                     }
@@ -578,10 +596,12 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                     Ok(()) => {
                         disconnect.mark_connected();
                         config.poll_wakeups.mark_ably_connected().await;
+                        config.active_input_ably_notifications.mark_connected();
                     }
                     Err(reason) => {
                         disconnect.record_disconnected(reason);
                         config.poll_wakeups.mark_ably_disconnected().await;
+                        config.active_input_ably_notifications.mark_disconnected();
                     }
                 }
             }
@@ -614,32 +634,41 @@ async fn handle_ably_message(
     direct_candidates: &DirectCandidateInbox,
     cancel_tokens: &RunCancellationRegistry,
 ) {
+    let active_input_ably_notifications = ActiveInputAblyNotifications::new();
     handle_ably_message_with_network_policy_refresh(
         msg,
-        profiles,
-        poll_wakeups,
-        direct_candidates,
-        cancel_tokens,
-        None,
-        None,
+        AblyMessageTargets {
+            profiles,
+            poll_wakeups,
+            direct_candidates,
+            active_input_ably_notifications: &active_input_ably_notifications,
+            cancel_tokens,
+            network_policy_refresh: None,
+            network_policy_refresh_cancel: None,
+        },
     )
     .await;
 }
 
+struct AblyMessageTargets<'a> {
+    profiles: &'a [String],
+    poll_wakeups: &'a PollWakeups,
+    direct_candidates: &'a DirectCandidateInbox,
+    active_input_ably_notifications: &'a ActiveInputAblyNotifications,
+    cancel_tokens: &'a RunCancellationRegistry,
+    network_policy_refresh: Option<&'a NetworkPolicyRefreshHandle>,
+    network_policy_refresh_cancel: Option<&'a CancellationToken>,
+}
+
 async fn handle_ably_message_with_network_policy_refresh(
     msg: &ably_subscriber::Message,
-    profiles: &[String],
-    poll_wakeups: &PollWakeups,
-    direct_candidates: &DirectCandidateInbox,
-    cancel_tokens: &RunCancellationRegistry,
-    network_policy_refresh: Option<&NetworkPolicyRefreshHandle>,
-    network_policy_refresh_cancel: Option<&CancellationToken>,
+    targets: AblyMessageTargets<'_>,
 ) {
     let notification_received_at = StdInstant::now();
 
     if let Some(notification) = parse_cancel_notification(msg) {
         let run_id = notification.run_id;
-        let handle = cancel_tokens.handle(run_id).await;
+        let handle = targets.cancel_tokens.handle(run_id).await;
         if let Some(handle) = handle {
             match notification.mode {
                 CancelNotificationMode::Cooperative => {
@@ -655,11 +684,16 @@ async fn handle_ably_message_with_network_policy_refresh(
         return;
     }
 
+    if let Some(run_id) = parse_active_input_notification(msg) {
+        targets.active_input_ably_notifications.notify_run(run_id);
+        return;
+    }
+
     if let Some(notification) = parse_network_policy_refresh_notification(msg) {
-        let Some(network_policy_refresh) = network_policy_refresh else {
+        let Some(network_policy_refresh) = targets.network_policy_refresh else {
             return;
         };
-        if let Some(cancel) = network_policy_refresh_cancel {
+        if let Some(cancel) = targets.network_policy_refresh_cancel {
             network_policy_refresh
                 .notify_network_policy_refresh_until_cancelled(
                     notification.run_id,
@@ -681,28 +715,21 @@ async fn handle_ably_message_with_network_policy_refresh(
         };
 
         if let Some(profile) = notif.profile {
-            if supports_profile(profiles, profile) {
+            if supports_profile(targets.profiles, profile) {
                 info!(
                     run_id = %notif.run_id,
                     profile = %profile,
                     "ably: job notification, queueing direct candidate"
                 );
                 JobNotificationAction::Direct(
-                    DirectJobCandidate::new_with_affinity_metadata(
+                    DirectJobCandidate::new_with_routing_metadata(
                         notif.run_id,
                         profile.to_owned(),
                         notification_received_at,
                         notif.reuse_key.map(str::to_owned),
-                        notif.cli_agent_session_id.map(str::to_owned),
-                        notif.affinity_protected_until.map(str::to_owned),
+                        notif.runner_preference,
                     )
-                    .with_history_generation_run_id(notif.history_generation_run_id)
-                    .with_session_affinity_resource(notif.session_affinity_resource)
-                    .with_history_generation_affinity_protected_until(
-                        notif
-                            .history_generation_affinity_protected_until
-                            .map(str::to_owned),
-                    ),
+                    .with_history_generation_run_id(notif.history_generation_run_id),
                 )
             } else {
                 info!(
@@ -723,10 +750,11 @@ async fn handle_ably_message_with_network_policy_refresh(
 
     match action {
         JobNotificationAction::WakeNow => {
-            poll_wakeups.request_immediate_poll().await;
+            targets.poll_wakeups.request_immediate_poll().await;
         }
         JobNotificationAction::Direct(candidate) => {
-            enqueue_direct_candidate(candidate, direct_candidates, poll_wakeups).await;
+            enqueue_direct_candidate(candidate, targets.direct_candidates, targets.poll_wakeups)
+                .await;
         }
         JobNotificationAction::Ignore => {}
     }
@@ -742,11 +770,8 @@ struct JobNotification<'a> {
     run_id: RunId,
     profile: Option<&'a str>,
     reuse_key: Option<&'a str>,
-    cli_agent_session_id: Option<&'a str>,
-    session_affinity_resource: Option<SessionAffinityResource>,
     history_generation_run_id: Option<RunId>,
-    history_generation_affinity_protected_until: Option<&'a str>,
-    affinity_protected_until: Option<&'a str>,
+    runner_preference: Option<RunnerPreference>,
 }
 
 struct NetworkPolicyRefreshNotification {
@@ -822,6 +847,20 @@ enum CancelNotificationMode {
 struct CancelNotification {
     run_id: RunId,
     mode: CancelNotificationMode,
+}
+
+fn parse_active_input_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
+    if msg.name.as_deref() != Some("active-input") {
+        return None;
+    }
+    let raw = msg.data.get("runId").and_then(|value| value.as_str())?;
+    match raw.parse() {
+        Ok(run_id) => Some(run_id),
+        Err(error) => {
+            warn!(value = %raw, error = %error, "ably: invalid active-input runId");
+            None
+        }
+    }
 }
 
 fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<CancelNotification> {
@@ -917,40 +956,9 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("profile")
         .and_then(|v| v.as_str())
         .filter(|value| !value.is_empty());
-    let cli_agent_session_id = msg
-        .data
-        .get("cliAgentSessionId")
-        .and_then(|v| v.as_str())
-        .filter(|value| !value.is_empty());
     let reuse_key = msg
         .data
         .get("reuseKey")
-        .and_then(|v| v.as_str())
-        .filter(|value| !value.is_empty());
-    let affinity_protected_until = msg
-        .data
-        .get("affinityProtectedUntil")
-        .and_then(|v| v.as_str())
-        .filter(|value| !value.is_empty());
-    let session_affinity_resource = match msg.data.get("sessionAffinityResource") {
-        Some(value) if value.as_str() == Some("reusableSandbox") => {
-            Some(SessionAffinityResource::ReusableSandbox)
-        }
-        Some(value) if value.as_str() == Some("workspaceCache") => {
-            Some(SessionAffinityResource::WorkspaceCache)
-        }
-        Some(value) => {
-            warn!(
-                value = %value,
-                "ably: invalid session affinity resource, ignoring job notification"
-            );
-            return None;
-        }
-        None => None,
-    };
-    let history_generation_affinity_protected_until = msg
-        .data
-        .get("historyGenerationAffinityProtectedUntil")
         .and_then(|v| v.as_str())
         .filter(|value| !value.is_empty());
     let history_generation_run_id = msg
@@ -958,15 +966,24 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("historyGenerationRunId")
         .and_then(|v| v.as_str())
         .and_then(|value| value.parse().ok());
+    let runner_preference = match parse_runner_preference(msg.data.get("runnerPreference").cloned())
+    {
+        Ok(runner_preference) => runner_preference,
+        Err(error) => {
+            warn!(
+                run_id = %run_id,
+                error = %error,
+                "ably: invalid runner preference, using ordinary admission"
+            );
+            None
+        }
+    };
     Some(JobNotification {
         run_id,
         profile,
         reuse_key,
-        cli_agent_session_id,
-        session_affinity_resource,
         history_generation_run_id,
-        history_generation_affinity_protected_until,
-        affinity_protected_until,
+        runner_preference,
     })
 }
 
@@ -1114,6 +1131,7 @@ impl AblyDisconnectState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::RunnerPreferenceReason;
 
     fn make_message(name: Option<&str>, data: serde_json::Value) -> ably_subscriber::Message {
         ably_subscriber::Message {
@@ -1479,6 +1497,19 @@ mod tests {
 
         tokio::time::sleep_until(extended_deadline).await;
         assert_eq!(poll_reason(wait.await.unwrap()), Some(PollReason::Deferred));
+    }
+
+    #[tokio::test]
+    async fn deferred_poll_until_preserves_absolute_deadline() {
+        let wakeups = PollWakeups::new(true);
+        let deadline = StdInstant::now() + Duration::from_secs(2);
+
+        wakeups.request_deferred_poll_until(deadline).await;
+
+        assert_eq!(
+            wakeups.snapshot().await.deferred_poll_at,
+            Some(deadline.into())
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -1891,12 +1922,16 @@ mod tests {
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000001",
                 "profile": "vm0/default",
-                "cliAgentSessionId": "sess-ably",
                 "reuseKey": "thread:chat-thread",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
-                "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                "affinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                "sessionAffinityResource": "workspaceCache"
+                "runnerPreference": {
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000005",
+                        "heartbeatGeneration": 7
+                    },
+                    "reason": "matchingReuseKey",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                }
             }),
         );
 
@@ -1910,19 +1945,60 @@ mod tests {
         assert_eq!(candidate.profile_name(), "vm0/default");
         let candidate = candidate.into_job_candidate();
         assert_eq!(candidate.reuse_key(), Some("thread:chat-thread"));
-        assert_eq!(candidate.cli_agent_session_id(), Some("sess-ably"));
         assert_eq!(
             candidate.history_generation_run_id(),
             Some("00000000-0000-0000-0000-000000000098".parse().unwrap())
         );
-        assert!(candidate.is_affinity_protected());
-        assert!(candidate.is_history_generation_affinity_protected());
+        let preference = candidate
+            .runner_preference()
+            .expect("canonical preference should be parsed");
         assert_eq!(
-            candidate.session_affinity_resource(),
-            Some(SessionAffinityResource::WorkspaceCache)
+            preference.reason(),
+            RunnerPreferenceReason::MatchingReuseKey
         );
+        assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
         assert_no_direct_candidate(&direct_candidates).await;
         assert!(!wakeups.snapshot().await.poll_now);
+    }
+
+    #[tokio::test]
+    async fn malformed_optional_preference_preserves_direct_candidate() {
+        let tokens = RunCancellationRegistry::new();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000011",
+                "profile": "vm0/default",
+                "reuseKey": "thread:malformed-preference",
+                "runnerPreference": {
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000005",
+                        "heartbeatGeneration": 7
+                    },
+                    "reason": "futureReason",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                }
+            }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        let candidate = pop_direct_candidate(&direct_candidates)
+            .await
+            .into_job_candidate();
+        assert_eq!(candidate.reuse_key(), Some("thread:malformed-preference"));
+        assert!(candidate.runner_preference().is_none());
+        assert_no_direct_candidate(&direct_candidates).await;
     }
 
     #[tokio::test]
@@ -2215,20 +2291,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_job_notification_rejects_unknown_session_affinity_resource() {
-        let msg = make_message(
-            Some("job"),
-            serde_json::json!({
-                "runId": "00000000-0000-0000-0000-000000000001",
-                "profile": "vm0/default",
-                "sessionAffinityResource": "futureResource"
-            }),
-        );
-
-        assert!(parse_job_notification(&msg).is_none());
-    }
-
-    #[test]
     fn parse_network_policy_refresh_notification_ignores_additional_fields() {
         let msg = make_message(
             Some("network-policy-refresh"),
@@ -2258,6 +2320,34 @@ mod tests {
                 "{case}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn active_input_notification_wakes_the_matching_run() {
+        let run_id: RunId = "00000000-0000-0000-0000-000000000004".parse().unwrap();
+        let msg = make_message(Some("active-input"), serde_json::json!({ "runId": run_id }));
+        let notifications = ActiveInputAblyNotifications::new();
+        let mut subscription = notifications.subscribe(run_id);
+        let profiles = default_profiles();
+        let poll_wakeups = PollWakeups::new(false);
+        let direct_candidates = direct_candidate_inbox();
+        let cancel_tokens = RunCancellationRegistry::new();
+
+        handle_ably_message_with_network_policy_refresh(
+            &msg,
+            AblyMessageTargets {
+                profiles: &profiles,
+                poll_wakeups: &poll_wakeups,
+                direct_candidates: &direct_candidates,
+                active_input_ably_notifications: &notifications,
+                cancel_tokens: &cancel_tokens,
+                network_policy_refresh: None,
+                network_policy_refresh_cancel: None,
+            },
+        )
+        .await;
+
+        assert!(subscription.wait().await);
     }
 
     #[test]

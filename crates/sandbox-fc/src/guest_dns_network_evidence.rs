@@ -84,7 +84,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::command::{CommandError, exec_with_timeout};
 use crate::guest_dns_netfilter_trace::{
-    GuestDnsNetfilterTraceAttachment, GuestDnsNetfilterTraceCursor, GuestDnsNetfilterTraceReport,
+    GuestDnsNetfilterTraceAttachment, GuestDnsNetfilterTraceCaptureTarget,
+    GuestDnsNetfilterTraceCursor, GuestDnsNetfilterTraceReport,
 };
 use crate::guest_dns_readiness::GUEST_DNS_READINESS_PACKET_BYTES;
 
@@ -187,11 +188,14 @@ pub(crate) async fn capture_guest_dns_network_evidence_report(
             .root_netfilter_trace
             .capture(
                 trace_cursor,
-                &target.namespace,
-                &target.host_device,
-                &target.peer_ip,
-                target.dns_port,
-                readiness_attempts,
+                GuestDnsNetfilterTraceCaptureTarget {
+                    namespace: &target.namespace,
+                    host_device: &target.host_device,
+                    peer_ip: &target.peer_ip,
+                    source_port: None,
+                    dns_port: target.dns_port,
+                    expected_packets: readiness_attempts,
+                },
             )
             .await
     };

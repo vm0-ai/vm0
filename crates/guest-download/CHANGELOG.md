@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.22.14](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.13...guest-download-v0.22.14) (2026-08-03)
+
+## [0.22.13](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.12...guest-download-v0.22.13) (2026-08-03)
+
+
+### Bug Fixes
+
+* **guest-download:** serialize resolved mount aliases ([#24701](https://github.com/vm0-ai/vm0/issues/24701)) ([7979e4a](https://github.com/vm0-ai/vm0/commit/7979e4afe797d10e4cdca6175031dbb15285d4cc))
+
 ## [0.22.12](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.11...guest-download-v0.22.12) (2026-08-02)
 
 ## [0.22.11](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.10...guest-download-v0.22.11) (2026-08-01)

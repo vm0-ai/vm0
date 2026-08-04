@@ -1,18 +1,19 @@
 //! Bounded evidence and namespace control for terminal guest DNS readiness failures.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use tracing::warn;
 use vsock_host::{ExecCaptureRequest, ExecOperationResult, ExecOwnedCapturedOutput, VsockHost};
 
 use crate::command::{CommandError, exec_with_timeout};
-use crate::duration::duration_ms;
 use crate::guest_dns_netfilter_trace::GuestDnsNetfilterTraceAttachment;
 use crate::guest_dns_network_evidence::{
     GuestDnsNetworkEvidenceBaseline, GuestDnsNetworkEvidenceTarget,
     capture_guest_dns_network_evidence_report,
 };
-use crate::network::probe_namespace_dns_diagnostic;
+use crate::guest_dns_veth_handoff_diagnostic::{
+    GuestDnsVethHandoffDiagnosticTarget, capture_guest_dns_veth_handoff_diagnostic,
+};
 
 const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(2);
 const HOST_COMMAND_TIMEOUT: Duration = Duration::from_millis(1_500);
@@ -21,7 +22,6 @@ const GUEST_WAIT_TIMEOUT: Duration = Duration::from_millis(1_750);
 const GUEST_OUTPUT_LIMIT_BYTES: u32 = 4 * 1024;
 const LOG_OUTPUT_LIMIT_BYTES: usize = 4 * 1024;
 const GUEST_DIAGNOSTIC_LABEL: &str = "guest-dns-failure-diagnostics";
-const CONTROL_PROBE_TIMEOUT: Duration = Duration::from_millis(500);
 
 const GUEST_STATE_COMMAND: &str = r#"set +e
 /usr/sbin/ip -details -statistics link show dev eth0 2>&1
@@ -70,7 +70,15 @@ pub(crate) async fn capture_guest_dns_failure_diagnostics(
             "guest DNS failure diagnostic snapshot timed out"
         );
     }
-    run_host_namespace_control_probe(context).await;
+    let output = capture_guest_dns_veth_handoff_diagnostic(GuestDnsVethHandoffDiagnosticTarget {
+        namespace: context.namespace,
+        host_device: context.host_device,
+        peer_ip: context.peer_ip,
+        dns_port: context.dns_port,
+        root_netfilter_trace: context.root_netfilter_trace,
+    })
+    .await;
+    log_component(context, "veth_handoff_diagnostic", bounded_output(output));
 }
 
 async fn capture_snapshot(guest: &VsockHost, context: GuestDnsFailureDiagnosticContext<'_>) {
@@ -140,29 +148,6 @@ async fn capture_snapshot(guest: &VsockHost, context: GuestDnsFailureDiagnosticC
         "namespace_dns_conntrack",
         command_output(namespace_dns_conntrack),
     );
-}
-
-async fn run_host_namespace_control_probe(context: GuestDnsFailureDiagnosticContext<'_>) {
-    let started = Instant::now();
-    let output = match probe_namespace_dns_diagnostic(
-        context.namespace.to_string(),
-        CONTROL_PROBE_TIMEOUT,
-    )
-    .await
-    {
-        Ok(attempts) => format!(
-            "diagnostic_traffic=true success=true attempts={attempts} elapsed_ms={}",
-            duration_ms(started.elapsed()),
-        ),
-        Err(error) => format!(
-            "diagnostic_traffic=true success=false stage={} io_kind={:?} attempts={} elapsed_ms={}",
-            error.stage_label(),
-            error.io_kind(),
-            error.attempts(),
-            duration_ms(started.elapsed()),
-        ),
-    };
-    log_component(context, "host_namespace_readiness", output);
 }
 
 async fn capture_guest_state(guest: &VsockHost) -> String {

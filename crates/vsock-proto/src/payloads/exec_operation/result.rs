@@ -1,9 +1,10 @@
 use crate::error::ProtocolError;
+use crate::frame::encode_into;
 use crate::read::{
     checked_payload_len_add, ensure_payload_fits_message, ensure_u16_len, ensure_u32_len,
     expect_consumed, read_i32, read_slice, read_str, read_u8, read_u16, read_u32,
 };
-use crate::wire::EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED;
+use crate::wire::{EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED, MSG_EXEC_RESULT};
 
 pub(super) const EXEC_TERMINATION_EXITED: u8 = 0x00;
 pub(super) const EXEC_TERMINATION_TIMED_OUT: u8 = 0x01;
@@ -115,16 +116,13 @@ fn append_exec_operation_captured_output(p: &mut Vec<u8>, output: ExecCapturedOu
     }
 }
 
-/// Encode exec_result payload.
-pub fn encode_exec_result(
+fn validate_exec_result_payload(
     termination: ExecTermination,
-    duration_ms: u32,
     stdout: ExecCapturedOutput<'_>,
     stderr: ExecCapturedOutput<'_>,
     diagnostic: &str,
-) -> Result<Vec<u8>, ProtocolError> {
-    let diagnostic_bytes = diagnostic.as_bytes();
-    let diagnostic_len = ensure_u16_len("diagnostic", diagnostic_bytes.len())?;
+) -> Result<(u16, usize), ProtocolError> {
+    let diagnostic_len = ensure_u16_len("diagnostic", diagnostic.len())?;
     let stdout_len = exec_operation_captured_output_encoded_len(stdout, "stdout")?;
     let stderr_len = exec_operation_captured_output_encoded_len(stderr, "stderr")?;
 
@@ -133,18 +131,82 @@ pub fn encode_exec_result(
     payload_len = checked_payload_len_add(payload_len, stdout_len)?;
     payload_len = checked_payload_len_add(payload_len, stderr_len)?;
     payload_len = checked_payload_len_add(payload_len, 2)?;
-    payload_len = checked_payload_len_add(payload_len, diagnostic_bytes.len())?;
+    payload_len = checked_payload_len_add(payload_len, diagnostic.len())?;
     ensure_payload_fits_message(payload_len)?;
 
-    let mut p = Vec::with_capacity(payload_len);
-    append_exec_termination(&mut p, termination);
+    Ok((diagnostic_len, payload_len))
+}
+
+fn append_exec_result_payload(
+    p: &mut Vec<u8>,
+    termination: ExecTermination,
+    duration_ms: u32,
+    stdout: ExecCapturedOutput<'_>,
+    stderr: ExecCapturedOutput<'_>,
+    diagnostic: &str,
+    diagnostic_len: u16,
+) {
+    append_exec_termination(p, termination);
     p.extend_from_slice(&duration_ms.to_be_bytes());
-    append_exec_operation_captured_output(&mut p, stdout);
-    append_exec_operation_captured_output(&mut p, stderr);
+    append_exec_operation_captured_output(p, stdout);
+    append_exec_operation_captured_output(p, stderr);
     p.extend_from_slice(&diagnostic_len.to_be_bytes());
-    p.extend_from_slice(diagnostic_bytes);
+    p.extend_from_slice(diagnostic.as_bytes());
+}
+
+/// Encode exec_result payload.
+pub fn encode_exec_result(
+    termination: ExecTermination,
+    duration_ms: u32,
+    stdout: ExecCapturedOutput<'_>,
+    stderr: ExecCapturedOutput<'_>,
+    diagnostic: &str,
+) -> Result<Vec<u8>, ProtocolError> {
+    let (diagnostic_len, payload_len) =
+        validate_exec_result_payload(termination, stdout, stderr, diagnostic)?;
+
+    let mut p = Vec::with_capacity(payload_len);
+    append_exec_result_payload(
+        &mut p,
+        termination,
+        duration_ms,
+        stdout,
+        stderr,
+        diagnostic,
+        diagnostic_len,
+    );
     debug_assert_eq!(p.len(), payload_len);
     Ok(p)
+}
+
+/// Encode a full exec_result frame into `frame`.
+///
+/// The resulting frame uses the same bytes as
+/// `encode(MSG_EXEC_RESULT, seq, &encode_exec_result(...))` without allocating
+/// separate payload and frame vectors.
+pub fn encode_exec_result_frame_into(
+    frame: &mut Vec<u8>,
+    seq: u32,
+    termination: ExecTermination,
+    duration_ms: u32,
+    stdout: ExecCapturedOutput<'_>,
+    stderr: ExecCapturedOutput<'_>,
+    diagnostic: &str,
+) -> Result<(), ProtocolError> {
+    frame.clear();
+    let (diagnostic_len, payload_len) =
+        validate_exec_result_payload(termination, stdout, stderr, diagnostic)?;
+    encode_into(frame, MSG_EXEC_RESULT, seq, payload_len, |frame| {
+        append_exec_result_payload(
+            frame,
+            termination,
+            duration_ms,
+            stdout,
+            stderr,
+            diagnostic,
+            diagnostic_len,
+        );
+    })
 }
 
 fn decode_exec_termination(

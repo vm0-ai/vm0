@@ -1,0 +1,247 @@
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { count, eq, sql } from "drizzle-orm";
+import { z } from "zod";
+
+import { db } from "../lib/db";
+import { executeRawRows } from "../lib/db-raw-rows";
+import { createDeferredPromise, settleIncludingAbort } from "../signals/utils";
+
+const databasePidRowSchema = z.object({ pid: z.int() });
+const waiterCountRowSchema = z.object({ waiterCount: z.int() });
+
+async function directBlockedWaiterCount(holderPid: number): Promise<number> {
+  const rows = await executeRawRows(
+    db(),
+    sql`
+      SELECT ${count()}::int AS "waiterCount"
+      FROM pg_stat_activity AS activity
+      WHERE ${holderPid} = ANY(pg_blocking_pids(activity.pid))
+    `,
+    waiterCountRowSchema,
+  );
+  return rows[0]?.waiterCount ?? 0;
+}
+
+interface HeldDatabaseBoundary {
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}
+
+/** Serializes integration tests that invoke the global threadless-run sweep. */
+async function holdThreadlessRunCleanupTestLockFixture(args: {
+  readonly signal: AbortSignal;
+}): Promise<HeldDatabaseBoundary> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`SELECT pg_backend_pid() AS "pid"`,
+      databasePidRowSchema,
+    );
+    const pid = pidRows[0]?.pid;
+    if (!pid) {
+      throw new Error("Expected the cleanup test lock holder pid");
+    }
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended('threadless-run-cleanup-integration-test', 0))`,
+    );
+    started.resolve(pid);
+    await released.promise;
+  });
+  const pid = await started.promise;
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await directBlockedWaiterCount(pid);
+    },
+  };
+}
+
+export async function withThreadlessRunCleanupTestLockFixture<T>(args: {
+  readonly signal: AbortSignal;
+  readonly run: () => Promise<T>;
+}): Promise<T> {
+  const lock = await holdThreadlessRunCleanupTestLockFixture({
+    signal: args.signal,
+  });
+  const result = await settleIncludingAbort(args.run());
+  lock.release();
+  await lock.done;
+  if (!result.ok) {
+    throw result.error;
+  }
+  return result.value;
+}
+
+/** Deletes one run root without invoking a global maintenance sweep. */
+export async function deleteAgentRunRootFixture(runId: string): Promise<void> {
+  await db().delete(agentRuns).where(eq(agentRuns.id, runId));
+}
+
+/** Moves a run to a deterministic position in an oldest-first test sweep. */
+export async function setAgentRunCreatedAtFixture(
+  runId: string,
+  createdAt: Date,
+): Promise<void> {
+  await db()
+    .update(agentRuns)
+    .set({ createdAt })
+    .where(eq(agentRuns.id, runId));
+}
+
+export async function insertPendingInlineDeliveryCallbackFixture(
+  runId: string,
+): Promise<string> {
+  const [callback] = await db()
+    .insert(agentRunCallbacks)
+    .values({ runId, internalKind: "slack:chat", payload: {} })
+    .returning({ id: agentRunCallbacks.id });
+  if (!callback) {
+    throw new Error("Expected the inline delivery callback to be inserted");
+  }
+  return callback.id;
+}
+
+export async function readRunCallbackFixture(callbackId: string): Promise<{
+  readonly status: string;
+  readonly lastError: string | null;
+} | null> {
+  const [callback] = await db()
+    .select({
+      status: agentRunCallbacks.status,
+      lastError: agentRunCallbacks.lastError,
+    })
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.id, callbackId));
+  return callback ?? null;
+}
+
+/** Holds the production event projection lock until the test releases it. */
+export async function holdRunOutputProjectionLockFixture(args: {
+  readonly runId: string;
+  readonly signal: AbortSignal;
+}): Promise<HeldDatabaseBoundary> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const projectionLockKey = `run_output_projection:${args.runId}`;
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`SELECT pg_backend_pid() AS "pid"`,
+      databasePidRowSchema,
+    );
+    const pid = pidRows[0]?.pid;
+    if (!pid) {
+      throw new Error("Expected the projection lock holder pid");
+    }
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${projectionLockKey}, 0))`,
+    );
+    started.resolve(pid);
+    await released.promise;
+  });
+  const pid = await started.promise;
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await directBlockedWaiterCount(pid);
+    },
+  };
+}
+
+/** Holds the same per-org credit reconciliation lock as terminal side effects. */
+export async function holdOrgCreditLockFixture(args: {
+  readonly orgId: string;
+  readonly signal: AbortSignal;
+}): Promise<HeldDatabaseBoundary> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`SELECT pg_backend_pid() AS "pid"`,
+      databasePidRowSchema,
+    );
+    const pid = pidRows[0]?.pid;
+    if (!pid) {
+      throw new Error("Expected the credit lock holder pid");
+    }
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('credit_' || ${args.orgId}))`,
+    );
+    started.resolve(pid);
+    await released.promise;
+  });
+  const pid = await started.promise;
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await directBlockedWaiterCount(pid);
+    },
+  };
+}
+
+/**
+ * Locks one root, then deletes it in the holding transaction when released.
+ * This lets a route test deterministically put a runner write behind the root
+ * delete without adding product-only synchronization.
+ */
+export async function holdAgentRunDeletionFixture(args: {
+  readonly runId: string;
+  readonly signal: AbortSignal;
+}): Promise<HeldDatabaseBoundary> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`SELECT pg_backend_pid() AS "pid"`,
+      databasePidRowSchema,
+    );
+    const pid = pidRows[0]?.pid;
+    if (!pid) {
+      throw new Error("Expected the run deletion holder pid");
+    }
+    const [run] = await tx
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, args.runId))
+      .for("update");
+    if (!run) {
+      throw new Error("Expected the run root to exist before deletion");
+    }
+    started.resolve(pid);
+    await released.promise;
+    await tx.delete(agentRuns).where(eq(agentRuns.id, args.runId));
+  });
+  const pid = await started.promise;
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await directBlockedWaiterCount(pid);
+    },
+  };
+}

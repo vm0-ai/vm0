@@ -1,5 +1,81 @@
 # Changelog
 
+## [8.506.1](https://github.com/vm0-ai/vm0/compare/core-v8.506.0...core-v8.506.1) (2026-08-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.266.0
+
+## [8.506.0](https://github.com/vm0-ai/vm0/compare/core-v8.505.0...core-v8.506.0) (2026-08-03)
+
+
+### Features
+
+* enable claude session pruning globally ([#24790](https://github.com/vm0-ai/vm0/issues/24790)) ([4798ff0](https://github.com/vm0-ai/vm0/commit/4798ff006f50e684214197f62e3ac3c29e66178a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.265.1
+
+## [8.505.0](https://github.com/vm0-ai/vm0/compare/core-v8.504.1...core-v8.505.0) (2026-08-03)
+
+
+### Features
+
+* **chat:** steer queued messages into active runs ([#24768](https://github.com/vm0-ai/vm0/issues/24768)) ([20e5855](https://github.com/vm0-ai/vm0/commit/20e5855c729bea0db9f7f4a2e3914b2adf4c26dd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.265.0
+
+## [8.504.1](https://github.com/vm0-ai/vm0/compare/core-v8.504.0...core-v8.504.1) (2026-08-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.264.1
+
+## [8.504.0](https://github.com/vm0-ai/vm0/compare/core-v8.503.1...core-v8.504.0) (2026-08-03)
+
+
+### Features
+
+* **core:** enable custom connector features globally ([#24696](https://github.com/vm0-ai/vm0/issues/24696)) ([7ccc87b](https://github.com/vm0-ai/vm0/commit/7ccc87bcfb0e2f51e88dad0fbd64b3bd957ac088))
+* **core:** enable JoggAI connector globally ([#24739](https://github.com/vm0-ai/vm0/issues/24739)) ([13b3bda](https://github.com/vm0-ai/vm0/commit/13b3bda096212ab27fa52e0cbb165436ba936f68))
+* fully enable artifact versioning switches ([#24704](https://github.com/vm0-ai/vm0/issues/24704)) ([e26e2f2](https://github.com/vm0-ai/vm0/commit/e26e2f2e8614d136899fff712adc5aa7d8c3f796))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.264.0
+
+## [8.503.1](https://github.com/vm0-ai/vm0/compare/core-v8.503.0...core-v8.503.1) (2026-08-03)
+
+
+### Refactoring
+
+* remove graduated composer and slack switches ([#24692](https://github.com/vm0-ai/vm0/issues/24692)) ([6634fc0](https://github.com/vm0-ai/vm0/commit/6634fc03fc79cb0439b3242ffaaa1e4817774eb8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.263.1
+
 ## [8.503.0](https://github.com/vm0-ai/vm0/compare/core-v8.502.9...core-v8.503.0) (2026-08-03)
 
 

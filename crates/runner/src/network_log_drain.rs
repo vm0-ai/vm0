@@ -495,10 +495,11 @@ mod tests {
 
         writer.write_all(b"first\n").await.unwrap();
 
-        producer
+        let outcome = producer
             .drain(drain_context(path), Duration::from_secs(1))
             .await;
 
+        assert_eq!(outcome, NetworkLogDrainOutcome::Acknowledged);
         assert_eq!(handled.lock().unwrap().as_slice(), ["first"]);
 
         cancel.cancel();

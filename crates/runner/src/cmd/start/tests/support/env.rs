@@ -10,6 +10,9 @@ use crate::provider::mock::{MockJobProvider, MockProviderHandle};
 use crate::run_cancellation::RunCancellationRegistry;
 use sandbox_mock::MockSandboxRuntime;
 
+pub(in super::super) const TEST_RUNNER_ID: &str = "550e8400-e29b-41d4-a716-446655440000";
+pub(in super::super) const TEST_HEARTBEAT_GENERATION: u64 = 7;
+
 pub(in super::super) fn test_profiles() -> BTreeMap<String, config::ProfileConfig> {
     let mut m = BTreeMap::new();
     m.insert(
@@ -31,6 +34,8 @@ pub(in super::super) struct MockRunEnv {
     pub(in super::super) handle: MockProviderHandle,
     pub(in super::super) provider: Arc<MockJobProvider>,
     pub(in super::super) idle_pool: SharedIdlePool,
+    pub(in super::super) active_reuse_keys: ActiveReuseKeys,
+    pub(in super::super) reuse_state_notify: Arc<tokio::sync::Notify>,
     pub(in super::super) lifecycle: LifecycleController,
     pub(in super::super) parking_gate: ParkingGate,
     pub(in super::super) start_observer: StartLoopTestObserver,
@@ -198,13 +203,15 @@ fn build_mock_run_config_with_runtime(
             },
             parking_gate.clone(),
         )));
+    let active_reuse_keys = new_active_reuse_keys();
+    let reuse_state_notify = Arc::new(tokio::sync::Notify::new());
 
     let config = RunConfig {
         runner: RunnerInfo {
-            id: "test-runner".into(),
+            id: TEST_RUNNER_ID.into(),
             name: "test".into(),
             group: "test-group".into(),
-            heartbeat_generation: 7,
+            heartbeat_generation: TEST_HEARTBEAT_GENERATION,
             profiles,
         },
         paths: RunPaths {
@@ -238,6 +245,8 @@ fn build_mock_run_config_with_runtime(
                 None,
                 None,
             )),
+            active_reuse_keys: active_reuse_keys.clone(),
+            reuse_state_notify: Arc::clone(&reuse_state_notify),
         },
         provider: ProviderState {
             provider,
@@ -295,6 +304,8 @@ fn build_mock_run_config_with_runtime(
         handle,
         provider: provider_ref,
         idle_pool,
+        active_reuse_keys,
+        reuse_state_notify,
         lifecycle: lifecycle.clone(),
         parking_gate,
         start_observer,

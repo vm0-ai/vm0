@@ -21,6 +21,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { mockNow, withMockNowForTest } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { deleteAgentRunRootFixture } from "../../../test-fixtures/run-deletion";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -41,6 +42,19 @@ const BROWSER_USE_API_URL = "https://api.browser-use.com/api/v3";
 const CRON_SECRET = "test-browser-reconcile-secret";
 const STARTED_AT_MS = Date.parse("2026-07-24T10:00:00.000Z");
 const MINUTE_MS = 60_000;
+
+function commandInput(command: unknown): Record<string, unknown> {
+  if (
+    typeof command !== "object" ||
+    command === null ||
+    !("input" in command) ||
+    typeof command.input !== "object" ||
+    command.input === null
+  ) {
+    return {};
+  }
+  return command.input as Record<string, unknown>;
+}
 
 function it(name: string, test: () => Promise<void>, timeout?: number): void {
   vitestTest(
@@ -808,6 +822,7 @@ describe("zero browser route", () => {
 
     // Thread deletion releases both local slots and requests provider cleanup
     // without waiting for Browser Use.
+    mockNow(Date.parse("2026-08-03T06:00:00.000Z"));
     await chat.deleteThread(actor, first.threadId);
     await chat.deleteThread(actor, other.threadId);
     await flushWaitUntilForTest();
@@ -822,6 +837,13 @@ describe("zero browser route", () => {
         return profileId === profileIds[1];
       }),
     ).toHaveLength(1);
+
+    // Root deletion preserves browser ownership, so the existing
+    // missing-thread reconciler remains the sole durable provider teardown
+    // path. Delete only this test's roots: the production sweep is global and
+    // is covered by the cleanup route integration tests.
+    await deleteAgentRunRootFixture(first.runId);
+    await deleteAgentRunRootFixture(other.runId);
     const reconciled = await reconcileBrowsers();
     expect(reconciled.body).toMatchObject({
       checked: 1,
@@ -1655,6 +1677,257 @@ describe("zero browser route", () => {
 
     await chat.deleteThread(actor, first.threadId);
     await flushWaitUntilForTest();
+  }, 120_000);
+
+  it("captures the foreground tab during viewer leases and keeps the latest screenshot", async () => {
+    const { routeMocks, runs, chat, actor, agent } =
+      await setupBrowserScenario();
+    const current = await createClaimedChatRun(
+      chat,
+      runs,
+      actor,
+      agent.agentId,
+      "Open a managed browser for screenshot capture",
+    );
+    const providerId = randomUUID();
+    acceptBrowserUseCdpSessions([providerId]);
+    server.use(
+      http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
+        const body = z
+          .strictObject({ name: z.string() })
+          .parse(await request.json());
+        return HttpResponse.json(providerProfile(randomUUID(), body.name), {
+          status: 201,
+        });
+      }),
+      http.post(`${BROWSER_USE_API_URL}/browsers`, () => {
+        return HttpResponse.json(providerBrowser(providerId), { status: 201 });
+      }),
+      http.get(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
+        return HttpResponse.json(providerBrowser(String(params.id)));
+      }),
+      http.patch(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
+        return HttpResponse.json(
+          providerBrowser(String(params.id), { status: "stopped" }),
+        );
+      }),
+    );
+    let failNextScreenshotDelete = true;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      const input = commandInput(command);
+      if ("Delete" in input && failNextScreenshotDelete) {
+        failNextScreenshotDelete = false;
+        return Promise.reject(new Error("transient screenshot delete failure"));
+      }
+      return Promise.resolve({});
+    });
+    let captureCount = 0;
+    context.mocks.browserUseCdp.command.mockImplementation((command) => {
+      if (command.method === "Target.getTargets") {
+        return {
+          targetInfos: [
+            {
+              targetId: "background-page",
+              type: "page",
+              url: "https://background.example.com",
+            },
+            {
+              targetId: "foreground-page",
+              type: "page",
+              url: "https://foreground.example.com",
+            },
+          ],
+        };
+      }
+      if (command.method === "Target.attachToTarget") {
+        return {
+          sessionId:
+            command.params.targetId === "foreground-page"
+              ? "foreground-session"
+              : "background-session",
+        };
+      }
+      if (command.method === "Runtime.evaluate") {
+        return {
+          result: {
+            type: "boolean",
+            value: command.sessionId === "foreground-session",
+          },
+        };
+      }
+      if (command.method === "Page.getLayoutMetrics") {
+        return {
+          cssVisualViewport: {
+            pageX: 0,
+            pageY: 24,
+            clientWidth: 1280,
+            clientHeight: 720,
+          },
+        };
+      }
+      if (command.method === "Page.captureScreenshot") {
+        captureCount += 1;
+        return {
+          data: Buffer.from(`screenshot-${String(captureCount)}`).toString(
+            "base64",
+          ),
+        };
+      }
+      return undefined;
+    });
+
+    await accept(
+      client().use({ headers: current.claim.browserHeaders, body: {} }),
+      [200],
+    );
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+
+    const firstLease = await accept(
+      client().leaseByThread({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: current.threadId },
+        body: {},
+      }),
+      [200],
+    );
+    expect(firstLease.body.browser.screenshotUrl).toBeNull();
+    await flushWaitUntilForTest();
+
+    const afterFirstCapture = await accept(
+      client().get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: current.threadId },
+      }),
+      [200],
+    );
+    const firstScreenshotUrl = afterFirstCapture.body.browser.screenshotUrl;
+    expect(firstScreenshotUrl).toMatch(
+      /^https:\/\/cdn\.vm7\.io\/artifacts\/.+\.webp$/u,
+    );
+    if (!firstScreenshotUrl) {
+      throw new Error("Expected the first browser screenshot URL");
+    }
+    const firstScreenshotKey = new URL(firstScreenshotUrl).pathname.slice(1);
+
+    const secondLease = await accept(
+      client().leaseByThread({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: current.threadId },
+        body: {},
+      }),
+      [200],
+    );
+    expect(secondLease.body.browser.screenshotUrl).toBe(firstScreenshotUrl);
+    await flushWaitUntilForTest();
+
+    const afterSecondCapture = await accept(
+      client().get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: current.threadId },
+      }),
+      [200],
+    );
+    const finalScreenshotUrl = afterSecondCapture.body.browser.screenshotUrl;
+    expect(finalScreenshotUrl).not.toBe(firstScreenshotUrl);
+    if (!finalScreenshotUrl) {
+      throw new Error("Expected the second browser screenshot URL");
+    }
+    const finalScreenshotKey = new URL(finalScreenshotUrl).pathname.slice(1);
+    expect(captureCount).toBe(2);
+    expect(
+      context.mocks.browserUseCdp.command.mock.calls
+        .map(([command]) => {
+          return command;
+        })
+        .filter((command) => {
+          return command.method === "Page.captureScreenshot";
+        }),
+    ).toStrictEqual([
+      {
+        id: 7,
+        method: "Page.captureScreenshot",
+        params: {
+          format: "webp",
+          quality: 80,
+          fromSurface: true,
+          captureBeyondViewport: false,
+          clip: {
+            x: 0,
+            y: 24,
+            width: 1280,
+            height: 720,
+            scale: 0.5,
+          },
+        },
+        sessionId: "foreground-session",
+      },
+      {
+        id: 7,
+        method: "Page.captureScreenshot",
+        params: {
+          format: "webp",
+          quality: 80,
+          fromSurface: true,
+          captureBeyondViewport: false,
+          clip: {
+            x: 0,
+            y: 24,
+            width: 1280,
+            height: 720,
+            scale: 0.5,
+          },
+        },
+        sessionId: "foreground-session",
+      },
+    ]);
+
+    expect(
+      context.mocks.s3.send.mock.calls.filter(([command]) => {
+        const input = commandInput(command);
+        return (JSON.stringify(input.Delete) ?? "").includes(
+          firstScreenshotKey,
+        );
+      }),
+    ).toHaveLength(1);
+    const retriedCleanup = await reconcileBrowsers();
+    expect(retriedCleanup.body).toMatchObject({
+      checked: 2,
+      stopped: 1,
+      errors: 0,
+      healthy: 1,
+    });
+    expect(
+      context.mocks.s3.send.mock.calls.filter(([command]) => {
+        const input = commandInput(command);
+        return (JSON.stringify(input.Delete) ?? "").includes(
+          firstScreenshotKey,
+        );
+      }),
+    ).toHaveLength(2);
+
+    await chat.deleteThread(actor, current.threadId);
+    await flushWaitUntilForTest();
+    expect(context.mocks.s3.send).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          Delete: { Objects: [{ Key: finalScreenshotKey }] },
+        }),
+      }),
+    );
+
+    const reconciled = await reconcileBrowsers();
+    expect(reconciled.body).toMatchObject({
+      checked: 1,
+      stopped: 1,
+      errors: 0,
+    });
+    expect(context.mocks.s3.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          Delete: { Objects: [{ Key: finalScreenshotKey }] },
+        }),
+      }),
+    );
   }, 120_000);
 
   it("reuses one thread browser and records start-stop lifecycle events", async () => {

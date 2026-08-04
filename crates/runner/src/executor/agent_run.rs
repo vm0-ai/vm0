@@ -30,7 +30,7 @@ use super::diagnostics::{
     AgentBootstrapAbnormalExitLogContext, AgentEnvDiagnostics, AgentStdoutStreamDiagnostics,
     StdoutDrainReport, build_agent_env_diagnostics, build_agent_env_key_diagnostics,
     check_host_oom, collect_agent_abnormal_exit_diagnostics, dmesg_indicates_oom,
-    drain_stdout_to_file, log_agent_abnormal_exit_env_diagnostics,
+    drain_stdout_to_file, explicit_enospc_evidence, log_agent_abnormal_exit_env_diagnostics,
     log_agent_bootstrap_abnormal_exit_diagnostics, log_agent_process_exit_summary,
     read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
@@ -59,11 +59,10 @@ use super::workspace_session_history_materializer::{
 };
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
-    JOB_TIMEOUT_EXIT_CODE, PROCESS_CANCEL_TIMEOUTS, ResourceFailureDiagnostics,
-    ResourceFailureKind, RunnerError, RunnerResult, SandboxReuseResult,
-    SessionHistoryRestoreFallback, SessionHistoryRestorePlan, USER_ENV_FILE_ENV_KEY,
-    agent_exit_failure_message, guest_runtime_dir, guest_runtime_path, job_supervisor_timeout,
-    job_terminal_wait_timeout, normalize_failure_exit_code,
+    JOB_TIMEOUT_EXIT_CODE, ResourceFailureDiagnostics, ResourceFailureKind, RunnerError,
+    RunnerResult, SandboxReuseResult, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
+    USER_ENV_FILE_ENV_KEY, agent_exit_failure_message, guest_runtime_dir, guest_runtime_path,
+    job_supervisor_timeout, job_terminal_wait_timeout, normalize_failure_exit_code,
 };
 use crate::active_input::ActiveInputSource;
 use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
@@ -789,16 +788,16 @@ impl CancellationDisposition {
 struct ProcessWaitOutcome {
     result: sandbox::Result<sandbox::ProcessExit>,
     cancellation: CancellationDisposition,
-    abort_stdout_drain: bool,
+    interrupt_stdout_drain: bool,
 }
 
 impl ProcessWaitOutcome {
     fn normal(result: sandbox::Result<sandbox::ProcessExit>) -> Self {
-        let abort_stdout_drain = result.is_err();
+        let interrupt_stdout_drain = result.is_err();
         Self {
             result,
             cancellation: CancellationDisposition::None,
-            abort_stdout_drain,
+            interrupt_stdout_drain,
         }
     }
 
@@ -806,14 +805,14 @@ impl ProcessWaitOutcome {
         Self {
             result: Ok(exit),
             cancellation: CancellationDisposition::Cooperative,
-            abort_stdout_drain: false,
+            interrupt_stdout_drain: false,
         }
     }
 
     fn hard_fallback(
         guest_process_pid: u32,
         stream_overflowed: bool,
-        abort_stdout_drain: bool,
+        interrupt_stdout_drain: bool,
     ) -> Self {
         Self {
             result: Ok(cancelled_agent_process_exit(
@@ -821,7 +820,7 @@ impl ProcessWaitOutcome {
                 stream_overflowed,
             )),
             cancellation: CancellationDisposition::HardFallback,
-            abort_stdout_drain,
+            interrupt_stdout_drain,
         }
     }
 }
@@ -1503,6 +1502,7 @@ async fn prepare_guest_storage(
     result
 }
 
+#[cfg(test)]
 pub(super) async fn run_in_sandbox(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
@@ -1518,7 +1518,7 @@ pub(super) async fn run_in_sandbox(
         start,
         telemetry,
         controls,
-        PROCESS_CANCEL_TIMEOUTS,
+        super::PROCESS_CANCEL_TIMEOUTS,
     )
     .await
 }
@@ -2184,9 +2184,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     // Spawn background task to drain stdout chunks and write to the host stream log file.
     let host_log_path = config.log_paths.system_stream_log(context.run_id);
-    let stream_task = handle
-        .take_stdout_receiver()
-        .map(|stdout_rx| tokio::spawn(drain_stdout_to_file(stdout_rx, host_log_path)));
+    let stream_task = handle.take_stdout_receiver().map(|stdout_rx| {
+        let stop = CancellationToken::new();
+        let task_stop = stop.clone();
+        let task = tokio::spawn(drain_stdout_to_file(stdout_rx, host_log_path, task_stop));
+        (stop, task)
+    });
 
     if let Some(background_fill) = deferred_background_fill {
         background_fill.start(telemetry);
@@ -2240,7 +2243,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let ProcessWaitOutcome {
         result,
         cancellation,
-        abort_stdout_drain,
+        interrupt_stdout_drain,
     } = wait_outcome;
     let cancellation_observed = cancellation.observed();
     let used_hard_cancellation_fallback = cancellation.used_hard_fallback();
@@ -2253,24 +2256,24 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     }
 
     // Wait for streaming to finish (channel closes when process exits).
-    // On cancel/timeout/crash the stream channel may not close — abort to
-    // prevent blocking indefinitely on the drain task.
+    // When terminal proof is unavailable, close the bounded receiver so the
+    // drain can flush accepted chunks without waiting for sender drop.
     let mut stdout_drain_report = StdoutDrainReport::default();
-    if let Some(task) = stream_task {
-        if abort_stdout_drain || result.is_err() {
-            task.abort();
-            let _ = task.await;
-        } else {
-            match task.await {
-                Ok(Ok(report)) => {
-                    stdout_drain_report = report;
-                }
-                Ok(Err(e)) => {
-                    warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
-                }
-                Err(e) => {
-                    warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
-                }
+    if let Some((stop, task)) = stream_task {
+        if interrupt_stdout_drain {
+            stop.cancel();
+        }
+        match task.await {
+            Ok(Ok(report)) => {
+                stdout_drain_report = report;
+            }
+            Ok(Err(e)) => {
+                stdout_drain_report.stream_incomplete = true;
+                warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
+            }
+            Err(e) => {
+                stdout_drain_report.stream_incomplete = true;
+                warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
             }
         }
     }
@@ -2281,6 +2284,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         bytes_written: stdout_drain_report.bytes_written,
         chunk_truncated: stdout_drain_report.chunk_truncated,
         stream_overflowed: false,
+        stream_incomplete: stdout_drain_report.stream_incomplete,
     };
     let exit = match result {
         Ok(exit) => exit,
@@ -2298,7 +2302,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 let error = "Firecracker VM killed by host OOM killer".to_string();
                 telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
-                    .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled));
+                    .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled)
+                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics_on_wait_error));
             }
             let error = e.to_string();
             telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
@@ -2316,7 +2321,21 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     reusable_session_identity: None,
                 });
             }
-            return Err(e.into());
+            let resource_diagnostics = if explicit_enospc_evidence([error.as_str()]) {
+                collect_agent_abnormal_exit_diagnostics(
+                    sandbox,
+                    context.run_id,
+                    sandbox.id(),
+                    start.reuse_result,
+                    1,
+                )
+                .await
+            } else {
+                None
+            };
+            return Ok(AgentExecutionResult::failure_from_error(error)
+                .with_resource_diagnostics(resource_diagnostics)
+                .with_stdout_stream_diagnostics(stdout_stream_diagnostics_on_wait_error));
         }
     };
     if exit.stream_overflowed {
@@ -2326,6 +2345,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         bytes_written: stdout_drain_report.bytes_written,
         chunk_truncated: stdout_drain_report.chunk_truncated,
         stream_overflowed: exit.stream_overflowed,
+        stream_incomplete: stdout_drain_report.stream_incomplete,
     };
     if !exit.diagnostic.is_empty() {
         warn!(

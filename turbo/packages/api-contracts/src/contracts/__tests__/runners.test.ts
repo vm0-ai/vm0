@@ -20,6 +20,7 @@ import {
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   resumeSessionSchema,
+  runnersActiveInputsContract,
   runnersBuiltinFirewallsResolveContract,
   runnersJobClaimContract,
   runnersNetworkPolicyRefreshContract,
@@ -106,6 +107,39 @@ describe("runner claim response contract", () => {
     });
 
     expect(context).not.toHaveProperty("connectorPermissionBaseline");
+  });
+
+  it("accepts the optional active input capability", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+
+    expect(
+      executionContextSchema.parse({
+        ...fixture,
+        activeInput: true,
+        activeInputAbly: true,
+      }).activeInput,
+    ).toBe(true);
+    expect(
+      executionContextSchema.parse({
+        ...fixture,
+        activeInput: true,
+        activeInputAbly: true,
+      }).activeInputAbly,
+    ).toBe(true);
+    expect(
+      executionContextSchema.safeParse({
+        ...fixture,
+        activeInput: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      executionContextSchema.safeParse({
+        ...fixture,
+        activeInputAbly: false,
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -437,7 +471,6 @@ describe("runner resume session contract", () => {
   });
 
   it("keeps generation metadata in stable discovery and reusable shapes", () => {
-    const historyGenerationAffinityProtectedUntil = "2026-07-15T00:00:00.500Z";
     const storedResumeSession = {
       sessionId: "sess-123",
       historyGenerationRunId,
@@ -467,14 +500,8 @@ describe("runner resume session contract", () => {
       vars: null,
       experimentalProfile: "vm0/default",
       historyGenerationRunId,
-      historyGenerationAffinityProtectedUntil,
-      sessionAffinityResource: "reusableSandbox",
     });
     expect(job.historyGenerationRunId).toBe(historyGenerationRunId);
-    expect(job.historyGenerationAffinityProtectedUntil).toBe(
-      historyGenerationAffinityProtectedUntil,
-    );
-    expect(job.sessionAffinityResource).toBe("reusableSandbox");
 
     const heldSandboxState = heldSandboxStateSchema.parse({
       reuseKey: "thread:22222222-2222-4222-8222-222222222223",
@@ -503,7 +530,7 @@ describe("runner resume session contract", () => {
     ]);
   });
 
-  it("keeps job generation-affinity additions optional", () => {
+  it("keeps the canonical runner preference optional", () => {
     const job = jobSchema.parse({
       runId: "22222222-2222-4222-8222-222222222222",
       prompt: "continue",
@@ -511,48 +538,71 @@ describe("runner resume session contract", () => {
       agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
-      historyGenerationAffinityProtectedUntil: null,
     });
-    expect(job.historyGenerationAffinityProtectedUntil).toBeNull();
-    expect(job.sessionAffinityResource).toBeUndefined();
-    expect(job.predecessorRunnerAffinity).toBeUndefined();
+    expect(job.runnerPreference).toBeUndefined();
   });
 
-  it("accepts a complete dormant predecessor runner affinity", () => {
-    const predecessorRunnerAffinity = {
-      sourceRunId: "11111111-1111-4111-8111-111111111111",
-      runnerId: "22222222-2222-4222-8222-222222222222",
-      heartbeatGeneration: 7,
+  it("accepts one strict optional runner preference", () => {
+    const runnerPreference = {
+      runnerIdentity: {
+        runnerId: "22222222-2222-4222-8222-222222222222",
+        heartbeatGeneration: 7,
+      },
       expiresAt: "2026-08-03T00:00:01.000Z",
     };
-    const job = jobSchema.parse({
+    const jobInput = {
       runId: "33333333-3333-4333-8333-333333333333",
       prompt: "continue",
       appendSystemPrompt: null,
       agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
-      predecessorRunnerAffinity,
-    });
+    };
 
-    expect(job.predecessorRunnerAffinity).toStrictEqual(
-      predecessorRunnerAffinity,
-    );
+    for (const reason of [
+      "exactHistoryGeneration",
+      "matchingReuseKey",
+      "finalizingPredecessor",
+    ] as const) {
+      const job = jobSchema.parse({
+        ...jobInput,
+        runnerPreference: { ...runnerPreference, reason },
+      });
+      expect(job.runnerPreference).toStrictEqual({
+        ...runnerPreference,
+        reason,
+      });
+    }
     expect(
       jobSchema.safeParse({
-        ...job,
-        predecessorRunnerAffinity: {
-          ...predecessorRunnerAffinity,
+        ...jobInput,
+        runnerPreference: {
+          ...runnerPreference,
+          reason: "matchingReuseKey",
           expiresAt: undefined,
         },
       }).success,
     ).toBe(false);
     expect(
       jobSchema.safeParse({
-        ...job,
-        predecessorRunnerAffinity: {
-          ...predecessorRunnerAffinity,
+        ...jobInput,
+        runnerPreference: {
+          ...runnerPreference,
+          reason: "matchingReuseKey",
           resource: "reusableSandbox",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobSchema.safeParse({
+        ...jobInput,
+        runnerPreference: {
+          ...runnerPreference,
+          reason: "matchingReuseKey",
+          runnerIdentity: {
+            ...runnerPreference.runnerIdentity,
+            resource: "reusableSandbox",
+          },
         },
       }).success,
     ).toBe(false);
@@ -926,6 +976,16 @@ describe("runner claim request contract", () => {
     });
   });
 
+  it("accepts only an affirmative active input capability", () => {
+    expect(
+      runnersJobClaimContract.claim.body.parse({ activeInput: true }),
+    ).toStrictEqual({ activeInput: true });
+    expect(
+      runnersJobClaimContract.claim.body.safeParse({ activeInput: false })
+        .success,
+    ).toBe(false);
+  });
+
   it("requires a strict all-or-nothing runner identity", () => {
     const runnerId = "11111111-1111-4111-8111-111111111111";
     for (const runnerIdentity of [
@@ -961,19 +1021,6 @@ describe("runner claim request contract", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts and strips previous runner telemetry", () => {
-    const body = runnersJobClaimContract.claim.body.parse({
-      telemetry: {
-        sessionAffinityResource: "workspaceCache",
-        sessionAffinityLocalResource: "workspaceCache",
-        localAdmissionResource: "fresh",
-        sessionHistoryGenerationRelationship: "fresh",
-      },
-    });
-
-    expect(body.telemetry).toEqual({});
-  });
-
   it("discards malformed diagnostic telemetry", () => {
     const body = runnersJobClaimContract.claim.body.parse({
       telemetry: {
@@ -983,6 +1030,25 @@ describe("runner claim request contract", () => {
     });
 
     expect(body.telemetry).toEqual({});
+  });
+});
+
+describe("runner active input contract", () => {
+  it("coerces the sequence cursor and validates entries", () => {
+    const runId = "11111111-1111-4111-8111-111111111111";
+    const messageId = "22222222-2222-4222-8222-222222222222";
+
+    expect(
+      runnersActiveInputsContract.list.pathParams.parse({
+        runId,
+        fromSequence: "3",
+      }),
+    ).toStrictEqual({ runId, fromSequence: 3 });
+    expect(
+      runnersActiveInputsContract.list.responses[200].safeParse({
+        entries: [{ sequence: 3, messageId, text: "steer this run" }],
+      }).success,
+    ).toBe(true);
   });
 });
 

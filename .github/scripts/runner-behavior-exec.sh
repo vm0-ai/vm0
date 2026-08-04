@@ -44,6 +44,17 @@ POOL_LOCK_HOLDER_STATUS=""
 POOL_LOCK_PUBLISH_RELEASE=""
 POOL_LOCK_RELEASE_FD=""
 POOL_LOCK_ERROR=""
+TC_DIAGNOSTIC_NAMESPACE=""
+TC_DIAGNOSTIC_HOST_DEVICE=""
+TC_DIAGNOSTIC_NAMESPACE_FILTER=false
+TC_DIAGNOSTIC_ROOT_FILTER=false
+TC_DIAGNOSTIC_NAMESPACE_QDISC=false
+TC_DIAGNOSTIC_ROOT_QDISC=false
+TC_DIAGNOSTIC_PRIORITY=62000
+TC_DIAGNOSTIC_HANDLE=24767
+DNS_FAILURE_RULE_INSTALLED=false
+DNS_FAILURE_RULE_ARGS=()
+DNS_DIAGNOSTIC_LOG_FILE=""
 
 fail() { echo "FAIL: $1"; exit 1; }
 
@@ -261,8 +272,74 @@ tcp.close()
 PY
 }
 
+send_veth_diagnostic_query() {
+  local namespace=$1 source_ip=$2 source_port=$3
+  sudo ip netns exec "$namespace" \
+    python3 - "$source_ip" "$source_port" <<'PY'
+import socket
+import sys
+
+source_ip = sys.argv[1]
+source_port = int(sys.argv[2])
+query = bytes.fromhex(
+    "123401000001000000000000"
+    "0d766d302d7665746870726f6265"
+    "07696e76616c69640000010001"
+)
+
+udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+udp.settimeout(2)
+udp.bind((source_ip, source_port))
+udp.sendto(query, ("8.8.8.8", 53))
+response, _ = udp.recvfrom(4096)
+assert response[:2] == query[:2] and response[2] & 128
+udp.close()
+PY
+}
+
+cleanup_tc_diagnostic() {
+  if [ "$TC_DIAGNOSTIC_NAMESPACE_FILTER" = true ]; then
+    sudo ip netns exec "$TC_DIAGNOSTIC_NAMESPACE" tc filter delete \
+      dev veth0 egress protocol ip pref "$TC_DIAGNOSTIC_PRIORITY" \
+      handle "$TC_DIAGNOSTIC_HANDLE" flower 2>/dev/null || true
+    TC_DIAGNOSTIC_NAMESPACE_FILTER=false
+  fi
+  if [ "$TC_DIAGNOSTIC_ROOT_FILTER" = true ]; then
+    sudo tc filter delete dev "$TC_DIAGNOSTIC_HOST_DEVICE" ingress \
+      protocol ip pref "$TC_DIAGNOSTIC_PRIORITY" \
+      handle "$TC_DIAGNOSTIC_HANDLE" flower 2>/dev/null || true
+    TC_DIAGNOSTIC_ROOT_FILTER=false
+  fi
+  if [ "$TC_DIAGNOSTIC_NAMESPACE_QDISC" = true ]; then
+    sudo ip netns exec "$TC_DIAGNOSTIC_NAMESPACE" \
+      tc qdisc delete dev veth0 clsact 2>/dev/null || true
+    TC_DIAGNOSTIC_NAMESPACE_QDISC=false
+  fi
+  if [ "$TC_DIAGNOSTIC_ROOT_QDISC" = true ]; then
+    sudo tc qdisc delete dev "$TC_DIAGNOSTIC_HOST_DEVICE" \
+      clsact 2>/dev/null || true
+    TC_DIAGNOSTIC_ROOT_QDISC=false
+  fi
+  TC_DIAGNOSTIC_NAMESPACE=""
+  TC_DIAGNOSTIC_HOST_DEVICE=""
+}
+
+cleanup_dns_failure_rule() {
+  if [ "$DNS_FAILURE_RULE_INSTALLED" = true ]; then
+    sudo iptables -D INPUT "${DNS_FAILURE_RULE_ARGS[@]}" 2>/dev/null || true
+    DNS_FAILURE_RULE_INSTALLED=false
+  fi
+  DNS_FAILURE_RULE_ARGS=()
+}
+
 cleanup() {
   echo "--- Cleanup ---"
+  cleanup_dns_failure_rule
+  cleanup_tc_diagnostic
+  if [ -n "$DNS_DIAGNOSTIC_LOG_FILE" ]; then
+    rm -f "$DNS_DIAGNOSTIC_LOG_FILE"
+    DNS_DIAGNOSTIC_LOG_FILE=""
+  fi
   stop_netfilter_trace || true
   if [ -n "$NETFILTER_TRACE_FILE" ]; then
     rm -f "$NETFILTER_TRACE_FILE"
@@ -835,6 +912,314 @@ assert_dns_input_filter_family() {
 
 assert_dns_input_filter_family IPv4 "$FILTER_RULES"
 assert_dns_input_filter_family IPv6 "$IPV6_FILTER_RULES"
+
+echo "--- Test: exact veth DNS observation ---"
+TC_DIAGNOSTIC_NAMESPACE=$ATTACKER_NS
+TC_DIAGNOSTIC_HOST_DEVICE=$ATTACKER_IF
+TC_DIAGNOSTIC_SOURCE_PORT=30053
+TC_DIAGNOSTIC_NONMATCHING_SOURCE_PORT=30054
+
+TC_NAMESPACE_CLSACT_BEFORE=$(sudo ip netns exec "$TC_DIAGNOSTIC_NAMESPACE" \
+  tc -j qdisc show dev veth0 \
+  | jq -er '[.[] | select(.kind == "clsact")] | length') \
+  || fail "failed to inspect namespace clsact state"
+TC_ROOT_CLSACT_BEFORE=$(sudo tc -j qdisc show \
+  dev "$TC_DIAGNOSTIC_HOST_DEVICE" \
+  | jq -er '[.[] | select(.kind == "clsact")] | length') \
+  || fail "failed to inspect root clsact state"
+case "$TC_NAMESPACE_CLSACT_BEFORE" in
+  0)
+    sudo ip netns exec "$TC_DIAGNOSTIC_NAMESPACE" \
+      tc qdisc add dev veth0 clsact \
+      || fail "failed to add namespace diagnostic clsact"
+    TC_DIAGNOSTIC_NAMESPACE_QDISC=true
+    ;;
+  1) ;;
+  *) fail "namespace has duplicate clsact qdiscs" ;;
+esac
+case "$TC_ROOT_CLSACT_BEFORE" in
+  0)
+    sudo tc qdisc add dev "$TC_DIAGNOSTIC_HOST_DEVICE" clsact \
+      || fail "failed to add root diagnostic clsact"
+    TC_DIAGNOSTIC_ROOT_QDISC=true
+    ;;
+  1) ;;
+  *) fail "root veth has duplicate clsact qdiscs" ;;
+esac
+
+sudo ip netns exec "$TC_DIAGNOSTIC_NAMESPACE" tc filter add \
+  dev veth0 egress protocol ip pref "$TC_DIAGNOSTIC_PRIORITY" \
+  handle "$TC_DIAGNOSTIC_HANDLE" flower \
+  src_ip "${ATTACKER_PEER}/32" dst_ip 8.8.8.8/32 ip_proto udp \
+  src_port "$TC_DIAGNOSTIC_SOURCE_PORT" dst_port 53 \
+  action gact continue \
+  || fail "failed to add namespace diagnostic filter"
+TC_DIAGNOSTIC_NAMESPACE_FILTER=true
+sudo tc filter add dev "$TC_DIAGNOSTIC_HOST_DEVICE" ingress \
+  protocol ip pref "$TC_DIAGNOSTIC_PRIORITY" \
+  handle "$TC_DIAGNOSTIC_HANDLE" flower \
+  src_ip "${ATTACKER_PEER}/32" dst_ip 8.8.8.8/32 ip_proto udp \
+  src_port "$TC_DIAGNOSTIC_SOURCE_PORT" dst_port 53 \
+  action gact continue \
+  || fail "failed to add root diagnostic filter"
+TC_DIAGNOSTIC_ROOT_FILTER=true
+
+tc_owned_counters() {
+  local scope=$1 output
+  if [ "$scope" = namespace ]; then
+    output=$(sudo ip netns exec "$TC_DIAGNOSTIC_NAMESPACE" \
+      tc -j -s filter show dev veth0 egress) \
+      || fail "failed to read namespace diagnostic filter"
+  else
+    output=$(sudo tc -j -s filter show \
+      dev "$TC_DIAGNOSTIC_HOST_DEVICE" ingress) \
+      || fail "failed to read root diagnostic filter"
+  fi
+  printf '%s\n' "$output" \
+    | jq -er --argjson priority "$TC_DIAGNOSTIC_PRIORITY" \
+      --argjson handle "$TC_DIAGNOSTIC_HANDLE" '
+      [
+        .[]
+        | select(
+            .pref == $priority
+            and .options.handle == $handle
+            and .kind == "flower"
+          )
+      ] as $owned
+      | if ($owned | length) == 1
+          and ($owned[0].options.actions | length) == 1
+          and $owned[0].options.actions[0].kind == "gact"
+          and $owned[0].options.actions[0].control_action.type == "continue"
+          and ($owned[0].options.actions[0].stats.packets | type) == "number"
+          and ($owned[0].options.actions[0].stats.bytes | type) == "number"
+        then [
+          $owned[0].options.actions[0].stats.packets,
+          $owned[0].options.actions[0].stats.bytes
+        ] | @tsv
+        else error("owned diagnostic filter is missing or malformed")
+        end
+    '
+}
+
+send_veth_diagnostic_query \
+  "$TC_DIAGNOSTIC_NAMESPACE" "$ATTACKER_PEER" \
+  "$TC_DIAGNOSTIC_NONMATCHING_SOURCE_PORT" \
+  || fail "nonmatching veth diagnostic query failed"
+read -r TC_NAMESPACE_PACKETS TC_NAMESPACE_BYTES \
+  <<< "$(tc_owned_counters namespace)"
+read -r TC_ROOT_PACKETS TC_ROOT_BYTES \
+  <<< "$(tc_owned_counters root)"
+[ "$TC_NAMESPACE_PACKETS" -eq 0 ] && [ "$TC_NAMESPACE_BYTES" -eq 0 ] \
+  || fail "namespace diagnostic filter matched the wrong source port"
+[ "$TC_ROOT_PACKETS" -eq 0 ] && [ "$TC_ROOT_BYTES" -eq 0 ] \
+  || fail "root diagnostic filter matched the wrong source port"
+
+send_veth_diagnostic_query \
+  "$TC_DIAGNOSTIC_NAMESPACE" "$ATTACKER_PEER" \
+  "$TC_DIAGNOSTIC_SOURCE_PORT" \
+  || fail "matching veth diagnostic query failed"
+read -r TC_NAMESPACE_PACKETS TC_NAMESPACE_BYTES \
+  <<< "$(tc_owned_counters namespace)"
+read -r TC_ROOT_PACKETS TC_ROOT_BYTES \
+  <<< "$(tc_owned_counters root)"
+[ "$TC_NAMESPACE_PACKETS" -eq 1 ] && [ "$TC_NAMESPACE_BYTES" -eq 81 ] \
+  || fail "namespace diagnostic filter expected 1/81, got ${TC_NAMESPACE_PACKETS}/${TC_NAMESPACE_BYTES}"
+[ "$TC_ROOT_PACKETS" -eq 1 ] && [ "$TC_ROOT_BYTES" -eq 67 ] \
+  || fail "root diagnostic filter expected 1/67, got ${TC_ROOT_PACKETS}/${TC_ROOT_BYTES}"
+
+sudo ip netns exec "$TC_DIAGNOSTIC_NAMESPACE" tc filter delete \
+  dev veth0 egress protocol ip pref "$TC_DIAGNOSTIC_PRIORITY" \
+  handle "$TC_DIAGNOSTIC_HANDLE" flower \
+  || fail "failed to remove namespace diagnostic filter"
+TC_DIAGNOSTIC_NAMESPACE_FILTER=false
+sudo tc filter delete dev "$TC_DIAGNOSTIC_HOST_DEVICE" ingress \
+  protocol ip pref "$TC_DIAGNOSTIC_PRIORITY" \
+  handle "$TC_DIAGNOSTIC_HANDLE" flower \
+  || fail "failed to remove root diagnostic filter"
+TC_DIAGNOSTIC_ROOT_FILTER=false
+if [ "$TC_DIAGNOSTIC_NAMESPACE_QDISC" = true ]; then
+  sudo ip netns exec "$TC_DIAGNOSTIC_NAMESPACE" \
+    tc qdisc delete dev veth0 clsact \
+    || fail "failed to remove namespace diagnostic clsact"
+  TC_DIAGNOSTIC_NAMESPACE_QDISC=false
+fi
+if [ "$TC_DIAGNOSTIC_ROOT_QDISC" = true ]; then
+  sudo tc qdisc delete dev "$TC_DIAGNOSTIC_HOST_DEVICE" clsact \
+    || fail "failed to remove root diagnostic clsact"
+  TC_DIAGNOSTIC_ROOT_QDISC=false
+fi
+TC_NAMESPACE_CLSACT_AFTER=$(sudo ip netns exec "$TC_DIAGNOSTIC_NAMESPACE" \
+  tc -j qdisc show dev veth0 \
+  | jq -er '[.[] | select(.kind == "clsact")] | length') \
+  || fail "failed to verify namespace clsact cleanup"
+TC_ROOT_CLSACT_AFTER=$(sudo tc -j qdisc show \
+  dev "$TC_DIAGNOSTIC_HOST_DEVICE" \
+  | jq -er '[.[] | select(.kind == "clsact")] | length') \
+  || fail "failed to verify root clsact cleanup"
+[ "$TC_NAMESPACE_CLSACT_AFTER" -eq "$TC_NAMESPACE_CLSACT_BEFORE" ] \
+  || fail "namespace clsact ownership was not restored"
+[ "$TC_ROOT_CLSACT_AFTER" -eq "$TC_ROOT_CLSACT_BEFORE" ] \
+  || fail "root clsact ownership was not restored"
+TC_DIAGNOSTIC_NAMESPACE=""
+TC_DIAGNOSTIC_HOST_DEVICE=""
+echo "PASS: exact veth DNS observation"
+
+wait_for_idle_runner_pool() {
+  local namespace idle namespace_count
+  for _ in $(seq 1 300); do
+    namespace_count=0
+    idle=true
+    while read -r namespace; do
+      [ -n "$namespace" ] || continue
+      namespace_count=$((namespace_count + 1))
+      if [ -n "$(sudo ip netns pids "$namespace")" ]; then
+        idle=false
+      fi
+    done < <(
+      sudo ip netns list \
+        | awk -v prefix="$RUNNER_POOL_PREFIX" 'index($1, prefix) == 1 {print $1}'
+    )
+    if [ "$namespace_count" -ge 2 ] && [ "$idle" = true ]; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  fail "runner namespace pool did not return to two idle attachments"
+}
+
+restore_runner_pool_after_dns_failure() {
+  local attempt first_pid second_pid first_status second_status output
+  DNS_DIAGNOSTIC_LOG_FILE=$(mktemp "/tmp/vm0-${SVC}-dns-recovery.XXXXXX")
+  # The failed original and replacement can each leave one completed pool
+  # replenishment error for acquire to consume before a fresh creation starts.
+  for attempt in 1 2 3; do
+    : >"$DNS_DIAGNOSTIC_LOG_FILE"
+    sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+      --timeout 30 --prompt 'sleep 2 && echo dns-recovery-one' \
+      >>"$DNS_DIAGNOSTIC_LOG_FILE" 2>&1 &
+    first_pid=$!
+    sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+      --timeout 30 --prompt 'sleep 2 && echo dns-recovery-two' \
+      >>"$DNS_DIAGNOSTIC_LOG_FILE" 2>&1 &
+    second_pid=$!
+    first_status=0
+    second_status=0
+    wait "$first_pid" || first_status=$?
+    wait "$second_pid" || second_status=$?
+    if [ "$first_status" -eq 0 ] && [ "$second_status" -eq 0 ]; then
+      rm -f "$DNS_DIAGNOSTIC_LOG_FILE"
+      DNS_DIAGNOSTIC_LOG_FILE=""
+      wait_for_idle_runner_pool
+      return
+    fi
+  done
+  output=$(tail -n 40 "$DNS_DIAGNOSTIC_LOG_FILE")
+  rm -f "$DNS_DIAGNOSTIC_LOG_FILE"
+  DNS_DIAGNOSTIC_LOG_FILE=""
+  fail "runner namespace pool did not recover after DNS fault: $output"
+}
+
+assert_veth_diagnostic_reports() {
+  local expected_outcome=$1
+  python3 - "$DNS_DIAGNOSTIC_LOG_FILE" "$expected_outcome" <<'PY'
+import json
+import re
+import sys
+
+path, expected_outcome = sys.argv[1:]
+pattern = re.compile(
+    r'component="veth_handoff_diagnostic".*?output=("(?:\\.|[^"\\])*")'
+)
+reports = []
+for line in open(path, encoding="utf-8"):
+    match = pattern.search(line)
+    if match:
+        reports.append(json.loads(json.loads(match.group(1))))
+
+if len(reports) != 2:
+    raise SystemExit(f"expected two veth diagnostic reports, found {len(reports)}")
+
+for report in reports:
+    if report["outcome"] != expected_outcome:
+        raise SystemExit(
+            f"expected {expected_outcome}, got {report['outcome']}: {report}"
+        )
+    probe = report["probe"]
+    if probe["status"] != "completed" or probe["report"]["sent"] is not True:
+        raise SystemExit(f"diagnostic probe was not sent exactly once: {report}")
+    if expected_outcome == "not_reproduced":
+        if probe["report"]["response_validated"] is not True:
+            raise SystemExit(f"successful replay was not validated: {report}")
+    elif probe["report"]["response_received"] is not False:
+        raise SystemExit(f"loss replay unexpectedly received a response: {report}")
+
+    for surface_name in ("namespace_egress", "root_ingress"):
+        surface = report[surface_name]
+        if surface["setup"] != "installed" or surface["qdisc"] != "created":
+            raise SystemExit(f"{surface_name} observer setup was incomplete: {report}")
+        expected_bytes = 81 if surface_name == "namespace_egress" else 67
+        if surface["counters"] != {"packets": 1, "bytes": expected_bytes}:
+            raise SystemExit(f"{surface_name} counters were not exact: {report}")
+        if surface["cleanup"] != {"filter": "removed", "qdisc": "removed"}:
+            raise SystemExit(f"{surface_name} cleanup was incomplete: {report}")
+
+    trace = report.get("root_netfilter_trace")
+    if not trace or trace["status"] != "captured" or trace["matched_packets"] != 1:
+        raise SystemExit(f"root netfilter trace was not exact: {report}")
+PY
+}
+
+run_dns_failure_diagnostic_case() {
+  local mode=$1 expected_outcome=$2 cursor output status comment
+  comment="vm0-${SVC}-dns-${mode}"
+  DNS_FAILURE_RULE_ARGS=(-i "$DNS_FILTER_INTERFACE" -p udp)
+  if [ "$mode" = transient ]; then
+    DNS_FAILURE_RULE_ARGS+=('!' --sport 30053)
+  fi
+  DNS_FAILURE_RULE_ARGS+=(
+    --dport "$DNS_PORT" -m comment --comment "$comment" -j DROP
+  )
+  sudo iptables -I INPUT 1 "${DNS_FAILURE_RULE_ARGS[@]}" \
+    || fail "failed to install $mode DNS failure rule"
+  DNS_FAILURE_RULE_INSTALLED=true
+  cursor=$(sudo journalctl --no-pager --lines=1 --show-cursor \
+    | sed -n 's/^-- cursor: //p') \
+    || fail "failed to capture journal cursor before $mode DNS failure"
+  [ -n "$cursor" ] || fail "journal cursor missing before $mode DNS failure"
+
+  if output=$(sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+    --timeout 90 --prompt 'echo should-not-run' 2>&1); then
+    cleanup_dns_failure_rule
+    fail "$mode DNS fault unexpectedly admitted a sandbox: $output"
+  else
+    status=$?
+  fi
+  cleanup_dns_failure_rule
+  [ "$status" -eq 1 ] \
+    || fail "$mode DNS failure returned unexpected status $status: $output"
+  if sudo iptables-save -t filter | grep -F -- "$comment" >/dev/null; then
+    fail "$mode DNS failure rule leaked after the failed submit"
+  fi
+
+  DNS_DIAGNOSTIC_LOG_FILE=$(mktemp "/tmp/vm0-${SVC}-dns-diagnostic.XXXXXX")
+  sudo journalctl --no-pager --after-cursor="$cursor" \
+    "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" \
+    >"$DNS_DIAGNOSTIC_LOG_FILE" \
+    || fail "failed to read $mode DNS failure diagnostics"
+  assert_veth_diagnostic_reports "$expected_outcome" \
+    || fail "$mode DNS failure diagnostics were incomplete"
+  rm -f "$DNS_DIAGNOSTIC_LOG_FILE"
+  DNS_DIAGNOSTIC_LOG_FILE=""
+  restore_runner_pool_after_dns_failure
+}
+
+echo "--- Test: transient guest DNS failure diagnostic ---"
+run_dns_failure_diagnostic_case transient not_reproduced
+echo "PASS: transient guest DNS failure diagnostic"
+
+echo "--- Test: root INPUT guest DNS failure diagnostic ---"
+run_dns_failure_diagnostic_case root-input root_netfilter_observed
+echo "PASS: root INPUT guest DNS failure diagnostic"
 
 DNS_INPUT_UDP_RULE=$(sudo iptables-save -c -t filter \
   | grep -F -- "--comment ${DNS_FILTER_COMMENT}" \

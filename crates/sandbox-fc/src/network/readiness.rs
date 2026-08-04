@@ -13,16 +13,24 @@ use nix::sched::{CloneFlags, setns};
 use tokio::sync::oneshot;
 use tracing::{info, warn};
 
+use serde::Serialize;
+
 use crate::duration::duration_ms;
 
 /// Local-only hostname used to validate a namespace's DNS redirect path.
 pub const DNS_READINESS_HOSTNAME: &str = "vm0-readiness.invalid";
 
 /// Local-only hostname reserved for post-failure namespace diagnostics.
-pub const DNS_DIAGNOSTIC_HOSTNAME: &str = "vm0-diagnostic.invalid";
+pub const DNS_DIAGNOSTIC_HOSTNAME: &str = "vm0-vethprobe.invalid";
 
 /// TEST-NET address returned for the readiness and diagnostic hostnames.
 pub const DNS_READINESS_IPV4: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
+
+pub(crate) const DNS_READINESS_RESOLVER_IPV4: Ipv4Addr = Ipv4Addr::new(8, 8, 8, 8);
+/// Fixed diagnostic port outside Linux's default ephemeral range, used to correlate one query.
+pub(crate) const DNS_DIAGNOSTIC_SOURCE_PORT: u16 = 30_053;
+
+const _: () = assert!(DNS_DIAGNOSTIC_HOSTNAME.len() == DNS_READINESS_HOSTNAME.len());
 
 pub(super) const DNS_READINESS_OPERATION_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -159,6 +167,89 @@ impl fmt::Display for DnsReadinessError {
 
 impl std::error::Error for DnsReadinessError {}
 
+#[derive(Debug, Serialize)]
+pub(crate) struct DnsDiagnosticProbeReport {
+    sent: Option<bool>,
+    response_received: Option<bool>,
+    response_validated: Option<bool>,
+    namespace_restored: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    failure_stage: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    failure_io_kind: Option<String>,
+}
+
+impl DnsDiagnosticProbeReport {
+    fn before_send(error: DnsReadinessError) -> Self {
+        Self {
+            sent: Some(false),
+            response_received: None,
+            response_validated: None,
+            namespace_restored: None,
+            failure_stage: Some(error.stage_label()),
+            failure_io_kind: error.io_kind().map(|kind| format!("{kind:?}")),
+        }
+    }
+
+    fn wait_failure(stage: DnsReadinessStage) -> Self {
+        Self {
+            sent: None,
+            response_received: None,
+            response_validated: None,
+            namespace_restored: None,
+            failure_stage: Some(stage.as_str()),
+            failure_io_kind: None,
+        }
+    }
+
+    fn sent_failure(error: DnsReadinessError, response_received: bool) -> Self {
+        Self {
+            sent: Some(true),
+            response_received: Some(response_received),
+            response_validated: response_received.then_some(false),
+            namespace_restored: None,
+            failure_stage: Some(error.stage_label()),
+            failure_io_kind: error.io_kind().map(|kind| format!("{kind:?}")),
+        }
+    }
+
+    fn succeeded() -> Self {
+        Self {
+            sent: Some(true),
+            response_received: Some(true),
+            response_validated: Some(true),
+            namespace_restored: None,
+            failure_stage: None,
+            failure_io_kind: None,
+        }
+    }
+
+    fn record_restore(&mut self, result: Result<(), DnsReadinessError>) {
+        match result {
+            Ok(()) => self.namespace_restored = Some(true),
+            Err(error) => {
+                self.namespace_restored = Some(false);
+                if self.failure_stage.is_none() {
+                    self.failure_stage = Some(error.stage_label());
+                    self.failure_io_kind = error.io_kind().map(|kind| format!("{kind:?}"));
+                }
+            }
+        }
+    }
+
+    pub(crate) fn sent(&self) -> Option<bool> {
+        self.sent
+    }
+
+    pub(crate) fn response_validated(&self) -> Option<bool> {
+        self.response_validated
+    }
+
+    pub(crate) fn response_received(&self) -> Option<bool> {
+        self.response_received
+    }
+}
+
 pub(super) fn production_dns_readiness_probe() -> DnsReadinessProbe {
     Arc::new(|namespace| Box::pin(probe_namespace_dns(namespace)))
 }
@@ -199,8 +290,135 @@ pub(super) async fn probe_namespace_dns(namespace: String) -> Result<u16, DnsRea
 pub(crate) async fn probe_namespace_dns_diagnostic(
     namespace: String,
     probe_timeout: Duration,
-) -> Result<u16, DnsReadinessError> {
-    probe_namespace_dns_for_hostname(namespace, probe_timeout, DNS_DIAGNOSTIC_HOSTNAME).await
+) -> DnsDiagnosticProbeReport {
+    let (tx, rx) = oneshot::channel();
+    let spawn = std::thread::Builder::new()
+        .name("vm0-dns-veth-probe".into())
+        .spawn(move || {
+            let report = probe_namespace_dns_diagnostic_blocking(&namespace, probe_timeout);
+            let _ = tx.send(report);
+        });
+    if let Err(error) = spawn {
+        return DnsDiagnosticProbeReport::before_send(DnsReadinessError::io(
+            DnsReadinessStage::SpawnThread,
+            &error,
+        ));
+    }
+
+    match tokio::time::timeout(probe_timeout + PROBE_THREAD_GRACE, rx).await {
+        Ok(Ok(report)) => report,
+        Ok(Err(_)) => DnsDiagnosticProbeReport::wait_failure(DnsReadinessStage::WaitForThread),
+        Err(_) => DnsDiagnosticProbeReport::wait_failure(DnsReadinessStage::Timeout),
+    }
+}
+
+fn probe_namespace_dns_diagnostic_blocking(
+    namespace: &str,
+    probe_timeout: Duration,
+) -> DnsDiagnosticProbeReport {
+    let current = match File::open("/proc/self/ns/net") {
+        Ok(current) => current,
+        Err(error) => {
+            return DnsDiagnosticProbeReport::before_send(DnsReadinessError::io(
+                DnsReadinessStage::OpenCurrentNamespace,
+                &error,
+            ));
+        }
+    };
+    let target = match File::open(Path::new(NETNS_DIR).join(namespace)) {
+        Ok(target) => target,
+        Err(error) => {
+            return DnsDiagnosticProbeReport::before_send(DnsReadinessError::io(
+                DnsReadinessStage::OpenTargetNamespace,
+                &error,
+            ));
+        }
+    };
+    if let Err(errno) = setns(&target, CloneFlags::CLONE_NEWNET) {
+        return DnsDiagnosticProbeReport::before_send(DnsReadinessError::errno(
+            DnsReadinessStage::EnterNamespace,
+            errno,
+        ));
+    }
+
+    let mut report = probe_dns_endpoint_once(
+        SocketAddrV4::new(DNS_READINESS_RESOLVER_IPV4, DNS_PORT),
+        DNS_DIAGNOSTIC_SOURCE_PORT,
+        probe_timeout,
+        DNS_DIAGNOSTIC_HOSTNAME,
+    );
+    report.record_restore(
+        setns(&current, CloneFlags::CLONE_NEWNET)
+            .map_err(|errno| DnsReadinessError::errno(DnsReadinessStage::RestoreNamespace, errno)),
+    );
+    report
+}
+
+fn probe_dns_endpoint_once(
+    destination: SocketAddrV4,
+    source_port: u16,
+    timeout: Duration,
+    hostname: &str,
+) -> DnsDiagnosticProbeReport {
+    let socket = match UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, source_port)) {
+        Ok(socket) => socket,
+        Err(error) => {
+            return DnsDiagnosticProbeReport::before_send(DnsReadinessError::io(
+                DnsReadinessStage::BindSocket,
+                &error,
+            ));
+        }
+    };
+    if let Err(error) = socket.connect(destination) {
+        return DnsDiagnosticProbeReport::before_send(DnsReadinessError::io(
+            DnsReadinessStage::ConnectSocket,
+            &error,
+        ));
+    }
+    if let Err(error) = socket.set_read_timeout(Some(timeout)) {
+        return DnsDiagnosticProbeReport::before_send(DnsReadinessError::io(
+            DnsReadinessStage::ConfigureSocket,
+            &error,
+        ));
+    }
+
+    let transaction_id = NEXT_TRANSACTION_ID.fetch_add(1, Ordering::Relaxed);
+    let query = match build_dns_query(transaction_id, hostname) {
+        Ok(query) => query,
+        Err(error) => return DnsDiagnosticProbeReport::before_send(error),
+    };
+    if let Err(error) = socket.send(&query) {
+        return DnsDiagnosticProbeReport::before_send(DnsReadinessError::io(
+            DnsReadinessStage::SendQuery,
+            &error,
+        ));
+    }
+
+    let mut response = [0_u8; DNS_RESPONSE_MAX_BYTES];
+    let size = match socket.recv(&mut response) {
+        Ok(size) => size,
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+            ) =>
+        {
+            return DnsDiagnosticProbeReport::sent_failure(DnsReadinessError::timeout(), false);
+        }
+        Err(error) => {
+            return DnsDiagnosticProbeReport::sent_failure(
+                DnsReadinessError::io(DnsReadinessStage::ReceiveResponse, &error),
+                false,
+            );
+        }
+    };
+    let Some(response) = response.get(..size) else {
+        return DnsDiagnosticProbeReport::sent_failure(invalid_response(), true);
+    };
+    match validate_dns_response(response, transaction_id, DNS_READINESS_IPV4) {
+        Ok(()) => DnsDiagnosticProbeReport::succeeded(),
+        Err(error) => DnsDiagnosticProbeReport::sent_failure(error, true),
+    }
 }
 
 async fn probe_namespace_dns_for_hostname(
@@ -477,8 +695,8 @@ mod tests {
 
         assert!(
             query
-                .windows("vm0-diagnostic".len())
-                .any(|part| part == b"vm0-diagnostic")
+                .windows("vm0-vethprobe".len())
+                .any(|part| part == b"vm0-vethprobe")
         );
         assert!(
             !query

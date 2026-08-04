@@ -7,24 +7,16 @@ use super::super::support::{
 };
 
 use crate::paths::RunnerPaths;
-use crate::types::{SandboxReuseResult, SessionAffinityResource};
+use crate::types::SandboxReuseResult;
 use crate::workspace_image_cache::WorkspaceImageCache;
-
-const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
 
 fn reusable_candidate(
     run_id: RunId,
     profile_name: &str,
     reuse_key: &str,
-    provider_session_id: &str,
 ) -> crate::provider::JobCandidate {
     crate::provider::JobCandidate::new(run_id, profile_name.to_string())
-        .with_affinity_metadata(
-            Some(reuse_key.to_string()),
-            Some(provider_session_id.to_string()),
-            Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
-        )
-        .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox))
+        .with_reuse_key(Some(reuse_key.to_string()))
 }
 
 async fn wait_heartbeat_with_workspace_after(
@@ -215,12 +207,7 @@ async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates()
     env.provider.set_claim_result(run_id, Some(context));
     env.handle
         .discover_tx
-        .send(reusable_candidate(
-            run_id,
-            "vm0/default",
-            reuse_key,
-            provider_session_id,
-        ))
+        .send(reusable_candidate(run_id, "vm0/default", reuse_key))
         .unwrap();
 
     let completion = env

@@ -51,6 +51,13 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 └──────────────────────────────────────────┘
 ```
 
+## Runner Operations
+
+- [Host configuration and I/O capacity](../docs/runner-host-configuration.md):
+  configure host-local concurrency and aggregate I/O capacity overrides.
+- [Multi-architecture rollout](../docs/runner-multi-architecture.md): select,
+  build, deploy, and validate architecture-specific runner artifacts.
+
 ## Logging
 
 Runner Rust logs are recorded to local files, stderr, and CI at `info` and
@@ -94,10 +101,6 @@ GUEST_RESEED_PATH="target/$TARGET_TRIPLE/ci/guest-reseed" \
 GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/ci/guest-write-file" \
 cargo build --target "$TARGET_TRIPLE" -p runner --profile ci
 ```
-
-See [`../docs/runner-multi-architecture.md`](../docs/runner-multi-architecture.md)
-for runner deployment, release asset naming, and host-architecture target
-selection.
 
 ## Testing
 

@@ -58,6 +58,14 @@ export interface RecallEventArgs {
   clientEventId: string;
 }
 
+export interface SteerQueuedEventArgs {
+  threadId: string;
+  agentId: string;
+  runId: string;
+  eventId: string;
+  clientEventId: string;
+}
+
 export interface InterruptRunArgs {
   runId: string;
   clientEventId: string;

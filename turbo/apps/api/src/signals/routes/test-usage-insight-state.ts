@@ -900,7 +900,6 @@ async function readUsageStorageCounts(
 ): Promise<{
   readonly raw: number;
   readonly processedRaw: number;
-  readonly compactedRaw: number;
   readonly hourly: number;
 }> {
   const rawPredicate =
@@ -911,16 +910,12 @@ async function readUsageStorageCounts(
     args.scope === "organization"
       ? eq(usageEventHourlyRollup.orgId, args.id)
       : eq(usageEventHourlyRollup.userId, args.id);
-  const [[raw], [processedRaw], [compactedRaw], [hourly]] = await Promise.all([
+  const [[raw], [processedRaw], [hourly]] = await Promise.all([
     db.select({ value: count() }).from(usageEvent).where(rawPredicate),
     db
       .select({ value: count() })
       .from(usageEvent)
       .where(and(rawPredicate, eq(usageEvent.status, "processed"))),
-    db
-      .select({ value: count() })
-      .from(usageEvent)
-      .where(and(rawPredicate, eq(usageEvent.status, "compacted"))),
     db
       .select({ value: count() })
       .from(usageEventHourlyRollup)
@@ -929,7 +924,6 @@ async function readUsageStorageCounts(
   return {
     raw: raw?.value ?? 0,
     processedRaw: processedRaw?.value ?? 0,
-    compactedRaw: compactedRaw?.value ?? 0,
     hourly: hourly?.value ?? 0,
   };
 }
@@ -1272,7 +1266,6 @@ async function mutateUsageInsightEventMaterializationState(
           ok: true as const,
           raw_count: counts.raw,
           processed_raw_count: counts.processedRaw,
-          compacted_raw_count: counts.compactedRaw,
           hourly_count: counts.hourly,
         },
       };

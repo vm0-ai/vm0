@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.63.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.63.0...guest-agent-v0.63.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** use process-owned mock build locks ([#24801](https://github.com/vm0-ai/vm0/issues/24801)) ([a4065d7](https://github.com/vm0-ai/vm0/commit/a4065d78e488b2ba4c518c292db362db081f2c2c))
+
+
+### Performance Improvements
+
+* **guest-agent:** use statx for reuse identity ([#24806](https://github.com/vm0-ai/vm0/issues/24806)) ([d3bbc05](https://github.com/vm0-ai/vm0/commit/d3bbc0578c5a00f44b1dfc063a9ae55d3ac1f139))
+
+## [0.63.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.7...guest-agent-v0.63.0) (2026-08-03)
+
+
+### Features
+
+* enable claude session pruning globally ([#24790](https://github.com/vm0-ai/vm0/issues/24790)) ([4798ff0](https://github.com/vm0-ai/vm0/commit/4798ff006f50e684214197f62e3ac3c29e66178a))
+
+## [0.62.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.6...guest-agent-v0.62.7) (2026-08-03)
+
+## [0.62.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.5...guest-agent-v0.62.6) (2026-08-03)
+
+
+### Refactoring
+
+* **rust:** centralize base cli agent session id validation ([#24759](https://github.com/vm0-ai/vm0/issues/24759)) ([da34435](https://github.com/vm0-ai/vm0/commit/da34435c6747be672914e4651c29d0abd2b47936))
+
+## [0.62.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.4...guest-agent-v0.62.5) (2026-08-03)
+
+
+### Documentation
+
+* **rust:** clarify session history diagnostic semantics ([#24671](https://github.com/vm0-ai/vm0/issues/24671)) ([ecf6630](https://github.com/vm0-ai/vm0/commit/ecf6630d6185b03b6de7bc606259a730dff462b4))
+
+
+### Performance Improvements
+
+* **guest-agent:** bound checkpoint history test fixtures ([#24682](https://github.com/vm0-ai/vm0/issues/24682)) ([200df14](https://github.com/vm0-ai/vm0/commit/200df141579bdc53a742747ff9c0099cf310a849))
+
 ## [0.62.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.62.3...guest-agent-v0.62.4) (2026-08-03)
 
 

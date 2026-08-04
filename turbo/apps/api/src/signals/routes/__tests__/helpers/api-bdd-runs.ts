@@ -31,6 +31,7 @@ import {
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
 import {
+  runnersActiveInputsContract,
   runnersNetworkPolicyRefreshContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
@@ -268,6 +269,10 @@ function runnerHeartbeatBody(
 }
 
 export function createRunsApi(context: TestContext) {
+  const defaultRunnerIdentity = {
+    runnerId: randomUUID(),
+    heartbeatGeneration: 1,
+  };
   const applyUserPermissionGrantRequestBody = (
     body: {
       readonly agentId: string;
@@ -487,11 +492,26 @@ export function createRunsApi(context: TestContext) {
         runApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(true),
           params: { id: runId },
-          body,
+          body: { runnerIdentity: defaultRunnerIdentity, ...body },
         }),
         [200],
       );
       return response.body;
+    },
+
+    async readRunnerActiveInputs(
+      sandboxToken: string,
+      runId: string,
+      fromSequence: number,
+    ) {
+      const response = await accept(
+        runApp(context)(runnersActiveInputsContract).list({
+          headers: { authorization: `Bearer ${sandboxToken}` },
+          params: { runId, fromSequence },
+        }),
+        [200],
+      );
+      return response.body.entries;
     },
 
     async refreshRunnerNetworkPolicy(runId: string, connectorSlug: string) {
@@ -1168,7 +1188,7 @@ export function createRunsApi(context: TestContext) {
         runApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(validAuth),
           params: { id: runId },
-          body,
+          body: { runnerIdentity: defaultRunnerIdentity, ...body },
         }),
         statuses,
       );

@@ -8,7 +8,11 @@ export const testCronCleanupSandboxesStateActionBodySchema = z
   .object({
     action: z.enum([
       "seed-run",
+      "seed-run-ownership",
+      "attach-run-thread",
       "delete-run",
+      "delete-run-ownership",
+      "delete-run-thread",
       "seed-runner-job",
       "seed-custom-connector-auth-ref",
       "seed-queue-entry",
@@ -16,6 +20,7 @@ export const testCronCleanupSandboxesStateActionBodySchema = z
       "seed-export-job",
       "delete-export-job",
       "get-run",
+      "get-run-ownership",
       "get-runner-job",
       "get-custom-connector-auth-ref",
       "get-queue-entry",

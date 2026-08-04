@@ -1,7 +1,41 @@
 """Tests for server-catalog connector diagnostic URL classification."""
 
+import json
+from pathlib import Path
+
+import pytest
+
 import builtin_connector_diagnostics
 import builtin_firewall_cache
+
+_TEMPLATE_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[4]
+    / "turbo"
+    / "packages"
+    / "connectors"
+    / "src"
+    / "__tests__"
+    / "firewall-template-reference-contract.json"
+)
+
+
+def _contract_case_name(case: dict[str, object]) -> str:
+    name = case["name"]
+    assert isinstance(name, str)
+    return name
+
+
+def _load_basic_template_cases() -> list[dict[str, object]]:
+    raw_contract = json.loads(_TEMPLATE_CONTRACT_PATH.read_text(encoding="utf-8"))
+    assert isinstance(raw_contract, dict)
+    cases = raw_contract["basicTemplateCases"]
+    assert isinstance(cases, list)
+    assert cases
+    assert all(isinstance(case, dict) for case in cases)
+    return cases
+
+
+_BASIC_TEMPLATE_CASES = _load_basic_template_cases()
 
 _TEST_FILE_KEY = builtin_firewall_cache.CatalogFileKey(
     absolute_path="/test/catalog.json",
@@ -237,6 +271,66 @@ def test_classifies_mixed_basic_auth_with_only_real_references():
 
     assert candidate is not None
     assert candidate.env_names == ("REAL_TOKEN", "REAL_USER", "SIMPLE_VAR")
+
+
+def test_diagnostic_simple_references_use_ecmascript_whitespace():
+    snapshot = _diagnostic_snapshot(
+        [
+            _firewall(
+                "whitespace-auth",
+                "UNUSED_TOKEN",
+                base="https://whitespace-auth.example.com",
+                auth={
+                    "headers": {
+                        "X-Ecma": "${{\ufeffsecrets.ECMA_TOKEN\ufeff}}",
+                        "X-Python": "${{\u0085secrets.PYTHON_TOKEN\u0085}}",
+                    }
+                },
+            )
+        ]
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        snapshot,
+        "https://whitespace-auth.example.com/items",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is not None
+    assert candidate.env_names == ("ECMA_TOKEN",)
+
+
+@pytest.mark.parametrize("case", _BASIC_TEMPLATE_CASES, ids=_contract_case_name)
+def test_diagnostic_basic_templates_match_connector_contract(case: dict[str, object]) -> None:
+    template = case["template"]
+    expected_names = case["expectedDiagnosticNames"]
+    assert isinstance(template, str)
+    assert isinstance(expected_names, list)
+    assert all(isinstance(name, str) for name in expected_names)
+    snapshot = _diagnostic_snapshot(
+        [
+            _firewall(
+                "template-contract",
+                "UNUSED_TOKEN",
+                base="https://template-contract.example.com",
+                auth={"headers": {"Authorization": template}},
+            )
+        ]
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        snapshot,
+        "https://template-contract.example.com/items",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    if not expected_names:
+        assert candidate is None
+        return
+    assert candidate is not None
+    assert candidate.env_names == tuple(expected_names)
 
 
 def test_malformed_basic_auth_keeps_later_valid_templates_visible():

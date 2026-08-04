@@ -1378,9 +1378,10 @@ async fn execute_job_nonzero_exit_still_returns_sandbox() {
     )
     .await;
 
-    // Sandbox should be alive regardless of exit code (caller decides fate)
+    // The executor returns sandbox ownership even though finalization must
+    // destroy it after a non-zero exit.
     assert!(
         outcome.sandbox.is_some(),
-        "sandbox must be returned for caller to stop+destroy or park"
+        "sandbox must be returned for caller finalization"
     );
 }

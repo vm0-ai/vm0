@@ -789,6 +789,9 @@ describe("GET /api/zero/usage/runs", () => {
       throw new Error("Expected an org-scoped actor");
     }
     const firstRunAt = new Date(nowDate());
+    // Keep these rows outside the wall-clock compaction window used by
+    // parallel cron tests until this test explicitly materializes them.
+    firstRunAt.setUTCDate(firstRunAt.getUTCDate() + 1);
     firstRunAt.setUTCHours(8, 0, 0, 0);
     mockNow(firstRunAt);
     await postUsageAllowanceInvoicePaid(context.signal, {

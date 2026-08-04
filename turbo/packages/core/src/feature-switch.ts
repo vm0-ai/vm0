@@ -126,7 +126,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.JoggAiConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the JoggAI video generation connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -306,13 +306,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ClaudeSessionPruning]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Prune oversized Claude Code checkpoint histories to the latest native compact generation.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -365,6 +358,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatSteer]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Allow queued text messages to be sent into the currently running chat turn.",
+    enabled: false,
   },
   [FeatureSwitchKey.PwaChatKeyboardGestures]: {
     maintainer: "bingjie@vm0.ai",
@@ -434,14 +433,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Store new user artifacts under flat, ten-character hashed public keys.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.HostedArtifactVersions]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Create immutable hosted artifact versions behind stable site aliases.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.HtmlResourceIndex]: {
     maintainer: "bingjie@vm0.ai",
@@ -501,22 +499,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@vm0.ai",
     description:
       "Allow Zero CLI agents to create and configure custom connectors directly.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.CustomConnectorOAuth2]: {
     maintainer: "liangyou@vm0.ai",
     description:
       "Allow org admins to add OAuth 2.0 authentication to custom connectors.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.CustomConnectorPermissions]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Allow users to manage agent permission grants for custom connectors.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
 };
 

@@ -10,6 +10,7 @@ mod dns;
 mod duration;
 mod error;
 mod executor;
+mod firewall_hostname_policy;
 mod group;
 mod helper_exec;
 mod host;

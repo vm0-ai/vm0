@@ -28,7 +28,6 @@ import { lockUsageEventCompaction } from "./usage-event-compaction-lock.service"
 
 const L = logger("CronCompactUsageEvents");
 const USAGE_EVENT_COMPACTION_RAW_SEED_LIMIT = 500;
-const USAGE_EVENT_LEGACY_COMPACTED_BATCH_LIMIT = 500;
 const event = alias(usageEvent, "event");
 const allocation = alias(usageAllowanceAllocations, "allocation");
 const hourly = alias(usageEventHourlyRollup, "hourly");
@@ -79,11 +78,6 @@ const compactionRowSchema = z.object({
   affectedShortWindows: z.int(),
   affectedWeeklyWindows: z.int(),
   reconciled: z.boolean(),
-});
-
-const legacyCompactedDeletionRowSchema = z.object({
-  selectedLegacyCompactedRows: z.int(),
-  legacyCompactedRowsDeleted: z.int(),
 });
 
 // The explicit null order matches a reverse scan of the deployed
@@ -557,45 +551,6 @@ async function loadHoldProbe(
   return probe;
 }
 
-async function deleteLegacyCompactedUsageEvents(
-  db: Pick<Db, "execute">,
-  batchLimit: number,
-): Promise<z.output<typeof legacyCompactedDeletionRowSchema>> {
-  const rows = await executeRawRows(
-    db,
-    sql`
-      WITH selected_legacy_compacted AS MATERIALIZED (
-        SELECT event.id
-        FROM ${usageEvent} ${event}
-        WHERE ${eq(event.status, sql`'compacted'`)}
-        ORDER BY ${asc(event.createdAt)}, ${asc(event.id)}
-        LIMIT ${batchLimit}
-        FOR UPDATE OF event
-      ),
-      deleted_legacy_compacted AS (
-        DELETE FROM ${usageEvent} ${event}
-        USING selected_legacy_compacted
-        WHERE ${and(
-          eq(event.id, sql`selected_legacy_compacted.id`),
-          eq(event.status, sql`'compacted'`),
-        )}
-        RETURNING event.id
-      )
-      SELECT
-        (SELECT ${count()}::int FROM selected_legacy_compacted)
-          AS "selectedLegacyCompactedRows",
-        (SELECT ${count()}::int FROM deleted_legacy_compacted)
-          AS "legacyCompactedRowsDeleted"
-    `,
-    legacyCompactedDeletionRowSchema,
-  );
-  const deletion = rows[0];
-  if (!deletion) {
-    throw new Error("Legacy compacted usage deletion returned no summary row");
-  }
-  return deletion;
-}
-
 async function hasRemainingRawUsage(
   db: Pick<Db, "select">,
   cutoff: string,
@@ -613,7 +568,6 @@ async function compactUsageEventBatch(
   signal: AbortSignal,
 ): Promise<Omit<UsageEventCompactionStats, "durationMs">> {
   const rawSeedLimit = USAGE_EVENT_COMPACTION_RAW_SEED_LIMIT;
-  const legacyCompactedBatchLimit = USAGE_EVENT_LEGACY_COMPACTED_BATCH_LIMIT;
   return await db.transaction(async (tx) => {
     const lockStartedAt = performance.now();
     await lockUsageEventCompaction(tx);
@@ -643,22 +597,6 @@ async function compactUsageEventBatch(
         hourlyRowsInserted: compaction.hourlyRowsInserted,
       });
       throw new Error("Usage event compaction reconciliation failed");
-    }
-    signal.throwIfAborted();
-    const legacyDeletion = await deleteLegacyCompactedUsageEvents(
-      tx,
-      legacyCompactedBatchLimit,
-    );
-    if (
-      legacyDeletion.selectedLegacyCompactedRows !==
-      legacyDeletion.legacyCompactedRowsDeleted
-    ) {
-      L.error("legacy compacted usage deletion reconciliation failed", {
-        legacyCompactedBatchLimit,
-        selectedLegacyCompactedRows: legacyDeletion.selectedLegacyCompactedRows,
-        legacyCompactedRowsDeleted: legacyDeletion.legacyCompactedRowsDeleted,
-      });
-      throw new Error("Legacy compacted usage deletion reconciliation failed");
     }
     signal.throwIfAborted();
     const hasMoreRaw = await hasRemainingRawUsage(tx, cutoff);

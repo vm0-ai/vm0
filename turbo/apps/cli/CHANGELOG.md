@@ -1,5 +1,71 @@
 # Changelog
 
+## [9.274.16](https://github.com/vm0-ai/vm0/compare/cli-v9.274.15...cli-v9.274.16) (2026-08-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.266.0
+    * @vm0/connectors bumped to 1.202.7
+    * @vm0/core bumped to 8.506.1
+
+## [9.274.15](https://github.com/vm0-ai/vm0/compare/cli-v9.274.14...cli-v9.274.15) (2026-08-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.265.1
+    * @vm0/core bumped to 8.506.0
+
+## [9.274.14](https://github.com/vm0-ai/vm0/compare/cli-v9.274.13...cli-v9.274.14) (2026-08-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.265.0
+    * @vm0/core bumped to 8.505.0
+
+## [9.274.13](https://github.com/vm0-ai/vm0/compare/cli-v9.274.12...cli-v9.274.13) (2026-08-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.264.1
+    * @vm0/core bumped to 8.504.1
+
+## [9.274.12](https://github.com/vm0-ai/vm0/compare/cli-v9.274.11...cli-v9.274.12) (2026-08-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.264.0
+    * @vm0/core bumped to 8.504.0
+
+## [9.274.11](https://github.com/vm0-ai/vm0/compare/cli-v9.274.10...cli-v9.274.11) (2026-08-03)
+
+
+### Bug Fixes
+
+* **cli:** bind connector permission requests to diagnostics ([#24719](https://github.com/vm0-ai/vm0/issues/24719)) ([d2f2bf9](https://github.com/vm0-ai/vm0/commit/d2f2bf95f6d480e8cdb9ee78a34b8bc685ebdc5a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.263.1
+    * @vm0/core bumped to 8.503.1
+
 ## [9.274.10](https://github.com/vm0-ai/vm0/compare/cli-v9.274.9...cli-v9.274.10) (2026-08-03)
 
 

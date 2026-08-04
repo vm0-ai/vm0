@@ -66,8 +66,7 @@ async fn recovery_checkpoint_does_not_prune_eligible_claude_history() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
-    let mut runtime = runtime_from_process_env().unwrap();
-    set_claude_session_pruning(&mut runtime, true);
+    let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
     let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     let (history_dir, _) = write_prunable_claude_history(session_id).unwrap();

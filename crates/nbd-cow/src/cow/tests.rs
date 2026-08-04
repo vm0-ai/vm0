@@ -443,7 +443,7 @@ fn bitmap_save_uses_documented_file_layout() {
 }
 
 #[test]
-fn bitmap_save_preserves_large_file_layout() {
+fn bitmap_large_round_trip_preserves_file_layout() {
     const WORDS_PER_64K_PAYLOAD: usize = 64 * 1024 / 8;
     const WORDS: usize = WORDS_PER_64K_PAYLOAD + 2;
     const BLOCKS: usize = WORDS * 64;
@@ -462,6 +462,9 @@ fn bitmap_save_preserves_large_file_layout() {
     assert_eq!(bitmap_word(&data, 0), 1);
     assert_eq!(bitmap_word(&data, WORDS_PER_64K_PAYLOAD), 1);
     assert_eq!(bitmap_word(&data, WORDS - 1), 1u64 << 63);
+
+    let loaded = bitmap::load_bitmap(bitmap_file.path(), BLOCKS).unwrap();
+    assert_eq!(loaded, dirty);
 }
 
 fn bitmap_word(data: &[u8], word_index: usize) -> u64 {

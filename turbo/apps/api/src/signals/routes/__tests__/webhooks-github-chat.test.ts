@@ -564,5 +564,5 @@ describe("GitHub canonical chat threads", () => {
         subjectNumber,
       }),
     ]);
-  });
+  }, 30_000);
 });

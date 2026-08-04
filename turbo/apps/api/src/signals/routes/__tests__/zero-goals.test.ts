@@ -288,6 +288,7 @@ describe("zero goals", () => {
     expect(claimedGoalEvent).toMatchObject({
       eventType: "input.prompt",
       runId: goalRunId,
+      runGroupId: goal.goalId,
       revokesEventId: goalEventId,
       isGoalRun: true,
       userMessage: {
