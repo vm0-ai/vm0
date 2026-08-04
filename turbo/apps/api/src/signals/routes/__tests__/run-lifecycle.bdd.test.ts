@@ -3945,16 +3945,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(runnerPreference(sourcePoll.body.job)).toStrictEqual(
       finalizingPreference,
     );
-    expect(
-      sandboxOperationEventsForRunByAction(
-        successor.runId,
-        "runner_notification_affinity_lookup",
-      ),
-    ).toContainEqual(
-      expect.objectContaining({
-        runner_preference_resolution: "finalizing_predecessor",
-      }),
-    );
+    for (const actionType of [
+      "runner_notification_affinity_lookup",
+      "runner_poll_pending_job_lookup",
+    ]) {
+      expect(
+        sandboxOperationEventsForRunByAction(successor.runId, actionType),
+      ).toContainEqual(
+        expect.objectContaining({
+          runner_preference_resolution: "finalizing_predecessor",
+          history_generation_run_id: first.runId,
+        }),
+      );
+    }
 
     mockNow(sourceCompletedAt + 1601);
     const genericPoll = await api.requestPollRunner(
@@ -4370,9 +4373,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           notification_target: "broadcast",
           runner_preference_resolution: "exact_history_generation",
           reuse_key_kind: "thread",
+          history_generation_run_id: first.runId,
         }),
       );
     }
+    expect(
+      sandboxOperationEventsForRunByAction(
+        protectedFollowUp.runId,
+        "api_to_claim_request",
+      ),
+    ).toContainEqual(
+      expect.objectContaining({ history_generation_run_id: first.runId }),
+    );
     await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
     await webhooks.requestAgentComplete(
       {
@@ -5134,7 +5146,14 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
           reuse_key_kind: "none",
         }),
       );
+      expect(events[0]).not.toHaveProperty("history_generation_run_id");
     }
+    expect(
+      sandboxOperationEventsForRunByAction(
+        third.runId,
+        "api_to_claim_request",
+      )[0],
+    ).not.toHaveProperty("history_generation_run_id");
     await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(
       decryptCountBeforeClaim,
     );

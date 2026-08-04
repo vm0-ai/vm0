@@ -24,7 +24,9 @@ use super::job_lifecycle::{
 use super::job_terminal_log::log_terminal_job_outcome;
 use super::orphan_reap::OrphanedActiveRuns;
 use super::ownership::{OwnershipTransitions, RunSandbox};
-use super::sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completion};
+use super::sandbox_finalization::{
+    FinalizeContext, finalize_sandbox_for_completion_with_telemetry,
+};
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::executor::{
@@ -320,10 +322,17 @@ impl FinalizationPhase {
         // `sandbox.park()` is in flight. Pass the live handle so finalization
         // can synchronize the final idle-pool ownership transfer.
         let finalization_started = Instant::now();
-        let completion_ready = finalize_sandbox_for_completion(
+        telemetry.record(
+            "runner_host_finalization_started",
+            Duration::ZERO,
+            true,
+            None,
+        );
+        let completion_ready = finalize_sandbox_for_completion_with_telemetry(
             sandbox,
             ActiveBudgetLease::new(active_lease),
             completion_payload,
+            &mut telemetry,
             FinalizeContext {
                 run_id,
                 sandbox_id,
@@ -523,7 +532,7 @@ impl DeferredUploadPhase {
 /// The provider has already claimed the job and the caller has reserved
 /// resources in the budget. The spawned task runs the executor, reports
 /// completion through the provider, and delegates the post-executor
-/// park-or-destroy decision to [`finalize_sandbox_for_completion`].
+/// park-or-destroy decision to [`finalize_sandbox_for_completion_with_telemetry`].
 ///
 /// If `reuse_entry` is `Some`, the job reuses an existing idle sandbox.
 /// Otherwise it creates a new one via the factory.
@@ -877,6 +886,23 @@ mod tests {
         );
     }
 
+    fn assert_failed_telemetry_action(telemetry: &JobTelemetry, action: &str, error: &str) {
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter()
+                .any(|op| op.0 == action && !op.1 && op.2.as_deref() == Some(error)),
+            "expected failed telemetry action {action} with {error}, got: {ops:?}"
+        );
+    }
+
+    fn assert_no_telemetry_action(telemetry: &JobTelemetry, action: &str) {
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter().all(|op| op.0 != action),
+            "unexpected telemetry action {action}, got: {ops:?}"
+        );
+    }
+
     struct FinalizationTelemetryFixture {
         _dir: tempfile::TempDir,
         status: Arc<StatusTracker>,
@@ -953,13 +979,25 @@ mod tests {
         sandbox_name: &str,
         restored_session_identity: Option<RestoredSessionIdentity>,
     ) -> ExecutorPhaseOutcome {
+        executor_phase_outcome_with_sandbox(
+            run_id,
+            Box::new(mock_sandbox_ready_for_idle_reuse(sandbox_name)),
+            restored_session_identity,
+        )
+    }
+
+    fn executor_phase_outcome_with_sandbox(
+        run_id: RunId,
+        sandbox: Box<dyn sandbox::Sandbox>,
+        restored_session_identity: Option<RestoredSessionIdentity>,
+    ) -> ExecutorPhaseOutcome {
         ExecutorPhaseOutcome {
             outcome: executor::ExecuteOutcome {
                 failure: None,
                 sandbox_reuse_disposition: executor::SandboxReuseDisposition::Eligible(
                     executor::SandboxReuseTerminal::Success,
                 ),
-                sandbox: Some(Box::new(mock_sandbox_ready_for_idle_reuse(sandbox_name))),
+                sandbox: Some(sandbox),
                 source_ip: "10.0.0.1".into(),
                 network_log_session: None,
                 workspace_image: None,
@@ -1060,6 +1098,14 @@ mod tests {
             &finalized.telemetry,
             "runner_terminal_sandbox_reuse_eligible_success",
         );
+        for action in [
+            "runner_host_finalization_started",
+            "runner_host_reuse_preparation",
+            "runner_host_physical_park",
+            "runner_host_idle_publication",
+        ] {
+            assert_telemetry_action(&finalized.telemetry, action);
+        }
         assert_telemetry_action(&finalized.telemetry, "session_history_identity_parked");
         assert_eq!(
             cleanup_state.disposition(),
@@ -1077,6 +1123,91 @@ mod tests {
             panic!("parked sandbox should unpark");
         };
         assert_eq!(sandbox.restored_session_identity(), Some(&identity));
+    }
+
+    #[tokio::test]
+    async fn cooperative_cancellation_reuse_does_not_record_hard_cancellation_marker() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let session_id = "sess-cooperative-cancellation";
+        let cleanup_state = RunCleanupState::new();
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            session_id,
+            lease,
+            cleanup_state.clone(),
+        );
+        finalization
+            .cancel
+            .request_cooperative_user_cancellation()
+            .await;
+        let mut executor_result = executor_phase_outcome(run_id, "cooperative-cancellation", None);
+        executor_result.outcome.sandbox_reuse_disposition =
+            executor::SandboxReuseDisposition::Eligible(
+                executor::SandboxReuseTerminal::CooperativeCancellation,
+            );
+
+        let finalized = finalization.finalize(executor_result).await;
+
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_finalization_reusable_sandbox",
+        );
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_terminal_sandbox_reuse_eligible_cooperative_cancellation",
+        );
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_finalization_cancelled");
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::IdlePoolOwned,
+        );
+        assert!(fixture.idle_pool.lock().await.take(session_id).is_some());
+    }
+
+    #[tokio::test]
+    async fn hard_cancellation_records_finalization_cancellation_marker() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cleanup_state = RunCleanupState::new();
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            "sess-hard-cancellation",
+            lease,
+            cleanup_state.clone(),
+        );
+        finalization.cancel.request_hard_cancellation().await;
+        let mut executor_result = executor_phase_outcome(run_id, "hard-cancellation", None);
+        executor_result.outcome.sandbox_reuse_disposition =
+            executor::SandboxReuseDisposition::Ineligible(
+                executor::SandboxReuseRejection::HardCancellation,
+            );
+
+        let finalized = finalization.finalize(executor_result).await;
+
+        assert_failed_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_finalization_cancelled",
+            "cancelled",
+        );
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "runner_terminal_sandbox_reuse_rejected_hard_cancellation",
+        );
+        assert_telemetry_action(&finalized.telemetry, "runner_host_finalization_no_resource");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_reuse_preparation");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_physical_park");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_idle_publication");
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::DestroyCompleted,
+        );
     }
 
     #[tokio::test]
@@ -1143,6 +1274,87 @@ mod tests {
             .finalize(executor_phase_outcome_without_sandbox(run_id))
             .await;
 
+        assert_telemetry_action(&finalized.telemetry, "runner_host_finalization_no_resource");
+    }
+
+    #[tokio::test]
+    async fn finalization_records_reuse_preparation_failure_without_physical_park() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cleanup_state = RunCleanupState::new();
+        let sandbox = sandbox_mock::MockSandbox::new("reuse-preparation-failed");
+        sandbox.push_exec_result(Err(sandbox::SandboxError::Operation {
+            operation: sandbox::SandboxOperation::Exec,
+            reason: sandbox::SandboxOperationReason::Guest,
+            message: "reuse preparation disconnected".into(),
+        }));
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            "sess-reuse-preparation-failed",
+            lease,
+            cleanup_state,
+        );
+
+        let finalized = finalization
+            .finalize(executor_phase_outcome_with_sandbox(
+                run_id,
+                Box::new(sandbox),
+                None,
+            ))
+            .await;
+
+        assert_failed_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_reuse_preparation",
+            "reuse preparation failed",
+        );
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_physical_park");
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_idle_publication");
+        assert_telemetry_action(&finalized.telemetry, "runner_host_finalization_no_resource");
+    }
+
+    #[tokio::test]
+    async fn finalization_records_physical_park_failure_after_reuse_preparation() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cleanup_state = RunCleanupState::new();
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
+        overrides.push_park_result(Err(sandbox::SandboxError::IdleTransition {
+            transition: sandbox::SandboxIdleTransition::Park,
+            message: "physical park failed".into(),
+        }));
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            "sess-physical-park-failed",
+            lease,
+            cleanup_state,
+        );
+
+        let finalized = finalization
+            .finalize(executor_phase_outcome_with_sandbox(
+                run_id,
+                Box::new(sandbox_mock::MockSandbox::with_overrides(
+                    "physical-park-failed",
+                    overrides,
+                )),
+                None,
+            ))
+            .await;
+
+        assert_telemetry_action(&finalized.telemetry, "runner_host_reuse_preparation");
+        assert_failed_telemetry_action(
+            &finalized.telemetry,
+            "runner_host_physical_park",
+            "physical park failed",
+        );
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_idle_publication");
         assert_telemetry_action(&finalized.telemetry, "runner_host_finalization_no_resource");
     }
 

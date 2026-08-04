@@ -17,6 +17,8 @@ use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 
+use crate::telemetry::PRE_PARK_HANDOFF_AXIOM_TARGET;
+
 #[derive(Clone, Debug)]
 struct RecordedEvent {
     level: tracing::Level,
@@ -181,6 +183,15 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
         tracing::warn!(foo = "bar", "a warning");
         tracing::error!(code = 42, "a failure");
         tracing::info!("info is below threshold, should not be ingested");
+        tracing::info!(
+            target: PRE_PARK_HANDOFF_AXIOM_TARGET,
+            outcome = "retained",
+            "allowlisted measurement"
+        );
+        tracing::debug!(
+            target: PRE_PARK_HANDOFF_AXIOM_TARGET,
+            "allowlisted target below INFO"
+        );
     }
 
     guard.shutdown().await;
@@ -200,9 +211,16 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
     assert_eq!(failure["service"], json!("runner"));
     assert_eq!(failure["level"], json!("error"));
     assert_eq!(failure["code"], json!(42));
+    let measurement = event_with_message(&events, "allowlisted measurement");
+    assert_eq!(measurement["level"], json!("info"));
+    assert_eq!(measurement["outcome"], json!("retained"));
     assert!(
-        !events.iter().any(|event| event["level"] == json!("info")),
-        "INFO event should not be ingested: {events:#?}",
+        !has_event_with_message(&events, "info is below threshold, should not be ingested"),
+        "ordinary INFO event should not be ingested: {events:#?}",
+    );
+    assert!(
+        !has_event_with_message(&events, "allowlisted target below INFO"),
+        "allowlisted DEBUG event should not be ingested: {events:#?}",
     );
 }
 

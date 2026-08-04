@@ -17,6 +17,22 @@ use vsock_proto::{
 
 struct TestNormalOperationFence;
 
+#[derive(Default)]
+struct RecordingFinalExecParkObserver {
+    records: Vec<(SandboxFinalExecParkStage, bool)>,
+}
+
+impl SandboxFinalExecParkObserver for RecordingFinalExecParkObserver {
+    fn record_stage(
+        &mut self,
+        stage: SandboxFinalExecParkStage,
+        _duration: Duration,
+        success: bool,
+    ) {
+        self.records.push((stage, success));
+    }
+}
+
 async fn park_with_ready_for_park<Q, QF, P, PF>(
     log_id: &str,
     coordinator: &ParkCoordinator,
@@ -967,6 +983,87 @@ async fn final_preparation_transport_failure_marks_dirty_without_quiesce_or_paus
         coordinator.state(),
         CoordinatorState::Dirty { .. }
     ));
+}
+
+#[tokio::test]
+async fn final_exec_park_observer_reports_completed_stages_in_order() {
+    let coordinator = ParkCoordinator::new();
+    let mut observer = RecordingFinalExecParkObserver::default();
+
+    super::park_with_ready_for_park_and_preparation_with_observer(
+        "test-sandbox",
+        &coordinator,
+        Some(&mut observer),
+        || async { Ok((TestNormalOperationFence, "prepared")) },
+        || async { Ok(()) },
+        || async { Ok(SandboxParkOutcome::Reusable) },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        observer.records,
+        vec![
+            (SandboxFinalExecParkStage::ReusePreparation, true),
+            (SandboxFinalExecParkStage::PhysicalPark, true),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn final_exec_park_observer_reports_preparation_failure_only() {
+    let coordinator = ParkCoordinator::new();
+    let mut observer = RecordingFinalExecParkObserver::default();
+
+    let result = super::park_with_ready_for_park_and_preparation_with_observer(
+        "test-sandbox",
+        &coordinator,
+        Some(&mut observer),
+        || async {
+            Err::<(TestNormalOperationFence, ()), _>(ParkNormalOperationFenceError::FinalOperation(
+                io::Error::new(io::ErrorKind::ConnectionReset, "final exec disconnected"),
+            ))
+        },
+        || async { Ok(()) },
+        || async { Ok(SandboxParkOutcome::Reusable) },
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        observer.records,
+        vec![(SandboxFinalExecParkStage::ReusePreparation, false)]
+    );
+}
+
+#[tokio::test]
+async fn final_exec_park_observer_reports_physical_park_failure() {
+    let coordinator = ParkCoordinator::new();
+    let mut observer = RecordingFinalExecParkObserver::default();
+
+    let result = super::park_with_ready_for_park_and_preparation_with_observer(
+        "test-sandbox",
+        &coordinator,
+        Some(&mut observer),
+        || async { Ok((TestNormalOperationFence, ())) },
+        || async { Ok(()) },
+        || async {
+            Err::<SandboxParkOutcome, _>(idle_transition_error(
+                SandboxIdleTransition::Park,
+                "physical park failed",
+            ))
+        },
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        observer.records,
+        vec![
+            (SandboxFinalExecParkStage::ReusePreparation, true),
+            (SandboxFinalExecParkStage::PhysicalPark, false),
+        ]
+    );
 }
 
 #[tokio::test]
