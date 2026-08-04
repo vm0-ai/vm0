@@ -6774,6 +6774,223 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, source.runId, sourceSandboxHeaders);
   }, 90_000);
 
+  it("keeps Web context and tools for agent prompts sent into existing threads", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ZeroChatMessaging]: true },
+    );
+
+    const source = await sendChatRun(actor, {
+      agentId,
+      prompt: "delegate into existing chat threads",
+    });
+    const { claim: sourceClaim, sandboxHeaders: sourceSandboxHeaders } =
+      await claimChatRun(runnerGroup, source.runId);
+    const sourceToken = zeroTokenFromClaim(sourceClaim);
+
+    const rotatedAnchorPrompt = "prior Web round before an agent rotation";
+    const rotatedAnchor = await sendChatRun(actor, {
+      agentId,
+      prompt: rotatedAnchorPrompt,
+      model: "claude-sonnet-4-6",
+    });
+    const rotatedAnchorClaim = await claimChatRun(
+      runnerGroup,
+      rotatedAnchor.runId,
+    );
+    const originalBinding = await readThreadSessionBinding(
+      context,
+      rotatedAnchor.threadId,
+    );
+    if (!originalBinding.agent_session_id) {
+      throw new Error("Expected the Web anchor to bind a session");
+    }
+
+    const { providerId: codexProviderId } = await upsertOrgModelProvider(
+      actor,
+      {
+        type: "openai-api-key",
+        secret: "agent-web-semantics-openai-key",
+      },
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "gpt-5.6-terra",
+        isDefault: false,
+        defaultProviderType: "openai-api-key",
+        credentialScope: "org",
+        modelProviderId: codexProviderId,
+      },
+    ]);
+    await chat.updateThreadModelSelection(
+      actor,
+      rotatedAnchor.threadId,
+      "gpt-5.6-terra",
+    );
+
+    const rotatedEventId = randomUUID();
+    const rotatedQueued = await requestSendEventWithBearer(
+      sourceToken,
+      {
+        agentId,
+        clientEventId: rotatedEventId,
+        threadId: rotatedAnchor.threadId,
+        prompt: "agent prompt after the Web session rotates",
+      },
+      [201],
+    );
+    if (rotatedQueued.status !== 201) {
+      throw new Error("Expected the rotated agent prompt to queue");
+    }
+    expect(rotatedQueued.body.runId).toBeNull();
+
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(
+      rotatedAnchor.runId,
+      rotatedAnchorClaim.sandboxHeaders,
+    );
+    const rotatedMessages = await waitForThreadMessages(
+      actor,
+      rotatedAnchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === rotatedEventId &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const rotatedRunId = userMessages(rotatedMessages.events).find(
+      (message) => {
+        return message.revokesEventId === rotatedEventId;
+      },
+    )?.runId;
+    if (!rotatedRunId) {
+      throw new Error("Expected the rotated agent prompt to be promoted");
+    }
+    const rotatedRun = await api.readRun(actor, rotatedRunId);
+    const rotatedSystemPrompt = rotatedRun.appendSystemPrompt ?? "";
+    const rotatedState = await runStateStore.set(
+      readAgentRunState$,
+      {
+        orgId: actor.orgId,
+        userId: actor.userId,
+        runId: rotatedRunId,
+      },
+      context.signal,
+    );
+    expect(rotatedState.zero_run).toMatchObject({ triggerSource: "agent" });
+    expect(rotatedSystemPrompt).toContain("# Web Chat Run Context");
+    expect(rotatedSystemPrompt).toContain(rotatedAnchorPrompt);
+    expect(rotatedSystemPrompt).not.toContain("# Incomplete Rounds Context");
+    expect(rotatedSystemPrompt).toContain("Web chat files: use");
+    expect(rotatedSystemPrompt).toContain(
+      "Cross-integration messages from web chat",
+    );
+    expect(rotatedSystemPrompt).toContain(
+      CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET,
+    );
+    const rotatedBinding = await readThreadSessionBinding(
+      context,
+      rotatedAnchor.threadId,
+    );
+    expect(rotatedBinding.agent_session_id).not.toBe(
+      originalBinding.agent_session_id,
+    );
+    const rotatedClaim = await claimChatRun(runnerGroup, rotatedRunId);
+    expect(rotatedClaim.claim.resumeSession).toBeNull();
+    await cancelChatRun(actor, rotatedRunId, rotatedClaim.sandboxHeaders);
+
+    const incompletePrompt = "failed Web round before an agent retry";
+    const incomplete = await sendChatRun(actor, {
+      agentId,
+      prompt: incompletePrompt,
+    });
+    const incompleteClaim = await claimChatRun(runnerGroup, incomplete.runId);
+    const incompleteEventId = randomUUID();
+    const incompleteQueued = await requestSendEventWithBearer(
+      sourceToken,
+      {
+        agentId,
+        clientEventId: incompleteEventId,
+        threadId: incomplete.threadId,
+        prompt: "agent prompt after an incomplete Web round",
+      },
+      [201],
+    );
+    if (incompleteQueued.status !== 201) {
+      throw new Error("Expected the incomplete agent prompt to queue");
+    }
+    expect(incompleteQueued.body.runId).toBeNull();
+
+    await failChatRun(
+      incomplete.runId,
+      incompleteClaim.sandboxHeaders,
+      "expected incomplete Web round",
+    );
+    const incompleteMessages = await waitForThreadMessages(
+      actor,
+      incomplete.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === incompleteEventId &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const incompleteRunId = userMessages(incompleteMessages.events).find(
+      (message) => {
+        return message.revokesEventId === incompleteEventId;
+      },
+    )?.runId;
+    if (!incompleteRunId) {
+      throw new Error("Expected the incomplete agent prompt to be promoted");
+    }
+    const incompleteRun = await api.readRun(actor, incompleteRunId);
+    const incompleteSystemPrompt = incompleteRun.appendSystemPrompt ?? "";
+    const incompleteState = await runStateStore.set(
+      readAgentRunState$,
+      {
+        orgId: actor.orgId,
+        userId: actor.userId,
+        runId: incompleteRunId,
+      },
+      context.signal,
+    );
+    expect(incompleteState.zero_run).toMatchObject({ triggerSource: "agent" });
+    expect(incompleteSystemPrompt).toContain("# Incomplete Rounds Context");
+    expect(incompleteSystemPrompt).toContain(incompletePrompt);
+    expect(incompleteSystemPrompt).not.toContain("# Web Chat Run Context");
+    expect(incompleteSystemPrompt).toContain("Web chat files: use");
+    const promotedIncompleteClaim = await claimChatRun(
+      runnerGroup,
+      incompleteRunId,
+    );
+    await cancelChatRun(
+      actor,
+      incompleteRunId,
+      promotedIncompleteClaim.sandboxHeaders,
+    );
+    await cancelChatRun(actor, source.runId, sourceSandboxHeaders);
+  }, 90_000);
+
   it("derives real-agent preview mode when queued messages are claimed", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

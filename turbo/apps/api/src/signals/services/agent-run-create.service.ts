@@ -242,6 +242,7 @@ import {
   type QueueFirstRunSessionSnapshotState,
 } from "./zero-chat-queued-event.service";
 import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
+import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
 import {
   cappedBaseConcurrencyLimit,
   loadOrgConcurrencyState,
@@ -346,7 +347,11 @@ function withFinalRunAppendSystemPrompt(
   if (imageRecognitionAvailable) {
     appendedParts.push(ZERO_IMAGE_RECOGNITION_PROMPT);
   }
-  if (framework === "codex" && body.triggerSource === "web" && chatThreadId) {
+  if (
+    framework === "codex" &&
+    isWebChatTriggerSource(body.triggerSource) &&
+    chatThreadId
+  ) {
     appendedParts.push(CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT);
   }
   if (appendedParts.length === 0) {

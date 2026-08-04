@@ -129,6 +129,7 @@ import {
 } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
+import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import {
   projectUserMessage,
@@ -2369,7 +2370,9 @@ async function getLatestRunsByThreadId(
     .where(
       and(
         eq(zeroRuns.chatThreadId, threadId),
-        eq(zeroRuns.triggerSource, triggerSource),
+        isWebChatTriggerSource(triggerSource)
+          ? inArray(zeroRuns.triggerSource, ["web", "agent"])
+          : eq(zeroRuns.triggerSource, triggerSource),
         or(
           sql`${agentRuns.status} IS DISTINCT FROM ${"cancelled"}`,
           sql`${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR}`,
@@ -2709,10 +2712,11 @@ function loadQueuedMessageSessionState(
           cliAgentType: modelRoute.cliAgentType,
         },
       });
-      const incompleteContext =
-        args.queuedMessage.triggerSource === "web"
-          ? await loadWebChatIncompleteContext(args.db, args.threadId)
-          : "";
+      const incompleteContext = isWebChatTriggerSource(
+        args.queuedMessage.triggerSource,
+      )
+        ? await loadWebChatIncompleteContext(args.db, args.threadId)
+        : "";
       return [
         sessionResolution.action === "rotated",
         incompleteContext,

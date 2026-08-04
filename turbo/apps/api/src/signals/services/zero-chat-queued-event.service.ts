@@ -55,6 +55,7 @@ import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import { noGoalChangeAfterQueueEvent } from "./chat-goal-queue.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
 import { attachCanonicalWebInputAssetsToEvent } from "./canonical-asset.service";
+import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -629,7 +630,8 @@ export async function claimQueueFirstRunAssociation(
       if (
         args.kind === "user_message" &&
         "triggerSource" in snapshot.replacement &&
-        snapshot.replacement.triggerSource === "web" &&
+        snapshot.replacement.triggerSource !== undefined &&
+        isWebChatTriggerSource(snapshot.replacement.triggerSource) &&
         args.attachFileMetadata
       ) {
         await attachCanonicalWebInputAssetsToEvent(db, {
