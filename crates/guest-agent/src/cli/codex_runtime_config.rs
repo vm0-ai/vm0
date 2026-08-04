@@ -9,7 +9,7 @@ use std::process::Command;
 
 use crate::error::AgentError;
 
-const MODEL_CATALOG_FILENAME: &str = "vm0-model-catalog.json";
+const MODEL_CATALOG_FILENAME: &str = "vm0-codex-model-catalog.json";
 
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -103,15 +103,44 @@ pub(super) fn write_model_catalog(
     let Some(model_catalog) = &config.model_catalog else {
         return Ok(());
     };
-    let model_catalog = if config.provider_id == "vm0-model" {
-        inherit_default_model_instructions(model_catalog, load_bundled_model_catalog()?)?
+    let hydrated_model_catalog = if model_catalog_needs_default_instructions(model_catalog)? {
+        Some(inherit_default_model_instructions(
+            model_catalog,
+            load_bundled_model_catalog()?,
+        )?)
     } else {
-        model_catalog.clone()
+        None
     };
+    let model_catalog = hydrated_model_catalog.as_ref().unwrap_or(model_catalog);
     std::fs::create_dir_all(codex_home)?;
     let path = model_catalog_path(codex_home);
-    write_model_catalog_json_atomic(codex_home, &path, &serde_json::to_vec(&model_catalog)?)?;
+    write_model_catalog_json_atomic(codex_home, &path, &serde_json::to_vec(model_catalog)?)?;
     Ok(())
+}
+
+fn model_catalog_needs_default_instructions(
+    model_catalog: &serde_json::Value,
+) -> Result<bool, AgentError> {
+    let models = model_catalog
+        .get("models")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| AgentError::Execution("invalid Codex model catalog".to_string()))?;
+    let mut needs_default_instructions = false;
+    for model in models {
+        let model = model
+            .as_object()
+            .ok_or_else(|| AgentError::Execution("invalid Codex model entry".to_string()))?;
+        match model.get("base_instructions") {
+            None => needs_default_instructions = true,
+            Some(serde_json::Value::String(_)) => {}
+            Some(_) => {
+                return Err(AgentError::Execution(
+                    "invalid Codex model base_instructions".to_string(),
+                ));
+            }
+        }
+    }
+    Ok(needs_default_instructions)
 }
 
 fn load_bundled_model_catalog() -> Result<BundledModelCatalog, AgentError> {
@@ -149,11 +178,22 @@ fn inherit_default_model_instructions(
         let model = model
             .as_object_mut()
             .ok_or_else(|| AgentError::Execution("invalid Codex model entry".to_string()))?;
+        match model.get("base_instructions") {
+            Some(serde_json::Value::String(_)) => continue,
+            Some(_) => {
+                return Err(AgentError::Execution(
+                    "invalid Codex model base_instructions".to_string(),
+                ));
+            }
+            None => {}
+        }
         model.insert(
             "base_instructions".to_string(),
             serde_json::Value::String(source.base_instructions.clone()),
         );
-        model.insert("model_messages".to_string(), source.model_messages.clone());
+        model
+            .entry("model_messages".to_string())
+            .or_insert_with(|| source.model_messages.clone());
     }
     Ok(hydrated)
 }
@@ -280,7 +320,12 @@ mod tests {
             requires_openai_auth: None,
             wire_api: "responses".to_string(),
             supports_websockets: false,
-            model_catalog: Some(json!({ "models": [{ "slug": "MiniMax-M3" }] })),
+            model_catalog: Some(json!({
+                "models": [{
+                    "slug": "MiniMax-M3",
+                    "base_instructions": ""
+                }]
+            })),
         };
 
         let overrides = startup_config_overrides(Some(&config), codex_home);
@@ -298,7 +343,7 @@ mod tests {
             overrides.contains(&r#"model_providers.minimax.supports_websockets=false"#.to_string())
         );
         assert!(overrides.contains(
-            &r#"model_catalog_json="/tmp/codex-home/vm0-model-catalog.json""#.to_string()
+            &r#"model_catalog_json="/tmp/codex-home/vm0-codex-model-catalog.json""#.to_string()
         ));
     }
 
@@ -401,13 +446,21 @@ mod tests {
             requires_openai_auth: None,
             wire_api: "responses".to_string(),
             supports_websockets: false,
-            model_catalog: Some(json!({ "models": [{ "slug": "MiniMax-M3" }] })),
+            model_catalog: Some(json!({
+                "models": [{
+                    "slug": "MiniMax-M3",
+                    "base_instructions": ""
+                }]
+            })),
         };
 
         write_model_catalog(tmp.path(), &config).unwrap();
 
         let written = std::fs::read_to_string(model_catalog_path(tmp.path())).unwrap();
-        assert_eq!(written, r#"{"models":[{"slug":"MiniMax-M3"}]}"#);
+        assert_eq!(
+            written,
+            r#"{"models":[{"base_instructions":"","slug":"MiniMax-M3"}]}"#
+        );
     }
 
     #[cfg(unix)]
@@ -430,7 +483,12 @@ mod tests {
             requires_openai_auth: None,
             wire_api: "responses".to_string(),
             supports_websockets: false,
-            model_catalog: Some(json!({ "models": [{ "slug": "MiniMax-M3" }] })),
+            model_catalog: Some(json!({
+                "models": [{
+                    "slug": "MiniMax-M3",
+                    "base_instructions": ""
+                }]
+            })),
         };
 
         write_model_catalog(&codex_home, &config).unwrap();
@@ -448,7 +506,10 @@ mod tests {
             "model catalog path should be a regular replacement file, not the old symlink"
         );
         let written = std::fs::read_to_string(model_catalog_path(&codex_home)).unwrap();
-        assert_eq!(written, r#"{"models":[{"slug":"MiniMax-M3"}]}"#);
+        assert_eq!(
+            written,
+            r#"{"models":[{"base_instructions":"","slug":"MiniMax-M3"}]}"#
+        );
     }
 
     #[test]
@@ -456,8 +517,6 @@ mod tests {
         let target = json!({
             "models": [{
                 "slug": "vm0-model",
-                "base_instructions": "",
-                "model_messages": null,
                 "context_window": 1_000_000
             }]
         });
@@ -503,5 +562,90 @@ mod tests {
             "default template"
         );
         assert_eq!(hydrated["models"][0]["context_window"], 1_000_000);
+    }
+
+    #[test]
+    fn inherit_default_model_instructions_only_fills_missing_fields() {
+        let target = json!({
+            "models": [
+                {
+                    "slug": "missing-both",
+                    "context_window": 1_000_000
+                },
+                {
+                    "slug": "explicit-messages",
+                    "model_messages": null
+                },
+                {
+                    "slug": "complete",
+                    "base_instructions": "custom instructions"
+                }
+            ],
+            "unknown_catalog_field": true
+        });
+        let bundled = BundledModelCatalog {
+            models: vec![BundledModel {
+                priority: 1,
+                visibility: "list".to_string(),
+                supported_in_api: true,
+                base_instructions: "default instructions".to_string(),
+                model_messages: json!({ "instructions_template": "default template" }),
+            }],
+        };
+
+        let hydrated = inherit_default_model_instructions(&target, bundled).unwrap();
+
+        assert_eq!(
+            hydrated["models"][0]["base_instructions"],
+            "default instructions"
+        );
+        assert_eq!(
+            hydrated["models"][0]["model_messages"]["instructions_template"],
+            "default template"
+        );
+        assert_eq!(hydrated["models"][0]["context_window"], 1_000_000);
+        assert_eq!(
+            hydrated["models"][1]["base_instructions"],
+            "default instructions"
+        );
+        assert!(hydrated["models"][1]["model_messages"].is_null());
+        assert_eq!(
+            hydrated["models"][2],
+            json!({
+                "slug": "complete",
+                "base_instructions": "custom instructions"
+            })
+        );
+        assert_eq!(hydrated["unknown_catalog_field"], true);
+    }
+
+    #[test]
+    fn write_model_catalog_rejects_non_string_base_instructions_before_replacing_catalog() {
+        let tmp = tempfile::tempdir().unwrap();
+        let catalog_path = model_catalog_path(tmp.path());
+        std::fs::write(&catalog_path, b"existing catalog").unwrap();
+        let config = CodexRuntimeConfig {
+            provider_id: "vm0-model".to_string(),
+            name: "vm0 Model".to_string(),
+            base_url: "https://example.test/v1".to_string(),
+            env_key: "OPENAI_API_KEY".to_string(),
+            http_headers: None,
+            requires_openai_auth: None,
+            wire_api: "responses".to_string(),
+            supports_websockets: false,
+            model_catalog: Some(json!({
+                "models": [{
+                    "slug": "invalid",
+                    "base_instructions": null
+                }]
+            })),
+        };
+
+        let error = write_model_catalog(tmp.path(), &config)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("invalid Codex model base_instructions"));
+        assert_eq!(std::fs::read(&catalog_path).unwrap(), b"existing catalog");
     }
 }

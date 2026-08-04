@@ -114,7 +114,9 @@ fn codex_setup_rejects_symlinked_home_before_model_catalog_write() -> TestResult
         "guest-agent must not launch Codex after setup fails"
     );
     assert!(
-        !target_codex_home.join("vm0-model-catalog.json").exists(),
+        !target_codex_home
+            .join("vm0-codex-model-catalog.json")
+            .exists(),
         "Codex setup must not write model catalog through symlinked CODEX_HOME"
     );
 
