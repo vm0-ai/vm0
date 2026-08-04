@@ -26,6 +26,7 @@ const SCHEMA = {
   OFFICIAL_RUNNER_SECRET: z.string().length(64),
   OPENAI_API_KEY: z.string().min(1),
   FAL_KEY: z.string().min(1).optional(),
+  JOGGAI_API_KEY: z.string().min(1).optional(),
   BYTEPLUS_API_KEY: z.string().min(1).optional(),
   BYTEPLUS_STT_API_KEY: z.string().min(1).optional(),
   ZERO_MAPS_GOOGLE_MAPS_TOKEN: z.string().min(1).optional(),

@@ -268,6 +268,27 @@ export const webhookBuiltInGenerationBytePlusContract = c.router({
   },
 });
 
+export const webhookBuiltInGenerationJoggAiContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/built-in-generations/joggai/:generationId",
+    pathParams: z.object({
+      generationId: z.uuid(),
+    }),
+    query: z.object({
+      token: z.string().min(1),
+    }),
+    body: c.type<string>(),
+    responses: {
+      200: thirdPartyWebhookOkSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle JoggAI built-in generation webhooks",
+  },
+});
+
 /**
  * Sandbox reuse outcome. One enum value per code branch in the runner's
  * reuse-decision block. `reused` means the sandbox was unparked from the idle
@@ -810,6 +831,8 @@ export type WebhookBuiltInGenerationFalContract =
   typeof webhookBuiltInGenerationFalContract;
 export type WebhookBuiltInGenerationBytePlusContract =
   typeof webhookBuiltInGenerationBytePlusContract;
+export type WebhookBuiltInGenerationJoggAiContract =
+  typeof webhookBuiltInGenerationJoggAiContract;
 export type WebhookFirewallAuthContract = typeof webhookFirewallAuthContract;
 export type WebhookCompleteContract = typeof webhookCompleteContract;
 export type WebhookCheckpointsContract = typeof webhookCheckpointsContract;
