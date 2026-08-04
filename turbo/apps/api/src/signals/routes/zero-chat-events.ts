@@ -36,6 +36,7 @@ import {
 } from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import {
+  autonomyBudgetExhausted,
   badRequestMessage,
   conflict,
   insufficientCredits,
@@ -55,6 +56,11 @@ import {
 } from "../services/zero-runs-create.service";
 import { isQueueFirstRunClaimLost } from "../services/agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
+import { childAutonomyBudget } from "../services/autonomy-budget.service";
+import {
+  autonomyBudgetSchemaAvailable,
+  rolloutCompatibleAutonomyBudgetColumn,
+} from "../services/autonomy-budget-schema.service";
 import { drainChatThreadQueueForThread$ } from "../services/chat-thread-queue-drain.service";
 import { loadPendingChatQueueEvent } from "../services/chat-event-queue.service";
 import {
@@ -109,7 +115,6 @@ import {
   chatThreadServiceTierFromCodex,
 } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
-import { chatAgentRunContextSchemaAvailable } from "../services/chat-agent-run-context-schema.service";
 import { attachCanonicalWebInputAssetsToEvent } from "../services/canonical-asset.service";
 import { resolveArtifactObject$ } from "../services/artifact-storage.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
@@ -247,16 +252,25 @@ function normalSendTriggerSource(
 async function resolveChatAgentRunSource(
   db: Db,
   auth: OrganizationAuthContext,
-): Promise<ChatAgentRunSourceAnnotation | null> {
+): Promise<{
+  readonly annotation: ChatAgentRunSourceAnnotation | null;
+  readonly autonomyBudget: number;
+  readonly schemaAvailable: boolean;
+} | null> {
   if (auth.tokenType !== "zero") {
     return null;
   }
+  const schemaAvailable = await autonomyBudgetSchemaAvailable(db);
   const [source] = await db
     .select({
       runId: zeroRuns.id,
       threadId: chatThreads.id,
       agentId: chatThreads.agentComposeId,
       title: chatThreads.title,
+      autonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
+        schemaAvailable,
+        zeroRuns.autonomyBudget,
+      ),
     })
     .from(zeroRuns)
     .innerJoin(
@@ -267,7 +281,7 @@ async function resolveChatAgentRunSource(
         eq(agentRuns.orgId, auth.orgId),
       ),
     )
-    .innerJoin(
+    .leftJoin(
       chatThreads,
       and(
         eq(chatThreads.id, zeroRuns.chatThreadId),
@@ -279,11 +293,19 @@ async function resolveChatAgentRunSource(
   if (!source) {
     return null;
   }
+  const annotation =
+    source.threadId === null || source.agentId === null
+      ? null
+      : {
+          runId: source.runId,
+          threadId: source.threadId,
+          agentId: source.agentId,
+          titleSnapshot: source.title?.trim() || "New thread",
+        };
   return {
-    runId: source.runId,
-    threadId: source.threadId,
-    agentId: source.agentId,
-    titleSnapshot: source.title?.trim() || "New thread",
+    annotation,
+    autonomyBudget: source.autonomyBudget,
+    schemaAvailable,
   };
 }
 
@@ -294,25 +316,39 @@ async function resolveNormalSendAgentRunSource(params: {
   readonly enabled: boolean;
 }): Promise<
   | { readonly source: ChatAgentRunSourceAnnotation | null }
-  | { readonly response: ReturnType<typeof badRequestMessage> }
+  | {
+      readonly response:
+        | ReturnType<typeof badRequestMessage>
+        | ReturnType<typeof autonomyBudgetExhausted>;
+    }
 > {
-  const sourceSchemaAvailable =
-    params.enabled &&
-    params.auth.tokenType === "zero" &&
-    (await chatAgentRunContextSchemaAvailable(params.db));
-  // Keep provenance aligned with the existing Zero chat messaging rollout,
-  // while allowing an API deployment to safely precede migration 0828.
-  const source = sourceSchemaAvailable
-    ? await resolveChatAgentRunSource(params.db, params.auth)
-    : null;
-  if (hasAgentRunSourceAnnotation(params.userMessage) && source === null) {
+  if (hasAgentRunSourceAnnotation(params.userMessage)) {
     return {
       response: badRequestMessage(
         "Agent source annotations are server-managed",
       ),
     };
   }
-  return { source };
+  const resolved = await resolveChatAgentRunSource(params.db, params.auth);
+  if (resolved === null) {
+    return params.auth.tokenType === "zero"
+      ? { response: badRequestMessage("Agent source run not found") }
+      : { source: null };
+  }
+  if (childAutonomyBudget(resolved.autonomyBudget).kind === "exhausted") {
+    return { response: autonomyBudgetExhausted() };
+  }
+  if (resolved.annotation === null) {
+    return {
+      response: badRequestMessage(
+        "Agent source run is not linked to a chat thread",
+      ),
+    };
+  }
+  return {
+    source:
+      params.enabled && resolved.schemaAvailable ? resolved.annotation : null,
+  };
 }
 
 function normalSendBodyWithAgentRunSource(
@@ -364,6 +400,7 @@ type NormalSendFailure =
   | ReturnType<typeof notFound>
   | ReturnType<typeof forbidden>
   | ReturnType<typeof conflict>
+  | ReturnType<typeof autonomyBudgetExhausted>
   | ReturnType<typeof insufficientCredits>
   | ReturnType<typeof badRequestMessage>;
 
@@ -3003,6 +3040,30 @@ function scheduleNormalChatRunSideEffects(params: {
   });
 }
 
+async function buildNormalChatRunArgs(
+  args: NormalSendArgs,
+  prepared: PreparedNormalSend,
+  signal: AbortSignal,
+) {
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    prepared.db,
+    args.orgId,
+    args.userId,
+  );
+  signal.throwIfAborted();
+
+  const createRunArgs = await buildTimedCreateZeroRunArgs({
+    args,
+    prepared,
+    realAgentInPreviewEnabled: isFeatureEnabled(
+      FeatureSwitchKey.RealAgentInPreview,
+      featureSwitchContext,
+    ),
+  });
+  signal.throwIfAborted();
+  return createRunArgs;
+}
+
 const createNormalChatRun$ = command(
   async (
     { set },
@@ -3047,6 +3108,16 @@ const createNormalChatRun$ = command(
         eventId: queueFirstEventId,
       });
     }
+    if (queuedMessage.autonomyBudget.kind !== "ok") {
+      await discardUnclaimedUserMessage(prepared.db, {
+        threadId: prepared.thread.threadId,
+        eventId: queueFirstEventId,
+      });
+      signal.throwIfAborted();
+      return queuedMessage.autonomyBudget.kind === "exhausted"
+        ? autonomyBudgetExhausted()
+        : badRequestMessage(queuedMessage.autonomyBudget.message);
+    }
     const attachFileMetadata = await set(
       resolveAttachFileMetadata$,
       {
@@ -3057,22 +3128,7 @@ const createNormalChatRun$ = command(
     );
     signal.throwIfAborted();
 
-    const featureSwitchContext = await loadUserFeatureSwitchContext(
-      prepared.db,
-      args.orgId,
-      args.userId,
-    );
-    signal.throwIfAborted();
-
-    const createRunArgs = await buildTimedCreateZeroRunArgs({
-      args,
-      prepared,
-      realAgentInPreviewEnabled: isFeatureEnabled(
-        FeatureSwitchKey.RealAgentInPreview,
-        featureSwitchContext,
-      ),
-    });
-    signal.throwIfAborted();
+    const createRunArgs = await buildNormalChatRunArgs(args, prepared, signal);
 
     if (args.timing) {
       args.timing.recordElapsed(
@@ -3086,6 +3142,9 @@ const createNormalChatRun$ = command(
       {
         ...createRunArgs,
         apiStartTime: queuedMessage.createdAt.getTime(),
+        zeroRunMetadata: {
+          autonomyBudget: queuedMessage.autonomyBudget.autonomyBudget,
+        },
         queueFirstAssociation: {
           kind: "user_message",
           threadId: prepared.thread.threadId,

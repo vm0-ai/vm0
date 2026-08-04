@@ -29,6 +29,13 @@ import {
   chatThreadModelPinColumns,
   resolveRequiredDefaultChatThreadModelPin,
 } from "./zero-chat-thread-model.service";
+import { childAutonomyBudget } from "./autonomy-budget.service";
+import {
+  autonomyBudgetSchemaAvailable,
+  insertRolloutCompatibleThreadGoal,
+  rolloutCompatibleAutonomyBudgetColumn,
+  rolloutCompatibleThreadGoalColumns,
+} from "./autonomy-budget-schema.service";
 
 export interface GoalBootstrap {
   readonly goalId: string;
@@ -46,7 +53,8 @@ export type GoalResult =
     }
   | { readonly kind: "not-found" }
   | { readonly kind: "bad-request"; readonly message: string }
-  | { readonly kind: "conflict"; readonly message: string };
+  | { readonly kind: "conflict"; readonly message: string }
+  | { readonly kind: "autonomy-budget-exhausted" };
 
 type ClearGoalResult =
   | { readonly kind: "ok"; readonly cleared: true }
@@ -68,6 +76,8 @@ interface CurrentGoalContext {
   readonly threadId: string | null;
   readonly agentId: string;
   readonly runGoalId: string | null;
+  readonly autonomyBudget: number;
+  readonly autonomyBudgetAvailable: boolean;
 }
 
 interface GoalAuth {
@@ -107,11 +117,16 @@ async function currentGoalContext(
   db: ReadonlyDb,
   auth: Pick<GoalAuth, "orgId" | "userId" | "runId">,
 ): Promise<CurrentGoalContext | null> {
+  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(db);
   const [row] = await db
     .select({
       threadId: zeroRuns.chatThreadId,
       agentId: agentSessions.agentComposeId,
       runGoalId: zeroRuns.goalId,
+      autonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
+        autonomyBudgetAvailable,
+        zeroRuns.autonomyBudget,
+      ),
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
@@ -125,7 +140,7 @@ async function currentGoalContext(
     )
     .limit(1);
 
-  return row ?? null;
+  return row ? { ...row, autonomyBudgetAvailable } : null;
 }
 
 async function loadGoalForThread(
@@ -133,7 +148,7 @@ async function loadGoalForThread(
   args: { readonly orgId: string; readonly threadId: string },
 ): Promise<GoalRow | null> {
   const [row] = await db
-    .select()
+    .select(rolloutCompatibleThreadGoalColumns(false))
     .from(threadGoals)
     .where(
       and(
@@ -163,7 +178,7 @@ async function loadOwnedGoalForThread(
   },
 ): Promise<GoalRow | null> {
   const [row] = await db
-    .select()
+    .select(rolloutCompatibleThreadGoalColumns(false))
     .from(threadGoals)
     .where(
       and(
@@ -186,12 +201,14 @@ async function insertGoal(
     readonly chatThreadId: string;
     readonly objective: string;
     readonly objectiveBrief: string;
+    readonly autonomyBudget: number;
+    readonly autonomyBudgetAvailable: boolean;
     readonly createdAt: Date;
   },
 ): Promise<GoalRow> {
-  const [goal] = await tx
-    .insert(threadGoals)
-    .values({
+  const goal = await insertRolloutCompatibleThreadGoal(
+    tx,
+    {
       orgId: args.orgId,
       ownerUserId: args.ownerUserId,
       agentId: args.agentId,
@@ -199,10 +216,12 @@ async function insertGoal(
       status: "active",
       objective: args.objective,
       objectiveBrief: args.objectiveBrief,
+      autonomyBudget: args.autonomyBudget,
       createdAt: args.createdAt,
       updatedAt: args.createdAt,
-    })
-    .returning();
+    },
+    args.autonomyBudgetAvailable,
+  );
   if (!goal) {
     throw new Error("Failed to create thread goal");
   }
@@ -263,7 +282,7 @@ async function setGoalStatus(
     .update(threadGoals)
     .set({ status: args.status, updatedAt: args.updatedAt })
     .where(eq(threadGoals.id, args.goalId))
-    .returning();
+    .returning(rolloutCompatibleThreadGoalColumns(false));
   if (!goal) {
     throw new Error("Failed to update thread goal");
   }
@@ -309,6 +328,11 @@ export async function createGoalForCurrentThread(
     };
   }
 
+  const derivedBudget = childAutonomyBudget(context.autonomyBudget);
+  if (derivedBudget.kind === "exhausted") {
+    return { kind: "autonomy-budget-exhausted" };
+  }
+
   const createdAt = nowDate();
   const objectiveBrief = await generateGoalObjectiveBrief(args.objective);
   const isNewThread = context.threadId === null;
@@ -344,6 +368,8 @@ export async function createGoalForCurrentThread(
       chatThreadId: threadId,
       objective: args.objective,
       objectiveBrief,
+      autonomyBudget: derivedBudget.autonomyBudget,
+      autonomyBudgetAvailable: context.autonomyBudgetAvailable,
       createdAt,
     });
     await appendGoalEventMarker(tx, {
@@ -645,6 +671,13 @@ export async function editCurrentGoal(
     return goal;
   }
 
+  const replacementBudget = childAutonomyBudget(goal.context.autonomyBudget);
+  if (
+    goal.row.status === "complete" &&
+    replacementBudget.kind === "exhausted"
+  ) {
+    return { kind: "autonomy-budget-exhausted" };
+  }
   const editedAt = nowDate();
   const objectiveBrief = await generateGoalObjectiveBrief(args.objective);
   const updated = await db.transaction(async (tx) => {
@@ -658,6 +691,9 @@ export async function editCurrentGoal(
       return null;
     }
     if (current.status === "complete") {
+      if (replacementBudget.kind === "exhausted") {
+        return "autonomy-budget-exhausted" as const;
+      }
       await tx.delete(threadGoals).where(eq(threadGoals.id, current.id));
       const replacement = await insertGoal(tx, {
         orgId: args.orgId,
@@ -666,6 +702,8 @@ export async function editCurrentGoal(
         chatThreadId: goal.threadId,
         objective: args.objective,
         objectiveBrief,
+        autonomyBudget: replacementBudget.autonomyBudget,
+        autonomyBudgetAvailable: goal.context.autonomyBudgetAvailable,
         createdAt: editedAt,
       });
       await appendGoalEventMarker(tx, {
@@ -684,7 +722,7 @@ export async function editCurrentGoal(
         updatedAt: editedAt,
       })
       .where(eq(threadGoals.id, current.id))
-      .returning();
+      .returning(rolloutCompatibleThreadGoalColumns(false));
     if (!row) {
       throw new Error("Failed to edit thread goal");
     }
@@ -696,6 +734,9 @@ export async function editCurrentGoal(
   });
   if (!updated) {
     return { kind: "not-found" };
+  }
+  if (updated === "autonomy-budget-exhausted") {
+    return { kind: "autonomy-budget-exhausted" };
   }
   await publishGoalMarker(args.userId, goal.threadId);
   return { kind: "ok", goal: goalResponse(updated) };

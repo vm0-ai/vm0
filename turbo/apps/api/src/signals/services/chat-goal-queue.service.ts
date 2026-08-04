@@ -15,6 +15,10 @@ import { insertChatEvent, replaceChatEvent } from "./zero-chat-event.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import {
+  autonomyBudgetSchemaAvailable,
+  rolloutCompatibleAutonomyBudgetColumn,
+} from "./autonomy-budget-schema.service";
 
 const goalEventRevoker = alias(chatEvents, "goal_event_revoker");
 const laterGoalChange = alias(chatEvents, "later_goal_change");
@@ -40,6 +44,7 @@ export interface GoalQueueTarget {
   readonly agentId: string;
   readonly objective: string;
   readonly objectiveBrief: string;
+  readonly autonomyBudget: number;
 }
 
 async function pendingGoalEventExists(
@@ -166,9 +171,10 @@ export async function loadNextGoalQueueEvent(
 }
 
 export async function loadGoalQueueTarget(
-  db: Pick<Db, "select">,
+  db: Db,
   event: PendingGoalQueueEvent,
 ): Promise<GoalQueueTarget | null> {
+  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(db);
   const [goal] = await db
     .select({
       goalId: threadGoals.id,
@@ -178,6 +184,10 @@ export async function loadGoalQueueTarget(
       agentId: threadGoals.agentId,
       objective: threadGoals.objective,
       objectiveBrief: threadGoals.objectiveBrief,
+      autonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
+        autonomyBudgetAvailable,
+        threadGoals.autonomyBudget,
+      ),
       status: threadGoals.status,
     })
     .from(threadGoals)
@@ -209,6 +219,7 @@ export async function loadGoalQueueTarget(
     agentId: goal.agentId,
     objective: goal.objective,
     objectiveBrief: goal.objectiveBrief,
+    autonomyBudget: goal.autonomyBudget,
   };
 }
 

@@ -105,6 +105,7 @@ interface WorkflowAutomationLaunchArgs {
   readonly appendSystemPrompt: string;
   readonly callbacks: readonly InternalRunCallbackInput[];
   readonly activePreviousRunPolicy: ActivePreviousRunPolicy;
+  readonly autonomyBudget: number;
   readonly recordLastRunId: boolean;
   readonly recordLastRunAt: boolean;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
@@ -137,10 +138,12 @@ function isActivePreviousRunStatus(status: string): boolean {
 function workflowAutomationRunMetadata(
   automation: AutomationRow,
   triggerBrief: string | undefined,
+  autonomyBudget: number,
 ) {
   return {
     workflowAutomationId: automation.id,
     triggerBrief,
+    autonomyBudget,
   };
 }
 
@@ -433,6 +436,7 @@ async function buildTimedWorkflowAutomationRunInput(args: {
         zeroRunMetadata: workflowAutomationRunMetadata(
           args.automation,
           args.command.triggerBrief,
+          args.command.autonomyBudget,
         ),
       };
     },

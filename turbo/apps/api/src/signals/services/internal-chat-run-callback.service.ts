@@ -42,6 +42,7 @@ import { z } from "zod";
 
 import { nullableDriverValueDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
+import { AUTONOMY_BUDGET_EXHAUSTED_MESSAGE } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
@@ -662,6 +663,7 @@ interface CreateQueuedChatRunInput {
     readonly payload: unknown;
   };
   readonly apiStartTime: number;
+  readonly autonomyBudget: number;
   readonly userInfoExtras?: {
     readonly slackDisplayName?: string;
     readonly slackUserId?: string;
@@ -921,6 +923,7 @@ function buildQueuedCreateZeroRunArgs(
       modelProviderCredentialScope: input.modelPin.modelProviderCredentialScope,
       selectedModel: input.modelPin.selectedModel,
     },
+    zeroRunMetadata: { autonomyBudget: input.autonomyBudget },
     threadSessionRoute: {
       selectedModel: input.modelPin.selectedModel,
       modelProvider: input.effectiveModelProvider ?? null,
@@ -3096,6 +3099,18 @@ async function buildCreateQueuedChatRunInput(
     ...args,
     userMessageProjection,
   });
+  if (args.queuedMessage.autonomyBudget.kind !== "ok") {
+    return queuedMessageAdmissionFailure(args, launchMaterial, {
+      code:
+        args.queuedMessage.autonomyBudget.kind === "exhausted"
+          ? "AUTONOMY_BUDGET_EXHAUSTED"
+          : "AUTONOMY_SOURCE_UNAVAILABLE",
+      message:
+        args.queuedMessage.autonomyBudget.kind === "exhausted"
+          ? AUTONOMY_BUDGET_EXHAUSTED_MESSAGE
+          : args.queuedMessage.autonomyBudget.message,
+    });
+  }
   if ("error" in modelRouteResolution) {
     return queuedMessageAdmissionFailure(
       args,
@@ -3181,6 +3196,7 @@ async function buildCreateQueuedChatRunInput(
     ),
     ...queuedIntegrationLaunchFields(launchMaterial),
     apiStartTime: args.queuedMessage.createdAt.getTime(),
+    autonomyBudget: args.queuedMessage.autonomyBudget.autonomyBudget,
   };
 }
 

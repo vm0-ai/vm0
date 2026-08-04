@@ -60,6 +60,10 @@ import {
   mintWorkflowWebhookToken,
 } from "../services/workflow-webhook-automation.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import {
+  insertRolloutCompatibleWorkflowAutomation,
+  rolloutCompatibleWorkflowAutomationColumns,
+} from "../services/autonomy-budget-schema.service";
 import { settle } from "../utils";
 import {
   loadVisibleWorkflowById,
@@ -799,29 +803,26 @@ async function copyWorkflowAutomationRow(
     readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   },
 ): Promise<void> {
-  const [copiedAutomation] = await tx
-    .insert(zeroWorkflowAutomations)
-    .values({
-      orgId: args.orgId,
-      workflowId: args.targetWorkflowId,
-      ownerUserId: args.userId,
-      kind: args.automation.kind,
-      eventType: args.automation.eventType,
-      eventConfig: args.automation.eventConfig,
-      scheduleType: args.automation.scheduleType,
-      cronExpression: args.automation.cronExpression,
-      intervalSeconds: args.automation.intervalSeconds,
-      atTime: args.automation.atTime,
-      timezone: args.automation.timezone,
-      enabled: args.automation.enabled,
-      nextRunAt: args.automation.nextRunAt,
-      lastRunAt: null,
-      lastRunId: null,
-      consecutiveFailures: 0,
-      createdAt: args.currentTime,
-      updatedAt: args.currentTime,
-    })
-    .returning({ id: zeroWorkflowAutomations.id });
+  const copiedAutomation = await insertRolloutCompatibleWorkflowAutomation(tx, {
+    orgId: args.orgId,
+    workflowId: args.targetWorkflowId,
+    ownerUserId: args.userId,
+    kind: args.automation.kind,
+    eventType: args.automation.eventType,
+    eventConfig: args.automation.eventConfig,
+    scheduleType: args.automation.scheduleType,
+    cronExpression: args.automation.cronExpression,
+    intervalSeconds: args.automation.intervalSeconds,
+    atTime: args.automation.atTime,
+    timezone: args.automation.timezone,
+    enabled: args.automation.enabled,
+    nextRunAt: args.automation.nextRunAt,
+    lastRunAt: null,
+    lastRunId: null,
+    consecutiveFailures: 0,
+    createdAt: args.currentTime,
+    updatedAt: args.currentTime,
+  });
   if (!copiedAutomation) {
     throw new Error("Failed to copy workflow automation");
   }
@@ -845,7 +846,7 @@ async function copyWorkflowUserAutomations(
   args: CopyWorkflowAutomationRowsArgs,
 ): Promise<void> {
   const rows = await tx
-    .select()
+    .select(rolloutCompatibleWorkflowAutomationColumns(false))
     .from(zeroWorkflowAutomations)
     .where(
       and(

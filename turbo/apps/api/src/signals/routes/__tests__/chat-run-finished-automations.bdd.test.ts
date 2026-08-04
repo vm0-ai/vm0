@@ -6,6 +6,12 @@ import { describe, expect, it } from "vitest";
 import { mockOptionalEnv } from "../../../lib/env";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { testContext } from "../../../__tests__/test-context";
+import {
+  readLatestWorkflowAutomationRunFixture,
+  readWorkflowAutomationAutonomyFixture,
+  setRunAutonomyBudgetFixture,
+  setWorkflowAutomationAutonomyBudgetFixture,
+} from "../../../test-fixtures/autonomy-budget";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -282,6 +288,7 @@ describe("chat-run-finished workflow automations", () => {
     async () => {
       const fixture = await setupChatAutomationFixture();
       const run = await startWatchedChatRun(fixture, "watched completed run");
+      await setRunAutonomyBudgetFixture(run.runId, 2);
 
       const fireAlways = await createChatRunFinishedAutomation(fixture, {
         chatThreadId: run.threadId,
@@ -299,6 +306,7 @@ describe("chat-run-finished workflow automations", () => {
         chatThreadId: run.threadId,
         outputPattern: "*all systems nominal*",
       });
+      await setWorkflowAutomationAutonomyBudgetFixture(patternMatch, 0);
 
       chatCallbacks.mockChatOutputEvents([
         {
@@ -320,6 +328,18 @@ describe("chat-run-finished workflow automations", () => {
       await expectAutomationFired(patternMatch);
       await expect(automationLastRunAt(failedOnly)).resolves.toBeNull();
       await expect(automationLastRunAt(patternMiss)).resolves.toBeNull();
+      const fireAlwaysState =
+        await readWorkflowAutomationAutonomyFixture(fireAlways);
+      const patternMatchState =
+        await readWorkflowAutomationAutonomyFixture(patternMatch);
+      expect(fireAlwaysState).toMatchObject({ autonomyBudget: 10 });
+      expect(patternMatchState).toMatchObject({ autonomyBudget: 0 });
+      await expect(
+        readLatestWorkflowAutomationRunFixture(fireAlways),
+      ).resolves.toMatchObject({ autonomyBudget: 1 });
+      await expect(
+        readLatestWorkflowAutomationRunFixture(patternMatch),
+      ).resolves.toMatchObject({ autonomyBudget: 0 });
 
       const automationRuns = await api.listAgentRuns(fixture.actor, {
         status: "pending",
@@ -331,6 +351,64 @@ describe("chat-run-finished workflow automations", () => {
         throw new Error("Expected a triggered automation run");
       }
       await claimChatRun(fixture.runnerGroup, automationRunId);
+    },
+  );
+
+  it(
+    "shows an error instead of firing when the watched run exhausts its budget",
+    { timeout: 30_000 },
+    async () => {
+      const fixture = await setupChatAutomationFixture();
+      const run = await startWatchedChatRun(fixture, "exhausted watched run");
+      const automationId = await createChatRunFinishedAutomation(fixture, {
+        chatThreadId: run.threadId,
+      });
+      await setRunAutonomyBudgetFixture(run.runId, 0);
+
+      const sandboxHeaders = await claimChatRun(fixture.runnerGroup, run.runId);
+      await completeChatRunOk(run.runId, sandboxHeaders);
+
+      let automationThreadId: string | null = null;
+      await expect
+        .poll(async () => {
+          const automation = await accept(
+            automationsClient().get({
+              headers: authHeaders(),
+              params: { id: automationId },
+            }),
+            [200],
+          );
+          automationThreadId = automation.body.chatThreadId;
+          return automationThreadId;
+        })
+        .toStrictEqual(expect.any(String));
+      const exhaustedAutomationThreadId = automationThreadId;
+      if (!exhaustedAutomationThreadId) {
+        throw new Error("Expected the automation chat thread");
+      }
+
+      await expect
+        .poll(async () => {
+          const messages = await chat.listThreadEvents(
+            fixture.actor,
+            exhaustedAutomationThreadId,
+          );
+          return messages.events.find((event) => {
+            return event.eventType === "output.error";
+          });
+        })
+        .toMatchObject({
+          eventType: "output.error",
+          error: "AUTONOMY_BUDGET_EXHAUSTED",
+        });
+      await expect(
+        readWorkflowAutomationAutonomyFixture(automationId),
+      ).resolves.toMatchObject({
+        autonomyBudget: 10,
+        enabled: true,
+        lastRunId: null,
+      });
+      await expect(automationLastRunAt(automationId)).resolves.toBeNull();
     },
   );
 
