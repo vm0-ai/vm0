@@ -281,6 +281,43 @@ async function setGoalStatus(
   return goal;
 }
 
+async function reactivateGoal(
+  tx: Pick<Db, "update">,
+  args: {
+    readonly goal: GoalRow;
+    readonly autonomyBudgetCeiling: number;
+    readonly autonomyBudgetAvailable: boolean;
+    readonly objective?: string;
+    readonly objectiveBrief?: string;
+    readonly updatedAt: Date;
+  },
+): Promise<GoalRow> {
+  const [goal] = await tx
+    .update(threadGoals)
+    .set({
+      status: "active",
+      updatedAt: args.updatedAt,
+      ...(args.objective === undefined ? {} : { objective: args.objective }),
+      ...(args.objectiveBrief === undefined
+        ? {}
+        : { objectiveBrief: args.objectiveBrief }),
+      ...(args.autonomyBudgetAvailable
+        ? {
+            autonomyBudget: Math.min(
+              args.goal.autonomyBudget,
+              args.autonomyBudgetCeiling,
+            ),
+          }
+        : {}),
+    })
+    .where(eq(threadGoals.id, args.goal.id))
+    .returning(rolloutCompatibleThreadGoalColumns(false));
+  if (!goal) {
+    throw new Error("Failed to reactivate thread goal");
+  }
+  return goal;
+}
+
 async function loadLockedOwnedGoal(
   tx: ReadonlyDb,
   args: {
@@ -607,6 +644,11 @@ export async function resumeCurrentGoal(
     };
   }
 
+  const reactivationBudget = childAutonomyBudget(goal.context.autonomyBudget);
+  if (reactivationBudget.kind === "exhausted") {
+    return { kind: "autonomy-budget-exhausted" };
+  }
+
   const resumedAt = nowDate();
   const updated = await db.transaction(async (tx) => {
     await lockGoalThread(tx, goal.threadId);
@@ -621,9 +663,10 @@ export async function resumeCurrentGoal(
     if (current.status === "complete") {
       return "complete" as const;
     }
-    const row = await setGoalStatus(tx, {
-      goalId: current.id,
-      status: "active",
+    const row = await reactivateGoal(tx, {
+      goal: current,
+      autonomyBudgetCeiling: reactivationBudget.autonomyBudget,
+      autonomyBudgetAvailable: goal.context.autonomyBudgetAvailable,
       updatedAt: resumedAt,
     });
     await appendGoalEventMarker(tx, {
@@ -664,10 +707,7 @@ export async function editCurrentGoal(
   }
 
   const replacementBudget = childAutonomyBudget(goal.context.autonomyBudget);
-  if (
-    goal.row.status === "complete" &&
-    replacementBudget.kind === "exhausted"
-  ) {
+  if (replacementBudget.kind === "exhausted") {
     return { kind: "autonomy-budget-exhausted" };
   }
   const editedAt = nowDate();
@@ -683,9 +723,6 @@ export async function editCurrentGoal(
       return null;
     }
     if (current.status === "complete") {
-      if (replacementBudget.kind === "exhausted") {
-        return "autonomy-budget-exhausted" as const;
-      }
       await tx.delete(threadGoals).where(eq(threadGoals.id, current.id));
       const replacement = await insertGoal(tx, {
         orgId: args.orgId,
@@ -705,19 +742,14 @@ export async function editCurrentGoal(
       return replacement;
     }
 
-    const [row] = await tx
-      .update(threadGoals)
-      .set({
-        objective: args.objective,
-        objectiveBrief,
-        status: "active",
-        updatedAt: editedAt,
-      })
-      .where(eq(threadGoals.id, current.id))
-      .returning(rolloutCompatibleThreadGoalColumns(false));
-    if (!row) {
-      throw new Error("Failed to edit thread goal");
-    }
+    const row = await reactivateGoal(tx, {
+      goal: current,
+      autonomyBudgetCeiling: replacementBudget.autonomyBudget,
+      autonomyBudgetAvailable: goal.context.autonomyBudgetAvailable,
+      objective: args.objective,
+      objectiveBrief,
+      updatedAt: editedAt,
+    });
     await appendGoalEventMarker(tx, {
       chatThreadId: goal.threadId,
       event: activeGoalEvent(objectiveBrief),
@@ -726,9 +758,6 @@ export async function editCurrentGoal(
   });
   if (!updated) {
     return { kind: "not-found" };
-  }
-  if (updated === "autonomy-budget-exhausted") {
-    return { kind: "autonomy-budget-exhausted" };
   }
   await publishGoalMarker(args.userId, goal.threadId);
   return { kind: "ok", goal: goalResponse(updated) };

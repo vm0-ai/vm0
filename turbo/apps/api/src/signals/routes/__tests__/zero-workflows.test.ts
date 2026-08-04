@@ -18,7 +18,7 @@ import {
   readWorkflowAutomationAutonomyFixture,
   setRunAutonomyBudgetFixture,
   setWorkflowAutomationAutonomyBudgetFixture,
-} from "../../../test-fixtures/autonomy-budget";
+} from "./helpers/runtime-state";
 import {
   createBddApi,
   type ApiTestUser,
@@ -1307,7 +1307,11 @@ describe("zero workflows", () => {
       }),
       [201],
     );
-    await setWorkflowAutomationAutonomyBudgetFixture(automation.body.id, 4);
+    await setWorkflowAutomationAutonomyBudgetFixture(
+      context,
+      automation.body.id,
+      4,
+    );
     const webhookAutomation = await accept(
       automationsClient().create({
         headers: authHeaders(actor),
@@ -1359,7 +1363,7 @@ describe("zero workflows", () => {
       throw new Error("Expected the copied schedule automation");
     }
     await expect(
-      readWorkflowAutomationAutonomyFixture(copiedSchedule.id),
+      readWorkflowAutomationAutonomyFixture(context, copiedSchedule.id),
     ).resolves.toMatchObject({ autonomyBudget: 4 });
     expect(
       copiedAutomations.body.some((copiedAutomation) => {
@@ -1414,7 +1418,7 @@ describe("zero workflows", () => {
       ["agent:write"],
     );
 
-    await setRunAutonomyBudgetFixture(sourceRun.body.runId, 1);
+    await setRunAutonomyBudgetFixture(context, sourceRun.body.runId, 1);
     const copied = await accept(
       detailClient().copy({
         headers: { authorization: `Bearer ${sourceToken}` },
@@ -1435,10 +1439,10 @@ describe("zero workflows", () => {
       throw new Error("Expected the copied workflow automation");
     }
     await expect(
-      readWorkflowAutomationAutonomyFixture(copiedAutomation.id),
+      readWorkflowAutomationAutonomyFixture(context, copiedAutomation.id),
     ).resolves.toMatchObject({ autonomyBudget: 0 });
 
-    await setRunAutonomyBudgetFixture(sourceRun.body.runId, 0);
+    await setRunAutonomyBudgetFixture(context, sourceRun.body.runId, 0);
     const blockedTargetAgent = await createAgent(actor, {
       displayName: "Exhausted Copy Target Agent",
       visibility: "private",

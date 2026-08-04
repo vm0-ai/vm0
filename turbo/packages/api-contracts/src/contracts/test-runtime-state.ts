@@ -35,6 +35,32 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("read-chat-agent-run-context-schema-state"),
   }),
   z.object({
+    action: z.literal("set-run-autonomy-budget"),
+    run_id: z.uuid(),
+    autonomy_budget: z.int().min(0).max(10),
+  }),
+  z.object({
+    action: z.literal("read-run-autonomy-budget"),
+    run_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("set-workflow-automation-autonomy-budget"),
+    automation_id: z.uuid(),
+    autonomy_budget: z.int().min(0).max(10),
+  }),
+  z.object({
+    action: z.literal("read-workflow-automation-autonomy-state"),
+    automation_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("read-latest-workflow-automation-run"),
+    automation_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("read-thread-goal-autonomy-budget"),
+    thread_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("reset-database-pool"),
   }),
   z.object({
@@ -153,6 +179,22 @@ export const testRuntimeStateActionResponseSchema = z.object({
   decrypt_call_count: z.number().optional(),
   browser_screenshot_schema_available: z.boolean().optional(),
   chat_agent_run_context_schema_available: z.boolean().optional(),
+  autonomy_budget: z.int().min(0).max(10).nullable().optional(),
+  workflow_automation_state: z
+    .object({
+      autonomy_budget: z.int().min(0).max(10),
+      enabled: z.boolean(),
+      last_run_id: z.uuid().nullable(),
+    })
+    .nullable()
+    .optional(),
+  workflow_automation_run: z
+    .object({
+      run_id: z.uuid(),
+      autonomy_budget: z.int().min(0).max(10),
+    })
+    .nullable()
+    .optional(),
   admission_lock_held: z.boolean().optional(),
   admission_lock_waiting: z.boolean().optional(),
   uploaded_file_sources: z.array(z.string()).optional(),

@@ -11,7 +11,7 @@ import {
   readWorkflowAutomationAutonomyFixture,
   setRunAutonomyBudgetFixture,
   setWorkflowAutomationAutonomyBudgetFixture,
-} from "../../../test-fixtures/autonomy-budget";
+} from "./helpers/runtime-state";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -288,7 +288,7 @@ describe("chat-run-finished workflow automations", () => {
     async () => {
       const fixture = await setupChatAutomationFixture();
       const run = await startWatchedChatRun(fixture, "watched completed run");
-      await setRunAutonomyBudgetFixture(run.runId, 2);
+      await setRunAutonomyBudgetFixture(context, run.runId, 2);
 
       const fireAlways = await createChatRunFinishedAutomation(fixture, {
         chatThreadId: run.threadId,
@@ -306,7 +306,11 @@ describe("chat-run-finished workflow automations", () => {
         chatThreadId: run.threadId,
         outputPattern: "*all systems nominal*",
       });
-      await setWorkflowAutomationAutonomyBudgetFixture(patternMatch, 0);
+      await setWorkflowAutomationAutonomyBudgetFixture(
+        context,
+        patternMatch,
+        0,
+      );
 
       chatCallbacks.mockChatOutputEvents([
         {
@@ -328,17 +332,21 @@ describe("chat-run-finished workflow automations", () => {
       await expectAutomationFired(patternMatch);
       await expect(automationLastRunAt(failedOnly)).resolves.toBeNull();
       await expect(automationLastRunAt(patternMiss)).resolves.toBeNull();
-      const fireAlwaysState =
-        await readWorkflowAutomationAutonomyFixture(fireAlways);
-      const patternMatchState =
-        await readWorkflowAutomationAutonomyFixture(patternMatch);
+      const fireAlwaysState = await readWorkflowAutomationAutonomyFixture(
+        context,
+        fireAlways,
+      );
+      const patternMatchState = await readWorkflowAutomationAutonomyFixture(
+        context,
+        patternMatch,
+      );
       expect(fireAlwaysState).toMatchObject({ autonomyBudget: 10 });
       expect(patternMatchState).toMatchObject({ autonomyBudget: 0 });
       await expect(
-        readLatestWorkflowAutomationRunFixture(fireAlways),
+        readLatestWorkflowAutomationRunFixture(context, fireAlways),
       ).resolves.toMatchObject({ autonomyBudget: 1 });
       await expect(
-        readLatestWorkflowAutomationRunFixture(patternMatch),
+        readLatestWorkflowAutomationRunFixture(context, patternMatch),
       ).resolves.toMatchObject({ autonomyBudget: 0 });
 
       const automationRuns = await api.listAgentRuns(fixture.actor, {
@@ -363,7 +371,7 @@ describe("chat-run-finished workflow automations", () => {
       const automationId = await createChatRunFinishedAutomation(fixture, {
         chatThreadId: run.threadId,
       });
-      await setRunAutonomyBudgetFixture(run.runId, 0);
+      await setRunAutonomyBudgetFixture(context, run.runId, 0);
 
       const sandboxHeaders = await claimChatRun(fixture.runnerGroup, run.runId);
       await completeChatRunOk(run.runId, sandboxHeaders);
@@ -402,7 +410,7 @@ describe("chat-run-finished workflow automations", () => {
           error: "AUTONOMY_BUDGET_EXHAUSTED",
         });
       await expect(
-        readWorkflowAutomationAutonomyFixture(automationId),
+        readWorkflowAutomationAutonomyFixture(context, automationId),
       ).resolves.toMatchObject({
         autonomyBudget: 10,
         enabled: true,

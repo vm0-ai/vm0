@@ -67,18 +67,16 @@ import { chatEventDisplayText } from "./helpers/chat-event";
 import {
   clearThreadSessionBinding,
   deleteVm0ManagedDefaultModelKey,
+  readRunAutonomyBudgetFixture,
   readThreadSessionBinding,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
+  setRunAutonomyBudgetFixture,
 } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { overwriteModelProviderSecretForTests } from "./helpers/zero-model-provider-state";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
-import {
-  readRunAutonomyBudgetFixture,
-  setRunAutonomyBudgetFixture,
-} from "../../../test-fixtures/autonomy-budget";
 import {
   createUnassociatedThreadBoundAgentRunFixture,
   createUnassociatedThreadBoundZeroRunFixture,
@@ -6282,9 +6280,11 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
       runId: immediate.body.runId,
       prompt: "immediate run-scoped handoff",
     });
-    await expect(readRunAutonomyBudgetFixture(caller.runId)).resolves.toBe(10);
     await expect(
-      readRunAutonomyBudgetFixture(immediate.body.runId),
+      readRunAutonomyBudgetFixture(context, caller.runId),
+    ).resolves.toBe(10);
+    await expect(
+      readRunAutonomyBudgetFixture(context, immediate.body.runId),
     ).resolves.toBe(9);
     // Neither callback internals nor retired provenance are public API fields.
     // The test-only state route is the only boundary that can prove their
@@ -6352,7 +6352,9 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
       runId: promoted.runId,
       prompt: "queued run-scoped handoff",
     });
-    await expect(readRunAutonomyBudgetFixture(promoted.runId)).resolves.toBe(9);
+    await expect(
+      readRunAutonomyBudgetFixture(context, promoted.runId),
+    ).resolves.toBe(9);
     const promotedState = await runStateStore.set(
       readAgentRunState$,
       {
@@ -6800,10 +6802,12 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected the first delegated prompt to launch a run");
     }
     const firstTargetRunId = firstSend.body.runId;
-    await expect(readRunAutonomyBudgetFixture(source.runId)).resolves.toBe(10);
-    await expect(readRunAutonomyBudgetFixture(firstTargetRunId)).resolves.toBe(
-      9,
-    );
+    await expect(
+      readRunAutonomyBudgetFixture(context, source.runId),
+    ).resolves.toBe(10);
+    await expect(
+      readRunAutonomyBudgetFixture(context, firstTargetRunId),
+    ).resolves.toBe(9);
     const firstMessages = await waitForThreadMessages(
       actor,
       firstTargetThread.id,
@@ -6884,9 +6888,9 @@ describe("CHAT-02: shared user message queue", () => {
     }
     const secondTargetRunId = secondSend.body.runId;
     expect(secondSend.body.status).toBe("queued");
-    await expect(readRunAutonomyBudgetFixture(secondTargetRunId)).resolves.toBe(
-      9,
-    );
+    await expect(
+      readRunAutonomyBudgetFixture(context, secondTargetRunId),
+    ).resolves.toBe(9);
     const secondMessages = await waitForThreadMessages(
       actor,
       secondTargetThread.id,
@@ -7022,9 +7026,9 @@ describe("CHAT-02: shared user message queue", () => {
     }
     const gatedTargetRunId = gatedSend.body.runId;
     expect(gatedSend.body.status).toBe("queued");
-    await expect(readRunAutonomyBudgetFixture(gatedTargetRunId)).resolves.toBe(
-      9,
-    );
+    await expect(
+      readRunAutonomyBudgetFixture(context, gatedTargetRunId),
+    ).resolves.toBe(9);
     const gatedMessages = await waitForThreadMessages(
       actor,
       gatedTargetThread.id,
@@ -7286,7 +7290,7 @@ describe("CHAT-02: shared user message queue", () => {
       prompt: "start bounded delegation",
     });
     const rootClaim = await claimChatRun(runnerGroup, root.runId);
-    await setRunAutonomyBudgetFixture(root.runId, 1);
+    await setRunAutonomyBudgetFixture(context, root.runId, 1);
 
     const delegated = await requestSendEventWithBearer(
       zeroTokenFromClaim(rootClaim.claim),
@@ -7302,7 +7306,7 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected the last allowed delegation to create a run");
     }
     await expect(
-      readRunAutonomyBudgetFixture(delegated.body.runId),
+      readRunAutonomyBudgetFixture(context, delegated.body.runId),
     ).resolves.toBe(0);
 
     await completeChatRunOk(root.runId, rootClaim.sandboxHeaders);

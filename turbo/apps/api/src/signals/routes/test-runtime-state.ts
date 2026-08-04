@@ -27,9 +27,11 @@ import { hostedSites } from "@vm0/db/schema/hosted-site";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq, sql, type SQL } from "drizzle-orm";
+import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import { desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import { closeDbPool } from "../../lib/db";
@@ -326,6 +328,145 @@ async function clearThreadSessionBinding(
   signal.throwIfAborted();
   if (!thread) {
     throw new Error("Expected a chat thread session binding row");
+  }
+}
+
+type AutonomyBudgetFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "set-run-autonomy-budget"
+      | "read-run-autonomy-budget"
+      | "set-workflow-automation-autonomy-budget"
+      | "read-workflow-automation-autonomy-state"
+      | "read-latest-workflow-automation-run"
+      | "read-thread-goal-autonomy-budget";
+  }
+>;
+
+function isAutonomyBudgetFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is AutonomyBudgetFixtureAction {
+  return [
+    "set-run-autonomy-budget",
+    "read-run-autonomy-budget",
+    "set-workflow-automation-autonomy-budget",
+    "read-workflow-automation-autonomy-state",
+    "read-latest-workflow-automation-run",
+    "read-thread-goal-autonomy-budget",
+  ].includes(body.action);
+}
+
+async function autonomyBudgetFixtureActionResponse(
+  db: Db,
+  body: AutonomyBudgetFixtureAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "set-run-autonomy-budget": {
+      const [run] = await db
+        .update(zeroRuns)
+        .set({ autonomyBudget: body.autonomy_budget })
+        .where(eq(zeroRuns.id, body.run_id))
+        .returning({ id: zeroRuns.id });
+      signal.throwIfAborted();
+      if (!run) {
+        throw new Error("Expected the autonomy-budget run fixture");
+      }
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "read-run-autonomy-budget": {
+      const [run] = await db
+        .select({ autonomyBudget: zeroRuns.autonomyBudget })
+        .from(zeroRuns)
+        .where(eq(zeroRuns.id, body.run_id))
+        .limit(1);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          autonomy_budget: run?.autonomyBudget ?? null,
+        },
+      };
+    }
+    case "set-workflow-automation-autonomy-budget": {
+      const [automation] = await db
+        .update(zeroWorkflowAutomations)
+        .set({ autonomyBudget: body.autonomy_budget })
+        .where(eq(zeroWorkflowAutomations.id, body.automation_id))
+        .returning({ id: zeroWorkflowAutomations.id });
+      signal.throwIfAborted();
+      if (!automation) {
+        throw new Error("Expected the autonomy-budget automation fixture");
+      }
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "read-workflow-automation-autonomy-state": {
+      const [automation] = await db
+        .select({
+          autonomyBudget: zeroWorkflowAutomations.autonomyBudget,
+          enabled: zeroWorkflowAutomations.enabled,
+          lastRunId: zeroWorkflowAutomations.lastRunId,
+        })
+        .from(zeroWorkflowAutomations)
+        .where(eq(zeroWorkflowAutomations.id, body.automation_id))
+        .limit(1);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          workflow_automation_state: automation
+            ? {
+                autonomy_budget: automation.autonomyBudget,
+                enabled: automation.enabled,
+                last_run_id: automation.lastRunId,
+              }
+            : null,
+        },
+      };
+    }
+    case "read-latest-workflow-automation-run": {
+      const [run] = await db
+        .select({
+          runId: zeroRuns.id,
+          autonomyBudget: zeroRuns.autonomyBudget,
+        })
+        .from(zeroRuns)
+        .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+        .where(eq(zeroRuns.workflowAutomationId, body.automation_id))
+        .orderBy(desc(agentRuns.createdAt))
+        .limit(1);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          workflow_automation_run: run
+            ? {
+                run_id: run.runId,
+                autonomy_budget: run.autonomyBudget,
+              }
+            : null,
+        },
+      };
+    }
+    case "read-thread-goal-autonomy-budget": {
+      const [goal] = await db
+        .select({ autonomyBudget: threadGoals.autonomyBudget })
+        .from(threadGoals)
+        .where(eq(threadGoals.chatThreadId, body.thread_id))
+        .limit(1);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          autonomy_budget: goal?.autonomyBudget ?? null,
+        },
+      };
+    }
   }
 }
 
@@ -1021,6 +1162,7 @@ async function setRunnerJobContextProfileAsPreviousApi(
 }
 
 type CompatibilityFixtureAction =
+  | AutonomyBudgetFixtureAction
   | LegacyArtifactCatalogFileAction
   | PreviousApiHostedSiteAction
   | PreviousApiHostedDeploymentAction
@@ -1033,6 +1175,12 @@ function isCompatibilityFixtureAction(
   body: TestRuntimeStateActionBody,
 ): body is CompatibilityFixtureAction {
   return [
+    "set-run-autonomy-budget",
+    "read-run-autonomy-budget",
+    "set-workflow-automation-autonomy-budget",
+    "read-workflow-automation-autonomy-state",
+    "read-latest-workflow-automation-run",
+    "read-thread-goal-autonomy-budget",
     "insert-legacy-artifact-catalog-file",
     "insert-hosted-site-as-previous-api",
     "insert-hosted-deployment-as-previous-api",
@@ -1048,6 +1196,9 @@ async function compatibilityFixtureActionResponse(
   body: CompatibilityFixtureAction,
   signal: AbortSignal,
 ) {
+  if (isAutonomyBudgetFixtureAction(body)) {
+    return await autonomyBudgetFixtureActionResponse(db, body, signal);
+  }
   switch (body.action) {
     case "insert-legacy-artifact-catalog-file": {
       return await insertLegacyArtifactCatalogFile(db, body, signal);

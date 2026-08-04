@@ -297,12 +297,38 @@ const enableAutomationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroWorkflowAutomationsContract.enable));
+    let autonomyBudgetCeiling: number | undefined;
+    const db = get(db$);
+    const budgetSchemaAvailable =
+      auth.tokenType === "zero"
+        ? await autonomyBudgetSchemaAvailable(db)
+        : false;
+    signal.throwIfAborted();
+    if (auth.tokenType === "zero" && budgetSchemaAvailable) {
+      const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(db, {
+        runId: auth.runId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+      });
+      signal.throwIfAborted();
+      if (sourceAutonomyBudget === null) {
+        return notFound("Source run not found");
+      }
+      const derived = childAutonomyBudget(sourceAutonomyBudget);
+      if (derived.kind === "exhausted") {
+        return autonomyBudgetExhausted();
+      }
+      autonomyBudgetCeiling = derived.autonomyBudget;
+    }
     const result = await set(
       enableWorkflowAutomation$,
       {
         orgId: auth.orgId,
         member: memberFromAuth(auth),
         automationId: params.id,
+        ...(autonomyBudgetCeiling === undefined
+          ? {}
+          : { autonomyBudgetCeiling }),
       },
       signal,
     );
