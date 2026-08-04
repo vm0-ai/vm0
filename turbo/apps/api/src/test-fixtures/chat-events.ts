@@ -22,6 +22,7 @@ import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { and, count, eq, isNull, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -900,6 +901,53 @@ export async function holdCheckpointReadsFixture(args: {
       throw new Error("Expected the checkpoint lock holder pid");
     }
     await tx.execute(sql`LOCK TABLE ${checkpoints} IN ACCESS EXCLUSIVE MODE`);
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await directBlockedWaiterCount(holderPid);
+    },
+  };
+}
+
+/**
+ * Holds model-policy reads so a route test can pause after a queued goal
+ * captured its target but before model resolution returns. Product APIs cannot
+ * pause at this query boundary, and the fixture does not mutate policy rows.
+ */
+export async function holdModelPolicyReadsFixture(args: {
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the model-policy lock holder pid");
+    }
+    await tx.execute(
+      sql`LOCK TABLE ${orgModelPolicies} IN ACCESS EXCLUSIVE MODE`,
+    );
     started.resolve(holderPid);
     await released.promise;
   });

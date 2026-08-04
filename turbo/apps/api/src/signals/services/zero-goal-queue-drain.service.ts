@@ -463,12 +463,14 @@ export const drainGoalQueueForThread$ = command(
         await publishGoalQueueChanged(event, signal);
         return;
       }
+
+      const stillValid = await loadGoalQueueTarget(db, event);
+      signal.throwIfAborted();
+      if (!stillValid) {
+        await revokeGoalEvent(db, event, signal);
+        return;
+      }
       if (result.kind === "enqueued") {
-        const stillValid = await loadGoalQueueTarget(db, event);
-        signal.throwIfAborted();
-        if (!stillValid) {
-          await revokeGoalEvent(db, event, signal);
-        }
         return;
       }
 
@@ -480,15 +482,15 @@ export const drainGoalQueueForThread$ = command(
       );
       const paused = rejected
         ? await pauseActiveGoalForThread(db, {
-            orgId: goal.orgId,
-            userId: goal.userId,
-            threadId: goal.threadId,
+            orgId: stillValid.orgId,
+            userId: stillValid.userId,
+            threadId: stillValid.threadId,
           })
         : null;
       signal.throwIfAborted();
       log.warn("Goal queue event failed to create a run", {
         eventId: event.id,
-        goalId: goal.goalId,
+        goalId: stillValid.goalId,
         code: result.response.body.error.code,
         rejected,
         pauseResult: paused?.kind ?? "not_paused",

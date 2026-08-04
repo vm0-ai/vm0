@@ -24,6 +24,7 @@ import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
+  holdModelPolicyReadsFixture,
   insertQueuedSlackMissingContextFixture,
   readChatEventContextFixture,
   removeAcknowledgedCancellationLifecycleFixture,
@@ -1914,6 +1915,90 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
   }, 90_000);
 
+  it("revokes a goal invalidated while a failing launch resolves", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before the invalidated goal launch fails",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await createGoalForRun(
+      actor,
+      first.runId,
+      "revoke the stale failed launch",
+    );
+    await misc.deleteOrgModelProvider(actor, "anthropic-api-key", [204]);
+    const modelPolicyReads = await holdModelPolicyReadsFixture({
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      modelPolicyReads.release();
+      await modelPolicyReads.done;
+    });
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before the invalidated goal launch failed"),
+    ]);
+
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await expect
+      .poll(modelPolicyReads.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+
+    const [goalEventId] = await goalQueueEventIds(first.threadId);
+    expect(goalEventId).toBeDefined();
+    if (!goalEventId) {
+      throw new Error("Expected the invalidated failing goal queue event");
+    }
+    const paused = await accept(
+      goalsClient().pause({
+        headers: zeroGoalHeaders(actor, first.runId),
+      }),
+      [200],
+    );
+    expect(paused.body.status).toBe("paused");
+    modelPolicyReads.release();
+    await modelPolicyReads.done;
+
+    const events = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return items.some((event) => {
+          return (
+            event.eventType === "control.revoke" &&
+            event.revokesEventId === goalEventId
+          );
+        });
+      },
+    );
+    expect(events.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "control.revoke",
+        revokesEventId: goalEventId,
+        content: null,
+      }),
+    );
+    expect(events.events).not.toContainEqual(
+      expect.objectContaining({
+        eventType: "input.rejected",
+        revokesEventId: goalEventId,
+      }),
+    );
+    const goal = await accept(
+      goalsClient().get({
+        headers: zeroGoalHeaders(actor, first.runId),
+      }),
+      [200],
+    );
+    expect(goal.body.status).toBe("paused");
+    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
+  }, 90_000);
+
   it("pauses the goal and rejects its event when claim-time run creation fails", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
@@ -1933,6 +2018,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await completeChatRunOk(first.runId, sandboxHeaders, {
       lastEventSequence: 0,
     });
+    await flushWaitUntilForTest();
 
     await expect
       .poll(async () => {
