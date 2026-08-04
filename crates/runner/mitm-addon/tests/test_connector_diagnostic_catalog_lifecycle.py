@@ -1,6 +1,7 @@
 """Integration tests for server-catalog connector diagnostic lifecycles."""
 
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -235,7 +236,12 @@ async def test_repeated_preferred_catalog_does_not_reopen_cache(
     registry_path = _builtin_shared_registry(tmp_path)
     first_flow = _flow(real_flow, host="unmatched.example.com")
     second_flow = _flow(real_flow, host="unmatched.example.com")
-    original_open_state_file = state_file.open_state_file
+    original_os_open = state_file.os.open
+    opened_paths: list[Path] = []
+
+    def record_open(path: Path, flags: int) -> int:
+        opened_paths.append(path)
+        return original_os_open(path, flags)
 
     with (
         mitm_ctx(
@@ -243,10 +249,10 @@ async def test_repeated_preferred_catalog_does_not_reopen_cache(
             builtin_firewall_catalog_cache_path=str(cache_path),
         ),
         patch.object(
-            state_file,
-            "open_state_file",
-            wraps=original_open_state_file,
-        ) as open_state_file,
+            state_file.os,
+            "open",
+            side_effect=record_open,
+        ),
     ):
         await mitm_addon.request(first_flow)
         await mitm_addon.request(second_flow)
@@ -257,12 +263,9 @@ async def test_repeated_preferred_catalog_does_not_reopen_cache(
         for value in flow.metadata.values()
         if isinstance(value, builtin_connector_diagnostics.DiagnosticCatalogSnapshot)
     ]
-    catalog_open_calls = [
-        call for call in open_state_file.call_args_list if call.args[0] == cache_path
-    ]
     assert first_flow.response is None
     assert second_flow.response is None
-    assert len(catalog_open_calls) == 1
+    assert opened_paths.count(cache_path) == 1
     assert len(pinned_snapshots) == 2
     assert pinned_snapshots[0] is pinned_snapshots[1]
     assert pinned_snapshots[0].catalog_identity is not None
