@@ -36,6 +36,8 @@ use target::{
     rediscover_same_target,
 };
 
+const RUN_ORPHAN_FALLBACK_REFUSAL: &str = "run target can no longer be verified after owning-runner control failed; use --sandbox for explicit orphan cleanup";
+
 #[derive(Args)]
 #[command(group = clap::ArgGroup::new("target").required(true))]
 pub struct KillArgs {
@@ -73,10 +75,9 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
                 if let Ok(refreshed) = rediscover_same_sandbox_process(&initial.target).await
                     && process::is_orphan(refreshed.target.pid, &refreshed.runner_pids).await
                 {
-                    let outcome = if should_refuse_run_orphan_fallback(&args, is_initial_orphan) {
-                        KillOutcome::RefusedTargetChanged(
-                            "run target is no longer active; refusing orphan fallback for an initially managed sandbox".into(),
-                        )
+                    let outcome = if should_refuse_orphan_fallback(initial.target.run_id.as_deref())
+                    {
+                        KillOutcome::RefusedTargetChanged(RUN_ORPHAN_FALLBACK_REFUSAL.into())
                     } else {
                         kill_current_target(refreshed.target.clone(), true, control).await
                     };
@@ -164,8 +165,8 @@ impl From<OrphanOutcome> for KillOutcome {
     }
 }
 
-fn should_refuse_run_orphan_fallback(args: &KillArgs, is_initial_orphan: bool) -> bool {
-    args.run.is_some() && !is_initial_orphan
+fn should_refuse_orphan_fallback(run_id: Option<&str>) -> bool {
+    run_id.is_some()
 }
 
 async fn kill_current_target(
@@ -188,6 +189,9 @@ async fn retry_as_orphan_if_owner_disappeared(
     let refreshed = match rediscover_same_sandbox_process(expected).await {
         Ok(refreshed) => refreshed,
         Err(error) => {
+            if should_refuse_orphan_fallback(expected.run_id.as_deref()) {
+                return KillOutcome::RefusedTargetChanged(RUN_ORPHAN_FALLBACK_REFUSAL.into());
+            }
             if was_orphan && error.allows_disappeared_orphan_cleanup() {
                 let outcome = orphan::confirmed_disappeared_outcome(expected, was_orphan)
                     .await
@@ -199,6 +203,9 @@ async fn retry_as_orphan_if_owner_disappeared(
     };
     if !process::is_orphan(refreshed.target.pid, &refreshed.runner_pids).await {
         return KillOutcome::RefusedManagedControlFailed(owner_error.to_string());
+    }
+    if should_refuse_orphan_fallback(expected.run_id.as_deref()) {
+        return KillOutcome::RefusedTargetChanged(RUN_ORPHAN_FALLBACK_REFUSAL.into());
     }
 
     KillOutcome::from(orphan::terminate(&refreshed.target).await)
@@ -418,36 +425,13 @@ mod tests {
     }
 
     #[test]
-    fn run_fallback_refuses_initially_managed_target() {
-        let args = KillArgs {
-            run: Some("run".into()),
-            sandbox: None,
-            force: true,
-        };
-
-        assert!(should_refuse_run_orphan_fallback(&args, false));
+    fn run_scoped_target_refuses_orphan_fallback() {
+        assert!(should_refuse_orphan_fallback(Some("run-full-id")));
     }
 
     #[test]
-    fn run_fallback_allows_initial_orphan_target() {
-        let args = KillArgs {
-            run: Some("run".into()),
-            sandbox: None,
-            force: true,
-        };
-
-        assert!(!should_refuse_run_orphan_fallback(&args, true));
-    }
-
-    #[test]
-    fn sandbox_fallback_allows_initially_managed_target() {
-        let args = KillArgs {
-            run: None,
-            sandbox: Some("sbox".into()),
-            force: true,
-        };
-
-        assert!(!should_refuse_run_orphan_fallback(&args, false));
+    fn sandbox_scoped_target_allows_orphan_fallback() {
+        assert!(!should_refuse_orphan_fallback(None));
     }
 
     #[tokio::test]
