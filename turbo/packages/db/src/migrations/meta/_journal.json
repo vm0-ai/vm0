@@ -64,6 +64,13 @@
       "when": 1785816291873,
       "tag": "0816_backfill_teams_message_file_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 817,
+      "version": "7",
+      "when": 1785818325203,
+      "tag": "0817_tired_chat",
+      "breakpoints": true
     }
   ]
 }
