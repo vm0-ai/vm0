@@ -1873,7 +1873,7 @@ interface MountEditorOptions {
   compositionGate: CompositionGate;
   syncWorkflowNames$: WorkflowNamesSyncCommand;
   syncAgentMentionAvatars$: AgentMentionAvatarsSyncCommand;
-  inlineTemplatesEnabled: boolean;
+  inlineTemplatesEnabled$: Computed<boolean>;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
 }
@@ -1882,6 +1882,10 @@ interface WorkflowComposerMountOptions {
   readonly autoFocus?: boolean;
   readonly singleLineOnMobile?: boolean;
 }
+
+const inlineTemplatesDisabled$ = computed((): boolean => {
+  return false;
+});
 
 function createMountEditorCommand({
   editor,
@@ -1894,12 +1898,13 @@ function createMountEditorCommand({
   compositionGate,
   syncWorkflowNames$,
   syncAgentMentionAvatars$,
-  inlineTemplatesEnabled,
+  inlineTemplatesEnabled$,
   autoFocus,
   singleLineOnMobile,
 }: MountEditorOptions) {
   return onRef(
     command(async ({ get, set }, element: HTMLElement, signal: AbortSignal) => {
+      const inlineTemplatesEnabled = get(inlineTemplatesEnabled$);
       runtime.update = (updatedEditor) => {
         runtime.replaceFeedbackItems(
           feedbackItemsFromWorkflowComposer(updatedEditor),
@@ -2298,9 +2303,10 @@ function createTemplateInsertionCommands(editor: Editor) {
 
 function createInsertUserMessageCommand(
   editor: Editor,
-  inlineTemplatesEnabled: boolean,
+  inlineTemplatesEnabled$: Computed<boolean>,
 ) {
-  return command((_context, value: UserMessageDocument) => {
+  return command(({ get }, value: UserMessageDocument) => {
+    const inlineTemplatesEnabled = get(inlineTemplatesEnabled$);
     const insertableParts = value.parts.filter((part) => {
       return (
         part.type === "text" ||
@@ -2422,7 +2428,7 @@ export function createWorkflowComposerSignals<
 >(
   draft: DraftSignals,
   agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
-  inlineTemplatesEnabled = false,
+  inlineTemplatesEnabled$: Computed<boolean> = inlineTemplatesDisabled$,
   mountOptions: WorkflowComposerMountOptions = {},
   feedback: ComposerFeedbackModel = createComposerFeedbackModel(),
 ): WorkflowComposerSignals {
@@ -2496,7 +2502,7 @@ export function createWorkflowComposerSignals<
     compositionGate,
     syncWorkflowNames$,
     syncAgentMentionAvatars$,
-    inlineTemplatesEnabled,
+    inlineTemplatesEnabled$,
     autoFocus: mountOptions.autoFocus ?? false,
     singleLineOnMobile: mountOptions.singleLineOnMobile ?? false,
   });
@@ -2509,7 +2515,7 @@ export function createWorkflowComposerSignals<
   const templateCommands = createTemplateInsertionCommands(editor);
   const insertUserMessage$ = createInsertUserMessageCommand(
     editor,
-    inlineTemplatesEnabled,
+    inlineTemplatesEnabled$,
   );
   const readInputForSubmission$ = createReadInputForSubmissionCommand(
     editor,

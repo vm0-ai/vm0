@@ -5,6 +5,9 @@ import {
   chatThreadDraftSchema,
   chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
+  type CodexServiceTier,
+  type PersistedAttachment,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
@@ -18,20 +21,59 @@ import {
   optimisticChatThreadCreateUnsettled,
   registerOptimisticChatThreadEvent$,
 } from "./chat-thread-event-sourcing.ts";
-import type {
-  PatchComputerUseHostArgs,
-  PatchModelSelectionArgs,
-  PatchDraftArgs,
-  SubscribeRealtimeArgs,
-} from "./chat-thread-data-source.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
+
+interface ChatThreadRealtimeHandlers {
+  readonly onThreadDetailChanged$: Command<
+    Promise<boolean> | boolean,
+    [AbortSignal]
+  >;
+  readonly onAutomationsChanged$: Command<
+    Promise<boolean> | boolean,
+    [AbortSignal]
+  >;
+  readonly onArtifactsChanged$: Command<
+    Promise<boolean> | boolean,
+    [AbortSignal]
+  >;
+  readonly onWorkflowsChanged$: Command<
+    Promise<boolean> | boolean,
+    [AbortSignal]
+  >;
+  readonly onSubscribed$?: Command<Promise<void> | void, [AbortSignal]>;
+}
+
+interface PatchDraftArgs {
+  readonly threadId: string;
+  readonly userMessage: UserMessageDocument | null;
+  readonly attachments: PersistedAttachment[] | null;
+}
+
+interface PatchModelSelectionArgs {
+  readonly threadId: string;
+  readonly modelSelection: {
+    readonly selectedModel: string;
+    readonly codexServiceTier?: CodexServiceTier;
+  } | null;
+}
+
+interface PatchComputerUseHostArgs {
+  readonly threadId: string;
+  readonly computerUseHostId: string | null;
+  readonly cloudBrowserEnabled: boolean;
+}
+
+interface SubscribeRealtimeArgs {
+  readonly threadId: string;
+  readonly handlers: ChatThreadRealtimeHandlers;
+}
 
 type ChatRealtimeSubscription = {
   readonly topic: string;
   readonly loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>;
 };
 
-const patchDraft$ = command(
+export const patchChatThreadDraft$ = command(
   async (
     { get, set },
     { threadId, userMessage, attachments }: PatchDraftArgs,
@@ -54,7 +96,7 @@ const patchDraft$ = command(
   },
 );
 
-const patchModelSelection$ = command(
+export const patchChatThreadModelSelection$ = command(
   async (
     { get, set },
     { threadId, modelSelection }: PatchModelSelectionArgs,
@@ -109,7 +151,7 @@ const patchModelSelection$ = command(
   },
 );
 
-const patchComputerUseHost$ = command(
+export const patchChatThreadComputerUseHost$ = command(
   async (
     { get, set },
     {
@@ -147,69 +189,66 @@ const patchComputerUseHost$ = command(
   },
 );
 
-function createSubscribeRealtime() {
-  return command(
-    async (
-      { set },
-      { threadId, handlers }: SubscribeRealtimeArgs,
-      signal: AbortSignal,
-    ) => {
-      const ready = createDeferredPromise<void>(signal);
-      const subscriptions: ChatRealtimeSubscription[] = [
-        {
-          topic: `chatThreadDetailChanged:${threadId}`,
-          loopCommand$: handlers.onThreadDetailChanged$,
-        },
-        {
-          topic: `chatThreadAutomationsChanged:${threadId}`,
-          loopCommand$: handlers.onAutomationsChanged$,
-        },
-        {
-          topic: `chatThreadArtifactsChanged:${threadId}`,
-          loopCommand$: handlers.onArtifactsChanged$,
-        },
-        {
-          topic: `chatThreadWorkflowsChanged:${threadId}`,
-          loopCommand$: handlers.onWorkflowsChanged$,
-        },
-      ];
+export const subscribeChatThreadRealtime$ = command(
+  async (
+    { set },
+    { threadId, handlers }: SubscribeRealtimeArgs,
+    signal: AbortSignal,
+  ) => {
+    const ready = createDeferredPromise<void>(signal);
+    const subscriptions: ChatRealtimeSubscription[] = [
+      {
+        topic: `chatThreadDetailChanged:${threadId}`,
+        loopCommand$: handlers.onThreadDetailChanged$,
+      },
+      {
+        topic: `chatThreadAutomationsChanged:${threadId}`,
+        loopCommand$: handlers.onAutomationsChanged$,
+      },
+      {
+        topic: `chatThreadArtifactsChanged:${threadId}`,
+        loopCommand$: handlers.onArtifactsChanged$,
+      },
+      {
+        topic: `chatThreadWorkflowsChanged:${threadId}`,
+        loopCommand$: handlers.onWorkflowsChanged$,
+      },
+    ];
 
-      let pendingSubscriptions = subscriptions.length;
-      const markSubscribed = () => {
-        pendingSubscriptions -= 1;
-        if (pendingSubscriptions === 0 && !ready.settled()) {
-          ready.resolve();
-        }
-      };
-      const options = { onSubscribed: markSubscribed };
-      const subscription = Promise.all(
-        subscriptions.map((subscription) => {
-          return set(
-            setAblyLoop$,
-            {
-              topic: subscription.topic,
-              loopCommand$: subscription.loopCommand$,
-              options,
-            },
-            signal,
-          );
-        }),
-      );
-
-      await Promise.race([ready.promise, subscription]);
-      signal.throwIfAborted();
-      if (ready.settled() && handlers.onSubscribed$) {
-        await set(handlers.onSubscribed$, signal);
-        signal.throwIfAborted();
+    let pendingSubscriptions = subscriptions.length;
+    const markSubscribed = () => {
+      pendingSubscriptions -= 1;
+      if (pendingSubscriptions === 0 && !ready.settled()) {
+        ready.resolve();
       }
-      await subscription;
-    },
-  );
-}
+    };
+    const options = { onSubscribed: markSubscribed };
+    const subscription = Promise.all(
+      subscriptions.map((subscription) => {
+        return set(
+          setAblyLoop$,
+          {
+            topic: subscription.topic,
+            loopCommand$: subscription.loopCommand$,
+            options,
+          },
+          signal,
+        );
+      }),
+    );
 
-export function createRemoteChatThreadDataSource(threadId: string) {
+    await Promise.race([ready.promise, subscription]);
+    signal.throwIfAborted();
+    if (ready.settled() && handlers.onSubscribed$) {
+      await set(handlers.onSubscribed$, signal);
+      signal.throwIfAborted();
+    }
+    await subscription;
+  },
+);
+
+export function createCancellationRecoverySignals(threadId: string) {
   const threadDetailReloadCounter$ = state(0);
-  const subscribeRealtime$ = createSubscribeRealtime();
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
 
@@ -229,7 +268,19 @@ export function createRemoteChatThreadDataSource(threadId: string) {
     return result.body.cancellationRecoveryPending ?? false;
   });
 
-  const threadDraft$ = computed(async (get) => {
+  const reload$ = command(({ set }) => {
+    set(threadDetailReloadCounter$, (value) => {
+      return value + 1;
+    });
+  });
+
+  return { pending$: cancellationRecoveryPending$, reload$ };
+}
+
+export function createRemoteChatThreadDraft(threadId: string) {
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
+  return computed(async (get) => {
     if (get(optimisticCreateUnsettled$)) {
       return null;
     }
@@ -243,20 +294,4 @@ export function createRemoteChatThreadDataSource(threadId: string) {
     }
     return chatThreadDraftSchema.parse(result.body);
   });
-
-  const reloadCancellationRecoveryPending$ = command(({ set }) => {
-    set(threadDetailReloadCounter$, (value) => {
-      return value + 1;
-    });
-  });
-
-  return {
-    cancellationRecoveryPending$,
-    threadDraft$,
-    reloadCancellationRecoveryPending$,
-    patchDraft$,
-    patchModelSelection$,
-    patchComputerUseHost$,
-    subscribeRealtime$,
-  };
 }

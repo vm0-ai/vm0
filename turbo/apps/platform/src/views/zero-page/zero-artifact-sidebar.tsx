@@ -43,7 +43,7 @@ import {
   type ZoomableImageControls,
   zoomableArtifactImageKey,
 } from "./zero-zoomable-image-canvas.tsx";
-import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
+import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   ArtifactActionSeparator,
@@ -108,7 +108,7 @@ type ArtifactSidebarProps = {
   readonly onClose: () => void;
   readonly onNavigateImage: (url: string) => void;
   readonly text$?: TextPreviewComputed;
-  readonly thread: ChatThreadSignals;
+  readonly thread: ChatPanelSignals;
 };
 
 type ArtifactSidebarItem = {
