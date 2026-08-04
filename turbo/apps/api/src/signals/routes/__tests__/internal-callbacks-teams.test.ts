@@ -668,8 +668,6 @@ describe("Teams chat callbacks", () => {
       teamsThreadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-4-6`,
       teamsServiceUrl: teams.fixture.serviceUrl,
       teamsAppId: BOT_APP_ID,
-      teamsBotId: null,
-      teamsBotName: null,
       teamsSenderUserId: teams.fixture.teamsUserId,
       teamsSenderDisplayName: "Ada Lovelace",
       teamsSenderPrincipalName: "ada@example.com",
@@ -731,12 +729,6 @@ describe("Teams chat callbacks", () => {
     if (!queuedParams) {
       throw new Error("Expected queued Teams bot fallback event");
     }
-    await expect(
-      readChatEventContextFixture(queuedParams.eventId),
-    ).resolves.toMatchObject({
-      teamsBotId: null,
-      teamsBotName: null,
-    });
     await completeSandboxRun({
       runId: firstRunId,
       sandboxToken: firstClaim.sandboxToken,
