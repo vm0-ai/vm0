@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
-base64.workspace = true
 futures-util.workspace = true
 guest-contracts.workspace = true
 nbd-cow.workspace = true

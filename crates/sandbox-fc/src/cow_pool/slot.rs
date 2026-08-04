@@ -223,6 +223,35 @@ impl PreparedCowSlot {
         &self.workspace
     }
 
+    /// Transfers this one-shot COW slot into the caller-owned `target_workspace`.
+    ///
+    /// `target_workspace` must already exist and remain exclusively owned by
+    /// the caller throughout transfer and rollback.
+    ///
+    /// Checkout performs these synchronous mutations in order:
+    ///
+    /// 1. Moves `cow.img` into `target_workspace`.
+    /// 2. Moves the optional bitmap beside the target COW file when it exists.
+    /// 3. Removes the now-empty source workspace.
+    /// 4. Updates the connected device's recorded COW path.
+    /// 5. Disarms source-workspace cleanup and returns the prepared device.
+    ///
+    /// On success, the prepared device transfers to the caller while
+    /// `target_workspace` remains under the caller's cleanup ownership.
+    ///
+    /// # Errors
+    ///
+    /// Checkout is not transactional: an error does not undo earlier steps.
+    /// The returned [`PreparedCowCheckoutError`] owns the partially checked-out
+    /// slot, while zero, one, or both backing files may already be in
+    /// `target_workspace`.
+    ///
+    /// Before target-workspace rollback can run, the caller must preserve that
+    /// workspace, recover the cleanup-only slot with
+    /// [`PreparedCowCheckoutError::into_slot`], and finalize it with
+    /// [`destroy_prepared_slot_async`]. Target files may be deleted only when
+    /// the returned cleanup outcome reports that backing files are safe to
+    /// delete.
     pub(crate) fn checkout_to(
         mut self,
         target_workspace: &Path,
@@ -339,6 +368,11 @@ impl std::fmt::Debug for PreparedCowSlot {
     }
 }
 
+/// A checkout failure that retains ownership of the prepared slot.
+///
+/// Because checkout is non-transactional, the slot may be partially moved into
+/// the caller's target workspace. It is retained for explicit cleanup through
+/// [`Self::into_slot`] and [`destroy_prepared_slot_async`], not for reuse.
 #[derive(Debug)]
 pub(crate) struct PreparedCowCheckoutError {
     operation: &'static str,
@@ -355,6 +389,12 @@ impl PreparedCowCheckoutError {
         }
     }
 
+    /// Returns the partially checked-out slot for explicit cleanup.
+    ///
+    /// Do not reuse the slot or call [`PreparedCowSlot::checkout_to`] on it
+    /// again. Keep target-workspace cleanup disabled until
+    /// [`destroy_prepared_slot_async`] reports that backing files are safe to
+    /// delete.
     pub(crate) fn into_slot(self) -> PreparedCowSlot {
         *self.slot
     }
@@ -390,11 +430,16 @@ pub(super) fn destroy_slot_async(slot: PrewarmedSlot) -> impl std::future::Futur
     }
 }
 
-/// Finalize a prepared device before deleting its backing workspace.
+/// Finalize a prepared device before deleting its slot-owned source workspace.
 ///
 /// The cleanup task is spawned before this returns, so dropping the returned
 /// waiter cannot cancel device finalization or move directory deletion into
 /// [`PreparedCowSlot::drop`].
+///
+/// For a slot recovered from [`PreparedCowCheckoutError`], this cleanup does
+/// not take ownership of the caller's target workspace. The returned outcome
+/// tells that owner whether the device lifecycle makes target files safe to
+/// delete.
 pub(crate) fn destroy_prepared_slot_async(
     mut slot: PreparedCowSlot,
 ) -> impl std::future::Future<Output = CowCleanupOutcome> {
