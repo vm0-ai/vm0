@@ -25,3 +25,6 @@ PUBLIC_ARTIFACTS_BASE_URL=https://cdn.vm7.io
 
 # BytePlus ModelArk API key for local built-in video generation
 BYTEPLUS_API_KEY=op://Development/byteplus/BYTEPLUS_API_KEY
+
+# JoggAI API key for local built-in avatar video generation
+JOGGAI_API_KEY=op://Development/joggai/JOGGAI_API_KEY

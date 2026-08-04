@@ -92,6 +92,11 @@ interface JoggAiVoice {
   readonly useCase?: string;
 }
 
+interface JoggAiVoiceFilterOptions {
+  readonly languages: readonly string[];
+  readonly useCases: readonly string[];
+}
+
 type JoggAiWebhookPayload =
   | { readonly kind: "pending" }
   | {
@@ -456,6 +461,35 @@ function parseJoggAiVoice(value: unknown): JoggAiVoice | null {
   };
 }
 
+function paginateProviderCollection<T>(
+  items: readonly T[],
+  page: number | undefined,
+  pageSize: number | undefined,
+): readonly T[] {
+  if (
+    page === undefined ||
+    pageSize === undefined ||
+    items.length <= pageSize
+  ) {
+    return items;
+  }
+  const start = (page - 1) * pageSize;
+  return items.slice(start, start + pageSize);
+}
+
+function normalizedCategoryValues(
+  values: readonly (string | undefined)[],
+): readonly string[] {
+  return Array.from(
+    new Set(
+      values.flatMap((value) => {
+        const normalized = value?.trim().toLowerCase();
+        return normalized ? [normalized] : [];
+      }),
+    ),
+  ).sort();
+}
+
 async function getJoggAiCollection(
   url: URL,
   apiKey: string,
@@ -504,11 +538,12 @@ export async function listJoggAiPublicAvatars(
   if (!Array.isArray(data.avatars)) {
     return badGateway("JoggAI returned no avatar list", "JOGGAI_BAD_RESPONSE");
   }
+  const avatars = data.avatars.flatMap((value) => {
+    const avatar = parseJoggAiAvatar(value);
+    return avatar ? [avatar] : [];
+  });
   return {
-    avatars: data.avatars.flatMap((value) => {
-      const avatar = parseJoggAiAvatar(value);
-      return avatar ? [avatar] : [];
-    }),
+    avatars: paginateProviderCollection(avatars, query.page, query.pageSize),
   };
 }
 
@@ -517,7 +552,11 @@ export async function listJoggAiPublicVoices(
   apiKey: string,
   signal: AbortSignal,
 ): Promise<
-  | { readonly voices: readonly JoggAiVoice[]; readonly hasMore: boolean }
+  | {
+      readonly voices: readonly JoggAiVoice[];
+      readonly hasMore: boolean;
+      readonly filterOptions: JoggAiVoiceFilterOptions;
+    }
   | AvatarVideoErrorResponse
 > {
   const url = new URL(JOGGAI_PUBLIC_VOICES_URL);
@@ -535,12 +574,40 @@ export async function listJoggAiPublicVoices(
   if (!Array.isArray(data.voices)) {
     return badGateway("JoggAI returned no voice list", "JOGGAI_BAD_RESPONSE");
   }
+  const voices = data.voices.flatMap((value) => {
+    const voice = parseJoggAiVoice(value);
+    return voice ? [voice] : [];
+  });
+  const providerReturnedFullCollection =
+    query.page !== undefined &&
+    query.pageSize !== undefined &&
+    voices.length > query.pageSize;
+  const pageVoices = paginateProviderCollection(
+    voices,
+    query.page,
+    query.pageSize,
+  );
+  const fullCollectionHasMore =
+    query.pageSize !== undefined &&
+    pageVoices.length === query.pageSize &&
+    (query.page ?? 1) * query.pageSize < voices.length;
   return {
-    voices: data.voices.flatMap((value) => {
-      const voice = parseJoggAiVoice(value);
-      return voice ? [voice] : [];
-    }),
-    hasMore: data.has_more === true,
+    voices: pageVoices,
+    hasMore: providerReturnedFullCollection
+      ? fullCollectionHasMore
+      : data.has_more === true,
+    filterOptions: {
+      languages: normalizedCategoryValues(
+        voices.map((voice) => {
+          return voice.language;
+        }),
+      ),
+      useCases: normalizedCategoryValues(
+        voices.map((voice) => {
+          return voice.useCase;
+        }),
+      ),
+    },
   };
 }
 
