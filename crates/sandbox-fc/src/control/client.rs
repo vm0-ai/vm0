@@ -3,29 +3,27 @@ use std::path::Path;
 use std::time::Duration;
 
 use serde::Serialize;
-use serde::de::DeserializeOwned;
 use tokio::net::UnixStream;
 
-use super::protocol::{
-    ExecRequest, ExecResponse, TerminateRequest, TerminateResponse, read_frame, write_frame,
-};
+use super::exec_response::{ExecResult, read_raw_exec_response};
+use super::protocol::{ExecRequest, TerminateRequest, TerminateResponse, read_frame, write_frame};
 
-/// Send an exec request to a control socket and return the wire response.
-///
-/// Used by `runner exec` to communicate with a running sandbox.
-///
-/// The returned [`ExecResponse::Success`] still contains base64-encoded stdout
-/// and stderr. Use `FirecrackerControl::exec_remote` when the caller wants
-/// decoded byte buffers.
-///
-/// Returns [`io::ErrorKind::InvalidInput`] when `timeout` cannot be represented
-/// as a Tokio deadline.
-pub async fn send_exec(
+/// Send an exec request to a control socket and read its raw response.
+pub(super) async fn send_exec(
     sock_path: &Path,
     request: &ExecRequest,
     timeout: Duration,
-) -> io::Result<ExecResponse> {
-    send_control_request(sock_path, request, timeout).await
+) -> io::Result<ExecResult> {
+    let deadline = deadline_after(timeout)?;
+    let mut stream = connect_until(sock_path, deadline).await?;
+    let request_json = encode_json_request(request)?;
+
+    tokio::time::timeout_at(deadline, async {
+        write_frame(&mut stream, &request_json).await?;
+        read_raw_exec_response(&mut stream).await
+    })
+    .await
+    .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "request timed out"))?
 }
 
 /// Send a host-side terminate request to a control socket.
@@ -34,37 +32,29 @@ pub async fn send_terminate(
     request: &TerminateRequest,
     timeout: Duration,
 ) -> io::Result<TerminateResponse> {
-    send_control_request(sock_path, request, timeout).await
-}
-
-async fn send_control_request<Request, Response>(
-    sock_path: &Path,
-    request: &Request,
-    timeout: Duration,
-) -> io::Result<Response>
-where
-    Request: Serialize,
-    Response: DeserializeOwned,
-{
     let deadline = deadline_after(timeout)?;
-
-    let mut stream = tokio::time::timeout_at(deadline, UnixStream::connect(sock_path))
-        .await
-        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "connect timed out"))??;
-
-    let request_json = serde_json::to_vec(request)
-        .map_err(|e| io::Error::other(format!("serialize request: {e}")))?;
+    let mut stream = connect_until(sock_path, deadline).await?;
+    let request_json = encode_json_request(request)?;
 
     tokio::time::timeout_at(deadline, async {
         write_frame(&mut stream, &request_json).await?;
         let frame = read_frame(&mut stream).await?;
-        let response: Response = serde_json::from_slice(&frame).map_err(|e| {
+        serde_json::from_slice(&frame).map_err(|e| {
             io::Error::new(io::ErrorKind::InvalidData, format!("invalid response: {e}"))
-        })?;
-        Ok(response)
+        })
     })
     .await
     .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "request timed out"))?
+}
+
+async fn connect_until(sock_path: &Path, deadline: tokio::time::Instant) -> io::Result<UnixStream> {
+    tokio::time::timeout_at(deadline, UnixStream::connect(sock_path))
+        .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "connect timed out"))?
+}
+
+fn encode_json_request(request: &impl Serialize) -> io::Result<Vec<u8>> {
+    serde_json::to_vec(request).map_err(|e| io::Error::other(format!("serialize request: {e}")))
 }
 
 fn deadline_after(timeout: Duration) -> io::Result<tokio::time::Instant> {
@@ -77,19 +67,28 @@ fn deadline_after(timeout: Duration) -> io::Result<tokio::time::Instant> {
 mod tests {
     use super::*;
 
+    use tokio::net::UnixListener;
+
+    fn exec_request(command: &str) -> ExecRequest {
+        ExecRequest {
+            expected_run_id: None,
+            command: command.into(),
+            timeout_secs: 5,
+            sudo: false,
+        }
+    }
+
     #[tokio::test]
     async fn send_exec_missing_socket_returns_not_found() {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("nonexistent.sock");
 
-        let request = ExecRequest {
-            expected_run_id: None,
-            command: "echo test".into(),
-            timeout_secs: 5,
-            sudo: false,
-        };
-
-        let result = send_exec(&sock_path, &request, Duration::from_millis(100)).await;
+        let result = send_exec(
+            &sock_path,
+            &exec_request("echo test"),
+            Duration::from_millis(100),
+        )
+        .await;
         let error = result.unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::NotFound);
     }
@@ -99,21 +98,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
 
-        let request = ExecRequest {
-            expected_run_id: None,
-            command: "echo test".into(),
-            timeout_secs: 5,
-            sudo: false,
-        };
-
-        let result = send_exec(&sock_path, &request, Duration::MAX).await;
+        let result = send_exec(&sock_path, &exec_request("echo test"), Duration::MAX).await;
         let error = result.unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
     }
 
     #[tokio::test(start_paused = true)]
     async fn send_exec_times_out_waiting_for_response() {
-        use tokio::net::UnixListener;
         use tokio::sync::oneshot;
 
         let dir = tempfile::tempdir().unwrap();
@@ -132,13 +123,12 @@ mod tests {
         });
 
         let client = tokio::spawn(async move {
-            let request = ExecRequest {
-                expected_run_id: None,
-                command: "echo test".into(),
-                timeout_secs: 5,
-                sudo: false,
-            };
-            send_exec(&sock_path, &request, Duration::from_secs(5)).await
+            send_exec(
+                &sock_path,
+                &exec_request("echo test"),
+                Duration::from_secs(5),
+            )
+            .await
         });
 
         request_seen_rx.await.unwrap();

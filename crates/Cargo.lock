@@ -2830,7 +2830,6 @@ name = "sandbox-fc"
 version = "0.37.176"
 dependencies = [
  "async-trait",
- "base64 0.23.0",
  "clap",
  "futures-util",
  "guest-contracts",
