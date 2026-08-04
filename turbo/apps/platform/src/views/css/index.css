@@ -1065,9 +1065,8 @@ body {
    message it sits in once it appears. Below the max width the box keeps its
    ratio, so diagrams stay equally tall as the column narrows. */
 .wmde-markdown .mermaid-diagram-expand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+  display: block;
   width: 100%;
   max-width: 420px;
   aspect-ratio: 4 / 3;
@@ -1091,11 +1090,20 @@ body {
   display: none;
 }
 
-/* Letterboxed rather than stretched: diagrams differ in aspect ratio, and a
-   fixed box can only hold all of them undistorted by leaving margins. */
+/* Both children are taken out of flow so neither can size the box: the diagram
+   is serialized at lightbox scale, and an in-flow image that wide would win
+   over `aspect-ratio` through its content-based minimum size. Letterboxed
+   rather than stretched, since a single box can only hold diagrams of
+   different aspect ratios undistorted by leaving margins. */
+.wmde-markdown .mermaid-diagram-image,
+.wmde-markdown .mermaid-diagram-pending {
+  /* Inset by the box's own padding: an absolutely positioned child is placed
+     against the padding box, which the padding would otherwise not clear. */
+  position: absolute;
+  inset: 8px;
+}
+
 .wmde-markdown .mermaid-diagram-image {
-  width: 100%;
-  height: 100%;
   object-fit: contain;
   /* github-markdown-css paints every image on an opaque canvas colour, which
      would cover the box behind the letterboxed diagram. */
@@ -1104,6 +1112,8 @@ body {
 
 .wmde-markdown .mermaid-diagram-pending {
   display: flex;
+  align-items: center;
+  justify-content: center;
   color: hsl(var(--muted-foreground));
 }
 

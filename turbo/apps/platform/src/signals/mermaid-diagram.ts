@@ -39,6 +39,12 @@ const retainMermaidDiagramResult$ = command(({ get, set }, key: string) => {
   set(internalMermaidDiagramRefCountByKey$, (current) => {
     return { ...current, [key]: refCount + 1 };
   });
+  if (get(internalMermaidDiagramResultByKey$)[key]) {
+    // An identical diagram is already rendered — the same source in a second
+    // message, or the same one whose block remounted. Resetting it to
+    // `rendering` would blank a diagram the reader is already looking at.
+    return;
+  }
   set(setMermaidDiagramResult$, key, { status: "rendering" });
 });
 

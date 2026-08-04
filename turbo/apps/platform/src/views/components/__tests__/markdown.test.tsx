@@ -294,11 +294,10 @@ describe("assistant markdown", () => {
       featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
-    await waitFor(() => {
-      expect(
-        document.querySelector('[data-testid="mermaid-svg"]'),
-      ).toBeInTheDocument();
-    });
+    const diagram = await screen.findByAltText("Diagram");
+    expect(renderedDiagramMarkup(diagram)).toContain(
+      'data-testid="mermaid-svg"',
+    );
   });
 
   it("keeps the source visible when a mermaid diagram cannot be parsed", async () => {
