@@ -31,6 +31,7 @@ import {
 } from "./openrouter-usage.service";
 
 const ZERO_RECOGNITION_MODEL = "google/gemini-3.5-flash";
+const ZERO_RECOGNITION_OPERATION = "image-recognition";
 const ZERO_RECOGNITION_MAX_TOKENS = 8192;
 
 type RecognitionAuth = Extract<ZeroAuthContext, { readonly orgId: string }>;
@@ -187,7 +188,10 @@ export const zeroRecognition$ = command(
     }
     const missingPricing = await set(
       checkOpenRouterUsagePricing$,
-      { provider: ZERO_RECOGNITION_MODEL },
+      {
+        provider: ZERO_RECOGNITION_MODEL,
+        operation: ZERO_RECOGNITION_OPERATION,
+      },
       requestSignal,
     );
     signal.throwIfAborted();
@@ -239,7 +243,7 @@ export const zeroRecognition$ = command(
         userId: args.auth.userId,
         runId: args.auth.runId,
         provider: ZERO_RECOGNITION_MODEL,
-        operation: "image-recognition",
+        operation: ZERO_RECOGNITION_OPERATION,
         operationId,
         usage: generated.value.usage,
       },

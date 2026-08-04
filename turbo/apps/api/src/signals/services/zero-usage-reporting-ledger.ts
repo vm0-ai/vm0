@@ -25,6 +25,7 @@ import {
   MODEL_CACHE_READ_TOKEN_CATEGORIES,
   MODEL_INPUT_TOKEN_CATEGORIES,
   MODEL_OUTPUT_TOKEN_CATEGORIES,
+  MODEL_TOKEN_USAGE_KINDS,
 } from "./model-token-categories";
 
 const MODEL_USAGE_KIND = "model";
@@ -183,7 +184,7 @@ function finalizedUsageTokenSum(
 ) {
   return sql`COALESCE(${sum(
     sql`CASE WHEN ${and(
-      eq(usage.kind, MODEL_USAGE_KIND),
+      inArray(usage.kind, MODEL_TOKEN_USAGE_KINDS),
       inArray(usage.category, categories),
     )} THEN ${usage.quantity} ELSE 0 END`,
   )}, 0)::bigint`

@@ -4658,6 +4658,7 @@
     "displayNames": {
       "auto": "Automatico",
       "finance": "Finanza",
+      "imageRecognize": "Riconoscimento immagini",
       "maps": "Mappe",
       "peopleSearch": "Ricerca persone",
       "usage": "Utilizzo",

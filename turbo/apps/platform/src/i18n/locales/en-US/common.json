@@ -4585,6 +4585,7 @@
     "displayNames": {
       "auto": "Auto",
       "finance": "Finance",
+      "imageRecognize": "Image Recognize",
       "maps": "Maps",
       "peopleSearch": "People Search",
       "usage": "Usage",
