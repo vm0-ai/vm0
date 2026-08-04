@@ -94,6 +94,7 @@ import {
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
+  readChatEventContextFixture,
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
@@ -7002,6 +7003,12 @@ describe("CHAT-02: shared user message queue", () => {
         version: 1,
         parts: [{ type: "text", text: "provenance rollout disabled" }],
       },
+    });
+    await expect(
+      readChatEventContextFixture(gatedEventId),
+    ).resolves.toMatchObject({
+      contextType: "agent_run",
+      contextId: source.runId,
     });
     await cancelChatRun(actor, gatedTargetRunId);
     await cancelChatRun(actor, secondTargetRunId);

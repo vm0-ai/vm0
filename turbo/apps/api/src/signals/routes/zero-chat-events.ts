@@ -315,7 +315,10 @@ async function resolveNormalSendAgentRunSource(params: {
   readonly userMessage: UserMessageDocument;
   readonly enabled: boolean;
 }): Promise<
-  | { readonly source: ChatAgentRunSourceAnnotation | null }
+  | {
+      readonly source: ChatAgentRunSourceAnnotation | null;
+      readonly annotation: ChatAgentRunSourceAnnotation | null;
+    }
   | {
       readonly response:
         | ReturnType<typeof badRequestMessage>
@@ -333,7 +336,7 @@ async function resolveNormalSendAgentRunSource(params: {
   if (resolved === null) {
     return params.auth.tokenType === "zero"
       ? { response: badRequestMessage("Agent source run not found") }
-      : { source: null };
+      : { source: null, annotation: null };
   }
   if (childAutonomyBudget(resolved.autonomyBudget).kind === "exhausted") {
     return { response: autonomyBudgetExhausted() };
@@ -345,10 +348,8 @@ async function resolveNormalSendAgentRunSource(params: {
       ),
     };
   }
-  return {
-    source:
-      params.enabled && resolved.schemaAvailable ? resolved.annotation : null,
-  };
+  const source = resolved.schemaAvailable ? resolved.annotation : null;
+  return { source, annotation: params.enabled ? source : null };
 }
 
 function normalSendBodyWithAgentRunSource(
@@ -2299,7 +2300,10 @@ const prepareNormalSend$ = command(
     const agentRunSource = agentRunSourceResult.source;
 
     const runtimeBody = resolveRuntimeNormalSendBody(
-      normalSendBodyWithAgentRunSource(args.body, agentRunSource),
+      normalSendBodyWithAgentRunSource(
+        args.body,
+        agentRunSourceResult.annotation,
+      ),
       featureSwitches.userMessageInlineTemplatesEnabled,
     );
     const generationTemplateError = validateGenerationTemplatePrompt(
