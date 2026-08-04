@@ -10,6 +10,7 @@
   "stdin": "",
   "workingDirectory": ".",
   "terminalMode": "pipe",
+  "rustExecution": "fallback",
   "timeoutMs": 10000,
   "mockHttp": {
     "captureHeaders": [

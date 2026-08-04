@@ -10,6 +10,7 @@ mod model;
 use std::env;
 use std::ffi::OsStr;
 use std::fmt::{self, Display};
+use std::fs;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -21,6 +22,8 @@ use execution::{Implementation, observe};
 use model::load_cases;
 
 const NPX_TARGET_ENV: &str = "ZERO_CLI_PARITY_NPX_TARGET";
+const NPX_MARKER_ENV: &str = "ZERO_CLI_PARITY_NPX_MARKER";
+const RUST_EXECUTION_ENV: &str = "ZERO_CLI_PARITY_RUST_EXECUTION";
 
 type Result<T> = std::result::Result<T, HarnessError>;
 
@@ -94,6 +97,23 @@ fn run_npx_shim() -> ExitCode {
 }
 
 fn exec_typescript_from_npx() -> Result<()> {
+    let marker = env::var_os(NPX_MARKER_ENV)
+        .ok_or_else(|| HarnessError::new(format!("{NPX_MARKER_ENV} is not set")))?;
+    fs::write(&marker, b"npm fallback invoked\n").map_err(|error| {
+        HarnessError::new(format!("write npm fallback marker {marker:?}: {error}"))
+    })?;
+    let expected_execution = env::var(RUST_EXECUTION_ENV)
+        .map_err(|error| HarnessError::new(format!("read {RUST_EXECUTION_ENV}: {error}")))?;
+    if expected_execution == "native" {
+        return Err(HarnessError::new(
+            "fixture requires native Rust execution, but zero-cli invoked npm fallback",
+        ));
+    }
+    if expected_execution != "fallback" {
+        return Err(HarnessError::new(format!(
+            "{RUST_EXECUTION_ENV} must be \"native\" or \"fallback\", received {expected_execution:?}"
+        )));
+    }
     let target = env::var_os(NPX_TARGET_ENV)
         .ok_or_else(|| HarnessError::new(format!("{NPX_TARGET_ENV} is not set")))?;
     let mut arguments = env::args_os().skip(1);

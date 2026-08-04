@@ -3776,7 +3776,7 @@ describe("CHAT-02: failed chat callbacks", () => {
     chatCallbacks.enableVapid();
 
     const actionableError =
-      "No model provider configured. Run 'zero org model-provider setup' to configure one, or add environment variables to your vm0.yaml.";
+      "No model provider configured. Configure one in Settings → Models in the vm0 web app, or add environment variables to your vm0.yaml.";
     const usageLimitError =
       "Claude usage limit reached. Visit https://claude.ai/settings/usage or try again at 6:17 AM.";
     const rounds = [

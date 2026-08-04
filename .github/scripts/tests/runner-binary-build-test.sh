@@ -54,6 +54,7 @@ mkdir -p \
   "${repo}/crates/other-one/src" \
   "${repo}/crates/other-one/src/feature/tests" \
   "${repo}/crates/other-one/tests" \
+  "${repo}/turbo/apps/cli/generated" \
   "${TMPDIR}/bin"
 cp -a \
   "${REPO_ROOT}/.github/scripts/runner-binary-build" \
@@ -132,6 +133,7 @@ printf 'mitm test\n' > "${repo}/crates/runner/mitm-addon/tests/test_runtime.py"
 printf 'other integration test\n' > "${repo}/crates/other-one/tests/integration.rs"
 printf '#!/usr/bin/env bash\nexit 0\n' > "${repo}/crates/runner/scripts/tool.sh"
 chmod +x "${repo}/crates/runner/scripts/tool.sh"
+printf '{"commands":[]}\n' > "${repo}/turbo/apps/cli/generated/zero-cli-surface.v1.json"
 printf 'unrelated\n' > "${repo}/README.md"
 weird_relative=$'crates/guest-one/src/odd\tname\nline.txt'
 printf 'odd tracked input\n' > "${repo}/${weird_relative}"
@@ -192,6 +194,8 @@ assert_text_change_affects_digest \
   "$repo" "crates/other-one/src/feature/tests/input.txt" "nested-source-test-path-change"
 assert_text_change_affects_digest \
   "$repo" ".github/scripts/runner-binary-build/contract.env" "contract-change"
+assert_text_change_affects_digest \
+  "$repo" "turbo/apps/cli/generated/zero-cli-surface.v1.json" "zero-cli-surface-change"
 
 before=$(digest_value "$repo" aarch64-unknown-linux-musl)
 jq '.[0].destination = "/usr/local/bin/guest-one-v2"' \
@@ -287,6 +291,8 @@ jq -e \
   || fail "only package top-level test trees may be excluded"
 [ -f "${context_root}/${weird_relative}" ] \
   || fail "expected unusual tracked filename"
+[ -f "${context_root}/turbo/apps/cli/generated/zero-cli-surface.v1.json" ] \
+  || fail "expected Zero CLI surface inventory required by the bundled binary"
 [ ! -x "${context_root}/crates/runner/scripts/tool.sh" ] \
   || fail "expected materialized executable mode to match the index"
 [ ! -e "${context_root}/crates/guest-one/tests/integration.rs" ] \
@@ -325,7 +331,10 @@ fi
 
 actual_repo="${TMPDIR}/actual-repo"
 mkdir -p "${actual_repo}/.github/scripts"
-git -C "$REPO_ROOT" archive HEAD crates | tar -xf - -C "$actual_repo"
+git -C "$REPO_ROOT" archive HEAD \
+  crates \
+  turbo/apps/cli/generated/zero-cli-surface.v1.json \
+  | tar -xf - -C "$actual_repo"
 cp -a \
   "${REPO_ROOT}/.github/scripts/runner-binary-build" \
   "${actual_repo}/.github/scripts/runner-binary-build"
@@ -349,6 +358,8 @@ RUNNER_BINARY_CONTEXT_ROOT="$actual_context" \
   || fail "actual context must retain all workspace package entries"
 [ -f "${actual_context}/crates/sandbox-mock/src/call_records.rs" ] \
   || fail "actual context must retain other workspace package source"
+[ -f "${actual_context}/turbo/apps/cli/generated/zero-cli-surface.v1.json" ] \
+  || fail "actual context must retain the Zero CLI surface inventory"
 
 workflow_toolchain=$(awk '
   /^  compile:$/ { in_compile = 1; next }
