@@ -25,7 +25,7 @@ setup_file() {
     # model-first defaults for that otherwise uninitialized workspace.
     e2e_api_curl "/api/zero/model-policies" \
         -X PUT \
-        -d '{"policies":[{"model":"claude-opus-4-7","isDefault":false,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null},{"model":"claude-sonnet-4-6","isDefault":true,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null},{"model":"deepseek-v4-pro","isDefault":false,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null},{"model":"gpt-5.5","isDefault":false,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null}]}' \
+        -d '{"policies":[{"model":"claude-opus-4-7","isDefault":false,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null},{"model":"claude-sonnet-4-6","isDefault":true,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null},{"model":"deepseek-v4-flash","isDefault":false,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null},{"model":"gpt-5.5","isDefault":false,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null}]}' \
         >/dev/null
 
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"

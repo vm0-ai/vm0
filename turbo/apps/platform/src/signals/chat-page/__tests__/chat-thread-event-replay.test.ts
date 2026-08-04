@@ -169,7 +169,7 @@ describe("replayChatThreadEvents", () => {
         snapshotThread({
           id: "thread-b",
           agentId: "agent-1",
-          selectedModel: "gpt-5.4",
+          selectedModel: "gpt-5.5",
           sortAt: "2026-07-01T04:00:00.000Z",
         }),
       ],

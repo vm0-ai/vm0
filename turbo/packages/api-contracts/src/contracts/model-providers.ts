@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { DEEPSEEK_CODEX_MODEL_CATALOG } from "./deepseek-codex-model-catalog";
+import DEEPSEEK_MODEL_CATALOG from "./deepseek-model-catalog.json" with { type: "json" };
 import {
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
@@ -87,15 +87,15 @@ export type ModelProviderCodexRuntimeConfig = z.infer<
 const MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS: Partial<
   Record<ModelProviderType, ModelProviderCodexRuntimeConfig>
 > = {
-  "deepseek-codex": {
-    providerId: "deepseek-codex",
+  deepseek: {
+    providerId: "deepseek",
     name: "DeepSeek",
-    baseUrl: "https://api.deepseek.com",
+    baseUrl: "https://api.deepseek.com/",
     envKey: "OPENAI_API_KEY",
     requiresOpenaiAuth: false,
     wireApi: "responses",
     supportsWebsockets: false,
-    modelCatalog: DEEPSEEK_CODEX_MODEL_CATALOG,
+    modelCatalog: DEEPSEEK_MODEL_CATALOG,
   },
 };
 
@@ -115,52 +115,6 @@ export const LIMITED_FREE1_DEFAULT_RUN_MODEL =
   "gpt-5.6-luna" as const satisfies SupportedRunModel;
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
-
-// Browser clients loaded before a model retirement can keep submitting these
-// ids during rollout. Remove an entry only after those clients have aged out.
-const RETIRED_RUN_MODELS = ["vm0-model", "gpt-5.4", "gpt-5.4-mini"] as const;
-
-type RetiredRunModel = (typeof RETIRED_RUN_MODELS)[number];
-
-const retiredRunModelSchema = z.enum(RETIRED_RUN_MODELS);
-const RETIRED_RUN_MODEL_SET: ReadonlySet<string> = new Set(RETIRED_RUN_MODELS);
-const RETIRED_RUN_MODEL_REPLACEMENTS: Readonly<
-  Record<RetiredRunModel, SupportedRunModel>
-> = {
-  "vm0-model": DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  "gpt-5.4": DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  "gpt-5.4-mini": DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-};
-
-function isRetiredRunModel(model: string): model is RetiredRunModel {
-  return RETIRED_RUN_MODEL_SET.has(model);
-}
-
-function normalizeRequestedRunModel(model: string): SupportedRunModel | null {
-  if (isSupportedRunModel(model)) {
-    return model;
-  }
-  return isRetiredRunModel(model)
-    ? RETIRED_RUN_MODEL_REPLACEMENTS[model]
-    : null;
-}
-
-export const requestedRunModelSchema = z
-  .string()
-  .min(1)
-  .superRefine((model, ctx) => {
-    if (normalizeRequestedRunModel(model) === null) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Invalid model selection",
-      });
-    }
-  })
-  .transform((model): SupportedRunModel => {
-    return (
-      normalizeRequestedRunModel(model) ?? supportedRunModelSchema.parse(model)
-    );
-  });
 
 export const modelProviderCredentialScopeSchema = z.enum(["org", "member"]);
 
@@ -184,7 +138,6 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "claude-opus-4-6": "Claude Opus 4.6",
   "claude-sonnet-5": "Claude Sonnet 5",
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
-  "deepseek-v4-pro": "DeepSeek V4 Pro",
   "deepseek-v4-flash": "DeepSeek V4 Flash",
   "kimi-k3": "Kimi K3",
   "kimi-k2.7-code": "Kimi K2.7 Code",
@@ -335,12 +288,8 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "minimax-api-key",
     vendor: "minimax",
   },
-  "deepseek-v4-pro": {
-    concreteType: "deepseek-api-key",
-    vendor: "deepseek",
-  },
   "deepseek-v4-flash": {
-    concreteType: "deepseek-codex",
+    concreteType: "deepseek",
     vendor: "deepseek",
   },
   "gpt-5.6-sol": {
@@ -373,7 +322,6 @@ export const VM0_MODEL_ALIAS_TO_MODEL = {
   "z-ai/glm-5.1": "glm-5.1",
   "xiaomi/mimo-v2.5": "mimo-v2.5",
   "tencent/hy3-preview": "hy3-preview",
-  "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
 } as const satisfies Record<string, keyof typeof VM0_MODEL_TO_PROVIDER>;
 
 const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
@@ -452,9 +400,7 @@ const IMAGE_INPUT_UNSUPPORTED_MODELS = new Set([
   "zai/glm-5-turbo",
   "hy3-preview",
   "tencent/hy3-preview",
-  "deepseek-v4-pro",
   "deepseek-v4-flash",
-  "deepseek/deepseek-v4-pro",
   "MiniMax-M2.1",
   "minimax/minimax-m2.5",
 ]);
@@ -583,7 +529,6 @@ export const MODEL_PROVIDER_TYPES = {
       "z-ai/glm-5.1",
       "xiaomi/mimo-v2.5",
       "tencent/hy3-preview",
-      "deepseek/deepseek-v4-pro",
     ] as string[],
     defaultModel: "",
   },
@@ -636,33 +581,7 @@ export const MODEL_PROVIDER_TYPES = {
     models: ["MiniMax-M3", "MiniMax-M2.1"] as string[],
     defaultModel: "MiniMax-M3",
   },
-  "deepseek-api-key": {
-    framework: "claude-code" as const,
-    secretName: "DEEPSEEK_API_KEY",
-    label: "DeepSeek",
-    secretLabel: "API key",
-    helpText: "Get your API key at: https://platform.deepseek.com/api_keys",
-    envBindings: {
-      ANTHROPIC_AUTH_TOKEN: "$secret",
-      ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic",
-      ANTHROPIC_MODEL: "$model",
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
-      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-      API_TIMEOUT_MS: "600000",
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-      // DeepSeek explicitly rejects Anthropic document blocks.
-      CLAUDE_CODE_DISABLE_ATTACHMENTS: "1",
-    } satisfies ModelProviderEnvBindings,
-    models: ["deepseek-v4-pro"] as string[],
-    defaultModel: "deepseek-v4-pro",
-  },
-  // Codex-framework twin of deepseek-api-key. It shares the same DeepSeek
-  // credential while using the native Responses API required by Codex.
-  // Future DeepSeek Responses models can be added without changing runtime
-  // configuration.
-  "deepseek-codex": {
+  deepseek: {
     framework: "codex" as const,
     secretName: "DEEPSEEK_API_KEY",
     label: "DeepSeek",
@@ -670,7 +589,7 @@ export const MODEL_PROVIDER_TYPES = {
     helpText: "Get your API key at: https://platform.deepseek.com/api_keys",
     envBindings: {
       OPENAI_API_KEY: "$secret",
-      OPENAI_BASE_URL: "https://api.deepseek.com",
+      OPENAI_BASE_URL: "https://api.deepseek.com/",
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: ["deepseek-v4-flash"] as string[],
@@ -1061,8 +980,7 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-codex",
     "vercel-ai-gateway-codex",
   ],
-  "deepseek-v4-pro": ["vm0", "deepseek-api-key", "openrouter-api-key"],
-  "deepseek-v4-flash": ["vm0", "deepseek-codex"],
+  "deepseek-v4-flash": ["vm0", "deepseek"],
   "kimi-k3": ["vm0", "moonshot-api-key"],
   "kimi-k2.7-code": ["vm0", "moonshot-api-key"],
   "MiniMax-M3": ["vm0", "minimax-api-key"],
@@ -1083,7 +1001,6 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "claude-opus-4-6": "anthropic/claude-opus-4.6",
     "claude-sonnet-5": "anthropic/claude-sonnet-5",
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
-    "deepseek-v4-pro": "deepseek/deepseek-v4-pro",
     "glm-5.2": "z-ai/glm-5.2",
     "glm-5.1": "z-ai/glm-5.1",
     "mimo-v2.5": "xiaomi/mimo-v2.5",
@@ -1121,7 +1038,6 @@ const CANONICAL_RUN_MODEL_ALIASES: Readonly<Record<string, SupportedRunModel>> =
     "anthropic/claude-opus-4.6": "claude-opus-4-6",
     "anthropic/claude-sonnet-5": "claude-sonnet-5",
     "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
-    "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
     "z-ai/glm-5.2": "glm-5.2",
     "z-ai/glm-5.1": "glm-5.1",
     "xiaomi/mimo-v2.5": "mimo-v2.5",
@@ -1555,10 +1471,6 @@ export const updateOrgModelPolicySchema = z.object({
 
 export type UpdateOrgModelPolicy = z.infer<typeof updateOrgModelPolicySchema>;
 
-const requestedOrgModelPolicySchema = updateOrgModelPolicySchema.extend({
-  model: z.union([supportedRunModelSchema, retiredRunModelSchema]),
-});
-
 export const orgModelPoliciesResponseSchema = z.object({
   policies: z.array(orgModelPolicySchema),
   workspaceDefaultModel: supportedRunModelSchema.nullable(),
@@ -1569,85 +1481,9 @@ export type OrgModelPoliciesResponse = z.infer<
   typeof orgModelPoliciesResponseSchema
 >;
 
-export const updateOrgModelPoliciesRequestSchema = z
-  .object({
-    policies: z.array(requestedOrgModelPolicySchema),
-  })
-  .transform(({ policies }) => {
-    const retiredPolicies = policies.filter((policy) => {
-      return isRetiredRunModel(policy.model);
-    });
-    const activePolicies = policies.flatMap(
-      (policy): UpdateOrgModelPolicy[] => {
-        if (isRetiredRunModel(policy.model)) {
-          return [];
-        }
-        return [
-          {
-            model: policy.model,
-            isDefault: policy.isDefault,
-            defaultProviderType: policy.defaultProviderType,
-            credentialScope: policy.credentialScope,
-            modelProviderId: policy.modelProviderId,
-            ...(policy.modelProviderSurfaceId === undefined
-              ? {}
-              : { modelProviderSurfaceId: policy.modelProviderSurfaceId }),
-          },
-        ];
-      },
-    );
-    if (retiredPolicies.length === 0) {
-      return { policies: activePolicies };
-    }
-
-    const retiredDefault = retiredPolicies.find((policy) => {
-      return policy.isDefault;
-    });
-    const replacementRouteSource = retiredDefault ?? retiredPolicies[0]!;
-    const replacementRoute = isModelSupportedByProvider(
-      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-      replacementRouteSource.defaultProviderType,
-    )
-      ? {
-          defaultProviderType: replacementRouteSource.defaultProviderType,
-          credentialScope: replacementRouteSource.credentialScope,
-          modelProviderId: replacementRouteSource.modelProviderId,
-          modelProviderSurfaceId:
-            replacementRouteSource.modelProviderSurfaceId ?? null,
-        }
-      : {
-          defaultProviderType: "vm0" as const,
-          credentialScope: "org" as const,
-          modelProviderId: null,
-          modelProviderSurfaceId: null,
-        };
-    const replacementExists = activePolicies.some((policy) => {
-      return policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
-    });
-    const normalizedPolicies = activePolicies.map(
-      (policy): UpdateOrgModelPolicy => {
-        if (policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL) {
-          return {
-            ...policy,
-            ...(retiredDefault ? replacementRoute : {}),
-            isDefault: retiredDefault ? true : policy.isDefault,
-          };
-        }
-        return {
-          ...policy,
-          isDefault: retiredDefault ? false : policy.isDefault,
-        };
-      },
-    );
-    if (!replacementExists) {
-      normalizedPolicies.push({
-        model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-        isDefault: retiredDefault !== undefined,
-        ...replacementRoute,
-      });
-    }
-    return { policies: normalizedPolicies };
-  });
+export const updateOrgModelPoliciesRequestSchema = z.object({
+  policies: z.array(updateOrgModelPolicySchema),
+});
 
 export type UpdateOrgModelPoliciesRequest = z.infer<
   typeof updateOrgModelPoliciesRequestSchema

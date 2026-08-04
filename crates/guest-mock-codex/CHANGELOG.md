@@ -96,7 +96,6 @@
 
 ### Bug Fixes
 
-* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
 
 ## [0.6.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.0...guest-mock-codex-v0.6.1) (2026-07-01)
 
