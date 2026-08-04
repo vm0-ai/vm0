@@ -21,6 +21,8 @@ const featureSwitchesAuthOptions = {
   missingOrganizationStatus: 401,
 } as const;
 
+const LEGACY_IMAGE_RECOGNITION_SWITCH = "zeroImageRecognition";
+
 function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
@@ -31,14 +33,20 @@ function featureSwitchResponseBody(params: {
   readonly supportsImageRecognition: boolean;
   readonly imageRecognitionRolloutComplete: true;
 }) {
-  const effectiveSwitches = getAllFeatureStates({
+  const registeredEffectiveSwitches = getAllFeatureStates({
     orgId: params.orgId,
     userId: params.userId,
     overrides: params.switches,
   });
-  effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] =
-    effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] &&
+  registeredEffectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] =
+    registeredEffectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] &&
     isZeroMailReplyFollowUpRolloutEnabled();
+  // Pre-rollout Platform bundles still read the removed switch key. Keep the
+  // positive effective value while those bundles can remain open in browsers.
+  const effectiveSwitches = {
+    ...registeredEffectiveSwitches,
+    [LEGACY_IMAGE_RECOGNITION_SWITCH]: true,
+  };
 
   return {
     switches: params.switches,

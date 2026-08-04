@@ -93,6 +93,7 @@ describe("/api/zero/feature-switches", () => {
     expect(current.body.supportsCustomModelGateways).toBeTruthy();
     expect(current.body.supportsImageRecognition).toBeTruthy();
     expect(current.body.imageRecognitionRolloutComplete).toBeTruthy();
+    expect(current.body.effectiveSwitches.zeroImageRecognition).toBeTruthy();
     expect(
       current.body.effectiveSwitches[
         FeatureSwitchKey.StructuredPromptInlineTemplates
