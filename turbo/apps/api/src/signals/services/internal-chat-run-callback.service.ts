@@ -2807,7 +2807,8 @@ async function resolveQueuedLaunchMaterial(
   const triggerSource = args.queuedMessage.triggerSource;
   let load: LaunchLoader;
   switch (triggerSource) {
-    case "web": {
+    case "web":
+    case "agent": {
       load = loadWebQueuedLaunchMaterial;
       break;
     }
@@ -2917,7 +2918,8 @@ function queuedMessageAdmissionFailure(
   };
   const triggerSource = args.queuedMessage.triggerSource;
   switch (triggerSource) {
-    case "web": {
+    case "web":
+    case "agent": {
       return { kind: "web_admission_failure", ...common };
     }
     case "slack": {

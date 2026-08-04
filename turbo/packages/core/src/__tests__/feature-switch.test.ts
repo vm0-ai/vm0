@@ -55,6 +55,9 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
       false,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.ChatAgentRunSource, {})).toBe(
+      false,
+    );
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroMailReplyFollowUp, {})).toBe(
       false,
     );

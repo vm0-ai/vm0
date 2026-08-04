@@ -60,6 +60,7 @@ type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const queuedUserMessageTriggerSourceSchema = z.enum([
   "web",
+  "agent",
   "slack",
   "feishu",
   "teams",
@@ -92,6 +93,7 @@ export interface QueuedUserMessage {
   readonly selectedModel: string | null;
   readonly triggerSource:
     | "web"
+    | "agent"
     | "slack"
     | "feishu"
     | "teams"

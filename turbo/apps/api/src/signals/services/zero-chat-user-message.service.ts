@@ -28,6 +28,71 @@ type UserMessageNonContentPart = Extract<
   { readonly type: "source" | "automation" | "goal" }
 >;
 
+export interface ChatAgentRunSourceAnnotation {
+  readonly runId: string;
+  readonly threadId: string;
+  readonly agentId: string;
+  readonly titleSnapshot: string;
+}
+
+function chatAgentRunSourceHref(
+  source: Pick<ChatAgentRunSourceAnnotation, "runId" | "threadId">,
+): string {
+  return `/chats/${source.threadId}#run-${source.runId}`;
+}
+
+export function hasAgentRunSourceAnnotation(
+  document: UserMessageDocument,
+): boolean {
+  return document.parts.some((part) => {
+    return part.type === "source" && part.kind === "agent";
+  });
+}
+
+/** Project the persisted document for clients that predate agent sources. */
+export function withoutAgentRunSourceAnnotation(
+  document: UserMessageDocument,
+): UserMessageDocument {
+  if (!hasAgentRunSourceAnnotation(document)) {
+    return document;
+  }
+  return {
+    version: 1,
+    parts: document.parts.filter((part) => {
+      return !(part.type === "source" && part.kind === "agent");
+    }),
+  };
+}
+
+/** Replace client-owned annotations with authoritative agent-run provenance. */
+export function withAgentRunSourceAnnotation(
+  document: UserMessageDocument,
+  source: ChatAgentRunSourceAnnotation,
+): UserMessageDocument {
+  const contentParts = document.parts.filter((part) => {
+    return (
+      part.type !== "source" &&
+      part.type !== "automation" &&
+      part.type !== "goal"
+    );
+  });
+  return {
+    version: 1,
+    parts: [
+      ...contentParts,
+      {
+        type: "source",
+        kind: "agent",
+        runId: source.runId,
+        threadId: source.threadId,
+        agentId: source.agentId,
+        titleSnapshot: source.titleSnapshot,
+        href: chatAgentRunSourceHref(source),
+      },
+    ],
+  };
+}
+
 export function requiredUserMessageForEvent(
   eventType: ChatEventType,
   document: UserMessageDocument | null,

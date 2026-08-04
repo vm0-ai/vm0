@@ -475,6 +475,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatAgentRunSource]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Persist source-run context and agent annotations for cross-thread chat messages. Enable only after migration 0823, previous API instances, and the rollback window have cleared.",
+    enabled: false,
+  },
   [FeatureSwitchKey.RustZeroCli]: {
     maintainer: "yuma@vm0.ai",
     description:
