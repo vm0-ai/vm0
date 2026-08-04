@@ -245,6 +245,41 @@ describe("GET/PUT /api/zero/model-policies", () => {
     ).toBe(LIMITED_FREE1_DEFAULT_RUN_MODEL);
   });
 
+  it("keeps an existing allowed default for limited-free-1 workspaces", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const client = apiClient();
+    const listed = await accept(client.list({ headers: authHeaders() }), [200]);
+    const previousDefaultModel = "gpt-5.6-luna";
+    const updates = toUpdate(listed.body).map((policy) => {
+      return {
+        ...policy,
+        isDefault: policy.model === previousDefaultModel,
+      };
+    });
+    await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      }),
+      [200],
+    );
+
+    await makeLimitedFreeWorkspace(fixture);
+    useSession(fixture);
+    const response = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body.workspaceDefaultModel).toBe(previousDefaultModel);
+    expect(
+      response.body.policies.find((policy) => {
+        return policy.isDefault;
+      })?.model,
+    ).toBe(previousDefaultModel);
+  });
+
   it("allows members to read policy controls", async () => {
     const fixture = await seedFixture();
     useSession(fixture, "org:member");
@@ -348,7 +383,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     );
   });
 
-  it("normalizes retired Auto policy writes to Luna", async () => {
+  it("normalizes retired Auto policy writes to the default model", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
 
@@ -381,7 +416,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
-  it("normalizes retired GPT policy writes to Luna", async () => {
+  it("normalizes retired GPT policy writes to the default model", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
     const providerId = await createOrgProvider(fixture, "openrouter-codex");
@@ -420,9 +455,9 @@ describe("GET/PUT /api/zero/model-policies", () => {
       expect.objectContaining({
         model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
         isDefault: true,
-        defaultProviderType: "openrouter-codex",
+        defaultProviderType: "vm0",
         credentialScope: "org",
-        modelProviderId: providerId,
+        modelProviderId: null,
       }),
     );
   });
@@ -589,15 +624,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       response.body.policies.map((policy) => {
         return policy.model;
       }),
-    ).toStrictEqual([
-      "claude-fable-5",
-      "claude-opus-5",
-      "claude-sonnet-5",
-      "gpt-5.6-sol",
-      "gpt-5.6-terra",
-      "gpt-5.6-luna",
-      "claude-opus-4-6",
-    ]);
+    ).toStrictEqual([...DEFAULT_ORG_MODEL_POLICY_MODELS, "claude-opus-4-6"]);
   });
 
   it("rejects restricted policy writes for limited-free-1 workspaces", async () => {
@@ -652,23 +679,13 @@ describe("GET/PUT /api/zero/model-policies", () => {
       "openrouter-api-key",
     );
     const client = apiClient();
-    const listResponse = await accept(
-      client.list({ headers: authHeaders() }),
-      [200],
-    );
-    const allowedPolicy = toUpdate(listResponse.body).find((policy) => {
-      return policy.model === "claude-sonnet-5";
-    });
-    if (!allowedPolicy) {
-      throw new Error("Expected the Sonnet 5 policy to be available");
-    }
 
     const response = await client.update({
       headers: authHeaders(),
       body: {
         policies: [
           {
-            ...allowedPolicy,
+            ...makeVm0Policy("claude-sonnet-5"),
             isDefault: true,
             defaultProviderType: "openrouter-api-key",
             credentialScope: "org",
@@ -837,7 +854,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
 
     const client = apiClient();
     const listed = await accept(client.list({ headers: authHeaders() }), [200]);
-    const updates = toUpdate(listed.body).map((policy) => {
+    const updates = [
+      ...toUpdate(listed.body),
+      makeVm0Policy("claude-sonnet-5"),
+    ].map((policy) => {
       return policy.model === "claude-sonnet-5"
         ? {
             ...policy,
@@ -1017,7 +1037,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
+    const updates = [
+      ...toUpdate(listResponse.body),
+      makeVm0Policy("claude-opus-5"),
+    ].map((policy) => {
       if (policy.model !== "claude-opus-5") {
         return policy;
       }
@@ -1060,7 +1083,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
+    const updates = [
+      ...toUpdate(listResponse.body),
+      makeVm0Policy("claude-opus-5"),
+    ].map((policy) => {
       if (policy.model !== "claude-opus-5") {
         return policy;
       }

@@ -6,12 +6,14 @@ import {
   chatThreadMarkReadContract,
   chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { click } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { mockChatLifecycle, mockSubagentThread } from "./chat-test-helpers.ts";
 import {
+  billingStatus,
   buildModelPolicy,
   buildProvider,
 } from "./chat-composer-test-helpers.ts";
@@ -136,6 +138,76 @@ describe("chat lifecycle", () => {
       );
       expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("hides run model names for limited-free-1 workspaces", async () => {
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(
+        200,
+        billingStatus("limited-free-1", {
+          supportByok: false,
+          restrictedVm0Models: true,
+        }),
+      );
+    });
+    mockChatLifecycle(context, {
+      threadId: "thread-limited-free-usage-chip",
+      chatEvents: [
+        {
+          id: "msg-limited-free-usage-user",
+          role: "user",
+          content: "Summarize usage",
+          runId: "run-limited-free-usage",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-limited-free-usage-assistant",
+          role: "assistant",
+          content: "Usage summary is ready.",
+          runId: "run-limited-free-usage",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-limited-free-usage",
+          role: "assistant",
+          content: null,
+          runId: "run-limited-free-usage",
+          usage: {
+            version: 1,
+            totalCredits: 330,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model/gpt-5.6-luna/tokens.output",
+                credits: 300,
+                providers: [{ provider: "openai", credits: 300 }],
+              },
+              {
+                kind: "image",
+                credits: 30,
+                providers: [{ provider: "gpt-image-2", credits: 30 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-limited-free-usage-chip",
+    });
+
+    click(await screen.findByLabelText("Credit usage 330"));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("model").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(screen.queryByText("GPT 5.6 Luna")).not.toBeInTheDocument();
     });
   });
 

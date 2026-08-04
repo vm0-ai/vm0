@@ -22,6 +22,11 @@ const USAGE_DISPLAY_NAMES = {
       return $.usage.displayNames.maps;
     });
   },
+  model(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.model;
+    });
+  },
   peopleSearch(): string {
     return i18n.t(($) => {
       return $.usage.displayNames.peopleSearch;
@@ -145,8 +150,12 @@ function usageKindBase(kind: string): string {
 export function getCreditUsageDisplayName(
   kind: string,
   provider: string,
+  genericModelName = false,
 ): string {
   const baseKind = usageKindBase(kind);
+  if (genericModelName && baseKind === "model") {
+    return USAGE_DISPLAY_NAMES.model();
+  }
   const managedKindDisplayName = MANAGED_USAGE_KIND_DISPLAY_NAMES[baseKind];
   if (managedKindDisplayName) {
     return managedKindDisplayName();
