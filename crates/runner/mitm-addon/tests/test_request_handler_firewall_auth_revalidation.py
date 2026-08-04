@@ -24,6 +24,7 @@ type HookPhase = Literal["request", "requestheaders"]
 type RegistryMutation = Literal["remove", "replace_run", "revoke_permission"]
 
 _CLIENT_IP = "10.200.0.5"
+_FIREWALL_NAME = "model-provider:test"
 _ORIGINAL_RUN_ID = "run-before-auth-wait"
 _RESOLVED_AUTHORIZATION = "Bearer resolved-for-old-authorization"
 
@@ -44,6 +45,7 @@ def _registry_vm(
     return _single_firewall_vm(
         tmp_path,
         run_id=run_id,
+        firewall_name=_FIREWALL_NAME,
         api_entry={
             "base": "https://api.github.com",
             "auth": {
@@ -61,8 +63,8 @@ def _registry_vm(
             "ask": [],
             "unknownPolicy": "deny",
         },
-        billable_firewalls=["github"],
-        vm_fields={"captureNetworkBodies": True},
+        billable_firewalls=[_FIREWALL_NAME],
+        vm_fields={"captureNetworkBodies": True, "modelUsageProvider": "test"},
     )
 
 
@@ -78,6 +80,7 @@ def _switchable_permission_vm(
     return _single_firewall_vm(
         tmp_path,
         run_id=_ORIGINAL_RUN_ID,
+        firewall_name=_FIREWALL_NAME,
         api_entry={
             "base": "https://api.github.com",
             "auth": {
@@ -94,8 +97,8 @@ def _switchable_permission_vm(
             "ask": [],
             "unknownPolicy": "deny",
         },
-        billable_firewalls=["github"],
-        vm_fields={"captureNetworkBodies": True},
+        billable_firewalls=[_FIREWALL_NAME],
+        vm_fields={"captureNetworkBodies": True, "modelUsageProvider": "test"},
     )
 
 
@@ -271,7 +274,12 @@ async def test_registry_change_during_auth_blocks_old_authorization(
             await mitm_addon.request(flow)
 
     auth_fetch.assert_awaited_once()
-    assert flow.request.headers.fields == original_headers
+    if hook_phase == "requestheaders":
+        assert flow.request.headers.fields == original_headers
+    else:
+        assert flow.request.headers.get("Host") == "api.github.com"
+        assert flow.request.headers.get("Content-Length") == str(STREAM_BUFFER_LIMIT + 1)
+        assert flow.request.headers.get("Accept-Encoding") == "identity"
     assert flow.request.path == original_path
     assert flow.request.headers.get("Authorization") is None
     _assert_current_denial(flow, registry_mutation)
@@ -347,7 +355,6 @@ async def test_different_same_run_allow_decision_fails_closed_without_old_creden
         vm_info=_switchable_permission_vm(tmp_path, allowed_permission="repos-primary"),
     )
     flow, tls_data = _firewall_flow(real_flow, make_tls_data)
-    original_headers = flow.request.headers.fields
     original_path = flow.request.path
     auth_resolution_entered = asyncio.Event()
     release_auth_resolution = asyncio.Event()
@@ -380,7 +387,9 @@ async def test_different_same_run_allow_decision_fails_closed_without_old_creden
             await cancel_pending_task(request_task)
 
     auth_fetch.assert_awaited_once()
-    assert flow.request.headers.fields == original_headers
+    assert flow.request.headers.get("Host") == "api.github.com"
+    assert flow.request.headers.get("Content-Length") == str(STREAM_BUFFER_LIMIT + 1)
+    assert flow.request.headers.get("Accept-Encoding") == "identity"
     assert flow.request.path == original_path
     assert flow.response is not None
     assert flow.response.status_code == 409

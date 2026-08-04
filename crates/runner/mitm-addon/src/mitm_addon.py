@@ -971,8 +971,15 @@ async def _try_firewall_request_stream_from_headers(
 ) -> None:
     allow = classification.firewall_allow
     vm_info = classification.vm_info
+    request_headers_snapshot = http.Headers(flow.request.headers.fields)
+    request_url_snapshot = flow.request.url
+
+    def restore_request_state() -> None:
+        flow.request.url = request_url_snapshot
+        flow.request.headers = http.Headers(request_headers_snapshot.fields)
 
     def fall_back() -> None:
+        restore_request_state()
         if aws_sigv4_buffered_fallback is None:
             _restore_request_headers_probe_metadata(flow, metadata_snapshot)
             return
@@ -1016,6 +1023,7 @@ async def _try_firewall_request_stream_from_headers(
             ),
         )
     except (asyncio.CancelledError, Exception):
+        restore_request_state()
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
         raise
     if result is not FirewallHeaderPhaseAuthResult.APPLIED:
@@ -1042,6 +1050,7 @@ async def _try_firewall_request_stream_from_headers(
             request_streaming.configure_request_stream(flow, capture_body=capture_body)
     except (asyncio.CancelledError, Exception):
         _release_terminal_flow_state(flow, release_tracking=True)
+        restore_request_state()
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
         raise
 
