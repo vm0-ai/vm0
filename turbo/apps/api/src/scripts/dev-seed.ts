@@ -625,11 +625,12 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["output_video_tokens.audio", usd(2.4), 1_000_000],
     ["output_video_tokens.silent", usd(1.2), 1_000_000],
   ]),
-  // JoggAI Professional API pricing: $399 / 800 credits, with one provider
-  // credit consumed per started two minutes of talking-avatar output.
+  // JoggAI Professional API cost: $399 / 800 credits, with one provider
+  // credit consumed per started two minutes of talking-avatar output. Apply
+  // the standard 20% vm0 markup.
   // https://www.jogg.ai/api-pricing/
   ...usageGroup("video", "joggai-talking-avatar", [
-    ["output_video_joggai_credits", usd(399 / 800), 1],
+    ["output_video_joggai_credits", usd((399 / 800) * 1.2), 1],
   ]),
 
   // OpenAI GPT-4o mini TTS — https://platform.openai.com/docs/pricing
