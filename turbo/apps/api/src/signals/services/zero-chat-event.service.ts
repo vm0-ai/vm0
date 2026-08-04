@@ -71,7 +71,6 @@ type ChatEventDisplayContext =
   | {
       readonly slackContext?: never;
       readonly feishuContext: {
-        readonly chatOpenUrl: string;
         readonly conversationHistory: string;
         readonly messageText: string;
         readonly messageFiles: ChatFeishuMessageFiles;
@@ -443,7 +442,6 @@ type NewDisplayContext =
       readonly type: "feishu";
       readonly id: string;
       readonly chatThreadId: string;
-      readonly chatOpenUrl: string;
       readonly conversationHistory: string;
       readonly messageText: string;
       readonly messageFiles: ChatFeishuMessageFiles;
@@ -827,7 +825,6 @@ async function insertDisplayContext(
     await tx.insert(chatFeishuContext).values({
       id: context.id,
       chatThreadId: context.chatThreadId,
-      chatOpenUrl: context.chatOpenUrl,
       conversationHistory: context.conversationHistory,
       messageText: context.messageText,
       messageFiles: context.messageFiles,

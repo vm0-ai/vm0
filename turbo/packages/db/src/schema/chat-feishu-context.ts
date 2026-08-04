@@ -20,7 +20,7 @@ export const chatFeishuContext = pgTable("chat_feishu_context", {
       },
       { onDelete: "cascade" },
     ),
-  chatOpenUrl: text("chat_open_url").notNull(),
+  chatOpenUrl: text("chat_open_url"),
   /**
    * Server-private Feishu launch material retained with the trigger context.
    * Raw third-party content is intentionally retained permanently; read paths

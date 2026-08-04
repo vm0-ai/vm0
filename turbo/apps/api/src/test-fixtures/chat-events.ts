@@ -34,6 +34,7 @@ import {
   replaceChatEvent,
 } from "../signals/services/zero-chat-event.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
+import { buildFeishuChatOpenUrl } from "../signals/services/feishu-config";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
@@ -75,7 +76,6 @@ interface ChatEventContextFixture {
   readonly slackChannelType: "channel" | "dm" | "group_dm" | null;
   readonly slackThreadTs: string | null;
   readonly slackRouteThreadTs: string | null;
-  readonly feishuOpenUrl: string | null;
   readonly feishuConversationHistory: string | null;
   readonly feishuMessageText: string | null;
   readonly feishuMessageFiles: ChatFeishuMessageFiles | null;
@@ -177,7 +177,6 @@ export async function readChatEventContextFixture(
       slackChannelType: chatSlackContext.channelType,
       slackThreadTs: chatSlackContext.threadTs,
       slackRouteThreadTs: chatSlackContext.routeThreadTs,
-      feishuOpenUrl: chatFeishuContext.chatOpenUrl,
       feishuConversationHistory: chatFeishuContext.conversationHistory,
       feishuMessageText: chatFeishuContext.messageText,
       feishuMessageFiles: chatFeishuContext.messageFiles,
@@ -296,8 +295,6 @@ const annotationProjectionInputs = [
     triggerSource: "feishu",
     context: {
       feishuContext: {
-        chatOpenUrl:
-          "https://applink.feishu.cn/client/chat/open?openChatId=oc_123",
         conversationHistory: "",
         messageText: "feishu linked",
         messageFiles: [],
@@ -484,7 +481,7 @@ function annotationProjectionSourcePart(
   if ("feishuContext" in input.context) {
     return createChatEventSourcePart({
       kind: "feishu",
-      chatOpenUrl: input.context.feishuContext.chatOpenUrl,
+      chatOpenUrl: buildFeishuChatOpenUrl(input.context.feishuContext.chatId),
     });
   }
   if ("teamsContext" in input.context) {
