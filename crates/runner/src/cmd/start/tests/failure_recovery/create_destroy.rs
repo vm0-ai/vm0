@@ -5,6 +5,10 @@ use super::super::support::{
     wait_cancel_token_removed, wait_idle_pool_reuse_keys,
 };
 use crate::types::SandboxReuseResult;
+use guest_contracts::diagnostics::{
+    AgentFramework, CliTerminationDiagnostic, CliTerminationReason, FailureClass,
+    FailureDiagnostic, PromptMetadata,
+};
 
 #[tokio::test(start_paused = true)]
 async fn active_destroy_panic_still_reports_completion_and_releases_budget() {
@@ -75,6 +79,90 @@ async fn nonzero_job_parks_and_successor_reuses_sandbox() {
         held[0].reusable_sandbox.history_generation_run_id, None,
         "failed execution must not advertise an exact history generation",
     );
+
+    let successor_run_id = RunId::new_v4();
+    push_job(
+        &env,
+        successor_run_id,
+        "vm0/default",
+        Some(context_with_session(successor_run_id, reuse_key)),
+    );
+
+    let successor = env
+        .handle
+        .wait_completion(successor_run_id, Duration::from_secs(5))
+        .await
+        .expect("successor should complete");
+    assert_eq!(successor.exit_code, 0);
+    assert_eq!(successor.reuse_result, Some(SandboxReuseResult::Reused));
+    assert_eq!(successor.sandbox_id, Some(sandbox_id));
+    wait_idle_pool_reuse_keys(&idle_pool, &[reuse_key], Duration::from_secs(5)).await;
+    assert_eq!(budget.allocated().2, 1);
+    assert_eq!(overrides.park_call_count(), 2);
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.destroy_call_count(), 0);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn confirmed_execution_timeout_parks_and_successor_reuses_sandbox() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_wait_process_exit(sandbox::ProcessExit::new(
+        1,
+        guest_contracts::diagnostics::AGENT_EXECUTION_TIMEOUT_EXIT_CODE,
+        Vec::new(),
+        Vec::new(),
+    ));
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliExecutionError,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("continue until the execution deadline"),
+    )
+    .with_cli_exit_code(143)
+    .with_cli_termination(CliTerminationDiagnostic::new(
+        CliTerminationReason::ExecutionTimeout,
+    ));
+    overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
+    overrides.push_read_file_result(Ok(Some(b"Agent execution timed out".to_vec())));
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, Arc::clone(&overrides));
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let run_handle = tokio::spawn(run(config));
+    let reuse_key = "sess-execution-timeout";
+
+    let timed_out_run_id = RunId::new_v4();
+    push_job(
+        &env,
+        timed_out_run_id,
+        "vm0/default",
+        Some(context_with_session(timed_out_run_id, reuse_key)),
+    );
+
+    let timed_out = env
+        .handle
+        .wait_completion(timed_out_run_id, Duration::from_secs(5))
+        .await
+        .expect("timed-out job should complete");
+    assert_eq!(
+        timed_out.exit_code,
+        guest_contracts::diagnostics::AGENT_EXECUTION_TIMEOUT_EXIT_CODE,
+    );
+    assert_eq!(
+        timed_out.error.as_deref(),
+        Some("Agent execution timed out")
+    );
+    let sandbox_id = timed_out
+        .sandbox_id
+        .expect("timed-out run should own a sandbox");
+    wait_idle_pool_reuse_keys(&idle_pool, &[reuse_key], Duration::from_secs(5)).await;
+    assert_eq!(budget.allocated().2, 1);
+    assert_eq!(overrides.park_call_count(), 1);
+    assert_eq!(overrides.destroy_call_count(), 0);
+    let held = idle_pool.lock().await.held_sandbox_states();
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0].reusable_sandbox.history_generation_run_id, None);
 
     let successor_run_id = RunId::new_v4();
     push_job(

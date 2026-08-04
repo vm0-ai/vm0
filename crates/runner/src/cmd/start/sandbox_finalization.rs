@@ -221,6 +221,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 SandboxReuseDisposition::Eligible(SandboxReuseTerminal::Success) => Some(run_id),
                 SandboxReuseDisposition::Eligible(
                     SandboxReuseTerminal::NonzeroExit
+                    | SandboxReuseTerminal::ExecutionTimeout
                     | SandboxReuseTerminal::CooperativeCancellation,
                 )
                 | SandboxReuseDisposition::Ineligible(_) => None,

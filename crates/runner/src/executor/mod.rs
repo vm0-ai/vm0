@@ -255,12 +255,13 @@ impl SandboxReuseDisposition {
         match self {
             Self::Eligible(SandboxReuseTerminal::Success) => "eligible_success",
             Self::Eligible(SandboxReuseTerminal::NonzeroExit) => "eligible_nonzero_exit",
+            Self::Eligible(SandboxReuseTerminal::ExecutionTimeout) => "eligible_execution_timeout",
             Self::Eligible(SandboxReuseTerminal::CooperativeCancellation) => {
                 "eligible_cooperative_cancellation"
             }
             Self::Ineligible(SandboxReuseRejection::ExecutionUncertain) => "execution_uncertain",
             Self::Ineligible(SandboxReuseRejection::HardCancellation) => "hard_cancellation",
-            Self::Ineligible(SandboxReuseRejection::RunnerJobTimeout) => "runner_job_timeout",
+            Self::Ineligible(SandboxReuseRejection::UnconfirmedTimeout) => "unconfirmed_timeout",
             Self::Ineligible(SandboxReuseRejection::ResourceFailure) => "resource_failure",
             Self::Ineligible(SandboxReuseRejection::PostJobCleanupFailure) => {
                 "post_job_cleanup_failure"
@@ -277,6 +278,9 @@ impl SandboxReuseDisposition {
             Self::Eligible(SandboxReuseTerminal::NonzeroExit) => {
                 "runner_terminal_sandbox_reuse_eligible_nonzero_exit"
             }
+            Self::Eligible(SandboxReuseTerminal::ExecutionTimeout) => {
+                "runner_terminal_sandbox_reuse_eligible_execution_timeout"
+            }
             Self::Eligible(SandboxReuseTerminal::CooperativeCancellation) => {
                 "runner_terminal_sandbox_reuse_eligible_cooperative_cancellation"
             }
@@ -286,8 +290,8 @@ impl SandboxReuseDisposition {
             Self::Ineligible(SandboxReuseRejection::HardCancellation) => {
                 "runner_terminal_sandbox_reuse_rejected_hard_cancellation"
             }
-            Self::Ineligible(SandboxReuseRejection::RunnerJobTimeout) => {
-                "runner_terminal_sandbox_reuse_rejected_runner_job_timeout"
+            Self::Ineligible(SandboxReuseRejection::UnconfirmedTimeout) => {
+                "runner_terminal_sandbox_reuse_rejected_unconfirmed_timeout"
             }
             Self::Ineligible(SandboxReuseRejection::ResourceFailure) => {
                 "runner_terminal_sandbox_reuse_rejected_resource_failure"
@@ -309,6 +313,7 @@ impl Default for SandboxReuseDisposition {
 pub(crate) enum SandboxReuseTerminal {
     Success,
     NonzeroExit,
+    ExecutionTimeout,
     CooperativeCancellation,
 }
 
@@ -316,7 +321,7 @@ pub(crate) enum SandboxReuseTerminal {
 pub(crate) enum SandboxReuseRejection {
     ExecutionUncertain,
     HardCancellation,
-    RunnerJobTimeout,
+    UnconfirmedTimeout,
     ResourceFailure,
     PostJobCleanupFailure,
 }

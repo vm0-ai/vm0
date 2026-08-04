@@ -544,7 +544,7 @@ async fn execute_inner_marks_stdout_incomplete_on_wait_process_error() {
     }
     assert_eq!(
         outcome.sandbox_reuse_disposition,
-        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::RunnerJobTimeout),
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::UnconfirmedTimeout),
     );
     assert!(
         outcome.sandbox.is_some(),
@@ -729,7 +729,7 @@ async fn execute_inner_guest_process_timeout_marks_failure_kind() {
     }
     assert_eq!(
         outcome.sandbox_reuse_disposition,
-        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::RunnerJobTimeout),
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::UnconfirmedTimeout),
     );
 }
 
@@ -878,6 +878,10 @@ async fn execute_inner_structured_guest_execution_timeout_marks_failure_kind() {
         }
         ExecutionFailureKind::Generic => panic!("expected runner job timeout failure kind"),
     }
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::ExecutionTimeout),
+    );
 }
 
 #[tokio::test]

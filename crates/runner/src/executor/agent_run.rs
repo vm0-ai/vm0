@@ -1090,20 +1090,27 @@ fn sandbox_reuse_disposition_for_process_exit(
     }) {
         return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure);
     }
-    if failure.is_some_and(|failure| {
+    // A guest-agent execution deadline is reusable only when the provider
+    // observed the guest-agent itself exit. A provider-level timeout does not
+    // carry the same process-termination evidence.
+    let exit_code = match exit.termination {
+        ExecTermination::Exited { exit_code } => exit_code,
+        ExecTermination::TimedOut => {
+            return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::UnconfirmedTimeout);
+        }
+        ExecTermination::Cancelled | ExecTermination::StartFailed | ExecTermination::WaitFailed => {
+            return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain);
+        }
+    };
+    if cancellation == CancellationDisposition::Cooperative {
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::CooperativeCancellation)
+    } else if failure.is_some_and(|failure| {
         matches!(
             failure.kind,
             super::ExecutionFailureKind::RunnerJobTimeout { .. }
         )
     }) {
-        return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::RunnerJobTimeout);
-    }
-
-    let ExecTermination::Exited { exit_code } = exit.termination else {
-        return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain);
-    };
-    if cancellation == CancellationDisposition::Cooperative {
-        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::CooperativeCancellation)
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::ExecutionTimeout)
     } else if exit_code == 0 {
         SandboxReuseDisposition::Eligible(SandboxReuseTerminal::Success)
     } else {
@@ -2348,7 +2355,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                         None,
                     )),
                     sandbox_reuse_disposition: SandboxReuseDisposition::Ineligible(
-                        SandboxReuseRejection::RunnerJobTimeout,
+                        SandboxReuseRejection::UnconfirmedTimeout,
                     ),
                     stdout_stream_diagnostics: stdout_stream_diagnostics_on_wait_error,
                     reusable_session_identity: None,
