@@ -35,13 +35,13 @@ async fn discover_claim_complete() {
 }
 
 #[tokio::test]
-async fn discover_carries_thread_affinity_before_claim() {
+async fn discover_carries_reuse_metadata_before_claim() {
     let dir = tempfile::tempdir().unwrap();
     let provider = default_provider(dir.path(), CancellationToken::new(), empty_cancel_tokens());
     let job_id = RunId::new_v4();
     let reuse_key = "thread:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
-    write_job_with_affinity(
+    write_job_with_reuse_metadata(
         dir.path(),
         job_id,
         "continue",
@@ -61,7 +61,7 @@ async fn discover_carries_thread_affinity_before_claim() {
 }
 
 #[tokio::test]
-async fn session_only_job_resumes_without_affinity() {
+async fn session_only_job_resumes_without_reuse_key() {
     let dir = tempfile::tempdir().unwrap();
     let provider = default_provider(dir.path(), CancellationToken::new(), empty_cancel_tokens());
     let job_id = RunId::new_v4();
@@ -80,13 +80,13 @@ async fn session_only_job_resumes_without_affinity() {
 }
 
 #[tokio::test]
-async fn thread_affinity_is_available_before_a_session_exists() {
+async fn reuse_key_is_available_before_a_session_exists() {
     let dir = tempfile::tempdir().unwrap();
     let provider = default_provider(dir.path(), CancellationToken::new(), empty_cancel_tokens());
     let job_id = RunId::new_v4();
     let reuse_key = "thread:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
-    write_job_with_affinity(dir.path(), job_id, "start warm", Some(reuse_key), None);
+    write_job_with_reuse_metadata(dir.path(), job_id, "start warm", Some(reuse_key), None);
 
     let candidate = provider.discover().await.unwrap();
     assert_eq!(candidate.reuse_key(), Some(reuse_key));

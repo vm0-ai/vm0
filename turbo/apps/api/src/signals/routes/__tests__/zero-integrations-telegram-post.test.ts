@@ -1299,7 +1299,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
   });
 
-  it("snapshots thread reuse affinity before a CLI session exists", async () => {
+  it("snapshots thread reuse inputs before a CLI session exists", async () => {
     const runnerGroup = configureCanonicalTelegramRunner();
     const fixture = await trackFixture(
       seedTelegramPostFixture({ linkTelegramUser: true }),
@@ -1360,7 +1360,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       [200],
     );
     if (poll.status !== 200) {
-      throw new Error("Expected the thread-affinity poll to succeed");
+      throw new Error("Expected the same-thread reuse poll to succeed");
     }
     expect(poll.body.job).toMatchObject({
       runId,
