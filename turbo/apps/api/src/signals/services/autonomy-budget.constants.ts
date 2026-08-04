@@ -1,0 +1,1 @@
+export const INITIAL_AUTONOMY_BUDGET = 10;

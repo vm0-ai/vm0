@@ -169,6 +169,11 @@ import {
 } from "./model-provider-gateway-runtime";
 import { modelProviderGatewaySchemaAvailable } from "./model-provider-gateway-schema.service";
 import {
+  autonomyBudgetSchemaAvailable,
+  insertRolloutCompatibleZeroRun,
+  rolloutLegacyZeroRuns,
+} from "./autonomy-budget-schema.service";
+import {
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CustomConnectorRuntimePrefixError,
   customConnectorInternalName,
@@ -242,6 +247,7 @@ import {
   type QueueFirstRunSessionSnapshotState,
 } from "./zero-chat-queued-event.service";
 import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
+import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
 import {
   cappedBaseConcurrencyLimit,
   loadOrgConcurrencyState,
@@ -346,7 +352,11 @@ function withFinalRunAppendSystemPrompt(
   if (imageRecognitionAvailable) {
     appendedParts.push(ZERO_IMAGE_RECOGNITION_PROMPT);
   }
-  if (framework === "codex" && body.triggerSource === "web" && chatThreadId) {
+  if (
+    framework === "codex" &&
+    isWebChatTriggerSource(body.triggerSource) &&
+    chatThreadId
+  ) {
     appendedParts.push(CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT);
   }
   if (appendedParts.length === 0) {
@@ -405,6 +415,7 @@ interface ZeroRunMetadata {
   readonly triggerBrief?: string;
   // Run provenance for autonomous thread-goal continuation.
   readonly goalId?: string;
+  readonly autonomyBudget?: number;
 }
 
 interface AgentConfig {
@@ -5134,6 +5145,7 @@ function launchRunValues(
 
 function launchZeroRunValues(
   args: LaunchRunRowsArgs,
+  autonomyBudgetAvailable: boolean,
 ): typeof zeroRuns.$inferInsert {
   const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
   return {
@@ -5143,6 +5155,9 @@ function launchZeroRunValues(
     triggerBrief: metadata.triggerBrief ?? null,
     runGroupId: metadata.goalId ?? null,
     goalId: metadata.goalId ?? null,
+    ...(metadata.autonomyBudget === undefined || !autonomyBudgetAvailable
+      ? {}
+      : { autonomyBudget: metadata.autonomyBudget }),
     ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
     chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
@@ -5159,7 +5174,12 @@ async function insertLaunchRunRows(
 
   const createdAt = nowDate();
   await tx.insert(agentRuns).values(launchRunValues(args, createdAt));
-  await tx.insert(zeroRuns).values(launchZeroRunValues(args));
+  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(tx);
+  await insertRolloutCompatibleZeroRun(
+    tx,
+    launchZeroRunValues(args, autonomyBudgetAvailable),
+    autonomyBudgetAvailable,
+  );
 
   if (args.callbackRows.length > 0) {
     await tx.insert(agentRunCallbacks).values([...args.callbackRows]);
@@ -5931,7 +5951,10 @@ function launchThreadBindingCte(args: {
   );
 }
 
-function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
+function buildAtomicLaunchCteContext(
+  args: PersistAtomicLaunchRowsArgs,
+  autonomyBudgetAvailable: boolean,
+) {
   const rowsArgs = preparedLaunchRowsArgs({
     commit: args.commit,
     status: args.status,
@@ -5966,12 +5989,17 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
   );
   ctes.push(insertedRun);
 
-  const insertedZeroRun = args.tx.$with("inserted_launch_zero_run").as(
-    args.tx.insert(zeroRuns).values({
-      ...launchZeroRunValues(rowsArgs),
-      id: returnedCteId(insertedRun),
-    }),
-  );
+  const zeroRunValues = {
+    ...launchZeroRunValues(rowsArgs, autonomyBudgetAvailable),
+    id: returnedCteId(insertedRun),
+  };
+  const insertedZeroRun = args.tx
+    .$with("inserted_launch_zero_run")
+    .as(
+      autonomyBudgetAvailable
+        ? args.tx.insert(zeroRuns).values(zeroRunValues)
+        : args.tx.insert(rolloutLegacyZeroRuns).values(zeroRunValues),
+    );
   ctes.push(insertedZeroRun);
 
   appendLaunchCallbackCte({
@@ -6152,7 +6180,8 @@ async function persistQueuedAtomicLaunch(
 async function persistAtomicLaunchRows(
   args: PersistAtomicLaunchRowsArgs,
 ): Promise<PersistedAtomicLaunchRows> {
-  const context = buildAtomicLaunchCteContext(args);
+  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(args.tx);
+  const context = buildAtomicLaunchCteContext(args, autonomyBudgetAvailable);
   const persisted = await args.commit.timing.measure(
     "api_dispatch_persist_atomic_launch",
     "nested",

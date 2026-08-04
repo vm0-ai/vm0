@@ -24,6 +24,10 @@ import {
   hiddenGoalStateEvent,
 } from "./zero-chat-goal-marker.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import {
+  autonomyBudgetSchemaAvailable,
+  rolloutCompatibleAutonomyBudgetColumn,
+} from "./autonomy-budget-schema.service";
 import { lockGoalThread } from "./zero-goal-lock.service";
 
 const goalEventRevoker = alias(chatEvents, "goal_event_revoker");
@@ -50,6 +54,7 @@ export interface GoalQueueTarget {
   readonly agentId: string;
   readonly objective: string;
   readonly objectiveBrief: string;
+  readonly autonomyBudget: number;
 }
 
 type FailedGoalQueueSettlement =
@@ -181,9 +186,10 @@ export async function loadNextGoalQueueEvent(
 }
 
 export async function loadGoalQueueTarget(
-  db: Pick<Db, "select">,
+  db: Db,
   event: PendingGoalQueueEvent,
 ): Promise<GoalQueueTarget | null> {
+  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(db);
   const [goal] = await db
     .select({
       goalId: threadGoals.id,
@@ -193,6 +199,10 @@ export async function loadGoalQueueTarget(
       agentId: threadGoals.agentId,
       objective: threadGoals.objective,
       objectiveBrief: threadGoals.objectiveBrief,
+      autonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
+        autonomyBudgetAvailable,
+        threadGoals.autonomyBudget,
+      ),
       status: threadGoals.status,
     })
     .from(threadGoals)
@@ -224,6 +234,7 @@ export async function loadGoalQueueTarget(
     agentId: goal.agentId,
     objective: goal.objective,
     objectiveBrief: goal.objectiveBrief,
+    autonomyBudget: goal.autonomyBudget,
   };
 }
 

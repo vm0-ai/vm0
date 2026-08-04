@@ -6453,7 +6453,13 @@ const annotationIconImgs = {
   agentphone: settingsIconAssetUrl("imessage"),
 } as const;
 
-function MessageAnnotation({ part }: { part: UserMessageNonContentPart }) {
+function MessageAnnotation({
+  part,
+  agentReferenceSignalsForId,
+}: {
+  part: UserMessageNonContentPart;
+  agentReferenceSignalsForId?: ChatPanelSignals["agentReferenceSignalsForId"];
+}) {
   const { t } = useTranslation();
   const className =
     "mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end " +
@@ -6494,17 +6500,37 @@ function MessageAnnotation({ part }: { part: UserMessageNonContentPart }) {
       </div>
     );
   }
-  return <SourceMessageAnnotation part={part} className={className} />;
+  return (
+    <SourceMessageAnnotation
+      part={part}
+      className={className}
+      agentReferenceSignalsForId={agentReferenceSignalsForId}
+    />
+  );
 }
 
 function SourceMessageAnnotation({
   part,
   className,
+  agentReferenceSignalsForId,
 }: {
   part: Extract<UserMessageNonContentPart, { type: "source" }>;
   className: string;
+  agentReferenceSignalsForId?: ChatPanelSignals["agentReferenceSignalsForId"];
 }) {
   const { t } = useTranslation();
+  if (part.kind === "agent") {
+    if (!agentReferenceSignalsForId) {
+      return null;
+    }
+    return (
+      <AgentRunSourceMessageAnnotation
+        part={part}
+        className={className}
+        signals={agentReferenceSignalsForId(part.agentId)}
+      />
+    );
+  }
   const sourceLabel =
     part.kind === "slack"
       ? t(($) => {
@@ -6593,6 +6619,47 @@ function SourceMessageAnnotation({
     >
       {content}
     </a>
+  );
+}
+
+function AgentRunSourceMessageAnnotation({
+  part,
+  className,
+  signals,
+}: {
+  part: Extract<
+    Extract<UserMessageNonContentPart, { type: "source" }>,
+    { kind: "agent" }
+  >;
+  className: string;
+  signals: AgentReferenceSignals;
+}) {
+  const { t } = useTranslation();
+  const agent = useLastResolved(signals.agent$);
+  return (
+    <Link
+      pathname={ROUTES.chat}
+      options={{
+        pathParams: { threadId: part.threadId },
+        hash: `run-${part.runId}`,
+      }}
+      aria-label={t(
+        ($) => {
+          return $.chat.thread.openNamedChat;
+        },
+        { title: part.titleSnapshot },
+      )}
+      className={`${className} transition-colors hover:bg-gray-50 hover:text-foreground`}
+      title={part.titleSnapshot}
+    >
+      <AvatarFromUrl
+        avatarUrl={agent?.avatarUrl}
+        alt=""
+        className="size-4 shrink-0 overflow-hidden rounded-full bg-muted object-cover object-top"
+        size={16}
+      />
+      <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+    </Link>
   );
 }
 
@@ -7423,6 +7490,31 @@ function resolvePagedUserMessageRendering({
   };
 }
 
+function visibleSourceAnnotationPart({
+  userMessage,
+  inputEvent,
+}: {
+  userMessage: UserMessageDocument | undefined;
+  inputEvent: ChatInputEvent | undefined;
+}) {
+  const part = userMessageNonContentPart(userMessage);
+  if (
+    part?.type !== "source" ||
+    (part.kind === "agent" &&
+      (inputEvent?.eventType !== "input.prompt" ||
+        inputEvent.triggerSource !== "agent"))
+  ) {
+    return undefined;
+  }
+  return part;
+}
+
+function inputPromptRunAnchor(inputEvent: ChatInputEvent | undefined) {
+  return inputEvent?.eventType === "input.prompt" && inputEvent.runId
+    ? `run-${inputEvent.runId}`
+    : undefined;
+}
+
 function PagedUserMessage({
   event,
   thread,
@@ -7491,9 +7583,13 @@ function PagedUserMessage({
     return <GoalUserMessage event={event} />;
   }
 
-  const nonContentPart = eventNonContentPart(event);
+  const sourceAnnotationPart = visibleSourceAnnotationPart({
+    userMessage,
+    inputEvent,
+  });
   return (
     <div
+      id={inputPromptRunAnchor(inputEvent)}
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
       className="group"
@@ -7501,8 +7597,11 @@ function PagedUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          {nonContentPart?.type === "source" ? (
-            <MessageAnnotation part={nonContentPart} />
+          {sourceAnnotationPart ? (
+            <MessageAnnotation
+              part={sourceAnnotationPart}
+              agentReferenceSignalsForId={thread.agentReferenceSignalsForId}
+            />
           ) : null}
           {canonicalUserMessage ? (
             <UserMessageContent

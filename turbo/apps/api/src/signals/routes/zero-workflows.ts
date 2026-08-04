@@ -32,6 +32,7 @@ import {
   measureApiDispatchTiming,
 } from "../services/api-dispatch-timing.service";
 import {
+  autonomyBudgetExhausted,
   conflict,
   connectorReadinessTimeout,
   notFound,
@@ -60,6 +61,15 @@ import {
   mintWorkflowWebhookToken,
 } from "../services/workflow-webhook-automation.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import {
+  autonomyBudgetSchemaAvailable,
+  insertRolloutCompatibleWorkflowAutomation,
+  rolloutCompatibleWorkflowAutomationColumns,
+} from "../services/autonomy-budget-schema.service";
+import {
+  childAutonomyBudget,
+  loadOwnedRunAutonomyBudget,
+} from "../services/autonomy-budget.service";
 import { settle } from "../utils";
 import {
   loadVisibleWorkflowById,
@@ -705,6 +715,8 @@ interface CopyWorkflowRuntimeArgs {
   readonly sourceWorkflow: WorkflowRow;
   readonly targetAgentId: string;
   readonly currentTime: Date;
+  readonly autonomyBudgetAvailable: boolean;
+  readonly autonomyBudgetLimit?: number;
 }
 
 interface CopyWorkflowScopedRowsArgs {
@@ -713,6 +725,8 @@ interface CopyWorkflowScopedRowsArgs {
   readonly sourceWorkflowId: string;
   readonly targetWorkflowId: string;
   readonly currentTime: Date;
+  readonly autonomyBudgetAvailable: boolean;
+  readonly autonomyBudgetLimit?: number;
 }
 
 interface CopyWorkflowAutomationRowsArgs extends CopyWorkflowScopedRowsArgs {
@@ -799,9 +813,9 @@ async function copyWorkflowAutomationRow(
     readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   },
 ): Promise<void> {
-  const [copiedAutomation] = await tx
-    .insert(zeroWorkflowAutomations)
-    .values({
+  const copiedAutomation = await insertRolloutCompatibleWorkflowAutomation(
+    tx,
+    {
       orgId: args.orgId,
       workflowId: args.targetWorkflowId,
       ownerUserId: args.userId,
@@ -818,10 +832,15 @@ async function copyWorkflowAutomationRow(
       lastRunAt: null,
       lastRunId: null,
       consecutiveFailures: 0,
+      autonomyBudget: Math.min(
+        args.automation.autonomyBudget,
+        args.autonomyBudgetLimit ?? args.automation.autonomyBudget,
+      ),
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
-    })
-    .returning({ id: zeroWorkflowAutomations.id });
+    },
+    args.autonomyBudgetAvailable,
+  );
   if (!copiedAutomation) {
     throw new Error("Failed to copy workflow automation");
   }
@@ -845,7 +864,9 @@ async function copyWorkflowUserAutomations(
   args: CopyWorkflowAutomationRowsArgs,
 ): Promise<void> {
   const rows = await tx
-    .select()
+    .select(
+      rolloutCompatibleWorkflowAutomationColumns(args.autonomyBudgetAvailable),
+    )
     .from(zeroWorkflowAutomations)
     .where(
       and(
@@ -886,6 +907,10 @@ async function copyWorkflowRuntimeConfiguration(
     sourceWorkflowId: args.sourceWorkflow.id,
     targetWorkflowId: workflow.id,
     currentTime: args.currentTime,
+    autonomyBudgetAvailable: args.autonomyBudgetAvailable,
+    ...(args.autonomyBudgetLimit === undefined
+      ? {}
+      : { autonomyBudgetLimit: args.autonomyBudgetLimit }),
   };
   await copyWorkflowUserAutomations(tx, {
     ...scopedRowsArgs,
@@ -907,6 +932,26 @@ const copyWorkflowInner$ = command(
     }
 
     const writeDb = set(writeDb$);
+    const autonomyBudgetAvailable =
+      await autonomyBudgetSchemaAvailable(writeDb);
+    signal.throwIfAborted();
+    let autonomyBudgetLimit: number | undefined;
+    if (auth.tokenType === "zero" && autonomyBudgetAvailable) {
+      const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(writeDb, {
+        runId: auth.runId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+      });
+      signal.throwIfAborted();
+      if (sourceAutonomyBudget === null) {
+        return notFound("Source run not found");
+      }
+      const derived = childAutonomyBudget(sourceAutonomyBudget);
+      if (derived.kind === "exhausted") {
+        return autonomyBudgetExhausted();
+      }
+      autonomyBudgetLimit = derived.autonomyBudget;
+    }
     const source = await loadVisibleWorkflowById(writeDb, {
       orgId: auth.orgId,
       member,
@@ -957,6 +1002,8 @@ const copyWorkflowInner$ = command(
         sourceWorkflow: source.workflow,
         targetAgentId: targetAgent.id,
         currentTime,
+        autonomyBudgetAvailable,
+        ...(autonomyBudgetLimit === undefined ? {} : { autonomyBudgetLimit }),
       });
     });
     signal.throwIfAborted();

@@ -30,6 +30,13 @@ import {
   chatThreadModelPinColumns,
   resolveRequiredDefaultChatThreadModelPin,
 } from "./zero-chat-thread-model.service";
+import { childAutonomyBudget } from "./autonomy-budget.service";
+import {
+  autonomyBudgetSchemaAvailable,
+  insertRolloutCompatibleThreadGoal,
+  rolloutCompatibleAutonomyBudgetColumn,
+  rolloutCompatibleThreadGoalColumns,
+} from "./autonomy-budget-schema.service";
 
 export interface GoalBootstrap {
   readonly goalId: string;
@@ -47,7 +54,8 @@ export type GoalResult =
     }
   | { readonly kind: "not-found" }
   | { readonly kind: "bad-request"; readonly message: string }
-  | { readonly kind: "conflict"; readonly message: string };
+  | { readonly kind: "conflict"; readonly message: string }
+  | { readonly kind: "autonomy-budget-exhausted" };
 
 type ClearGoalResult =
   | { readonly kind: "ok"; readonly cleared: true }
@@ -69,6 +77,8 @@ interface CurrentGoalContext {
   readonly threadId: string | null;
   readonly agentId: string;
   readonly runGoalId: string | null;
+  readonly autonomyBudget: number;
+  readonly autonomyBudgetAvailable: boolean;
 }
 
 interface GoalAuth {
@@ -99,11 +109,16 @@ async function currentGoalContext(
   db: ReadonlyDb,
   auth: Pick<GoalAuth, "orgId" | "userId" | "runId">,
 ): Promise<CurrentGoalContext | null> {
+  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(db);
   const [row] = await db
     .select({
       threadId: zeroRuns.chatThreadId,
       agentId: agentSessions.agentComposeId,
       runGoalId: zeroRuns.goalId,
+      autonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
+        autonomyBudgetAvailable,
+        zeroRuns.autonomyBudget,
+      ),
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
@@ -117,7 +132,7 @@ async function currentGoalContext(
     )
     .limit(1);
 
-  return row ?? null;
+  return row ? { ...row, autonomyBudgetAvailable } : null;
 }
 
 async function loadGoalForThread(
@@ -125,7 +140,7 @@ async function loadGoalForThread(
   args: { readonly orgId: string; readonly threadId: string },
 ): Promise<GoalRow | null> {
   const [row] = await db
-    .select()
+    .select(rolloutCompatibleThreadGoalColumns(false))
     .from(threadGoals)
     .where(
       and(
@@ -155,7 +170,7 @@ async function loadOwnedGoalForThread(
   },
 ): Promise<GoalRow | null> {
   const [row] = await db
-    .select()
+    .select(rolloutCompatibleThreadGoalColumns(false))
     .from(threadGoals)
     .where(
       and(
@@ -178,12 +193,14 @@ async function insertGoal(
     readonly chatThreadId: string;
     readonly objective: string;
     readonly objectiveBrief: string;
+    readonly autonomyBudget: number;
+    readonly autonomyBudgetAvailable: boolean;
     readonly createdAt: Date;
   },
 ): Promise<GoalRow> {
-  const [goal] = await tx
-    .insert(threadGoals)
-    .values({
+  const goal = await insertRolloutCompatibleThreadGoal(
+    tx,
+    {
       orgId: args.orgId,
       ownerUserId: args.ownerUserId,
       agentId: args.agentId,
@@ -191,10 +208,12 @@ async function insertGoal(
       status: "active",
       objective: args.objective,
       objectiveBrief: args.objectiveBrief,
+      autonomyBudget: args.autonomyBudget,
       createdAt: args.createdAt,
       updatedAt: args.createdAt,
-    })
-    .returning();
+    },
+    args.autonomyBudgetAvailable,
+  );
   if (!goal) {
     throw new Error("Failed to create thread goal");
   }
@@ -255,9 +274,46 @@ async function setGoalStatus(
     .update(threadGoals)
     .set({ status: args.status, updatedAt: args.updatedAt })
     .where(eq(threadGoals.id, args.goalId))
-    .returning();
+    .returning(rolloutCompatibleThreadGoalColumns(false));
   if (!goal) {
     throw new Error("Failed to update thread goal");
+  }
+  return goal;
+}
+
+async function reactivateGoal(
+  tx: Pick<Db, "update">,
+  args: {
+    readonly goal: GoalRow;
+    readonly autonomyBudgetCeiling: number;
+    readonly autonomyBudgetAvailable: boolean;
+    readonly objective?: string;
+    readonly objectiveBrief?: string;
+    readonly updatedAt: Date;
+  },
+): Promise<GoalRow> {
+  const [goal] = await tx
+    .update(threadGoals)
+    .set({
+      status: "active",
+      updatedAt: args.updatedAt,
+      ...(args.objective === undefined ? {} : { objective: args.objective }),
+      ...(args.objectiveBrief === undefined
+        ? {}
+        : { objectiveBrief: args.objectiveBrief }),
+      ...(args.autonomyBudgetAvailable
+        ? {
+            autonomyBudget: Math.min(
+              args.goal.autonomyBudget,
+              args.autonomyBudgetCeiling,
+            ),
+          }
+        : {}),
+    })
+    .where(eq(threadGoals.id, args.goal.id))
+    .returning(rolloutCompatibleThreadGoalColumns(false));
+  if (!goal) {
+    throw new Error("Failed to reactivate thread goal");
   }
   return goal;
 }
@@ -301,6 +357,11 @@ export async function createGoalForCurrentThread(
     };
   }
 
+  const derivedBudget = childAutonomyBudget(context.autonomyBudget);
+  if (derivedBudget.kind === "exhausted") {
+    return { kind: "autonomy-budget-exhausted" };
+  }
+
   const createdAt = nowDate();
   const objectiveBrief = await generateGoalObjectiveBrief(args.objective);
   const isNewThread = context.threadId === null;
@@ -336,6 +397,8 @@ export async function createGoalForCurrentThread(
       chatThreadId: threadId,
       objective: args.objective,
       objectiveBrief,
+      autonomyBudget: derivedBudget.autonomyBudget,
+      autonomyBudgetAvailable: context.autonomyBudgetAvailable,
       createdAt,
     });
     await appendGoalEventMarker(tx, {
@@ -581,6 +644,11 @@ export async function resumeCurrentGoal(
     };
   }
 
+  const reactivationBudget = childAutonomyBudget(goal.context.autonomyBudget);
+  if (reactivationBudget.kind === "exhausted") {
+    return { kind: "autonomy-budget-exhausted" };
+  }
+
   const resumedAt = nowDate();
   const updated = await db.transaction(async (tx) => {
     await lockGoalThread(tx, goal.threadId);
@@ -595,9 +663,10 @@ export async function resumeCurrentGoal(
     if (current.status === "complete") {
       return "complete" as const;
     }
-    const row = await setGoalStatus(tx, {
-      goalId: current.id,
-      status: "active",
+    const row = await reactivateGoal(tx, {
+      goal: current,
+      autonomyBudgetCeiling: reactivationBudget.autonomyBudget,
+      autonomyBudgetAvailable: goal.context.autonomyBudgetAvailable,
       updatedAt: resumedAt,
     });
     await appendGoalEventMarker(tx, {
@@ -637,6 +706,10 @@ export async function editCurrentGoal(
     return goal;
   }
 
+  const replacementBudget = childAutonomyBudget(goal.context.autonomyBudget);
+  if (replacementBudget.kind === "exhausted") {
+    return { kind: "autonomy-budget-exhausted" };
+  }
   const editedAt = nowDate();
   const objectiveBrief = await generateGoalObjectiveBrief(args.objective);
   const updated = await db.transaction(async (tx) => {
@@ -658,6 +731,8 @@ export async function editCurrentGoal(
         chatThreadId: goal.threadId,
         objective: args.objective,
         objectiveBrief,
+        autonomyBudget: replacementBudget.autonomyBudget,
+        autonomyBudgetAvailable: goal.context.autonomyBudgetAvailable,
         createdAt: editedAt,
       });
       await appendGoalEventMarker(tx, {
@@ -667,19 +742,14 @@ export async function editCurrentGoal(
       return replacement;
     }
 
-    const [row] = await tx
-      .update(threadGoals)
-      .set({
-        objective: args.objective,
-        objectiveBrief,
-        status: "active",
-        updatedAt: editedAt,
-      })
-      .where(eq(threadGoals.id, current.id))
-      .returning();
-    if (!row) {
-      throw new Error("Failed to edit thread goal");
-    }
+    const row = await reactivateGoal(tx, {
+      goal: current,
+      autonomyBudgetCeiling: replacementBudget.autonomyBudget,
+      autonomyBudgetAvailable: goal.context.autonomyBudgetAvailable,
+      objective: args.objective,
+      objectiveBrief,
+      updatedAt: editedAt,
+    });
     await appendGoalEventMarker(tx, {
       chatThreadId: goal.threadId,
       event: activeGoalEvent(objectiveBrief),
