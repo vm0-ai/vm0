@@ -654,6 +654,8 @@ mod tests {
     use super::*;
     use std::sync::mpsc;
 
+    const TEST_SERVER_WAIT_TIMEOUT: Duration = Duration::from_secs(1);
+
     fn response_for_query(query: &[u8], answer: Ipv4Addr) -> Vec<u8> {
         let mut response = Vec::new();
         response.extend_from_slice(query.get(..2).unwrap());
@@ -734,24 +736,44 @@ mod tests {
     #[test]
     fn endpoint_probe_accepts_controlled_local_response() {
         let server = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).unwrap();
+        server
+            .set_read_timeout(Some(TEST_SERVER_WAIT_TIMEOUT))
+            .unwrap();
         let destination = match server.local_addr().unwrap() {
             std::net::SocketAddr::V4(address) => address,
             std::net::SocketAddr::V6(_) => panic!("test server should use IPv4"),
         };
-        let server_thread = std::thread::spawn(move || {
+        let server_thread = std::thread::spawn(move || -> io::Result<()> {
             let mut query = [0_u8; DNS_RESPONSE_MAX_BYTES];
-            let (size, peer) = server.recv_from(&mut query).unwrap();
+            let (size, peer) = server.recv_from(&mut query)?;
             let response = response_for_query(&query[..size], DNS_READINESS_IPV4);
-            server.send_to(&response, peer).unwrap();
+            server.send_to(&response, peer)?;
+            Ok(())
         });
 
-        probe_dns_endpoint(destination, Duration::from_secs(1), DNS_READINESS_HOSTNAME).unwrap();
-        server_thread.join().unwrap();
+        let result = probe_dns_endpoint(
+            destination,
+            TEST_SERVER_WAIT_TIMEOUT,
+            DNS_READINESS_HOSTNAME,
+        );
+        let server_result = server_thread.join().unwrap_or_else(|_| {
+            panic!("controlled-response DNS test server at {destination} panicked")
+        });
+
+        server_result.unwrap_or_else(|error| {
+            panic!(
+                "controlled-response DNS test server at {destination} did not receive and answer a query within {TEST_SERVER_WAIT_TIMEOUT:?}: {error}"
+            )
+        });
+        result.unwrap();
     }
 
     #[test]
     fn endpoint_probe_times_out_without_response() {
         let server = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)).unwrap();
+        server
+            .set_read_timeout(Some(TEST_SERVER_WAIT_TIMEOUT))
+            .unwrap();
         let destination = match server.local_addr().unwrap() {
             std::net::SocketAddr::V4(address) => address,
             std::net::SocketAddr::V6(_) => panic!("test server should use IPv4"),
@@ -760,9 +782,12 @@ mod tests {
         let (release_tx, release_rx) = mpsc::channel();
         let server_thread = std::thread::spawn(move || {
             let mut query = [0_u8; DNS_RESPONSE_MAX_BYTES];
-            server.recv_from(&mut query).unwrap();
-            received_tx.send(()).unwrap();
-            release_rx.recv().unwrap();
+            let received = server.recv_from(&mut query);
+            if received.is_ok() {
+                let _ = received_tx.send(());
+                let _ = release_rx.recv_timeout(TEST_SERVER_WAIT_TIMEOUT);
+            }
+            received.map(|_| ())
         });
 
         let result = probe_dns_endpoint(
@@ -771,10 +796,20 @@ mod tests {
             DNS_READINESS_HOSTNAME,
         );
 
-        let received = received_rx.recv_timeout(Duration::from_secs(1));
-        release_tx.send(()).unwrap();
-        server_thread.join().unwrap();
-        received.unwrap();
+        let received = received_rx.recv_timeout(TEST_SERVER_WAIT_TIMEOUT);
+        let _ = release_tx.send(());
+        let server_result = server_thread
+            .join()
+            .unwrap_or_else(|_| panic!("no-response DNS test server at {destination} panicked"));
+
+        if let Err(error) = received {
+            panic!(
+                "no-response DNS test server at {destination} did not observe a query within {TEST_SERVER_WAIT_TIMEOUT:?}: observation={error}; server={server_result:?}"
+            );
+        }
+        server_result.unwrap_or_else(|error| {
+            panic!("no-response DNS test server at {destination} failed: {error}")
+        });
         let error = result.unwrap_err();
         assert_eq!(error.stage_name(), DnsReadinessStage::Timeout);
     }

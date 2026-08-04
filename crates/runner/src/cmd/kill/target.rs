@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use sandbox::SandboxControlTarget;
+
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 use crate::process::{
@@ -53,6 +55,15 @@ impl From<&FirecrackerProcessInfo> for KillTarget {
             base_dir: process.base_dir.clone(),
             identity: process.identity.clone(),
         }
+    }
+}
+
+impl KillTarget {
+    pub(super) fn control_target(&self) -> SandboxControlTarget {
+        self.run_id.as_ref().map_or_else(
+            || SandboxControlTarget::sandbox(&self.sandbox_id),
+            |run_id| SandboxControlTarget::run(run_id, &self.sandbox_id),
+        )
     }
 }
 

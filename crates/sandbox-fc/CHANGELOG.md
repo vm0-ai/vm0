@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.175](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.174...sandbox-fc-v0.37.175) (2026-08-04)
+
+
+### Bug Fixes
+
+* **runner:** guard run controls across sandbox reuse ([#24849](https://github.com/vm0-ai/vm0/issues/24849)) ([bb1d90c](https://github.com/vm0-ai/vm0/commit/bb1d90c15df373b43a8653dcd85f9a47e3fb6042))
+
 ## [0.37.174](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.173...sandbox-fc-v0.37.174) (2026-08-03)
 
 

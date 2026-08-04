@@ -218,16 +218,22 @@ pub(in crate::exec_operation) async fn write_exec_start_frame(
     payload: &[u8],
     diagnostic: &ExecOperationDiagnostic,
     tracks_normal_operation: bool,
+    write_admission: FrameWriteObserver,
     write_observer: FrameWriteObserver,
 ) -> io::Result<()> {
-    write_frame(
+    write_frame_with_pre_write(
         shared,
         MSG_EXEC_START,
         seq,
         payload,
         Some(diagnostic.frame("start")),
-        tracks_normal_operation.then_some(seq),
-        write_observer,
+        || {
+            write_admission.record_write_start()?;
+            if tracks_normal_operation {
+                mark_exec_operation_possible_guest_write(shared, seq)?;
+            }
+            write_observer.record_write_start()
+        },
     )
     .await
 }

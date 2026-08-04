@@ -21,8 +21,12 @@ import {
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
 } from "../zero-page/user-message-document-codec.ts";
-import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
-import { createOptimisticChatEventsForThread } from "./optimistic-chat-events.ts";
+import {
+  createChatThreadComposerSignals,
+  createChatThreadSignals,
+  ensureDraft$,
+} from "./create-chat-thread.ts";
+import { createChatEventSignals } from "./chat-event-signals.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import {
   currentLeftThread$,
@@ -32,6 +36,7 @@ import {
 } from "./chat-thread-pane-state.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
+import { createChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 
 export const SIDEBAR_PARAM = "sidebar";
 export { currentLeftThread$, currentRightThread$ };
@@ -210,16 +215,28 @@ const setupPaneThread$ = command(
 
     const { draft, isNew } = set(ensureDraft$, threadId);
     const dataSource = createRemoteChatThreadDataSource(threadId);
-    const initialOptimisticEntries = get(
-      createOptimisticChatEventsForThread(threadId),
-    );
     const features = get(featureSwitch$);
     const inlineTemplatesEnabled =
       features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
-    const thread = createChatThreadSignals(threadId, draft, dataSource, {
-      initialOptimisticEntries,
+    const chatEvents = createChatEventSignals(threadId);
+    const feedback = createChatThreadFeedbackSignals(threadId);
+    const threadSignals = createChatThreadSignals(
+      threadId,
+      draft,
+      dataSource,
+      chatEvents,
+      {
+        feedback: feedback.signals,
+      },
+    );
+    const composer = createChatThreadComposerSignals({
+      thread: threadSignals,
+      chatEvents,
+      feedbackModel: feedback.composer,
       inlineTemplatesEnabled,
+      cancellationRecoveryPending$: dataSource.cancellationRecoveryPending$,
     });
+    const thread: ChatThreadSignals = { ...threadSignals, composer };
     set(spec.setPaneThread$, thread);
 
     await set(

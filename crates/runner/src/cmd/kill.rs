@@ -36,6 +36,9 @@ use target::{
     rediscover_same_target,
 };
 
+const RUN_ORPHAN_FALLBACK_REFUSAL: &str =
+    "run target can no longer be verified; use --sandbox for explicit orphan cleanup";
+
 #[derive(Args)]
 #[command(group = clap::ArgGroup::new("target").required(true))]
 pub struct KillArgs {
@@ -70,16 +73,18 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
         Ok(current) => current,
         Err(error) => {
             if error.allows_disappeared_orphan_cleanup() {
+                if should_refuse_orphan_fallback(initial.target.run_id.as_deref()) {
+                    println!(
+                        "Refused to kill sandbox {} (PID {}) - {RUN_ORPHAN_FALLBACK_REFUSAL}",
+                        initial.target.sandbox_id, initial.target.pid
+                    );
+                    return Ok(ExitCode::FAILURE);
+                }
                 if let Ok(refreshed) = rediscover_same_sandbox_process(&initial.target).await
                     && process::is_orphan(refreshed.target.pid, &refreshed.runner_pids).await
                 {
-                    let outcome = if should_refuse_run_orphan_fallback(&args, is_initial_orphan) {
-                        KillOutcome::RefusedTargetChanged(
-                            "run target is no longer active; refusing orphan fallback for an initially managed sandbox".into(),
-                        )
-                    } else {
-                        kill_current_target(refreshed.target.clone(), true, control).await
-                    };
+                    let outcome =
+                        kill_current_target(refreshed.target.clone(), true, control).await;
                     let exit_code =
                         finish_kill_outcome(&initial.target, &refreshed.target, &outcome, control)
                             .await;
@@ -164,8 +169,8 @@ impl From<OrphanOutcome> for KillOutcome {
     }
 }
 
-fn should_refuse_run_orphan_fallback(args: &KillArgs, is_initial_orphan: bool) -> bool {
-    args.run.is_some() && !is_initial_orphan
+fn should_refuse_orphan_fallback(run_id: Option<&str>) -> bool {
+    run_id.is_some()
 }
 
 async fn kill_current_target(
@@ -173,7 +178,7 @@ async fn kill_current_target(
     is_orphan: bool,
     control: &dyn SandboxControl,
 ) -> KillOutcome {
-    match control.kill_remote(&current.sandbox_id).await {
+    match control.kill_remote(current.control_target()).await {
         Ok(RemoteKillResult::RefusedIdle) => KillOutcome::RefusedManagedIdle,
         Ok(result) => KillOutcome::OwnerAccepted(result),
         Err(error) => retry_as_orphan_if_owner_disappeared(&current, error, is_orphan).await,
@@ -188,6 +193,9 @@ async fn retry_as_orphan_if_owner_disappeared(
     let refreshed = match rediscover_same_sandbox_process(expected).await {
         Ok(refreshed) => refreshed,
         Err(error) => {
+            if should_refuse_orphan_fallback(expected.run_id.as_deref()) {
+                return KillOutcome::RefusedTargetChanged(RUN_ORPHAN_FALLBACK_REFUSAL.into());
+            }
             if was_orphan && error.allows_disappeared_orphan_cleanup() {
                 let outcome = orphan::confirmed_disappeared_outcome(expected, was_orphan)
                     .await
@@ -199,6 +207,9 @@ async fn retry_as_orphan_if_owner_disappeared(
     };
     if !process::is_orphan(refreshed.target.pid, &refreshed.runner_pids).await {
         return KillOutcome::RefusedManagedControlFailed(owner_error.to_string());
+    }
+    if should_refuse_orphan_fallback(expected.run_id.as_deref()) {
+        return KillOutcome::RefusedTargetChanged(RUN_ORPHAN_FALLBACK_REFUSAL.into());
     }
 
     KillOutcome::from(orphan::terminate(&refreshed.target).await)
@@ -404,6 +415,7 @@ async fn confirm() -> bool {
 mod tests {
     use std::path::Path;
 
+    use sandbox::SandboxControlTarget;
     use sandbox_mock::MockSandboxControl;
 
     use super::test_support::make_target;
@@ -417,36 +429,13 @@ mod tests {
     }
 
     #[test]
-    fn run_fallback_refuses_initially_managed_target() {
-        let args = KillArgs {
-            run: Some("run".into()),
-            sandbox: None,
-            force: true,
-        };
-
-        assert!(should_refuse_run_orphan_fallback(&args, false));
+    fn run_scoped_target_refuses_orphan_fallback() {
+        assert!(should_refuse_orphan_fallback(Some("run-full-id")));
     }
 
     #[test]
-    fn run_fallback_allows_initial_orphan_target() {
-        let args = KillArgs {
-            run: Some("run".into()),
-            sandbox: None,
-            force: true,
-        };
-
-        assert!(!should_refuse_run_orphan_fallback(&args, true));
-    }
-
-    #[test]
-    fn sandbox_fallback_allows_initially_managed_target() {
-        let args = KillArgs {
-            run: None,
-            sandbox: Some("sbox".into()),
-            force: true,
-        };
-
-        assert!(!should_refuse_run_orphan_fallback(&args, false));
+    fn sandbox_scoped_target_allows_orphan_fallback() {
+        assert!(!should_refuse_orphan_fallback(None));
     }
 
     #[tokio::test]
@@ -460,7 +449,28 @@ mod tests {
             outcome,
             KillOutcome::OwnerAccepted(RemoteKillResult::Accepted)
         ));
-        assert_eq!(control.recorded_kill_ids(), vec!["sbox-123"]);
+        assert_eq!(
+            control.recorded_kill_targets(),
+            vec![SandboxControlTarget::sandbox("sbox-123")]
+        );
+    }
+
+    #[tokio::test]
+    async fn managed_run_target_preserves_full_run_identity() {
+        let control = MockSandboxControl::new("/tmp/test");
+        let mut current = make_target(200, "sbox-123");
+        current.run_id = Some("run-full-id".into());
+
+        let outcome = kill_current_target(current, false, &control).await;
+
+        assert!(matches!(
+            outcome,
+            KillOutcome::OwnerAccepted(RemoteKillResult::Accepted)
+        ));
+        assert_eq!(
+            control.recorded_kill_targets(),
+            vec![SandboxControlTarget::run("run-full-id", "sbox-123")]
+        );
     }
 
     #[tokio::test]
@@ -472,7 +482,10 @@ mod tests {
         let outcome = kill_current_target(current, false, &control).await;
 
         assert!(matches!(outcome, KillOutcome::RefusedManagedIdle));
-        assert_eq!(control.recorded_kill_ids(), vec!["sbox-123"]);
+        assert_eq!(
+            control.recorded_kill_targets(),
+            vec![SandboxControlTarget::sandbox("sbox-123")]
+        );
     }
 
     #[tokio::test]
@@ -486,7 +499,10 @@ mod tests {
             outcome,
             KillOutcome::OwnerAccepted(RemoteKillResult::Accepted)
         ));
-        assert_eq!(control.recorded_kill_ids(), vec!["sbox-123"]);
+        assert_eq!(
+            control.recorded_kill_targets(),
+            vec![SandboxControlTarget::sandbox("sbox-123")]
+        );
     }
 
     #[tokio::test]

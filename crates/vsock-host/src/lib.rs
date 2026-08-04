@@ -350,6 +350,26 @@ impl VsockHost {
         exec_operation::exec_operation_capture_on_shared(&self.shared, request).await
     }
 
+    /// Run a capture-only exec operation with a synchronous admission check at
+    /// the first guest-write boundary.
+    ///
+    /// The normal-operation token is reserved before the admission check runs.
+    /// If the check rejects the request, no frame bytes are written and the
+    /// unused reservation is released without making the connection
+    /// unparkable.
+    pub async fn exec_operation_capture_with_write_admission(
+        &self,
+        request: ExecCaptureRequest<'_>,
+        write_admission: FrameWriteObserver,
+    ) -> io::Result<ExecOperationResult> {
+        exec_operation::exec_operation_capture_on_shared_with_write_admission(
+            &self.shared,
+            request,
+            write_admission,
+        )
+        .await
+    }
+
     /// Atomically reserve one final normal operation and fence every competing
     /// normal operation while running a capture exec.
     ///

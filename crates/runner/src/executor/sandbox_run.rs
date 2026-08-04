@@ -1017,6 +1017,12 @@ async fn create_started_sandbox(
         }
     };
 
+    if let Err(error) = sandbox.bind_run_control(&context.run_id.to_string()) {
+        telemetry.record("vm_create", t.elapsed(), false, Some(&error.to_string()));
+        let _ = destroy_sandbox_panic_safe(factory, sandbox).await;
+        return Err(SandboxPrepareError::fatal(error.into()));
+    }
+
     let source_ip = sandbox.source_ip().to_string();
     let proxy_register_started = Instant::now();
     let network_log_session = match register_proxy(config, context, &source_ip).await {

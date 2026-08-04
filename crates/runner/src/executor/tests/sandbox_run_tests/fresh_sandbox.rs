@@ -70,6 +70,27 @@ async fn execute_inner_happy_path() {
 }
 
 #[tokio::test]
+async fn execute_inner_binds_run_control_before_sandbox_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let context = minimal_context();
+    let run_id = context.run_id.to_string();
+
+    let (exit_code, error_msg) =
+        run_new_sandbox_status(&factory, &context, &config, &default_params())
+            .await
+            .unwrap();
+
+    assert_eq!(exit_code, 0);
+    assert!(error_msg.is_none());
+    assert_eq!(overrides.run_control_bind_calls(), vec![run_id.clone()]);
+    assert_eq!(overrides.start_run_control_ids(), vec![Some(run_id)]);
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
 async fn execute_inner_carries_early_codex_catalog_prefetch_into_agent_run() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

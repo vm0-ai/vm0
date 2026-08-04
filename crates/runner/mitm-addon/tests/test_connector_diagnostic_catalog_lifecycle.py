@@ -1,6 +1,7 @@
 """Integration tests for server-catalog connector diagnostic lifecycles."""
 
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -8,10 +9,10 @@ from mitmproxy.flow import Error
 from mitmproxy.test import tutils
 
 import builtin_connector_diagnostics
-import builtin_firewall_cache
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_classification
+import state_file
 from tests.connector_diagnostic_helpers import (
     record_connector_diagnostic_requestheaders_context,
     write_connector_diagnostic_catalog_cache,
@@ -235,7 +236,12 @@ async def test_repeated_preferred_catalog_does_not_reopen_cache(
     registry_path = _builtin_shared_registry(tmp_path)
     first_flow = _flow(real_flow, host="unmatched.example.com")
     second_flow = _flow(real_flow, host="unmatched.example.com")
-    original_open_cache_for_read = builtin_firewall_cache._open_cache_for_read
+    original_os_open = state_file.os.open
+    opened_paths: list[Path] = []
+
+    def record_open(path: Path, flags: int) -> int:
+        opened_paths.append(path)
+        return original_os_open(path, flags)
 
     with (
         mitm_ctx(
@@ -243,10 +249,10 @@ async def test_repeated_preferred_catalog_does_not_reopen_cache(
             builtin_firewall_catalog_cache_path=str(cache_path),
         ),
         patch.object(
-            builtin_firewall_cache,
-            "_open_cache_for_read",
-            wraps=original_open_cache_for_read,
-        ) as open_cache_for_read,
+            state_file.os,
+            "open",
+            side_effect=record_open,
+        ),
     ):
         await mitm_addon.request(first_flow)
         await mitm_addon.request(second_flow)
@@ -259,7 +265,7 @@ async def test_repeated_preferred_catalog_does_not_reopen_cache(
     ]
     assert first_flow.response is None
     assert second_flow.response is None
-    assert open_cache_for_read.call_count == 1
+    assert opened_paths.count(cache_path) == 1
     assert len(pinned_snapshots) == 2
     assert pinned_snapshots[0] is pinned_snapshots[1]
     assert pinned_snapshots[0].catalog_identity is not None

@@ -23,6 +23,7 @@ pub(crate) use dispatch::dispatch_incoming_frame;
 pub(crate) use handle::ExecOperationCancelOnDropGuard;
 pub(crate) use start::{
     append_diagnostic, exec_operation_capture_on_shared,
+    exec_operation_capture_on_shared_with_write_admission,
     exec_operation_capture_on_shared_with_write_observer,
     exec_operation_capture_with_composite_on_shared_and_observer,
     exec_operation_cleanup_untracked_on_shared_with_write_observer,

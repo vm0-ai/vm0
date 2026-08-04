@@ -111,6 +111,7 @@ fn empty_guest() -> GuestState {
 
 fn exec_request(command: &str) -> ExecRequest {
     ExecRequest {
+        expected_run_id: None,
         command: command.into(),
         timeout_secs: 5,
         sudo: false,
@@ -363,6 +364,7 @@ async fn client_server_terminate_accepted() {
         async move {
             let request = TerminateRequest {
                 action: TerminateAction::Terminate,
+                expected_run_id: None,
             };
             send_terminate(&sock_path, &request, Duration::from_secs(5)).await
         }
@@ -391,6 +393,7 @@ async fn client_server_terminate_already_stopped() {
 
     let request = TerminateRequest {
         action: TerminateAction::Terminate,
+        expected_run_id: None,
     };
     let response = send_terminate(&fixture.sock_path, &request, Duration::from_secs(5))
         .await
@@ -420,6 +423,7 @@ async fn client_server_terminate_refuses_idle_sandbox() {
 
     let request = TerminateRequest {
         action: TerminateAction::Terminate,
+        expected_run_id: None,
     };
     let response = send_terminate(&fixture.sock_path, &request, Duration::from_secs(5))
         .await
@@ -440,6 +444,67 @@ async fn client_server_terminate_refuses_idle_sandbox() {
 }
 
 #[tokio::test]
+async fn stale_run_terminate_is_rejected_after_sandbox_reassignment() {
+    let fixture = ControlServerFixture::new();
+    let coordinator = ParkCoordinator::new();
+    coordinator.bind_run_control("run-a").unwrap();
+    let attempt = coordinator.begin_prepare_park().unwrap();
+    coordinator
+        .complete_prepare_park(&attempt, PrepareParkEvidence::AgentQuiesced)
+        .unwrap();
+    coordinator.mark_parked(&attempt).unwrap();
+    coordinator.bind_run_control("run-b").unwrap();
+    coordinator.reopen_after_unpark().unwrap();
+
+    let (kill_tx, mut kill_rx) = mpsc::channel(1);
+    let termination = ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
+    let mut handle = fixture
+        .bind_with_termination(termination)
+        .unwrap()
+        .spawn(CancellationToken::new());
+
+    let stale_request = TerminateRequest {
+        action: TerminateAction::Terminate,
+        expected_run_id: Some("run-a".into()),
+    };
+    let stale_response = send_terminate(&fixture.sock_path, &stale_request, Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        stale_response,
+        TerminateResponse::Error {
+            error: RUN_CONTROL_MISMATCH_ERROR.into()
+        }
+    );
+    assert!(matches!(
+        kill_rx.try_recv(),
+        Err(mpsc::error::TryRecvError::Empty)
+    ));
+    assert_eq!(coordinator.state(), CoordinatorState::Open);
+
+    let matching_client = tokio::spawn({
+        let sock_path = fixture.sock_path.clone();
+        async move {
+            let request = TerminateRequest {
+                action: TerminateAction::Terminate,
+                expected_run_id: Some("run-b".into()),
+            };
+            send_terminate(&sock_path, &request, Duration::from_secs(5)).await
+        }
+    });
+    recv_termination_request(&mut kill_rx).await.acknowledge();
+    assert_eq!(
+        matching_client.await.unwrap().unwrap(),
+        TerminateResponse::Status {
+            status: TerminateStatus::Accepted
+        }
+    );
+
+    handle.shutdown().await;
+}
+
+#[tokio::test]
 async fn terminate_response_survives_shutdown_after_request_is_queued() {
     let fixture = ControlServerFixture::new();
     let (kill_tx, mut kill_rx) = mpsc::channel(1);
@@ -454,6 +519,7 @@ async fn terminate_response_survives_shutdown_after_request_is_queued() {
         async move {
             let request = TerminateRequest {
                 action: TerminateAction::Terminate,
+                expected_run_id: None,
             };
             send_terminate(&sock_path, &request, Duration::from_secs(5)).await
         }
@@ -482,7 +548,7 @@ async fn termination_handle_waits_behind_full_channel() {
         .try_send(ProcessTerminationRequest::fire_and_forget())
         .unwrap();
     let termination = ProcessTerminationHandle::new(kill_tx);
-    let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
+    let terminate_task = tokio::spawn(async move { termination.request_terminate(None).await });
 
     let queued_request = recv_termination_request(&mut kill_rx).await;
 
@@ -491,20 +557,20 @@ async fn termination_handle_waits_behind_full_channel() {
     let request = recv_termination_request(&mut kill_rx).await;
     assert!(!terminate_task.is_finished());
     request.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
+    assert_eq!(terminate_task.await.unwrap(), Ok(TerminateStatus::Accepted));
 }
 
 #[tokio::test]
 async fn termination_handle_waits_for_monitor_ack_before_accepting() {
     let (kill_tx, mut kill_rx) = mpsc::channel(1);
     let termination = ProcessTerminationHandle::new(kill_tx);
-    let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
+    let terminate_task = tokio::spawn(async move { termination.request_terminate(None).await });
 
     let request = recv_termination_request(&mut kill_rx).await;
 
     assert!(!terminate_task.is_finished());
     request.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
+    assert_eq!(terminate_task.await.unwrap(), Ok(TerminateStatus::Accepted));
 }
 
 #[tokio::test]
@@ -512,14 +578,14 @@ async fn termination_handle_blocks_future_park_before_queueing_kill() {
     let (kill_tx, mut kill_rx) = mpsc::channel(1);
     let coordinator = ParkCoordinator::new();
     let termination = ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
-    let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
+    let terminate_task = tokio::spawn(async move { termination.request_terminate(None).await });
 
     let request = recv_termination_request(&mut kill_rx).await;
     assert_eq!(coordinator.state(), CoordinatorState::Terminating);
     assert!(coordinator.begin_prepare_park().is_err());
     assert!(!terminate_task.is_finished());
     request.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
+    assert_eq!(terminate_task.await.unwrap(), Ok(TerminateStatus::Accepted));
 }
 
 #[tokio::test]
@@ -528,10 +594,10 @@ async fn termination_handle_accepts_dirty_policy() {
     let coordinator = ParkCoordinator::new();
     coordinator.mark_dirty(DirtyReason::new("transport failed"));
     let termination = ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
-    let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
+    let terminate_task = tokio::spawn(async move { termination.request_terminate(None).await });
 
     recv_termination_request(&mut kill_rx).await.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
+    assert_eq!(terminate_task.await.unwrap(), Ok(TerminateStatus::Accepted));
     assert_eq!(coordinator.state(), CoordinatorState::Terminating);
 }
 
@@ -540,10 +606,10 @@ async fn termination_handle_accepts_ready_for_park_policy() {
     let (kill_tx, mut kill_rx) = mpsc::channel(1);
     let coordinator = ready_for_park_coordinator();
     let termination = ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
-    let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
+    let terminate_task = tokio::spawn(async move { termination.request_terminate(None).await });
 
     recv_termination_request(&mut kill_rx).await.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
+    assert_eq!(terminate_task.await.unwrap(), Ok(TerminateStatus::Accepted));
     assert_eq!(coordinator.state(), CoordinatorState::Terminating);
 }
 
@@ -554,8 +620,8 @@ async fn termination_handle_refuses_when_parked_without_queueing() {
         ProcessTerminationHandle::with_park_coordinator(kill_tx, parked_coordinator());
 
     assert_eq!(
-        termination.request_terminate().await,
-        TerminateStatus::RefusedIdle
+        termination.request_terminate(None).await,
+        Ok(TerminateStatus::RefusedIdle)
     );
     assert_eq!(kill_rx.len(), 0);
 }
@@ -658,6 +724,7 @@ async fn control_server_shutdown_cancels_in_flight_vsock_exec() {
         let sock_path = fixture.sock_path.clone();
         async move {
             let request = ExecRequest {
+                expected_run_id: None,
                 command: "sleep 30".into(),
                 timeout_secs: 30,
                 sudo: false,
@@ -736,6 +803,7 @@ async fn control_exec_rejects_zero_timeout_without_guest_exec() {
             .await;
     let mut handle = fixture.spawn_server();
     let request = ExecRequest {
+        expected_run_id: None,
         command: "echo should-not-run".into(),
         timeout_secs: 0,
         sudo: false,
@@ -790,6 +858,62 @@ async fn control_exec_terminal_guest_error_completes_vsock_operation() {
         .begin_prepare_park()
         .expect("terminal guest error should leave park policy open");
     fixture.coordinator.abort_prepare_park(&attempt).unwrap();
+
+    handle.shutdown().await;
+    fixture.guest_task.abort();
+    let _ = fixture.guest_task.await;
+}
+
+#[tokio::test]
+async fn stale_run_exec_is_rejected_after_sandbox_reassignment() {
+    let fixture = VsockExecFixture::connect(|vsock_base| {
+        mock_guest_errors_exec(vsock_base, "matching run reached guest")
+    })
+    .await;
+    fixture.coordinator.bind_run_control("run-a").unwrap();
+    let attempt = fixture.coordinator.begin_prepare_park().unwrap();
+    let normal_operations_fence = fixture.vsock.try_fence_normal_operations().unwrap();
+    fixture
+        .coordinator
+        .complete_prepare_park(&attempt, PrepareParkEvidence::AgentQuiesced)
+        .unwrap();
+    fixture.coordinator.mark_parked(&attempt).unwrap();
+    fixture.coordinator.bind_run_control("run-b").unwrap();
+    drop(normal_operations_fence);
+    fixture.coordinator.reopen_after_unpark().unwrap();
+    let mut handle = fixture.spawn_server();
+
+    let mut stale_request = exec_request("must-not-reach-guest");
+    stale_request.expected_run_id = Some("run-a".into());
+    let stale_response = send_exec(&fixture.sock_path, &stale_request, Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    match stale_response {
+        ExecResponse::Error { error } => {
+            assert_eq!(error, format!("exec failed: {RUN_CONTROL_MISMATCH_ERROR}"));
+            assert!(!error.contains("run-b"));
+        }
+        ExecResponse::Success { .. } => panic!("stale run exec should fail closed"),
+    }
+    assert_eq!(fixture.coordinator.state(), CoordinatorState::Open);
+    assert!(fixture.vsock.try_fence_normal_operations().is_ok());
+
+    let mut matching_request = exec_request("reach-current-run");
+    matching_request.expected_run_id = Some("run-b".into());
+    let matching_response = send_exec(
+        &fixture.sock_path,
+        &matching_request,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    match matching_response {
+        ExecResponse::Error { error } => {
+            assert!(error.contains("matching run reached guest"), "{error}");
+        }
+        ExecResponse::Success { .. } => panic!("mock guest should reject exec"),
+    }
 
     handle.shutdown().await;
     fixture.guest_task.abort();

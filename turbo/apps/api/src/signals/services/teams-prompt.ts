@@ -1,6 +1,11 @@
 import type { ChatTeamsMessageFile } from "@vm0/db/jsonb-contracts/chat-teams-context";
 
-export function formatTeamsFileForContext(file: ChatTeamsMessageFile): string {
+type TeamsPromptFile = Pick<
+  ChatTeamsMessageFile,
+  "fileId" | "sourceId" | "name" | "contentType"
+>;
+
+export function formatTeamsFileForContext(file: TeamsPromptFile): string {
   return [
     `[Teams file] ${file.name} (${file.contentType})`,
     ...(file.sourceId ? [`   [Teams attachment ID] ${file.sourceId}`] : []),
@@ -10,7 +15,7 @@ export function formatTeamsFileForContext(file: ChatTeamsMessageFile): string {
 
 export function appendTeamsFilesToPrompt(
   prompt: string,
-  files: readonly ChatTeamsMessageFile[],
+  files: readonly TeamsPromptFile[],
 ): string {
   if (files.length === 0) {
     return prompt;

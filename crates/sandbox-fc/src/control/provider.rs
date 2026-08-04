@@ -5,7 +5,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use sandbox::{RemoteExecResult, RemoteKillResult, SandboxControl, SandboxControlError};
+use sandbox::{
+    RemoteExecResult, RemoteKillResult, SandboxControl, SandboxControlError, SandboxControlTarget,
+};
 
 use super::CONTROL_SOCKET_OVERHEAD_MS;
 use super::client::{send_exec, send_terminate};
@@ -25,11 +27,12 @@ pub struct FirecrackerControl;
 impl SandboxControl for FirecrackerControl {
     async fn exec_remote(
         &self,
-        sandbox_id: &str,
+        target: SandboxControlTarget,
         command: &str,
         timeout: Duration,
         sudo: bool,
     ) -> Result<RemoteExecResult, SandboxControlError> {
+        let sandbox_id = target.sandbox_id();
         if sandbox_id.is_empty() {
             return Err(SandboxControlError::NotFound(
                 "sandbox id must not be empty".into(),
@@ -40,6 +43,7 @@ impl SandboxControl for FirecrackerControl {
 
         let timeout_secs = request_timeout_secs(timeout);
         let request = ExecRequest {
+            expected_run_id: target.expected_run_id().map(str::to_owned),
             command: command.to_owned(),
             timeout_secs,
             sudo,
@@ -59,7 +63,11 @@ impl SandboxControl for FirecrackerControl {
         remote_exec_result_from_response(response)
     }
 
-    async fn kill_remote(&self, sandbox_id: &str) -> Result<RemoteKillResult, SandboxControlError> {
+    async fn kill_remote(
+        &self,
+        target: SandboxControlTarget,
+    ) -> Result<RemoteKillResult, SandboxControlError> {
+        let sandbox_id = target.sandbox_id();
         if sandbox_id.is_empty() {
             return Err(SandboxControlError::NotFound(
                 "sandbox id must not be empty".into(),
@@ -69,6 +77,7 @@ impl SandboxControl for FirecrackerControl {
         let sock_path = resolve_control_socket(sandbox_id)?;
         let request = TerminateRequest {
             action: TerminateAction::Terminate,
+            expected_run_id: target.expected_run_id().map(str::to_owned),
         };
 
         let response = send_terminate(&sock_path, &request, Duration::from_secs(5))
@@ -217,7 +226,12 @@ mod tests {
     async fn exec_remote_empty_id() {
         let control = FirecrackerControl;
         let result = control
-            .exec_remote("", "echo hi", Duration::from_secs(5), false)
+            .exec_remote(
+                SandboxControlTarget::sandbox(""),
+                "echo hi",
+                Duration::from_secs(5),
+                false,
+            )
             .await;
         let Err(e) = result else {
             panic!("expected error");
@@ -228,7 +242,7 @@ mod tests {
     #[tokio::test]
     async fn kill_remote_empty_id() {
         let control = FirecrackerControl;
-        let result = control.kill_remote("").await;
+        let result = control.kill_remote(SandboxControlTarget::sandbox("")).await;
         let Err(e) = result else {
             panic!("expected error");
         };

@@ -1052,7 +1052,9 @@ mod tests {
             .await
             .take("sess-restore-plan")
             .expect("parked sandbox should be in idle pool");
-        let IdleUnparkResult::Reused { sandbox, .. } = entry.try_unpark().await else {
+        let IdleUnparkResult::Reused { sandbox, .. } =
+            entry.try_unpark_for_run(RunId::new_v4()).await
+        else {
             panic!("parked sandbox should unpark");
         };
         assert_eq!(sandbox.restored_session_identity(), Some(&identity));
@@ -1096,7 +1098,9 @@ mod tests {
             .await
             .take(session_id)
             .expect("parked sandbox should be in idle pool");
-        let IdleUnparkResult::Reused { sandbox, .. } = entry.try_unpark().await else {
+        let IdleUnparkResult::Reused { sandbox, .. } =
+            entry.try_unpark_for_run(RunId::new_v4()).await
+        else {
             panic!("parked sandbox should unpark");
         };
         assert!(sandbox.restored_session_identity().is_none());
