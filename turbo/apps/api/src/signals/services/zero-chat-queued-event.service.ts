@@ -61,6 +61,10 @@ import {
   INITIAL_AUTONOMY_BUDGET,
   type ChildAutonomyBudget,
 } from "./autonomy-budget.service";
+import {
+  autonomyBudgetSchemaAvailable,
+  rolloutCompatibleAutonomyBudgetColumn,
+} from "./autonomy-budget-schema.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -259,6 +263,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
   if (!head || head.eventType !== "input.prompt") {
     return null;
   }
+  const schemaAvailable = await autonomyBudgetSchemaAvailable(db);
   const [event] = await db
     .select({
       id: chatEvents.id,
@@ -272,7 +277,10 @@ export async function loadNextUnclaimedQueuedUserMessage(
       selectedModel: chatThreads.selectedModel,
       triggerSource: chatEvents.triggerSource,
       contextType: chatEvents.contextType,
-      sourceAutonomyBudget: zeroRuns.autonomyBudget,
+      sourceAutonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
+        schemaAvailable,
+        zeroRuns.autonomyBudget,
+      ),
     })
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
@@ -308,7 +316,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
     return null;
   }
   const autonomyBudget: QueuedUserMessage["autonomyBudget"] =
-    event.contextType !== "agent_run"
+    !schemaAvailable || event.contextType !== "agent_run"
       ? { kind: "ok", autonomyBudget: INITIAL_AUTONOMY_BUDGET }
       : event.sourceAutonomyBudget === null
         ? {

@@ -16,6 +16,7 @@ import {
   childAutonomyBudget,
   loadOwnedRunAutonomyBudget,
 } from "../services/autonomy-budget.service";
+import { autonomyBudgetSchemaAvailable } from "../services/autonomy-budget-schema.service";
 import {
   loadVisibleWorkflowById,
   type WorkflowMember,
@@ -157,8 +158,14 @@ const createAutomationInner$ = command(
     }
 
     let autonomyBudget: number | undefined;
-    if (auth.tokenType === "zero") {
-      const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(get(db$), {
+    const db = get(db$);
+    const budgetSchemaAvailable =
+      auth.tokenType === "zero"
+        ? await autonomyBudgetSchemaAvailable(db)
+        : false;
+    signal.throwIfAborted();
+    if (auth.tokenType === "zero" && budgetSchemaAvailable) {
+      const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(db, {
         runId: auth.runId,
         orgId: auth.orgId,
         userId: auth.userId,

@@ -29,6 +29,7 @@ import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { safeJsonParse, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import {
   connectorCredentialRuntimeValueRef,
@@ -1023,7 +1024,7 @@ async function loadGmailEventAutomations(args: {
 }): Promise<GmailEventAutomationRow[]> {
   const automationRows = await args.db
     .select({
-      automation: zeroWorkflowAutomations,
+      automation: rolloutCompatibleWorkflowAutomationColumns(false),
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,

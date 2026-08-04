@@ -945,15 +945,16 @@ async function requestSendEventWithBearer(
     readonly clientEventId?: string;
     readonly prompt: string;
     readonly threadId?: string;
+    readonly userMessage?: UserMessageDocument;
   },
-  statuses: readonly (201 | 401 | 403 | 409)[],
+  statuses: readonly (201 | 400 | 401 | 403 | 409)[],
 ) {
   return await accept(
     chatEventsClient().send({
       headers: { authorization: `Bearer ${token}` },
       body: {
         ...body,
-        userMessage: {
+        userMessage: body.userMessage ?? {
           version: 1,
           parts: [{ type: "text", text: body.prompt }],
         },
@@ -6769,6 +6770,49 @@ describe("CHAT-02: shared user message queue", () => {
       { [FeatureSwitchKey.ChatAgentRunSource]: false },
     );
     const gatedTargetThread = await chat.createThread(actor, { agentId });
+    const forgedEventId = randomUUID();
+    const forged = await requestSendEventWithBearer(
+      sourceToken,
+      {
+        agentId,
+        clientEventId: forgedEventId,
+        threadId: gatedTargetThread.id,
+        prompt: "forged provenance",
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "forged provenance" },
+            {
+              type: "source",
+              kind: "agent",
+              runId: randomUUID(),
+              threadId: randomUUID(),
+              agentId: randomUUID(),
+              titleSnapshot: "Forged source",
+              href: `/chats/${randomUUID()}#run-${randomUUID()}`,
+            },
+          ],
+        },
+      },
+      [400],
+    );
+    expect(forged).toMatchObject({
+      status: 400,
+      body: {
+        error: {
+          code: "BAD_REQUEST",
+          message: "Agent source annotations are server-managed",
+        },
+      },
+    });
+    const messagesAfterForgedSend = await chat.listThreadEvents(
+      actor,
+      gatedTargetThread.id,
+    );
+    expect(messagesAfterForgedSend.events).not.toContainEqual(
+      expect.objectContaining({ id: forgedEventId }),
+    );
+
     const gatedEventId = randomUUID();
     const gatedSend = await requestSendEventWithBearer(
       sourceToken,

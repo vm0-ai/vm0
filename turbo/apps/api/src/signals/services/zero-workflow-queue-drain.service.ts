@@ -16,6 +16,10 @@ import {
   loadRunAutonomyBudget,
 } from "./autonomy-budget.service";
 import {
+  autonomyBudgetSchemaAvailable,
+  rolloutCompatibleWorkflowAutomationColumns,
+} from "./autonomy-budget-schema.service";
+import {
   loadNextWorkflowQueueEvent,
   rejectWorkflowQueueEvent,
   type PendingWorkflowQueueEvent,
@@ -42,9 +46,12 @@ async function loadDequeueTarget(
   db: Db,
   event: PendingWorkflowQueueEvent,
 ): Promise<DequeueTarget | null> {
+  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(db);
   const [row] = await db
     .select({
-      automation: zeroWorkflowAutomations,
+      automation: rolloutCompatibleWorkflowAutomationColumns(
+        autonomyBudgetAvailable,
+      ),
       agentId: zeroWorkflows.agentId,
     })
     .from(zeroWorkflowAutomations)

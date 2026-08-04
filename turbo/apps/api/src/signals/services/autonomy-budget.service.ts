@@ -3,8 +3,12 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
+import {
+  autonomyBudgetSchemaAvailable,
+  rolloutCompatibleAutonomyBudgetColumn,
+} from "./autonomy-budget-schema.service";
 
-export const INITIAL_AUTONOMY_BUDGET = 10;
+export { INITIAL_AUTONOMY_BUDGET } from "./autonomy-budget.constants";
 
 export type ChildAutonomyBudget =
   | { readonly kind: "ok"; readonly autonomyBudget: number }
@@ -23,8 +27,14 @@ export async function loadRunAutonomyBudget(
   db: ReadonlyDb,
   runId: string,
 ): Promise<number | null> {
+  const schemaAvailable = await autonomyBudgetSchemaAvailable(db);
   const [run] = await db
-    .select({ autonomyBudget: zeroRuns.autonomyBudget })
+    .select({
+      autonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
+        schemaAvailable,
+        zeroRuns.autonomyBudget,
+      ),
+    })
     .from(zeroRuns)
     .where(eq(zeroRuns.id, runId))
     .limit(1);
@@ -39,8 +49,14 @@ export async function loadOwnedRunAutonomyBudget(
     readonly userId: string;
   },
 ): Promise<number | null> {
+  const schemaAvailable = await autonomyBudgetSchemaAvailable(db);
   const [run] = await db
-    .select({ autonomyBudget: zeroRuns.autonomyBudget })
+    .select({
+      autonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
+        schemaAvailable,
+        zeroRuns.autonomyBudget,
+      ),
+    })
     .from(zeroRuns)
     .innerJoin(
       agentRuns,

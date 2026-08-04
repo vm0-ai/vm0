@@ -57,6 +57,10 @@ import {
 import { isQueueFirstRunClaimLost } from "../services/agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import { childAutonomyBudget } from "../services/autonomy-budget.service";
+import {
+  autonomyBudgetSchemaAvailable,
+  rolloutCompatibleAutonomyBudgetColumn,
+} from "../services/autonomy-budget-schema.service";
 import { drainChatThreadQueueForThread$ } from "../services/chat-thread-queue-drain.service";
 import { loadPendingChatQueueEvent } from "../services/chat-event-queue.service";
 import {
@@ -250,17 +254,22 @@ async function resolveChatAgentRunSource(
 ): Promise<{
   readonly annotation: ChatAgentRunSourceAnnotation | null;
   readonly autonomyBudget: number;
+  readonly schemaAvailable: boolean;
 } | null> {
   if (auth.tokenType !== "zero") {
     return null;
   }
+  const schemaAvailable = await autonomyBudgetSchemaAvailable(db);
   const [source] = await db
     .select({
       runId: zeroRuns.id,
       threadId: chatThreads.id,
       agentId: chatThreads.agentComposeId,
       title: chatThreads.title,
-      autonomyBudget: zeroRuns.autonomyBudget,
+      autonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
+        schemaAvailable,
+        zeroRuns.autonomyBudget,
+      ),
     })
     .from(zeroRuns)
     .innerJoin(
@@ -295,6 +304,7 @@ async function resolveChatAgentRunSource(
   return {
     annotation,
     autonomyBudget: source.autonomyBudget,
+    schemaAvailable,
   };
 }
 
@@ -310,14 +320,14 @@ async function resolveNormalSendAgentRunSource(params: {
         | ReturnType<typeof autonomyBudgetExhausted>;
     }
 > {
-  const resolved = await resolveChatAgentRunSource(params.db, params.auth);
-  if (hasAgentRunSourceAnnotation(params.userMessage) && resolved === null) {
+  if (hasAgentRunSourceAnnotation(params.userMessage)) {
     return {
       response: badRequestMessage(
         "Agent source annotations are server-managed",
       ),
     };
   }
+  const resolved = await resolveChatAgentRunSource(params.db, params.auth);
   if (resolved === null) {
     return params.auth.tokenType === "zero"
       ? { response: badRequestMessage("Agent source run not found") }
@@ -333,7 +343,7 @@ async function resolveNormalSendAgentRunSource(params: {
       ),
     };
   }
-  return { source: resolved.annotation };
+  return { source: resolved.schemaAvailable ? resolved.annotation : null };
 }
 
 function normalSendBodyWithAgentRunSource(
