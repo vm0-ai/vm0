@@ -46,6 +46,19 @@ use crate::types::{
 };
 use sandbox::SandboxId;
 
+const CHAT_STEER_FEATURE_FLAG: &str = "chatSteer";
+
+fn chat_steer_enabled(
+    reuse_key: Option<&str>,
+    feature_flags: Option<&std::collections::HashMap<String, bool>>,
+) -> bool {
+    reuse_key.is_some_and(|key| key.starts_with("thread:"))
+        && feature_flags
+            .and_then(|flags| flags.get(CHAT_STEER_FEATURE_FLAG))
+            .copied()
+            .unwrap_or(false)
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody<'a> {
@@ -635,18 +648,17 @@ impl JobProvider for ApiProvider {
             .await
         {
             Ok(Some(ctx)) => {
-                let is_chat_run = ctx
-                    .reuse_key
-                    .as_deref()
-                    .is_some_and(|reuse_key| reuse_key.starts_with("thread:"));
-                let active_input_source = is_chat_run.then(|| {
-                    ActiveInputSource::api(
-                        self.api.clone(),
-                        run_id,
-                        ctx.sandbox_token.clone(),
-                        self.active_input_notifications.subscribe(run_id),
-                    )
-                });
+                let active_input_source =
+                    chat_steer_enabled(ctx.reuse_key.as_deref(), ctx.feature_flags.as_ref()).then(
+                        || {
+                            ActiveInputSource::api(
+                                self.api.clone(),
+                                run_id,
+                                ctx.sandbox_token.clone(),
+                                self.active_input_notifications.subscribe(run_id),
+                            )
+                        },
+                    );
                 let claimed = match if let Some(active_input_source) = active_input_source {
                     ClaimedJob::api_with_active_input_source(run_id, ctx, active_input_source)
                 } else {
@@ -1636,6 +1648,18 @@ mod tests {
 
     fn claim_request_body_for_test(candidate: &JobCandidate) -> ClaimRequestBody<'_> {
         claim_request_body(candidate, TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION)
+    }
+
+    #[test]
+    fn chat_steer_requires_a_thread_run_and_enabled_feature() {
+        let enabled = std::collections::HashMap::from([(CHAT_STEER_FEATURE_FLAG.to_owned(), true)]);
+        let disabled =
+            std::collections::HashMap::from([(CHAT_STEER_FEATURE_FLAG.to_owned(), false)]);
+
+        assert!(chat_steer_enabled(Some("thread:chat-id"), Some(&enabled)));
+        assert!(!chat_steer_enabled(Some("thread:chat-id"), Some(&disabled)));
+        assert!(!chat_steer_enabled(Some("thread:chat-id"), None));
+        assert!(!chat_steer_enabled(Some("goal:goal-id"), Some(&enabled)));
     }
 
     fn api_client_for_server(server: &MockServer) -> ApiClient {

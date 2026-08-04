@@ -67,18 +67,24 @@ async function loadIntegrationPromptMaterial(
     userId: args.userId,
   };
   switch (event.triggerSource) {
-    case "slack":
+    case "slack": {
       return await loadSlackQueuedLaunchMaterial(db, loaderArgs);
-    case "feishu":
+    }
+    case "feishu": {
       return await loadFeishuQueuedLaunchMaterial(db, loaderArgs);
-    case "teams":
+    }
+    case "teams": {
       return await loadTeamsQueuedLaunchMaterial(db, loaderArgs);
-    case "telegram":
+    }
+    case "telegram": {
       return await loadTelegramQueuedLaunchMaterial(db, loaderArgs);
-    case "agentphone":
+    }
+    case "agentphone": {
       return await loadAgentPhoneQueuedLaunchMaterial(db, loaderArgs);
-    default:
+    }
+    default: {
       return null;
+    }
   }
 }
 

@@ -1407,6 +1407,16 @@ describe("CHAT-02: queueing and recalling messages", () => {
   it("lets a running runner claim pending input prompts for steer", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.ChatSteer]: true,
+      },
+    );
 
     const active = await sendChatRun(actor, {
       agentId,
@@ -1414,6 +1424,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(active.runId);
+    expect(claim.featureFlags?.[FeatureSwitchKey.ChatSteer]).toBeTruthy();
 
     const firstPendingEventId = randomUUID();
     const secondPendingEventId = randomUUID();

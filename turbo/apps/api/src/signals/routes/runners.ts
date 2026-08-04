@@ -51,6 +51,8 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { z } from "zod";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -58,7 +60,7 @@ import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
-import { db$, writeDb$, type Db } from "../external/db";
+import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   generatePresignedGetUrl,
   publicS3DownloadSource,
@@ -86,6 +88,7 @@ import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
 import { materializeActiveInputPrompt } from "../services/active-input-prompt.service";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   lockChatQueueThread,
   pendingActiveInputPromptCondition,
@@ -2587,7 +2590,7 @@ function pendingActiveInputCondition(
 }
 
 async function loadRunningActiveInputRun(
-  db: Pick<Db, "select">,
+  db: ReadonlyDb,
   args: {
     readonly runId: string;
     readonly userId: string;
@@ -2608,6 +2611,14 @@ async function loadRunningActiveInputRun(
     )
     .limit(1);
   if (!run?.chatThreadId) {
+    return null;
+  }
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    db,
+    args.orgId,
+    args.userId,
+  );
+  if (!isFeatureEnabled(FeatureSwitchKey.ChatSteer, featureSwitchContext)) {
     return null;
   }
   return { chatThreadId: run.chatThreadId };
@@ -2640,6 +2651,40 @@ function pendingActiveInputRows(
       ),
     )
     .orderBy(asc(chatEvents.seqId));
+}
+
+type PendingActiveInputRow = Awaited<
+  ReturnType<typeof pendingActiveInputRows>
+>[number];
+
+async function materializePendingActiveInputPrompts(
+  db: Db,
+  candidates: readonly PendingActiveInputRow[],
+  auth: { readonly orgId: string; readonly userId: string },
+  signal: AbortSignal,
+): Promise<Map<string, string> | null> {
+  const prompts = new Map<string, string>();
+  for (const event of candidates) {
+    if (!event.userMessage) {
+      return null;
+    }
+    prompts.set(
+      event.id,
+      await materializeActiveInputPrompt(db, {
+        event: {
+          id: event.id,
+          chatThreadId: event.chatThreadId,
+          triggerSource: event.triggerSource,
+          userMessage: event.userMessage,
+          generationTemplate: event.generationTemplate,
+        },
+        orgId: auth.orgId,
+        userId: auth.userId,
+      }),
+    );
+    signal.throwIfAborted();
+  }
+  return prompts;
 }
 
 const activeInputClaimBody$ = bodyResultOf(runnersActiveInputsContract.claim);
@@ -2708,26 +2753,14 @@ const claimActiveInputsInner$ = command(
     if (candidates.length !== uniqueEventIds.length) {
       return conflict("One or more active inputs are no longer pending");
     }
-    const materializedPrompts = new Map<string, string>();
-    for (const event of candidates) {
-      if (!event.userMessage) {
-        return conflict("One or more active inputs cannot be materialized");
-      }
-      materializedPrompts.set(
-        event.id,
-        await materializeActiveInputPrompt(db, {
-          event: {
-            id: event.id,
-            chatThreadId: event.chatThreadId,
-            triggerSource: event.triggerSource,
-            userMessage: event.userMessage,
-            generationTemplate: event.generationTemplate,
-          },
-          orgId: auth.orgId,
-          userId: auth.userId,
-        }),
-      );
-      signal.throwIfAborted();
+    const materializedPrompts = await materializePendingActiveInputPrompts(
+      db,
+      candidates,
+      auth,
+      signal,
+    );
+    if (!materializedPrompts) {
+      return conflict("One or more active inputs cannot be materialized");
     }
 
     const result = await db.transaction(async (tx) => {
