@@ -779,7 +779,8 @@ function ConnectorAccessButton({
           <span className="shrink-0">
             {t(($) => {
               return $.connectors.catalog.access.usedBy;
-            })}
+            }).trimEnd()}
+            {"\u00a0"}
           </span>
           <span
             className="min-w-0 truncate underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
