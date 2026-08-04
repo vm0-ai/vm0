@@ -1760,6 +1760,7 @@ function createArtifactPreviewImageUrls(
 
 function createPagedEventResources(
   threadId: string,
+  chatEvents$: Computed<ChatEvent[]>,
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
   browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents,
 ) {
@@ -1786,7 +1787,9 @@ function createPagedEventResources(
   const registerBodyBlocks = bodyBlocksRenderer("register");
   const registeredEvents$ = state<RegisteredChatEvent[]>([]);
   const syncRegisteredEvents$ = command(
-    ({ set }, events: readonly ChatEvent[]): void => {
+    ({ get, set }, signal: AbortSignal): void => {
+      signal.throwIfAborted();
+      const events = get(chatEvents$);
       set(registeredEvents$, (previous) => {
         const previousById = new Map(
           previous.map((entry) => {
@@ -1912,12 +1915,11 @@ function createMarkThreadReadIfNeeded({
 
 function createEventChangeEffects(
   threadId: string,
-  chatEvents: ChatEventSignals,
   projections: Pick<
     ReturnType<typeof createPagedEventProjections>,
     "rawEvents$" | "latestRunFinishCreatedAt$"
   >,
-  syncRegisteredEvents$: Command<void, [readonly ChatEvent[]]>,
+  syncRegisteredEvents$: Command<void, [AbortSignal]>,
 ) {
   const scroll = createChatThreadScrollSignals(threadId);
   const sidebar = createThreadSidebarSignals(threadId);
@@ -1957,10 +1959,10 @@ function createEventChangeEffects(
     },
   );
   const afterEventsChange$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    async ({ set }, signal: AbortSignal): Promise<void> => {
       const scrollPosition = set(scroll.captureThreadScrollPosition$);
-      set(syncRegisteredEvents$, get(chatEvents.chatEvents$));
       await Promise.all([
+        set(syncRegisteredEvents$, signal),
         set(autoOpenSidebar$, signal),
         set(scroll.autoScroll$, scrollPosition, signal),
         set(markThreadReadIfNeeded$, signal),
@@ -1997,6 +1999,7 @@ function createChatThreadMessagePipeline({
   };
   const resources = createPagedEventResources(
     threadId,
+    chatEvents.chatEvents$,
     previewImageUrlsByUrl$,
     browserLifecycleOptimisticEvents,
   );
@@ -2007,7 +2010,6 @@ function createChatThreadMessagePipeline({
   });
   const effects = createEventChangeEffects(
     threadId,
-    chatEvents,
     projections,
     resources.syncRegisteredEvents$,
   );
@@ -2016,14 +2018,14 @@ function createChatThreadMessagePipeline({
     return !get(setupCompleted$) && get(projections.rawEvents$).length === 0;
   });
   const setup$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    async ({ set }, signal: AbortSignal): Promise<void> => {
       set(
         registerChatEventChangeHandler$,
         chatEvents.chatEvents$,
         effects.afterEventsChange$,
         signal,
       );
-      set(resources.syncRegisteredEvents$, get(chatEvents.chatEvents$));
+      set(resources.syncRegisteredEvents$, signal);
       set(effects.sidebar.enableEntryAnimations$);
       await set(chatEvents.setup$, signal);
       signal.throwIfAborted();
