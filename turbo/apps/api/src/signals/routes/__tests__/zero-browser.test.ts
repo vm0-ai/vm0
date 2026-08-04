@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron";
 import {
+  CLIENT_TYPE_APP,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
+import {
   zeroBrowserAuthorizationRequestsContract,
   zeroBrowserContract,
 } from "@vm0/api-contracts/contracts/zero-browser";
@@ -20,6 +25,7 @@ import { browserUseCdpHandler } from "../../../__tests__/mocks";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { mockNow, withMockNowForTest } from "../../../lib/time";
+import webClientCompatibility from "../../../lib/web-client-compatibility.json";
 import { server } from "../../../mocks/server";
 import { deleteAgentRunRootFixture } from "../../../test-fixtures/run-deletion";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -2135,6 +2141,33 @@ describe("zero browser route", () => {
       }),
     ).toBeFalsy();
 
+    const legacyEventsResponse = await createApp({
+      signal: context.signal,
+    }).request(`/api/zero/chat-threads/${first.threadId}/events?limit=50`, {
+      headers: {
+        authorization: "Bearer clerk-session",
+        [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+        [CLIENT_VERSION_HEADER]: webClientCompatibility.minimumSupportedVersion,
+      },
+    });
+    expect(legacyEventsResponse.status).toBe(200);
+    const legacyEvents = (await legacyEventsResponse.json()) as {
+      events: { id: string; eventType: string }[];
+    };
+    expect(
+      legacyEvents.events
+        .filter((event) => {
+          return [
+            firstStart.body.lifecycleEventId,
+            resumed.body.lifecycleEventId,
+            closeEventId,
+          ].includes(event.id);
+        })
+        .map((event) => {
+          return event.eventType;
+        }),
+    ).toStrictEqual(["browser.started", "browser.started", "browser.stopped"]);
+
     const collided = await createApp({
       signal: context.signal,
     }).request(`/api/zero/chat-threads/${first.threadId}/browser/close`, {
@@ -2152,6 +2185,32 @@ describe("zero browser route", () => {
     expect(providerCreates).toBe(2);
     await flushWaitUntilForTest();
     expect(providerStops).toBe(1);
+
+    const legacyStart = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: first.threadId },
+        body: { eventId: randomUUID() },
+      }),
+      [200],
+    );
+    expect(legacyStart.body.lifecycleEventId).toBeNull();
+
+    const legacyStopEventId = randomUUID();
+    const legacyStop = await accept(
+      client().stop({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: first.threadId },
+        body: { eventId: legacyStopEventId },
+      }),
+      [200],
+    );
+    expect(legacyStop.body).toMatchObject({
+      lifecycleEventId: legacyStopEventId,
+      browser: { status: "suspended" },
+    });
+    await flushWaitUntilForTest();
+    expect(providerStops).toBe(2);
 
     await chat.deleteThread(actor, first.threadId);
     await flushWaitUntilForTest();

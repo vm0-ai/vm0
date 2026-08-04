@@ -1,6 +1,6 @@
 {
-  "id": "fb600dbd-7c7f-4952-89ab-a7b563d12226",
-  "prevId": "36a2e746-c24e-4cd0-9b57-45314d45f540",
+  "id": "1c6c26f7-93be-4613-8b6c-b223fd57f5aa",
+  "prevId": "fb600dbd-7c7f-4952-89ab-a7b563d12226",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5137,12 +5137,6 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
-        },
-        "message_permalink": {
-          "name": "message_permalink",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "channel_id": {
           "name": "channel_id",

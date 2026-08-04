@@ -83,6 +83,7 @@ mod tests {
         let sock_path = dir.path().join("nonexistent.sock");
 
         let request = ExecRequest {
+            expected_run_id: None,
             command: "echo test".into(),
             timeout_secs: 5,
             sudo: false,
@@ -99,6 +100,7 @@ mod tests {
         let sock_path = dir.path().join("control.sock");
 
         let request = ExecRequest {
+            expected_run_id: None,
             command: "echo test".into(),
             timeout_secs: 5,
             sudo: false,
@@ -131,6 +133,7 @@ mod tests {
 
         let client = tokio::spawn(async move {
             let request = ExecRequest {
+                expected_run_id: None,
                 command: "echo test".into(),
                 timeout_secs: 5,
                 sudo: false,

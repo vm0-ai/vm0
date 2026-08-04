@@ -635,6 +635,20 @@ const browserCloseEventSchema = chatEventBaseSchema
   })
   .strict();
 
+const browserStartedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("browser.started"),
+    content: z.null(),
+  })
+  .strict();
+
+const browserStoppedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("browser.stopped"),
+    content: z.null(),
+  })
+  .strict();
+
 const goalChangedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("goal.changed"),
@@ -683,6 +697,15 @@ if (CHAT_EVENT_TYPES.length !== chatEventSchema.options.length) {
     "ChatEvent schema must cover every registered event catalog leaf",
   );
 }
+
+// The previous browser bundle only understands started/stopped. Keep those
+// response leaves while it can remain open; canonical application state is
+// normalized at the client persistence boundary.
+const compatibleChatEventSchema = z.discriminatedUnion("eventType", [
+  ...chatEventSchema.options,
+  browserStartedEventSchema,
+  browserStoppedEventSchema,
+]);
 
 const chatThreadDetailSchema = z.object({
   /**
@@ -1403,7 +1426,7 @@ export const chatThreadEventsContract = c.router({
     }),
     responses: {
       200: z.object({
-        events: z.array(chatEventSchema),
+        events: z.array(compatibleChatEventSchema),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -1418,7 +1441,7 @@ export const chatThreadEventsContract = c.router({
     headers: authHeadersSchema,
     pathParams: chatThreadEventPathParamsSchema,
     responses: {
-      200: chatEventSchema,
+      200: compatibleChatEventSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -1565,6 +1588,7 @@ export {
   illustrationGenerationTemplateRequestSchema,
   websiteGenerationTemplateRequestSchema,
   chatEventSchema,
+  compatibleChatEventSchema,
   chatEventUsagePayloadSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
@@ -1632,10 +1656,21 @@ export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type ChatThreadMetadata = z.infer<typeof chatThreadMetadataSchema>;
 export type ChatThreadDraft = z.infer<typeof chatThreadDraftSchema>;
 export type ChatEvent = z.infer<typeof chatEventSchema>;
+export type CompatibleChatEvent = z.infer<typeof compatibleChatEventSchema>;
 export type ChatEventSendBody = z.infer<typeof chatEventsContract.send.body>;
 
 export function chatEventResponse(event: ChatEvent): ChatEvent {
   return chatEventSchema.parse(event);
+}
+
+export function canonicalChatEvent(event: CompatibleChatEvent): ChatEvent {
+  if (event.eventType === "browser.started") {
+    return { ...event, eventType: "browser.open" };
+  }
+  if (event.eventType === "browser.stopped") {
+    return { ...event, eventType: "browser.close" };
+  }
+  return event;
 }
 
 export type ChatInputEvent = Extract<

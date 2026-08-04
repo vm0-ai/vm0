@@ -149,6 +149,7 @@ pub(crate) fn resolve_run_mapping(
 
 /// Given a `run_id` prefix, find the unique matching `sandbox_id` from
 /// collected status entries.
+#[cfg(test)]
 pub(crate) fn resolve_run_to_sandbox(
     input: &str,
     mappings: &ActiveRunMappings,

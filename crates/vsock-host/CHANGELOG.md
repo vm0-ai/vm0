@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.72](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.71...vsock-host-v0.17.72) (2026-08-04)
+
+
+### Bug Fixes
+
+* **runner:** guard run controls across sandbox reuse ([#24849](https://github.com/vm0-ai/vm0/issues/24849)) ([bb1d90c](https://github.com/vm0-ai/vm0/commit/bb1d90c15df373b43a8653dcd85f9a47e3fb6042))
+
 ## [0.17.71](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.70...vsock-host-v0.17.71) (2026-08-03)
 
 ## [0.17.70](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.69...vsock-host-v0.17.70) (2026-08-03)

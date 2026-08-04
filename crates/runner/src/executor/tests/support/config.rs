@@ -75,7 +75,7 @@ pub(in crate::executor::tests) fn test_budget_lease() -> crate::resource_budget:
 }
 
 pub(in crate::executor::tests) async fn make_reusable_idle_sandbox(
-    sandbox: Box<dyn Sandbox>,
+    mut sandbox: Box<dyn Sandbox>,
     source_ip: String,
     session_id: &str,
 ) -> (ReusableIdleSandbox, crate::resource_budget::BudgetLease) {
@@ -84,6 +84,10 @@ pub(in crate::executor::tests) async fn make_reusable_idle_sandbox(
         test_support::ParkedIdleCandidateBuilder,
     };
 
+    assert_eq!(
+        sandbox.park().await.unwrap(),
+        sandbox::SandboxParkOutcome::Reusable
+    );
     let mut pool = IdlePool::new(IdlePoolConfig {
         default_timeout: std::time::Duration::from_secs(300),
         max_idle: 0,
@@ -94,7 +98,7 @@ pub(in crate::executor::tests) async fn make_reusable_idle_sandbox(
         .build();
     assert!(matches!(pool.park(candidate), ParkResult::Parked));
     let entry = pool.take(session_id).expect("idle entry should exist");
-    match entry.try_unpark().await {
+    match entry.try_unpark_for_run(crate::ids::RunId::new_v4()).await {
         IdleUnparkResult::Reused {
             sandbox,
             budget_lease,

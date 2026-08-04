@@ -126,9 +126,9 @@ async function resetDatabase(dbUrl: string): Promise<void> {
   });
 }
 
-async function applyMigrationsUpTo(
+async function applyMigrationsUpToTag(
   client: Client,
-  upToIdx: number,
+  upToTag: string,
 ): Promise<void> {
   // Create drizzle migrations table
   await client.query(`
@@ -143,10 +143,18 @@ async function applyMigrationsUpTo(
   const journalPath = path.join(MIGRATIONS_DIR, "meta/_journal.json");
   const journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
   const entries = journal.entries as Array<{ idx: number; tag: string }>;
+  const upToEntry = entries.find((entry) => {
+    return entry.tag === upToTag;
+  });
+  if (!upToEntry) {
+    throw new Error(
+      `Migration tag "${upToTag}" is absent from meta/_journal.json because that migration has been squashed. This transition validator is expired and should be deleted.`,
+    );
+  }
 
-  // Apply migrations up to the specified index
+  // Apply migrations up to the specified tag
   for (const entry of entries) {
-    if (entry.idx > upToIdx) break;
+    if (entry.idx > upToEntry.idx) break;
 
     const sqlFile = path.join(MIGRATIONS_DIR, `${entry.tag}.sql`);
     const sql = await fs.readFile(sqlFile, "utf-8");
@@ -182,15 +190,15 @@ async function applyMigrationsUpTo(
   }
 }
 
-async function runMigrationsUpTo(
+async function runMigrationsUpToTag(
   dbUrl: string,
-  upToIdx: number,
+  upToTag: string,
 ): Promise<void> {
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
 
   try {
-    await applyMigrationsUpTo(client, upToIdx);
+    await applyMigrationsUpToTag(client, upToTag);
   } finally {
     await client.end();
   }
@@ -461,17 +469,9 @@ async function validateThreadBrowserIdentityAfterMigration(
     assert.equal(lifecycleConstraint.rows.length, 1);
     assert.match(
       lifecycleConstraint.rows[0]?.definition ?? "",
-      /browser\.open/u,
-    );
-    assert.match(
-      lifecycleConstraint.rows[0]?.definition ?? "",
-      /browser\.close/u,
-    );
-    assert.doesNotMatch(
-      lifecycleConstraint.rows[0]?.definition ?? "",
       /browser\.started/u,
     );
-    assert.doesNotMatch(
+    assert.match(
       lifecycleConstraint.rows[0]?.definition ?? "",
       /browser\.stopped/u,
     );
@@ -1202,6 +1202,19 @@ async function validateSnapshotFiles(): Promise<void> {
   console.log(`   ✅ All ${sqlFiles.length} migrations have snapshots`);
   console.log(`   ✅ Snapshot chain validated (id/prevId references intact)`);
   console.log();
+}
+
+async function validateMigrationTagReferences(): Promise<void> {
+  console.log("=== Phase 0.1: Validate Migration Tag References ===\n");
+
+  const source = await fs.readFile(fileURLToPath(import.meta.url), "utf8");
+  assert.doesNotMatch(
+    source,
+    /\b(?:applyMigrationsUpTo|runMigrationsUpTo)\s*\(/u,
+    "Transition validators must reference migrations by tag, not numeric index",
+  );
+
+  console.log("   ✅ Transition validators reference migrations by tag\n");
 }
 
 async function expectDatabaseError(
@@ -2478,8 +2491,9 @@ async function validateTimestampOrdering(): Promise<void> {
   console.log();
 }
 
-const RUN_EVENT_SEQUENCE_NUMBER_CONTRACTION_PREVIOUS_MIGRATION = 809;
-const RUN_EVENT_SEQUENCE_NUMBER_CONTRACTION_MIGRATION = 810;
+const RUN_EVENT_SEQUENCE_NUMBER_CONTRACTION_PREVIOUS_MIGRATION =
+  "0809_clean_kronos";
+const RUN_EVENT_SEQUENCE_NUMBER_CONTRACTION_MIGRATION = "0810_small_sway";
 
 async function addCurrentChatEventAdditiveStorage(
   client: Client,
@@ -2549,7 +2563,7 @@ async function validateRunEventSequenceNumberRollout(): Promise<void> {
 
   await createDatabase(testDb);
   try {
-    await runMigrationsUpTo(
+    await runMigrationsUpToTag(
       testDbUrl,
       RUN_EVENT_SEQUENCE_NUMBER_CONTRACTION_PREVIOUS_MIGRATION,
     );
@@ -2879,7 +2893,7 @@ async function validateRunEventSequenceNumberRollout(): Promise<void> {
       const strictRejectFunctionDefinition = rejectFunction.rows[0]?.definition;
       assert.ok(strictRejectFunctionDefinition);
 
-      await applyMigrationsUpTo(
+      await applyMigrationsUpToTag(
         client,
         RUN_EVENT_SEQUENCE_NUMBER_CONTRACTION_MIGRATION,
       );
@@ -3079,8 +3093,8 @@ async function validateRunEventSequenceNumberRollout(): Promise<void> {
   }
 }
 
-const GOAL_ONLY_RUN_GROUPS_PREVIOUS_MIGRATION = 810;
-const GOAL_ONLY_RUN_GROUPS_MIGRATION = 811;
+const GOAL_ONLY_RUN_GROUPS_PREVIOUS_MIGRATION = "0810_small_sway";
+const GOAL_ONLY_RUN_GROUPS_MIGRATION = "0811_clear_non_goal_run_groups";
 
 async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
   console.log("=== Validate goal-only run group cleanup ===\n");
@@ -3122,7 +3136,10 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
 
   await createDatabase(testDb);
   try {
-    await runMigrationsUpTo(testDbUrl, GOAL_ONLY_RUN_GROUPS_PREVIOUS_MIGRATION);
+    await runMigrationsUpToTag(
+      testDbUrl,
+      GOAL_ONLY_RUN_GROUPS_PREVIOUS_MIGRATION,
+    );
     const client = new Client({ connectionString: testDbUrl });
     await client.connect();
     try {
@@ -3265,7 +3282,7 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
         ],
       );
 
-      await applyMigrationsUpTo(client, GOAL_ONLY_RUN_GROUPS_MIGRATION);
+      await applyMigrationsUpToTag(client, GOAL_ONLY_RUN_GROUPS_MIGRATION);
 
       const runGroups = await client.query<{
         id: string;
@@ -3421,128 +3438,6 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
   }
 }
 
-const BROWSER_LIFECYCLE_RENAME_PREVIOUS_MIGRATION = 813;
-const BROWSER_LIFECYCLE_RENAME_MIGRATION = 814;
-
-async function validateBrowserLifecycleEventRename(): Promise<void> {
-  console.log("=== Validate browser lifecycle event rename ===\n");
-
-  const testDb = "migration_browser_lifecycle_event_rename_test";
-  const testDbUrl = createTestDbUrl(testDb);
-  const startedEventId = "00000000-0000-4000-8000-000000081301";
-  const stoppedEventId = "00000000-0000-4000-8000-000000081302";
-
-  await createDatabase(testDb);
-  try {
-    await runMigrationsUpTo(
-      testDbUrl,
-      BROWSER_LIFECYCLE_RENAME_PREVIOUS_MIGRATION,
-    );
-
-    const client = new Client({ connectionString: testDbUrl });
-    await client.connect();
-    try {
-      const agentCompose = await client.query<{ id: string }>(`
-        INSERT INTO "agent_composes" ("user_id", "name", "org_id")
-        VALUES (
-          'browser-lifecycle-rename-user',
-          'browser-lifecycle-rename-test',
-          'browser-lifecycle-rename-org'
-        )
-        RETURNING "id"
-      `);
-      const agentComposeId = agentCompose.rows[0]?.id;
-      assert.ok(agentComposeId);
-
-      const thread = await client.query<{ id: string }>(
-        `
-          INSERT INTO "chat_threads" (
-            "user_id",
-            "agent_compose_id",
-            "title"
-          )
-          VALUES (
-            'browser-lifecycle-rename-user',
-            $1,
-            'browser lifecycle rename test'
-          )
-          RETURNING "id"
-        `,
-        [agentComposeId],
-      );
-      const threadId = thread.rows[0]?.id;
-      assert.ok(threadId);
-
-      await client.query(
-        `
-          INSERT INTO "chat_events" (
-            "id",
-            "chat_thread_id",
-            "event_type",
-            "content",
-            "seq_id"
-          )
-          VALUES
-            ($1, $3, 'browser.started', NULL, 1),
-            ($2, $3, 'browser.stopped', NULL, 2)
-        `,
-        [startedEventId, stoppedEventId, threadId],
-      );
-
-      await applyMigrationsUpTo(client, BROWSER_LIFECYCLE_RENAME_MIGRATION);
-
-      const events = await client.query<{
-        eventType: string;
-        id: string;
-      }>(
-        `
-          SELECT "id", "event_type" AS "eventType"
-          FROM "chat_events"
-          WHERE "id" IN ($1, $2)
-          ORDER BY "seq_id"
-        `,
-        [startedEventId, stoppedEventId],
-      );
-      assert.deepEqual(events.rows, [
-        { id: startedEventId, eventType: "browser.open" },
-        { id: stoppedEventId, eventType: "browser.close" },
-      ]);
-
-      await expectAppendOnlyUpdateRejected(client, {
-        tableName: "chat_events",
-        query: `UPDATE "chat_events" SET "content" = 'forbidden' WHERE "id" = $1`,
-        rowId: startedEventId,
-      });
-
-      await assert.rejects(
-        client.query(
-          `
-            INSERT INTO "chat_events" (
-              "chat_thread_id",
-              "event_type",
-              "content",
-              "seq_id"
-            )
-            VALUES ($1, 'browser.started', NULL, 3)
-          `,
-          [threadId],
-        ),
-        (error: unknown) => {
-          return databaseErrorCode(error) === "23514";
-        },
-      );
-
-      console.log("   ✅ Historical browser lifecycle events are renamed");
-      console.log("   ✅ Legacy event inserts are rejected after contraction");
-      console.log("   ✅ Strict append-only protection is restored\n");
-    } finally {
-      await client.end();
-    }
-  } finally {
-    await dropDatabase(testDb);
-  }
-}
-
 async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log("=== Phase 1.5: Validate Latest Snapshot Accuracy ===\n");
 
@@ -3645,12 +3540,14 @@ async function main(): Promise<void> {
     // Step 0: Validate snapshot files
     await validateSnapshotFiles();
 
+    // Step 0.1: Validate transition validators use migration tags
+    await validateMigrationTagReferences();
+
     // Step 0.5: Validate timestamp ordering
     await validateTimestampOrdering();
 
     await validateRunEventSequenceNumberRollout();
     await validateGoalOnlyRunGroupsCleanup();
-    await validateBrowserLifecycleEventRename();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

@@ -145,6 +145,7 @@ suites before committing the upgrade.
 | `test_runner_usage_flush_signal.py`                     | Runner-triggered usage and JSONL flush requests                                                                      |
 | `test_tls_clienthello_hook.py`                          | TLS clienthello admission behavior                                                                                   |
 | `test_tcp_hooks.py`                                     | TCP start, logging, message drain, end, and error hooks                                                              |
+| `test_state_file.py`                                    | Shared safe-open, descriptor identity, bounded-read, and cleanup contracts                                            |
 | `test_registry_loading.py`                              | Registry loading, parsing, unavailable-state, and cache behavior                                                     |
 | `test_registry_auth_cache_eviction.py`                  | Registry-driven auth-cache ownership and eviction behavior                                                           |
 | `test_registry_context.py`                              | VM lookup and public compiled context API behavior                                                                   |

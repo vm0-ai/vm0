@@ -2,19 +2,16 @@
 
 import json
 import os
-import queue
-from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 import registry
+import state_file
 from tests.registry_helpers import (
     pin_mtime,
     write_simple_registry,
 )
-from tests.thread_helpers import ThreadUnderTest
 
 
 class TestLoadRegistry:
@@ -23,15 +20,6 @@ class TestLoadRegistry:
 
         assert "10.200.0.1" in result
         assert result["10.200.0.1"]["runId"] == "run-abc-123"
-
-    def test_loads_valid_registry_at_exact_size_limit(self, registry_file):
-        exact_size = registry_file.stat().st_size
-
-        with patch.object(registry, "MAX_REGISTRY_BYTES", exact_size):
-            state = registry.load_registry_state(str(registry_file))
-
-        assert not isinstance(state, registry.RegistryUnavailable)
-        assert state.vms["10.200.0.1"]["runId"] == "run-abc-123"
 
     def test_classifies_invalid_registered_vm_entries(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -80,21 +68,6 @@ class TestLoadRegistry:
 
         assert result == {}
         assert isinstance(state, registry.RegistryUnavailable)
-
-    def test_fstat_failure_closes_opened_descriptor(self):
-        opened_fd = 42
-        error = OSError("fstat failed")
-
-        with (
-            patch.object(registry.os, "open", return_value=opened_fd),
-            patch.object(registry.os, "fstat", side_effect=error),
-            patch.object(registry.os, "close") as close,
-            pytest.raises(OSError, match="fstat failed") as exc_info,
-        ):
-            registry._open_registry_for_read(Path("registry.json"))
-
-        assert exc_info.value is error
-        close.assert_called_once_with(opened_fd)
 
     def test_cache_returns_same_on_unchanged(self, registry_file):
         result1 = registry.load_registry(str(registry_file))
@@ -220,20 +193,6 @@ class TestLoadRegistry:
         assert log.warn.call_count == 1
         assert "Failed to stat" in log.warn.call_args_list[0].args[0]
 
-    def test_symlink_registry_is_unavailable_without_following_target(self, tmp_path):
-        path = tmp_path / "registry.json"
-        target = tmp_path / "outside-registry.json"
-        write_simple_registry(target, run_id="outside-run")
-        path.symlink_to(target)
-
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
-            result = registry.load_registry(str(path))
-            state = registry.load_registry_state(str(path))
-
-        assert result == {}
-        assert isinstance(state, registry.RegistryUnavailable)
-        assert state.reason == "stat_failed"
-
     def test_symlink_after_success_does_not_return_previous_snapshot(
         self,
         registry_file,
@@ -249,37 +208,6 @@ class TestLoadRegistry:
         with patch.object(registry.ctx, "log", MagicMock(), create=True):
             result = registry.load_registry(str(registry_file))
             state = registry.load_registry_state(str(registry_file))
-
-        assert result == {}
-        assert isinstance(state, registry.RegistryUnavailable)
-        assert state.reason == "stat_failed"
-
-    def test_fifo_registry_is_unavailable_without_blocking(self, tmp_path):
-        path = tmp_path / "registry.json"
-        os.mkfifo(path)
-        results = queue.Queue()
-        log = MagicMock()
-
-        def load_state():
-            with patch.object(registry.ctx, "log", log, create=True):
-                results.put(registry.load_registry_state(str(path)))
-
-        thread = ThreadUnderTest(target=load_state, daemon=True)
-        thread.start()
-        thread.join_and_raise(1)
-
-        assert not thread.is_alive(), "registry load blocked on FIFO"
-        state = results.get_nowait()
-        assert isinstance(state, registry.RegistryUnavailable)
-        assert state.reason == "stat_failed"
-
-    def test_directory_registry_is_unavailable(self, tmp_path):
-        path = tmp_path / "registry.json"
-        path.mkdir()
-
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
-            result = registry.load_registry(str(path))
-            state = registry.load_registry_state(str(path))
 
         assert result == {}
         assert isinstance(state, registry.RegistryUnavailable)
@@ -302,22 +230,6 @@ class TestLoadRegistry:
         assert spy.call_count == 0
         assert log.warn.call_count == 1
         assert "exceeds" in log.warn.call_args_list[0].args[0]
-
-    def test_underreported_registry_is_unavailable_before_parsing(self):
-        path = Path("/proc/self/status")
-        assert path.stat().st_size == 0
-        log = MagicMock()
-
-        with (
-            patch.object(registry.ctx, "log", log, create=True),
-            patch.object(registry, "MAX_REGISTRY_BYTES", 1),
-            patch.object(registry.json, "loads", wraps=registry.json.loads) as spy,
-        ):
-            state = registry.load_registry_state(str(path))
-
-        assert isinstance(state, registry.RegistryUnavailable)
-        assert state.reason == "read_failed"
-        assert spy.call_count == 0
 
     def test_parse_failure_logs_once_and_does_not_reparse(self, tmp_path):
         """Parse failure on a fixed file: key match short-circuits re-parse."""
@@ -475,7 +387,7 @@ class TestLoadRegistry:
         log = MagicMock()
         with (
             patch.object(registry.ctx, "log", log, create=True),
-            patch.object(registry.os, "read", side_effect=read_with_one_failure) as spy,
+            patch.object(state_file.os, "read", side_effect=read_with_one_failure) as spy,
         ):
             failed = registry.load_registry(str(registry_file))
             recovered = registry.load_registry(str(registry_file))
@@ -488,47 +400,36 @@ class TestLoadRegistry:
 
     def test_read_failure_clears_previous_failed_key(self, tmp_path):
         path = tmp_path / "registry.json"
-        path.write_text("{}")
-        first_key = SimpleNamespace(st_dev=1, st_ino=1, st_mtime_ns=100, st_size=10)
-        second_key = SimpleNamespace(st_dev=1, st_ino=1, st_mtime_ns=200, st_size=20)
         valid_registry = {"vms": {"10.0.0.1": {"runId": "r1"}}}
-        read_results = iter(
-            [
-                b"{ broken",
-                b"",
-                OSError("read failed"),
-                json.dumps(valid_registry).encode(),
-                b"",
-            ]
-        )
-
-        stats = iter([first_key, second_key, first_key])
-
-        def open_with_fake_stat(_path):
-            return os.open(path, os.O_RDONLY), next(stats)
-
-        def read_parse_fail_then_read_fail_then_recover(_fd, _count):
-            result = next(read_results)
-            if isinstance(result, OSError):
-                raise result
-            return result
+        valid_bytes = json.dumps(valid_registry, separators=(",", ":")).encode()
+        path.write_bytes(b"{" + b" " * (len(valid_bytes) - 1))
+        first_stat = path.stat()
 
         log = MagicMock()
-        with (
-            patch.object(registry.ctx, "log", log, create=True),
-            patch.object(registry, "_open_registry_for_read", side_effect=open_with_fake_stat),
-            patch.object(
-                registry.os,
-                "read",
-                side_effect=read_parse_fail_then_read_fail_then_recover,
-            ) as spy,
-        ):
+        with patch.object(registry.ctx, "log", log, create=True):
             assert registry.load_registry(str(path)) == {}
-            assert registry.load_registry(str(path)) == {}
+
+            path.write_bytes(b"x" * (len(valid_bytes) + 1))
+            with patch.object(state_file.os, "read", side_effect=OSError("read failed")):
+                assert registry.load_registry(str(path)) == {}
+
+            path.write_bytes(valid_bytes)
+            os.utime(path, ns=(first_stat.st_atime_ns, first_stat.st_mtime_ns))
+            recovered_stat = path.stat()
+            assert (
+                recovered_stat.st_dev,
+                recovered_stat.st_ino,
+                recovered_stat.st_mtime_ns,
+                recovered_stat.st_size,
+            ) == (
+                first_stat.st_dev,
+                first_stat.st_ino,
+                first_stat.st_mtime_ns,
+                first_stat.st_size,
+            )
             recovered = registry.load_registry(str(path))
 
         assert recovered == {"10.0.0.1": {"runId": "r1"}}
-        assert spy.call_count == 5
         assert log.warn.call_count == 2
         assert "Failed to parse" in log.warn.call_args_list[0].args[0]
         assert "Failed to read" in log.warn.call_args_list[1].args[0]

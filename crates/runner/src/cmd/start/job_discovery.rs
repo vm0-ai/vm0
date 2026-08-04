@@ -785,7 +785,7 @@ async fn activate_reserved_idle(
     }
 
     let started_at = Instant::now();
-    let unpark_result = reservation.try_unpark().await;
+    let unpark_result = reservation.try_unpark_for_run(run_id).await;
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleUnpark, started_at);
     match unpark_result {
         IdleUnparkResult::Reused {
@@ -959,7 +959,7 @@ async fn try_reuse_from_pool(
                 }
             }
             let started_at = Instant::now();
-            let unpark_result = entry.try_unpark().await;
+            let unpark_result = entry.try_unpark_for_run(run_id).await;
             pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleUnpark, started_at);
             match unpark_result {
                 IdleUnparkResult::Reused {

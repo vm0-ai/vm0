@@ -930,7 +930,15 @@ function persistedChatEventValues(
     values.eventType === "input.goal"
       ? { content: null }
       : {}),
-    eventType: values.eventType,
+    // Keep the physical value compatible with the pre-deploy constraint and
+    // draining API instances. Readers project both generations to the
+    // canonical open/close vocabulary.
+    eventType:
+      values.eventType === "browser.open"
+        ? ("browser.started" as ChatEventInsert["eventType"])
+        : values.eventType === "browser.close"
+          ? ("browser.stopped" as ChatEventInsert["eventType"])
+          : values.eventType,
   };
 }
 

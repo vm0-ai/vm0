@@ -1,8 +1,6 @@
 """Proxy registry loading and VM lookup cache."""
 
 import json
-import os
-import stat
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,6 +9,7 @@ from mitmproxy import ctx
 
 import matching
 import registry_firewalls
+import state_file
 from firewall_auth_cache import evict_all_cache_keys, evict_stale_cache_keys
 
 VmContext = tuple[
@@ -18,15 +17,8 @@ VmContext = tuple[
     matching.CompiledFirewallSet | None,
     matching.CompiledNetworkPolicies,
 ]
-type _RegistryFileKey = tuple[
-    str,
-    int,
-    int,
-    int,
-    int,
-]
+type _RegistryFileKey = state_file.StateFileIdentity
 MAX_REGISTRY_BYTES = 16 * 1024 * 1024
-_READ_CHUNK_BYTES = 1024 * 1024
 
 
 class _RegistryFormatError(ValueError):
@@ -306,43 +298,8 @@ def _classify_registry_vms(
     )
 
 
-def _open_registry_for_read(path: Path) -> tuple[int, os.stat_result]:
-    flags = os.O_RDONLY
-    for flag_name in ("O_CLOEXEC", "O_NOFOLLOW", "O_NONBLOCK"):
-        flags |= getattr(os, flag_name, 0)
-    fd = os.open(path, flags)
-    try:
-        st = os.fstat(fd)
-    except OSError:
-        os.close(fd)
-        raise
-    if not stat.S_ISREG(st.st_mode):
-        os.close(fd)
-        raise OSError(f"proxy registry is not a regular file: {path}")
-    return fd, st
-
-
-def _read_registry_bytes(fd: int, path: Path, st_size: int) -> bytes:
-    if st_size > MAX_REGISTRY_BYTES:
-        raise OSError(f"proxy registry {path} exceeds {MAX_REGISTRY_BYTES} bytes")
-
-    chunks: list[bytes] = []
-    total = 0
-    while total <= MAX_REGISTRY_BYTES:
-        to_read = min(_READ_CHUNK_BYTES, MAX_REGISTRY_BYTES + 1 - total)
-        chunk = os.read(fd, to_read)
-        if not chunk:
-            break
-        chunks.append(chunk)
-        total += len(chunk)
-
-    if total > MAX_REGISTRY_BYTES:
-        raise OSError(f"proxy registry {path} exceeds {MAX_REGISTRY_BYTES} bytes")
-    return b"".join(chunks)
-
-
-def _read_registry_vms(fd: int, path: Path, st_size: int) -> dict:
-    raw_registry = json.loads(_read_registry_bytes(fd, path, st_size).decode("utf-8"))
+def _read_registry_vms(raw_bytes: bytes) -> dict:
+    raw_registry = json.loads(raw_bytes.decode("utf-8"))
     if not isinstance(raw_registry, dict):
         raise _RegistryFormatError("proxy registry must be an object")
     raw_vms = raw_registry.get("vms", {})
@@ -383,7 +340,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
     builtin_catalog_cache_path = _builtin_firewall_catalog_cache_path()
 
     try:
-        fd, st = _open_registry_for_read(path)
+        opened_file = state_file.open_state_file(path, description="proxy registry")
     except OSError as e:
         message = str(e)
         if not state.stat_error_logged:
@@ -391,14 +348,8 @@ def load_registry_state(registry_path: str) -> RegistryState:
             ctx.log.warn(f"Failed to stat proxy registry: {message}")
         return _mark_unavailable(state, reason="stat_failed", message=message)
 
-    try:
-        key = (
-            path_key,
-            st.st_dev,
-            st.st_ino,
-            st.st_mtime_ns,
-            st.st_size,
-        )
+    with opened_file:
+        key = opened_file.identity
         loaded_catalog_snapshot = state.snapshot.builtin_firewall_catalog_snapshot
         if key == state.snapshot.loaded_key and (
             loaded_catalog_snapshot is None
@@ -417,7 +368,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
             )
 
         try:
-            raw_registry = _read_registry_vms(fd, path, st.st_size)
+            raw_registry = _read_registry_vms(opened_file.read_bytes(MAX_REGISTRY_BYTES))
         except OSError as e:
             message = str(e)
             state.failed_key = None
@@ -431,8 +382,6 @@ def load_registry_state(registry_path: str) -> RegistryState:
             state.read_error_key = None
             ctx.log.warn(f"Failed to parse proxy registry: {message}")
             return _mark_unavailable(state, reason="parse_failed", message=message)
-    finally:
-        os.close(fd)
 
     (
         new_registry,

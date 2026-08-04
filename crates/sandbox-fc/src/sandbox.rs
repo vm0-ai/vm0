@@ -50,7 +50,7 @@ use crate::leaked_resources::LeakedResources;
 use crate::network::{NetnsInfo, NetnsLease};
 use crate::park_coordinator::{
     CoordinatorState, DirtyReason, OperationStartRejection, ParkAttempt, ParkCoordinator,
-    PrepareParkError, PrepareParkEvidence,
+    PrepareParkError, PrepareParkEvidence, RunControlBindError,
 };
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{ChildExitNotifier, kill_process_group};
@@ -1813,6 +1813,40 @@ impl Sandbox for FirecrackerSandbox {
 
     fn host_process_pid(&self) -> Option<u32> {
         self.process_group_pid
+    }
+
+    fn bind_run_control(&mut self, run_id: &str) -> sandbox::Result<()> {
+        if run_id.is_empty() {
+            return Err(SandboxError::Configuration {
+                message: "run control identity must not be empty".into(),
+            });
+        }
+
+        let sandbox_state = self.current_state();
+        let valid_boundary = (sandbox_state == SandboxState::Created && !self.is_parked)
+            || (sandbox_state == SandboxState::Running && self.is_parked);
+        if !valid_boundary {
+            return Err(SandboxError::InvalidState {
+                context: SandboxInvalidStateContext::Sandbox,
+                state: sandbox_state.to_string(),
+                message: "run control identity must be bound before start or while parked".into(),
+            });
+        }
+
+        self.park_coordinator
+            .bind_run_control(run_id)
+            .map_err(|error| match error {
+                RunControlBindError::AlreadyBound => SandboxError::InvalidState {
+                    context: SandboxInvalidStateContext::Sandbox,
+                    state: format!("{:?}", self.park_coordinator.state()),
+                    message: "run control identity is already bound".into(),
+                },
+                RunControlBindError::InvalidState { state } => SandboxError::InvalidState {
+                    context: SandboxInvalidStateContext::Sandbox,
+                    state: format!("{state:?}"),
+                    message: "run control identity cannot be bound at this lifecycle state".into(),
+                },
+            })
     }
 
     // -- lifecycle --

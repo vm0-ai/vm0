@@ -5,11 +5,21 @@ import {
   chatThreadArtifactsContract,
   chatThreadEventsContract,
   chatThreadsContract,
+  type ChatEvent,
+  type CompatibleChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  clientVersionSupportsCapability,
+  CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
+  CLIENT_TYPE_APP,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { z } from "zod";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { request$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
 import { db$ } from "../external/db";
 import { notFound } from "../../lib/error";
@@ -55,6 +65,33 @@ function chatThreadNotFound() {
 
 function isValidChatThreadId(id: string): boolean {
   return chatThreadIdSchema.safeParse(id).success;
+}
+
+const canonicalBrowserLifecycleEvents$ = computed((get): boolean => {
+  const headers = get(request$).raw.headers;
+  if (headers.get(CLIENT_TYPE_HEADER) !== CLIENT_TYPE_APP) {
+    return true;
+  }
+  return clientVersionSupportsCapability(
+    headers.get(CLIENT_VERSION_HEADER),
+    CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
+  );
+});
+
+function chatEventForClient(
+  event: ChatEvent,
+  canonicalBrowserLifecycleEvents: boolean,
+): CompatibleChatEvent {
+  if (canonicalBrowserLifecycleEvents) {
+    return event;
+  }
+  if (event.eventType === "browser.open") {
+    return { ...event, eventType: "browser.started" };
+  }
+  if (event.eventType === "browser.close") {
+    return { ...event, eventType: "browser.stopped" };
+  }
+  return event;
 }
 
 const getChatThreadInner$ = computed(async (get) => {
@@ -157,9 +194,14 @@ const listChatEventsInner$ = computed(async (get) => {
     return chatThreadNotFound();
   }
 
+  const canonicalBrowserLifecycleEvents = get(canonicalBrowserLifecycleEvents$);
   return {
     status: 200 as const,
-    body: { events: [...events] },
+    body: {
+      events: events.map((event) => {
+        return chatEventForClient(event, canonicalBrowserLifecycleEvents);
+      }),
+    },
   };
 });
 
@@ -178,7 +220,10 @@ const getChatThreadEventInner$ = computed(async (get) => {
     return chatThreadNotFound();
   }
 
-  return { status: 200 as const, body: event };
+  return {
+    status: 200 as const,
+    body: chatEventForClient(event, get(canonicalBrowserLifecycleEvents$)),
+  };
 });
 
 const listChatThreadDraftsInner$ = computed(async (get) => {

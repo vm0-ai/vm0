@@ -47,6 +47,12 @@ pub(crate) struct FileOverrideState {
 
 #[derive(Default)]
 pub(crate) struct LifecycleOverrideState {
+    /// Full run IDs passed to `bind_run_control`, in call order.
+    pub(crate) run_control_bind_calls: Mutex<Vec<String>>,
+    /// Assignment visible when `start` was entered.
+    pub(crate) start_run_control_ids: Mutex<Vec<Option<String>>>,
+    /// Assignment visible when `unpark` was entered.
+    pub(crate) unpark_run_control_ids: Mutex<Vec<Option<String>>>,
     /// FIFO queue of start results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     pub(crate) start_results: Mutex<VecDeque<Result<()>>>,
@@ -395,6 +401,30 @@ impl MockSandboxOverrides {
             .start_results
             .lock_ignoring_poison()
             .push_back(result);
+    }
+
+    /// Return full run identities bound across all mock sandboxes.
+    pub fn run_control_bind_calls(&self) -> Vec<String> {
+        self.lifecycle
+            .run_control_bind_calls
+            .lock_ignoring_poison()
+            .clone()
+    }
+
+    /// Return the assignment visible at each sandbox start.
+    pub fn start_run_control_ids(&self) -> Vec<Option<String>> {
+        self.lifecycle
+            .start_run_control_ids
+            .lock_ignoring_poison()
+            .clone()
+    }
+
+    /// Return the assignment visible at each sandbox unpark.
+    pub fn unpark_run_control_ids(&self) -> Vec<Option<String>> {
+        self.lifecycle
+            .unpark_run_control_ids
+            .lock_ignoring_poison()
+            .clone()
     }
 
     /// Queue a `stop()` result applied to the next factory-created sandbox.

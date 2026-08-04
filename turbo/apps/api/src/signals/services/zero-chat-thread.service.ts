@@ -858,8 +858,15 @@ function toChatEvent(
     const attachFiles = await get(
       chatEventAttachFiles(userId, row, canonicalAttachments),
     );
-    const event = chatEventBuilders[row.eventType](
-      row,
+    const eventType =
+      (row.eventType as string) === "browser.started"
+        ? "browser.open"
+        : (row.eventType as string) === "browser.stopped"
+          ? "browser.close"
+          : row.eventType;
+    const canonicalRow = { ...row, eventType };
+    const event = chatEventBuilders[eventType](
+      canonicalRow,
       baseChatEventFromRow(row, row.content),
       attachFiles,
     );

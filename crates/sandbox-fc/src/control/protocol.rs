@@ -9,6 +9,11 @@ use tokio::net::UnixStream;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecRequest {
+    /// Full run identity that must still own the sandbox at guest admission.
+    ///
+    /// Missing means the caller intentionally selected sandbox scope.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_run_id: Option<String>,
     /// Command text to execute inside the guest.
     pub command: String,
     /// Command timeout in seconds.
@@ -86,8 +91,12 @@ pub enum TerminateAction {
 pub struct TerminateRequest {
     /// Requested host-side control action.
     ///
-    /// Termination clients send `{"action":"terminate"}`.
+    /// Sandbox-scoped termination clients send `{"action":"terminate"}`.
     pub action: TerminateAction,
+    /// Full run identity that must still own the sandbox at termination
+    /// admission. Missing means intentionally sandbox-scoped termination.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_run_id: Option<String>,
 }
 
 /// Result status for a host-side termination request.
@@ -233,6 +242,7 @@ mod tests {
     #[tokio::test]
     async fn protocol_round_trip() {
         let request = ExecRequest {
+            expected_run_id: None,
             command: "echo hello".into(),
             timeout_secs: 10,
             sudo: false,
@@ -241,9 +251,16 @@ mod tests {
 
         // Verify request deserializes correctly.
         let decoded: ExecRequest = serde_json::from_slice(&request_json).unwrap();
+        assert_eq!(decoded.expected_run_id, None);
         assert_eq!(decoded.command, "echo hello");
         assert_eq!(decoded.timeout_secs, 10);
         assert!(!decoded.sudo);
+        assert!(
+            serde_json::from_slice::<serde_json::Value>(&request_json)
+                .unwrap()
+                .get("expected_run_id")
+                .is_none()
+        );
 
         // Verify success response round-trips.
         let response = ExecResponse::Success {
@@ -290,10 +307,26 @@ mod tests {
     }
 
     #[test]
+    fn guarded_exec_request_round_trips_run_identity() {
+        let request = ExecRequest {
+            expected_run_id: Some("run-full-id".into()),
+            command: "true".into(),
+            timeout_secs: 30,
+            sudo: false,
+        };
+
+        let request_json = serde_json::to_value(&request).unwrap();
+        assert_eq!(request_json["expected_run_id"], "run-full-id");
+        let decoded: ExecRequest = serde_json::from_value(request_json).unwrap();
+        assert_eq!(decoded.expected_run_id.as_deref(), Some("run-full-id"));
+    }
+
+    #[test]
     fn exec_request_default_timeout() {
         // timeout_secs has a serde default of 30
         let json = r#"{"command":"echo hi"}"#;
         let req: ExecRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.expected_run_id, None);
         assert_eq!(req.command, "echo hi");
         assert_eq!(req.timeout_secs, 30);
         assert!(!req.sudo);
@@ -497,6 +530,7 @@ mod tests {
     fn terminate_protocol_round_trip() {
         let request = TerminateRequest {
             action: TerminateAction::Terminate,
+            expected_run_id: None,
         };
         let request_json = serde_json::to_value(&request).unwrap();
         assert_eq!(
@@ -508,6 +542,7 @@ mod tests {
 
         let decoded: TerminateRequest = serde_json::from_value(request_json).unwrap();
         assert!(matches!(decoded.action, TerminateAction::Terminate));
+        assert_eq!(decoded.expected_run_id, None);
 
         for (status, status_json) in [
             (TerminateStatus::Accepted, "accepted"),
@@ -548,6 +583,19 @@ mod tests {
     }
 
     #[test]
+    fn guarded_terminate_request_round_trips_run_identity() {
+        let request = TerminateRequest {
+            action: TerminateAction::Terminate,
+            expected_run_id: Some("run-full-id".into()),
+        };
+
+        let request_json = serde_json::to_value(&request).unwrap();
+        assert_eq!(request_json["expected_run_id"], "run-full-id");
+        let decoded: TerminateRequest = serde_json::from_value(request_json).unwrap();
+        assert_eq!(decoded.expected_run_id.as_deref(), Some("run-full-id"));
+    }
+
+    #[test]
     fn terminate_response_rejects_mixed_status_error_shape() {
         let mixed = serde_json::json!({
             "status": "accepted",
@@ -562,6 +610,7 @@ mod tests {
     fn terminate_request_does_not_decode_as_exec_request() {
         let request = TerminateRequest {
             action: TerminateAction::Terminate,
+            expected_run_id: None,
         };
         let request_json = serde_json::to_vec(&request).unwrap();
 

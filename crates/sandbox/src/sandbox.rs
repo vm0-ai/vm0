@@ -166,6 +166,17 @@ pub trait Sandbox: Send + Sync + Any {
         None
     }
 
+    /// Bind the opaque full run identity used to guard remote run-scoped
+    /// controls for this sandbox assignment.
+    ///
+    /// Lifecycle owners must call this before a fresh sandbox starts serving
+    /// controls and while a reused sandbox is still parked, before unpark.
+    /// Providers without assignment-aware out-of-process controls may retain
+    /// this no-op implementation.
+    fn bind_run_control(&mut self, _run_id: &str) -> Result<()> {
+        Ok(())
+    }
+
     // -- lifecycle --
 
     /// Boot the guest and make the sandbox ready to serve operations.

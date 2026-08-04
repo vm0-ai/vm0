@@ -13,10 +13,12 @@ import {
   terminatedChatRunIds,
 } from "../chat-events";
 import {
+  canonicalChatEvent,
   chatEventResponse,
   chatEventSchema,
   chatEventsContract,
   chatThreadEventsContract,
+  compatibleChatEventSchema,
   type ChatEvent,
 } from "../chat-threads";
 
@@ -345,6 +347,34 @@ describe("ChatEvent catalog", () => {
       expect(response).toStrictEqual(event);
       expect(chatEventSchema.parse(response)).toStrictEqual(response);
     }
+  });
+
+  it("normalizes browser lifecycle values from previous clients and storage", () => {
+    const browserOpen = chatEvents.find((event) => {
+      return event.eventType === "browser.open";
+    });
+    const browserClose = chatEvents.find((event) => {
+      return event.eventType === "browser.close";
+    });
+    expect(browserOpen).toBeDefined();
+    expect(browserClose).toBeDefined();
+
+    expect(
+      canonicalChatEvent(
+        compatibleChatEventSchema.parse({
+          ...browserOpen,
+          eventType: "browser.started",
+        }),
+      ),
+    ).toMatchObject({ eventType: "browser.open" });
+    expect(
+      canonicalChatEvent(
+        compatibleChatEventSchema.parse({
+          ...browserClose,
+          eventType: "browser.stopped",
+        }),
+      ),
+    ).toMatchObject({ eventType: "browser.close" });
   });
 
   it("rejects a response that only carries the retired rich-input field", () => {

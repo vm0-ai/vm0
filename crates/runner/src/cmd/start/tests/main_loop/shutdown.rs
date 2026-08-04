@@ -93,10 +93,38 @@ async fn shutdown_drains_memory_prefetch_before_stopped() {
     wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
 }
 
-#[tokio::test]
-async fn kmsg_stdout_eof_stops_runner_and_reaps_child_before_teardown() {
+#[derive(Clone, Copy)]
+enum NetworkLogTestComponent {
+    Kmsg,
+    Dns,
+}
+
+impl NetworkLogTestComponent {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Kmsg => "kmsg",
+            Self::Dns => "dns",
+        }
+    }
+
+    fn eof_error_prefix(self) -> &'static str {
+        match self {
+            Self::Kmsg => "kmsg monitor exited unexpectedly: Eof",
+            Self::Dns => "dns monitor exited unexpectedly: Eof",
+        }
+    }
+
+    async fn install(self, config: &mut RunConfig) -> (tokio::process::ChildStdin, u32, u64) {
+        match self {
+            Self::Kmsg => install_controllable_kmsg(config).await,
+            Self::Dns => install_controllable_dns(config).await,
+        }
+    }
+}
+
+async fn assert_network_log_eof_stops_runner(component: NetworkLogTestComponent) {
     let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let (stdin, pid, starttime) = install_controllable_kmsg(&mut config).await;
+    let (stdin, pid, starttime) = component.install(&mut config).await;
     env.handle.block_heartbeats();
     let run_handle = tokio::spawn(run(config));
 
@@ -107,23 +135,27 @@ async fn kmsg_stdout_eof_stops_runner_and_reaps_child_before_teardown() {
         env.handle
             .wait_heartbeat_in_flight(1, Duration::from_secs(2))
             .await,
-        "kmsg EOF should drive runner teardown",
+        "{} EOF should drive runner teardown",
+        component.label(),
     );
     assert!(
         !run_handle.is_finished(),
         "blocked final heartbeat should hold teardown open",
     );
-    assert_child_reaped("kmsg", pid, starttime).await;
-    assert!(env.cancel.is_cancelled(), "kmsg EOF should stop discovery");
+    assert_child_reaped(component.label(), pid, starttime).await;
+    assert!(
+        env.cancel.is_cancelled(),
+        "{} EOF should stop discovery",
+        component.label(),
+    );
 
     env.handle.unblock_heartbeats();
-    assert_run_error_contains(run_handle, "Eof").await;
+    assert_run_error_contains(run_handle, component.eof_error_prefix()).await;
 }
 
-#[tokio::test]
-async fn kmsg_stdout_read_error_stops_runner_and_kills_child() {
+async fn assert_network_log_read_error_stops_runner(component: NetworkLogTestComponent) {
     let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let (mut stdin, pid, starttime) = install_controllable_kmsg(&mut config).await;
+    let (mut stdin, pid, starttime) = component.install(&mut config).await;
     env.handle.block_heartbeats();
     let run_handle = tokio::spawn(run(config));
 
@@ -135,84 +167,59 @@ async fn kmsg_stdout_read_error_stops_runner_and_kills_child() {
         env.handle
             .wait_heartbeat_in_flight(1, Duration::from_secs(2))
             .await,
-        "kmsg read error should drive runner teardown",
+        "{} read error should drive runner teardown",
+        component.label(),
     );
-    assert_child_reaped("kmsg", pid, starttime).await;
+    assert_child_reaped(component.label(), pid, starttime).await;
+    assert!(
+        env.cancel.is_cancelled(),
+        "{} read error should stop discovery",
+        component.label(),
+    );
 
     env.handle.unblock_heartbeats();
     assert_run_error_contains(run_handle, "ReadError").await;
 }
 
-#[tokio::test]
-async fn normal_shutdown_cancels_kmsg_and_reaps_child_without_error() {
+async fn assert_normal_shutdown_reaps_network_log_child(component: NetworkLogTestComponent) {
     let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let (_stdin, pid, starttime) = install_controllable_kmsg(&mut config).await;
+    let (_stdin, pid, starttime) = component.install(&mut config).await;
     let run_handle = tokio::spawn(run(config));
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
     env.trigger_stopping().await;
 
-    assert_run_exits_within(
-        run_handle,
-        Duration::from_secs(3),
-        "normal hard shutdown should stop the kmsg monitor",
-    )
-    .await;
-    assert_child_reaped("kmsg", pid, starttime).await;
+    let timeout_message = format!(
+        "normal hard shutdown should stop the {} monitor",
+        component.label(),
+    );
+    assert_run_exits_within(run_handle, Duration::from_secs(3), &timeout_message).await;
+    assert_child_reaped(component.label(), pid, starttime).await;
+}
+
+#[tokio::test]
+async fn kmsg_stdout_eof_stops_runner_and_reaps_child_before_teardown() {
+    assert_network_log_eof_stops_runner(NetworkLogTestComponent::Kmsg).await;
+}
+
+#[tokio::test]
+async fn kmsg_stdout_read_error_stops_runner_and_kills_child() {
+    assert_network_log_read_error_stops_runner(NetworkLogTestComponent::Kmsg).await;
+}
+
+#[tokio::test]
+async fn normal_shutdown_cancels_kmsg_and_reaps_child_without_error() {
+    assert_normal_shutdown_reaps_network_log_child(NetworkLogTestComponent::Kmsg).await;
 }
 
 #[tokio::test]
 async fn dns_stderr_eof_stops_runner_and_reaps_child_before_teardown() {
-    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let (stdin, pid, starttime) = install_controllable_dns(&mut config).await;
-    env.handle.block_heartbeats();
-    let run_handle = tokio::spawn(run(config));
-
-    wait_discover_entered(&env, Duration::from_secs(2)).await;
-    drop(stdin);
-
-    assert!(
-        env.handle
-            .wait_heartbeat_in_flight(1, Duration::from_secs(2))
-            .await,
-        "dns EOF should drive runner teardown",
-    );
-    assert!(
-        !run_handle.is_finished(),
-        "blocked final heartbeat should hold teardown open",
-    );
-    assert_child_reaped("dns", pid, starttime).await;
-    assert!(env.cancel.is_cancelled(), "dns EOF should stop discovery");
-
-    env.handle.unblock_heartbeats();
-    assert_run_error_contains(run_handle, "dns monitor exited unexpectedly: Eof").await;
+    assert_network_log_eof_stops_runner(NetworkLogTestComponent::Dns).await;
 }
 
 #[tokio::test]
 async fn dns_stderr_read_error_stops_runner_and_kills_child() {
-    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let (mut stdin, pid, starttime) = install_controllable_dns(&mut config).await;
-    env.handle.block_heartbeats();
-    let run_handle = tokio::spawn(run(config));
-
-    wait_discover_entered(&env, Duration::from_secs(2)).await;
-    stdin.write_all(&[0xff, b'\n']).await.unwrap();
-    stdin.flush().await.unwrap();
-
-    assert!(
-        env.handle
-            .wait_heartbeat_in_flight(1, Duration::from_secs(2))
-            .await,
-        "dns read error should drive runner teardown",
-    );
-    assert_child_reaped("dns", pid, starttime).await;
-    assert!(
-        env.cancel.is_cancelled(),
-        "dns read error should stop discovery",
-    );
-
-    env.handle.unblock_heartbeats();
-    assert_run_error_contains(run_handle, "ReadError").await;
+    assert_network_log_read_error_stops_runner(NetworkLogTestComponent::Dns).await;
 }
 
 #[tokio::test]
@@ -280,20 +287,7 @@ async fn dns_monitor_task_panic_stops_runner_and_cancels_active_job() {
 
 #[tokio::test]
 async fn normal_shutdown_cancels_dns_and_reaps_child_without_error() {
-    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let (_stdin, pid, starttime) = install_controllable_dns(&mut config).await;
-    let run_handle = tokio::spawn(run(config));
-
-    wait_discover_entered(&env, Duration::from_secs(2)).await;
-    env.trigger_stopping().await;
-
-    assert_run_exits_within(
-        run_handle,
-        Duration::from_secs(3),
-        "normal hard shutdown should stop the dns monitor",
-    )
-    .await;
-    assert_child_reaped("dns", pid, starttime).await;
+    assert_normal_shutdown_reaps_network_log_child(NetworkLogTestComponent::Dns).await;
 }
 
 /// SIGTERM while a job is in flight: per-job cancellation fires, the

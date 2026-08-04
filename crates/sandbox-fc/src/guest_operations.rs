@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 use vsock_host::VsockHost;
 
-use crate::park_coordinator::{CoordinatorState, OperationStartRejection, ParkCoordinator};
+use crate::park_coordinator::{
+    CoordinatorState, OperationStartRejection, ParkCoordinator, RunControlMismatch,
+};
 use crate::sandbox::SandboxState;
 
 #[derive(Clone)]
@@ -57,6 +59,13 @@ impl GuestOperationStartGate {
         let guest = self.guest.lock().await.as_ref().cloned();
         self.ensure_policy_open()?;
         guest.ok_or(GuestOperationStartError::NoGuest)
+    }
+
+    pub(crate) fn ensure_run_control_matches(
+        &self,
+        expected_run_id: &str,
+    ) -> Result<(), RunControlMismatch> {
+        self.coordinator.ensure_run_control_matches(expected_run_id)
     }
 
     fn ensure_policy_open(&self) -> Result<(), GuestOperationStartError> {

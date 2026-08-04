@@ -8,16 +8,13 @@ use sandbox_fc::{DNS_DIAGNOSTIC_HOSTNAME, DNS_READINESS_HOSTNAME, DNS_READINESS_
 
 use super::log::tail_stderr;
 use super::port::DnsPortReservation;
-use crate::child_cleanup::kill_and_reap_child_on_drop;
 use crate::network_log_drain::{DrainableLineReaderExit, NetworkLogDrainProducer};
 use crate::network_log_manager::NetworkLogManager;
+use crate::network_log_process::NetworkLogProcess;
 
 /// Handle to the dnsmasq process and its log monitor.
 pub struct DnsProxy {
-    cancel: CancellationToken,
-    task: Option<tokio::task::JoinHandle<DrainableLineReaderExit>>,
-    child: Option<tokio::process::Child>,
-    drain: NetworkLogDrainProducer,
+    process: NetworkLogProcess,
     port: u16,
 }
 
@@ -25,34 +22,17 @@ impl DnsProxy {
     /// Await the log monitor task, or pend forever after its completion has
     /// already been consumed.
     pub(crate) async fn wait(&mut self) -> Result<DrainableLineReaderExit, tokio::task::JoinError> {
-        let result = match self.task.as_mut() {
-            Some(task) => task.await,
-            None => std::future::pending().await,
-        };
-        self.task = None;
-        result
+        self.process.wait().await
     }
 
     /// Kill dnsmasq when necessary and wait for it to be reaped.
     pub(crate) async fn kill_and_reap_child(&mut self) {
-        let child_reaped = if let Some(ref mut child) = self.child {
-            let _ = child.start_kill();
-            child.wait().await.is_ok()
-        } else {
-            false
-        };
-        if child_reaped {
-            self.child = None;
-        }
+        self.process.kill_and_reap_child().await;
     }
 
     /// Stop the DNS proxy and wait for cleanup.
-    pub async fn stop(mut self) {
-        self.cancel.cancel();
-        self.kill_and_reap_child().await;
-        if let Some(task) = self.task.take() {
-            let _ = task.await;
-        }
+    pub async fn stop(self) {
+        self.process.stop().await;
         info!("dns proxy stopped");
     }
 
@@ -66,34 +46,14 @@ impl DnsProxy {
     /// `NetworkLogDrainCoordinator` uses this to ask the dnsmasq stderr reader
     /// task to drain complete log rows already visible to that task.
     pub(crate) fn drain_producer(&self) -> NetworkLogDrainProducer {
-        self.drain.clone()
+        self.process.drain_producer()
     }
 
     /// Create a noop handle for testing. No `dnsmasq` process is spawned.
     #[cfg(test)]
     pub fn noop() -> Self {
-        let cancel = CancellationToken::new();
-        let token = cancel.clone();
-        let (drain, mut drain_rx) = NetworkLogDrainProducer::channel("dns");
         Self {
-            cancel,
-            task: Some(tokio::spawn(async move {
-                loop {
-                    tokio::select! {
-                        _ = token.cancelled() => {
-                            return DrainableLineReaderExit::Cancelled;
-                        }
-                        request = drain_rx.recv() => {
-                            let Some(request) = request else {
-                                return DrainableLineReaderExit::DrainChannelClosed;
-                            };
-                            request.ack();
-                        }
-                    }
-                }
-            })),
-            child: None,
-            drain,
+            process: NetworkLogProcess::noop("dnsmasq", "dns"),
             port: 0,
         }
     }
@@ -115,10 +75,7 @@ impl DnsProxy {
         let task = tokio::spawn(tail_stderr(stderr, network_log_manager, token, drain_rx));
 
         Ok(Self {
-            cancel,
-            task: Some(task),
-            child: Some(child),
-            drain,
+            process: NetworkLogProcess::new("dnsmasq", cancel, task, child, drain),
             port,
         })
     }
@@ -136,55 +93,9 @@ impl DnsProxy {
     pub(crate) async fn replace_monitor_with_panic_trigger_for_test(
         &mut self,
     ) -> std::sync::Arc<tokio::sync::Notify> {
-        let task = self.task.take().expect("DNS monitor task should exist");
-        task.abort();
-        let error = task
+        self.process
+            .replace_monitor_with_panic_trigger_for_test("dns")
             .await
-            .expect_err("aborted DNS monitor task should return a join error");
-        assert!(
-            error.is_cancelled(),
-            "aborted DNS monitor task should be cancelled: {error}",
-        );
-
-        let token = self.cancel.clone();
-        let trigger = std::sync::Arc::new(tokio::sync::Notify::new());
-        let task_trigger = std::sync::Arc::clone(&trigger);
-        let (drain, mut drain_rx) = NetworkLogDrainProducer::channel("dns");
-        self.drain = drain;
-        self.task = Some(tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    _ = token.cancelled() => {
-                        return DrainableLineReaderExit::Cancelled;
-                    }
-                    request = drain_rx.recv() => {
-                        let Some(request) = request else {
-                            return DrainableLineReaderExit::DrainChannelClosed;
-                        };
-                        request.ack();
-                    }
-                    _ = task_trigger.notified() => {
-                        panic!("simulated DNS monitor task panic");
-                    }
-                }
-            }
-        }));
-        trigger
-    }
-}
-
-impl Drop for DnsProxy {
-    /// Kill dnsmasq and abort the log task if `stop()` was never called.
-    ///
-    /// Prevents orphaned dnsmasq processes when shutdown misses the explicit
-    /// async `stop()` path. The cleanup helper also reaps children that already
-    /// exited before drop.
-    fn drop(&mut self) {
-        kill_and_reap_child_on_drop("dnsmasq", &mut self.child);
-        self.cancel.cancel();
-        if let Some(task) = &self.task {
-            task.abort();
-        }
     }
 }
 
