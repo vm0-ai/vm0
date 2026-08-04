@@ -1322,18 +1322,6 @@
       "deletedEmail": "Email dihapus: {{subject}}",
       "details": "Detail email",
       "email": "Email",
-      "followUp": {
-        "action": "Tindak lanjut",
-        "active": "Pelacakan balasan",
-        "activeDescription": "Balasan dilacak dan akan dilaporkan di chat ini.",
-        "idleDescription": "Lacak balasan dan dapatkan notifikasi di chat ini.",
-        "paused": "Pelacakan dijeda",
-        "pausedDescription": "Pelacakan balasan saat ini dijeda.",
-        "settingUp": "Menyiapkan…",
-        "submitting": "Menyiapkan…",
-        "submittingDescription": "Menyiapkan pelacakan balasan…",
-        "tracking": "Lacak balasan"
-      },
       "loadingDetails": "Memuat detail email",
       "needReconnect": "Perlu sambungkan ulang",
       "noMessage": "(Tidak ada pesan)",

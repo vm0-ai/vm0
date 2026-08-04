@@ -1322,18 +1322,6 @@
       "deletedEmail": "削除されたメール: {{subject}}",
       "details": "メールの詳細",
       "email": "メール",
-      "followUp": {
-        "action": "フォローアップ",
-        "active": "返信の追跡",
-        "activeDescription": "返信は追跡され、このチャットで報告されます。",
-        "idleDescription": "返信を追跡し、このチャットで通知を受け取ります。",
-        "paused": "追跡が一時停止されました",
-        "pausedDescription": "返信追跡は現在一時停止されています。",
-        "settingUp": "セットアップ中…",
-        "submitting": "セットアップ中…",
-        "submittingDescription": "返信追跡を設定しています…",
-        "tracking": "返信の追跡"
-      },
       "loadingDetails": "メールの詳細を読み込んでいます",
       "needReconnect": "再接続が必要です",
       "noMessage": "(メッセージなし)",

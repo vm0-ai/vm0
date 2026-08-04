@@ -1817,7 +1817,6 @@ function createPagedEventResources(
     artifactCardSignals,
     mailDraftCardSignals,
     publicSignals: {
-      reloadMailDrafts$: mailDraftCardSignals.reload$,
       browserSessionSignals,
       subscribeBrowserSessions$: browserSessionSignals.subscribe$,
       artifactSignalsForUrl: (url: string): ArtifactSignals | undefined => {
@@ -2105,7 +2104,6 @@ interface RunTrackingDeps {
   setupChatEvents$: Command<Promise<void>, [AbortSignal]>;
   catchUpChatEvents$: Command<Promise<void>, [AbortSignal]>;
   reloadArtifacts$: Command<void, []>;
-  reloadMailDrafts$: Command<void, []>;
   subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
   automationSignals: Pick<ChatThreadSignals, "headerAutomations">;
   dataSource: ChatThreadRemote;
@@ -2295,26 +2293,15 @@ function createOnSubscribedCommand({
   threadId,
   catchUpChatEvents$,
   reloadArtifacts$,
-  reloadMailDrafts$,
   dataSource,
 }: Pick<
   RunTrackingDeps,
-  | "threadId"
-  | "catchUpChatEvents$"
-  | "reloadArtifacts$"
-  | "reloadMailDrafts$"
-  | "dataSource"
+  "threadId" | "catchUpChatEvents$" | "reloadArtifacts$" | "dataSource"
 >): Command<Promise<void>, [AbortSignal]> {
-  const hasSubscribed$ = state(false);
   return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
     set(dataSource.reloadCancellationRecoveryPending$);
     set(reloadArtifacts$);
-    if (get(hasSubscribed$)) {
-      set(reloadMailDrafts$);
-    } else {
-      set(hasSubscribed$, true);
-    }
     await Promise.all([
       get(dataSource.cancellationRecoveryPending$),
       set(reloadMountedComposerWorkflows$, signal),
@@ -2330,7 +2317,6 @@ function createRunTracking({
   setupChatEvents$,
   catchUpChatEvents$,
   reloadArtifacts$,
-  reloadMailDrafts$,
   subscribeBrowserSessions$,
   automationSignals,
   dataSource,
@@ -2339,7 +2325,6 @@ function createRunTracking({
     threadId,
     catchUpChatEvents$,
     reloadArtifacts$,
-    reloadMailDrafts$,
     dataSource,
   });
 
@@ -2356,7 +2341,6 @@ function createRunTracking({
 
     const onAutomationsChanged$ = command(({ set }) => {
       set(automationSignals.headerAutomations.reload$);
-      set(reloadMailDrafts$);
       return false;
     });
 
@@ -3549,7 +3533,6 @@ export function createChatThreadSignals(
     setupChatEvents$: messages.setup$,
     catchUpChatEvents$: chatEvents.catchUp$,
     reloadArtifacts$: messages.reloadArtifacts$,
-    reloadMailDrafts$: messages.reloadMailDrafts$,
     subscribeBrowserSessions$: messages.subscribeBrowserSessions$,
     automationSignals: threadOwned,
     dataSource,

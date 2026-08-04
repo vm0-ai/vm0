@@ -1351,18 +1351,6 @@
       "deletedEmail": "E-mail excluído: {{subject}}",
       "details": "Detalhes do e-mail",
       "email": "E-mail",
-      "followUp": {
-        "action": "Acompanhar",
-        "active": "Monitorando respostas",
-        "activeDescription": "As respostas são monitoradas e serão informadas nesta conversa.",
-        "idleDescription": "Monitore respostas e receba notificações nesta conversa.",
-        "paused": "Monitoramento pausado",
-        "pausedDescription": "O monitoramento de respostas está pausado no momento.",
-        "settingUp": "Configurando…",
-        "submitting": "Configurando…",
-        "submittingDescription": "Configurando monitoramento de respostas…",
-        "tracking": "Monitorando respostas"
-      },
       "loadingDetails": "Carregando detalhes do e-mail",
       "needReconnect": "Precisa reconectar",
       "noMessage": "(Sem mensagem)",

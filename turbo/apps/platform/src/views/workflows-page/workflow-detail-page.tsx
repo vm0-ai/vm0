@@ -3486,7 +3486,6 @@ function gmailMatchConditions(
 
 function nextGmailMatchCondition(
   conditions: readonly GmailMatchCondition[],
-  threadIdEnabled: boolean,
 ): GmailMatchCondition | null {
   for (const { operator } of GMAIL_TEXT_OPERATORS) {
     for (const { field } of GMAIL_TEXT_FIELDS) {
@@ -3497,9 +3496,6 @@ function nextGmailMatchCondition(
         return { field, operator, value: "" };
       }
     }
-  }
-  if (!threadIdEnabled) {
-    return null;
   }
   const threadIdUsed = conditions.some((condition) => {
     return condition.field === "threadId";
@@ -6903,14 +6899,12 @@ function GmailMatchConditionRow({
   conditions,
   index,
   disabled,
-  threadIdEnabled,
   onChange,
 }: {
   readonly condition: GmailMatchCondition;
   readonly conditions: readonly GmailMatchCondition[];
   readonly index: number;
   readonly disabled: boolean;
-  readonly threadIdEnabled: boolean;
   readonly onChange: (conditions: readonly GmailMatchCondition[]) => void;
 }) {
   const fieldLabel = gmailMatchFieldOption(condition.field).label;
@@ -6945,28 +6939,26 @@ function GmailMatchConditionRow({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {(threadIdEnabled ? GMAIL_MATCH_FIELDS : GMAIL_TEXT_FIELDS).map(
-            (option) => {
-              const operator = gmailMatchOperatorForField(
-                option.field,
-                condition.operator,
-              );
-              return (
-                <SelectItem
-                  key={option.field}
-                  value={option.field}
-                  disabled={gmailMatchConditionUsed(
-                    conditions,
-                    index,
-                    option.field,
-                    operator,
-                  )}
-                >
-                  {option.label}
-                </SelectItem>
-              );
-            },
-          )}
+          {GMAIL_MATCH_FIELDS.map((option) => {
+            const operator = gmailMatchOperatorForField(
+              option.field,
+              condition.operator,
+            );
+            return (
+              <SelectItem
+                key={option.field}
+                value={option.field}
+                disabled={gmailMatchConditionUsed(
+                  conditions,
+                  index,
+                  option.field,
+                  operator,
+                )}
+              >
+                {option.label}
+              </SelectItem>
+            );
+          })}
         </SelectContent>
       </Select>
       <Select
@@ -7037,10 +7029,7 @@ function GmailMatchConditionsEditor({
   readonly disabled: boolean;
   readonly onChange: (conditions: readonly GmailMatchCondition[]) => void;
 }) {
-  const features = useGet(featureSwitch$);
-  const threadIdEnabled =
-    features[FeatureSwitchKey.ZeroMailReplyFollowUp] ?? false;
-  const nextCondition = nextGmailMatchCondition(conditions, threadIdEnabled);
+  const nextCondition = nextGmailMatchCondition(conditions);
   return (
     <div className="flex flex-col gap-2">
       {conditions.map((condition, index) => {
@@ -7051,7 +7040,6 @@ function GmailMatchConditionsEditor({
             conditions={conditions}
             index={index}
             disabled={disabled}
-            threadIdEnabled={threadIdEnabled}
             onChange={onChange}
           />
         );

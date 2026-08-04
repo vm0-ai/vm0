@@ -1322,18 +1322,6 @@
       "deletedEmail": "삭제된 이메일: {{subject}}",
       "details": "이메일 세부정보",
       "email": "이메일",
-      "followUp": {
-        "action": "후속 조치",
-        "active": "답장 추적 중",
-        "activeDescription": "답장이 추적되어 이 채팅에 보고됩니다.",
-        "idleDescription": "답장 추적 및 알림 받기",
-        "paused": "추적 일시 중지됨",
-        "pausedDescription": "답장 추적이 현재 일시 중지되었습니다.",
-        "settingUp": "설정 중...",
-        "submitting": "설정 중...",
-        "submittingDescription": "답장 추적 설정 중...",
-        "tracking": "답장 추적 중"
-      },
       "loadingDetails": "이메일 세부정보 로딩 중",
       "needReconnect": "다시 연결 필요",
       "noMessage": "(메시지 없음)",

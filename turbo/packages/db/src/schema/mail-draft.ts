@@ -11,7 +11,6 @@ import type { ZeroMailDraftStatus } from "@vm0/api-contracts/contracts/zero-mail
 import type { LegacyMailDraftData } from "@vm0/db/jsonb-contracts/mail-draft";
 import { chatThreads } from "./chat-thread";
 import { connectors } from "./connector";
-import { zeroWorkflowAutomations } from "./zero-workflow";
 
 export const mailDrafts = pgTable(
   "mail_drafts",
@@ -36,12 +35,6 @@ export const mailDrafts = pgTable(
     gmailThreadId: text("gmail_thread_id"),
     gmailMessageId: text("gmail_message_id"),
     sentGmailMessageId: text("sent_gmail_message_id"),
-    followUpAutomationId: uuid("follow_up_automation_id").references(
-      () => {
-        return zeroWorkflowAutomations.id;
-      },
-      { onDelete: "set null" },
-    ),
     status: text("status").$type<ZeroMailDraftStatus>(),
     senderName: text("sender_name"),
     senderAddress: text("sender_address"),
@@ -53,9 +46,6 @@ export const mailDrafts = pgTable(
   (table) => {
     return [
       index("idx_mail_drafts_chat_thread").on(table.chatThreadId),
-      index("idx_mail_drafts_follow_up_automation").on(
-        table.followUpAutomationId,
-      ),
       uniqueIndex("mail_drafts_connector_gmail_draft_unique").on(
         table.connectorId,
         table.gmailDraftId,

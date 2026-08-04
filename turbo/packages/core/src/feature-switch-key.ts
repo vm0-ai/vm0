@@ -45,7 +45,6 @@ export enum FeatureSwitchKey {
   ZeroBrowser = "zeroBrowser",
   ZeroChatMessaging = "zeroChatMessaging",
   ZeroImageRecognition = "zeroImageRecognition",
-  ZeroMailReplyFollowUp = "zeroMailReplyFollowUp",
   RustZeroCli = "rustZeroCli",
   Banking = "banking",
   Lab = "lab",

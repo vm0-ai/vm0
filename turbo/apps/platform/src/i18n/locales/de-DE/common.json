@@ -1322,18 +1322,6 @@
       "deletedEmail": "Gelöschte E-Mail: {{subject}}",
       "details": "E-Mail-Details",
       "email": "E-Mail",
-      "followUp": {
-        "action": "Nachverfolgen",
-        "active": "Antworten verfolgen",
-        "activeDescription": "Antworten werden verfolgt und in diesem Chat gemeldet.",
-        "idleDescription": "Verfolgen Sie Antworten und werden Sie in diesem Chat benachrichtigt.",
-        "paused": "Tracking pausiert",
-        "pausedDescription": "Die Antwortverfolgung ist derzeit pausiert.",
-        "settingUp": "Einrichten…",
-        "submitting": "Einrichten…",
-        "submittingDescription": "Antwortverfolgung einrichten…",
-        "tracking": "Antworten verfolgen"
-      },
       "loadingDetails": "E-Mail-Details werden geladen",
       "needReconnect": "Erneute Verbindung erforderlich",
       "noMessage": "(Keine Nachricht)",

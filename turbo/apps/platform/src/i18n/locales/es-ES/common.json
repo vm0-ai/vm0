@@ -1351,18 +1351,6 @@
       "deletedEmail": "Correo electrónico eliminado: {{subject}}",
       "details": "Detalles del correo electrónico",
       "email": "Correo electrónico",
-      "followUp": {
-        "action": "Seguimiento",
-        "active": "Seguimiento de respuestas",
-        "activeDescription": "Las respuestas se rastrean y se reportarán en este chat.",
-        "idleDescription": "Rastrea las respuestas y recibe notificaciones en este chat.",
-        "paused": "Seguimiento pausado",
-        "pausedDescription": "El seguimiento de respuestas está actualmente pausado.",
-        "settingUp": "Configurando…",
-        "submitting": "Configurando…",
-        "submittingDescription": "Configurando el seguimiento de respuestas...",
-        "tracking": "Seguimiento de respuestas"
-      },
       "loadingDetails": "Cargando detalles del correo electrónico",
       "needReconnect": "Debes volver a conectar",
       "noMessage": "(Sin mensaje)",
