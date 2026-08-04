@@ -3534,6 +3534,42 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     expect(sinceFilteredIds).not.toContain(beforeBoundaryRun.runId);
   });
 
+  it("preserves historical agent-source logs without provenance", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "historical-agent-log");
+    const historicalAgentRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "historical agent-source run",
+      triggerSource: "agent",
+    });
+    await api.requestCancelRun(actor, historicalAgentRun.runId, [200]);
+
+    const listed = await reads.requestListLogs(actor, {}, [200]);
+    if (listed.status !== 200) {
+      throw new Error("Expected the historical agent-source log list");
+    }
+    expect(
+      listed.body.data.find((entry) => {
+        return entry.id === historicalAgentRun.runId;
+      }),
+    ).toMatchObject({
+      triggerSource: "agent",
+      triggerAgentName: null,
+    });
+    expect(listed.body.filters.sources).toContain("agent");
+
+    const detail = await reads.requestReadLogById(
+      actor,
+      historicalAgentRun.runId,
+      [200],
+    );
+    expect(detail.body).toMatchObject({
+      id: historicalAgentRun.runId,
+      triggerSource: "agent",
+      triggerAgentName: null,
+    });
+  });
+
   it("resolves zero log agent identity from the run session when compose versions are shared", async () => {
     const misc = createMiscRoutesApi(context);
     const authOrg = createAuthOrgAgentsBddApi(context);
