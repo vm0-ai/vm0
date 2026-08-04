@@ -2589,6 +2589,7 @@ interface AutomationActionInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly automationId: string;
+  readonly sourceRunId?: string;
 }
 
 function manualTriggerSource(automation: AutomationRow) {
@@ -2603,6 +2604,7 @@ function manualTriggerContext(args: {
   readonly automation: AutomationRow;
   readonly workflowName: string;
   readonly requestedAt: Date;
+  readonly sourceRunId?: string;
 }): WorkflowAutomationContext {
   const requestedAt = args.requestedAt.toISOString();
   return {
@@ -2613,6 +2615,9 @@ function manualTriggerContext(args: {
       automationId: args.automation.id,
       trigger: "manual",
       requestedAt,
+      ...(args.sourceRunId === undefined
+        ? {}
+        : { sourceRunId: args.sourceRunId }),
     },
   };
 }
@@ -2690,6 +2695,9 @@ export const runOwnedWorkflowAutomationNow$ = command(
       automation,
       workflowName: target.workflowName,
       requestedAt: currentTime,
+      ...(args.sourceRunId === undefined
+        ? {}
+        : { sourceRunId: args.sourceRunId }),
     });
     const result = await set(
       runWorkflowAutomationNow$,

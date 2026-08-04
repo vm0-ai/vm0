@@ -73,21 +73,29 @@ async function resolveWorkflowRunAutonomyBudget(
   event: PendingWorkflowQueueEvent,
   automation: typeof zeroWorkflowAutomations.$inferSelect,
 ): Promise<WorkflowRunAutonomyBudget> {
-  if (event.workflowAutomationEventType !== "chat-run-finished") {
+  const sourceRunId =
+    event.workflowAutomationEventType === "chat-run-finished"
+      ? event.workflowAutomationEventPayload?.["runId"]
+      : event.workflowAutomationEventType === "manual"
+        ? event.workflowAutomationEventPayload?.["sourceRunId"]
+        : undefined;
+  if (
+    event.workflowAutomationEventType !== "chat-run-finished" &&
+    sourceRunId === undefined
+  ) {
     return { kind: "ok", autonomyBudget: automation.autonomyBudget };
   }
-  const sourceRunId = event.workflowAutomationEventPayload?.["runId"];
   if (typeof sourceRunId !== "string") {
     return {
       kind: "invalid",
-      message: "Chat run finished event is missing its source run",
+      message: `${event.workflowAutomationEventType === "manual" ? "Manual automation" : "Chat run finished"} event is missing its source run`,
     };
   }
   const sourceAutonomyBudget = await loadRunAutonomyBudget(db, sourceRunId);
   if (sourceAutonomyBudget === null) {
     return {
       kind: "invalid",
-      message: "Chat run finished source run no longer exists",
+      message: `${event.workflowAutomationEventType === "manual" ? "Manual automation" : "Chat run finished"} source run no longer exists`,
     };
   }
   const derived = childAutonomyBudget(sourceAutonomyBudget);

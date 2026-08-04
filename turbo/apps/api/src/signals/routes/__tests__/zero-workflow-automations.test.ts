@@ -2530,4 +2530,63 @@ describe("zero workflow automations", () => {
     expect(blocked.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
     await runs.requestCancelRun(actor, exhaustedRun.body.runId, [200]);
   });
+
+  it("derives manual run budgets and rejects exhausted Zero callers", async () => {
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    const { actor, workflowId } = await setupFixture();
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          schedule: { type: "loop", intervalSeconds: 3600 },
+        },
+      }),
+      [201],
+    );
+    const sourceRun = await accept(
+      automationsClient().run({
+        headers: authHeaders(),
+        params: { id: automation.body.id },
+      }),
+      [201],
+    );
+    if (!sourceRun.body.runId) {
+      throw new Error("Expected the source automation run to start");
+    }
+    const sourceToken = runs.zeroTokenForRunWithCapabilities(
+      actor,
+      sourceRun.body.runId,
+      ["agent:write"],
+    );
+    await runs.requestCancelRun(actor, sourceRun.body.runId, [200]);
+    await flushWaitUntilForTest();
+
+    await setRunAutonomyBudgetFixture(sourceRun.body.runId, 1);
+    const childRun = await accept(
+      automationsClient().run({
+        headers: { authorization: `Bearer ${sourceToken}` },
+        params: { id: automation.body.id },
+      }),
+      [201],
+    );
+    if (!childRun.body.runId) {
+      throw new Error("Expected a budget-one caller to start a child run");
+    }
+    await expect(
+      readRunAutonomyBudgetFixture(childRun.body.runId),
+    ).resolves.toBe(0);
+    await runs.requestCancelRun(actor, childRun.body.runId, [200]);
+    await flushWaitUntilForTest();
+
+    await setRunAutonomyBudgetFixture(sourceRun.body.runId, 0);
+    const blocked = await accept(
+      automationsClient().run({
+        headers: { authorization: `Bearer ${sourceToken}` },
+        params: { id: automation.body.id },
+      }),
+      [409],
+    );
+    expect(blocked.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
+  });
 });

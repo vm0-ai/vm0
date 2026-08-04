@@ -6,6 +6,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$ } from "../external/db";
 import {
+  AUTONOMY_BUDGET_EXHAUSTED_MESSAGE,
   autonomyBudgetExhausted,
   badRequestMessage,
   conflict,
@@ -344,6 +345,7 @@ const runAutomationInner$ = command(
         orgId: auth.orgId,
         member: memberFromAuth(auth),
         automationId: params.id,
+        ...(auth.tokenType === "zero" ? { sourceRunId: auth.runId } : {}),
       },
       signal,
     );
@@ -359,6 +361,12 @@ const runAutomationInner$ = command(
     }
     if (result.kind === "run_error") {
       return result.response;
+    }
+    if (
+      result.kind === "conflict" &&
+      result.message === AUTONOMY_BUDGET_EXHAUSTED_MESSAGE
+    ) {
+      return autonomyBudgetExhausted();
     }
     return automationErrorResponse(result);
   },
