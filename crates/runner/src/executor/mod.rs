@@ -92,11 +92,11 @@ const PROCESS_CANCEL_TERMINAL_HOST_SLACK: Duration = Duration::from_millis(1_250
 const PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT: Duration =
     EXEC_TERMINAL_CLEANUP_BUDGET.saturating_add(PROCESS_CANCEL_TERMINAL_HOST_SLACK);
 const _: () = assert!(
-    JOB_TERMINAL_GRACE_TIMEOUT.as_millis() == 10_000,
+    JOB_TERMINAL_GRACE_TIMEOUT.as_nanos() == 10_000_000_000,
     "job terminal grace changed; review guest cleanup and host slack"
 );
 const _: () = assert!(
-    PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT.as_millis() == 8_000,
+    PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT.as_nanos() == 8_000_000_000,
     "process cancellation terminal grace changed; review guest cleanup and host slack"
 );
 const PROCESS_CANCEL_TIMEOUTS: ProcessCancelTimeouts = ProcessCancelTimeouts {

@@ -26,6 +26,6 @@ pub const EXEC_TERMINAL_CLEANUP_BUDGET: Duration = EXEC_PROCESS_CONTAINMENT_TERM
     .saturating_add(EXEC_OUTPUT_DRAIN_DEADLINE);
 
 const _: () = assert!(
-    EXEC_TERMINAL_CLEANUP_BUDGET.as_millis() == 6_750,
+    EXEC_TERMINAL_CLEANUP_BUDGET.as_nanos() == 6_750_000_000,
     "guest exec terminal cleanup budget changed; review runner host grace"
 );
