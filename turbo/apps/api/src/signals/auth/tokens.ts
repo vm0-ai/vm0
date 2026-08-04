@@ -21,8 +21,9 @@ import { singleton } from "../../lib/singleton";
 
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
-// Previous runner-bundled Zero CLIs gate `recognize` with this key. Keep the
-// positive token override until those runners have drained after global rollout.
+// Pre-rollout TypeScript Zero CLI versions gate `recognize` with this key.
+// Keep the positive token override until those versions can no longer run,
+// including from resumed sandboxes or npm caches.
 const LEGACY_IMAGE_RECOGNITION_SWITCH = "zeroImageRecognition";
 // Covers the runner's two-hour execution budget plus claim, startup,
 // finalization, and terminal report time.
