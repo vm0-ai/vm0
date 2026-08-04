@@ -11,9 +11,10 @@
 //! payload so captured stdout and stderr can be transferred without base64.
 //! One request per connection, one response per connection.
 //!
-//! Exec request payloads are [`ExecRequest`]. Termination request payloads are
-//! [`TerminateRequest`]. Public legacy responses are serialized as untagged
-//! JSON objects.
+//! Legacy exec request payloads are [`ExecRequest`]. A negotiated request adds
+//! a private response-format selector after a non-executing capability probe.
+//! Termination request payloads are [`TerminateRequest`]. Public legacy
+//! responses are serialized as untagged JSON objects.
 //!
 //! Termination clients send `{"action":"terminate"}`. A status response is
 //! shaped like `{"status":"accepted"}`; an error response is shaped like

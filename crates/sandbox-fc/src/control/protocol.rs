@@ -50,7 +50,7 @@ pub(super) enum CapabilitiesAction {
 
 /// Response to a control capability probe.
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged, deny_unknown_fields)]
+#[serde(untagged)]
 pub(super) enum CapabilitiesResponse {
     Supported { exec_response_raw_version: u8 },
     Unsupported { error: String },
@@ -114,11 +114,17 @@ pub(super) struct RawExecRequest<'a> {
 
 impl<'a> From<&'a ExecRequest> for RawExecRequest<'a> {
     fn from(request: &'a ExecRequest) -> Self {
+        let ExecRequest {
+            expected_run_id,
+            command,
+            timeout_secs,
+            sudo,
+        } = request;
         Self {
-            expected_run_id: request.expected_run_id.as_deref(),
-            command: &request.command,
-            timeout_secs: request.timeout_secs,
-            sudo: request.sudo,
+            expected_run_id: expected_run_id.as_deref(),
+            command,
+            timeout_secs: *timeout_secs,
+            sudo: *sudo,
             response_format: ExecResponseFormat::RawV1,
         }
     }
@@ -285,6 +291,7 @@ pub(super) async fn write_frame_payload_len(stream: &mut UnixStream, len: usize)
 mod tests {
     use super::*;
 
+    use super::super::exec_response::RAW_EXEC_RESPONSE_VERSION;
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD as BASE64;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -475,6 +482,23 @@ mod tests {
         assert_eq!(decoded.expected_run_id.as_deref(), Some("run-full-id"));
         assert_eq!(decoded.command, "printf raw");
         assert_eq!(response_format, ExecResponseFormat::RawV1);
+    }
+
+    #[test]
+    fn capabilities_response_accepts_additive_fields() {
+        let response: CapabilitiesResponse = serde_json::from_value(serde_json::json!({
+            "exec_response_raw_version": RAW_EXEC_RESPONSE_VERSION,
+            "terminate_version": 1,
+        }))
+        .unwrap();
+
+        let CapabilitiesResponse::Supported {
+            exec_response_raw_version,
+        } = response
+        else {
+            panic!("explicit raw version should remain supported with additive fields");
+        };
+        assert_eq!(exec_response_raw_version, RAW_EXEC_RESPONSE_VERSION);
     }
 
     #[test]
