@@ -123,6 +123,23 @@ describe("POST /api/zero/agents", () => {
     expect(response.body.agentId).toStrictEqual(expect.any(String));
   });
 
+  it("assigns a preset avatar when the request omits one", async () => {
+    const fixture = agentsFixture("avatar");
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    context.mocks.s3.send.mockClear();
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const response = await accept(
+      agentsClient().create({
+        headers: authHeaders(),
+        body: { displayName: "CLI Agent" },
+      }),
+      [201],
+    );
+
+    expect(response.body.avatarUrl).toMatch(/^preset:[0-4]$/);
+  });
+
   it("returns 409 when the public agent limit has been reached", async () => {
     const fixture = agentsFixture("limit");
     mocks.clerk.session(fixture.userId, fixture.orgId);

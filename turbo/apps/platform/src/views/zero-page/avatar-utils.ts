@@ -1,16 +1,10 @@
+import { AVATAR_PRESET_PREFIX } from "@vm0/core/agent-avatar";
 import { getAvatarPresets } from "./zero-avatars.ts";
 import {
   AVATAR_SVG_PREFIX,
   parseAvatarSvgConfig,
   type AvatarSvgConfig,
 } from "./avatar-svg-utils.ts";
-
-const AVATAR_PRESET_PREFIX = "preset:";
-
-/** Return a random preset avatar string like `preset:2`. */
-export function randomPresetAvatar(): string {
-  return `${AVATAR_PRESET_PREFIX}${Math.floor(Math.random() * getAvatarPresets().length)}`;
-}
 
 /**
  * Resolve an avatarUrl to an AvatarSvgConfig for SVG rendering.

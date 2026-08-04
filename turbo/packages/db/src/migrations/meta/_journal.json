@@ -71,6 +71,13 @@
       "when": 1785818325203,
       "tag": "0817_tired_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 818,
+      "version": "7",
+      "when": 1785822012229,
+      "tag": "0818_backfill_zero_agent_default_avatar",
+      "breakpoints": true
     }
   ]
 }

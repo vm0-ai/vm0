@@ -9,6 +9,7 @@ import {
   type ZeroAgentVisibility,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { randomPresetAvatar } from "@vm0/core/agent-avatar";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
@@ -357,7 +358,7 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     displayName: body.data.displayName ?? null,
     description: body.data.description ?? null,
     sound: body.data.sound ?? null,
-    avatarUrl: body.data.avatarUrl ?? null,
+    avatarUrl: body.data.avatarUrl ?? randomPresetAvatar(),
     modelProviderId: null,
     selectedModel: null,
     preferPersonalProvider: false,
