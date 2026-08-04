@@ -290,6 +290,43 @@ describe("zero chat thread IndexedDB fallback", () => {
     }
   });
 
+  it("shows cached messages when a realtime subscription fails", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+
+    const runtimeDb = await primeRuntimeChatDb();
+    await runtimeDb.put(CHAT_MESSAGES_STORE, {
+      id: "00000000-0000-4000-8000-000000000093",
+      threadId: THREAD_ID,
+      eventType: "output.message",
+      content: "Cached while realtime is unavailable",
+      seqId: 1,
+      createdAt: "2026-03-10T00:00:01Z",
+    });
+    context.mocks.ably.rejectSubscribe(
+      `chatThreadDetailChanged:${THREAD_ID}`,
+      "channel attach failed",
+    );
+    let remoteEventRequests = 0;
+    context.mocks.api(chatThreadEventsContract.list, ({ respond }) => {
+      remoteEventRequests += 1;
+      return respond(200, { events: [] });
+    });
+
+    try {
+      setupChatPage();
+
+      await expect(
+        screen.findByText("Cached while realtime is unavailable"),
+      ).resolves.toBeInTheDocument();
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+      expect(remoteEventRequests).toBe(0);
+    } finally {
+      runtimeDb.close();
+    }
+  });
+
   it("scrolls cached messages to the bottom while remote catch-up is blocked", async () => {
     const user = userEvent.setup({ delay: null });
     prepareDefaultAgent();
