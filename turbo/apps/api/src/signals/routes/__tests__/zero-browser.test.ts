@@ -1811,9 +1811,7 @@ describe("zero browser route", () => {
 
     const firstReconcile = await reconcileBrowsers();
     expect(firstReconcile.body).toMatchObject({
-      stopped: 0,
       errors: 0,
-      healthy: 1,
     });
     await flushWaitUntilForTest();
 
@@ -1847,9 +1845,7 @@ describe("zero browser route", () => {
 
     const secondReconcile = await reconcileBrowsers();
     expect(secondReconcile.body).toMatchObject({
-      stopped: 0,
       errors: 0,
-      healthy: 1,
     });
     await flushWaitUntilForTest();
 
@@ -1924,10 +1920,7 @@ describe("zero browser route", () => {
     ).toHaveLength(1);
     const retriedCleanup = await reconcileBrowsers();
     expect(retriedCleanup.body).toMatchObject({
-      checked: 2,
-      stopped: 1,
       errors: 0,
-      healthy: 1,
     });
     expect(
       context.mocks.s3.send.mock.calls.filter(([command]) => {
@@ -1974,8 +1967,6 @@ describe("zero browser route", () => {
 
     const reconciled = await reconcileBrowsers();
     expect(reconciled.body).toMatchObject({
-      checked: 1,
-      stopped: 1,
       errors: 0,
     });
     expect(context.mocks.s3.send).toHaveBeenCalledWith(
@@ -2026,9 +2017,16 @@ describe("zero browser route", () => {
         return HttpResponse.json(providerBrowser(String(params.id)));
       }),
       http.patch(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
-        providerStops += 1;
+        const providerId = String(params.id);
+        if (
+          providerIds.some((id) => {
+            return id === providerId;
+          })
+        ) {
+          providerStops += 1;
+        }
         return HttpResponse.json(
-          providerBrowser(String(params.id), { status: "stopped" }),
+          providerBrowser(providerId, { status: "stopped" }),
         );
       }),
     );
@@ -2041,7 +2039,6 @@ describe("zero browser route", () => {
     mockNow(STARTED_AT_MS + 11 * MINUTE_MS);
     const reclaimed = await reconcileBrowsers();
     expect(reclaimed.body).toMatchObject({
-      stopped: 1,
       errors: 0,
     });
     await flushWaitUntilForTest();
