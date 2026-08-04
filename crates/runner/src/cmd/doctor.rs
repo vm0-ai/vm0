@@ -1,5 +1,6 @@
 //! Runtime health diagnostics for all runners on the host.
 
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -98,7 +99,7 @@ enum Warning {
     /// status.json lists a dns_port but no dnsmasq process found on it.
     NoDnsmasq { port: u16, base_dir: PathBuf },
     /// A network namespace whose pool lock is not held by any process.
-    OrphanNamespace { ns_name: String, pool_idx: u32 },
+    OrphanNamespace { ns_name: String, lock_path: PathBuf },
     /// An NBD device whose recorded owner task has exited and whose lock is free.
     OrphanNbdDevice { device_index: u32, pid: u32 },
     /// The NBD orphan scan task panicked (bug in find_nbd_orphans).
@@ -177,13 +178,15 @@ impl Warning {
     /// Targeted recheck: returns `true` if the anomaly still persists.
     ///
     /// Process-related checks use the pre-scanned `fresh` data (a single
-    /// `/proc` scan shared across all warnings). Other checks do their own
-    /// minimal I/O (status.json read, HTTP HEAD, flock).
+    /// `/proc` scan shared across all warnings), and namespace checks use one
+    /// observation shared across the global warning pass. Other checks do
+    /// their own minimal I/O (status.json read, HTTP HEAD, flock).
     async fn persists(
         &self,
         api_client: Option<&Client>,
         fresh: &process::DiscoveredProcesses,
         runner_pids: &[u32],
+        network_namespaces: Option<&HashSet<String>>,
     ) -> bool {
         match self {
             Self::ApiUnreachable {
@@ -278,9 +281,11 @@ impl Warning {
                 // appeared after the initial scan and now owns the process.
                 pid_exists(*pid) && process::is_orphan(*pid, runner_pids).await
             }
-            Self::OrphanNamespace { pool_idx, .. } => {
-                let lock_path = format!("/var/lock/vm0-netns-pool-{pool_idx}.lock");
-                is_lock_free(&lock_path).await
+            Self::OrphanNamespace { ns_name, lock_path } => {
+                if network_namespaces.is_some_and(|namespaces| !namespaces.contains(ns_name)) {
+                    return false;
+                }
+                is_lock_free(lock_path).await
             }
             Self::OrphanNbdDevice { device_index, pid } => {
                 let idx = *device_index;
@@ -299,6 +304,11 @@ impl Warning {
             }
         }
     }
+}
+
+struct ObservedNetworkNamespace {
+    ns_name: String,
+    pool_idx: u32,
 }
 
 /// Check if a process is still alive via `/proc/{pid}`.
@@ -481,10 +491,28 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         } else {
             Vec::new()
         };
+        let network_namespaces: Option<HashSet<String>> = if global_warnings
+            .iter()
+            .any(|warning| matches!(warning, Warning::OrphanNamespace { .. }))
+        {
+            observe_network_namespaces().await.map(|namespaces| {
+                namespaces
+                    .into_iter()
+                    .map(|namespace| namespace.ns_name)
+                    .collect()
+            })
+        } else {
+            None
+        };
         let mut rechecked_global = Vec::new();
         for warning in global_warnings.drain(..) {
             if warning
-                .persists(api_client.as_ref(), &fresh, &fresh_runner_pids)
+                .persists(
+                    api_client.as_ref(),
+                    &fresh,
+                    &fresh_runner_pids,
+                    network_namespaces.as_ref(),
+                )
                 .await
             {
                 rechecked_global.push(warning);
@@ -535,7 +563,7 @@ async fn recheck_current_runner_warnings(
     .map(|report| async move {
         let mut rechecked = Vec::new();
         for warning in report.warnings.drain(..) {
-            if warning.persists(api_client, fresh, &[]).await {
+            if warning.persists(api_client, fresh, &[], None).await {
                 rechecked.push(warning);
             }
         }
@@ -1081,28 +1109,45 @@ async fn detect_orphan_firecrackers(
 async fn detect_orphan_namespaces() -> Vec<Warning> {
     let mut warnings = Vec::new();
 
-    let output = match tokio::process::Command::new("ip")
-        .args(["netns", "list"])
-        .output()
-        .await
-    {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).to_string(),
-        _ => return warnings,
+    let Some(namespaces) = observe_network_namespaces().await else {
+        return warnings;
     };
+    let lock_paths = sandbox_fc::LockPaths::new();
 
-    for line in output.lines() {
-        if let Some((ns_name, pool_idx)) = parse_netns_list_line(line) {
-            let lock_path = format!("/var/lock/vm0-netns-pool-{pool_idx}.lock");
-            if is_lock_free(&lock_path).await {
-                warnings.push(Warning::OrphanNamespace {
-                    ns_name: ns_name.to_string(),
-                    pool_idx,
-                });
-            }
+    for namespace in namespaces {
+        let lock_path = lock_paths.netns_pool(namespace.pool_idx);
+        if is_lock_free(&lock_path).await {
+            warnings.push(Warning::OrphanNamespace {
+                ns_name: namespace.ns_name,
+                lock_path,
+            });
         }
     }
 
     warnings
+}
+
+async fn observe_network_namespaces() -> Option<Vec<ObservedNetworkNamespace>> {
+    let output = tokio::process::Command::new("ip")
+        .args(["netns", "list"])
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    Some(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter_map(|line| {
+                parse_netns_list_line(line).map(|(ns_name, pool_idx)| ObservedNetworkNamespace {
+                    ns_name: ns_name.to_string(),
+                    pool_idx,
+                })
+            })
+            .collect(),
+    )
 }
 
 /// Parse `ip netns list` output line and return the namespace plus pool index.
@@ -1130,15 +1175,18 @@ async fn detect_nbd_orphans() -> Vec<Warning> {
 }
 
 /// Try non-blocking flock to check if a lock file is free (not held by anyone).
-async fn is_lock_free(lock_path: &str) -> bool {
-    let lock_path = lock_path.to_string();
+async fn is_lock_free(lock_path: &Path) -> bool {
+    let lock_path = lock_path.to_path_buf();
     tokio::task::spawn_blocking(move || {
         use std::fs::File;
         let file = match File::open(&lock_path) {
             Ok(f) => f,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return true,
             Err(e) => {
-                tracing::warn!("cannot open lock file {lock_path}: {e}, assuming held");
+                tracing::warn!(
+                    "cannot open lock file {}: {e}, assuming held",
+                    lock_path.display()
+                );
                 return false;
             }
         };
@@ -1847,6 +1895,92 @@ mod tests {
         }
     }
 
+    fn observed_network_namespaces(ns_names: &[&str]) -> HashSet<String> {
+        ns_names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    fn orphan_namespace_warning(ns_name: &str, lock_path: PathBuf) -> Warning {
+        Warning::OrphanNamespace {
+            ns_name: ns_name.to_string(),
+            lock_path,
+        }
+    }
+
+    #[tokio::test]
+    async fn orphan_namespace_clears_when_exact_namespace_disappears() {
+        let dir = tempfile::tempdir().unwrap();
+        let free_lock_path = dir.path().join("free.lock");
+        std::fs::File::create(&free_lock_path).unwrap();
+        let missing_lock_path = dir.path().join("missing.lock");
+        let namespaces = observed_network_namespaces(&["vm0-ns-00-0b"]);
+
+        for lock_path in [free_lock_path, missing_lock_path] {
+            let warning = orphan_namespace_warning("vm0-ns-00-0a", lock_path);
+            assert!(
+                !warning
+                    .persists(None, &empty_fresh(), &[], Some(&namespaces))
+                    .await,
+                "a different namespace in the same pool must not retain the warning"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn orphan_namespace_persists_while_exact_namespace_and_free_lock_remain() {
+        let dir = tempfile::tempdir().unwrap();
+        let free_lock_path = dir.path().join("free.lock");
+        std::fs::File::create(&free_lock_path).unwrap();
+        let missing_lock_path = dir.path().join("missing.lock");
+        let namespaces = observed_network_namespaces(&["vm0-ns-00-0a"]);
+
+        for lock_path in [free_lock_path, missing_lock_path] {
+            let warning = orphan_namespace_warning("vm0-ns-00-0a", lock_path);
+            assert!(
+                warning
+                    .persists(None, &empty_fresh(), &[], Some(&namespaces))
+                    .await
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn orphan_namespace_clears_when_its_lock_becomes_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock_path = dir.path().join("held.lock");
+        let file = std::fs::File::create(&lock_path).unwrap();
+        let _lock = nix::fcntl::Flock::lock(file, nix::fcntl::FlockArg::LockExclusiveNonblock)
+            .expect("failed to acquire test lock");
+        let namespaces = observed_network_namespaces(&["vm0-ns-00-0a"]);
+        let warning = orphan_namespace_warning("vm0-ns-00-0a", lock_path);
+
+        assert!(
+            !warning
+                .persists(None, &empty_fresh(), &[], Some(&namespaces))
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn orphan_namespace_uses_lock_evidence_when_observation_is_unavailable() {
+        let dir = tempfile::tempdir().unwrap();
+        let free_lock_path = dir.path().join("free.lock");
+        std::fs::File::create(&free_lock_path).unwrap();
+        let missing_lock_path = dir.path().join("missing.lock");
+        let held_lock_path = dir.path().join("held.lock");
+        let held_file = std::fs::File::create(&held_lock_path).unwrap();
+        let _held_lock =
+            nix::fcntl::Flock::lock(held_file, nix::fcntl::FlockArg::LockExclusiveNonblock)
+                .expect("failed to acquire test lock");
+
+        for lock_path in [free_lock_path, missing_lock_path] {
+            let warning = orphan_namespace_warning("vm0-ns-00-0a", lock_path);
+            assert!(warning.persists(None, &empty_fresh(), &[], None).await);
+        }
+
+        let held_warning = orphan_namespace_warning("vm0-ns-00-0a", held_lock_path);
+        assert!(!held_warning.persists(None, &empty_fresh(), &[], None).await);
+    }
+
     #[tokio::test]
     async fn no_firecracker_for_run_resolves_when_run_removed_even_if_sandbox_reused() {
         // Regression: a NoFirecrackerForRun warning for run R1 should clear
@@ -1879,7 +2013,7 @@ mod tests {
             base_dir: base_dir.clone(),
         };
         assert!(
-            !warning.persists(None, &empty_fresh(), &[]).await,
+            !warning.persists(None, &empty_fresh(), &[], None).await,
             "warning about R1 must clear after R1 leaves active_runs even though S1 is reused"
         );
     }
@@ -1912,7 +2046,7 @@ mod tests {
             base_dir: base_dir.clone(),
         };
         // R1 is still active and there's no FC in fresh. Warning persists.
-        assert!(warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -1945,7 +2079,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -1979,7 +2113,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -2013,7 +2147,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -2045,7 +2179,12 @@ mod tests {
         };
         assert!(
             !warning
-                .persists(None, &fresh_with_firecracker(123, "S1", &base_dir), &[])
+                .persists(
+                    None,
+                    &fresh_with_firecracker(123, "S1", &base_dir),
+                    &[],
+                    None,
+                )
                 .await
         );
     }
@@ -2077,7 +2216,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -2107,7 +2246,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -2139,7 +2278,7 @@ mod tests {
             base_dir: base_dir.clone(),
         };
         assert!(
-            !warning.persists(None, &empty_fresh(), &[]).await,
+            !warning.persists(None, &empty_fresh(), &[], None).await,
             "warning must clear once the sandbox is tracked as idle"
         );
     }
@@ -2172,7 +2311,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -2196,7 +2335,7 @@ mod tests {
             sandbox_id: "S-ghost".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -2209,7 +2348,7 @@ mod tests {
             sandbox_id: "S-anything".into(),
             base_dir,
         };
-        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[], None).await);
     }
 
     #[tokio::test]
@@ -2235,10 +2374,10 @@ mod tests {
             ppid: Some(std::process::id()),
         };
 
-        assert!(warning.persists(None, &empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[], None).await);
         assert!(
             !warning
-                .persists(None, &empty_fresh(), &[std::process::id()])
+                .persists(None, &empty_fresh(), &[std::process::id()], None)
                 .await
         );
     }
@@ -3254,7 +3393,7 @@ mod tests {
     async fn is_lock_free_returns_true_when_file_not_found() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("no-such-file.lock");
-        assert!(super::is_lock_free(path.to_str().unwrap()).await);
+        assert!(super::is_lock_free(&path).await);
     }
 
     #[tokio::test]
@@ -3262,7 +3401,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("free.lock");
         std::fs::File::create(&path).unwrap();
-        assert!(super::is_lock_free(path.to_str().unwrap()).await);
+        assert!(super::is_lock_free(&path).await);
     }
 
     #[tokio::test]
@@ -3273,6 +3412,6 @@ mod tests {
         // Hold an exclusive lock for the duration of the test.
         let _lock = nix::fcntl::Flock::lock(file, nix::fcntl::FlockArg::LockExclusiveNonblock)
             .expect("failed to acquire test lock");
-        assert!(!super::is_lock_free(path.to_str().unwrap()).await);
+        assert!(!super::is_lock_free(&path).await);
     }
 }
