@@ -98,6 +98,139 @@ def test_writer_warns_and_retires_batch_when_writev_returns_zero(tmp_path, mitm_
     assert (tmp_path / "network.jsonl").read_bytes() == b""
 
 
+def test_writer_rate_limits_append_failures_until_stable_recovery(tmp_path, mitm_ctx):
+    missing_dir = tmp_path / "missing"
+    failing_path = missing_dir / "network.jsonl"
+    first_failing_path = tmp_path / "missing-0" / "network.jsonl"
+    healthy_path = tmp_path / "healthy.jsonl"
+    now = 0.0
+
+    def monotonic() -> float:
+        return now
+
+    def write_and_flush(path: str, line: bytes) -> None:
+        jsonl_writer.write_jsonl_line(path, line, "network")
+        assert jsonl_writer.flush_log_path(path)
+
+    with (
+        patch.object(jsonl_writer.time, "monotonic", side_effect=monotonic),
+        mitm_ctx() as log,
+    ):
+        for index in range(1000):
+            path = tmp_path / f"missing-{index}" / "network.jsonl"
+            write_and_flush(str(path), b"{}\n")
+
+        assert log.warn.call_count == 1
+
+        now = 59.0
+        write_and_flush(str(healthy_path), b"healthy-before-interval\n")
+        assert log.warn.call_count == 1
+
+        now = 60.0
+        write_and_flush(str(failing_path), b"{}\n")
+        assert log.warn.call_count == 2
+
+        now = 119.0
+        write_and_flush(str(healthy_path), b"healthy-before-recovery\n")
+        assert log.warn.call_count == 2
+
+        missing_dir.mkdir()
+        now = 120.0
+        write_and_flush(str(failing_path), b"recovered\n")
+        assert failing_path.read_bytes() == b"recovered\n"
+        assert log.warn.call_args_list[2].args == ("JSONL log writes recovered",)
+
+        failing_path.unlink()
+        missing_dir.rmdir()
+        write_and_flush(str(failing_path), b"{}\n")
+
+    assert log.warn.call_count == 4
+    for warning_index, expected_path in (
+        (0, first_failing_path),
+        (1, failing_path),
+        (3, failing_path),
+    ):
+        warning = log.warn.call_args_list[warning_index].args[0]
+        assert warning.startswith("Failed to write network log: FileNotFoundError: ")
+        assert str(expected_path) in warning
+    assert healthy_path.read_bytes() == b"healthy-before-interval\nhealthy-before-recovery\n"
+    assert jsonl_writer._pending_bytes == 0
+    assert jsonl_writer._queued_writes == 0
+    assert not jsonl_writer._accepted_by_path
+    assert not jsonl_writer._completed_by_path
+    assert not jsonl_writer._flush_waiters_by_path
+
+
+def test_writer_does_not_recover_from_mixed_path_batch(tmp_path, mitm_ctx):
+    initial_failure_path = tmp_path / "initial-missing" / "network.jsonl"
+    gate_path = tmp_path / "gate.jsonl"
+    healthy_path = tmp_path / "healthy.jsonl"
+    mixed_failure_path = tmp_path / "mixed-missing" / "network.jsonl"
+    gate_started = threading.Event()
+    release_gate = threading.Event()
+    mixed_batch_started = threading.Event()
+    release_mixed_batch = threading.Event()
+    original_writev = jsonl_writer.os.writev
+    writev_calls = 0
+    now = 0.0
+
+    def monotonic() -> float:
+        return now
+
+    def write_and_flush(path: str, line: bytes) -> None:
+        jsonl_writer.write_jsonl_line(path, line, "network")
+        assert jsonl_writer.flush_log_path(path)
+
+    def writev(fd: int, buffers: list[bytes | memoryview]) -> int:
+        nonlocal writev_calls
+
+        writev_calls += 1
+        if writev_calls == 1:
+            gate_started.set()
+            release_gate.wait()
+        elif writev_calls == 2:
+            mixed_batch_started.set()
+            release_mixed_batch.wait()
+        return original_writev(fd, buffers)
+
+    with (
+        patch.object(jsonl_writer.time, "monotonic", side_effect=monotonic),
+        mitm_ctx() as log,
+    ):
+        write_and_flush(str(initial_failure_path), b"{}\n")
+        assert log.warn.call_count == 1
+
+        now = 59.0
+        with patch.object(jsonl_writer.os, "writev", side_effect=writev):
+            try:
+                jsonl_writer.write_jsonl_line(str(gate_path), b"gate\n", "network")
+                assert gate_started.wait(timeout=1)
+
+                jsonl_writer.write_jsonl_line(str(healthy_path), b"healthy\n", "network")
+                jsonl_writer.write_jsonl_line(str(mixed_failure_path), b"{}\n", "network")
+                release_gate.set()
+                assert mixed_batch_started.wait(timeout=1)
+
+                now = 60.0
+                release_mixed_batch.set()
+                assert jsonl_writer.flush_log_path(str(healthy_path))
+                assert jsonl_writer.flush_log_path(str(mixed_failure_path))
+            finally:
+                release_gate.set()
+                release_mixed_batch.set()
+
+        assert gate_path.read_bytes() == b"gate\n"
+        assert healthy_path.read_bytes() == b"healthy\n"
+        assert log.warn.call_count == 2
+        mixed_failure_warning = log.warn.call_args_list[1].args[0]
+        assert mixed_failure_warning.startswith("Failed to write network log: FileNotFoundError: ")
+        assert str(mixed_failure_path) in mixed_failure_warning
+
+        now = 120.0
+        write_and_flush(str(healthy_path), b"recovered\n")
+        assert log.warn.call_args_list[2].args == ("JSONL log writes recovered",)
+
+
 def test_writer_publishes_backlog_completion_once_per_batch(tmp_path):
     class ObservedCondition:
         def __init__(self) -> None:
