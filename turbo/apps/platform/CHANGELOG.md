@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.682.0](https://github.com/vm0-ai/vm0/compare/app-v0.681.1...app-v0.682.0) (2026-08-04)
+
+
+### Features
+
+* annotate cross-thread agent prompts and bound autonomous delegation depth ([#24934](https://github.com/vm0-ai/vm0/issues/24934)) ([2f2c72a](https://github.com/vm0-ai/vm0/commit/2f2c72af84481a07844bda1eb78fc73612cec3f2))
+
+
+### Bug Fixes
+
+* **attribution:** carry ga4 client ids into checkout ([#25081](https://github.com/vm0-ai/vm0/issues/25081)) ([926523f](https://github.com/vm0-ai/vm0/commit/926523f492ab51186ae8703d6cc541268aa52d57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.272.0
+    * @vm0/connectors bumped to 1.202.8
+    * @vm0/core bumped to 8.511.0
+
 ## [0.681.1](https://github.com/vm0-ai/vm0/compare/app-v0.681.0...app-v0.681.1) (2026-08-04)
 
 

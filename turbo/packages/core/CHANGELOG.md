@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.511.0](https://github.com/vm0-ai/vm0/compare/core-v8.510.1...core-v8.511.0) (2026-08-04)
+
+
+### Features
+
+* annotate cross-thread agent prompts and bound autonomous delegation depth ([#24934](https://github.com/vm0-ai/vm0/issues/24934)) ([2f2c72a](https://github.com/vm0-ai/vm0/commit/2f2c72af84481a07844bda1eb78fc73612cec3f2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.272.0
+
 ## [8.510.1](https://github.com/vm0-ai/vm0/compare/core-v8.510.0...core-v8.510.1) (2026-08-04)
 
 
