@@ -120,7 +120,6 @@ interface ChatEventContextFixture {
   readonly agentphoneAgentId: string | null;
   readonly telegramChatId: string | null;
   readonly telegramMessageId: string | null;
-  readonly telegramIsDm: boolean | null;
   readonly telegramMessageThreadId: number | null;
   readonly telegramMessageText: string | null;
   readonly telegramThreadContext: string | null;
@@ -218,7 +217,6 @@ export async function readChatEventContextFixture(
       agentphoneAgentId: chatAgentphoneContext.agentphoneAgentId,
       telegramChatId: chatTelegramContext.chatId,
       telegramMessageId: chatTelegramContext.messageId,
-      telegramIsDm: chatTelegramContext.isDm,
       telegramMessageThreadId: chatTelegramContext.messageThreadId,
       telegramMessageText: chatTelegramContext.messageText,
       telegramThreadContext: chatTelegramContext.threadContext,
@@ -362,7 +360,6 @@ const annotationProjectionInputs = [
       telegramContext: {
         chatId: "-1001234567890",
         messageId: "42",
-        isDm: false,
         messageThreadId: 7,
         messageText: "telegram supergroup linked",
         threadContext: "",
@@ -385,7 +382,6 @@ const annotationProjectionInputs = [
       telegramContext: {
         chatId: "123456789",
         messageId: "43",
-        isDm: true,
         messageThreadId: null,
         messageText: "telegram dm unlinked",
         threadContext: "",
@@ -408,7 +404,6 @@ const annotationProjectionInputs = [
       telegramContext: {
         chatId: "-123456789",
         messageId: "44",
-        isDm: false,
         messageThreadId: null,
         messageText: "telegram group unlinked",
         threadContext: "",
@@ -486,7 +481,7 @@ function annotationProjectionSourcePart(
       kind: "telegram",
       chatId: input.context.telegramContext.chatId,
       messageId: input.context.telegramContext.messageId,
-      isDm: input.context.telegramContext.isDm,
+      isDm: input.context.telegramContext.chatType === "private",
     });
   }
   return createChatEventSourcePart({
