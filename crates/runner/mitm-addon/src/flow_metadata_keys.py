@@ -149,9 +149,10 @@ Request streaming
   cleanup.
 - ``REQUEST_STREAM_COMPLETE``: ``bool`` written by ``request()`` after
   mitmproxy finishes delivering a request whose stream size is tracked by this
-  module. An externally owned stream is not marked complete by this mechanism.
-  Read by connector billing before treating a non-truncated request stream
-  buffer as a complete request body. Removed by stream cleanup.
+  module. The external-callable no-op path provides no vm0 stream state from
+  which to establish this marker. Read by connector billing before treating a
+  non-truncated request stream buffer as a complete request body. Removed by
+  stream cleanup.
 
 Model-provider usage
 --------------------

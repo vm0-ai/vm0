@@ -5,10 +5,11 @@ chunk. Capture-enabled callers also retain a capped prefix consumed by network
 capture and X connector billing refinement.
 
 Configuration preserves any existing callable stream without composing with it.
-An externally owned callback therefore has no vm0 observation or capture state;
-the size and capture helpers return ``None``. A repeated call for this module's
-callback leaves its existing state intact. Terminal response and error handling
-retain installed metadata through connector usage reporting, then release it.
+When setup first finds an externally owned callback, it creates no vm0
+observation or capture state, so the size and capture helpers return ``None``. A
+repeated call for this module's callback leaves its existing state intact.
+Terminal response and error handling retain installed metadata through connector
+usage reporting, then release it.
 """
 
 from typing import NamedTuple
@@ -35,8 +36,9 @@ def configure_request_stream(
 
     If the request stream is already callable, preserve it without composition
     and do not create or reset vm0 request-stream metadata. An external callback
-    therefore has no vm0 size or capture state, while repeated vm0 configuration
-    retains the state installed by the first call.
+    encountered before vm0 setup therefore leaves no vm0 size or capture state,
+    while repeated vm0 configuration retains the state installed by the first
+    call.
     """
     if callable(flow.request.stream):
         return
