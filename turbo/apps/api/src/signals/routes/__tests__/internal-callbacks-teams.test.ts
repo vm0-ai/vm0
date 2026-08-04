@@ -13,6 +13,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import {
   findPendingChatEventByPromptFixture,
   readChatEventContextFixture,
@@ -702,6 +704,73 @@ describe("Teams chat callbacks", () => {
       sandboxToken: queuedClaim.sandboxToken,
       exitCode: 0,
     });
+  });
+
+  it("delivers queued Teams admission failures with launch material", async () => {
+    const teams = await setupConnectedTeamsActor();
+    const teamsApi = teamsApiMocks({
+      serviceUrl: teams.fixture.serviceUrl,
+    });
+    const firstRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: "activity-admission-first",
+      text: "hold the Teams admission queue",
+    });
+    const firstClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: firstRunId,
+    });
+
+    const queuedPrompt = `reject this queued Teams message ${teams.fixture.teamsTenantId}`;
+    const queuedActivityId = "activity-admission-queued";
+    await postTeamsPersonalMessage({
+      fixture: teams.fixture,
+      activityId: queuedActivityId,
+      text: queuedPrompt,
+    });
+    await expect(
+      findPendingChatEventByPromptFixture(queuedPrompt),
+    ).resolves.toMatchObject({ eventId: expect.any(String) });
+
+    await seedOrgMetadata({
+      orgId: teams.fixture.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: teams.fixture.orgId,
+      status: "suspended",
+      canBuyCredits: true,
+    });
+    clearTeamsApiCalls(teamsApi);
+    await completeSandboxRun({
+      runId: firstRunId,
+      sandboxToken: firstClaim.sandboxToken,
+      exitCode: 0,
+    });
+
+    await expect
+      .poll(() => {
+        return teamsApi.postedActivities.filter((activity) => {
+          return (
+            typeof activity.text === "string" &&
+            activity.text.includes("Add credits")
+          );
+        });
+      })
+      .toStrictEqual([
+        expect.objectContaining({
+          replyToId: queuedActivityId,
+          text: expect.stringContaining("Add credits"),
+        }),
+      ]);
+    expect(
+      (await runsApi.listAgentRuns(teams.actor, { limit: 20 })).runs.filter(
+        (run) => {
+          return run.prompt === queuedPrompt;
+        },
+      ),
+    ).toHaveLength(0);
   });
 
   it("uses installation bot identity when the activity omits it", async () => {

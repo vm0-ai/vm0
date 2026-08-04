@@ -6679,6 +6679,129 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, mockRunId);
   }, 90_000);
 
+  it("uses the claim-time inline-template switch for queued web launch material", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor({
+      orgId: STAFF_ORG_ID,
+    });
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const actorWithOrg = { ...actor, orgId: actor.orgId };
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+    });
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "inline-template switch queue anchor",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    const queuedMessageId = randomUUID();
+    const queuedUserMessage: UserMessageDocument = {
+      version: 1,
+      parts: [
+        { type: "text", text: "Restyle with " },
+        {
+          type: "template",
+          titleSnapshot: style.title,
+          template: {
+            type: "illustration",
+            selection: { illustrationStyleId: style.illustrationStyleId },
+          },
+        },
+        { type: "text", text: " at claim" },
+      ],
+    };
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "legacy queued template projection",
+        userMessage: queuedUserMessage,
+        clientEventId: queuedMessageId,
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+    });
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === queuedMessageId &&
+            typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const queuedRunId = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === queuedMessageId;
+    })?.runId;
+    if (!queuedRunId) {
+      throw new Error("Expected the queued template message to auto-send");
+    }
+
+    const run = await api.readRun(actor, queuedRunId);
+    const inlineMarker = `[Template #1: ${style.title} (illustration)]`;
+    expect(run.prompt).toBe(`Restyle with ${inlineMarker} at claim`);
+    const webPrompt = [
+      "# Current Integration\nYou are currently running inside: Web",
+      "You are communicating with the user through the web chat UI.",
+    ].join("\n\n");
+    expect(run.appendSystemPrompt).toContain(webPrompt);
+    expect(run.appendSystemPrompt).toContain("# Inline Templates");
+    expect(run.appendSystemPrompt).toContain(style.illustrationStyleId);
+
+    await expect
+      .poll(() => {
+        const actionTypes = apiDispatchActionTypes(
+          apiDispatchTimingEventsForRun(queuedRunId),
+        );
+        return [
+          "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
+          "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin",
+          "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
+        ].every((actionType) => {
+          return actionTypes.has(actionType);
+        });
+      })
+      .toBe(true);
+    const timingEvents = apiDispatchTimingEventsForRun(queuedRunId);
+    expectApiDispatchSpanKind(
+      timingEvents,
+      ["api_dispatch_pre_create_zero_chat_callback_auto_send_build_input"],
+      "top_level",
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      [
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
+      ],
+      "nested",
+    );
+
+    const queuedClaim = await claimChatRun(runnerGroup, queuedRunId);
+    expect(queuedClaim.claim.prompt).toBe(run.prompt);
+    expect(queuedClaim.claim.appendSystemPrompt).toBe(run.appendSystemPrompt);
+    await cancelChatRun(actor, queuedRunId, queuedClaim.sandboxHeaders);
+  }, 90_000);
+
   it("appends a claimed queued message after messages that are still queued", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
