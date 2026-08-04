@@ -40,7 +40,11 @@ case "$url" in
       echo "the paginated Pages domain list must not be used for existence checks" >&2
       exit 1
     fi
-    printf '{"success":true,"result":{"name":"pr-22239-app.omby.ai"}}\n'
+    if [[ "${MOCK_PAGES_CREATE_ERROR:-false}" == "true" ]]; then
+      printf '{"success":false,"errors":[{"code":8000042,"message":"domain create failed"}],"result":null}\n'
+      exit 22
+    fi
+    printf '{"success":true,"result":{"name":"pr-22239-app.omby.ai","status":"active","verification_data":{"status":"active"}}}\n'
     ;;
   */pages/projects/okou-app/domains/pr-22239-app.omby.ai)
     if [[ -n "${MOCK_PAGES_PENDING_RESPONSES:-}" ]]; then
@@ -143,5 +147,16 @@ status="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
   begin account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
 test "$status" = "active"
 grep -q -- '--request POST' "$request_log"
+test "$(grep -c '/pages/projects/okou-app/domains/pr-22239-app.omby.ai' "$request_log")" = "1"
+
+: > "$request_log"
+export MOCK_PAGES_CREATE_ERROR="true"
+if output="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  begin account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app 2>&1)"; then
+  echo "expected a failed Pages domain creation to fail the command" >&2
+  exit 1
+fi
+grep -q 'domain create failed' <<< "$output"
+unset MOCK_PAGES_CREATE_ERROR
 
 echo "manage-okou-pages-domain tests passed"

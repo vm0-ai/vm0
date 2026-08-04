@@ -27,7 +27,14 @@ cloudflare_response() {
 }
 
 cloudflare_request() {
-  cloudflare_response --fail-with-body "$@"
+  local response
+
+  if ! response="$(cloudflare_response --fail-with-body "$@")"; then
+    printf '%s\n' "$response" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$response"
 }
 
 pages_domain_state() {
@@ -103,11 +110,10 @@ begin_domain_validation() {
 
   domain_state="$(pages_domain_state)"
   if pages_domain_missing <<< "$domain_state"; then
-    cloudflare_request \
+    domain_state="$(cloudflare_request \
       --request POST \
       "$pages_domains_url" \
-      --data "$(jq -n --arg name "$domain" '{name: $name}')" >/dev/null
-    domain_state="$(cloudflare_request "${pages_domains_url}/${domain}")"
+      --data "$(jq -n --arg name "$domain" '{name: $name}')")"
   else
     require_cloudflare_success <<< "$domain_state"
   fi
