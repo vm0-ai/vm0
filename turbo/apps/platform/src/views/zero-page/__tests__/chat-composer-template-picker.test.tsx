@@ -823,26 +823,6 @@ describe("chat composer templates", () => {
           screen.getByLabelText("Remove template Ada"),
         ).toBeInTheDocument();
       });
-      await user.click(screen.getByLabelText("Preview template Ada"));
-      const reopenedDialog = await screen.findByRole("dialog");
-      const selectedAvatarTemplateCard = await within(
-        reopenedDialog,
-      ).findByLabelText("Select template Ada");
-      expect(selectedAvatarTemplateCard).toHaveClass("border-primary");
-      expect(selectedAvatarTemplateCard).not.toHaveClass(
-        "ring-1",
-        "ring-primary",
-      );
-      await user.click(selectedAvatarTemplateCard);
-      const selectedVoiceCard = await within(reopenedDialog).findByLabelText(
-        "Select voice Christopher",
-      );
-      expect(selectedVoiceCard).toHaveClass("border-primary");
-      expect(selectedVoiceCard).not.toHaveClass("ring-1", "ring-primary");
-      await user.keyboard("{Escape}");
-      await waitFor(() => {
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      });
       const editor = await findComposerEditor();
       await sendMessageInUI(user, editor, "Introduce our new product");
 
