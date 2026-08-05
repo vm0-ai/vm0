@@ -958,7 +958,15 @@
         "name": "팀"
       },
       "upgrade": "업그레이드",
-      "upgradeTo": "{{plan}}으로 업그레이드"
+      "upgradeTo": "{{plan}}으로 업그레이드",
+      "usagePacks": {
+        "baseAndPack": "기본 요금 {{base}} + 사용량 팩 {{pack}}",
+        "checkoutComingSoon": "결제 기능 준비 중",
+        "description": "모든 요금제에는 필수 월간 사용량 팩이 포함됩니다.",
+        "monthlyTotal": "월간 합계",
+        "monthlyUsagePack": "월간 사용량 팩",
+        "required": "필수"
+      }
     },
     "restore": {
       "cancellationDescription": "{{plan}} 플랜의 예약된 취소를 취소합니다.",

@@ -979,7 +979,15 @@
         "name": "Team"
       },
       "upgrade": "Mettre à niveau",
-      "upgradeTo": "Passer à {{plan}}"
+      "upgradeTo": "Passer à {{plan}}",
+      "usagePacks": {
+        "baseAndPack": "Base de {{base}} + forfait d’utilisation de {{pack}}",
+        "checkoutComingSoon": "Paiement bientôt disponible",
+        "description": "Chaque offre inclut un forfait d’utilisation mensuel obligatoire.",
+        "monthlyTotal": "Total mensuel",
+        "monthlyUsagePack": "Forfait d’utilisation mensuel",
+        "required": "Obligatoire"
+      }
     },
     "restore": {
       "cancellationDescription": "Cela annulera l'annulation programmée de votre forfait {{plan}}.",

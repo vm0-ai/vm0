@@ -979,7 +979,15 @@
         "name": "Equipo"
       },
       "upgrade": "Actualización",
-      "upgradeTo": "Actualizar a {{plan}}"
+      "upgradeTo": "Actualizar a {{plan}}",
+      "usagePacks": {
+        "baseAndPack": "{{base}} de base + paquete de uso de {{pack}}",
+        "checkoutComingSoon": "Pago próximamente",
+        "description": "Todos los planes incluyen un paquete de uso mensual obligatorio.",
+        "monthlyTotal": "Total mensual",
+        "monthlyUsagePack": "Paquete de uso mensual",
+        "required": "Obligatorio"
+      }
     },
     "restore": {
       "cancellationDescription": "Esto anulará la cancelación programada de tu plan {{plan}}.",

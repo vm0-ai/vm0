@@ -958,7 +958,15 @@
         "name": "Team"
       },
       "upgrade": "Upgrade",
-      "upgradeTo": "Upgrade to {{plan}}"
+      "upgradeTo": "Upgrade to {{plan}}",
+      "usagePacks": {
+        "baseAndPack": "{{base}} base + {{pack}} usage pack",
+        "checkoutComingSoon": "Checkout coming soon",
+        "description": "Every plan includes a required monthly usage pack.",
+        "monthlyTotal": "Monthly total",
+        "monthlyUsagePack": "Monthly usage pack",
+        "required": "Required"
+      }
     },
     "restore": {
       "cancellationDescription": "This will undo the scheduled cancellation for your {{plan}} plan.",

@@ -958,7 +958,15 @@
         "name": "Team"
       },
       "upgrade": "Upgrade",
-      "upgradeTo": "Upgrade auf {{plan}}"
+      "upgradeTo": "Upgrade auf {{plan}}",
+      "usagePacks": {
+        "baseAndPack": "{{base}} Basispreis + {{pack}} Nutzungspaket",
+        "checkoutComingSoon": "Checkout in Kürze verfügbar",
+        "description": "Jeder Tarif enthält ein obligatorisches monatliches Nutzungspaket.",
+        "monthlyTotal": "Monatliche Gesamtkosten",
+        "monthlyUsagePack": "Monatliches Nutzungspaket",
+        "required": "Erforderlich"
+      }
     },
     "restore": {
       "cancellationDescription": "Dadurch wird die geplante Kündigung für Ihren {{plan}}-Plan rückgängig gemacht.",

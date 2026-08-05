@@ -10,6 +10,7 @@ import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@vm0/core";
 import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
@@ -39,6 +40,19 @@ function buttonByText(
   });
   if (!button) {
     throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function buttonByAriaLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
   }
   return button;
 }
@@ -273,6 +287,56 @@ describe("organization billing settings", () => {
       expect(screen.getByText("20.000 créditos / mês")).toBeInTheDocument();
       expect(screen.getAllByText("/mês").length).toBeGreaterThan(0);
     });
+  });
+
+  it("shows required monthly usage packs behind the feature switch", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Usage Pack Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, noActiveBillingStatus());
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing",
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+    });
+    click(buttonByText("Upgrade"));
+
+    const proPlan = await screen.findByRole("article", { name: "Pro plan" });
+    const teamPlan = screen.getByRole("article", { name: "Team plan" });
+    expect(within(proPlan).getByText("$20/month")).toBeInTheDocument();
+    expect(
+      within(proPlan).getByText("$0 base + $20 usage pack"),
+    ).toBeInTheDocument();
+    expect(within(teamPlan).getByText("$180/month")).toBeInTheDocument();
+    expect(
+      within(teamPlan).getByText("$160 base + $20 usage pack"),
+    ).toBeInTheDocument();
+
+    const teamPackGroup = within(teamPlan).getByRole("group", {
+      name: "Team: Monthly usage pack",
+    });
+    const oneHundredDollarPack = buttonByAriaLabel(
+      "$100 100,000 credits / month",
+      teamPackGroup,
+    );
+    click(oneHundredDollarPack);
+
+    expect(oneHundredDollarPack).toHaveAttribute("aria-pressed", "true");
+    expect(within(teamPlan).getByText("$260/month")).toBeInTheDocument();
+    expect(
+      within(teamPlan).getByText("$160 base + $100 usage pack"),
+    ).toBeInTheDocument();
+    expect(buttonByText("Checkout coming soon", proPlan)).toBeDisabled();
+    expect(buttonByText("Checkout coming soon", teamPlan)).toBeDisabled();
   });
 
   it("scrolls to buy credits from the credits billing deep link", async () => {

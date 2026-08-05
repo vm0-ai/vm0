@@ -979,7 +979,15 @@
         "name": "Team"
       },
       "upgrade": "Fazer upgrade",
-      "upgradeTo": "Fazer upgrade para {{plan}}"
+      "upgradeTo": "Fazer upgrade para {{plan}}",
+      "usagePacks": {
+        "baseAndPack": "{{base}} de base + pacote de uso de {{pack}}",
+        "checkoutComingSoon": "Checkout em breve",
+        "description": "Cada plano inclui um pacote mensal de uso obrigatório.",
+        "monthlyTotal": "Total mensal",
+        "monthlyUsagePack": "Pacote mensal de uso",
+        "required": "Obrigatório"
+      }
     },
     "restore": {
       "cancellationDescription": "Isso desfará o cancelamento agendado do seu plano {{plan}}.",

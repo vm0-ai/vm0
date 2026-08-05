@@ -958,7 +958,15 @@
         "name": "Tim"
       },
       "upgrade": "Tingkatkan",
-      "upgradeTo": "Tingkatkan ke {{plan}}"
+      "upgradeTo": "Tingkatkan ke {{plan}}",
+      "usagePacks": {
+        "baseAndPack": "Dasar {{base}} + paket penggunaan {{pack}}",
+        "checkoutComingSoon": "Checkout segera hadir",
+        "description": "Setiap paket mencakup paket penggunaan bulanan wajib.",
+        "monthlyTotal": "Total bulanan",
+        "monthlyUsagePack": "Paket penggunaan bulanan",
+        "required": "Wajib"
+      }
     },
     "restore": {
       "cancellationDescription": "Ini akan membatalkan pembatalan terjadwal untuk paket {{plan}} Anda.",

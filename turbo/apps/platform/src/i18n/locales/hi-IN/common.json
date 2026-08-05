@@ -958,7 +958,15 @@
         "name": "टीम"
       },
       "upgrade": "अपग्रेड",
-      "upgradeTo": "{{plan}} में अपग्रेड करें"
+      "upgradeTo": "{{plan}} में अपग्रेड करें",
+      "usagePacks": {
+        "baseAndPack": "{{base}} आधार + {{pack}} उपयोग पैक",
+        "checkoutComingSoon": "चेकआउट जल्द उपलब्ध होगा",
+        "description": "हर प्लान में एक अनिवार्य मासिक उपयोग पैक शामिल है।",
+        "monthlyTotal": "मासिक कुल",
+        "monthlyUsagePack": "मासिक उपयोग पैक",
+        "required": "अनिवार्य"
+      }
     },
     "restore": {
       "cancellationDescription": "यह आपके {{plan}} योजना के लिए निर्धारित रद्दीकरण पूर्ववत कर देगा।",

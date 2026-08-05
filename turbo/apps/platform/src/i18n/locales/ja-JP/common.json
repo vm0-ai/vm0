@@ -958,7 +958,15 @@
         "name": "チーム"
       },
       "upgrade": "アップグレード",
-      "upgradeTo": "{{plan}} にアップグレードする"
+      "upgradeTo": "{{plan}} にアップグレードする",
+      "usagePacks": {
+        "baseAndPack": "基本料金 {{base}} + 利用パック {{pack}}",
+        "checkoutComingSoon": "チェックアウトは近日公開",
+        "description": "すべてのプランで月額利用パックの選択が必須です。",
+        "monthlyTotal": "月額合計",
+        "monthlyUsagePack": "月額利用パック",
+        "required": "必須"
+      }
     },
     "restore": {
       "cancellationDescription": "これにより、{{plan}} プランの予定されたキャンセルが取り消されます。",
