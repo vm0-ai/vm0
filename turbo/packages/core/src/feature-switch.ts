@@ -461,12 +461,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.R2ZeroCli]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Use the commit-addressed R2 npm tarball for Zero CLI commands instead of the published @vm0/cli package.",
-    enabled: false,
-  },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",
     description:

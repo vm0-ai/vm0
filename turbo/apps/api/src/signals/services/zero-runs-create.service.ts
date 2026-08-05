@@ -332,11 +332,8 @@ function buildAgentToolsPrompt(args: {
   readonly zeroBrowserAvailable: boolean;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly mermaidDiagramsEnabled: boolean;
-  readonly r2ZeroCliEnabled: boolean;
 }): string {
-  const zeroCliCommand = args.r2ZeroCliEnabled
-    ? `npx --yes --package="\${CLI_PKG_URL}" zero`
-    : "npx -p @vm0/cli zero";
+  const zeroCliCommand = `npx --yes --package="\${CLI_PKG_URL}" zero`;
   return [
     "# Agent Tools",
     `You have access to the Zero CLI. Run commands with: \`${zeroCliCommand} <command>\``,
@@ -463,10 +460,6 @@ function buildAppendSystemPrompt(args: {
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       mermaidDiagramsEnabled: isFeatureEnabled(
         FeatureSwitchKey.MermaidDiagrams,
-        args.featureSwitchContext,
-      ),
-      r2ZeroCliEnabled: isFeatureEnabled(
-        FeatureSwitchKey.R2ZeroCli,
         args.featureSwitchContext,
       ),
     }),
