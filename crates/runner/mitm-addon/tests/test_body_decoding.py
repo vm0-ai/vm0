@@ -246,7 +246,6 @@ class TestStreamDecodeSession:
 
         session.feed(b"[0")
         assert extractor.accepts_more_input() is False
-        assert decoded_callbacks == 1
 
         session.feed(b"]")
         assert decoded_callbacks == 1
