@@ -5,7 +5,6 @@
 
 ### Refactoring
 
-* remove abandoned rust zero cli switch ([#25169](https://github.com/vm0-ai/vm0/issues/25169)) ([aaa177c](https://github.com/vm0-ai/vm0/commit/aaa177caddeeb4895c3e6e42bfbf530108f29ae4))
 * remove graduated feature switches ([#25128](https://github.com/vm0-ai/vm0/issues/25128)) ([c160b0e](https://github.com/vm0-ai/vm0/commit/c160b0e1a25a6c884a0021fc9caf61eab71e4561))
 
 
@@ -196,12 +195,6 @@
     * @vm0/api-contracts bumped to 1.268.0
 
 ## [8.508.0](https://github.com/vm0-ai/vm0/compare/core-v8.507.1...core-v8.508.0) (2026-08-04)
-
-
-### Features
-
-* add runner-bundled rust zero cli foundation ([#24907](https://github.com/vm0-ai/vm0/issues/24907)) ([8cc6154](https://github.com/vm0-ai/vm0/commit/8cc6154eb9016e8b7a44d72177053c2224dd5d9a))
-
 
 ### Dependencies
 

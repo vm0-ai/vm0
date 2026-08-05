@@ -18,10 +18,6 @@
         "turbo/packages/core": {
             "release-type": "node"
         },
-        "turbo/apps/cli": {
-            "release-type": "node",
-            "component": "cli"
-        },
         "turbo/apps/api": {
             "release-type": "node"
         },
