@@ -749,11 +749,11 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     buffer; decoder/parser completeness is reported separately from forensic
     buffer truncation.
 
-    Ordinary X JSON responses use an incremental parser that publishes
-    ``flow.metadata[metadata_keys.X_JSON_STATE]`` at normal response
+    Ordinary X JSON responses handled by the incremental decoder/parser path
+    publish ``flow.metadata[metadata_keys.X_JSON_STATE]`` at normal response
     finalization. When present, that state is authoritative over the capped
-    forensic buffer and buffered fallback because billing inspection consumed
-    decoded response chunks independently of that buffer. Its
+    forensic buffer and buffered fallback because this path is fed decoded
+    response chunks independently of that buffer. Its
     ``body_truncated=False`` therefore means billing inspection was not capped
     by the forensic buffer; it does not mean the optional forensic capture
     retained the full response. Parser and decoder failures are reported
