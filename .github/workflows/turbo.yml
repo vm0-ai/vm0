@@ -852,7 +852,7 @@ jobs:
       cancel-in-progress: true
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    needs: [prepare, deploy-cli]
+    needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and anything
     # that needs a live API preview or E2E API token changed.
     # Runs in merge queue too, but skips GitHub Deployment creation (the bobheadxi/deployments action
@@ -904,7 +904,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
-          cli-pkg-url: ${{ needs.deploy-cli.outputs.package-url }}
+          cli-pkg-url: https://static.vm0.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -1008,7 +1008,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
-          cli-pkg-url: ${{ needs.deploy-cli.outputs.package-url }}
+          cli-pkg-url: https://static.vm0.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -1969,9 +1969,6 @@ jobs:
   deploy-cli:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    outputs:
-      artifact-sha: ${{ steps.artifact.outputs.sha }}
-      package-url: ${{ steps.artifact.outputs.package-url }}
     concurrency:
       group: deploy-cli-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       cancel-in-progress: false
@@ -2006,6 +2003,8 @@ jobs:
           node-version: 22
           cache: pnpm
           cache-dependency-path: turbo/pnpm-lock.yaml
+      - name: Initialize pnpm cache directory
+        run: mkdir -p "$(pnpm store path --silent)"
       - name: Configure git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
@@ -2034,7 +2033,6 @@ jobs:
           {
             echo "sha=$sha"
             echo "prefix=$prefix"
-            echo "package-url=${CLI_STATIC_BASE_URL}/${prefix}/package.tgz"
           } >> "$GITHUB_OUTPUT"
 
       - name: Check for existing artifact
