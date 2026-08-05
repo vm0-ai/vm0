@@ -15,13 +15,14 @@ use super::super::telemetry::{
     RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_reuse_result,
 };
 use super::super::{
-    ExecutionHooks, NewSandboxDispatch, RunnerPreSpawnTiming, SessionHistoryRestorePlan,
-    execute_job, execute_job_reuse, execute_job_reuse_with_hooks,
-    execute_job_with_prepared_notifier,
+    ExactReuseSpeculationTiming, ExecutionHooks, NewSandboxDispatch, RunnerPreSpawnOperationTiming,
+    RunnerPreSpawnTiming, SessionHistoryRestorePlan, execute_job, execute_job_reuse,
+    execute_job_reuse_with_hooks, execute_job_with_prepared_notifier,
 };
 use super::support::{
     default_params, make_reusable_idle_sandbox, minimal_context, test_executor_config,
 };
+use crate::guest_timezone::GuestTimezoneAssumption;
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationSignals;
@@ -482,6 +483,28 @@ fn pre_spawn_timing_with_phases() -> RunnerPreSpawnTiming {
     timing
 }
 
+fn pre_spawn_timing_with_exact_reuse_speculation() -> RunnerPreSpawnTiming {
+    let mut timing = RunnerPreSpawnTiming::start_after_claim();
+    timing.record_exact_reuse_speculation(ExactReuseSpeculationTiming {
+        unpark: RunnerPreSpawnOperationTiming {
+            duration: Duration::from_millis(3),
+            succeeded: true,
+        },
+        guest_restore: Some(RunnerPreSpawnOperationTiming {
+            duration: Duration::from_millis(41),
+            succeeded: true,
+        }),
+        claim_overlap: Duration::from_millis(39),
+        post_claim_remainder: Duration::from_millis(2),
+        timezone_correction: Some(RunnerPreSpawnOperationTiming {
+            duration: Duration::from_millis(5),
+            succeeded: true,
+        }),
+        timezone_assumption: Some(GuestTimezoneAssumption::Mismatch),
+    });
+    timing
+}
+
 #[test]
 fn record_reuse_result_emits_hit_for_reuse() {
     let mut telemetry = new_telemetry();
@@ -661,6 +684,51 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     assert_lacks_action(&telemetry, "runner_reused_sandbox_prepare");
     assert_lacks_action(&telemetry, "runner_fresh_workspace_image_prepare");
     assert_lacks_action(&telemetry, "runner_guest_state_restore");
+}
+
+#[tokio::test]
+async fn execute_job_records_exact_reuse_speculation_timing() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = ObservedMockSandboxFactory::new();
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (_outcome, telemetry) = execute_job_with_prepared_notifier(
+        &factory,
+        minimal_context(),
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        RunCancellationSignals::hard_only(cancel),
+        ExecutionHooks {
+            sandbox_prepared: None,
+            active_input_source: None,
+            pre_spawn_timing: Some(pre_spawn_timing_with_exact_reuse_speculation()),
+            session_history_restore_plan: SessionHistoryRestorePlan::Default,
+        },
+    )
+    .await;
+
+    for (action, duration_ms) in [
+        ("runner_exact_reuse_preclaim_unpark", 3),
+        ("runner_exact_reuse_preclaim_guest_restore", 41),
+        ("runner_exact_reuse_claim_overlap", 39),
+        ("runner_exact_reuse_postclaim_remainder", 2),
+        ("runner_exact_reuse_timezone_correction", 5),
+    ] {
+        assert_action_success(&telemetry, action, true);
+        assert_action_duration(&telemetry, action, duration_ms);
+    }
+    assert_action_success(
+        &telemetry,
+        "runner_exact_reuse_timezone_assumption_mismatch",
+        true,
+    );
+    assert_lacks_action(&telemetry, "runner_exact_reuse_timezone_assumption_match");
+    assert_lacks_action(&telemetry, "runner_exact_reuse_timezone_assumption_unknown");
 }
 
 #[tokio::test]

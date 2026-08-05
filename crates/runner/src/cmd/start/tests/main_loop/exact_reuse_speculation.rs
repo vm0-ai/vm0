@@ -1,0 +1,818 @@
+use super::super::super::*;
+use super::super::support::{
+    SpeculativeIdleSeedSpec, context_with_session, mock_run_config,
+    seed_idle_pool_with_speculative_timezone, shutdown, status_idle_reuse_keys_and_active_runs,
+    test_profiles, wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
+    wait_discover_entered, wait_idle_pool_len, wait_idle_pool_reuse_keys,
+};
+use std::sync::Arc;
+
+use crate::guest_timezone::GuestTimezoneIntent;
+use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
+use crate::provider::{JobCandidate, RunnerPreference, RunnerPreferenceReason};
+use crate::types::{ExecutionContext, SandboxReuseResult};
+
+const NON_SELECTED_RUNNER_ID: u128 = 1;
+
+fn exact_generation_candidate(
+    run_id: RunId,
+    reuse_key: &str,
+    history_generation_run_id: RunId,
+) -> JobCandidate {
+    JobCandidate::new(run_id, "vm0/default".into())
+        .with_reuse_key(Some(reuse_key.to_owned()))
+        .with_history_generation_run_id(Some(history_generation_run_id))
+        .with_runner_preference(Some(RunnerPreference::for_test(
+            uuid::Uuid::from_u128(NON_SELECTED_RUNNER_ID),
+            1,
+            RunnerPreferenceReason::ExactHistoryGeneration,
+            std::time::Instant::now() + Duration::from_secs(30),
+        )))
+}
+
+fn claimed_context(run_id: RunId, reuse_key: &str, timezone: Option<&str>) -> ExecutionContext {
+    let mut context = context_with_session(run_id, reuse_key);
+    context.user_timezone = timezone.map(str::to_owned);
+    context
+}
+
+fn guest_restore_commands(overrides: &sandbox_mock::MockSandboxOverrides) -> Vec<String> {
+    overrides
+        .exec_calls()
+        .into_iter()
+        .filter(|call| call.cmd.contains("guest-reseed"))
+        .map(|call| call.cmd)
+        .collect()
+}
+
+fn timezone_correction_commands(overrides: &sandbox_mock::MockSandboxOverrides) -> Vec<String> {
+    overrides
+        .exec_calls()
+        .into_iter()
+        .filter(|call| call.cmd.contains("/etc/timezone") && !call.cmd.contains("guest-reseed"))
+        .map(|call| call.cmd)
+        .collect()
+}
+
+#[tokio::test]
+async fn exact_reuse_restores_guest_while_claim_is_blocked() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    add_healthy_reuse_preparation_matcher(&overrides);
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    let sandbox_id = seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: GuestTimezoneIntent::Configured("Asia/Shanghai".into()),
+            timing: None,
+        },
+    )
+    .await;
+    env.handle.block_claims();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        run_id,
+        Some(claimed_context(run_id, &reuse_key, Some("Asia/Shanghai"))),
+    );
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+
+    assert!(
+        env.handle
+            .wait_claim_in_flight(1, Duration::from_secs(5))
+            .await,
+        "provider claim did not reach its boundary"
+    );
+    assert!(
+        overrides
+            .wait_exec_call_count(1, Duration::from_secs(5))
+            .await,
+        "guest restore did not run while claim was blocked"
+    );
+    let restore_commands = guest_restore_commands(&overrides);
+    assert_eq!(restore_commands.len(), 1);
+    assert!(restore_commands[0].contains("/usr/share/zoneinfo/Asia/Shanghai"));
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert!(
+        overrides.start_process_calls().is_empty(),
+        "agent process must not start before claim succeeds"
+    );
+    let (idle_reuse_keys, active_runs) =
+        status_idle_reuse_keys_and_active_runs(&env._temp_dir.path().join("status.json")).await;
+    assert!(idle_reuse_keys.is_empty());
+    assert!(
+        active_runs.is_empty(),
+        "speculative sandbox must not be published as active before claim succeeds"
+    );
+
+    env.handle.unblock_claims();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(30))
+        .await
+        .expect("exact-reuse run should complete after claim release");
+    assert_eq!(completion.sandbox_id, Some(sandbox_id));
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    assert_eq!(guest_restore_commands(&overrides).len(), 1);
+    assert!(timezone_correction_commands(&overrides).is_empty());
+
+    shutdown(&env, run_handle).await;
+}
+
+async fn assert_timezone_transition_with(
+    previous: GuestTimezoneIntent,
+    claimed: Option<&str>,
+    expected_restore_zone: &str,
+    expected_correction_zone: Option<&str>,
+    configure: impl FnOnce(&sandbox_mock::MockSandboxOverrides),
+) {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    configure(&overrides);
+    add_healthy_reuse_preparation_matcher(&overrides);
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: previous,
+            timing: None,
+        },
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(claimed_context(run_id, &reuse_key, claimed)));
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(30))
+        .await
+        .expect("timezone transition run should complete");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+
+    let restores = guest_restore_commands(&overrides);
+    assert_eq!(restores.len(), 1);
+    assert!(restores[0].contains(&format!("/usr/share/zoneinfo/{expected_restore_zone}")));
+    let corrections = timezone_correction_commands(&overrides);
+    match expected_correction_zone {
+        Some(zone) => {
+            assert_eq!(corrections.len(), 1);
+            assert!(corrections[0].contains(&format!("/usr/share/zoneinfo/{zone}")));
+        }
+        None => assert!(corrections.is_empty()),
+    }
+    assert_eq!(overrides.destroy_call_count(), 0);
+
+    shutdown(&env, run_handle).await;
+}
+
+async fn assert_timezone_transition(
+    previous: GuestTimezoneIntent,
+    claimed: Option<&str>,
+    expected_restore_zone: &str,
+    expected_correction_zone: Option<&str>,
+) {
+    assert_timezone_transition_with(
+        previous,
+        claimed,
+        expected_restore_zone,
+        expected_correction_zone,
+        |_| {},
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn exact_reuse_verifies_configured_and_default_timezone_transitions() {
+    assert_timezone_transition(
+        GuestTimezoneIntent::Configured("Asia/Shanghai".into()),
+        Some("Europe/London"),
+        "Asia/Shanghai",
+        Some("Europe/London"),
+    )
+    .await;
+    assert_timezone_transition(
+        GuestTimezoneIntent::Configured("Asia/Shanghai".into()),
+        None,
+        "Asia/Shanghai",
+        Some("UTC"),
+    )
+    .await;
+    assert_timezone_transition(
+        GuestTimezoneIntent::Default,
+        Some("Asia/Shanghai"),
+        "UTC",
+        Some("Asia/Shanghai"),
+    )
+    .await;
+    assert_timezone_transition(GuestTimezoneIntent::Default, None, "UTC", None).await;
+}
+
+#[tokio::test]
+async fn embedded_timezone_correction_failure_remains_best_effort() {
+    assert_timezone_transition_with(
+        GuestTimezoneIntent::Configured("Asia/Shanghai".into()),
+        Some("Europe/London"),
+        "Asia/Shanghai",
+        Some("Europe/London"),
+        |overrides| {
+            overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+                pattern: "/usr/share/zoneinfo/Europe/London".into(),
+                exit_code: 1,
+                stdout: Vec::new(),
+                stderr: b"simulated timezone setup failure".to_vec(),
+            });
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn unknown_previous_timezone_keeps_restore_after_claim() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    add_healthy_reuse_preparation_matcher(&overrides);
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: GuestTimezoneIntent::Unknown,
+            timing: None,
+        },
+    )
+    .await;
+    env.handle.block_claims();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        run_id,
+        Some(claimed_context(run_id, &reuse_key, Some("Asia/Shanghai"))),
+    );
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+    assert!(
+        env.handle
+            .wait_claim_in_flight(1, Duration::from_secs(5))
+            .await
+    );
+    assert_eq!(overrides.unpark_call_count(), 0);
+    assert!(overrides.exec_calls().is_empty());
+
+    env.handle.unblock_claims();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(30))
+        .await
+        .expect("unknown prediction should retain ordinary exact reuse");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    assert_eq!(guest_restore_commands(&overrides).len(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn unknown_claimed_timezone_repeats_authoritative_guest_restore() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    add_healthy_reuse_preparation_matcher(&overrides);
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: GuestTimezoneIntent::Configured("Asia/Shanghai".into()),
+            timing: None,
+        },
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        run_id,
+        Some(claimed_context(
+            run_id,
+            &reuse_key,
+            Some("invalid timezone"),
+        )),
+    );
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(30))
+        .await
+        .expect("unknown claimed timezone should complete through full restore fallback");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    let restores = guest_restore_commands(&overrides);
+    assert_eq!(restores.len(), 2);
+    assert!(restores[0].contains("/usr/share/zoneinfo/Asia/Shanghai"));
+    assert!(!restores[1].contains("/usr/share/zoneinfo/"));
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn unavailable_claim_reparks_speculative_sandbox() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    add_healthy_reuse_preparation_matcher(&overrides);
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: GuestTimezoneIntent::Default,
+            timing: None,
+        },
+    )
+    .await;
+    env.handle.block_claims();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(run_id, None);
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+    assert!(
+        env.handle
+            .wait_claim_in_flight(1, Duration::from_secs(5))
+            .await
+    );
+    assert!(
+        overrides
+            .wait_exec_call_count(1, Duration::from_secs(5))
+            .await
+    );
+    env.handle.unblock_claims();
+
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&env.idle_pool, &[&reuse_key], Duration::from_secs(5)).await;
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.park_call_count(), 1);
+    assert_eq!(overrides.destroy_call_count(), 0);
+    assert!(overrides.start_process_calls().is_empty());
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn cancellation_during_claim_completes_without_starting_agent_and_reparks() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    add_healthy_reuse_preparation_matcher(&overrides);
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: GuestTimezoneIntent::Default,
+            timing: None,
+        },
+    )
+    .await;
+    env.handle.block_claims();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(claimed_context(run_id, &reuse_key, None)));
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+    assert!(
+        env.handle
+            .wait_claim_in_flight(1, Duration::from_secs(5))
+            .await
+    );
+    assert!(
+        overrides
+            .wait_exec_call_count(1, Duration::from_secs(5))
+            .await
+    );
+    let cancellation = wait_cancel_handle(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    assert!(cancellation.request_cooperative_user_cancellation().await);
+    env.handle.unblock_claims();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("claimed cancellation should be completed");
+    assert_eq!(completion.error.as_deref(), Some("cancelled by user"));
+    assert_eq!(completion.sandbox_id, None);
+    wait_idle_pool_reuse_keys(&env.idle_pool, &[&reuse_key], Duration::from_secs(5)).await;
+    assert!(overrides.start_process_calls().is_empty());
+    assert_eq!(overrides.park_call_count(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn closed_parking_gate_destroys_lost_speculation_after_repark() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    add_healthy_reuse_preparation_matcher(&overrides);
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: GuestTimezoneIntent::Default,
+            timing: None,
+        },
+    )
+    .await;
+    env.handle.block_claims();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(run_id, None);
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+    assert!(
+        env.handle
+            .wait_claim_in_flight(1, Duration::from_secs(5))
+            .await
+    );
+    assert!(
+        overrides
+            .wait_exec_call_count(1, Duration::from_secs(5))
+            .await
+    );
+    assert!(env.parking_gate.soft_drain());
+    env.handle.unblock_claims();
+
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    assert_eq!(overrides.park_call_count(), 1);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert!(overrides.start_process_calls().is_empty());
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn duplicate_repark_keeps_newer_idle_sandbox_and_destroys_speculation() {
+    let (config, env) = mock_run_config(test_profiles(), 4, 8192, 2);
+    let budget = Arc::clone(&config.capacity.budget);
+    let original_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    add_healthy_reuse_preparation_matcher(&original_overrides);
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &original_overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: GuestTimezoneIntent::Default,
+            timing: None,
+        },
+    )
+    .await;
+    env.handle.block_claims();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(run_id, None);
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+    assert!(
+        env.handle
+            .wait_claim_in_flight(1, Duration::from_secs(5))
+            .await
+    );
+    assert!(
+        original_overrides
+            .wait_exec_call_count(1, Duration::from_secs(5))
+            .await
+    );
+
+    let replacement_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let replacement_id = seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &replacement_overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: RunId::new_v4(),
+            guest_timezone_intent: GuestTimezoneIntent::Default,
+            timing: None,
+        },
+    )
+    .await;
+    env.handle.unblock_claims();
+
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&env.idle_pool, &[&reuse_key], Duration::from_secs(5)).await;
+    assert_eq!(
+        env.idle_pool.lock().await.status_snapshot().idle_vms[0].sandbox_id,
+        replacement_id
+    );
+    assert_eq!(original_overrides.park_call_count(), 1);
+    assert_eq!(original_overrides.destroy_call_count(), 1);
+    assert_eq!(replacement_overrides.destroy_call_count(), 0);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn repark_failure_destroys_unclaimed_speculation() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_park_result(Err(sandbox::SandboxError::IdleTransition {
+        transition: sandbox::SandboxIdleTransition::Park,
+        message: "simulated speculative repark failure".into(),
+    }));
+    add_healthy_reuse_preparation_matcher(&overrides);
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: GuestTimezoneIntent::Default,
+            timing: None,
+        },
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(run_id, None);
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    assert_eq!(overrides.park_call_count(), 1);
+    assert_eq!(overrides.destroy_call_count(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+async fn assert_speculation_failure_falls_back_to_fresh(
+    previous: GuestTimezoneIntent,
+    claimed: Option<&str>,
+    configure_failure: impl FnOnce(&sandbox_mock::MockSandboxOverrides),
+) {
+    let (config, env) = mock_run_config(test_profiles(), 4, 8192, 2);
+    let budget = Arc::clone(&config.capacity.budget);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    configure_failure(&overrides);
+    add_healthy_reuse_preparation_matcher(&overrides);
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    let idle_sandbox_id = seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: previous,
+            timing: None,
+        },
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(claimed_context(run_id, &reuse_key, claimed)));
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(30))
+        .await
+        .expect("valid claim should use fresh fallback after speculation failure");
+    assert_eq!(
+        completion.reuse_result,
+        Some(SandboxReuseResult::UnparkFailed)
+    );
+    assert_ne!(completion.sandbox_id, Some(idle_sandbox_id));
+    assert_eq!(overrides.destroy_call_count(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn speculative_unpark_failure_destroys_before_fresh_fallback() {
+    assert_speculation_failure_falls_back_to_fresh(
+        GuestTimezoneIntent::Default,
+        None,
+        |overrides| {
+            overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+                transition: sandbox::SandboxIdleTransition::Unpark,
+                message: "simulated speculative unpark failure".into(),
+            }));
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn speculative_guest_restore_failure_destroys_before_fresh_fallback() {
+    assert_speculation_failure_falls_back_to_fresh(
+        GuestTimezoneIntent::Default,
+        None,
+        |overrides| {
+            overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+                pattern: "guest-reseed".into(),
+                exit_code: 1,
+                stdout: Vec::new(),
+                stderr: b"guest-reseed failed".to_vec(),
+            });
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn speculative_guest_restore_transport_failure_destroys_before_fresh_fallback() {
+    assert_speculation_failure_falls_back_to_fresh(
+        GuestTimezoneIntent::Default,
+        None,
+        |overrides| {
+            overrides.add_exec_error_matcher(
+                "guest-reseed",
+                sandbox::SandboxError::Operation {
+                    operation: sandbox::SandboxOperation::Exec,
+                    reason: sandbox::SandboxOperationReason::Guest,
+                    message: "simulated guest restore transport failure".into(),
+                },
+            );
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn timezone_correction_panic_destroys_before_fresh_fallback() {
+    assert_speculation_failure_falls_back_to_fresh(
+        GuestTimezoneIntent::Configured("Asia/Shanghai".into()),
+        Some("Europe/London"),
+        |overrides| {
+            overrides.add_exec_panic_matcher(
+                "/usr/share/zoneinfo/Europe/London",
+                "simulated timezone correction panic",
+            );
+        },
+    )
+    .await;
+}

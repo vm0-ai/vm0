@@ -4,10 +4,12 @@
 //! module owns the body that turns a discovered job into a claimed spawned job.
 
 use std::collections::BTreeMap;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::Instant;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+use futures_util::FutureExt;
 use sandbox::SandboxId;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
@@ -27,12 +29,15 @@ use super::pre_park_handoff_observation::{
 };
 use crate::config::ProfileConfig;
 use crate::executor::{
-    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryRestorePlanInput,
-    build_session_history_restore_plan, validate_resume_session_id,
+    ExactReuseSpeculationTiming, RunnerPreSpawnOperationTiming, RunnerPreSpawnPhase,
+    RunnerPreSpawnTiming, SessionHistoryRestorePlanInput, build_session_history_restore_plan,
+    restore_guest_state_with_intent, try_sync_guest_timezone_intent, validate_resume_session_id,
 };
+use crate::guest_timezone::{GuestTimezoneAssumption, GuestTimezoneIntent};
 use crate::idle_pool::{
     DestroyOutcome, IdlePoolSnapshot, IdleUnparkResult, ReservedIdleSandbox,
-    RestoreReservedIdleResult, ReusableIdleSandbox,
+    RestoreReservedIdleResult, ReusableIdleSandbox, SpeculativeIdleSandbox,
+    SpeculativeIdleUnparkResult, SpeculativeReparkResult,
 };
 use crate::ids::RunId;
 use crate::lifecycle::RunnerMode;
@@ -94,12 +99,46 @@ struct LocalAdmission {
 enum LocalAdmissionResource {
     Fresh(BudgetLease),
     Reusable(Box<ReservedIdleSandbox>),
+    ExactSpeculative(Box<ReservedIdleSandbox>),
+}
+
+enum AdmittedResource {
+    Fresh(BudgetLease),
+    Reusable(Box<ReservedIdleSandbox>),
+    ExactSpeculation(ExactSpeculation),
+}
+
+struct ExactSpeculation {
+    outcome: ExactSpeculationOutcome,
+    preparation_started_at: Instant,
+    preparation_completed_at: Instant,
+    claim_started_at: Instant,
+    claim_returned_at: Instant,
+    unpark: RunnerPreSpawnOperationTiming,
+    guest_restore: Option<RunnerPreSpawnOperationTiming>,
+}
+
+struct ExactSpeculationPreparation {
+    outcome: ExactSpeculationOutcome,
+    started_at: Instant,
+    completed_at: Instant,
+    unpark: RunnerPreSpawnOperationTiming,
+    guest_restore: Option<RunnerPreSpawnOperationTiming>,
+}
+
+enum ExactSpeculationOutcome {
+    Prepared(Box<SpeculativeIdleSandbox>),
+    Failed {
+        destroy_job: Box<crate::idle_pool::IdleDestroyJob>,
+        error: String,
+    },
 }
 
 struct AdmittedClaim {
     claimed: ClaimedJob,
-    resource: LocalAdmissionResource,
+    resource: AdmittedResource,
     cancellation: RunCancellationRegistration,
+    claim_returned_at: Instant,
 }
 
 struct PreparedCandidate {
@@ -121,6 +160,16 @@ struct ReuseAdmissionRequest<'a> {
     job_lease: BudgetLease,
 }
 
+struct ClaimAdmissionRequest<'a> {
+    prepared: PreparedCandidate,
+    run_id: RunId,
+    profile_name: &'a str,
+    job_vcpu: u32,
+    job_memory: u32,
+    workspace_disk_mb: u32,
+    device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
+}
+
 struct ReservedActivationRequest<'a> {
     run_id: RunId,
     profile_name: &'a str,
@@ -136,14 +185,6 @@ impl LocalAdmission {
         } = self;
         cancellation.unregister().await;
         rollback_untracked_resource(resource, ctx).await;
-    }
-
-    fn into_admitted(self, claimed: ClaimedJob) -> AdmittedClaim {
-        AdmittedClaim {
-            claimed,
-            resource: self.resource,
-            cancellation: self.cancellation,
-        }
     }
 }
 
@@ -187,12 +228,15 @@ pub(super) async fn handle_discovered_job(
         PreferencePreparation::Deferred => return DiscoveredJobResult::completed(false),
     };
     let Some(admission) = claim_with_local_admission(
-        prepared,
-        run_id,
-        &profile_name,
-        job_vcpu,
-        job_memory,
-        &device_rate_limits,
+        ClaimAdmissionRequest {
+            prepared,
+            run_id,
+            profile_name: &profile_name,
+            job_vcpu,
+            job_memory,
+            workspace_disk_mb: job_workspace_disk_mb,
+            device_rate_limits: &device_rate_limits,
+        },
         &mut ctx,
     )
     .await
@@ -203,14 +247,42 @@ pub(super) async fn handle_discovered_job(
         claimed,
         resource,
         cancellation,
+        claim_returned_at,
     } = admission;
-    let mut pre_spawn_timing = RunnerPreSpawnTiming::start_after_claim();
+    if cancellation.handle().is_cancelled()
+        && matches!(&resource, AdmittedResource::ExactSpeculation(_))
+    {
+        complete_claimed_without_sandbox(
+            claimed,
+            cancellation,
+            resource,
+            job_workspace_disk_mb,
+            None,
+            crate::executor::ExecutionFailure::cancelled(),
+            &mut ctx,
+        )
+        .await;
+        return DiscoveredJobResult::completed(true);
+    }
+    let mut pre_spawn_timing = RunnerPreSpawnTiming::start_at(claim_returned_at);
     let started_at = Instant::now();
     let resume_session_error = validate_resume_session_id(claimed.context()).err();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ResumeSessionValidation, started_at);
     if let Some(error) = resume_session_error {
-        let needs_reuse_state_refresh = matches!(&resource, LocalAdmissionResource::Reusable(_));
-        fail_claimed_without_sandbox(claimed, cancellation, resource, None, error, &mut ctx).await;
+        let needs_reuse_state_refresh = matches!(
+            &resource,
+            AdmittedResource::Reusable(_) | AdmittedResource::ExactSpeculation(_)
+        );
+        complete_claimed_without_sandbox(
+            claimed,
+            cancellation,
+            resource,
+            job_workspace_disk_mb,
+            None,
+            crate::executor::ExecutionFailure::from_error(error),
+            &mut ctx,
+        )
+        .await;
         return DiscoveredJobResult::completed(needs_reuse_state_refresh);
     }
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
@@ -228,7 +300,7 @@ pub(super) async fn handle_discovered_job(
 
     let (reuse_entry, active_lease, reuse_result, idle_snapshot, needs_reuse_state_refresh) =
         match resource {
-            LocalAdmissionResource::Fresh(job_lease) => {
+            AdmittedResource::Fresh(job_lease) => {
                 try_reuse_from_pool(
                     run_id,
                     ReuseAdmissionRequest {
@@ -243,7 +315,7 @@ pub(super) async fn handle_discovered_job(
                 )
                 .await
             }
-            LocalAdmissionResource::Reusable(reservation) => {
+            AdmittedResource::Reusable(reservation) => {
                 match activate_reserved_idle(
                     *reservation,
                     ReservedActivationRequest {
@@ -274,12 +346,58 @@ pub(super) async fn handle_discovered_job(
                         reuse_result,
                         error,
                     } => {
-                        fail_claimed_without_sandbox(
+                        complete_claimed_without_sandbox(
                             claimed,
                             cancellation,
-                            LocalAdmissionResource::Fresh(budget_lease),
+                            AdmittedResource::Fresh(budget_lease),
+                            job_workspace_disk_mb,
                             Some(reuse_result),
-                            error,
+                            crate::executor::ExecutionFailure::from_error(error),
+                            &mut ctx,
+                        )
+                        .await;
+                        return DiscoveredJobResult::completed(true);
+                    }
+                }
+            }
+            AdmittedResource::ExactSpeculation(speculation) => {
+                match activate_speculated_exact(
+                    speculation,
+                    ReservedActivationRequest {
+                        run_id,
+                        profile_name: &profile_name,
+                        workspace_disk_mb: job_workspace_disk_mb,
+                        context: claimed.context(),
+                    },
+                    &ctx,
+                    &mut pre_spawn_timing,
+                )
+                .await
+                {
+                    ReservedActivation::Ready {
+                        reuse_entry,
+                        active_lease,
+                        reuse_result,
+                        idle_snapshot,
+                    } => (
+                        reuse_entry.map(|entry| *entry),
+                        active_lease,
+                        reuse_result,
+                        Some(idle_snapshot),
+                        true,
+                    ),
+                    ReservedActivation::CannotStart {
+                        budget_lease,
+                        reuse_result,
+                        error,
+                    } => {
+                        complete_claimed_without_sandbox(
+                            claimed,
+                            cancellation,
+                            AdmittedResource::Fresh(budget_lease),
+                            job_workspace_disk_mb,
+                            Some(reuse_result),
+                            crate::executor::ExecutionFailure::from_error(error),
                             &mut ctx,
                         )
                         .await;
@@ -368,14 +486,18 @@ async fn publish_active_run_status(
 }
 
 async fn claim_with_local_admission(
-    prepared: PreparedCandidate,
-    run_id: RunId,
-    profile_name: &str,
-    job_vcpu: u32,
-    job_memory: u32,
-    device_rate_limits: &Option<sandbox::DeviceRateLimits>,
+    request: ClaimAdmissionRequest<'_>,
     ctx: &mut DiscoveredJobContext<'_>,
 ) -> Option<AdmittedClaim> {
+    let ClaimAdmissionRequest {
+        prepared,
+        run_id,
+        profile_name,
+        job_vcpu,
+        job_memory,
+        workspace_disk_mb,
+        device_rate_limits,
+    } = request;
     let PreparedCandidate {
         mut candidate,
         resource,
@@ -470,10 +592,58 @@ async fn claim_with_local_admission(
     let observed_candidate =
         is_selected_finalizing_candidate(&candidate, ctx.runner_id, ctx.heartbeat_generation)
             .then(|| candidate.clone());
-    if matches!(&admission.resource, LocalAdmissionResource::Reusable(_)) {
+    if matches!(
+        &admission.resource,
+        LocalAdmissionResource::Reusable(_) | LocalAdmissionResource::ExactSpeculative(_)
+    ) {
         candidate.mark_reserved_reuse_claim_started();
     }
-    let Some(claimed) = ctx.spawn_ctx.provider.claim(candidate).await else {
+    let LocalAdmission {
+        resource,
+        cancellation,
+    } = admission;
+    let claim_started_at = Instant::now();
+    let (claimed, admitted_resource, claim_returned_at) = match resource {
+        LocalAdmissionResource::Fresh(budget_lease) => {
+            let claimed = ctx.spawn_ctx.provider.claim(candidate).await;
+            (
+                claimed,
+                AdmittedResource::Fresh(budget_lease),
+                Instant::now(),
+            )
+        }
+        LocalAdmissionResource::Reusable(reservation) => {
+            let claimed = ctx.spawn_ctx.provider.claim(candidate).await;
+            (
+                claimed,
+                AdmittedResource::Reusable(reservation),
+                Instant::now(),
+            )
+        }
+        LocalAdmissionResource::ExactSpeculative(reservation) => {
+            let claim = async {
+                let claimed = ctx.spawn_ctx.provider.claim(candidate).await;
+                (claimed, Instant::now())
+            };
+            let preparation = prepare_exact_speculation(*reservation, run_id);
+            let ((claimed, claim_returned_at), preparation) = tokio::join!(claim, preparation);
+            let speculation = ExactSpeculation {
+                outcome: preparation.outcome,
+                preparation_started_at: preparation.started_at,
+                preparation_completed_at: preparation.completed_at,
+                claim_started_at,
+                claim_returned_at,
+                unpark: preparation.unpark,
+                guest_restore: preparation.guest_restore,
+            };
+            (
+                claimed,
+                AdmittedResource::ExactSpeculation(speculation),
+                claim_returned_at,
+            )
+        }
+    };
+    let Some(claimed) = claimed else {
         // None means the job won't run here: either lost the race to another
         // runner, or the provider rejected the job. Release the reservation and
         // cancellation registration so the runner can continue.
@@ -486,7 +656,8 @@ async fn claim_with_local_admission(
                 Some(CandidateReason::ProviderRejected),
             );
         }
-        admission.rollback(ctx).await;
+        cancellation.unregister().await;
+        rollback_admitted_resource(admitted_resource, run_id, workspace_disk_mb, ctx).await;
         return None;
     };
     if claimed.context().run_id != run_id {
@@ -504,7 +675,8 @@ async fn claim_with_local_admission(
             context_run_id = %claimed.context().run_id,
             "provider returned claimed job with mismatched run_id"
         );
-        admission.rollback(ctx).await;
+        cancellation.unregister().await;
+        rollback_admitted_resource(admitted_resource, run_id, workspace_disk_mb, ctx).await;
         return None;
     }
 
@@ -518,7 +690,81 @@ async fn claim_with_local_admission(
         );
     }
 
-    Some(admission.into_admitted(claimed))
+    Some(AdmittedClaim {
+        claimed,
+        resource: admitted_resource,
+        cancellation,
+        claim_returned_at,
+    })
+}
+
+async fn prepare_exact_speculation(
+    reservation: ReservedIdleSandbox,
+    run_id: RunId,
+) -> ExactSpeculationPreparation {
+    let preparation_started_at = Instant::now();
+    let predicted_timezone = reservation.guest_timezone_intent().clone();
+    let unpark_started_at = Instant::now();
+    let unpark_result = reservation.try_unpark_for_speculation(run_id).await;
+    let unpark_duration = unpark_started_at.elapsed();
+    let (outcome, unpark_succeeded, guest_restore) = match unpark_result {
+        SpeculativeIdleUnparkResult::Ready(sandbox) => {
+            let restore_started_at = Instant::now();
+            let restored = AssertUnwindSafe(restore_guest_state_with_intent(
+                sandbox.sandbox(),
+                run_id,
+                &predicted_timezone,
+            ))
+            .catch_unwind()
+            .await;
+            let restore_duration = restore_started_at.elapsed();
+            let (outcome, restore_succeeded) = match restored {
+                Ok(Ok(())) => (ExactSpeculationOutcome::Prepared(sandbox), true),
+                Ok(Err(error)) => (
+                    ExactSpeculationOutcome::Failed {
+                        destroy_job: Box::new(
+                            sandbox.into_destroy_job("speculative_guest_restore_failed"),
+                        ),
+                        error: error.to_string(),
+                    },
+                    false,
+                ),
+                Err(_) => (
+                    ExactSpeculationOutcome::Failed {
+                        destroy_job: Box::new(
+                            sandbox.into_destroy_job("speculative_guest_restore_panicked"),
+                        ),
+                        error: "speculative guest restore panicked".into(),
+                    },
+                    false,
+                ),
+            };
+            (
+                outcome,
+                true,
+                Some(RunnerPreSpawnOperationTiming {
+                    duration: restore_duration,
+                    succeeded: restore_succeeded,
+                }),
+            )
+        }
+        SpeculativeIdleUnparkResult::Failed { destroy_job, error } => (
+            ExactSpeculationOutcome::Failed { destroy_job, error },
+            false,
+            None,
+        ),
+    };
+    let preparation_completed_at = Instant::now();
+    ExactSpeculationPreparation {
+        outcome,
+        started_at: preparation_started_at,
+        completed_at: preparation_completed_at,
+        unpark: RunnerPreSpawnOperationTiming {
+            duration: unpark_duration,
+            succeeded: unpark_succeeded,
+        },
+        guest_restore,
+    }
 }
 
 async fn prepare_preference_candidate(
@@ -567,7 +813,11 @@ async fn prepare_preference_candidate(
             )
             .await
             {
-                return reusable_preparation(candidate, reservation);
+                return if reservation.guest_timezone_intent().is_usable_prediction() {
+                    exact_speculative_preparation(candidate, reservation)
+                } else {
+                    reusable_preparation(candidate, reservation)
+                };
             }
         }
         RunnerPreferenceReason::MatchingReuseKey => {
@@ -653,6 +903,18 @@ fn reusable_preparation(
     PreferencePreparation::Ready(PreparedCandidate {
         candidate,
         resource: Some(LocalAdmissionResource::Reusable(Box::new(reservation))),
+    })
+}
+
+fn exact_speculative_preparation(
+    candidate: JobCandidate,
+    reservation: ReservedIdleSandbox,
+) -> PreferencePreparation {
+    PreferencePreparation::Ready(PreparedCandidate {
+        candidate,
+        resource: Some(LocalAdmissionResource::ExactSpeculative(Box::new(
+            reservation,
+        ))),
     })
 }
 
@@ -782,7 +1044,8 @@ async fn rollback_untracked_resource(
 ) {
     match resource {
         LocalAdmissionResource::Fresh(budget_lease) => drop(budget_lease),
-        LocalAdmissionResource::Reusable(reservation) => {
+        LocalAdmissionResource::Reusable(reservation)
+        | LocalAdmissionResource::ExactSpeculative(reservation) => {
             let (restore_result, snapshot) = {
                 let mut pool = ctx.idle_pool.lock().await;
                 let restore_result = pool.restore_reserved(*reservation);
@@ -802,6 +1065,80 @@ async fn rollback_untracked_resource(
     }
 }
 
+async fn rollback_admitted_resource(
+    resource: AdmittedResource,
+    run_id: RunId,
+    workspace_disk_mb: u32,
+    ctx: &mut DiscoveredJobContext<'_>,
+) {
+    match resource {
+        AdmittedResource::Fresh(budget_lease) => drop(budget_lease),
+        AdmittedResource::Reusable(reservation) => {
+            rollback_untracked_resource(LocalAdmissionResource::Reusable(reservation), ctx).await;
+        }
+        AdmittedResource::ExactSpeculation(speculation) => {
+            rollback_exact_speculation(speculation, run_id, workspace_disk_mb, ctx).await;
+        }
+    }
+}
+
+async fn rollback_exact_speculation(
+    speculation: ExactSpeculation,
+    run_id: RunId,
+    workspace_disk_mb: u32,
+    ctx: &mut DiscoveredJobContext<'_>,
+) {
+    let destroy_job = match speculation.outcome {
+        ExactSpeculationOutcome::Prepared(sandbox) => {
+            match sandbox
+                .repark_for_claim_rollback(run_id, u64::from(workspace_disk_mb) * 1024 * 1024)
+                .await
+            {
+                SpeculativeReparkResult::Reparked(reservation) => {
+                    let (restore_result, snapshot) = {
+                        let mut pool = ctx.idle_pool.lock().await;
+                        let restore_result = pool.restore_reserved(*reservation);
+                        let snapshot = pool.status_snapshot();
+                        (restore_result, snapshot)
+                    };
+                    set_idle_status_snapshot(ctx.status, snapshot).await;
+                    ctx.spawn_ctx.reuse_state_notify.notify_one();
+                    match restore_result {
+                        RestoreReservedIdleResult::Restored => None,
+                        RestoreReservedIdleResult::Rejected(destroy_job) => Some(destroy_job),
+                    }
+                }
+                SpeculativeReparkResult::Destroy {
+                    destroy_job,
+                    reason,
+                    error,
+                } => {
+                    warn!(
+                        run_id = %run_id,
+                        reason,
+                        error,
+                        "speculative exact-reuse rollback could not restore idle ownership"
+                    );
+                    Some(destroy_job)
+                }
+            }
+        }
+        ExactSpeculationOutcome::Failed { destroy_job, error } => {
+            warn!(
+                run_id = %run_id,
+                error,
+                "speculative exact-reuse preparation failed before claim resolved"
+            );
+            Some(destroy_job)
+        }
+    };
+    if let Some(destroy_job) = destroy_job {
+        destroy_idle_jobs_and_wait(vec![*destroy_job], "speculative_exact_reuse_claim_rollback")
+            .await;
+        ctx.spawn_ctx.reuse_state_notify.notify_one();
+    }
+}
+
 enum ReservedActivation {
     Ready {
         reuse_entry: Option<Box<ReusableIdleSandbox>>,
@@ -814,6 +1151,197 @@ enum ReservedActivation {
         reuse_result: SandboxReuseResult,
         error: String,
     },
+}
+
+async fn activate_speculated_exact(
+    speculation: ExactSpeculation,
+    request: ReservedActivationRequest<'_>,
+    ctx: &DiscoveredJobContext<'_>,
+    pre_spawn_timing: &mut RunnerPreSpawnTiming,
+) -> ReservedActivation {
+    let ReservedActivationRequest {
+        run_id,
+        profile_name,
+        workspace_disk_mb,
+        context,
+    } = request;
+    let ExactSpeculation {
+        outcome,
+        preparation_started_at,
+        preparation_completed_at,
+        claim_started_at,
+        claim_returned_at,
+        unpark,
+        guest_restore,
+    } = speculation;
+    let overlap_started_at = preparation_started_at.max(claim_started_at);
+    let overlap_completed_at = preparation_completed_at.min(claim_returned_at);
+    let claim_overlap = overlap_completed_at.saturating_duration_since(overlap_started_at);
+    let post_claim_remainder =
+        preparation_completed_at.saturating_duration_since(claim_returned_at);
+    let mut speculation_timing = ExactReuseSpeculationTiming {
+        unpark,
+        guest_restore,
+        claim_overlap,
+        post_claim_remainder,
+        timezone_correction: None,
+        timezone_assumption: None,
+    };
+    pre_spawn_timing.record_exact_reuse_speculation(speculation_timing);
+    let sandbox = match outcome {
+        ExactSpeculationOutcome::Prepared(sandbox) => sandbox,
+        ExactSpeculationOutcome::Failed { destroy_job, error } => {
+            warn!(
+                run_id = %run_id,
+                error,
+                "speculative exact-reuse preparation failed, destroying before fresh fallback"
+            );
+            return cleanup_reserved_for_fresh_fallback(
+                *destroy_job,
+                SandboxReuseResult::UnparkFailed,
+                "speculative_exact_reuse_prepare_failed",
+                ctx,
+            )
+            .await;
+        }
+    };
+
+    let reserved_reuse_key = sandbox.reuse_key().to_owned();
+    let requested_reuse_key = context.reuse_key();
+    if requested_reuse_key != Some(reserved_reuse_key.as_str()) {
+        warn!(
+            run_id = %run_id,
+            reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
+            reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+            "claimed reuse key does not match speculatively prepared idle VM"
+        );
+        return cleanup_reserved_for_fresh_fallback(
+            sandbox.into_destroy_job("speculative_reuse_session_mismatch"),
+            if requested_reuse_key.is_none() {
+                SandboxReuseResult::NoReuseKey
+            } else {
+                SandboxReuseResult::PoolMiss
+            },
+            "speculative_reuse_session_mismatch",
+            ctx,
+        )
+        .await;
+    }
+
+    if let Some(cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
+        let started_at = Instant::now();
+        let validation = sandbox.validate_workspace_promotion_identity(
+            cache,
+            CANONICAL_WORKING_DIR,
+            u64::from(workspace_disk_mb) * 1024 * 1024,
+        );
+        pre_spawn_timing.record_phase_elapsed(
+            RunnerPreSpawnPhase::WorkspacePromotionValidation,
+            started_at,
+        );
+        if let Err(mismatch) = validation {
+            warn!(
+                run_id = %run_id,
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
+                reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+                profile = %profile_name,
+                mismatch = mismatch.as_str(),
+                "workspace promotion identity mismatch after speculative preparation"
+            );
+            return cleanup_reserved_for_fresh_fallback(
+                sandbox.into_destroy_job("speculative_workspace_promotion_mismatch"),
+                SandboxReuseResult::PoolMiss,
+                "speculative_workspace_promotion_mismatch",
+                ctx,
+            )
+            .await;
+        }
+    }
+
+    let claimed_timezone = GuestTimezoneIntent::from_context(context);
+    let assumption = sandbox.guest_timezone_intent().compare(&claimed_timezone);
+    let mut correction_duration = None;
+    let guest_state_prepared = match assumption {
+        GuestTimezoneAssumption::Match => true,
+        GuestTimezoneAssumption::Mismatch => {
+            let correction_started_at = Instant::now();
+            let corrected = AssertUnwindSafe(try_sync_guest_timezone_intent(
+                sandbox.sandbox(),
+                run_id,
+                &claimed_timezone,
+            ))
+            .catch_unwind()
+            .await;
+            correction_duration = Some(correction_started_at.elapsed());
+            match corrected {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    speculation_timing.timezone_correction =
+                        correction_duration.map(|duration| RunnerPreSpawnOperationTiming {
+                            duration,
+                            succeeded: false,
+                        });
+                    speculation_timing.timezone_assumption = Some(assumption);
+                    pre_spawn_timing.record_exact_reuse_speculation(speculation_timing);
+                    warn!(
+                        run_id = %run_id,
+                        error = %error,
+                        "speculative exact-reuse timezone correction transport failed"
+                    );
+                    return cleanup_reserved_for_fresh_fallback(
+                        sandbox.into_destroy_job("speculative_timezone_correction_failed"),
+                        SandboxReuseResult::UnparkFailed,
+                        "speculative_timezone_correction_failed",
+                        ctx,
+                    )
+                    .await;
+                }
+                Err(_) => {
+                    speculation_timing.timezone_correction =
+                        correction_duration.map(|duration| RunnerPreSpawnOperationTiming {
+                            duration,
+                            succeeded: false,
+                        });
+                    speculation_timing.timezone_assumption = Some(assumption);
+                    pre_spawn_timing.record_exact_reuse_speculation(speculation_timing);
+                    warn!(
+                        run_id = %run_id,
+                        "speculative exact-reuse timezone correction panicked"
+                    );
+                    return cleanup_reserved_for_fresh_fallback(
+                        sandbox.into_destroy_job("speculative_timezone_correction_panicked"),
+                        SandboxReuseResult::UnparkFailed,
+                        "speculative_timezone_correction_panicked",
+                        ctx,
+                    )
+                    .await;
+                }
+            }
+            true
+        }
+        GuestTimezoneAssumption::Unknown => false,
+    };
+    speculation_timing.timezone_correction =
+        correction_duration.map(|duration| RunnerPreSpawnOperationTiming {
+            duration,
+            succeeded: true,
+        });
+    speculation_timing.timezone_assumption = Some(assumption);
+    pre_spawn_timing.record_exact_reuse_speculation(speculation_timing);
+
+    let (reuse_entry, active_lease) = sandbox.commit(guest_state_prepared);
+    info!(
+        run_id = %run_id,
+        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
+        reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+        "committing speculatively prepared exact-reuse VM"
+    );
+    ReservedActivation::Ready {
+        reuse_entry: Some(Box::new(reuse_entry)),
+        active_lease,
+        reuse_result: SandboxReuseResult::Reused,
+        idle_snapshot: ctx.idle_pool.lock().await.status_snapshot(),
+    }
 }
 
 async fn activate_reserved_idle(
@@ -949,17 +1477,17 @@ async fn cleanup_reserved_for_fresh_fallback(
     }
 }
 
-async fn fail_claimed_without_sandbox(
+async fn complete_claimed_without_sandbox(
     claimed: ClaimedJob,
     cancellation: RunCancellationRegistration,
-    resource: LocalAdmissionResource,
+    resource: AdmittedResource,
+    workspace_disk_mb: u32,
     reuse_result: Option<SandboxReuseResult>,
-    error: String,
+    failure: crate::executor::ExecutionFailure,
     ctx: &mut DiscoveredJobContext<'_>,
 ) {
     let (context, completion_auth, active_input_source) = claimed.into_parts();
     let run_id = context.run_id;
-    let failure = crate::executor::ExecutionFailure::from_error(error);
     drop(active_input_source);
     ctx.spawn_ctx
         .provider
@@ -973,7 +1501,7 @@ async fn fail_claimed_without_sandbox(
         )
         .await;
     cancellation.unregister().await;
-    rollback_untracked_resource(resource, ctx).await;
+    rollback_admitted_resource(resource, run_id, workspace_disk_mb, ctx).await;
 }
 
 async fn try_reuse_from_pool(

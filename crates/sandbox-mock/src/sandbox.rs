@@ -14,7 +14,7 @@ use crate::call_records::{
     WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
 use crate::lifecycle::{MockLifecycleGate, wait_lifecycle_gate};
-use crate::overrides::MockSandboxOverrides;
+use crate::overrides::{ExecMatcherOutcome, MockSandboxOverrides};
 use crate::support::{
     LockIgnoringPoison, MOCK_COPY_FILE_MAX_BYTES, validate_mock_copy_host_path,
     validate_mock_exec_env_keys, validate_mock_guest_file_path,
@@ -450,28 +450,39 @@ impl Sandbox for MockSandbox {
         self.exec_calls.lock_ignoring_poison().push(call.clone());
         if let Some(overrides) = &self.overrides {
             overrides.exec.calls.lock_ignoring_poison().push(call);
+            overrides.exec.call_notify.notify_waiters();
         }
         // Check pattern matchers before the FIFO queue.
         let result = if let Some(overrides) = &self.overrides {
-            let mut matchers = overrides.exec.matchers.lock_ignoring_poison();
-            if let Some(idx) = matchers
-                .iter()
-                .position(|m| request.cmd.contains(&m.pattern))
-            {
-                Ok(matchers.remove(idx).result)
-            } else if let Some(matcher) = overrides
-                .exec
-                .persistent_matchers
-                .lock_ignoring_poison()
-                .iter()
-                .find(|matcher| request.cmd.contains(&matcher.pattern))
-            {
-                Ok(clone_exec_result(&matcher.result))
-            } else {
-                self.exec_results
-                    .lock_ignoring_poison()
-                    .pop_front()
-                    .unwrap_or_else(|| Ok(default_exec_result()))
+            let matched = {
+                let mut matchers = overrides.exec.matchers.lock_ignoring_poison();
+                matchers
+                    .iter()
+                    .position(|matcher| request.cmd.contains(&matcher.pattern))
+                    .map(|index| matchers.remove(index).outcome)
+            };
+            match matched {
+                Some(ExecMatcherOutcome::Return(result)) => Ok(result),
+                Some(ExecMatcherOutcome::Error(error)) => Err(error),
+                Some(ExecMatcherOutcome::Panic(message)) => {
+                    std::panic::resume_unwind(Box::new(message))
+                }
+                None => {
+                    if let Some(matcher) = overrides
+                        .exec
+                        .persistent_matchers
+                        .lock_ignoring_poison()
+                        .iter()
+                        .find(|matcher| request.cmd.contains(&matcher.pattern))
+                    {
+                        Ok(clone_exec_result(&matcher.result))
+                    } else {
+                        self.exec_results
+                            .lock_ignoring_poison()
+                            .pop_front()
+                            .unwrap_or_else(|| Ok(default_exec_result()))
+                    }
+                }
             }
         } else {
             self.exec_results
