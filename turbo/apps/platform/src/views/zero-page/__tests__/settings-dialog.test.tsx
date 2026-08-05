@@ -931,7 +931,7 @@ describe("settings dialog", () => {
       name: "legacy tier-only response",
       response: billingStatus("limited-free-1"),
     },
-  ])("hides model settings with $name", async ({ response }) => {
+  ])("shows model settings with $name", async ({ response }) => {
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
       return respond(200, response);
     });
@@ -940,8 +940,10 @@ describe("settings dialog", () => {
 
     const dialog = screen.getByRole("dialog", { name: "Settings" });
     await waitFor(() => {
-      expect(within(dialog).queryByText("Models")).not.toBeInTheDocument();
-      expect(screen.getByText("Theme")).toBeInTheDocument();
+      expect(within(dialog).getAllByText("Models").length).toBeGreaterThan(0);
+      expect(
+        screen.getByRole("heading", { name: "Models" }),
+      ).toBeInTheDocument();
     });
   });
 

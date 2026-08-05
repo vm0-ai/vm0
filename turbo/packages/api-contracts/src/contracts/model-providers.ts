@@ -326,9 +326,8 @@ const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
   VM0_MODEL_ALIAS_TO_MODEL;
 
 const LIMITED_FREE1_ALLOWED_RUN_MODELS: ReadonlySet<string> = new Set([
-  "claude-sonnet-5",
-  "gpt-5.6-terra",
   "gpt-5.6-luna",
+  "deepseek-v4-flash",
 ]);
 
 export function normalizeVm0ModelId(model: string): string {
@@ -342,23 +341,15 @@ export function isLimitedFree1RestrictedRunModel(
     return false;
   }
   const normalized = model.trim().toLowerCase();
-  const canonicalModel = normalizeVm0ModelId(normalized);
-  const unprefixedModel = canonicalModel.replace(/^(anthropic|openai)\//, "");
-  if (LIMITED_FREE1_ALLOWED_RUN_MODELS.has(unprefixedModel)) {
+  if (!normalized) {
     return false;
   }
-  const vendor = VM0_MODEL_TO_PROVIDER[canonicalModel]?.vendor;
-
-  return (
-    vendor === "anthropic" ||
-    vendor === "openai" ||
-    normalized.startsWith("anthropic/") ||
-    normalized.startsWith("openai/") ||
-    normalized.startsWith("claude-") ||
-    normalized.startsWith("gpt-") ||
-    normalized === "fable" ||
-    normalized === "anthropic/fable"
+  const canonicalModel = normalizeVm0ModelId(normalized);
+  const unprefixedModel = canonicalModel.replace(
+    /^(anthropic|deepseek|openai)\//,
+    "",
   );
+  return !LIMITED_FREE1_ALLOWED_RUN_MODELS.has(unprefixedModel);
 }
 
 export type ModelImageInputSupport = "supported" | "unsupported" | "unknown";

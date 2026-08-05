@@ -1,6 +1,6 @@
 // oxlint-disable max-lines-per-function
 import type { ReactNode } from "react";
-import { useGet, useSet, useLoadable, useLastResolved } from "ccstate-react";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
@@ -28,7 +28,6 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
-import { modelPlanCapabilities$ } from "../../../../signals/zero-page/model-plan-capabilities.ts";
 import {
   isAdminOnlySettingsSection,
   setSettingsClerkProfilePortalContainer$,
@@ -103,18 +102,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     setSettingsClerkProfilePortalContainer$,
   );
   const features = useGet(featureSwitch$);
-  const modelCapabilitiesLoadable = useLoadable(modelPlanCapabilities$);
-  const lastModelCapabilities = useLastResolved(modelPlanCapabilities$);
-  const modelCapabilities =
-    modelCapabilitiesLoadable.state === "hasData"
-      ? modelCapabilitiesLoadable.data
-      : lastModelCapabilities;
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const showDebug = features[FeatureSwitchKey.ZeroDebug] ?? false;
-  const showModels =
-    modelCapabilities !== undefined && !modelCapabilities.restrictedVm0Models;
   const sectionMeta = {
     preference: {
       title: t(($) => {
@@ -249,14 +240,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const sidebarGroups: readonly SidebarGroup[] = [
     personalGroup,
     ...(isAdmin ? [workspaceGroup] : []),
-    ...(showModels ? [modelsGroup] : []),
+    modelsGroup,
     billingGroup,
   ];
 
   // If the user lost admin while the dialog is open, fall back to a safe section
   const resolvedSection: SettingsSection =
     (!showDebug && activeSection === "debug") ||
-    (!showModels && activeSection === "model") ||
     (!isAdmin && isAdminOnlySettingsSection(activeSection))
       ? "preference"
       : activeSection;
