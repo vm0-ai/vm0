@@ -133,20 +133,6 @@ const runnerClaimTelemetrySchema = z
   })
   .catch({});
 
-export const runnerZeroCliCompatibilitySchema = z.object({
-  available: z.boolean(),
-  version: z.string().min(1).optional(),
-  buildId: z.string().min(1).optional(),
-  checksumSha256: z
-    .string()
-    .regex(/^[a-f0-9]{64}$/u)
-    .optional(),
-});
-
-export type RunnerZeroCliCompatibility = z.infer<
-  typeof runnerZeroCliCompatibilitySchema
->;
-
 const runnerPollTelemetrySchema = z
   .object({
     pollReason: runnerClaimPollReasonSchema.optional(),
@@ -719,7 +705,6 @@ export const runnersJobClaimContract = c.router({
     body: z.object({
       runnerIdentity: runnerProcessIdentitySchema.optional(),
       telemetry: runnerClaimTelemetrySchema.optional(),
-      zeroCli: runnerZeroCliCompatibilitySchema.optional(),
     }),
     responses: {
       200: executionContextSchema,

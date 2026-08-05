@@ -9852,7 +9852,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 });
 
 describe("RUN-01: zero runner context, queue promotion, and skills", () => {
-  it("selects npm, R2, and runner-bundled Zero CLI distributions by feature switch precedence", async () => {
+  it("selects npm and R2 Zero CLI distributions by feature switch", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     if (!actor.orgId) {
@@ -9868,9 +9868,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const npmClaim = await api.claimRunnerJob(npmRun.runId);
     expect(npmClaim.appendSystemPrompt ?? "").toContain(
       "Run commands with: `npx -p @vm0/cli zero <command>`",
-    );
-    expect(npmClaim.appendSystemPrompt ?? "").not.toContain(
-      "Run commands with: `zero-cli <command>`",
     );
     expect(npmClaim.environment?.CLI_PKG_URL).toBeUndefined();
     await api.requestCancelRun(actor, npmRun.runId, [200]);
@@ -9894,38 +9891,10 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(r2Claim.appendSystemPrompt ?? "").not.toContain(
       "Run commands with: `npx -p @vm0/cli zero <command>`",
     );
-    expect(r2Claim.appendSystemPrompt ?? "").not.toContain(
-      "Run commands with: `zero-cli <command>`",
-    );
     expect(r2Claim.environment?.CLI_PKG_URL).toBe(
       "https://static.vm0.io/okou-cli/test-commit/package.tgz",
     );
     await api.requestCancelRun(actor, r2Run.runId, [200]);
-
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.RustZeroCli]: true },
-    );
-
-    const rustRun = await api.createRun(actor, {
-      agentId,
-      prompt: "use the runner-bundled Zero CLI",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const rustClaim = await api.claimRunnerJob(rustRun.runId);
-    expect(rustClaim.appendSystemPrompt ?? "").toContain(
-      "Run commands with: `zero-cli <command>`",
-    );
-    expect(rustClaim.appendSystemPrompt ?? "").not.toContain(
-      `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" zero <command>\``,
-    );
-    expect(rustClaim.appendSystemPrompt ?? "").not.toContain(
-      "Run commands with: `npx -p @vm0/cli zero <command>`",
-    );
-    expect(rustClaim.environment?.CLI_PKG_URL).toBeUndefined();
-    await api.requestCancelRun(actor, rustRun.runId, [200]);
   });
 
   it("injects agent identity, tool hints, and user info into the runner context", async () => {

@@ -695,9 +695,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
-      - name: Check Zero CLI surface inventory
-        working-directory: turbo
-        run: pnpm --filter @vm0/cli check:surface
       - name: Test CLI
         working-directory: turbo
         run: pnpm vitest run --project=@vm0/cli --coverage.enabled --coverage.reporter=json

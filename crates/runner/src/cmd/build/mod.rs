@@ -102,15 +102,6 @@ pub struct BuildArgs {
         arg(long, help = "Path to guest-write-file binary (required)")
     )]
     guest_write_file: Option<PathBuf>,
-    #[cfg_attr(
-        bundled_guests,
-        arg(long, help = "Path to zero-cli binary [default: bundled]")
-    )]
-    #[cfg_attr(
-        not(bundled_guests),
-        arg(long, help = "Path to zero-cli binary (required)")
-    )]
-    zero_cli: Option<PathBuf>,
     /// Profile to build (determines VM resources and disk sizes)
     #[arg(long)]
     pub profile: String,
@@ -132,7 +123,6 @@ impl BuildArgs {
             "guest-mock-codex" => self.guest_mock_codex.take(),
             "guest-reseed" => self.guest_reseed.take(),
             "guest-write-file" => self.guest_write_file.take(),
-            "zero-cli" => self.zero_cli.take(),
             _ => None,
         }
     }

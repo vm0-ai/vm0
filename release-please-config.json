@@ -90,9 +90,6 @@
         "crates/guest-write-file": {
             "release-type": "rust"
         },
-        "crates/zero-cli": {
-            "release-type": "rust"
-        },
         "crates/runner": {
             "release-type": "rust",
             "component": "runner-rs"
