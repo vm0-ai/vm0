@@ -211,6 +211,13 @@
       "when": 1785934876501,
       "tag": "0837_bizarre_the_enforcers",
       "breakpoints": true
+    },
+    {
+      "idx": 838,
+      "version": "7",
+      "when": 1785937642124,
+      "tag": "0838_gifted_korath",
+      "breakpoints": true
     }
   ]
 }

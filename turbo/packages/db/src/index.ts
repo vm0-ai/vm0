@@ -118,6 +118,7 @@ import * as gmailEventSchema from "./schema/gmail-event";
 import * as notionEventSchema from "./schema/notion-event";
 import * as strapiIntegrationSchema from "./schema/strapi-integration";
 import * as googleCalendarEventSchema from "./schema/google-calendar-event";
+import * as googleFormsEventSchema from "./schema/google-forms-event";
 import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
 import * as connectorCatalogSchema from "./schema/connector-catalog";
 import * as mailDraftSchema from "./schema/mail-draft";
@@ -244,6 +245,7 @@ export const schema = {
   ...notionEventSchema,
   ...strapiIntegrationSchema,
   ...googleCalendarEventSchema,
+  ...googleFormsEventSchema,
   ...googleWorkspaceEventSchema,
   ...connectorCatalogSchema,
   ...mailDraftSchema,

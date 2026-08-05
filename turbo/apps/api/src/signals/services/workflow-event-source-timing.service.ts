@@ -10,6 +10,7 @@ type WorkflowEventSource =
   | "github"
   | "gmail"
   | "google_calendar"
+  | "google_forms"
   | "google_meet"
   | "webhook";
 

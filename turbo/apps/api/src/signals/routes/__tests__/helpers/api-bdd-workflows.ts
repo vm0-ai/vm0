@@ -228,7 +228,7 @@ export function createWorkflowsBddApi(context: TestContext) {
      */
     async connectConnector(
       actor: ApiTestUser,
-      connectorSlug: "gmail" | "google-calendar" | "notion",
+      connectorSlug: "gmail" | "google-calendar" | "google-forms" | "notion",
     ): Promise<void> {
       const start = await connectors.startOauth(actor, connectorSlug, "oauth");
       const state = new URL(start.authorizationUrl).searchParams.get("state");

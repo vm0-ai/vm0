@@ -1154,6 +1154,7 @@
         "googleCalendarCancelled": "Google 캘린더 이벤트 취소됨",
         "googleCalendarCreated": "Google 캘린더 이벤트 생성됨",
         "googleCalendarUpdated": "Google 캘린더 이벤트 업데이트됨",
+        "googleFormsResponseSubmitted": "Google Forms 응답이 제출됨",
         "googleMeetTranscript": "Google Meet 녹취 준비 완료",
         "notionChildPage": "새 Notion 하위 페이지",
         "notionDatabaseItem": "새 Notion 데이터베이스 항목",
@@ -4735,6 +4736,11 @@
         "second_one": "{{count}}초",
         "second_other": "{{count}}초"
       },
+      "forms": {
+        "responseSubmittedTitle": "Google Forms 응답이 제출됨",
+        "rule": "{{form}}에 응답이 제출될 때",
+        "summary": "양식 {{form}}"
+      },
       "github": {
         "accountConnect": "GitHub 연결",
         "accountRequired": "Me를 사용하려면 GitHub 계정을 연결하세요.",
@@ -5057,6 +5063,7 @@
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google 캘린더",
+        "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",

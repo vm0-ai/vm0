@@ -997,6 +997,7 @@ function mockCreateWorkflowAutomation(
       }
       if (
         body.eventConfig.provider === "github" ||
+        body.eventConfig.provider === "google-forms" ||
         body.eventConfig.provider === "strapi" ||
         body.eventConfig.provider === "chat"
       ) {

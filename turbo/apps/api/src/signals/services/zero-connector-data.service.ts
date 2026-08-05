@@ -72,6 +72,7 @@ import {
 } from "./connector-catalog-runtime.service";
 import { cleanupGmailWatchesForConnector } from "./gmail-workflow-event.service";
 import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-workflow-event.service";
+import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-workflow-event.service";
 
 type StoredConnectorRow = {
   readonly id: string;
@@ -781,6 +782,14 @@ export const deleteZeroConnectorLocalState$ = command(
       } else if (args.connectorSlug === "google-calendar") {
         await bestEffort(
           cleanupGoogleCalendarWatchesForConnector({
+            db: tx,
+            connectorId: existing.id,
+            signal,
+          }),
+        );
+      } else if (args.connectorSlug === "google-forms") {
+        await bestEffort(
+          cleanupGoogleFormsWatchesForConnector({
             db: tx,
             connectorId: existing.id,
             signal,

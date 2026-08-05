@@ -437,6 +437,42 @@ export function mockGmailConnectorOAuth(
   );
 }
 
+export function mockGoogleFormsConnectorOAuth(): void {
+  mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+  mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
+  mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
+
+  server.use(
+    http.post(GOOGLE_OAUTH_TOKEN_URL, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      if (body.get("grant_type") !== "authorization_code") {
+        return HttpResponse.json(
+          {
+            error: "invalid_grant",
+            error_description: "Refresh is not granted by this fixture",
+          },
+          { status: 400 },
+        );
+      }
+      return HttpResponse.json({
+        access_token: "google-forms-access-token",
+        refresh_token: "google-forms-refresh-token",
+        expires_in: 3600,
+        token_type: "Bearer",
+        scope:
+          "https://www.googleapis.com/auth/forms.body.readonly https://www.googleapis.com/auth/forms.responses.readonly",
+      });
+    }),
+    http.get(GOOGLE_USERINFO_URL, () => {
+      return HttpResponse.json({
+        id: "bdd-google-forms-user-id",
+        email: "bdd-google-forms@example.test",
+        name: "BDD Google Forms User",
+      });
+    }),
+  );
+}
+
 interface GoogleDriveFileFixture {
   readonly id: string;
   readonly name: string;

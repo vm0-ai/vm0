@@ -175,6 +175,12 @@ const cronRenewGmailWatchesResponseSchema = z.object({
   failed: z.number(),
 });
 
+const cronRenewGoogleFormsWatchesResponseSchema = z.object({
+  success: z.literal(true),
+  renewed: z.number(),
+  failed: z.number(),
+});
+
 const cronRenewGoogleCalendarWatchesResponseSchema = z.object({
   success: z.literal(true),
   renewed: z.number(),
@@ -382,6 +388,19 @@ export const cronRenewGmailWatchesContract = c.router({
   },
 });
 
+export const cronRenewGoogleFormsWatchesContract = c.router({
+  renew: {
+    method: "GET",
+    path: "/api/cron/renew-google-forms-watches",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronRenewGoogleFormsWatchesResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Renew Google Forms response watches",
+  },
+});
+
 export const cronRenewGoogleCalendarWatchesContract = c.router({
   renew: {
     method: "GET",
@@ -526,6 +545,8 @@ export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
 export type CronConnectorCatalogContract = typeof cronConnectorCatalogContract;
 export type CronRenewGmailWatchesContract =
   typeof cronRenewGmailWatchesContract;
+export type CronRenewGoogleFormsWatchesContract =
+  typeof cronRenewGoogleFormsWatchesContract;
 export type CronRenewGoogleCalendarWatchesContract =
   typeof cronRenewGoogleCalendarWatchesContract;
 export type CronRenewGoogleWorkspaceEventSubscriptionsContract =
@@ -547,6 +568,7 @@ export {
   cronSyncSkillsResponseSchema,
   cronExecuteWorkflowAutomationsResponseSchema,
   cronRenewGmailWatchesResponseSchema,
+  cronRenewGoogleFormsWatchesResponseSchema,
   cronRenewGoogleCalendarWatchesResponseSchema,
   cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema,
   cronAggregateInsightsResponseSchema,

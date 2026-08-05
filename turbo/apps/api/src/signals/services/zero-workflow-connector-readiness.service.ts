@@ -90,6 +90,12 @@ function automationConnectorDependency(
         reason: "This workflow has a Google Calendar event automation.",
       };
     }
+    case "google-forms-response-submitted": {
+      return {
+        connectorSlug: "google-forms",
+        reason: "This workflow has a Google Forms response automation.",
+      };
+    }
     case "google-meet-transcript-generated": {
       return {
         connectorSlug: "google-meet",
