@@ -3,7 +3,7 @@ import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subs
 import { and, eq } from "drizzle-orm";
 
 import { getStripeClient } from "../external/stripe-client";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { activeConcurrencySubscriptions } from "./org-concurrency-entitlements.service";
 

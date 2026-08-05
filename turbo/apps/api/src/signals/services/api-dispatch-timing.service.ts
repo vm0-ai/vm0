@@ -2,7 +2,7 @@ import { performance } from "node:perf_hooks";
 
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { safeSync } from "../utils";
 

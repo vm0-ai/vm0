@@ -7,7 +7,8 @@ import { Client } from "pg";
 import { z } from "zod";
 
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { onRejection, safeJsonParse } from "../../utils";
 import { createBddApi } from "./helpers/api-bdd";

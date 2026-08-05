@@ -6,7 +6,7 @@ import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { and, asc, eq, gt, lte, sql } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { usageUnderbillingFields } from "../usage-underbilling";
 import { tapError } from "../utils";

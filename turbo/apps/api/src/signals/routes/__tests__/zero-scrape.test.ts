@@ -19,7 +19,7 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import { createDeferredPromise } from "../../utils";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import type { RouteEntry } from "../../route-entry";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroScrapeRoutes } from "../zero-scrape";

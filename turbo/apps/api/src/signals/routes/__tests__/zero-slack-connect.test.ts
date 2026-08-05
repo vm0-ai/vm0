@@ -4,7 +4,8 @@ import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slac
 import { createStore } from "ccstate";
 
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createFixtureTracker,

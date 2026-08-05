@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import type { GmailNewMessageEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
-import type { ZeroWorkflowAutomationSummary } from "../../../../lib/api";
+import type { ZeroWorkflowAutomationSummary } from "../../../../lib/api/domains/zero-workflows";
 import { formatRelativeTime } from "../../../../lib/domain/relative-time";
 import { formatDurationSeconds } from "../../shared/duration";
 

@@ -18,7 +18,8 @@ import { mockEnv } from "../lib/env";
 import webClientCompatibility from "../lib/web-client-compatibility.json";
 import { flushWaitUntilForTest } from "../signals/context/wait-until";
 import { ROUTES } from "../signals/route";
-import { accept, setupApp, testContext } from "./test-helpers";
+import { accept, testContext } from "./test-context";
+import { setupApp } from "./test-helpers";
 
 const MINIMUM_WEB_CLIENT_VERSION =
   webClientCompatibility.minimumSupportedVersion;

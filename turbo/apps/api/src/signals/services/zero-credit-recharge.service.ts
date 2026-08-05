@@ -16,7 +16,7 @@ import {
 
 import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { tapError } from "../utils";
 import { logger } from "../../lib/log";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";

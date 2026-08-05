@@ -41,25 +41,28 @@ import {
 } from "@vm0/ui";
 import { ZeroInstructionsTab } from "../zero-page/zero-instructions-tab.tsx";
 import { ZeroSettingsTab } from "../zero-page/zero-settings-tab.tsx";
-
 import { TONE_OPTIONS, type Tone } from "../zero-page/zero-tone-constants.ts";
+import { agentDetail$ } from "../../signals/zero-page/job-detail/detail";
 import {
-  agentDetail$,
   agentInstructions$,
   agentEditedContent$,
   agentInstructionsDirty$,
   setAgentEditedContent$,
   discardAgentEdit$,
   buildAgentInstructions$,
-  updateAgentSettings$,
-  deleteAgent$,
+} from "../../signals/zero-page/job-detail/instructions";
+import { updateAgentSettings$ } from "../../signals/zero-page/job-detail/settings";
+import { deleteAgent$ } from "../../signals/zero-page/job-detail/delete";
+import {
   agentAuthorizedConnectors$,
   authorizeAgentConnector$,
   deauthorizeAgentConnector$,
   saveAgentConnectors$,
+} from "../../signals/zero-page/job-detail/connectors";
+import {
   agentActiveTab$,
   setAgentActiveTab$,
-} from "../../signals/zero-page/zero-job-detail.ts";
+} from "../../signals/zero-page/job-detail/agent-name";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";

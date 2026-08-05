@@ -5,8 +5,8 @@ import {
   getZeroAgent,
   updateZeroAgent,
   updateZeroAgentInstructions,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/zero-agents";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { type AvatarOptions, resolveAvatarUrl } from "./avatar";
 
 interface AgentEditOptions extends AvatarOptions {

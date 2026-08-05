@@ -1,8 +1,11 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 
-import { callZeroWeather, type ZeroWeatherResponse } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import {
+  callZeroWeather,
+  type ZeroWeatherResponse,
+} from "../../../lib/api/domains/zero-weather";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 const WEATHER_UNITS = ["metric", "imperial"] as const;
 const WEATHER_LANGUAGE_CODE = "en";

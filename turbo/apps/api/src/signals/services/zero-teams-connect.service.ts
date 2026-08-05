@@ -24,7 +24,7 @@ import {
   sendTeamsMessageReply,
   type TeamsAdaptiveCard,
 } from "../external/teams-bot-client";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { userSecrets, userVariables } from "./zero-user-data.service";
 

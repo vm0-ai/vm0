@@ -21,7 +21,7 @@ import {
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
 } from "../zero-page/user-message-document-codec.ts";
-import { createChatPanelSignals, ensureDraft$ } from "./create-chat-thread.ts";
+import { createCachedChatPanelSignals$ } from "./create-chat-thread.ts";
 import { createChatEventSignals } from "./chat-event-signals.ts";
 import type { ChatPanelSignals } from "./chat-panel-signals.ts";
 import {
@@ -207,9 +207,8 @@ const setupPaneThread$ = command(
 
     L.debug("setupPaneThread$ start", { threadId });
 
-    const { draft, isNew } = set(ensureDraft$, threadId);
     const chatEvents = createChatEventSignals(threadId);
-    const thread = createChatPanelSignals(draft, chatEvents);
+    const { thread, isNew } = set(createCachedChatPanelSignals$, chatEvents);
     set(spec.setPaneThread$, thread);
 
     await set(

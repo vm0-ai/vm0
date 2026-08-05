@@ -4,7 +4,8 @@ import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero
 import { createStore } from "ccstate";
 import { beforeEach } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import {
   deleteSlackIntegrationFixture$,

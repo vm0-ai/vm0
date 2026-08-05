@@ -21,7 +21,7 @@ import {
   postEphemeral,
   postMessage,
 } from "../external/slack-message-client";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { db$, writeDb$, type Db } from "../external/db";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";

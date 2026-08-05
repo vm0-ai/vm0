@@ -3,13 +3,12 @@ import { and, eq, isNull } from "drizzle-orm";
 import { chatThreadComputerUseHostContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
-
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";

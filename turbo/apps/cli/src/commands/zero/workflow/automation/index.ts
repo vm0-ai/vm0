@@ -19,14 +19,14 @@ import {
   deleteWorkflowAutomation,
   disableWorkflowAutomation,
   enableWorkflowAutomation,
-  getZeroChatThread,
   getWorkflowAutomation,
   listWorkspaceWorkflowAutomations,
-  listZeroModelPolicies,
   listWorkflowAutomations,
   updateWorkflowAutomation,
-} from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+} from "../../../../lib/api/domains/zero-workflows";
+import { getZeroChatThread } from "../../../../lib/api/domains/zero-chat";
+import { listZeroModelPolicies } from "../../../../lib/api/domains/zero-model-policies";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 import { decodeZeroTokenPayload } from "../../../../lib/api/zero-token";
 import { parseDurationSeconds } from "../../shared/duration";
 import {

@@ -13,7 +13,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {

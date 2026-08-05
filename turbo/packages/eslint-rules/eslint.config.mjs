@@ -12,5 +12,12 @@ export default [
       complexity: "off",
     },
   },
+  // Public package entry points may aggregate implementation modules.
+  {
+    files: ["src/index.ts"],
+    rules: {
+      "vm0/no-re-export": "off",
+    },
+  },
   ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),
 ];

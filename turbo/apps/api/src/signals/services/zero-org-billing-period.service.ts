@@ -6,7 +6,7 @@ import { and, eq, gt, inArray, isNotNull, lte } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { logger } from "../../lib/log";
 
 const L = logger("OrgBillingPeriod");

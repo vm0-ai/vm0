@@ -11,7 +11,7 @@ import { and, asc, eq } from "drizzle-orm";
 
 import { mockOptionalEnv } from "../lib/env";
 import { writeDb$ } from "../signals/external/db";
-import { nowDate } from "../signals/external/time";
+import { nowDate } from "../lib/time";
 import {
   connectorCatalogArtifactSchema,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,

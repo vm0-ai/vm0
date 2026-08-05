@@ -12,7 +12,7 @@ import {
   verifySandboxToken,
   verifyZeroToken,
 } from "../tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { safeJsonParse } from "../../utils";
 
 function currentSecond(): number {

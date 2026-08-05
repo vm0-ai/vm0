@@ -1,6 +1,5 @@
 /** Canonical ChatEvent routes. */
 import { randomBytes } from "node:crypto";
-
 import { command } from "ccstate";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import {
@@ -24,7 +23,6 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
-
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -34,7 +32,7 @@ import {
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import {
   autonomyBudgetExhausted,
   badRequestMessage,

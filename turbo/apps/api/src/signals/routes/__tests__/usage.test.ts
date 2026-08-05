@@ -4,7 +4,8 @@ import { cronAggregateUsageContract } from "@vm0/api-contracts/contracts/cron";
 import { usageContract } from "@vm0/api-contracts/contracts/usage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";

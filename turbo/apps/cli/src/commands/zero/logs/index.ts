@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getZeroRunAgentEvents, type RunEvent } from "../../../lib/api";
+import { getZeroRunAgentEvents } from "../../../lib/api/domains/zero-runs";
+import type { RunEvent } from "@vm0/api-contracts/contracts/runs";
 import { parseTime } from "../../../lib/utils/time-parser";
 import { EventStreamNormalizer } from "../../../lib/events/event-stream-normalizer";
 import { EventRenderer } from "../../../lib/events/event-renderer";
@@ -8,7 +9,7 @@ import {
   collectLogItems,
   parsePositiveLogCount,
 } from "../../../lib/utils/log-pagination";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { isUuid } from "../../../lib/utils/uuid";
 import { listCommand } from "./list";
 import { searchCommand } from "./search";
