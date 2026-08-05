@@ -34,6 +34,7 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
       return {
         outputs: {
           accessToken: result.accessToken,
+          livemode: result.livemode ? "true" : "false",
           refreshToken: result.refreshToken,
         },
         scopes: result.scopes,
