@@ -14,6 +14,7 @@ from mitmproxy import ctx
 import claude_output_timing
 import codex_output_timing
 import logging_utils
+import runner_flush_request
 import usage
 
 _RunnerFlushPhase = Literal["running", "draining", "closed"]
@@ -250,24 +251,19 @@ def _flush_jsonl_for_runner_request() -> None:
 
 def _read_jsonl_flush_request() -> tuple[str, str] | None:
     marker_path = Path(__file__).resolve().parent / _JSONL_FLUSH_REQUEST_FILE
-    try:
-        marker = json.loads(marker_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+    request = runner_flush_request.read_runner_flush_request(
+        marker_path,
+        get_usage_state_id=usage.current_usage_state_id,
+    )
+    if request is None:
         return None
-
-    if not isinstance(marker, dict):
-        return None
-    if marker.get("usageStateId") != usage.current_usage_state_id():
-        return None
-    flush_request_id = marker.get("flushRequestId")
+    flush_request_id = request.flush_request_id
     if (
-        not isinstance(flush_request_id, str)
-        or not flush_request_id
-        or not _is_safe_jsonl_flush_request_id(flush_request_id)
+        not _is_safe_jsonl_flush_request_id(flush_request_id)
         or flush_request_id == _last_jsonl_flush_request_id
     ):
         return None
-    log_path = marker.get("path")
+    log_path = request.marker.get("path")
     if not isinstance(log_path, str) or not log_path:
         return None
     return log_path, flush_request_id
