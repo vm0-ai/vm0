@@ -147,6 +147,14 @@ fn context_with_reuse_key(run_id: RunId, reuse_key: &str) -> crate::types::Execu
     context
 }
 
+fn reserved_reuse_claim_preference(
+    candidate: &crate::provider::JobCandidate,
+) -> Option<&'static str> {
+    candidate
+        .reserved_reuse_claim_observation()
+        .map(crate::provider::ReservedReuseClaimObservation::preference_reason)
+}
+
 /// TOCTOU regression: soft drain can arrive after the main loop has selected
 /// a discovered candidate but before claim. The candidate is still unowned at
 /// that point, so Draining must roll back local admission and skip claim.
@@ -281,6 +289,17 @@ async fn claim_failure_rolls_back_budget() {
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     wait_cancel_token_removed(&env.cancel_tokens, run_id_1, Duration::from_secs(5)).await;
     assert_eq!(budget.allocated().2, 0);
+    let fresh_candidate = env
+        .handle
+        .claim_candidates()
+        .into_iter()
+        .find(|candidate| candidate.run_id() == run_id_1)
+        .expect("fresh candidate should reach the provider claim");
+    assert_eq!(
+        reserved_reuse_claim_preference(&fresh_candidate),
+        None,
+        "fresh admission must stay outside the reserved-reuse claim cohort"
+    );
     // Second job: claim succeeds — budget should have been freed.
     let run_id_2 = RunId::new_v4();
     push_job(
@@ -416,6 +435,23 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
         .await
         .expect("restored idle reservation should serve the next claim");
     assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    let claim_candidates = env.handle.claim_candidates();
+    let exact_candidate = claim_candidates
+        .iter()
+        .find(|candidate| candidate.run_id() == conflict_run_id)
+        .expect("exact candidate should reach the provider claim");
+    assert_eq!(
+        reserved_reuse_claim_preference(exact_candidate),
+        Some("exact_history_generation")
+    );
+    let matching_candidate = claim_candidates
+        .iter()
+        .find(|candidate| candidate.run_id() == followup_run_id)
+        .expect("matching candidate should reach the provider claim");
+    assert_eq!(
+        reserved_reuse_claim_preference(matching_candidate),
+        Some("matching_reuse_key")
+    );
     shutdown(&env, run_handle).await;
 }
 
@@ -444,6 +480,41 @@ async fn matching_preference_reservation_is_restored_after_claim_conflict() {
         "lost claim should restore the generic reusable reservation"
     );
     assert_eq!(budget.allocated(), (2, 4096, 1));
+
+    let ordinary_run_id = RunId::new_v4();
+    env.provider.set_claim_result(ordinary_run_id, None);
+    env.handle
+        .discover_tx
+        .send(
+            crate::provider::JobCandidate::new(ordinary_run_id, "vm0/default".into())
+                .with_reuse_key(Some(session_id.to_owned())),
+        )
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    wait_cancel_token_removed(&env.cancel_tokens, ordinary_run_id, Duration::from_secs(5)).await;
+
+    let claim_candidates = env.handle.claim_candidates();
+    let matching_candidate = claim_candidates
+        .iter()
+        .find(|candidate| candidate.run_id() == run_id)
+        .expect("matching candidate should reach the provider claim");
+    assert_eq!(
+        reserved_reuse_claim_preference(matching_candidate),
+        Some("matching_reuse_key")
+    );
+    let ordinary_candidate = claim_candidates
+        .iter()
+        .find(|candidate| candidate.run_id() == ordinary_run_id)
+        .expect("ordinary reuse-key candidate should reach the provider claim");
+    assert_eq!(
+        reserved_reuse_claim_preference(ordinary_candidate),
+        Some("none")
+    );
+    assert_eq!(
+        idle_pool.lock().await.held_reuse_keys(),
+        vec![session_id.to_string()],
+        "ordinary lost claim should also restore the reusable reservation"
+    );
 
     shutdown(&env, run_handle).await;
 }
@@ -739,6 +810,16 @@ async fn selected_finalizing_candidate_records_claim_loss_and_restores_exact_res
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
     assert_candidate_observation(&captured, run_id, history_generation_run_id, "claim_lost");
+    let claimed_candidate = env
+        .handle
+        .claim_candidates()
+        .into_iter()
+        .find(|candidate| candidate.run_id() == run_id)
+        .expect("finalizing candidate should reach the provider claim");
+    assert_eq!(
+        reserved_reuse_claim_preference(&claimed_candidate),
+        Some("finalizing_predecessor")
+    );
     assert_eq!(
         env.idle_pool.lock().await.held_reuse_keys(),
         vec![reuse_key.to_string()],

@@ -28,6 +28,10 @@ const TELEMETRY_TIMEOUT: Duration = Duration::from_secs(5);
 /// the production Axiom log layer.
 pub(crate) const PRE_PARK_HANDOFF_AXIOM_TARGET: &str = "runner::pre_park_successor_handoff";
 
+/// Exact tracing target whose reserved-reuse claim INFO events are admitted
+/// to the production Axiom log layer.
+pub(crate) const RESERVED_REUSE_CLAIM_AXIOM_TARGET: &str = "runner::reserved_reuse_claim";
+
 /// Per-job telemetry collector. Buffers sandbox operations and flushes them
 /// periodically (auto on 30 s threshold) and at job end.
 ///
