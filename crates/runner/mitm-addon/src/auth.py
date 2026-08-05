@@ -83,6 +83,7 @@ type OrdinaryUpstreamCredentialsGuard = Callable[[], bool]
 _HTTP_STATUS_INFORMATIONAL_MIN = 100
 _HTTP_STATUS_SUCCESS_MIN = 200
 _HTTP_STATUS_NO_CONTENT = 204
+_HTTP_STATUS_RESET_CONTENT = 205
 _HTTP_STATUS_NOT_MODIFIED = 304
 _HTTP_STATUS_CLIENT_ERROR_MIN = 400
 _HTTP_STATUS_SERVER_ERROR_MIN = 500
@@ -1077,7 +1078,7 @@ async def _apply_url_rewrite(
         )
         is_head_representation = flow.request.method == "HEAD" and not (
             _HTTP_STATUS_INFORMATIONAL_MIN <= status < _HTTP_STATUS_SUCCESS_MIN
-            or status == _HTTP_STATUS_NO_CONTENT
+            or status in (_HTTP_STATUS_NO_CONTENT, _HTTP_STATUS_RESET_CONTENT)
         )
         preserves_representation_length = is_head_representation or (
             flow.request.method == "GET" and status == _HTTP_STATUS_NOT_MODIFIED

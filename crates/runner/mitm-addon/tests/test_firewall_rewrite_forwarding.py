@@ -213,6 +213,13 @@ class TestAuthBaseUrlRewriteForwarding:
                 [],
                 id="conflicting",
             ),
+            pytest.param([("Content-Length", "invalid")], [], id="malformed"),
+            pytest.param([("Content-Length", "123, 123")], [], id="comma-list"),
+            pytest.param(
+                [("Content-Length", "123"), ("Content-Length", "123")],
+                [],
+                id="repeated",
+            ),
         ],
     )
     async def test_url_rewrite_preserves_bodyless_response_content_length(
@@ -244,8 +251,15 @@ class TestAuthBaseUrlRewriteForwarding:
         assert flow.response.raw_content == b""
         assert flow.response.headers.get_all("Content-Length") == expected_content_lengths
 
-    async def test_url_rewrite_does_not_restore_content_length_for_head_204(
-        self, real_flow, mitm_ctx, tmp_path
+    @pytest.mark.parametrize(
+        "status",
+        [
+            pytest.param(204, id="no-content"),
+            pytest.param(205, id="reset-content"),
+        ],
+    )
+    async def test_url_rewrite_does_not_restore_content_length_for_empty_head_status(
+        self, real_flow, mitm_ctx, tmp_path, status: int
     ):
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
@@ -255,7 +269,7 @@ class TestAuthBaseUrlRewriteForwarding:
 
         with (
             fake_forwarder_upstream(
-                status=204,
+                status=status,
                 body=b"",
                 headers=[("Content-Length", "123")],
             ),
@@ -266,7 +280,7 @@ class TestAuthBaseUrlRewriteForwarding:
 
         assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
         assert flow.response is not None
-        assert flow.response.status_code == 204
+        assert flow.response.status_code == status
         assert flow.response.raw_content == b""
         assert flow.response.headers.get_all("Content-Length") == ["0"]
 
