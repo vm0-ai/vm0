@@ -5738,9 +5738,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
-    expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.ZeroChatMessaging]: true,
-    });
     expect(appendSystemPrompt).toContain("zero chat send");
     expect(appendSystemPrompt).toContain("zero chat cancel");
     expect(appendSystemPrompt).not.toContain("zero chat queued");
@@ -9919,7 +9916,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       },
       {
         [FeatureSwitchKey.ZeroBrowser]: true,
-        [FeatureSwitchKey.ZeroChatMessaging]: false,
       },
     );
     bdd.acceptAgentStorageWrites();
@@ -10111,8 +10107,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       expect(appendSystemPrompt).toContain(toolHint);
     }
     expect(appendSystemPrompt).toContain("zero upgrade pro");
-    expect(appendSystemPrompt).not.toContain("zero chat send");
-    expect(appendSystemPrompt).not.toContain("zero chat cancel");
     expect(appendSystemPrompt).not.toContain("zero chat queued");
     expect(appendSystemPrompt).not.toContain(
       "`zero browser use` creates, reuses, or resumes a remote browser",
@@ -10134,9 +10128,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
     expect(claim.userTimezone).toBe("America/Los_Angeles");
 
-    expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.ZeroChatMessaging]: false,
-    });
     expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,

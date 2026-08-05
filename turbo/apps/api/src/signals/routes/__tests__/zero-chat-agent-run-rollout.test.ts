@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Client } from "pg";
 import { z } from "zod";
 
@@ -19,7 +18,6 @@ import {
   readChatAgentRunContextSchemaAvailable,
   resetDatabasePool,
 } from "./helpers/runtime-state";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -176,12 +174,6 @@ async function runPreAgentRunContextRouteProbe(
     displayName: "Pre-agent-run-context rollout agent",
     visibility: "private",
   });
-  await updateFeatureSwitchesForUser(
-    context,
-    { ...actor, orgId: actor.orgId },
-    { [FeatureSwitchKey.ZeroChatMessaging]: true },
-  );
-
   const source = await chat.requestSendEvent(
     actor,
     {

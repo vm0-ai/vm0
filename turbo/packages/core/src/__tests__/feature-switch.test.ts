@@ -32,7 +32,6 @@ describe("isFeatureEnabled", () => {
       true,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.HtmlResourceIndex, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -127,7 +126,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(true);
@@ -155,7 +153,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
