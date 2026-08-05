@@ -8,16 +8,17 @@ import { createRoot } from "react-dom/client";
 import { createStore } from "ccstate";
 import { bootstrap$ } from "./signals/bootstrap.ts";
 import { setLogErrorHandler } from "./signals/log.ts";
-import { detach, Reason } from "./signals/utils.ts";
+import { detach, Reason, resetSignal } from "./signals/utils.ts";
 import { setupRouter } from "./views/main.tsx";
 
 // (no-op Platform release marker refreshed again on 2026-07-31)
 
+const resetRootSignal$ = resetSignal();
+const resetViewportSettleSignal$ = resetSignal();
+
 // Initialize Sentry before bootstrap so errors during startup are captured
 initSentry();
 initPostHog();
-initPlausible();
-setupVisualViewportKeyboardState();
 
 setLogErrorHandler((loggerName, args) => {
   const error = args.find((a): a is Error => {
@@ -37,7 +38,20 @@ setLogErrorHandler((loggerName, args) => {
 
 async function main() {
   const store = createStore();
-  const rootSignal = AbortSignal.any([]);
+  const rootSignal = store.set(resetRootSignal$);
+  window.addEventListener(
+    "pagehide",
+    (event) => {
+      if (!event.persisted) {
+        store.set(resetRootSignal$);
+      }
+    },
+    { signal: rootSignal },
+  );
+  detach(initPlausible(rootSignal), Reason.Entrance, "initPlausible");
+  setupVisualViewportKeyboardState(rootSignal, () => {
+    return store.set(resetViewportSettleSignal$, rootSignal);
+  });
 
   await store.set(
     bootstrap$,

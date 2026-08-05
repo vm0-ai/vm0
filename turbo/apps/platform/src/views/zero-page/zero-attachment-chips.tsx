@@ -26,6 +26,7 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroChatAttachment } from "../../signals/zero-page/chat-draft";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   currentLeftThread$,
   currentRightThread$,
@@ -1115,6 +1116,7 @@ function ArtifactPreviewDialogActions({
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
+  const rootSignal = useGet(rootSignal$);
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
   const openArtifactSidebarPreview = useSet(openThreadArtifactSplitView$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
@@ -1139,7 +1141,7 @@ function ArtifactPreviewDialogActions({
       );
     }
     openArtifactSidebarPreview(preview.url);
-    closeLightboxWithDialogExit();
+    closeLightboxWithDialogExit(rootSignal);
   };
   return (
     <div className="flex shrink-0 items-center gap-1">
@@ -1179,7 +1181,7 @@ function ArtifactPreviewDialogActions({
           return $.artifacts.actions.close;
         })}
         onClick={() => {
-          closeLightboxWithDialogExit();
+          closeLightboxWithDialogExit(rootSignal);
         }}
       >
         <IconX size={18} stroke={1.8} />
@@ -1198,6 +1200,7 @@ function ArtifactPreviewDialogContent({
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
+  const rootSignal = useGet(rootSignal$);
   const dialogRef = useSet(lightboxDialogRef$);
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
   const filename = artifact?.filename ?? artifactDialogFilename(preview);
@@ -1206,7 +1209,7 @@ function ArtifactPreviewDialogContent({
   const fullscreen = useGet(lightboxDialogFullscreen$);
 
   const closeWithAnimation = () => {
-    closeLightboxWithDialogExit();
+    closeLightboxWithDialogExit(rootSignal);
   };
 
   const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {

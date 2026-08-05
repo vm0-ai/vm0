@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { onRef, resetSignal, setLoop } from "./utils.ts";
+import { isAbortError, onRef, resetSignal, setLoop } from "./utils.ts";
 import { getAvatarPresets } from "../views/zero-page/zero-avatars.ts";
 import { captureFirstSkeletonHide$ } from "../lib/posthog.ts";
 import { i18n } from "../i18n/index.ts";
@@ -149,14 +149,26 @@ const MAX_SKELETON_CYCLES = 3;
 export const startSkeletonCycling$ = command(
   async ({ set }, parentSignal: AbortSignal) => {
     let cycles = 0;
-    await setLoop(
-      () => {
-        set(cycleSkeletonCopy$);
-        return ++cycles >= MAX_SKELETON_CYCLES;
-      },
-      4000,
-      set(resetSkeletonCycling$, parentSignal),
-    );
+    const loopSignal = set(resetSkeletonCycling$, parentSignal);
+    // The local reset is the normal completion path when the page becomes
+    // ready. Parent cancellation still belongs to the command caller and must
+    // propagate through bootstrap.
+    // eslint-disable-next-line no-restricted-syntax
+    try {
+      await setLoop(
+        () => {
+          set(cycleSkeletonCopy$);
+          return ++cycles >= MAX_SKELETON_CYCLES;
+        },
+        4000,
+        loopSignal,
+      );
+    } catch (error) {
+      parentSignal.throwIfAborted();
+      if (!loopSignal.aborted || !isAbortError(error)) {
+        throw error;
+      }
+    }
   },
 );
 
