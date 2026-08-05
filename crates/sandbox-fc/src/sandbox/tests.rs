@@ -3797,6 +3797,55 @@ where
     (output, captured.entries())
 }
 
+async fn advance_balloon_wait_to_progress_grace<F>(
+    mut future: std::pin::Pin<&mut F>,
+    captured: &CapturedEvents,
+) where
+    F: Future<Output = SandboxParkOutcome>,
+{
+    for expected_sample_count in 1..=2 {
+        if expected_sample_count == 2 {
+            tokio::time::advance(BALLOON_SETTLE_FAST_POLL_INTERVALS[0]).await;
+            tokio::time::resume();
+        }
+        loop {
+            let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
+            if sample_count == expected_sample_count {
+                break;
+            }
+            tokio::select! {
+                outcome = future.as_mut() => {
+                    panic!(
+                        "balloon wait completed after {sample_count} samples, expected {expected_sample_count}; outcome={outcome:?}"
+                    );
+                }
+                () = tokio::task::yield_now() => {}
+            }
+        }
+        if expected_sample_count == 2 {
+            tokio::time::pause();
+        }
+    }
+
+    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::resume();
+    loop {
+        if has_captured_event(
+            &captured.entries(),
+            "balloon inflation still progressing, extending settle deadline",
+        ) {
+            tokio::time::pause();
+            return;
+        }
+        tokio::select! {
+            outcome = future.as_mut() => {
+                panic!("balloon wait completed without progress grace; outcome={outcome:?}");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+    }
+}
+
 fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
     events
         .iter()
@@ -4234,6 +4283,122 @@ async fn wait_for_balloon_follows_exact_bounded_poll_schedule() {
         16
     );
     assert_balloon_settle_summary(&captured.entries(), "deadline", 16, "reject_and_destroy");
+}
+
+#[tokio::test]
+async fn wait_for_balloon_extends_deadline_for_recent_safe_progress() {
+    let target_mib = 4096 - balloon::MIN_GUEST_MIB;
+    let initial_stats =
+        MockBalloonStats::new(target_mib, 256).with_memory(mib(3840), mib(3940), mib(3940));
+    let progressing_stats =
+        MockBalloonStats::new(target_mib, 2314).with_memory(mib(2136), mib(2265), mib(3940));
+    let api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(initial_stats),
+            MockBalloonStatsReply::Ok(progressing_stats),
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, target_mib)),
+        ]),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    tokio::time::pause();
+    let wait = wait_for_balloon(&client, target_mib, "progress-grace");
+    tokio::pin!(wait);
+
+    advance_balloon_wait_to_progress_grace(wait.as_mut(), &captured).await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    drop(guard);
+    let events = captured.entries();
+
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
+    let event = captured_event(
+        &events,
+        "balloon inflation still progressing, extending settle deadline",
+    );
+    assert_eq!(event.level, Level::INFO);
+    assert_event_field(event, "actual", "Some(2314)");
+    assert_event_field(event, "target", "3584");
+    assert_event_field(event, "deficit_mib", "Some(1270)");
+    assert_event_field(event, "previous_actual_mib", "Some(256)");
+    assert_event_field(event, "reported_free_mib", "Some(2136)");
+    assert_event_field(event, "reported_available_mib", "Some(2265)");
+    assert_event_field(event, "grace_ms", "5000");
+    assert!(!has_captured_event(
+        &events,
+        "balloon inflate incomplete after 5s, pausing anyway"
+    ));
+    assert_balloon_settle_summary(&events, "target_reached", 3, "reuse");
+}
+
+#[tokio::test]
+async fn wait_for_balloon_progress_grace_remains_bounded() {
+    let target_mib = 4096 - balloon::MIN_GUEST_MIB;
+    let initial_stats =
+        MockBalloonStats::new(target_mib, 256).with_memory(mib(3840), mib(3940), mib(3940));
+    let progressing_stats =
+        MockBalloonStats::new(target_mib, 2314).with_memory(mib(2136), mib(2265), mib(3940));
+    let api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(initial_stats),
+            MockBalloonStatsReply::Ok(progressing_stats.clone()),
+            MockBalloonStatsReply::Ok(progressing_stats),
+        ]),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    tokio::time::pause();
+    let wait = wait_for_balloon(&client, target_mib, "bounded-progress-grace");
+    tokio::pin!(wait);
+
+    advance_balloon_wait_to_progress_grace(wait.as_mut(), &captured).await;
+    loop {
+        let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
+        if sample_count == 3 {
+            break;
+        }
+        tokio::select! {
+            outcome = &mut wait => {
+                panic!("balloon wait completed before the grace sample; outcome={outcome:?}");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+    }
+    tokio::time::advance(BALLOON_SETTLE_PROGRESS_GRACE).await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    drop(guard);
+    let events = captured.entries();
+
+    assert_eq!(
+        outcome,
+        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
+    );
+    assert_eq!(
+        captured_message_count(
+            &events,
+            "balloon inflation still progressing, extending settle deadline"
+        ),
+        1
+    );
+    let event = captured_event(
+        &events,
+        "balloon inflate incomplete after 10s, pausing anyway",
+    );
+    assert_eq!(event.level, Level::WARN);
+    assert_event_field(event, "actual", "Some(2314)");
+    assert_event_field(event, "deficit_mib", "Some(1270)");
+    assert_event_field(event, "reason", "severe_deficit");
+    assert_event_field(event, "admission_action", "reject_and_destroy");
+    assert_balloon_settle_summary(&events, "deadline", 3, "reject_and_destroy");
 }
 
 #[tokio::test]
