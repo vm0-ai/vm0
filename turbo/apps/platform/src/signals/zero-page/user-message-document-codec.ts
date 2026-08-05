@@ -797,7 +797,8 @@ export function messageDocumentToDisplayText(
     if (
       part.type === "source" ||
       part.type === "automation" ||
-      part.type === "goal"
+      part.type === "goal" ||
+      part.type === "morning_brief"
     ) {
       continue;
     }

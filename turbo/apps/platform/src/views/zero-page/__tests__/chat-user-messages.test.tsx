@@ -545,4 +545,42 @@ describe("user messages", () => {
       "user",
     );
   });
+
+  it("renders Morning Brief metadata outside the message body", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000760";
+    const prompt = "Generate my Morning Brief for 2026-08-05.";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Morning Brief",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000760",
+          role: "user",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: prompt },
+              { type: "morning_brief", briefDate: "2026-08-05" },
+            ],
+          },
+          createdAt: "2026-08-05T07:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const annotation = await screen.findByLabelText("Morning Brief");
+    const messageBody = await waitFor(() => {
+      const element = document.querySelector("[data-structured-user-message]");
+      expect(element).toBeInstanceOf(HTMLElement);
+      return element as HTMLElement;
+    });
+    expect(messageBody.textContent).toBe(prompt);
+    expect(messageBody).not.toContainElement(annotation);
+  });
 });
