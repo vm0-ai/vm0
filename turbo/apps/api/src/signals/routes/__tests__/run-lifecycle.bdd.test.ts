@@ -112,7 +112,6 @@ import {
   setSecretKmsClientForTests,
   type SecretKmsClient,
 } from "../../../lib/secret-kms-client";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /**
  * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
@@ -9883,16 +9882,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     if (!actor.orgId) {
       throw new Error("Zero runner context requires an organization");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        ...actor,
-        orgId: actor.orgId,
-      },
-      {
-        [FeatureSwitchKey.ZeroBrowser]: true,
-      },
-    );
     bdd.acceptAgentStorageWrites();
     api.acceptStorageDownloads();
     api.acceptTelemetryIngest();

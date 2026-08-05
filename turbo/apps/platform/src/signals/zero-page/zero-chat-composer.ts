@@ -2,7 +2,6 @@ import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { PresentationTemplateItem } from "@vm0/core/presentation-template-items";
 import { localStorageSignals } from "../external/local-storage.ts";
-import { zeroBrowserEnabled$ } from "../external/feature-switch.ts";
 import { jsonParseOr, tapError } from "../utils.ts";
 import type { TemplatePreviewRuntime } from "./template-preview-runtime.ts";
 import {
@@ -36,16 +35,10 @@ const internalNewThreadComputerAccess$ = state<NewThreadComputerAccess | null>(
 export const newThreadComputerAccess$ = computed(
   (get): NewThreadComputerAccess => {
     const selection = get(internalNewThreadComputerAccess$);
-    const cloudBrowserAvailable = get(zeroBrowserEnabled$);
     if (selection === null) {
-      // Cloud browser is the default surface wherever Zero Browser is on.
-      return cloudBrowserAvailable
-        ? { kind: "cloudBrowser" }
-        : { kind: "none" };
+      return { kind: "cloudBrowser" };
     }
-    return selection.kind === "cloudBrowser" && !cloudBrowserAvailable
-      ? { kind: "none" }
-      : selection;
+    return selection;
   },
 );
 

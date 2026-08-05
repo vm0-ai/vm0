@@ -329,7 +329,6 @@ function buildIntegrationToolsPrompt(
 
 function buildAgentToolsPrompt(args: {
   readonly triggerSource: TriggerSource;
-  readonly zeroBrowserAvailable: boolean;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly mermaidDiagramsEnabled: boolean;
 }): string {
@@ -343,13 +342,13 @@ function buildAgentToolsPrompt(args: {
     '- Workflow and automation requests use the `workflow-setup` skill first, then follow its guidance. This covers creating, editing, inspecting, running, scheduling, enabling, disabling, copying, or deleting a workflow or automation, and any recurring or event-driven request (for example "every morning", "when a new email arrives", "whenever X happens", "monitor", "remind me", "keep this in sync") even when the user does not say the word "workflow".',
     "- Manage recurring workflow automations: `zero workflow automation --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     "- Browser access: `agent-browser` provides rendered-page inspection and interaction. For one known public URL when you only need page content, prefer `zero scrape <url> --format markdown`; use `agent-browser` when you need browser state, authentication, JavaScript, screenshots, or interaction.",
-    ...(args.zeroBrowserAvailable && args.cloudBrowserEnabled === true
+    ...(args.cloudBrowserEnabled === true
       ? [
           "- Zero Browser and Zero Computer Use are separate surfaces. `zero browser use` creates, reuses, or resumes a remote browser owned by the current chat thread, attaches it to `agent-browser`, and gives the user an authenticated `/browsers/:threadId` live view they can take over. `zero computer-use` drives apps on a desktop host the user connected separately. Running `agent-browser` on its own drives a local browser inside this sandbox: it creates no Zero Browser session and no user-viewable link.",
           "- Zero Browser lifetime: `zero browser use` and `zero browser lease` each extend the session's idle lease by a fixed 10 minutes and report when Zero will reclaim it. The session survives the end of this run, so a later run in the same thread attaches to the same live window and the user can keep working in it. Call `zero browser lease` while a long task keeps the browser idle; a reclaimed session can still resume its saved login profile and reopen its last captured HTTP(S) tab URLs on a best-effort basis.",
         ]
       : []),
-    ...(args.zeroBrowserAvailable && args.cloudBrowserEnabled === false
+    ...(args.cloudBrowserEnabled === false
       ? [
           "- Zero Browser is currently off for this chat thread. When the task needs a user-viewable cloud browser, run `zero connector permission-request browser --permission browser:write`, give the authorization link to the user, and stop this run. Existing run tokens cannot be upgraded; continue in a new run after the user enables it.",
         ]
@@ -453,10 +452,6 @@ function buildAppendSystemPrompt(args: {
     identity,
     buildAgentToolsPrompt({
       triggerSource: args.triggerSource,
-      zeroBrowserAvailable: isFeatureEnabled(
-        FeatureSwitchKey.ZeroBrowser,
-        args.featureSwitchContext,
-      ),
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       mermaidDiagramsEnabled: isFeatureEnabled(
         FeatureSwitchKey.MermaidDiagrams,

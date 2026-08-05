@@ -67,7 +67,6 @@ import {
   chatThreadSidebarAutoOpenEnabled$,
   codexFastModeEnabled$,
   featureSwitch$,
-  zeroBrowserEnabled$,
   imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
@@ -1948,7 +1947,6 @@ function createEventChangeEffects(
       signal.throwIfAborted();
       if (
         !get(chatThreadSidebarAutoOpenEnabled$) ||
-        !get(zeroBrowserEnabled$) ||
         typeof window === "undefined" ||
         !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches
       ) {
