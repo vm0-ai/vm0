@@ -2,11 +2,13 @@ import {
   googleCalendarEventCancelledEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
+  googleFormsResponseSubmittedEventConfigSchema,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import type { Db } from "../external/db";
 import { reconcileGmailWatchesForUser } from "./gmail-workflow-event.service";
 import { reconcileGoogleCalendarWatchesForUser } from "./google-calendar-workflow-event.service";
+import { reconcileGoogleFormsWatchesForUser } from "./google-forms-workflow-event.service";
 
 interface WorkflowEventWatchAutomation {
   readonly orgId: string;
@@ -26,6 +28,12 @@ type WorkflowEventWatchTarget =
       readonly orgId: string;
       readonly userId: string;
       readonly calendarId: string;
+    }
+  | {
+      readonly provider: "google_forms";
+      readonly orgId: string;
+      readonly userId: string;
+      readonly formId: string;
     };
 
 function googleCalendarId(
@@ -65,6 +73,20 @@ function workflowEventWatchTarget(
       userId: automation.ownerUserId,
     };
   }
+  if (automation.eventType === "google-forms-response-submitted") {
+    const config = googleFormsResponseSubmittedEventConfigSchema.safeParse(
+      automation.eventConfig,
+    );
+    if (!config.success) {
+      return null;
+    }
+    return {
+      provider: "google_forms",
+      orgId: automation.orgId,
+      userId: automation.ownerUserId,
+      formId: config.data.form.id,
+    };
+  }
   const calendarId = googleCalendarId(automation);
   if (calendarId === null) {
     return null;
@@ -78,9 +100,13 @@ function workflowEventWatchTarget(
 }
 
 function targetKey(target: WorkflowEventWatchTarget): string {
-  return target.provider === "gmail"
-    ? `gmail:${target.orgId}:${target.userId}`
-    : `google_calendar:${target.orgId}:${target.userId}:${target.calendarId}`;
+  if (target.provider === "gmail") {
+    return `gmail:${target.orgId}:${target.userId}`;
+  }
+  if (target.provider === "google_forms") {
+    return `google_forms:${target.userId}:${target.formId}`;
+  }
+  return `google_calendar:${target.orgId}:${target.userId}:${target.calendarId}`;
 }
 
 export async function reconcileWorkflowEventWatches(args: {
@@ -102,6 +128,16 @@ export async function reconcileWorkflowEventWatches(args: {
         db: args.db,
         orgId: target.orgId,
         userId: target.userId,
+        signal: args.signal,
+      });
+      continue;
+    }
+    if (target.provider === "google_forms") {
+      await reconcileGoogleFormsWatchesForUser({
+        db: args.db,
+        orgId: target.orgId,
+        userId: target.userId,
+        formId: target.formId,
         signal: args.signal,
       });
       continue;

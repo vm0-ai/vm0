@@ -66,6 +66,44 @@ export interface HeaderAutomationSignals {
   readonly runNow$: Command<Promise<void>, [string, AbortSignal]>;
 }
 
+function googleWorkflowAutomationSummary(
+  automation: ChatThreadWorkflowAutomation,
+): string | null {
+  if (automation.kind !== "event") {
+    return null;
+  }
+  switch (automation.eventType) {
+    case "google-calendar-event-created": {
+      return i18n.t(($) => {
+        return $.chat.automations.events.googleCalendarCreated;
+      });
+    }
+    case "google-calendar-event-updated": {
+      return i18n.t(($) => {
+        return $.chat.automations.events.googleCalendarUpdated;
+      });
+    }
+    case "google-calendar-event-cancelled": {
+      return i18n.t(($) => {
+        return $.chat.automations.events.googleCalendarCancelled;
+      });
+    }
+    case "google-forms-response-submitted": {
+      return i18n.t(($) => {
+        return $.chat.automations.events.googleFormsResponseSubmitted;
+      });
+    }
+    case "google-meet-transcript-generated": {
+      return i18n.t(($) => {
+        return $.chat.automations.events.googleMeetTranscript;
+      });
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
 function workflowAutomationSummary(
   automation: ChatThreadWorkflowAutomation,
 ): string {
@@ -115,25 +153,9 @@ function workflowAutomationSummary(
         return $.chat.automations.events.githubWorkflowCompleted;
       });
     }
-    if (automation.eventType === "google-calendar-event-created") {
-      return i18n.t(($) => {
-        return $.chat.automations.events.googleCalendarCreated;
-      });
-    }
-    if (automation.eventType === "google-calendar-event-updated") {
-      return i18n.t(($) => {
-        return $.chat.automations.events.googleCalendarUpdated;
-      });
-    }
-    if (automation.eventType === "google-calendar-event-cancelled") {
-      return i18n.t(($) => {
-        return $.chat.automations.events.googleCalendarCancelled;
-      });
-    }
-    if (automation.eventType === "google-meet-transcript-generated") {
-      return i18n.t(($) => {
-        return $.chat.automations.events.googleMeetTranscript;
-      });
+    const googleSummary = googleWorkflowAutomationSummary(automation);
+    if (googleSummary !== null) {
+      return googleSummary;
     }
     if (automation.eventType === "notion-child-page-created") {
       return i18n.t(($) => {

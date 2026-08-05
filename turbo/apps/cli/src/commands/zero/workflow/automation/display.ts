@@ -65,6 +65,13 @@ type WorkflowStrapiAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "strapi-entry-published" }
 >;
+type WorkflowGoogleFormsAutomationSummary = Extract<
+  ZeroWorkflowAutomationSummary,
+  {
+    readonly kind: "event";
+    readonly eventType: "google-forms-response-submitted";
+  }
+>;
 
 function isWebhookAutomation(
   automation: ZeroWorkflowAutomationSummary,
@@ -127,6 +134,15 @@ function isGoogleCalendarAutomation(
     (automation.eventType === "google-calendar-event-created" ||
       automation.eventType === "google-calendar-event-updated" ||
       automation.eventType === "google-calendar-event-cancelled")
+  );
+}
+
+function isGoogleFormsAutomation(
+  automation: ZeroWorkflowAutomationSummary,
+): automation is WorkflowGoogleFormsAutomationSummary {
+  return (
+    automation.kind === "event" &&
+    automation.eventType === "google-forms-response-submitted"
   );
 }
 
@@ -225,6 +241,28 @@ function formatNotionContentUpdatedScopeUrl(
     : automation.eventConfig.scope.dataSource.url;
 }
 
+function formatGoogleAutomationEntry(
+  automation: ZeroWorkflowAutomationSummary,
+): string | null {
+  if (automation.kind !== "event") {
+    return null;
+  }
+  switch (automation.eventType) {
+    case "google-calendar-event-created":
+      return `Google Calendar event created: ${automation.eventConfig.calendarId}`;
+    case "google-calendar-event-updated":
+      return `Google Calendar event updated: ${automation.eventConfig.calendarId}`;
+    case "google-calendar-event-cancelled":
+      return `Google Calendar event cancelled: ${automation.eventConfig.calendarId}`;
+    case "google-forms-response-submitted":
+      return `Google Forms response submitted: ${automation.eventConfig.form.title}`;
+    case "google-meet-transcript-generated":
+      return "Google Meet transcript ready: meetings you organize";
+    default:
+      return null;
+  }
+}
+
 function formatWorkflowAutomationEntry(
   automation: ZeroWorkflowAutomationSummary,
 ): string {
@@ -248,29 +286,9 @@ function formatWorkflowAutomationEntry(
       automation.eventConfig.filters.subject,
     )}, actor ${automation.eventConfig.filters.actor.type})`;
   }
-  if (
-    automation.kind === "event" &&
-    automation.eventType === "google-calendar-event-created"
-  ) {
-    return `Google Calendar event created: ${automation.eventConfig.calendarId}`;
-  }
-  if (
-    automation.kind === "event" &&
-    automation.eventType === "google-calendar-event-updated"
-  ) {
-    return `Google Calendar event updated: ${automation.eventConfig.calendarId}`;
-  }
-  if (
-    automation.kind === "event" &&
-    automation.eventType === "google-calendar-event-cancelled"
-  ) {
-    return `Google Calendar event cancelled: ${automation.eventConfig.calendarId}`;
-  }
-  if (
-    automation.kind === "event" &&
-    automation.eventType === "google-meet-transcript-generated"
-  ) {
-    return "Google Meet transcript ready: meetings you organize";
+  const googleEntry = formatGoogleAutomationEntry(automation);
+  if (googleEntry !== null) {
+    return googleEntry;
   }
   if (isWebhookAutomation(automation)) {
     return formatWebhookAutomationEntry(automation);
@@ -301,6 +319,10 @@ function workflowAutomationKindLabel(
   if (automation.kind !== "event") {
     return formatWorkflowAutomationEntry(automation);
   }
+  const googleLabel = googleAutomationKindLabel(automation);
+  if (googleLabel !== null) {
+    return googleLabel;
+  }
   switch (automation.eventType) {
     case "chat-run-finished":
       return chatRunFinishedKindLabel(automation.eventConfig);
@@ -320,14 +342,6 @@ function workflowAutomationKindLabel(
       return "GitHub workflow job completed";
     case "github-workflow-run-completed":
       return "GitHub workflow completed";
-    case "google-calendar-event-created":
-      return "Google Calendar event created";
-    case "google-calendar-event-updated":
-      return "Google Calendar event updated";
-    case "google-calendar-event-cancelled":
-      return "Google Calendar event cancelled";
-    case "google-meet-transcript-generated":
-      return "Google Meet transcript ready";
     case "notion-child-page-created":
       return `New Notion child page: ${formatNotionParentPage(automation)}`;
     case "notion-database-item-created":
@@ -338,6 +352,26 @@ function workflowAutomationKindLabel(
       return formatStrapiAutomation(automation);
     case "webhook-received":
       return "Webhook";
+  }
+  throw new Error("Unsupported workflow automation event");
+}
+
+function googleAutomationKindLabel(
+  automation: Extract<ZeroWorkflowAutomationSummary, { kind: "event" }>,
+): string | null {
+  switch (automation.eventType) {
+    case "google-calendar-event-created":
+      return "Google Calendar event created";
+    case "google-calendar-event-updated":
+      return "Google Calendar event updated";
+    case "google-calendar-event-cancelled":
+      return "Google Calendar event cancelled";
+    case "google-forms-response-submitted":
+      return `Google Forms response submitted: ${automation.eventConfig.form.title}`;
+    case "google-meet-transcript-generated":
+      return "Google Meet transcript ready";
+    default:
+      return null;
   }
 }
 
@@ -604,6 +638,20 @@ export function printWorkflowAutomationThreadModel(
   );
 }
 
+function printGoogleFormsAutomationDetails(
+  automation: ZeroWorkflowAutomationSummary,
+): void {
+  if (!isGoogleFormsAutomation(automation)) {
+    return;
+  }
+  console.log(`${"Form:".padEnd(14)}${automation.eventConfig.form.title}`);
+  console.log(`${"Form ID:".padEnd(14)}${automation.eventConfig.form.id}`);
+  console.log(`${"Form URL:".padEnd(14)}${automation.eventConfig.form.url}`);
+  if (automation.warning) {
+    console.warn(`${"Warning:".padEnd(14)}${chalk.yellow(automation.warning)}`);
+  }
+}
+
 export function printWorkflowAutomationDetails(
   automation: ZeroWorkflowAutomationSummary,
   options: WorkflowAutomationDetailsOptions = {},
@@ -655,6 +703,7 @@ export function printWorkflowAutomationDetails(
       `${"Calendar:".padEnd(14)}${automation.eventConfig.calendarId}`,
     );
   }
+  printGoogleFormsAutomationDetails(automation);
   if (isNotionChildPageAutomation(automation)) {
     console.log(
       `${"Parent page:".padEnd(14)}${formatNotionParentPage(automation)}`,

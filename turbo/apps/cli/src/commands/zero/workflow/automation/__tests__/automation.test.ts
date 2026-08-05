@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
+import { zeroWorkflowCommand } from "../../index";
 import { automationCommand } from "../index";
 import chalk from "chalk";
 
@@ -179,6 +180,27 @@ const googleCalendarAutomation = {
   schedule: null,
   scheduleSummary: null,
   nextRunAt: null,
+};
+
+const googleFormsAutomation = {
+  ...automationBase,
+  kind: "event",
+  eventType: "google-forms-response-submitted",
+  eventConfig: {
+    provider: "google-forms",
+    event: "response_submitted",
+    connectorId: "55555555-5555-4555-8555-555555555557",
+    form: {
+      id: "1FAIpQLScCliGoogleFormsTest",
+      title: "Customer survey",
+      url: "https://docs.google.com/forms/d/1FAIpQLScCliGoogleFormsTest/edit",
+    },
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+  warning:
+    "This Google Form is not accepting responses yet. Publish it before expecting response events.",
 };
 
 const googleMeetAutomation = {
@@ -996,6 +1018,39 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("team@example.com");
     });
 
+    it("should add a Google Forms response automation and print its warning", async () => {
+      const captured = captureCreateAutomation(googleFormsAutomation);
+
+      await zeroWorkflowCommand.parseAsync([
+        "node",
+        "cli",
+        "trigger",
+        "add",
+        WORKFLOW_ID,
+        "google-forms-response-submitted",
+        "--form-url",
+        "https://docs.google.com/forms/d/1FAIpQLScCliGoogleFormsTest/edit",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "google-forms-response-submitted",
+        eventConfig: {
+          provider: "google-forms",
+          event: "response_submitted",
+          formUrl:
+            "https://docs.google.com/forms/d/1FAIpQLScCliGoogleFormsTest/edit",
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Google Forms response submitted");
+      expect(logCalls).toContain("Customer survey");
+      expect(mockConsoleWarn.mock.calls.flat().join("\n")).toContain(
+        "This Google Form is not accepting responses yet. Publish it before expecting response events.",
+      );
+    });
+
     it("should add a Google Meet transcript-generated automation", async () => {
       const captured = captureCreateAutomation(googleMeetAutomation);
 
@@ -1280,6 +1335,25 @@ describe("zero workflow automation commands", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
+    it("should reject a Google Forms response automation without a form URL", async () => {
+      await expect(async () => {
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "google-forms-response-submitted",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "google-forms-response-submitted automations require --form-url",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should reject a Notion database item automation without a database URL", async () => {
       await expect(async () => {
         await automationCommand.parseAsync([
@@ -1406,7 +1480,7 @@ describe("zero workflow automation commands", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should document Google Meet transcript automations in add help", () => {
+    it("should document Google Forms and Meet automations in add help", () => {
       const addCommand = automationCommand.commands.find((command) => {
         return command.name() === "add";
       });
@@ -1426,6 +1500,10 @@ describe("zero workflow automation commands", () => {
       addCommand.outputHelp();
 
       expect(helpOutput).toContain("google-meet-transcript-generated");
+      expect(helpOutput).toContain("--form-url <url>");
+      expect(helpOutput).toContain(
+        "zero workflow trigger add triage --agent <agent-id> google-forms-response-submitted",
+      );
       expect(helpOutput).toContain(
         "zero workflow automation add meeting-notes --agent <agent-id> google-meet-transcript-generated",
       );
@@ -1466,6 +1544,27 @@ describe("zero workflow automation commands", () => {
       );
       return captured;
     }
+
+    it("should reject Google Forms trigger updates with explicit guidance", async () => {
+      mockExistingAutomation(googleFormsAutomation);
+
+      await expect(async () => {
+        await zeroWorkflowCommand.parseAsync([
+          "node",
+          "cli",
+          "trigger",
+          "update",
+          AUTOMATION_ID,
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "this trigger has no updatable fields; delete it and create a new one",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
 
     it("should switch to a cron schedule", async () => {
       const captured = captureUpdateAutomation(cronAutomation);

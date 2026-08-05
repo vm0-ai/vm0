@@ -1154,6 +1154,7 @@
         "googleCalendarCancelled": "Google Calendar-Ereignis abgesagt",
         "googleCalendarCreated": "Google Calendar-Ereignis erstellt",
         "googleCalendarUpdated": "Google Calendar-Ereignis aktualisiert",
+        "googleFormsResponseSubmitted": "Google Forms-Antwort eingereicht",
         "googleMeetTranscript": "Google Meet-Transkript bereit",
         "notionChildPage": "Neue untergeordnete Notion-Seite",
         "notionDatabaseItem": "Neues Notion-Datenbankelement",
@@ -4735,6 +4736,11 @@
         "second_one": "{{count}} Sekunde",
         "second_other": "{{count}} Sekunden"
       },
+      "forms": {
+        "responseSubmittedTitle": "Google Forms-Antwort eingereicht",
+        "rule": "Wenn {{form}} eine Antwort erhält",
+        "summary": "Formular {{form}}"
+      },
       "github": {
         "accountConnect": "GitHub verbinden",
         "accountRequired": "Verbinden Sie Ihr GitHub-Konto, um „Ich“ zu verwenden.",
@@ -5057,6 +5063,7 @@
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",

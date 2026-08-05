@@ -295,6 +295,11 @@ export const TRIGGER_RENDERERS: Readonly<
   "google-calendar-event-cancelled": (payload) => {
     return renderGoogleCalendarEvent(payload, "was cancelled");
   },
+  "google-forms-response-submitted": (payload) => {
+    const respondentEmail = nullableStringField(payload, "respondentEmail");
+    const respondent = respondentEmail ?? "an anonymous respondent";
+    return `Google Forms response ${stringField(payload, "responseId")} from ${respondent} was ${stringField(payload, "changeType")} on ${stringField(payload, "formTitle")} (submitted ${stringField(payload, "lastSubmittedTime")}).`;
+  },
   "google-meet-transcript-generated": (payload) => {
     return `Google Meet generated transcript ${stringField(payload, "transcriptName")} for a meeting organized by the connected account (cloud event ${stringField(payload, "cloudEventId")}).`;
   },
@@ -357,6 +362,9 @@ const GITHUB_WORKFLOW_RUN_NOTES = [
 const GOOGLE_CALENDAR_NOTES = [
   "Connected Google Calendar tools return further calendar event detail.",
 ] as const;
+const GOOGLE_FORMS_NOTES = [
+  "Response answers are not included below. Use GET /v1/forms/{formId}/responses/{responseId} for answers, then GET /v1/forms/{formId} to map questionId values to question text.",
+] as const;
 const GOOGLE_MEET_NOTES = [
   "Not included below: the transcript text. Connected Google Meet tools return transcript metadata and entries.",
 ] as const;
@@ -386,6 +394,7 @@ export const EVENT_NOTES: Readonly<
   "google-calendar-event-created": GOOGLE_CALENDAR_NOTES,
   "google-calendar-event-updated": GOOGLE_CALENDAR_NOTES,
   "google-calendar-event-cancelled": GOOGLE_CALENDAR_NOTES,
+  "google-forms-response-submitted": GOOGLE_FORMS_NOTES,
   "google-meet-transcript-generated": GOOGLE_MEET_NOTES,
   "notion-child-page-created": NOTION_NOTES,
   "notion-database-item-created": NOTION_NOTES,
@@ -429,6 +438,7 @@ export const EVENT_POLICY: Readonly<
   "google-calendar-event-created": EVENT_SOURCE_POLICY,
   "google-calendar-event-updated": EVENT_SOURCE_POLICY,
   "google-calendar-event-cancelled": EVENT_SOURCE_POLICY,
+  "google-forms-response-submitted": EVENT_SOURCE_POLICY,
   "google-meet-transcript-generated": EVENT_SOURCE_POLICY,
   "notion-child-page-created": EVENT_SOURCE_POLICY,
   "notion-database-item-created": EVENT_SOURCE_POLICY,
