@@ -291,6 +291,16 @@ function hasPlayableAvatarVideo(videoUrl: string | undefined): boolean {
   );
 }
 
+function setAvatarTemplateVideoLoading(
+  video: HTMLVideoElement,
+  loading: boolean,
+): void {
+  const preview = video.closest<HTMLElement>("[data-avatar-template-preview]");
+  if (preview) {
+    preview.dataset.loading = String(loading);
+  }
+}
+
 function playAvatarTemplatePreview(event: SyntheticEvent<HTMLElement>): void {
   const video = event.currentTarget.querySelector("video");
   if (!video) {
@@ -300,6 +310,10 @@ function playAvatarTemplatePreview(event: SyntheticEvent<HTMLElement>): void {
   video.muted = true;
   video.playsInline = true;
   video.preload = "metadata";
+  setAvatarTemplateVideoLoading(
+    video,
+    video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA,
+  );
   detach(video.play(), Reason.DomCallback);
 }
 
@@ -308,6 +322,7 @@ function resetAvatarTemplatePreview(event: SyntheticEvent<HTMLElement>): void {
   if (!video) {
     return;
   }
+  setAvatarTemplateVideoLoading(video, false);
   video.pause();
   video.currentTime = 0;
 }
@@ -332,22 +347,40 @@ function AvatarTemplateMedia({
   return (
     <div
       data-avatar-template-preview=""
+      data-loading="false"
       className={cn(
-        "flex w-full shrink-0 items-center justify-center overflow-hidden bg-muted",
+        "group/avatar-preview relative flex w-full shrink-0 items-center justify-center overflow-hidden bg-muted",
         avatarMediaAspectClass(aspectRatio),
         className,
       )}
     >
       {previewVideoUrl ? (
-        <video
-          src={previewVideoUrl}
-          poster={avatar.coverUrl}
-          muted
-          loop
-          playsInline
-          preload="none"
-          className="h-full w-full object-cover"
-        />
+        <>
+          <video
+            src={previewVideoUrl}
+            poster={avatar.coverUrl}
+            muted
+            loop
+            playsInline
+            preload="none"
+            className="h-full w-full object-cover"
+            onWaiting={(event) => {
+              setAvatarTemplateVideoLoading(event.currentTarget, true);
+            }}
+            onPlaying={(event) => {
+              setAvatarTemplateVideoLoading(event.currentTarget, false);
+            }}
+            onError={(event) => {
+              setAvatarTemplateVideoLoading(event.currentTarget, false);
+            }}
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 hidden items-center justify-center bg-black/15 group-data-[loading=true]/avatar-preview:flex"
+          >
+            <IconLoader2 className="size-6 animate-spin text-white drop-shadow" />
+          </span>
+        </>
       ) : previewImageUrl ? (
         <img
           src={previewImageUrl}
