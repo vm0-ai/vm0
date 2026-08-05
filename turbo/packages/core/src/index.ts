@@ -658,16 +658,6 @@ export {
   type TelegramLinkStatusResponse,
 } from "./contracts";
 export {
-  isValidSystemTag,
-  resolveSystemImageToE2b,
-  isLegacySystemTemplate,
-  getLegacySystemTemplateWarning,
-  SYSTEM_IMAGE_CLAUDE_CODE,
-  SYSTEM_IMAGES,
-  SYSTEM_VALID_TAGS,
-  type SystemValidTag,
-} from "./org-reference";
-export {
   formatVersionIdForDisplay,
   isValidVersionPrefix,
   VERSION_ID_LENGTH,

@@ -950,7 +950,6 @@ jobs:
       - build-runner-release-assets
       - runner-production-host-groups
       - build-runner-production
-      - build-e2b-template-production
       - sbom
       - resolve-image-cache
     # Use always() so this job runs even when upstream build jobs are skipped.
@@ -969,8 +968,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "$NEEDS_JSON" | jq .
-          # "skipped" is acceptable: some build jobs (e.g. build-e2b-template-production)
-          # are component-conditional and only run when their component has a release.
+          # "skipped" is acceptable for component-conditional build jobs.
           failures=$(echo "$NEEDS_JSON" | jq -r '
             to_entries[]
             | select(.value.result != "success" and .value.result != "skipped")
@@ -2424,34 +2422,6 @@ jobs:
                 text:
                   type: mrkdwn
                   text: "*Runner RS* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🏗️ Target: `${{ matrix.target }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
-
-  # Build E2B templates to production account
-  # Uses production environment E2B_API_KEY secret
-  build-e2b-template-production:
-    needs: [release-please]
-    # Build when any release is created
-    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    permissions:
-      contents: read
-    environment: production
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ needs.release-please.outputs.release_target }}
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Build E2B templates
-        working-directory: turbo
-        env:
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-        run: |
-          pnpm e2b:cli:build
-
-      - name: Build summary
-        run: echo "✅ E2B templates built successfully (production account)"
 
   # Generate Software Bill of Materials (SBOM) for CASA compliance (CASA-DEP-003)
   sbom:
