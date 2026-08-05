@@ -1080,7 +1080,7 @@ async def _apply_url_rewrite(
         preserve_representation_content_length = status == HTTPStatus.NOT_MODIFIED or (
             flow.request.method == "HEAD"
             and status >= HTTPStatus.OK
-            and status != HTTPStatus.NO_CONTENT
+            and status not in (HTTPStatus.NO_CONTENT, HTTPStatus.RESET_CONTENT)
         )
         representation_content_length: str | None = None
         if preserve_representation_content_length:

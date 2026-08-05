@@ -266,8 +266,15 @@ class TestAuthBaseUrlRewriteForwarding:
         assert flow.response.raw_content == b""
         assert "Content-Length" not in flow.response.headers
 
-    async def test_url_rewrite_does_not_restore_head_204_content_length(
-        self, real_flow, mitm_ctx, tmp_path
+    @pytest.mark.parametrize(
+        "status",
+        [
+            pytest.param(204, id="no-content"),
+            pytest.param(205, id="reset-content"),
+        ],
+    )
+    async def test_url_rewrite_does_not_restore_head_content_length_for_empty_status(
+        self, real_flow, mitm_ctx, tmp_path, status: int
     ):
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
@@ -277,7 +284,7 @@ class TestAuthBaseUrlRewriteForwarding:
 
         with (
             fake_forwarder_upstream(
-                status=204,
+                status=status,
                 body=b"",
                 headers=[("Content-Length", "123")],
             ),
