@@ -186,7 +186,8 @@ pub struct TimingConfig {
     // -- Connection ----------------------------------------------------------
     /// Timeout for WebSocket connect, HTTP requests, and token operations.
     pub connect_timeout: Duration,
-    /// Timeout for best-effort protocol/WebSocket close during shutdown.
+    /// Timeout for each best-effort transport close and the total
+    /// [`Subscription::close_and_wait`](crate::Subscription::close_and_wait) wait.
     pub close_timeout: Duration,
     /// Timeout wrapping each individual reconnect attempt.
     pub reconnect_timeout: Duration,

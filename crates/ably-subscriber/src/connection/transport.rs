@@ -1,11 +1,17 @@
 use std::pin::Pin;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
 use futures_util::{SinkExt, Stream, StreamExt};
+use tokio::sync::Mutex;
 use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+use tokio_util::task::TaskTracker;
 
 use super::state::idle_deadline;
 use crate::Error;
@@ -66,25 +72,71 @@ impl WsTransport {
         Self { ws_read, ws_write }
     }
 
-    pub(super) fn close_in_background(self, close_timeout: Duration) {
+    async fn close(self, close_timeout: Duration) -> Result<(), Error> {
         let Self {
             ws_read,
             mut ws_write,
         } = self;
         drop(ws_read);
-        let close_task = tokio::spawn(async move {
-            let result = tokio::time::timeout(close_timeout, async move {
-                let _ = ws_write.close().await;
-            })
-            .await;
-            if result.is_err() {
+        tokio::time::timeout(close_timeout, ws_write.close())
+            .await
+            .map_err(|_| Error::Protocol {
+                code: error_code::TIMEOUT,
+                message: "WebSocket transport close timed out".to_string(),
+            })??;
+        Ok(())
+    }
+
+    pub(super) fn close_in_background(
+        self,
+        close_timeout: Duration,
+        close_tracker: &TransportCloseTracker,
+    ) {
+        let error_observer = close_tracker.clone();
+        let close_task = close_tracker.tasks.spawn(async move {
+            if let Err(error) = self.close(close_timeout).await {
                 tracing::warn!(
+                    error = %error,
                     timeout_ms = close_timeout.as_millis(),
-                    "Timed out while closing websocket transport"
+                    "Failed to close websocket transport"
                 );
+                error_observer.record(error).await;
             }
         });
         drop(close_task);
+    }
+}
+
+/// Tracks transport-only close tasks owned by one subscription.
+#[derive(Clone, Default)]
+pub(crate) struct TransportCloseTracker {
+    tasks: TaskTracker,
+    observe_errors: Arc<AtomicBool>,
+    first_error: Arc<Mutex<Option<Error>>>,
+}
+
+impl TransportCloseTracker {
+    pub(crate) fn observe_errors(&self) {
+        self.observe_errors.store(true, Ordering::Release);
+    }
+
+    async fn record(&self, error: Error) {
+        if !self.observe_errors.load(Ordering::Acquire) {
+            return;
+        }
+        let mut first_error = self.first_error.lock().await;
+        if first_error.is_none() {
+            *first_error = Some(error);
+        }
+    }
+
+    pub(crate) async fn finish(&self) -> Result<(), Error> {
+        self.tasks.close();
+        self.tasks.wait().await;
+        match self.first_error.lock().await.take() {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
 }
 
@@ -95,13 +147,19 @@ impl WsTransport {
 pub(super) struct PendingWsTransport {
     transport: Option<WsTransport>,
     close_timeout: Duration,
+    close_tracker: TransportCloseTracker,
 }
 
 impl PendingWsTransport {
-    fn new(transport: WsTransport, close_timeout: Duration) -> Self {
+    fn new(
+        transport: WsTransport,
+        close_timeout: Duration,
+        close_tracker: TransportCloseTracker,
+    ) -> Self {
         Self {
             transport: Some(transport),
             close_timeout,
+            close_tracker,
         }
     }
 
@@ -131,7 +189,7 @@ impl PendingWsTransport {
 impl Drop for PendingWsTransport {
     fn drop(&mut self) {
         if let Some(transport) = self.transport.take() {
-            transport.close_in_background(self.close_timeout);
+            transport.close_in_background(self.close_timeout, &self.close_tracker);
         }
     }
 }
@@ -139,12 +197,14 @@ impl Drop for PendingWsTransport {
 pub(super) async fn connect_pending(
     url: &str,
     close_timeout: Duration,
+    close_tracker: TransportCloseTracker,
 ) -> Result<PendingWsTransport, Error> {
     let (ws, _resp) = tokio_tungstenite::connect_async(url).await?;
     let (ws_write, ws_read) = ws.split();
     Ok(PendingWsTransport::new(
         WsTransport::new(WsRead::new(ws_read), ws_write),
         close_timeout,
+        close_tracker,
     ))
 }
 
