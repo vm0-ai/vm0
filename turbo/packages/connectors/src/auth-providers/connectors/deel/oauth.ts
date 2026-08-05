@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
 
 const DEEL_TOKEN_URL = "https://app.deel.com/oauth2/tokens";
@@ -261,7 +262,7 @@ async function fetchDeelUserInfo(
   const email = person?.emails?.[0]?.value ?? null;
 
   return {
-    id: person?.id ?? "",
+    id: requireConnectorGrantUserId(person?.id, "Deel"),
     username: name || null,
     email,
   };

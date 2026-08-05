@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
 
 const DROPBOX_TOKEN_URL = "https://api.dropboxapi.com/oauth2/token";
@@ -194,7 +195,7 @@ async function fetchDropboxUserInfo(
     .parse(await response.json());
 
   return {
-    id: data.account_id ?? "",
+    id: requireConnectorGrantUserId(data.account_id, "Dropbox"),
     username: data.name?.display_name ?? null,
     email: data.email ?? null,
   };
