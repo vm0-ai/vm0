@@ -230,7 +230,7 @@ async def test_catalog_removal_during_auth_revalidation_discards_old_credentials
             await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
             _remove_from_catalog(cache_path, retained_base=retained_base)
             release_auth_resolution.set()
-            await request_task
+            _ = await request_task
         finally:
             release_auth_resolution.set()
             await cancel_pending_task(request_task)
