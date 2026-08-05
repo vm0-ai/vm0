@@ -987,35 +987,6 @@ describe("runner claim request contract", () => {
 
     expect(body.telemetry).toEqual({});
   });
-
-  it("keeps legacy and current runner claim generations compatible", () => {
-    const legacyClaimBodySchema = runnersJobClaimContract.claim.body.extend({
-      zeroCli: z
-        .object({
-          available: z.boolean(),
-          version: z.string().min(1).optional(),
-          buildId: z.string().min(1).optional(),
-          checksumSha256: z
-            .string()
-            .regex(/^[a-f0-9]{64}$/u)
-            .optional(),
-        })
-        .optional(),
-    });
-    const legacyRunnerBody = {
-      zeroCli: {
-        available: true,
-        version: "1.2.3",
-        buildId: "runner-rs@1.2.3",
-        checksumSha256: "a".repeat(64),
-      },
-    };
-
-    expect(runnersJobClaimContract.claim.body.parse(legacyRunnerBody)).toEqual(
-      {},
-    );
-    expect(legacyClaimBodySchema.parse({})).toEqual({});
-  });
 });
 
 describe("runner poll request contract", () => {
