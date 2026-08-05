@@ -620,7 +620,6 @@ const runCompletedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("run.completed"),
     runId: z.string(),
-    attachFiles: z.array(resolvedAttachFileSchema).optional(),
     runLifecycleEvent: z.literal("completed"),
   })
   .strict();

@@ -201,7 +201,6 @@ const mockChatEventOverrides = {
   "run.completed": (message, id) => {
     return {
       runId: message.runId ?? `mock-run-${id}`,
-      attachFiles: message.attachFiles,
       runLifecycleEvent: "completed",
     };
   },

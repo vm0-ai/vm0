@@ -26,7 +26,10 @@ import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { hostedSites } from "@vm0/db/schema/hosted-site";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import {
+  chatEventAssetRefs,
+  runUploadedFiles,
+} from "@vm0/db/schema/run-uploaded-file";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -1351,6 +1354,32 @@ const postRuntimeStateAction$ = command(
             }),
           },
         };
+      }
+      case "read-chat-event-asset-refs": {
+        const rows = await db
+          .select({ assetId: chatEventAssetRefs.assetId })
+          .from(chatEventAssetRefs)
+          .where(eq(chatEventAssetRefs.chatEventId, body.event_id))
+          .orderBy(chatEventAssetRefs.position);
+        signal.throwIfAborted();
+        return {
+          status: 200 as const,
+          body: {
+            ok: true as const,
+            chat_event_asset_ref_ids: rows.map((row) => {
+              return row.assetId;
+            }),
+          },
+        };
+      }
+      case "insert-chat-event-asset-ref": {
+        await db.insert(chatEventAssetRefs).values({
+          chatEventId: body.event_id,
+          assetId: body.asset_id,
+          position: body.position,
+        });
+        signal.throwIfAborted();
+        return { status: 200 as const, body: { ok: true as const } };
       }
     }
   },

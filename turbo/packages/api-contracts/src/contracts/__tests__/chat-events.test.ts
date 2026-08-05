@@ -341,6 +341,38 @@ describe("ChatEvent catalog", () => {
     ).toBe(false);
   });
 
+  it("accepts attachments only on input events", () => {
+    const attachment = {
+      id: "attachment-1",
+      filename: "brief.txt",
+      contentType: "text/plain",
+      size: 5,
+      url: "https://example.com/brief.txt",
+    };
+    const prompt = chatEvents.find((event) => {
+      return event.eventType === "input.prompt";
+    });
+    const rejected = chatEvents.find((event) => {
+      return event.eventType === "input.rejected";
+    });
+    const completed = chatEvents.find((event) => {
+      return event.eventType === "run.completed";
+    });
+
+    expect(
+      chatEventSchema.safeParse({ ...prompt, attachFiles: [attachment] })
+        .success,
+    ).toBe(true);
+    expect(
+      chatEventSchema.safeParse({ ...rejected, attachFiles: [attachment] })
+        .success,
+    ).toBe(true);
+    expect(
+      chatEventSchema.safeParse({ ...completed, attachFiles: [attachment] })
+        .success,
+    ).toBe(false);
+  });
+
   it("emits canonical responses for every registered leaf", () => {
     for (const event of chatEvents) {
       const response = chatEventResponse(event);

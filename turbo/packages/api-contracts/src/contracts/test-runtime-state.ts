@@ -119,6 +119,16 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("read-chat-event-asset-refs"),
+    event_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("insert-chat-event-asset-ref"),
+    event_id: z.uuid(),
+    asset_id: z.uuid(),
+    position: z.int().nonnegative(),
+  }),
+  z.object({
     action: z.literal("clear-run-api-start"),
     run_id: z.uuid(),
   }),
@@ -198,6 +208,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
   admission_lock_held: z.boolean().optional(),
   admission_lock_waiting: z.boolean().optional(),
   uploaded_file_sources: z.array(z.string()).optional(),
+  chat_event_asset_ref_ids: z.array(z.uuid()).optional(),
   api_started_at: z.string().nullable().optional(),
   thread_session_binding: z
     .object({

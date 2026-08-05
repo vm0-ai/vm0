@@ -393,6 +393,33 @@ export async function readRunUploadedFileSources(
   return response.uploaded_file_sources ?? [];
 }
 
+export async function readChatEventAssetRefIds(
+  context: TestContext,
+  eventId: string,
+): Promise<readonly string[]> {
+  const response = await postAction(context, {
+    action: "read-chat-event-asset-refs",
+    event_id: eventId,
+  });
+  return response.chat_event_asset_ref_ids ?? [];
+}
+
+export async function insertChatEventAssetRefFixture(
+  context: TestContext,
+  args: {
+    readonly eventId: string;
+    readonly assetId: string;
+    readonly position: number;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "insert-chat-event-asset-ref",
+    event_id: args.eventId,
+    asset_id: args.assetId,
+    position: args.position,
+  });
+}
+
 export async function insertHostedSiteAsPreviousApi(
   context: TestContext,
   args: {
