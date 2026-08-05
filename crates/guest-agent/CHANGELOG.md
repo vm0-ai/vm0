@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.64.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.1...guest-agent-v0.64.2) (2026-08-05)
+
+
+### Refactoring
+
+* **rust:** use rustix for child exit pidfds ([#25122](https://github.com/vm0-ai/vm0/issues/25122)) ([85100f1](https://github.com/vm0-ai/vm0/commit/85100f174664559002a35778a73a3b4d9ec722ad))
+
 ## [0.64.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.0...guest-agent-v0.64.1) (2026-08-04)
 
 
