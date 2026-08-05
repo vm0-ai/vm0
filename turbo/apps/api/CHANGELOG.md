@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.379.4](https://github.com/vm0-ai/vm0/compare/api-v1.379.3...api-v1.379.4) (2026-08-05)
+
+
+### Refactoring
+
+* **db:** require queued input source discriminators ([#25305](https://github.com/vm0-ai/vm0/issues/25305)) ([8ff0ade](https://github.com/vm0-ai/vm0/commit/8ff0ade1831b4092d2828beb78f18a3c57735229))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.166.6
+
 ## [1.379.3](https://github.com/vm0-ai/vm0/compare/api-v1.379.2...api-v1.379.3) (2026-08-05)
 
 
