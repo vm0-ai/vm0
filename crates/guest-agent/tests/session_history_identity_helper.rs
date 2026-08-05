@@ -1,3 +1,5 @@
+mod common;
+
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
@@ -17,9 +19,13 @@ use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use sha2::{Digest, Sha256};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Output;
+use std::time::Duration;
+use tokio::process::Command;
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
+
+const SESSION_HISTORY_HELPER_TIMEOUT: Duration = Duration::from_secs(10);
 
 struct VerifyCase {
     name: &'static str,
@@ -65,8 +71,8 @@ impl SourceOpenWatch {
     }
 }
 
-#[test]
-fn verify_session_history_identity_returns_stable_exit_codes() -> TestResult {
+#[tokio::test]
+async fn verify_session_history_identity_returns_stable_exit_codes() -> TestResult {
     let dir = tempfile::tempdir()?;
 
     let matching_history = br#"{"type":"system"}"#;
@@ -204,7 +210,7 @@ fn verify_session_history_identity_returns_stable_exit_codes() -> TestResult {
     ];
 
     for case in cases {
-        let output = run_helper(&case)?;
+        let output = run_helper(&case).await?;
         assert_eq!(
             output.status.code(),
             Some(case.expected_exit_code),
@@ -218,8 +224,8 @@ fn verify_session_history_identity_returns_stable_exit_codes() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn export_session_history_sidecar_reads_raw_source_once() -> TestResult {
+#[tokio::test]
+async fn export_session_history_sidecar_reads_raw_source_once() -> TestResult {
     let dir = tempfile::tempdir()?;
     let history = br#"{"type":"system"}"#;
     let history_path = dir.path().join("history.jsonl");
@@ -236,7 +242,7 @@ fn export_session_history_sidecar_reads_raw_source_once() -> TestResult {
     let export_path = dir.path().join("raw-sidecar");
     let source_watch = SourceOpenWatch::new(&history_path)?;
 
-    let output = run_export_helper(&metadata_path, &export_path)?;
+    let output = run_export_helper(&metadata_path, &export_path).await?;
 
     assert!(
         output.status.success(),
@@ -256,8 +262,8 @@ fn export_session_history_sidecar_reads_raw_source_once() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn export_session_history_sidecar_reads_native_codex_zstd_once() -> TestResult {
+#[tokio::test]
+async fn export_session_history_sidecar_reads_native_codex_zstd_once() -> TestResult {
     let dir = tempfile::tempdir()?;
     let sessions_dir = dir.path().join("sessions");
     let day_dir = sessions_dir.join("2026").join("07").join("13");
@@ -284,7 +290,7 @@ fn export_session_history_sidecar_reads_native_codex_zstd_once() -> TestResult {
     let export_path = dir.path().join("codex-sidecar");
     let source_watch = SourceOpenWatch::new(&history_path)?;
 
-    let output = run_export_helper(&metadata_path, &export_path)?;
+    let output = run_export_helper(&metadata_path, &export_path).await?;
 
     assert!(
         output.status.success(),
@@ -304,9 +310,9 @@ fn export_session_history_sidecar_reads_native_codex_zstd_once() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn export_session_history_sidecar_rejects_metadata_above_resume_limit_before_reading() -> TestResult
-{
+#[tokio::test]
+async fn export_session_history_sidecar_rejects_metadata_above_resume_limit_before_reading()
+-> TestResult {
     let dir = tempfile::tempdir()?;
     let history_path = dir.path().join("missing-oversized-history.jsonl");
     let identity = FinalSessionHistoryIdentity::new(
@@ -320,7 +326,7 @@ fn export_session_history_sidecar_rejects_metadata_above_resume_limit_before_rea
     let metadata_path = write_metadata(dir.path(), "oversized-identity.json", &identity)?;
     let export_path = dir.path().join("oversized-sidecar");
 
-    let output = run_export_helper(&metadata_path, &export_path)?;
+    let output = run_export_helper(&metadata_path, &export_path).await?;
 
     assert_eq!(
         output.status.code(),
@@ -334,8 +340,8 @@ fn export_session_history_sidecar_rejects_metadata_above_resume_limit_before_rea
     Ok(())
 }
 
-#[test]
-fn export_session_history_sidecar_keeps_source_read_failures() -> TestResult {
+#[tokio::test]
+async fn export_session_history_sidecar_keeps_source_read_failures() -> TestResult {
     let dir = tempfile::tempdir()?;
     let history_path = dir.path().join("missing-history.jsonl");
     let identity = FinalSessionHistoryIdentity::new(
@@ -349,7 +355,7 @@ fn export_session_history_sidecar_keeps_source_read_failures() -> TestResult {
     let metadata_path = write_metadata(dir.path(), "missing-source-identity.json", &identity)?;
     let export_path = dir.path().join("missing-source-sidecar");
 
-    let output = run_export_helper(&metadata_path, &export_path)?;
+    let output = run_export_helper(&metadata_path, &export_path).await?;
 
     assert_eq!(
         output.status.code(),
@@ -362,8 +368,8 @@ fn export_session_history_sidecar_keeps_source_read_failures() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn export_session_history_sidecar_rejects_history_mismatch() -> TestResult {
+#[tokio::test]
+async fn export_session_history_sidecar_rejects_history_mismatch() -> TestResult {
     let dir = tempfile::tempdir()?;
     let history = b"actual";
     let history_path = dir.path().join("mismatched-history.jsonl");
@@ -379,7 +385,7 @@ fn export_session_history_sidecar_rejects_history_mismatch() -> TestResult {
     let metadata_path = write_metadata(dir.path(), "mismatched-identity.json", &identity)?;
     let export_path = dir.path().join("mismatched-sidecar");
 
-    let output = run_export_helper(&metadata_path, &export_path)?;
+    let output = run_export_helper(&metadata_path, &export_path).await?;
 
     assert_eq!(
         output.status.code(),
@@ -419,20 +425,39 @@ fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
-fn run_helper(case: &VerifyCase) -> Result<Output, std::io::Error> {
-    Command::new(env!("CARGO_BIN_EXE_guest-agent"))
+async fn run_helper(case: &VerifyCase) -> Result<Output, std::io::Error> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
+    command
         .env_clear()
         .arg("verify-session-history-identity")
         .arg(&case.metadata_path)
-        .args(&case.expectation_args)
-        .output()
+        .args(&case.expectation_args);
+    let timeout_context = format!(
+        "verify-session-history-identity case '{}' exceeded its completion budget",
+        case.name
+    );
+    common::command_output_with_timeout(
+        &mut command,
+        SESSION_HISTORY_HELPER_TIMEOUT,
+        &timeout_context,
+    )
+    .await
 }
 
-fn run_export_helper(metadata_path: &Path, export_path: &Path) -> Result<Output, std::io::Error> {
-    Command::new(env!("CARGO_BIN_EXE_guest-agent"))
+async fn run_export_helper(
+    metadata_path: &Path,
+    export_path: &Path,
+) -> Result<Output, std::io::Error> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
+    command
         .env_clear()
         .arg("export-session-history-sidecar")
         .arg(metadata_path)
-        .arg(export_path)
-        .output()
+        .arg(export_path);
+    common::command_output_with_timeout(
+        &mut command,
+        SESSION_HISTORY_HELPER_TIMEOUT,
+        "export-session-history-sidecar exceeded its completion budget",
+    )
+    .await
 }
