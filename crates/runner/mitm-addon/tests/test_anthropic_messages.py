@@ -228,6 +228,17 @@ class TestAnthropicSseUsageExtractor:
         assert usage == {}
         assert accounting_events == []
 
+    def test_discarded_event_does_not_report_accounting_state(self):
+        parse, usage, accounting_events = _create_parser_with_accounting_events()
+
+        parse(
+            b'data: {"type":"message_start","message":{"usage":{"input_tokens":99}}}\n'
+            b"event: content_block_delta\n\n"
+        )
+
+        assert usage == {}
+        assert accounting_events == []
+
     def test_finish_reports_complete_trailing_message_stop(self):
         parse, usage, accounting_events = _create_parser_with_accounting_events()
 
@@ -512,11 +523,13 @@ class TestAnthropicSseUsageExtractor:
     def test_work_limit_discards_partial_event_and_recovers(self):
         parse_errors: list[tuple[str, str]] = []
         lifecycle_events: list[tuple[str, str | None]] = []
+        accounting_events: list[str] = []
         parse, usage = create_anthropic_messages_sse_usage_extractor(
             on_parse_error=lambda event, error: parse_errors.append((event, error)),
             on_lifecycle_event=lambda event, block_type: lifecycle_events.append(
                 (event, block_type)
             ),
+            on_accounting_event=accounting_events.append,
         )
         dense_object_first_line = b",".join([b'"x":0'] * 10_000) + b","
         dense_object_second_line = b",".join([b'"x":0'] * 10_000)
@@ -531,6 +544,7 @@ class TestAnthropicSseUsageExtractor:
 
         assert usage == {}
         assert lifecycle_events == []
+        assert accounting_events == []
         assert parse_errors == [("message_start", "work limit exceeded")]
 
         parse(
@@ -545,6 +559,7 @@ class TestAnthropicSseUsageExtractor:
             "tokens.input": 9,
         }
         assert lifecycle_events == [("message_start", None)]
+        assert accounting_events == ["message_start"]
         assert parse_errors == [("message_start", "work limit exceeded")]
 
     def test_empty_usage_dict_not_reported(self):
