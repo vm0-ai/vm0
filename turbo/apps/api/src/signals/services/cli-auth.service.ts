@@ -223,7 +223,6 @@ export const ensureTestOrg$ = command(
     if (!cached) {
       await writeDb.insert(orgCache).values({
         orgId: org.id,
-        slug: org.slug ?? org.id,
         name: org.name ?? org.slug ?? org.id,
         cachedAt: new Date(nowDate().getTime() + FAR_FUTURE_CACHE_MS),
       });
@@ -316,14 +315,12 @@ export const resolveTestOrgId$ = command(
         .insert(orgCache)
         .values({
           orgId: org.id,
-          slug: org.slug ?? org.id,
           name: org.name ?? org.slug ?? org.id,
           cachedAt,
         })
         .onConflictDoUpdate({
           target: orgCache.orgId,
           set: {
-            slug: org.slug ?? org.id,
             name: org.name ?? org.slug ?? org.id,
             cachedAt,
           },

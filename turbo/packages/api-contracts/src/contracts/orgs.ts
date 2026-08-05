@@ -25,7 +25,6 @@ export function isOrgTier(value: string | null | undefined): value is OrgTier {
  */
 export const orgResponseSchema = z.object({
   id: z.string(),
-  slug: z.string(),
   name: z.string(),
   tier: z.string().optional(),
   role: orgRoleSchema.optional(),
