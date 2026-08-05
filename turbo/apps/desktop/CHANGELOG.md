@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.28.136](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.135...desktop-v0.28.136) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.3
+
 ## [0.28.135](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.134...desktop-v0.28.135) (2026-08-05)
 
 

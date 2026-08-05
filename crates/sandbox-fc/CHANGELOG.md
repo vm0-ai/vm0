@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.184](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.183...sandbox-fc-v0.37.184) (2026-08-05)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** wait for progressing balloon reclaim ([#25194](https://github.com/vm0-ai/vm0/issues/25194)) ([c53cdcf](https://github.com/vm0-ai/vm0/commit/c53cdcf63d4fbc028407eea94399e95f53de23e3))
+
 ## [0.37.183](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.182...sandbox-fc-v0.37.183) (2026-08-05)
 
 ## [0.37.182](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.181...sandbox-fc-v0.37.182) (2026-08-05)
