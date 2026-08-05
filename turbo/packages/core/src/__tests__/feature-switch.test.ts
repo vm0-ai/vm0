@@ -129,6 +129,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatSteer]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       true,
@@ -158,6 +159,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.ChatSteer]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(
       false,
     );

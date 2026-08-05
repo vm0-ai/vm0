@@ -370,6 +370,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Steer pending chat prompts into active runs and render them inline.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PwaChatKeyboardGestures]: {
     maintainer: "bingjie@vm0.ai",
