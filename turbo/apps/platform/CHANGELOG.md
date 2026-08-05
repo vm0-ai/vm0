@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.685.3](https://github.com/vm0-ai/vm0/compare/app-v0.685.2...app-v0.685.3) (2026-08-05)
+
+
+### Refactoring
+
+* **api:** stop projecting chat event trigger source ([#25278](https://github.com/vm0-ai/vm0/issues/25278)) ([de5898c](https://github.com/vm0-ai/vm0/commit/de5898c6a40f96535c6591ac320d8e8cf2cb35c3))
+* **chat:** remove artifacts from completion events ([#25271](https://github.com/vm0-ai/vm0/issues/25271)) ([d10fe3f](https://github.com/vm0-ai/vm0/commit/d10fe3f32f119f2c3012fe6f34b88b170ba1a434))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.6
+    * @vm0/core bumped to 8.516.2
+
 ## [0.685.2](https://github.com/vm0-ai/vm0/compare/app-v0.685.1...app-v0.685.2) (2026-08-05)
 
 

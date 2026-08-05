@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.158.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.9...runner-rs-v0.158.10) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** preserve network policies across refresh failures ([#25274](https://github.com/vm0-ai/vm0/issues/25274)) ([adb7dd2](https://github.com/vm0-ai/vm0/commit/adb7dd2378f0b63111cdf61d85a106da8b6d2422))
+
 ## [0.158.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.8...runner-rs-v0.158.9) (2026-08-05)
 
 

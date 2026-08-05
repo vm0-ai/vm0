@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.379.2](https://github.com/vm0-ai/vm0/compare/api-v1.379.1...api-v1.379.2) (2026-08-05)
+
+
+### Bug Fixes
+
+* **api:** accept joggai webhook project ids ([#25275](https://github.com/vm0-ai/vm0/issues/25275)) ([9582391](https://github.com/vm0-ai/vm0/commit/9582391e53bafaff02b1cd18e362a7381fe9a39a))
+
+
+### Refactoring
+
+* **api:** stop projecting chat event trigger source ([#25278](https://github.com/vm0-ai/vm0/issues/25278)) ([de5898c](https://github.com/vm0-ai/vm0/commit/de5898c6a40f96535c6591ac320d8e8cf2cb35c3))
+* **chat:** remove artifacts from completion events ([#25271](https://github.com/vm0-ai/vm0/issues/25271)) ([d10fe3f](https://github.com/vm0-ai/vm0/commit/d10fe3f32f119f2c3012fe6f34b88b170ba1a434))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.6
+    * @vm0/core bumped to 8.516.2
+    * @vm0/db bumped to 1.166.4
+
 ## [1.379.1](https://github.com/vm0-ai/vm0/compare/api-v1.379.0...api-v1.379.1) (2026-08-05)
 
 
