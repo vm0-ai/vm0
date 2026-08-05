@@ -39,7 +39,7 @@ class _RegistrySnapshot:
     invalid_vms: dict[str, InvalidVmEntry]
     compiled_firewalls: dict[str, matching.CompiledFirewallSet]
     compiled_network_policies: dict[str, matching.CompiledNetworkPolicies]
-    unavailable_builtin_firewalls: dict[str, frozenset[str]]
+    omitted_builtin_firewalls: dict[str, frozenset[str]]
     builtin_firewall_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None
     loaded_key: _RegistryFileKey | None
 
@@ -120,7 +120,6 @@ def _compile_registry(
         registry_firewalls.BuiltinFirewallCoreCacheKey,
         matching.CompiledFirewallCore,
     ],
-    unavailable_builtin_firewalls: dict[str, frozenset[str]],
 ) -> tuple[
     dict[str, matching.CompiledFirewallSet],
     dict[str, matching.CompiledNetworkPolicies],
@@ -136,12 +135,8 @@ def _compile_registry(
         )
         if compiled_firewalls is not None:
             compiled_firewall_registry[client_ip] = compiled_firewalls
-        network_policies = matching.compile_network_policies(vm.get("networkPolicies"))
-        compiled_policy_registry[client_ip] = matching.with_firewalls_denied(
-            network_policies,
-            firewalls,
-            unavailable_builtin_firewalls.get(client_ip, frozenset()),
-        )
+        network_policies = vm.get("networkPolicies")
+        compiled_policy_registry[client_ip] = matching.compile_network_policies(network_policies)
     _prune_builtin_firewall_core_cache(builtin_firewall_core_cache, builtin_cache_keys.values())
     return compiled_firewall_registry, compiled_policy_registry
 
@@ -223,7 +218,7 @@ def _classify_registry_vms(
         str,
         tuple[registry_firewalls.BuiltinFirewallCoreCacheKey | None, ...],
     ] = {}
-    unavailable_builtin_firewalls: dict[str, frozenset[str]] = {}
+    omitted_builtin_firewalls: dict[str, frozenset[str]] = {}
     builtin_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None = None
     for client_ip, vm in raw_registry.items():
         if not isinstance(vm, dict):
@@ -295,8 +290,8 @@ def _classify_registry_vms(
             vm["firewalls"] = resolved_firewalls.firewalls
             if resolved_firewalls.builtin_cache_keys is not None:
                 builtin_cache_keys_by_client_ip[client_ip] = resolved_firewalls.builtin_cache_keys
-            if resolved_firewalls.unavailable_names:
-                unavailable_builtin_firewalls[client_ip] = resolved_firewalls.unavailable_names
+            if resolved_firewalls.omitted_builtin_names:
+                omitted_builtin_firewalls[client_ip] = resolved_firewalls.omitted_builtin_names
 
         new_registry[client_ip] = vm
 
@@ -304,7 +299,7 @@ def _classify_registry_vms(
         new_registry,
         invalid_vms,
         builtin_cache_keys_by_client_ip,
-        unavailable_builtin_firewalls,
+        omitted_builtin_firewalls,
         builtin_catalog_snapshot,
     )
 
@@ -398,7 +393,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
         new_registry,
         invalid_vms,
         builtin_cache_keys,
-        unavailable_builtin_firewalls,
+        omitted_builtin_firewalls,
         builtin_catalog_snapshot,
     ) = _classify_registry_vms(
         raw_registry,
@@ -410,7 +405,6 @@ def load_registry_state(registry_path: str) -> RegistryState:
         new_registry,
         builtin_cache_keys,
         state.builtin_firewall_core_cache,
-        unavailable_builtin_firewalls,
     )
 
     # Evict cache entries for runs no longer in the registry.
@@ -422,7 +416,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
         invalid_vms,
         new_compiled_registry,
         new_compiled_policy_registry,
-        unavailable_builtin_firewalls,
+        omitted_builtin_firewalls,
         builtin_catalog_snapshot,
         key,
     )

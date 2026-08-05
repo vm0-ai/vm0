@@ -638,17 +638,6 @@ def _block_invalid_registry_vm(
     http_local_responses.block_invalid_registry_vm(flow, invalid_vm)
 
 
-def _block_firewall_unavailable(
-    flow: http.HTTPFlow,
-    unavailable: request_classification.FirewallUnavailable,
-) -> None:
-    http_local_responses.block_firewall_unavailable(
-        flow,
-        name=unavailable.name,
-        base=unavailable.base,
-    )
-
-
 def _block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
     http_local_responses.block_stale_tls_admission(flow, reason=reason)
 
@@ -761,22 +750,6 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     )
     if body_fits_stream_buffer:
         bounded_classification = _prebind_bounded_requestheaders_upstream_destination(flow)
-        if bounded_classification is not None and isinstance(
-            bounded_classification,
-            request_classification.FirewallUnavailable,
-        ):
-            current_classification = _classify_request_for_flow(
-                flow,
-                defer_unresolved_public_destination=True,
-            )
-            if isinstance(
-                current_classification,
-                request_classification.FirewallUnavailable,
-            ):
-                _start_request_timing(flow)
-                _block_firewall_unavailable(flow, current_classification)
-                flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
-                return None
         if (
             bounded_classification is None
             or bounded_classification.kind != "firewall_allow"
@@ -794,11 +767,6 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         flow,
         defer_unresolved_public_destination=True,
     )
-    if classification.kind == "firewall_unavailable":
-        _start_request_timing(flow)
-        _block_firewall_unavailable(flow, classification)
-        flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
-        return None
     if classification.kind == "public_destination_denied":
         _start_request_timing(flow)
         _block_public_destination_denied(
@@ -1246,9 +1214,6 @@ def _block_current_firewall_authorization(
     if classification.kind == "firewall_block":
         _set_firewall_block_response(flow, classification.firewall_block)
         return
-    if classification.kind == "firewall_unavailable":
-        _block_firewall_unavailable(flow, classification)
-        return
     if classification.kind == "public_destination_denied":
         _block_public_destination_denied(flow, classification.public_destination_denial)
         return
@@ -1375,9 +1340,6 @@ async def request(flow: http.HTTPFlow) -> None:
             return
         if classification.kind == "firewall_block":
             _set_firewall_block_response(flow, classification.firewall_block)
-            return
-        if classification.kind == "firewall_unavailable":
-            _block_firewall_unavailable(flow, classification)
             return
         if classification.kind == "public_destination_denied":
             terminal_usage.release_tracked_flow(flow)

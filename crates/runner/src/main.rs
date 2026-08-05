@@ -1,7 +1,6 @@
 // Trigger another runner release on 2026-07-31.
 mod active_input;
 mod axiom_layer;
-mod builtin_firewall_catalog_state;
 mod ca;
 mod child_cleanup;
 mod cmd;

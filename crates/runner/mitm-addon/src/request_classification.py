@@ -160,17 +160,6 @@ class FirewallBlock:
 
 
 @dataclass(frozen=True)
-class FirewallUnavailable:
-    vm_info: dict
-    name: str
-    base: str
-    kind: Literal["firewall_unavailable"] = field(
-        init=False,
-        default="firewall_unavailable",
-    )
-
-
-@dataclass(frozen=True)
 class FirewallAllow:
     vm_info: dict
     firewall_allow: matching.FirewallAllow
@@ -219,7 +208,6 @@ RequestClassification = (
     | BrowserAllow
     | FirewallAmbiguous
     | FirewallBlock
-    | FirewallUnavailable
     | FirewallAllow
     | FirewallPolicyAllow
     | PublicDestinationDenied
@@ -436,6 +424,18 @@ def _classify_request(
         return BrowserAllow(vm_info=vm_info)
 
     is_asterisk_form = flow.request.path == "*"
+    intent = connector_intent.from_flow(flow)
+    omitted_builtin_firewalls = registry_state.omitted_builtin_firewalls.get(
+        client_ip,
+        frozenset(),
+    )
+    if intent.status == "present" and intent.value in omitted_builtin_firewalls:
+        return Allow(
+            vm_info=vm_info,
+            builtin_firewall_catalog_snapshot=(registry_state.builtin_firewall_catalog_snapshot),
+            is_asterisk_form=is_asterisk_form,
+        )
+
     compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
     compiled_network_policies = registry_state.compiled_network_policies[client_ip]
     if compiled_firewalls:
@@ -444,7 +444,7 @@ def _classify_request(
             flow.request.method,
             compiled_firewalls,
             compiled_network_policies,
-            connector_intent.from_flow(flow),
+            intent,
             is_asterisk_form=is_asterisk_form,
         )
         if isinstance(result, matching.FirewallAmbiguous):
@@ -453,14 +453,6 @@ def _classify_request(
                 firewall_ambiguous=result,
             )
         if isinstance(result, matching.FirewallBlock):
-            if result.name in registry_state.unavailable_builtin_firewalls.get(
-                client_ip, frozenset()
-            ):
-                return FirewallUnavailable(
-                    vm_info=vm_info,
-                    name=result.name,
-                    base=result.base,
-                )
             return FirewallBlock(
                 vm_info=vm_info,
                 firewall_block=result,
@@ -471,15 +463,6 @@ def _classify_request(
                 if isinstance(result, matching.FirewallPolicyAllow)
                 else result
             )
-            if firewall_allow.name in registry_state.unavailable_builtin_firewalls.get(
-                client_ip, frozenset()
-            ):
-                raw_base = firewall_allow.api_entry.get("base")
-                return FirewallUnavailable(
-                    vm_info=vm_info,
-                    name=firewall_allow.name,
-                    base=raw_base if isinstance(raw_base, str) else "",
-                )
             public_destination_denial = _public_destination_denial(
                 flow,
                 firewall_allow,
@@ -518,7 +501,6 @@ def classification_needs_request_timing(classification: RequestClassification) -
         "browser_allow",
         "firewall_ambiguous",
         "firewall_block",
-        "firewall_unavailable",
         "firewall_allow",
         "firewall_policy_allow",
         "public_destination_denied",

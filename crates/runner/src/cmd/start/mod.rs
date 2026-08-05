@@ -531,7 +531,6 @@ async fn run_start_with_home(
     info!(port = mitm.port(), "proxy ready");
 
     let registry_handle = mitm.registry_handle();
-    let builtin_firewall_catalog_state = mitm.builtin_firewall_catalog_state();
 
     // Start background DNS/kmsg monitors for Rust-side network logging.
     let network_log_manager = NetworkLogManager::new();
@@ -734,7 +733,6 @@ async fn run_start_with_home(
                 cache_path: paths.builtin_firewall_catalog_cache(),
                 lock_path: paths.builtin_firewall_catalog_cache_lock(),
             },
-            builtin_firewall_catalog_state,
             cancel.clone(),
             cancel_tokens.clone(),
         );

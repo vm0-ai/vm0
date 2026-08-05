@@ -1034,38 +1034,7 @@ mod tests {
 
     use crate::http::{HttpClient, HttpClientConfig};
     use crate::proxy::{ProxyRegistryHandle, VmRegistration};
-    use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallEntry};
-
-    fn publish_builtin_firewall_catalog(
-        registry: &ProxyRegistryHandle,
-        connector_slugs: &HashSet<String>,
-    ) {
-        registry.publish_builtin_firewall_catalog_for_tests(
-            connector_slugs
-                .iter()
-                .map(|connector_slug| {
-                    (
-                        connector_slug.clone(),
-                        Firewall {
-                            name: connector_slug.clone(),
-                            apis: vec![FirewallApi {
-                                id: String::new(),
-                                base: format!("https://api.{connector_slug}.example.com"),
-                                auth: FirewallAuth {
-                                    headers: HashMap::new(),
-                                    base: None,
-                                    query: None,
-                                    aws_sigv4: None,
-                                },
-                                host_policy: None,
-                                permissions: None,
-                            }],
-                        },
-                    )
-                })
-                .collect(),
-        );
-    }
+    use crate::types::FirewallEntry;
 
     fn api_client_for_url(api_url: String) -> ApiClient {
         ApiClient::new(
@@ -1219,7 +1188,6 @@ mod tests {
                 .iter()
                 .map(|connector_slug| (*connector_slug).to_string())
                 .collect::<HashSet<_>>();
-            publish_builtin_firewall_catalog(&registry, &connector_slugs);
             let firewalls = connector_slugs
                 .iter()
                 .map(|connector_slug| FirewallEntry::Builtin {
@@ -1486,7 +1454,6 @@ mod tests {
             .expect("empty registry should be written");
         let lock_path = dir.path().join("registry.lock");
         let registry = ProxyRegistryHandle::new(registry_path.clone(), lock_path.clone());
-        publish_builtin_firewall_catalog(&registry, &HashSet::from(["slack".to_string()]));
         let firewalls = vec![FirewallEntry::Builtin {
             name: "slack".to_string(),
             base_url_vars: None,

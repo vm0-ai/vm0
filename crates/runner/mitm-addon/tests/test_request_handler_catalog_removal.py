@@ -1,15 +1,16 @@
-"""Active-run request behavior when a refreshed catalog removes a connector."""
+"""Active-run request behavior when a valid catalog removes a connector."""
 
 import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock
 
+import pytest
+
 import auth
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import registry
-from body_limits import STREAM_BUFFER_LIMIT
 from tests.firewall_helpers import cancel_pending_task
 from tests.registry_builtin_helpers import write_catalog_cache
 from tests.registry_helpers import write_multi_vm_registry
@@ -17,26 +18,24 @@ from tests.registry_helpers import write_multi_vm_registry
 _CLIENT_IP = "10.200.0.5"
 _REMOVED = "removed"
 _RETAINED = "retained"
-_MODEL_PROVIDER = "model-provider:test"
-_SHARED_BASE = "https://shared.example.com"
 
 
-def _firewall(
-    name: str,
-    base: str,
-    *,
-    auth_config: dict[str, object] | None = None,
-) -> dict[str, object]:
+def _firewall(name: str, base: str) -> dict[str, object]:
+    secret_name = f"{name.upper()}_TOKEN"
     return {
         "name": name,
         "apis": [
             {
                 "base": base,
-                "auth": auth_config or {"headers": {}},
+                "auth": {
+                    "headers": {
+                        "Authorization": f"Bearer ${{{{ secrets.{secret_name} }}}}",
+                    }
+                },
                 "permissions": [
                     {
                         "name": "items.read",
-                        "rules": ["ANY /items/{id}"],
+                        "rules": ["GET /items/{id}"],
                     }
                 ],
             }
@@ -44,24 +43,7 @@ def _firewall(
     }
 
 
-def _catalog_firewalls() -> dict[str, dict]:
-    return {
-        _REMOVED: _firewall(
-            _REMOVED,
-            _SHARED_BASE,
-            auth_config={"headers": {"Authorization": "Bearer ${{ secrets.REMOVED_TOKEN }}"}},
-        ),
-        _RETAINED: _firewall(
-            _RETAINED,
-            _SHARED_BASE,
-            auth_config={"headers": {"Authorization": "Bearer ${{ secrets.RETAINED_TOKEN }}"}},
-        ),
-        _MODEL_PROVIDER: _firewall(_MODEL_PROVIDER, "https://model.example.com"),
-    }
-
-
 def _active_vm(tmp_path: Path) -> dict[str, object]:
-    firewalls = _catalog_firewalls()
     return {
         "runId": "run-catalog-removal",
         "cliAgentType": "codex",
@@ -72,9 +54,7 @@ def _active_vm(tmp_path: Path) -> dict[str, object]:
         "firewalls": [
             {"kind": "builtin", "name": _REMOVED},
             {"kind": "builtin", "name": _RETAINED},
-            {"kind": "builtin", "name": _MODEL_PROVIDER},
         ],
-        "builtinFirewallAdmissions": firewalls,
         "networkPolicies": {
             name: {
                 "allow": ["items.read"],
@@ -82,13 +62,18 @@ def _active_vm(tmp_path: Path) -> dict[str, object]:
                 "ask": [],
                 "unknownPolicy": "deny",
             }
-            for name in firewalls
+            for name in (_REMOVED, _RETAINED)
         },
         "billableFirewalls": [],
     }
 
 
-def _write_active_state(tmp_path: Path) -> tuple[Path, Path]:
+def _write_active_state(
+    tmp_path: Path,
+    *,
+    removed_base: str,
+    retained_base: str,
+) -> tuple[Path, Path]:
     registry_path = tmp_path / "registry.json"
     cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
     write_multi_vm_registry(registry_path, {_CLIENT_IP: _active_vm(tmp_path)})
@@ -96,87 +81,73 @@ def _write_active_state(tmp_path: Path) -> tuple[Path, Path]:
         cache_path,
         digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         version="catalog-a",
-        firewalls=_catalog_firewalls(),
+        firewalls={
+            _REMOVED: _firewall(_REMOVED, removed_base),
+            _RETAINED: _firewall(_RETAINED, retained_base),
+        },
     )
     return registry_path, cache_path
 
 
-def _remove_connector_from_catalog(cache_path: Path) -> None:
+def _remove_from_catalog(cache_path: Path, *, retained_base: str) -> None:
     next_path = cache_path.with_name("builtin-firewall-catalog-cache.next.json")
-    firewalls = _catalog_firewalls()
-    del firewalls[_REMOVED]
     write_catalog_cache(
         next_path,
         digest="sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         version="catalog-b",
-        firewalls=firewalls,
+        firewalls={_RETAINED: _firewall(_RETAINED, retained_base)},
     )
     next_path.replace(cache_path)
 
 
-def _connector_flow(real_flow, headers, *, name: str, host: str):
-    return real_flow(
-        with_response=False,
-        client_ip=_CLIENT_IP,
-        host=host,
-        path="/items/123",
-        request_headers=headers(
-            ("Host", host),
-            ("X-VM0-Connector-Intent", name),
-        ),
-    )
-
-
-def _assert_connector_unavailable(flow) -> None:
-    assert flow.response is not None
-    assert flow.response.status_code == 424
-    assert json.loads(flow.response.content) == {
-        "error": "connector_not_configured",
-        "message": "Connector is no longer available for this active run",
-        "permission": _REMOVED,
-        "base": _SHARED_BASE,
-        "connectors": [_REMOVED],
-    }
-    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
-    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "connector_not_configured"
-    assert flow.metadata[metadata_keys.FIREWALL_NAME] == _REMOVED
-    assert flow.request.headers.get("Authorization") is None
-
-
-async def test_catalog_removal_isolates_active_vm_after_addon_restart(
+@pytest.mark.parametrize(
+    ("removed_host", "retained_host", "include_intent"),
+    [
+        ("removed.example.com", "retained.example.com", False),
+        ("shared.example.com", "shared.example.com", True),
+    ],
+    ids=["unique-endpoint", "shared-endpoint"],
+)
+async def test_removed_connector_becomes_ordinary_request_without_auth(
     tmp_path,
     real_flow,
     mitm_ctx,
     fake_firewall_headers,
     headers,
+    removed_host,
+    retained_host,
+    include_intent,
 ):
-    registry_path, cache_path = _write_active_state(tmp_path)
-    _remove_connector_from_catalog(cache_path)
+    removed_base = f"https://{removed_host}"
+    retained_base = f"https://{retained_host}"
+    registry_path, cache_path = _write_active_state(
+        tmp_path,
+        removed_base=removed_base,
+        retained_base=retained_base,
+    )
+    _remove_from_catalog(cache_path, retained_base=retained_base)
     registry.reset_cache_for_tests()
-
-    removed_flow = _connector_flow(
-        real_flow,
-        headers,
-        name=_REMOVED,
-        host="shared.example.com",
-    )
-    retained_flow = _connector_flow(
-        real_flow,
-        headers,
-        name=_RETAINED,
-        host="shared.example.com",
-    )
-    model_flow = _connector_flow(
-        real_flow,
-        headers,
-        name=_MODEL_PROVIDER,
-        host="model.example.com",
-    )
-    platform_flow = real_flow(
+    removed_intent = (("X-VM0-Connector-Intent", _REMOVED),) if include_intent else ()
+    retained_intent = (("X-VM0-Connector-Intent", _RETAINED),) if include_intent else ()
+    removed_flow = real_flow(
         with_response=False,
         client_ip=_CLIENT_IP,
-        host="api.vm0.ai",
-        path="/api/runs/heartbeat",
+        host=removed_host,
+        path="/items/123",
+        request_headers=headers(
+            ("Host", removed_host),
+            *removed_intent,
+        ),
+    )
+    retained_flow = real_flow(
+        with_response=False,
+        client_ip=_CLIENT_IP,
+        host=retained_host,
+        path="/items/123",
+        request_headers=headers(
+            ("Host", retained_host),
+            *retained_intent,
+        ),
     )
 
     with (
@@ -188,63 +159,22 @@ async def test_catalog_removal_isolates_active_vm_after_addon_restart(
         fake_firewall_headers(headers={"Authorization": "Bearer retained"}) as auth_fetch,
     ):
         state = registry.load_registry_state(str(registry_path))
-        assert not isinstance(state, registry.RegistryUnavailable)
-        assert state.invalid_vms == {}
-        assert state.unavailable_builtin_firewalls == {_CLIENT_IP: frozenset({_REMOVED})}
-
         await mitm_addon.request(removed_flow)
         await mitm_addon.request(retained_flow)
-        await mitm_addon.request(model_flow)
-        await mitm_addon.request(platform_flow)
 
-    _assert_connector_unavailable(removed_flow)
+    assert not isinstance(state, registry.RegistryUnavailable)
+    assert state.invalid_vms == {}
+    assert state.omitted_builtin_firewalls == {_CLIENT_IP: frozenset({_REMOVED})}
+    assert [firewall["name"] for firewall in state.vms[_CLIENT_IP]["firewalls"]] == [_RETAINED]
     auth_fetch.assert_awaited_once()
+    assert removed_flow.response is None
+    assert removed_flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert metadata_keys.FIREWALL_NAME not in removed_flow.metadata
+    assert "Authorization" not in removed_flow.request.headers
+    assert "X-VM0-Connector-Intent" not in removed_flow.request.headers
     assert retained_flow.response is None
-    assert retained_flow.request.headers["Authorization"] == "Bearer retained"
     assert retained_flow.metadata[metadata_keys.FIREWALL_NAME] == _RETAINED
-    assert model_flow.response is None
-    assert model_flow.metadata[metadata_keys.FIREWALL_NAME] == _MODEL_PROVIDER
-    assert platform_flow.response is None
-    assert platform_flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
-
-
-async def test_requestheaders_blocks_removed_connector_before_body_or_auth(
-    tmp_path,
-    real_flow,
-    mitm_ctx,
-    fake_firewall_headers,
-    headers,
-):
-    registry_path, cache_path = _write_active_state(tmp_path)
-    _remove_connector_from_catalog(cache_path)
-    flow = real_flow(
-        with_response=False,
-        client_ip=_CLIENT_IP,
-        host="shared.example.com",
-        method="POST",
-        path="/items/123",
-        request_headers=headers(
-            ("Host", "shared.example.com"),
-            ("X-VM0-Connector-Intent", _REMOVED),
-            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
-        ),
-    )
-
-    with (
-        mitm_ctx(
-            registry_path=str(registry_path),
-            builtin_firewall_catalog_cache_path=str(cache_path),
-            api_url="https://api.vm0.ai",
-        ),
-        fake_firewall_headers() as auth_fetch,
-    ):
-        assert mitm_addon.requestheaders(flow) is None
-        await mitm_addon.request(flow)
-
-    auth_fetch.assert_not_awaited()
-    _assert_connector_unavailable(flow)
-    assert flow.metadata[mitm_addon._REQUEST_HEADERS_TERMINATED] is True
-    assert not callable(flow.request.stream)
+    assert retained_flow.request.headers["Authorization"] == "Bearer retained"
 
 
 async def test_catalog_removal_during_auth_revalidation_discards_old_credentials(
@@ -254,12 +184,22 @@ async def test_catalog_removal_during_auth_revalidation_discards_old_credentials
     monkeypatch,
     headers,
 ):
-    registry_path, cache_path = _write_active_state(tmp_path)
-    flow = _connector_flow(
-        real_flow,
-        headers,
-        name=_REMOVED,
-        host="shared.example.com",
+    removed_base = "https://removed.example.com"
+    retained_base = "https://retained.example.com"
+    registry_path, cache_path = _write_active_state(
+        tmp_path,
+        removed_base=removed_base,
+        retained_base=retained_base,
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip=_CLIENT_IP,
+        host="removed.example.com",
+        path="/items/123",
+        request_headers=headers(
+            ("Host", "removed.example.com"),
+            ("X-VM0-Connector-Intent", _REMOVED),
+        ),
     )
     auth_resolution_entered = asyncio.Event()
     release_auth_resolution = asyncio.Event()
@@ -288,13 +228,16 @@ async def test_catalog_removal_during_auth_revalidation_discards_old_credentials
         request_task = asyncio.create_task(mitm_addon.request(flow))
         try:
             await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
-            _remove_connector_from_catalog(cache_path)
+            _remove_from_catalog(cache_path, retained_base=retained_base)
             release_auth_resolution.set()
-            _ = await request_task
+            await request_task
         finally:
             release_auth_resolution.set()
             await cancel_pending_task(request_task)
 
     auth_fetch.assert_awaited_once()
-    _assert_connector_unavailable(flow)
-    assert "stale" not in flow.request.url
+    assert flow.response is not None
+    assert flow.response.status_code == 409
+    assert json.loads(flow.response.content)["error"] == "firewall_authorization_changed"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "firewall_authorization_changed"
+    assert "Authorization" not in flow.request.headers

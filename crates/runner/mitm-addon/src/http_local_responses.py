@@ -111,44 +111,6 @@ def block_invalid_registry_vm(
     )
 
 
-def block_firewall_unavailable(
-    flow: http.HTTPFlow,
-    *,
-    name: str,
-    base: str,
-) -> None:
-    """Reject a connector removed from the catalog after this VM was admitted."""
-    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
-    log_proxy_entry(
-        proxy_log_path,
-        "info",
-        "Connector is no longer available for this active run",
-        type="firewall",
-        firewall_base=base,
-        name=name,
-    )
-    flow.metadata[metadata_keys.FIREWALL_BASE] = base
-    flow.metadata[metadata_keys.FIREWALL_NAME] = name
-    flow_metadata.set_firewall_decision(
-        flow.metadata,
-        "BLOCK",
-        error="connector_not_configured",
-    )
-    flow.response = http.Response.make(
-        424,
-        json.dumps(
-            {
-                "error": "connector_not_configured",
-                "message": "Connector is no longer available for this active run",
-                "permission": name,
-                "base": base,
-                "connectors": [name],
-            }
-        ).encode(),
-        {"Content-Type": "application/json"},
-    )
-
-
 def block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
     flow_metadata.set_firewall_decision(
         flow.metadata,

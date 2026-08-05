@@ -1,10 +1,7 @@
 """Registry VM firewall entry resolution."""
 
 import copy
-import hashlib
-import json
 from dataclasses import dataclass
-from typing import Literal, NamedTuple
 
 import builtin_base_url
 import builtin_firewall_cache
@@ -13,17 +10,9 @@ import builtin_host_policy
 BuiltinFirewallCatalogFileKey = builtin_firewall_cache.CatalogFileKey
 BuiltinFirewallCatalogIdentity = builtin_firewall_cache.CatalogIdentity
 BuiltinFirewallCatalogSnapshot = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot
-
-
-class BuiltinFirewallAdmissionIdentity(NamedTuple):
-    source: Literal["admission"]
-    firewall_digest: str
-
-
-BuiltinFirewallSourceIdentity = BuiltinFirewallCatalogIdentity | BuiltinFirewallAdmissionIdentity
 BuiltinFirewallCoreCacheKey = tuple[
     str,
-    BuiltinFirewallSourceIdentity,
+    BuiltinFirewallCatalogIdentity,
     tuple[tuple[str, str], ...],
     tuple[str, ...],
 ]
@@ -44,19 +33,20 @@ class ResolvedFirewallEntries:
     When firewalls are present, `builtin_cache_keys` is positionally aligned
     with them: `builtin_cache_keys[i]` describes `firewalls[i]`. A per-entry
     cache key of `None` means that firewall came from an inline entry and must
-    bypass builtin compiled-core cache reuse.
+    bypass builtin compiled-core cache reuse. `omitted_builtin_names` records
+    compact builtin references absent from the otherwise valid current catalog.
     """
 
     firewalls: list[dict] | None
     builtin_cache_keys: tuple[BuiltinFirewallCoreCacheKey | None, ...] | None
-    unavailable_names: frozenset[str] = frozenset()
+    omitted_builtin_names: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         if self.firewalls is None:
             if self.builtin_cache_keys is not None:
                 raise ValueError("builtin cache keys must be absent when firewalls are absent")
-            if self.unavailable_names:
-                raise ValueError("unavailable names must be absent when firewalls are absent")
+            if self.omitted_builtin_names:
+                raise ValueError("omitted builtin names must be absent when firewalls are absent")
             return
         if self.builtin_cache_keys is None:
             raise ValueError("builtin cache keys must be present when firewalls are present")
@@ -68,7 +58,6 @@ class ResolvedFirewallEntries:
 class _ResolvedBuiltinFirewallEntry:
     firewall: dict
     cache_key: BuiltinFirewallCoreCacheKey
-    unavailable: bool
 
 
 def reset_cache_for_tests() -> None:
@@ -132,8 +121,7 @@ def _resolution_error(error: Exception) -> FirewallEntryResolutionError:
 def _catalog_source_for_name(
     raw_name: str,
     catalog_snapshot: BuiltinFirewallCatalogSnapshot,
-    vm: dict,
-) -> tuple[dict, BuiltinFirewallSourceIdentity, bool]:
+) -> tuple[dict, BuiltinFirewallCatalogIdentity] | None:
     cached_catalog = catalog_snapshot.catalog
     if cached_catalog is None:
         reason = catalog_snapshot.unavailable_reason or "cache_unavailable"
@@ -146,55 +134,21 @@ def _catalog_source_for_name(
             f"{reason} ({catalog_snapshot.cache_path})"
         )
     catalog_firewall = cached_catalog.firewalls.get(raw_name)
-    if catalog_firewall is not None:
-        return catalog_firewall, cached_catalog.identity, False
-
-    admissions = vm.get("builtinFirewallAdmissions")
-    if not isinstance(admissions, dict):
-        raise FirewallEntryResolutionError(
-            f'builtin firewall "{raw_name}" missing from catalog cache '
-            f"(catalog_digest={cached_catalog.identity.catalog_digest}, "
-            f"catalog_version={cached_catalog.identity.catalog_version})"
-        )
-    admission_firewall = admissions.get(raw_name)
-    if not isinstance(admission_firewall, dict):
-        raise FirewallEntryResolutionError(
-            f'builtin firewall "{raw_name}" missing a valid VM admission snapshot'
-        )
-    try:
-        builtin_firewall_cache.validate_firewall(raw_name, admission_firewall)
-    except builtin_firewall_cache.BuiltinFirewallCatalogCacheError as e:
-        raise FirewallEntryResolutionError(
-            f'builtin firewall "{raw_name}" VM admission snapshot is invalid: {e}'
-        ) from e
-    canonical_firewall = json.dumps(
-        admission_firewall,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode()
-    admission_identity = BuiltinFirewallAdmissionIdentity(
-        source="admission",
-        firewall_digest=f"sha256:{hashlib.sha256(canonical_firewall).hexdigest()}",
-    )
-    return admission_firewall, admission_identity, True
+    if catalog_firewall is None:
+        return None
+    return catalog_firewall, cached_catalog.identity
 
 
 def _resolve_builtin_firewall_entry(
     entry: dict,
     *,
-    vm: dict,
+    raw_name: str,
     catalog_snapshot: BuiltinFirewallCatalogSnapshot,
-) -> _ResolvedBuiltinFirewallEntry:
-    raw_name = entry.get("name")
-    if not isinstance(raw_name, str) or raw_name == "":
-        raise FirewallEntryResolutionError("builtin firewall entry name must be a non-empty string")
-
-    catalog_firewall, source_identity, unavailable = _catalog_source_for_name(
-        raw_name,
-        catalog_snapshot,
-        vm,
-    )
+) -> _ResolvedBuiltinFirewallEntry | None:
+    catalog_source = _catalog_source_for_name(raw_name, catalog_snapshot)
+    if catalog_source is None:
+        return None
+    catalog_firewall, catalog_identity = catalog_source
 
     firewall, raw_apis = _copy_builtin_firewall_shell(
         firewall_name=raw_name,
@@ -241,11 +195,10 @@ def _resolve_builtin_firewall_entry(
         firewall=firewall,
         cache_key=(
             raw_name,
-            source_identity,
+            catalog_identity,
             tuple(sorted(vars_map.items())),
             tuple(resolved_bases),
         ),
-        unavailable=unavailable,
     )
 
 
@@ -286,38 +239,46 @@ def resolve_firewall_entries(
     IDs are preserved. Callers must validate `vm["runId"]` as a non-empty string
     before calling.
 
-    Raises `FirewallEntryResolutionError` for malformed firewall lists or
-    entries, unsupported entry kinds, unknown builtins, invalid builtin base URL
-    templates, and builtin host-policy validation failures.
+    Builtin names absent from a valid current catalog are omitted and returned
+    in `omitted_builtin_names`. Raises `FirewallEntryResolutionError` for an
+    unavailable catalog, malformed firewall lists or entries, unsupported entry
+    kinds, invalid builtin base URL templates, and builtin host-policy validation
+    failures.
     """
     raw_firewalls = vm.get("firewalls")
     if raw_firewalls is None:
-        return ResolvedFirewallEntries(None, None, frozenset())
+        return ResolvedFirewallEntries(None, None)
     if not isinstance(raw_firewalls, list):
         raise FirewallEntryResolutionError("firewalls must be a list")
 
     resolved: list[dict] = []
     builtin_cache_keys: list[BuiltinFirewallCoreCacheKey | None] = []
-    unavailable_names: set[str] = set()
+    omitted_builtin_names: set[str] = set()
     for entry in raw_firewalls:
         if not isinstance(entry, dict):
             raise FirewallEntryResolutionError("firewall entries must be objects")
 
         kind = entry.get("kind")
         if kind == "builtin":
+            raw_name = entry.get("name")
+            if not isinstance(raw_name, str) or raw_name == "":
+                raise FirewallEntryResolutionError(
+                    "builtin firewall entry name must be a non-empty string"
+                )
             if builtin_firewall_catalog_snapshot is None:
                 builtin_firewall_catalog_snapshot = load_catalog_snapshot(
                     builtin_firewall_catalog_cache_path
                 )
             resolved_builtin = _resolve_builtin_firewall_entry(
                 entry,
-                vm=vm,
+                raw_name=raw_name,
                 catalog_snapshot=builtin_firewall_catalog_snapshot,
             )
+            if resolved_builtin is None:
+                omitted_builtin_names.add(raw_name)
+                continue
             resolved.append(resolved_builtin.firewall)
             builtin_cache_keys.append(resolved_builtin.cache_key)
-            if resolved_builtin.unavailable:
-                unavailable_names.add(resolved_builtin.firewall["name"])
             continue
         if kind == "inline":
             firewall = entry.get("firewall")
@@ -334,5 +295,5 @@ def resolve_firewall_entries(
     return ResolvedFirewallEntries(
         resolved,
         tuple(builtin_cache_keys),
-        frozenset(unavailable_names),
+        frozenset(omitted_builtin_names),
     )

@@ -3,8 +3,6 @@
 import os
 from unittest.mock import patch
 
-import pytest
-
 import builtin_firewall_cache
 import builtin_host_policy
 import matching
@@ -48,109 +46,32 @@ def _catalog_snapshot(
 
 
 class TestRegistryBuiltinSnapshot:
-    def test_runner_catalog_cache_missing_firewall_fails_closed(self):
+    def test_runner_catalog_cache_omits_missing_firewall(self):
         snapshot = _catalog_snapshot(
             digest_char="a",
             version="catalog-a",
             firewalls={
-                "other": cache_firewall(
-                    "other",
+                "retained": cache_firewall(
+                    "retained",
                     "https://cache.example.com",
                 )
             },
         )
-        assert snapshot.catalog is not None
-        rewritten_key = builtin_firewall_cache.CatalogFileKey(
-            absolute_path="catalog-cache/catalog-a.json",
-            st_dev=1,
-            st_ino=2,
-            st_mtime_ns=3,
-            st_size=4,
-        )
-        rewritten_snapshot = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot(
-            dependency_file_key=rewritten_key,
-            catalog=builtin_firewall_cache.BuiltinFirewallCatalog(
-                identity=builtin_firewall_cache.CatalogIdentity(
-                    source=snapshot.catalog.identity.source,
-                    catalog_digest=snapshot.catalog.identity.catalog_digest,
-                    catalog_version=snapshot.catalog.identity.catalog_version,
-                    file_key=rewritten_key,
-                ),
-                firewalls=snapshot.catalog.firewalls,
-            ),
-            cache_path=rewritten_key.absolute_path,
-        )
-        expected_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-
-        for current_snapshot in (snapshot, rewritten_snapshot):
-            with pytest.raises(
-                registry_firewalls.FirewallEntryResolutionError,
-                match='builtin firewall "fallback" missing from catalog cache '
-                rf"\(catalog_digest={expected_digest}, catalog_version=catalog-a\)",
-            ):
-                registry_firewalls.resolve_firewall_entries(
-                    builtin_vm("run-fallback", "fallback"),
-                    builtin_firewall_catalog_snapshot=current_snapshot,
-                )
-
-    def test_current_catalog_ignores_stale_admission_state(self):
-        current = cache_firewall("current", "https://current.example.com")
-        vm = builtin_vm("run-current", "current")
-        vm["builtinFirewallAdmissions"] = {"current": "malformed"}
+        vm = builtin_vm("run-removal", "missing")
+        vm["firewalls"].append({"kind": "builtin", "name": "retained"})
 
         resolved = registry_firewalls.resolve_firewall_entries(
             vm,
-            builtin_firewall_catalog_snapshot=_catalog_snapshot(
-                digest_char="a",
-                version="catalog-a",
-                firewalls={"current": current},
-            ),
+            builtin_firewall_catalog_snapshot=snapshot,
         )
 
-        assert resolved.unavailable_names == frozenset()
         assert resolved.firewalls is not None
-        assert resolved.firewalls[0]["apis"][0]["base"] == "https://current.example.com"
-
-    def test_malformed_admission_for_removed_builtin_fails_closed(self):
-        vm = builtin_vm("run-removed", "removed")
-        vm["builtinFirewallAdmissions"] = {
-            "removed": cache_firewall("different", "https://removed.example.com")
-        }
-
-        with pytest.raises(
-            registry_firewalls.FirewallEntryResolutionError,
-            match="VM admission snapshot is invalid",
-        ):
-            registry_firewalls.resolve_firewall_entries(
-                vm,
-                builtin_firewall_catalog_snapshot=_catalog_snapshot(
-                    digest_char="a",
-                    version="catalog-a",
-                    firewalls={
-                        "retained": cache_firewall("retained", "https://retained.example.com")
-                    },
-                ),
-            )
-
-    def test_unavailable_catalog_never_uses_vm_admission(self):
-        vm = builtin_vm("run-removed", "removed")
-        vm["builtinFirewallAdmissions"] = {
-            "removed": cache_firewall("removed", "https://removed.example.com")
-        }
-        unavailable = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot(
-            dependency_file_key=None,
-            catalog=None,
-            unavailable_reason="cache_file_missing",
-        )
-
-        with pytest.raises(
-            registry_firewalls.FirewallEntryResolutionError,
-            match="catalog cache unavailable: cache_file_missing",
-        ):
-            registry_firewalls.resolve_firewall_entries(
-                vm,
-                builtin_firewall_catalog_snapshot=unavailable,
-            )
+        assert [firewall["name"] for firewall in resolved.firewalls] == ["retained"]
+        assert resolved.omitted_builtin_names == frozenset({"missing"})
+        assert resolved.builtin_cache_keys is not None
+        assert len(resolved.builtin_cache_keys) == 1
+        assert resolved.builtin_cache_keys[0] is not None
+        assert resolved.builtin_cache_keys[0][0] == "retained"
 
     def test_catalog_identity_is_checked_only_for_cached_builtin_registry(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
@@ -504,6 +425,57 @@ class TestRegistryBuiltinSnapshot:
         )
         assert first_runtime_policy is not second_runtime_policy
         assert first_firewall_core(first_compiled) is not first_firewall_core(second_compiled)
+
+    def test_catalog_removal_keeps_vm_valid_after_registry_cache_reset(self, tmp_path, mitm_ctx):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        vm = builtin_vm("run-removal", "removed")
+        vm["firewalls"].append({"kind": "builtin", "name": "retained"})
+        write_multi_vm_registry(registry_path, {"10.200.0.1": vm})
+        write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={
+                "removed": cache_firewall("removed", "https://removed.example.com"),
+                "retained": cache_firewall("retained", "https://retained.example.com"),
+            },
+        )
+        os.utime(cache_path, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            first_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            write_catalog_cache(
+                cache_path,
+                digest=("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+                version="catalog-b",
+                firewalls={"retained": cache_firewall("retained", "https://retained.example.com")},
+            )
+            os.utime(
+                cache_path,
+                ns=(1_700_000_000_000_000_001, 1_700_000_000_000_000_001),
+            )
+            registry.reset_cache_for_tests()
+            second_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            second_state = registry.load_registry_state(str(registry_path))
+
+        assert first_context is not None
+        first_vm_info, first_compiled, _ = first_context
+        assert first_compiled is not None
+        assert [firewall["name"] for firewall in first_vm_info["firewalls"]] == [
+            "removed",
+            "retained",
+        ]
+        assert second_context is not None
+        second_vm_info, second_compiled, _ = second_context
+        assert second_compiled is not None
+        assert [firewall["name"] for firewall in second_vm_info["firewalls"]] == ["retained"]
+        assert not isinstance(second_state, registry.RegistryUnavailable)
+        assert second_state.invalid_vms == {}
+        assert second_state.omitted_builtin_firewalls == {"10.200.0.1": frozenset({"removed"})}
 
     def test_runner_catalog_cache_change_recompiles_core_when_metadata_is_unchanged(
         self, tmp_path, mitm_ctx
