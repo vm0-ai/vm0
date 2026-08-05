@@ -11,6 +11,7 @@ export const ARTIFACT_CATALOG_KINDS = [
   "video",
   "avatar",
   "presentation",
+  "shared-thread",
 ] as const;
 
 const artifactKindSchema = z.enum(ARTIFACT_CATALOG_KINDS);
@@ -118,6 +119,10 @@ const artifactDetailSchema = z.discriminatedUnion("kind", [
   artifactDetailBaseSchema.extend({
     kind: z.literal("presentation"),
     site: artifactHostedSiteSchema,
+  }),
+  artifactDetailBaseSchema.extend({
+    kind: z.literal("shared-thread"),
+    sharedThread: z.object({ id: z.string().uuid() }),
   }),
 ]);
 

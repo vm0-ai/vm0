@@ -194,6 +194,7 @@ import {
   pauseChatThreadGoal$,
 } from "./chat-goal.ts";
 import { createChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
+import { createChatThreadSharingSignals } from "./chat-thread-sharing.ts";
 import type {
   ChatEventSignals,
   SendChatEventInput,
@@ -3745,6 +3746,7 @@ function createChatPanelSignalsWithDraft(
     draft,
   );
   const feedback = createChatThreadFeedbackSignals(threadId, composer.feedback);
+  const sharing = createChatThreadSharingSignals(threadId);
   const messages: MessageListSignals = {
     ...createChatThreadMessagePipeline({
       threadId,
@@ -3780,6 +3782,7 @@ function createChatPanelSignalsWithDraft(
     ...container,
     composer,
     feedback,
+    sharing,
     ...threadOwned,
     sidebar: messages.sidebar,
     ...publicChatThreadEventSignals(messages),

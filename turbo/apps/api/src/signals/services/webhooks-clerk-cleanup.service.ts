@@ -25,6 +25,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { sharedThreads } from "@vm0/db/schema/shared-thread";
 import { storages } from "@vm0/db/schema/storage";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
@@ -802,6 +803,7 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
     .where(eq(telegramInstallations.ownerUserId, userId));
   await deleteUserUsageData(db, userId);
   await db.delete(artifacts).where(eq(artifacts.authorUserId, userId));
+  await db.delete(sharedThreads).where(eq(sharedThreads.userId, userId));
   await db.delete(agentRuns).where(eq(agentRuns.userId, userId));
 
   const composeRows = await db

@@ -546,6 +546,8 @@
         "label": "アーティファクトの種類のフィルター",
         "presentation": "プレゼンテーション",
         "presentationAria": "プレゼンテーションのアーティファクトを表示する",
+        "sharedConversation": "共有された会話",
+        "sharedConversationAria": "共有された会話のアーティファクトを表示",
         "video": "動画",
         "videoAria": "ビデオアーティファクトを表示する",
         "website": "ウェブサイト",
@@ -591,6 +593,7 @@
       "json": "JSON",
       "markdown": "マークダウン",
       "presentation": "プレゼンテーション",
+      "sharedConversation": "共有された会話",
       "text": "テキスト",
       "video": "ビデオ"
     },
@@ -621,6 +624,7 @@
       "videoLabel": "{{filename}} のビデオ プレビュー"
     },
     "sidebar": {
+      "openSharedConversation": "共有された会話を開く",
       "panelTitle": "アーティファクト",
       "singularTitle": "アーティファクト",
       "unavailable": "このアーティファクトはもう入手できません。"
@@ -1497,6 +1501,21 @@
       "waitingIn": "待機中",
       "worked": "働いた",
       "workedFor": "{{duration}} で働いていました"
+    },
+    "sharing": {
+      "cancel": "キャンセル",
+      "close": "閉じる",
+      "copyFailed": "リンクをコピーできませんでした",
+      "copyLink": "リンクをコピー",
+      "create": "共有",
+      "createFailed": "共有された会話を作成できませんでした。もう一度お試しください。",
+      "deselectGroup": "メッセージグループの選択を解除",
+      "linkCopied": "リンクをコピーしました",
+      "selectedCount_other": "{{count}}件選択中",
+      "selectGroup": "メッセージグループを選択",
+      "shareLink": "共有された会話のリンク",
+      "start": "メッセージを共有",
+      "tooLarge": "共有するメッセージを減らしてください"
     },
     "shortcuts": {
       "number": "番号"
@@ -4564,6 +4583,12 @@
       "description": "お探しのページは存在しません。",
       "title": "ページが見つかりません"
     }
+  },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "この共有された会話は存在しません。",
+    "notFoundTitle": "共有された会話が見つかりません",
+    "tryOkou": "Okouを試す"
   },
   "usage": {
     "automations": {

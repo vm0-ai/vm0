@@ -8,6 +8,7 @@ import {
   IconFile,
   IconPhoto,
   IconPresentationAnalytics,
+  IconMessages,
   IconUser,
   IconVideo,
   IconWorld,
@@ -48,6 +49,7 @@ const ARTIFACT_KIND_OPTIONS: readonly ArtifactCatalogKind[] = [
   "image",
   "video",
   "avatar",
+  "shared-thread",
   "file",
 ];
 
@@ -64,6 +66,8 @@ function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
       <IconVideo size={16} stroke={1.7} />
     ) : kind === "avatar" ? (
       <IconUser size={16} stroke={1.7} />
+    ) : kind === "shared-thread" ? (
+      <IconMessages size={16} stroke={1.7} />
     ) : (
       <IconFile size={16} stroke={1.7} />
     );
@@ -88,9 +92,13 @@ function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
               ? t(($) => {
                   return $.artifacts.kinds.avatar;
                 })
-              : t(($) => {
-                  return $.artifacts.kinds.file;
-                });
+              : kind === "shared-thread"
+                ? t(($) => {
+                    return $.artifacts.kinds.sharedConversation;
+                  })
+                : t(($) => {
+                    return $.artifacts.kinds.file;
+                  });
 
   return (
     <span
@@ -303,10 +311,12 @@ function ArtifactCatalogKindFilter({
   readonly onKindChange: (value: ArtifactCatalogKind | null) => void;
 }) {
   const { t } = useTranslation();
-  const options = supportedKinds?.includes("avatar")
-    ? ARTIFACT_KIND_OPTIONS
+  const options = supportedKinds
+    ? ARTIFACT_KIND_OPTIONS.filter((kind) => {
+        return supportedKinds.includes(kind);
+      })
     : ARTIFACT_KIND_OPTIONS.filter((kind) => {
-        return kind !== "avatar";
+        return kind !== "avatar" && kind !== "shared-thread";
       });
   return (
     <div
@@ -338,9 +348,13 @@ function ArtifactCatalogKindFilter({
                     ? t(($) => {
                         return $.artifacts.catalog.filters.avatar;
                       })
-                    : t(($) => {
-                        return $.artifacts.catalog.filters.file;
-                      });
+                    : kind === "shared-thread"
+                      ? t(($) => {
+                          return $.artifacts.catalog.filters.sharedConversation;
+                        })
+                      : t(($) => {
+                          return $.artifacts.catalog.filters.file;
+                        });
         const ariaLabel =
           kind === "presentation"
             ? t(($) => {
@@ -362,9 +376,14 @@ function ArtifactCatalogKindFilter({
                     ? t(($) => {
                         return $.artifacts.catalog.filters.avatarAria;
                       })
-                    : t(($) => {
-                        return $.artifacts.catalog.filters.fileAria;
-                      });
+                    : kind === "shared-thread"
+                      ? t(($) => {
+                          return $.artifacts.catalog.filters
+                            .sharedConversationAria;
+                        })
+                      : t(($) => {
+                          return $.artifacts.catalog.filters.fileAria;
+                        });
         return (
           <button
             key={kind}

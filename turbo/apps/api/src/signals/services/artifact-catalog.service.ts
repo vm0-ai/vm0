@@ -18,6 +18,7 @@ import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import { sharedThreads } from "@vm0/db/schema/shared-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { z } from "zod";
 
@@ -756,29 +757,41 @@ function toArtifactSummary(row: {
 }
 
 /**
- * The registry has no thread column, so a thread filter resolves through the
- * projection file: a file belongs to a thread either directly or via its run.
- * Files that predate `run_uploaded_files.chat_thread_id` fall back to the run
- * association, matching `resolveChatThreadId`'s first two steps.
+ * The registry has no thread column, so a thread filter resolves through each
+ * artifact kind's source association. File-backed artifacts use the projection
+ * file directly or its run, while shared threads retain their nullable source
+ * thread ID after snapshot creation.
  */
 function chatThreadFilter(db: Db, chatThreadId: string) {
-  return inArray(
-    artifacts.projectionFileId,
-    db
-      .select({ id: runUploadedFiles.id })
-      .from(runUploadedFiles)
-      .where(
-        or(
-          eq(runUploadedFiles.chatThreadId, chatThreadId),
-          inArray(
-            runUploadedFiles.runId,
-            db
-              .select({ id: zeroRuns.id })
-              .from(zeroRuns)
-              .where(eq(zeroRuns.chatThreadId, chatThreadId)),
+  return or(
+    inArray(
+      artifacts.projectionFileId,
+      db
+        .select({ id: runUploadedFiles.id })
+        .from(runUploadedFiles)
+        .where(
+          or(
+            eq(runUploadedFiles.chatThreadId, chatThreadId),
+            inArray(
+              runUploadedFiles.runId,
+              db
+                .select({ id: zeroRuns.id })
+                .from(zeroRuns)
+                .where(eq(zeroRuns.chatThreadId, chatThreadId)),
+            ),
           ),
         ),
+    ),
+    and(
+      eq(artifacts.kind, "shared-thread"),
+      inArray(
+        artifacts.entityId,
+        db
+          .select({ id: sharedThreads.id })
+          .from(sharedThreads)
+          .where(eq(sharedThreads.sourceChatThreadId, chatThreadId)),
       ),
+    ),
   );
 }
 
@@ -936,6 +949,32 @@ async function hostedSiteDetail(
   };
 }
 
+async function avatarDetail(
+  db: Db,
+  summary: ArtifactSummary,
+  projectionFileId: string | null,
+  projectionMetadata: Record<string, unknown> | null,
+  signal: AbortSignal,
+): Promise<ArtifactDetail | null> {
+  if (projectionFileId === null) {
+    return null;
+  }
+  const file = await fileDetail(db, projectionFileId, signal);
+  const durationSeconds = projectionMetadata?.durationSeconds;
+  return file
+    ? {
+        ...summary,
+        kind: "avatar",
+        file,
+        model: metadataString(projectionMetadata ?? {}, "model"),
+        durationSeconds:
+          typeof durationSeconds === "number"
+            ? Math.round(durationSeconds)
+            : null,
+      }
+    : null;
+}
+
 /**
  * Load one artifact together with its kind entity. The caller check runs on the
  * registry row alone, so every kind shares the same permission rule.
@@ -978,21 +1017,21 @@ export const getArtifactCatalogEntry$ = command(
     }
 
     const summary = toArtifactSummary(row);
+    if (row.kind === "shared-thread") {
+      return {
+        ...summary,
+        kind: "shared-thread",
+        sharedThread: { id: row.entityId },
+      };
+    }
     if (summary.kind === "avatar") {
-      const file = await fileDetail(db, row.projectionFileId, signal);
-      const durationSeconds = row.projectionMetadata?.durationSeconds;
-      return file
-        ? {
-            ...summary,
-            kind: "avatar",
-            file,
-            model: metadataString(row.projectionMetadata ?? {}, "model"),
-            durationSeconds:
-              typeof durationSeconds === "number"
-                ? Math.round(durationSeconds)
-                : null,
-          }
-        : null;
+      return await avatarDetail(
+        db,
+        summary,
+        row.projectionFileId,
+        row.projectionMetadata,
+        signal,
+      );
     }
 
     if (row.kind === "file") {

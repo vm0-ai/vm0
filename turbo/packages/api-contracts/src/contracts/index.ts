@@ -1822,3 +1822,10 @@ export {
   type AgentPhoneLinkStatusResponse,
   type AgentPhoneStartLinkResponse,
 } from "./zero-integrations-agentphone";
+export {
+  sharedMessageSchema,
+  sharedThreadsContract,
+  type SharedMessage,
+  type SharedThreadResponse,
+  type SharedThreadsContract,
+} from "./shared-threads";

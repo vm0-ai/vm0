@@ -384,6 +384,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.SharedThreadSharing]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Create immutable public snapshots from explicitly selected chat messages.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ArtifactSidebarInlineOpen]: {
     maintainer: "bingjie@vm0.ai",
     description:

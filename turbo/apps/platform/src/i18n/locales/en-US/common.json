@@ -546,6 +546,8 @@
         "label": "Artifact kind filters",
         "presentation": "Presentations",
         "presentationAria": "Show presentation artifacts",
+        "sharedConversation": "Shared conversations",
+        "sharedConversationAria": "Show shared conversation artifacts",
         "video": "Videos",
         "videoAria": "Show video artifacts",
         "website": "Websites",
@@ -591,6 +593,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "Presentation",
+      "sharedConversation": "Shared conversation",
       "text": "Text",
       "video": "Video"
     },
@@ -621,6 +624,7 @@
       "videoLabel": "Video preview for {{filename}}"
     },
     "sidebar": {
+      "openSharedConversation": "Open shared conversation",
       "panelTitle": "Artifacts",
       "singularTitle": "Artifact",
       "unavailable": "This artifact is no longer available."
@@ -1497,6 +1501,22 @@
       "waitingIn": "Waiting in",
       "worked": "Worked",
       "workedFor": "Worked for {{duration}}"
+    },
+    "sharing": {
+      "cancel": "Cancel",
+      "close": "Close",
+      "copyFailed": "Could not copy the link",
+      "copyLink": "Copy link",
+      "create": "Share",
+      "createFailed": "Could not create the shared conversation. Try again.",
+      "deselectGroup": "Deselect message group",
+      "linkCopied": "Link copied",
+      "selectedCount_one": "{{count}} selected",
+      "selectedCount_other": "{{count}} selected",
+      "selectGroup": "Select message group",
+      "shareLink": "Shared conversation link",
+      "start": "Share messages",
+      "tooLarge": "Select fewer messages to share"
     },
     "shortcuts": {
       "number": "number"
@@ -4564,6 +4584,12 @@
       "description": "The page you are looking for does not exist.",
       "title": "Page not found"
     }
+  },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "This shared conversation does not exist.",
+    "notFoundTitle": "Shared conversation not found",
+    "tryOkou": "Try Okou"
   },
   "usage": {
     "automations": {

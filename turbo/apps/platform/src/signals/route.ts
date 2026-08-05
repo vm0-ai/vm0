@@ -88,6 +88,7 @@ export const replacePathSilently$ = command(
 interface Route {
   path: string;
   setup: Command<Promise<void> | void, [AbortSignal]>;
+  analytics?: boolean;
 }
 
 const internalRouteConfig$ = state<Route[] | undefined>(undefined);
@@ -135,11 +136,15 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
     throw new Error("No route matches, pathname: " + get(pathname$));
   }
   L.debug("loading route", currentRoute.path);
-  recordAdAttribution(get(searchParams$));
+  if (currentRoute.analytics !== false) {
+    recordAdAttribution(get(searchParams$));
+  }
 
   await set(currentRoute.setup, routeSignal);
   signal.throwIfAborted();
-  capturePageView();
+  if (currentRoute.analytics !== false) {
+    capturePageView();
+  }
   // Record first-touch signup attribution as part of the route-load lifecycle.
   // Bind to the parent `signal`, not the per-route `routeSignal`: a superseding
   // route load aborts the previous `routeSignal` via resetRouteSignal$, and
@@ -147,7 +152,9 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
   // signal mirrors the `signal.throwIfAborted()` gate above, so supersession
   // completes cleanly. The command early-returns when there is nothing to
   // record, so this only performs network work on the first qualifying load.
-  await set(recordSignupAttribution$, signal);
+  if (currentRoute.analytics !== false) {
+    await set(recordSignupAttribution$, signal);
+  }
 });
 
 const navigateToDefaultWhenInvalid$ = command(({ get, set }) => {
