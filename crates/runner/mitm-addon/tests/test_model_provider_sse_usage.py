@@ -161,18 +161,6 @@ class TestModelProviderSseUsage:
             usage.flush_usage_events(trigger="test")
         return webhook
 
-    def _run_with_webhook(self, flow: http.HTTPFlow, mitm_ctx, *, hook_name: str):
-        webhook = UsageWebhookServer()
-        with webhook.run(), mitm_ctx(api_url=webhook.api_url):
-            if hook_name == "error":
-                flow.error = Error("connection reset by peer")
-                mitm_addon.error(flow)
-            else:
-                assert hook_name == "response"
-                mitm_addon.response(flow)
-            usage.flush_usage_events(trigger="test")
-        return webhook
-
     def test_full_pipeline_model_sse_finalizes_trailing_event(self, tmp_path, real_flow):
         """response() must flush a trailing SSE usage event before reporting."""
         flow = _openai_responses_sse_flow(
@@ -379,7 +367,6 @@ class TestModelProviderSseUsage:
         self,
         tmp_path,
         real_flow,
-        mitm_ctx,
         encoding,
         hook_name,
         include_message_stop,
@@ -409,7 +396,12 @@ class TestModelProviderSseUsage:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(_compress_zlib_sse(plaintext, encoding)[:-1])
 
-        webhook = self._run_with_webhook(flow, mitm_ctx, hook_name=hook_name)
+        if hook_name == "error":
+            flow.error = Error("connection reset by peer")
+            webhook = self._run_error(flow)
+        else:
+            assert hook_name == "response"
+            webhook = self._run_response(flow)
 
         expected_quantities = {
             "tokens.input": 101,
@@ -459,7 +451,7 @@ class TestModelProviderSseUsage:
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     def test_full_pipeline_incomplete_anthropic_sse_without_positive_usage_emits_none_status(
-        self, tmp_path, real_flow, mitm_ctx, encoding
+        self, tmp_path, real_flow, encoding
     ):
         flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
         assert flow.response is not None
@@ -474,7 +466,7 @@ class TestModelProviderSseUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(_compress_zlib_sse(plaintext, encoding)[:-1])
-        webhook = self._run_with_webhook(flow, mitm_ctx, hook_name="response")
+        webhook = self._run_response(flow)
 
         assert webhook.usage_events() == []
         assert webhook.model_usage_observation_events() == []
@@ -488,7 +480,7 @@ class TestModelProviderSseUsage:
         )
 
     def test_full_pipeline_incomplete_compressed_anthropic_sse_does_not_flush_fragment(
-        self, tmp_path, real_flow, mitm_ctx
+        self, tmp_path, real_flow
     ):
         flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
         assert flow.response is not None
@@ -503,7 +495,7 @@ class TestModelProviderSseUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(gzip.compress(plaintext)[:-1])
-        webhook = self._run_with_webhook(flow, mitm_ctx, hook_name="response")
+        webhook = self._run_response(flow)
 
         assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
             "tokens.input": 50
@@ -517,7 +509,7 @@ class TestModelProviderSseUsage:
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     def test_full_pipeline_invalid_compressed_anthropic_sse_remains_fail_closed(
-        self, tmp_path, real_flow, mitm_ctx, encoding
+        self, tmp_path, real_flow, encoding
     ):
         flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
         assert flow.response is not None
@@ -530,7 +522,7 @@ class TestModelProviderSseUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(_compress_zlib_sse(plaintext, encoding) + b"not-compressed")
-        webhook = self._run_with_webhook(flow, mitm_ctx, hook_name="response")
+        webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
         assert _anthropic_accounting_operations(webhook) == []
@@ -542,7 +534,7 @@ class TestModelProviderSseUsage:
         )
 
     def test_full_pipeline_decoded_limit_anthropic_sse_remains_fail_closed(
-        self, tmp_path, real_flow, mitm_ctx
+        self, tmp_path, real_flow
     ):
         flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
         assert flow.response is not None
@@ -557,7 +549,7 @@ class TestModelProviderSseUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(gzip.compress(plaintext))
-        webhook = self._run_with_webhook(flow, mitm_ctx, hook_name="response")
+        webhook = self._run_response(flow)
 
         assert webhook.request_count == 0
         assert _anthropic_accounting_operations(webhook) == []
