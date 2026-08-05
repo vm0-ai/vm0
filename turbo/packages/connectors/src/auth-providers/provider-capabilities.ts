@@ -1721,7 +1721,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
       grant: {
         kind: "auth-code",
         callbackOrigin: "web",
-        outputNames: ["accessToken", "refreshToken"],
+        outputNames: ["accessToken", "livemode", "refreshToken"],
         startOptionNames: [],
       },
       access: {

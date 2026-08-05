@@ -104,7 +104,7 @@ const PRIVATE_VALUE = "SECRET_TOKEN";
 const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
 const EXPECTED_CAPABILITY_DIGEST =
-  "sha256:f28faa130eeea8dbc27f816003b6fe162dc1792dd27f5e9173856c5bedb7eea7";
+  "sha256:343b46bc40d126a2c1174e2019f113576669dd79478d66095175824f2eb0b935";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";

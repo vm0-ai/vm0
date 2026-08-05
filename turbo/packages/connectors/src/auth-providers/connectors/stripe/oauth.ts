@@ -17,6 +17,7 @@ interface StripeUserInfo {
 
 interface StripeTokenResult {
   accessToken: string;
+  livemode: boolean;
   refreshToken: string | null;
   scopes: string[];
   userInfo: StripeUserInfo;
@@ -78,6 +79,7 @@ export async function exchangeStripeCode(
   const data = z
     .object({
       access_token: z.string().optional(),
+      livemode: z.boolean(),
       refresh_token: z.string().nullable().optional(),
       stripe_user_id: z.string().optional(),
       scope: z.string().optional(),
@@ -104,6 +106,7 @@ export async function exchangeStripeCode(
 
   return {
     accessToken: data.access_token,
+    livemode: data.livemode,
     refreshToken: data.refresh_token ?? null,
     scopes: data.scope ? data.scope.split(" ") : [],
     userInfo,
