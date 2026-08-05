@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.684.2](https://github.com/vm0-ai/vm0/compare/app-v0.684.1...app-v0.684.2) (2026-08-05)
+
+
+### Bug Fixes
+
+* stop the thinking indicator from scrolling mid-line ([#25097](https://github.com/vm0-ai/vm0/issues/25097)) ([032aeb3](https://github.com/vm0-ai/vm0/commit/032aeb3e8ca61c09f87bb9b460db46a778dd9482))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.2
+    * @vm0/connectors bumped to 1.202.11
+    * @vm0/core bumped to 8.515.0
+
 ## [0.684.1](https://github.com/vm0-ai/vm0/compare/app-v0.684.0...app-v0.684.1) (2026-08-05)
 
 
