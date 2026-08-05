@@ -70,8 +70,10 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
+  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomConnectorSkillName,
@@ -5212,9 +5214,13 @@ async function buildStoredExecutionContextDraft(args: {
       connectorVars: args.connectorContext.vars,
     }),
     ...args.extraEnvironment,
-    // The CLI package is deployment-owned and must reach every runner guest,
-    // including direct/internal run creation paths that bypass Zero routes.
-    CLI_PKG_URL: env("CLI_PKG_URL"),
+    ...(isFeatureEnabled(
+      FeatureSwitchKey.R2ZeroCli,
+      args.featureSwitchContext,
+    ) &&
+    !isFeatureEnabled(FeatureSwitchKey.RustZeroCli, args.featureSwitchContext)
+      ? { CLI_PKG_URL: env("CLI_PKG_URL") }
+      : {}),
   };
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {

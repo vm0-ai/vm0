@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { testAgentRunsContract } from "@vm0/api-contracts/contracts/test-agent-runs";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -9,6 +10,7 @@ import { generateSandboxToken } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -81,6 +83,14 @@ describe("POST /api/test/agent-runs", () => {
       "https://static.vm0.io/okou-cli/direct-run-test/package.tgz",
     );
     const { actor, composeId, runnerGroup } = await seedDirectRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped test actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.R2ZeroCli]: true },
+    );
 
     const response = await accept(
       client().create({

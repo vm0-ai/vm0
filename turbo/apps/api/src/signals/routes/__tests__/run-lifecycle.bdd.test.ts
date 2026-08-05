@@ -9852,7 +9852,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 });
 
 describe("RUN-01: zero runner context, queue promotion, and skills", () => {
-  it("selects the runner-bundled zero-cli only when its feature switch is enabled", async () => {
+  it("selects npm, R2, and runner-bundled Zero CLI distributions by feature switch precedence", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     if (!actor.orgId) {
@@ -9867,12 +9867,40 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const npmClaim = await api.claimRunnerJob(npmRun.runId);
     expect(npmClaim.appendSystemPrompt ?? "").toContain(
-      `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" zero <command>\``,
+      "Run commands with: `npx -p @vm0/cli zero <command>`",
     );
     expect(npmClaim.appendSystemPrompt ?? "").not.toContain(
       "Run commands with: `zero-cli <command>`",
     );
+    expect(npmClaim.environment?.CLI_PKG_URL).toBeUndefined();
     await api.requestCancelRun(actor, npmRun.runId, [200]);
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.R2ZeroCli]: true },
+    );
+
+    const r2Run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the R2 Zero CLI package",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const r2Claim = await api.claimRunnerJob(r2Run.runId);
+    expect(r2Claim.appendSystemPrompt ?? "").toContain(
+      `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" zero <command>\``,
+    );
+    expect(r2Claim.appendSystemPrompt ?? "").not.toContain(
+      "Run commands with: `npx -p @vm0/cli zero <command>`",
+    );
+    expect(r2Claim.appendSystemPrompt ?? "").not.toContain(
+      "Run commands with: `zero-cli <command>`",
+    );
+    expect(r2Claim.environment?.CLI_PKG_URL).toBe(
+      "https://static.vm0.io/okou-cli/test-commit/package.tgz",
+    );
+    await api.requestCancelRun(actor, r2Run.runId, [200]);
 
     await updateFeatureSwitchesForUser(
       context,
@@ -9893,6 +9921,10 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(rustClaim.appendSystemPrompt ?? "").not.toContain(
       `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" zero <command>\``,
     );
+    expect(rustClaim.appendSystemPrompt ?? "").not.toContain(
+      "Run commands with: `npx -p @vm0/cli zero <command>`",
+    );
+    expect(rustClaim.environment?.CLI_PKG_URL).toBeUndefined();
     await api.requestCancelRun(actor, rustRun.runId, [200]);
   });
 
@@ -10139,9 +10171,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     );
     expect(claim.disallowedTools).not.toContain("WebFetch");
     expect(claim.environment?.ZERO_APP_URL).toBe(appUrl);
-    expect(claim.environment?.CLI_PKG_URL).toBe(
-      "https://static.vm0.io/okou-cli/test-commit/package.tgz",
-    );
+    expect(claim.environment?.CLI_PKG_URL).toBeUndefined();
     expect(claim.environment?.VM0_APP_URL).toBeUndefined();
     expect(claim.environment?.APP_URL).toBeUndefined();
     expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);

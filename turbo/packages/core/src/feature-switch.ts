@@ -480,6 +480,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Use the runner-bundled Rust zero-cli entry point for Zero CLI commands.",
     enabled: false,
   },
+  [FeatureSwitchKey.R2ZeroCli]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Use the commit-addressed R2 npm tarball for Zero CLI commands instead of the published @vm0/cli package.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",
     description:
