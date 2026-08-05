@@ -5233,11 +5233,10 @@ async function buildStoredExecutionContextDraft(args: {
       connectorVars: args.connectorContext.vars,
     }),
     ...args.extraEnvironment,
-    ...(isFeatureEnabled(
-      FeatureSwitchKey.R2ZeroCli,
+    ...(!isFeatureEnabled(
+      FeatureSwitchKey.RustZeroCli,
       args.featureSwitchContext,
-    ) &&
-    !isFeatureEnabled(FeatureSwitchKey.RustZeroCli, args.featureSwitchContext)
+    )
       ? { CLI_PKG_URL: env("CLI_PKG_URL") }
       : {}),
   };

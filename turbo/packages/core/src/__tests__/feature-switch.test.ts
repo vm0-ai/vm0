@@ -52,7 +52,6 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.ChatThreadSidebarAutoOpen, {}),
     ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.RustZeroCli, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.R2ZeroCli, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(false);
   });
 
