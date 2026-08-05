@@ -251,6 +251,11 @@ export const chatEvents = pgTable(
           'agent_run'
         )`,
       ),
+      check(
+        "chat_events_input_context_type_check",
+        sql`${table.eventType} NOT IN ('input.prompt', 'input.automation', 'input.goal')
+          OR ${table.contextType} IS NOT NULL`,
+      ),
     ];
   },
 );
