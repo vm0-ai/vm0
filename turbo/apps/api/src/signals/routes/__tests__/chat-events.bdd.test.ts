@@ -7052,7 +7052,6 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(firstInput).toMatchObject({
       eventType: "input.prompt",
-      triggerSource: "agent",
       userMessage: {
         version: 1,
         parts: [

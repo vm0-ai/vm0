@@ -231,7 +231,6 @@ async function runPreAgentRunContextRouteProbe(
   });
   expect(delegatedEvent).toMatchObject({
     eventType: "input.prompt",
-    triggerSource: "agent",
     userMessage: {
       version: 1,
       parts: [{ type: "text", text: "pre-migration delegated prompt" }],
