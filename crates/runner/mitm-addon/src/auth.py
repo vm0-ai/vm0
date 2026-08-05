@@ -12,6 +12,7 @@ import urllib.parse
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
+from http import HTTPStatus
 
 from mitmproxy import http
 
@@ -1076,11 +1077,27 @@ async def _apply_url_rewrite(
             for name, value in header_pairs(resp_headers)
             if name.lower() == "content-encoding"
         ]
+        preserve_representation_content_length = status == HTTPStatus.NOT_MODIFIED or (
+            flow.request.method == "HEAD"
+            and status >= HTTPStatus.OK
+            and status != HTTPStatus.NO_CONTENT
+        )
+        representation_content_length: str | None = None
+        if preserve_representation_content_length:
+            content_lengths = resp_headers.get_all("Content-Length")
+            if len(content_lengths) == 1:
+                candidate = content_lengths[0].strip(" \t")
+                if candidate and all("0" <= character <= "9" for character in candidate):
+                    representation_content_length = candidate
         if content_encodings:
             del resp_headers["Content-Encoding"]
         # The forwarder returns representation bytes, but Response.make expects
         # decoded content. Hide the codings while it normalizes response framing.
         flow.response = http.Response.make(status, resp_raw_content, resp_headers)
+        if preserve_representation_content_length:
+            del flow.response.headers["Content-Length"]
+            if representation_content_length is not None:
+                flow.response.headers["Content-Length"] = representation_content_length
         if content_encodings:
             flow.response.headers.set_all("Content-Encoding", content_encodings)
     except ForwardedRequestTooLargeError:
