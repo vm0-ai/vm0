@@ -132,6 +132,10 @@ function reportMicStartFailure(error: unknown): void {
   toast.error(microphoneAccessDeniedMessage());
 }
 
+function reportAudioActivityMonitorStartFailure(error: unknown): void {
+  L.error("Audio activity monitor start failed", error);
+}
+
 function microphoneAccessDeniedMessage(): string {
   return i18n.t(($) => {
     return $.chat.voice.microphoneAccessDenied;
@@ -1007,7 +1011,7 @@ export const startRecording$ = command(
 
     let audioActivityMonitor: AudioActivityMonitor | null = null;
     let voiceActivityReliable = false;
-    let longSilenceStop: ReturnType<typeof createDeferredPromise<void>> | null =
+    let silenceStop: ReturnType<typeof createDeferredPromise<void>> | null =
       null;
     const starting = withCleanup(
       (async (): Promise<VoiceRecordingStartup | null> => {
@@ -1036,8 +1040,8 @@ export const startRecording$ = command(
             return set(resetVoiceSilenceTimer$, signal);
           },
           onLongSilence: () => {
-            if (longSilenceStop && !longSilenceStop.settled()) {
-              longSilenceStop.resolve(undefined);
+            if (silenceStop && !silenceStop.settled()) {
+              silenceStop.resolve(undefined);
             }
           },
           onQuotaExceeded: () => {
@@ -1089,9 +1093,7 @@ export const startRecording$ = command(
         },
         signal,
       ),
-      (error) => {
-        L.error("Audio activity monitor start failed", error);
-      },
+      reportAudioActivityMonitorStartFailure,
     );
     signal.throwIfAborted();
     if (startedAudioActivityMonitor === undefined) {
@@ -1107,13 +1109,13 @@ export const startRecording$ = command(
     set(internalVoiceActivityAvailable$, audioActivityMonitor !== null);
     set(internalVoiceActivityCoversRecording$, voiceActivityReliable);
     if (voiceActivityReliable) {
-      longSilenceStop = createDeferredPromise<void>(signal);
+      silenceStop = createDeferredPromise<void>(signal);
       recordingSession.startSilenceTimeout();
     } else {
       return;
     }
 
-    await longSilenceStop.promise;
+    await silenceStop.promise;
     signal.throwIfAborted();
     await set(stopAndTranscribe$, signal);
   },

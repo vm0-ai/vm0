@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { isAbortError, onRef, resetSignal, setLoop } from "./utils.ts";
+import { completeOnLocalAbort, onRef, resetSignal, setLoop } from "./utils.ts";
 import { getAvatarPresets } from "../views/zero-page/zero-avatars.ts";
 import { captureFirstSkeletonHide$ } from "../lib/posthog.ts";
 import { i18n } from "../i18n/index.ts";
@@ -153,22 +153,18 @@ export const startSkeletonCycling$ = command(
     // The local reset is the normal completion path when the page becomes
     // ready. Parent cancellation still belongs to the command caller and must
     // propagate through bootstrap.
-    // eslint-disable-next-line no-restricted-syntax
-    try {
-      await setLoop(
+    await completeOnLocalAbort(
+      setLoop(
         () => {
           set(cycleSkeletonCopy$);
           return ++cycles >= MAX_SKELETON_CYCLES;
         },
         4000,
         loopSignal,
-      );
-    } catch (error) {
-      parentSignal.throwIfAborted();
-      if (!loopSignal.aborted || !isAbortError(error)) {
-        throw error;
-      }
-    }
+      ),
+      loopSignal,
+      parentSignal,
+    );
   },
 );
 
