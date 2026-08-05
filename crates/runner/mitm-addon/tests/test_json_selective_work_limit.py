@@ -2,7 +2,7 @@
 
 import pytest
 
-from usage.json_selective import JsonSelectiveExtractor
+from usage.json_selective import JsonSelectiveExtractor, ScalarField
 
 
 @pytest.mark.parametrize(
@@ -36,6 +36,35 @@ def test_work_limit_is_exact_and_chunk_independent(
         assert extractor.finish().complete is True
 
         limited = JsonSelectiveExtractor(max_work_units=exact_work_units - 1)
+        for offset in range(0, len(payload), chunk_size):
+            limited.feed(payload[offset : offset + chunk_size])
+        result = limited.finish()
+
+        assert result.complete is False
+        assert result.error == "work limit exceeded"
+        assert result.values == {}
+        assert result.array_counts == {}
+        assert result.wildcard_array_counts == {}
+        assert result.object_present == set()
+
+
+def test_discarded_string_work_limit_is_chunk_independent_after_escape():
+    payload = b'{"' + b"k" * 26 + b'":"q\\"s\\\\"}'
+
+    for chunk_size in (1, 2, 3, 7, len(payload)):
+        extractor = JsonSelectiveExtractor(
+            scalar_fields={("target",): ScalarField("int")},
+            max_work_units=7,
+        )
+        for offset in range(0, len(payload), chunk_size):
+            extractor.feed(payload[offset : offset + chunk_size])
+
+        assert extractor.finish().complete is True
+
+        limited = JsonSelectiveExtractor(
+            scalar_fields={("target",): ScalarField("int")},
+            max_work_units=6,
+        )
         for offset in range(0, len(payload), chunk_size):
             limited.feed(payload[offset : offset + chunk_size])
         result = limited.finish()
