@@ -2,10 +2,16 @@ name: Desktop
 
 on:
   workflow_dispatch:
+  merge_group:
+    types: [checks_requested]
   pull_request:
     paths:
       - ".github/workflows/desktop.yml"
+      - ".github/scripts/build-okou-desktop-artifact.sh"
+      - ".github/scripts/fetch-okou-desktop-artifact.sh"
       - ".github/scripts/resolve-app-preview-url.sh"
+      - ".github/scripts/resolve-desktop-version-change.sh"
+      - ".github/scripts/verify-okou-desktop-artifact.sh"
       - "turbo/apps/desktop/**"
       - "turbo/package.json"
       - "turbo/pnpm-lock.yaml"
@@ -16,7 +22,11 @@ on:
       - main
     paths:
       - ".github/workflows/desktop.yml"
+      - ".github/scripts/build-okou-desktop-artifact.sh"
+      - ".github/scripts/fetch-okou-desktop-artifact.sh"
       - ".github/scripts/resolve-app-preview-url.sh"
+      - ".github/scripts/resolve-desktop-version-change.sh"
+      - ".github/scripts/verify-okou-desktop-artifact.sh"
       - "turbo/apps/desktop/**"
       - "turbo/package.json"
       - "turbo/pnpm-lock.yaml"
@@ -24,15 +34,59 @@ on:
       - "turbo/packages/typescript-config/**"
 
 concurrency:
-  group: desktop-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: desktop-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
+  detect-desktop-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.version.outputs.changed }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Detect Desktop version change
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha || '' }}
+          PUSH_BEFORE_SHA: ${{ github.event.before || '' }}
+        run: |
+          set -euo pipefail
+
+          case "$EVENT_NAME" in
+            merge_group) base_sha="$MERGE_GROUP_BASE_SHA" ;;
+            push) base_sha="$PUSH_BEFORE_SHA" ;;
+            *)
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "version=$(jq -r .version turbo/apps/desktop/package.json)" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+
+          result="$(bash .github/scripts/resolve-desktop-version-change.sh \
+            "$base_sha" \
+            "$GITHUB_SHA")"
+          {
+            echo "changed=$(jq -r .changed <<<"$result")"
+            echo "version=$(jq -r .version <<<"$result")"
+          } >> "$GITHUB_OUTPUT"
+
   build-macos:
     name: build-macos-arm64
+    needs: detect-desktop-version
+    if: >-
+      ${{
+        github.event_name != 'merge_group' &&
+        (github.event_name != 'push' || needs.detect-desktop-version.outputs.changed != 'true')
+      }}
     runs-on: macos-latest
     timeout-minutes: 20
     defaults:
@@ -344,3 +398,185 @@ jobs:
           path: turbo/${{ steps.build-preview.outputs.path }}
           if-no-files-found: error
           retention-days: 14
+
+  # Release PR merge groups build the exact commit that GitHub will merge and
+  # tag. The matching main push reuses the immutable R2 artifact by commit SHA.
+  deploy-desktop:
+    name: deploy-desktop-macos-arm64
+    needs: detect-desktop-version
+    if: >-
+      ${{
+        needs.detect-desktop-version.outputs.changed == 'true' &&
+        github.event_name == 'merge_group'
+      }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-desktop-${{ github.sha }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+      R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install AWS CLI
+        run: |
+          if ! command -v aws >/dev/null; then
+            HOMEBREW_NO_AUTO_UPDATE=1 brew install awscli
+          fi
+          aws --version
+
+      - name: Resolve artifact commit SHA
+        id: artifact
+        run: |
+          sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
+          {
+            echo "sha=$sha"
+            echo "prefix=okou-desktop/$sha"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check for existing artifact
+        id: existing
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+        run: |
+          set -euo pipefail
+
+          : "${AWS_ACCESS_KEY_ID:?R2_STATIC_ACCESS_KEY_ID secret is required}"
+          : "${AWS_SECRET_ACCESS_KEY:?R2_STATIC_SECRET_ACCESS_KEY secret is required}"
+          : "${R2_ACCOUNT_ID:?R2_ACCOUNT_ID variable is required}"
+          : "${R2_BUCKET_NAME:?R2_STATIC_BUCKET_NAME variable is required}"
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          ready_key="${ARTIFACT_PREFIX}/ready.json"
+          error_log="$(mktemp)"
+
+          set +e
+          aws s3api head-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "$ready_key" \
+            >/dev/null 2>"$error_log"
+          status=$?
+          set -e
+
+          if (( status == 0 )); then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Artifact already ready: s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}/"
+          elif grep -Eq '404|NotFound|Not Found|NoSuchKey' "$error_log"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "$error_log" >&2
+            exit "$status"
+          fi
+
+      - uses: pnpm/action-setup@v6
+        if: steps.existing.outputs.exists != 'true'
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v7
+        if: steps.existing.outputs.exists != 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: turbo/pnpm-lock.yaml
+
+      - name: Install dependencies
+        if: steps.existing.outputs.exists != 'true'
+        working-directory: turbo
+        run: pnpm install --frozen-lockfile --strict-peer-dependencies
+
+      - name: Build canonical unsigned Desktop app
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          SENTRY_DSN_DESKTOP: ${{ secrets.SENTRY_DSN_DESKTOP }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT_DESKTOP: ${{ vars.SENTRY_PROJECT_DESKTOP }}
+          SENTRY_ENVIRONMENT: production
+          VM0_DESKTOP_SKIP_SIGNING: "true"
+        working-directory: turbo
+        run: |
+          rm -f apps/desktop/desktop-runtime-config.json
+          rm -rf apps/desktop/out
+
+          pnpm -F @vm0/desktop build
+          pnpm -F @vm0/desktop upload:sentry
+          pnpm --dir apps/desktop exec electron-forge package \
+            --platform darwin \
+            --arch arm64
+
+          app_dir="$PWD/apps/desktop/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app"
+          if [ ! -d "$app_dir" ]; then
+            echo "No packaged app found: $app_dir"
+            find apps/desktop/out -maxdepth 4 -type d -print || true
+            exit 1
+          fi
+          if [ -e "$app_dir/Contents/Resources/app/desktop-runtime-config.json" ]; then
+            echo "Canonical production artifact must not contain Desktop runtime config"
+            exit 1
+          fi
+
+          node apps/desktop/scripts/smoke-test-packaged-app.js
+
+      - name: Create canonical Desktop artifact
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
+          DESKTOP_VERSION: ${{ needs.detect-desktop-version.outputs.version }}
+        run: |
+          mkdir -p /tmp/okou-desktop-artifact
+          bash .github/scripts/build-okou-desktop-artifact.sh \
+            "$ARTIFACT_SHA" \
+            "$DESKTOP_VERSION" \
+            "turbo/apps/desktop/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app" \
+            /tmp/okou-desktop-artifact
+
+      - name: Upload canonical Desktop artifact
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+        run: |
+          set -euo pipefail
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
+          cache_control="public, max-age=31536000, immutable"
+
+          aws s3 rm "$artifact_uri/" \
+            --endpoint-url "$r2_endpoint" \
+            --recursive
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/app.tar.gz" \
+            --body /tmp/okou-desktop-artifact/app.tar.gz \
+            --content-type application/gzip \
+            --cache-control "$cache_control"
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/manifest.json" \
+            --body /tmp/okou-desktop-artifact/manifest.json \
+            --content-type application/json \
+            --cache-control "$cache_control"
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/ready.json" \
+            --body /tmp/okou-desktop-artifact/ready.json \
+            --content-type application/json \
+            --cache-control "$cache_control" \
+            --if-none-match "*"
+
+          echo "Artifact ready: ${artifact_uri}/"
