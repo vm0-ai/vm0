@@ -6,7 +6,8 @@ import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
 import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
 import { HttpResponse, http } from "msw";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";

@@ -8,8 +8,6 @@ import {
   rolloutCompatibleAutonomyBudgetColumn,
 } from "./autonomy-budget-schema.service";
 
-export { INITIAL_AUTONOMY_BUDGET } from "./autonomy-budget.constants";
-
 export type ChildAutonomyBudget =
   | { readonly kind: "ok"; readonly autonomyBudget: number }
   | { readonly kind: "exhausted" };

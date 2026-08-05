@@ -2047,6 +2047,11 @@ function createChatThreadMessagePipeline({
     threadScrollPosition$: effects.scroll.threadScrollPosition$,
     awayFromBottom$: effects.scroll.awayFromBottom$,
   });
+  const assistantErrorRecovery = createAssistantErrorRecoverySignals({
+    threadId,
+    chatEvents,
+    visibleRenderedChatGroups$: renderWindow.visibleRenderedChatGroups$,
+  });
 
   const loadMoreRenderedChatGroups$ = command(
     async ({ set }, signal: AbortSignal): Promise<boolean> => {
@@ -2070,6 +2075,7 @@ function createChatThreadMessagePipeline({
     sidebar: effects.sidebar,
     setup$,
     chatSkeletonVisible$,
+    ...assistantErrorRecovery,
     ...projections,
     ...resources.publicSignals,
     ...renderWindow,
@@ -3346,6 +3352,9 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     visibleRenderedChatGroups$: events.visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$: events.visibleRenderedChatGroupsReady$,
     chatSkeletonVisible$: events.chatSkeletonVisible$,
+    assistantErrorRecovery$: events.assistantErrorRecovery$,
+    retryAssistantError$: events.retryAssistantError$,
+    resetCodexSubscriptionAndRetry$: events.resetCodexSubscriptionAndRetry$,
     eventImageGroups$: events.eventImageGroups$,
     artifactSignalsForUrl: events.artifactSignalsForUrl,
     agentReferenceSignalsForId: events.agentReferenceSignalsForId,
@@ -3374,6 +3383,13 @@ interface CreateChatThreadComposerSignalsOptions {
     typeof createComputerUseHostSelection
   >;
   readonly messageActions: ReturnType<typeof createThreadMessageActions>;
+  readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
+}
+
+interface ChatThreadComposerContext {
+  readonly threadMeta$: Computed<ThreadMeta | null>;
+  readonly agent$: Computed<Promise<ZeroAgentResponse>>;
+  readonly agentId$: Computed<string | null>;
   readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
 }
 
@@ -3498,30 +3514,23 @@ function createChatThreadComposerSignals(
   });
 }
 
-export function createChatPanelSignals(
-  draft: DraftSignals,
+function createThreadComposerSignalsWithContext(
+  threadId: string,
   chatEvents: ChatEventSignals,
-): ChatPanelSignals {
-  const threadId = chatEvents.threadId;
-  const artifact = createArtifacts(threadId);
-  const threadDraft$ = createRemoteChatThreadDraft(threadId);
-  const threadMeta$ = createThreadMeta(threadId);
-  const threadTitle = createThreadTitleParts(threadMeta$);
-  const threadSettledInServer$ = createThreadSettledInServer(threadId);
-  const modelSelection = createModelSelection(threadId, threadMeta$);
+  context: ChatThreadComposerContext,
+  draft: DraftSignals,
+): ComposerSignals {
+  const modelSelection = createModelSelection(threadId, context.threadMeta$);
   const modelSelectionForSend$ = createModelSelectionForSend(modelSelection);
   const computerUseHostSelection = createComputerUseHostSelection(
     threadId,
-    threadMeta$,
+    context.threadMeta$,
   );
-  const container = createChatThreadContainerSignals();
-  const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft);
-  const cancellationRecovery = createCancellationRecoverySignals(threadId);
   const messageActions = createThreadMessageActions({
     threadId,
-    agentId$: threadOwned.agentId$,
+    agentId$: context.agentId$,
     modelSelectionForSend$,
     chatEvents$: chatEvents.chatEvents$,
     draft,
@@ -3530,16 +3539,67 @@ export function createChatPanelSignals(
     flushDraftClear$,
     sendEvent$: chatEvents.sendEvent$,
   });
-  const composer = createChatThreadComposerSignals({
+  return createChatThreadComposerSignals({
     chatEvents,
-    agent$: threadOwned.agent$,
+    agent$: context.agent$,
     draft,
     queueDraftSync$,
     modelSelection,
     computerUseHostSelection,
     messageActions,
-    cancellationRecoveryPending$: cancellationRecovery.pending$,
+    cancellationRecoveryPending$: context.cancellationRecoveryPending$,
   });
+}
+
+/**
+ * Creates the public composer signals for a chat thread.
+ *
+ * @public
+ */
+export function createThreadComposerSignals(
+  threadId: string,
+  chatEvents: ChatEventSignals,
+): ComposerSignals {
+  const threadMeta$ = createThreadMeta(threadId);
+  const agent = createAgentInfoSignals(threadMeta$);
+  const cancellationRecovery = createCancellationRecoverySignals(threadId);
+  return createThreadComposerSignalsWithContext(
+    threadId,
+    chatEvents,
+    {
+      threadMeta$,
+      agent$: agent.agent$,
+      agentId$: agent.agentId$,
+      cancellationRecoveryPending$: cancellationRecovery.pending$,
+    },
+    createDraftSignals(),
+  );
+}
+
+function createChatPanelSignalsWithDraft(
+  chatEvents: ChatEventSignals,
+  draft: DraftSignals,
+): ChatPanelSignals {
+  const threadId = chatEvents.threadId;
+  const artifact = createArtifacts(threadId);
+  const threadDraft$ = createRemoteChatThreadDraft(threadId);
+  const threadMeta$ = createThreadMeta(threadId);
+  const threadTitle = createThreadTitleParts(threadMeta$);
+  const threadSettledInServer$ = createThreadSettledInServer(threadId);
+  const container = createChatThreadContainerSignals();
+  const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
+  const cancellationRecovery = createCancellationRecoverySignals(threadId);
+  const composer = createThreadComposerSignalsWithContext(
+    threadId,
+    chatEvents,
+    {
+      threadMeta$,
+      agent$: threadOwned.agent$,
+      agentId$: threadOwned.agentId$,
+      cancellationRecoveryPending$: cancellationRecovery.pending$,
+    },
+    draft,
+  );
   const feedback = createChatThreadFeedbackSignals(threadId, composer.feedback);
   const messages: MessageListSignals = {
     ...createChatThreadMessagePipeline({
@@ -3560,18 +3620,12 @@ export function createChatPanelSignals(
     automationSignals: threadOwned,
     cancellationRecovery,
   });
-  const assistantErrorRecovery = createAssistantErrorRecoverySignals({
-    visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
-    selectedModel$: modelSelection.selectedModel$,
-    sendMessage$: messageActions.sendMessage$,
-  });
   return {
     threadId,
     threadDraft$,
     threadMeta$,
     ...threadTitle,
     threadSettledInServer$,
-    ...assistantErrorRecovery,
     scrollContainerOnRef$: messages.scroll.scrollContainerOnRef$,
     scrollContentOnRef$: messages.scroll.scrollContentOnRef$,
     threadScrollPosition$: messages.scroll.threadScrollPosition$,
@@ -3594,3 +3648,24 @@ export function createChatPanelSignals(
     reloadArtifacts$: messages.reloadArtifacts$,
   };
 }
+
+/**
+ * Creates the public panel signals for a chat thread.
+ *
+ * @public
+ */
+export function createChatPanelSignals(
+  chatEvents: ChatEventSignals,
+): ChatPanelSignals {
+  return createChatPanelSignalsWithDraft(chatEvents, createDraftSignals());
+}
+
+export const createCachedChatPanelSignals$ = command(
+  ({ set }, chatEvents: ChatEventSignals) => {
+    const { draft, isNew } = set(ensureDraft$, chatEvents.threadId);
+    return {
+      thread: createChatPanelSignalsWithDraft(chatEvents, draft),
+      isNew,
+    };
+  },
+);

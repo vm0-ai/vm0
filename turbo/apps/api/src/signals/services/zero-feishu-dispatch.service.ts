@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-
 import { command } from "ccstate";
 import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { z } from "zod";
@@ -12,7 +11,6 @@ import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 import { feishuUserAgentPreferences } from "@vm0/db/schema/feishu-user-agent-preference";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-
 import {
   buildFeishuHelpMessage,
   buildFeishuLoginMessage,
@@ -28,7 +26,7 @@ import {
   type FeishuOutboundMessage,
 } from "../external/feishu-client";
 import type { Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { safeJsonParse, tapError } from "../utils";
 import { buildFeishuConnectUrl } from "./feishu-connect-token";
 import { disconnectFeishuCustomConnectorOAuthConnection } from "./feishu-custom-connector.service";

@@ -62,7 +62,6 @@ describe("zero org switcher", () => {
     context.mocks.data.org({
       id: "org_current",
       name: "Acme",
-      slug: "acme",
       role: "admin",
     });
 
@@ -149,7 +148,6 @@ describe("zero org switcher", () => {
     context.mocks.data.org({
       id: "org_current",
       name: "Solo",
-      slug: "solo",
       role: "admin",
     });
 
@@ -215,7 +213,6 @@ describe("zero org switcher", () => {
     context.mocks.data.org({
       id: "org_current",
       name: "Current",
-      slug: "current",
       role: "admin",
     });
 
@@ -286,7 +283,6 @@ describe("zero org switcher", () => {
     context.mocks.data.org({
       id: "org_current",
       name: "Acme",
-      slug: "acme",
       role: "admin",
     });
 

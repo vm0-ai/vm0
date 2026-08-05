@@ -7,9 +7,9 @@ import { testContext } from "../../../__tests__/test-context";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
   createChatFilesBddApi,
-  hostedTextFile,
   persistedAttachment,
 } from "./helpers/api-bdd-chat-files";
+import { hostedTextFile } from "./helpers/api-bdd-host-files";
 
 /*
 helper gap:

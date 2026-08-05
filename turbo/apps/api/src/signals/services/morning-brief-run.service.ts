@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
@@ -11,7 +10,6 @@ import { chatEvents } from "@vm0/db/schema/chat-event";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { command } from "ccstate";
 import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
-
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
@@ -19,7 +17,7 @@ import {
   publishChatThreadMessageCreatedSafely,
   publishThreadListChanged,
 } from "../external/realtime";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { putS3Object } from "../external/s3";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { listPendingChatQueueEvents } from "./chat-event-queue.service";

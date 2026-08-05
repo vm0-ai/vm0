@@ -1,5 +1,6 @@
 use crate::provider::{JobCandidate, RunnerPreferenceReason};
-use crate::telemetry::PRE_PARK_HANDOFF_AXIOM_TARGET;
+
+const TRACING_TARGET: &str = "runner::pre_park_successor_handoff";
 
 #[derive(Clone, Copy)]
 pub(super) enum CandidateOutcome {
@@ -67,7 +68,7 @@ pub(super) fn record_candidate_observation(
     let successor_run_id = candidate.run_id();
     match (candidate.history_generation_run_id(), reason) {
         (Some(predecessor_run_id), Some(reason)) => tracing::info!(
-            target: PRE_PARK_HANDOFF_AXIOM_TARGET,
+            target: TRACING_TARGET,
             measurement = "pre_park_successor_handoff",
             outcome = outcome.as_str(),
             reason = reason.as_str(),
@@ -78,7 +79,7 @@ pub(super) fn record_candidate_observation(
             "pre-park successor handoff candidate observed"
         ),
         (Some(predecessor_run_id), None) => tracing::info!(
-            target: PRE_PARK_HANDOFF_AXIOM_TARGET,
+            target: TRACING_TARGET,
             measurement = "pre_park_successor_handoff",
             outcome = outcome.as_str(),
             predecessor_run_id = %predecessor_run_id,
@@ -88,7 +89,7 @@ pub(super) fn record_candidate_observation(
             "pre-park successor handoff candidate observed"
         ),
         (None, Some(reason)) => tracing::info!(
-            target: PRE_PARK_HANDOFF_AXIOM_TARGET,
+            target: TRACING_TARGET,
             measurement = "pre_park_successor_handoff",
             outcome = outcome.as_str(),
             reason = reason.as_str(),
@@ -98,7 +99,7 @@ pub(super) fn record_candidate_observation(
             "pre-park successor handoff candidate observed"
         ),
         (None, None) => tracing::info!(
-            target: PRE_PARK_HANDOFF_AXIOM_TARGET,
+            target: TRACING_TARGET,
             measurement = "pre_park_successor_handoff",
             outcome = outcome.as_str(),
             successor_run_id = %successor_run_id,

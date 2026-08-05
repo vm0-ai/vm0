@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listWorkflows } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { listWorkflows } from "../../../lib/api/domains/zero-workflows";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { formatWorkflowAgentName } from "./format";
 
 export const listCommand = new Command()

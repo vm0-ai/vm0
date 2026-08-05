@@ -27,13 +27,11 @@ import { settle } from "../utils";
 import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
 
 const clerkOrgIdentitySchema = z.object({
-  slug: z.string().nullable().optional(),
   name: z.string().nullable().optional(),
   createdBy: z.string().nullable().optional(),
 });
 
 interface OrgIdentity {
-  readonly slug: string;
   readonly name: string;
   readonly createdBy: string | null;
 }
@@ -185,7 +183,6 @@ export const zeroOrgDetail$ = command(
     const [cached, meta, membership] = await Promise.all([
       db
         .select({
-          slug: orgCache.slug,
           name: orgCache.name,
           createdBy: orgCache.createdBy,
         })
@@ -229,12 +226,7 @@ export const zeroOrgDetail$ = command(
       const clerkOrg = clerkOrgSettled.value;
 
       const parsed = clerkOrgIdentitySchema.parse(clerkOrg);
-      if (!parsed.slug) {
-        throw new Error(`Clerk organization ${args.orgId} has no slug`);
-      }
-
       identity = {
-        slug: parsed.slug,
         name: parsed.name ?? "",
         createdBy: parsed.createdBy ?? null,
       };
@@ -245,7 +237,6 @@ export const zeroOrgDetail$ = command(
         .insert(orgCache)
         .values({
           orgId: args.orgId,
-          slug: identity.slug,
           name: identity.name,
           createdBy: identity.createdBy,
           cachedAt: now,
@@ -253,7 +244,6 @@ export const zeroOrgDetail$ = command(
         .onConflictDoUpdate({
           target: orgCache.orgId,
           set: {
-            slug: identity.slug,
             name: identity.name,
             createdBy: identity.createdBy,
             cachedAt: now,
@@ -274,7 +264,6 @@ export const zeroOrgDetail$ = command(
 
     return {
       id: args.orgId,
-      slug: identity.slug,
       name: identity.name,
       tier: meta[0]?.tier ?? "pro-suspend",
       role,

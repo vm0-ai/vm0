@@ -17,7 +17,7 @@ import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
-import { talkDraft$ } from "../zero-page/chat-draft.ts";
+import { talkDraft$, type DraftSignals } from "../zero-page/chat-draft.ts";
 import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
 import {
   prepareUserMessageFromDraft$,
@@ -67,6 +67,7 @@ export const newChatThreadDisabled$ = computed(() => {
 
 interface SendNewThreadMessageRequest {
   agentId: string;
+  draft?: DraftSignals;
   prompt: string;
   generationTemplate: GenerationTemplateRequest | undefined;
   generationTemplateTitleSnapshot?: string;
@@ -492,7 +493,7 @@ const sendNewThreadMessage$ = command(
     const { agentId, prompt } = request;
     const generationTemplate = request.generationTemplate;
     const { computerUseHostId, cloudBrowserEnabled } = request;
-    const draft = get(talkDraft$);
+    const draft = request.draft ?? get(talkDraft$);
     const resolvedModelSelection = await set(
       resolveCurrentNewThreadModelSelection$,
       signal,

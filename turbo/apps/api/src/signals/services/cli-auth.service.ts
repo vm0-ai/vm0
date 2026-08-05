@@ -11,7 +11,7 @@ import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { generateCliToken } from "../auth/tokens";
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 
 export const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 const CLI_TOKEN_EXPIRES_IN_SECONDS = 90 * 24 * 60 * 60;
@@ -223,7 +223,6 @@ export const ensureTestOrg$ = command(
     if (!cached) {
       await writeDb.insert(orgCache).values({
         orgId: org.id,
-        slug: org.slug ?? org.id,
         name: org.name ?? org.slug ?? org.id,
         cachedAt: new Date(nowDate().getTime() + FAR_FUTURE_CACHE_MS),
       });
@@ -316,14 +315,12 @@ export const resolveTestOrgId$ = command(
         .insert(orgCache)
         .values({
           orgId: org.id,
-          slug: org.slug ?? org.id,
           name: org.name ?? org.slug ?? org.id,
           cachedAt,
         })
         .onConflictDoUpdate({
           target: orgCache.orgId,
           set: {
-            slug: org.slug ?? org.id,
             name: org.name ?? org.slug ?? org.id,
             cachedAt,
           },

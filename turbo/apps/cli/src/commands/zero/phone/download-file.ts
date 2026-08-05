@@ -1,8 +1,8 @@
 import { basename, join } from "path";
 import { tmpdir } from "os";
 import { Command } from "commander";
-import { downloadPhoneFile } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { downloadPhoneFile } from "../../../lib/api/domains/integrations-phone";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 function defaultOutPath(fileId: string): string {
   return join(tmpdir(), `phone-${basename(fileId)}`);

@@ -3,12 +3,13 @@ import chalk from "chalk";
 import {
   zeroScrapeFormatSchema,
   zeroScrapeModeSchema,
+  type ZeroScrapeResponse,
   type ZeroScrapeFormat,
   type ZeroScrapeMode,
 } from "@vm0/api-contracts/contracts/zero-scrape";
 
-import { callZeroScrape, type ZeroScrapeResponse } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { callZeroScrape } from "../../../lib/api/domains/zero-scrape";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 const SCRAPE_FORMATS = zeroScrapeFormatSchema.options;
 const SCRAPE_MODES = zeroScrapeModeSchema.options;

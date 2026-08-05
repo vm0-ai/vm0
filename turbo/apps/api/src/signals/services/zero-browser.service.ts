@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-
 import {
   ZERO_BROWSER_IDLE_LEASE_MINUTES,
   ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
@@ -36,7 +35,6 @@ import {
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
-
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { waitUntil } from "../context/wait-until";
@@ -45,7 +43,7 @@ import {
   publishBrowserSessionChangedSafely,
   publishChatThreadMessageCreatedSafely,
 } from "../external/realtime";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { deleteS3Objects, putImmutableS3Object } from "../external/s3";
 import { settle, settleIncludingAbort, tapError } from "../utils";
 import {

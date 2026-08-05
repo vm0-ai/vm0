@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
 
 import { testAgentRunsContract } from "@vm0/api-contracts/contracts/test-agent-runs";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { generateSandboxToken } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -31,12 +34,13 @@ function authenticate(actor: ApiTestUser): {
 async function seedDirectRunActor(): Promise<{
   readonly actor: ApiTestUser;
   readonly composeId: string;
+  readonly runnerGroup: string;
 }> {
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
   runs.acceptStorageDownloads();
   runs.acceptTelemetryIngest();
-  runs.configureRunnerGroup();
+  const runnerGroup = runs.configureRunnerGroup();
   await runs.grantProEntitlement(actor);
 
   const name = `test-agent-runs-${randomUUID().slice(0, 8)}`;
@@ -50,7 +54,7 @@ async function seedDirectRunActor(): Promise<{
     },
   });
 
-  return { actor, composeId: compose.composeId };
+  return { actor, composeId: compose.composeId, runnerGroup };
 }
 
 describe("POST /api/test/agent-runs", () => {
@@ -75,7 +79,19 @@ describe("POST /api/test/agent-runs", () => {
 
   it("creates a direct run when the test endpoint is allowed", async () => {
     mockEnv("ENV", "development");
-    const { actor, composeId } = await seedDirectRunActor();
+    mockEnv(
+      "CLI_PKG_URL",
+      "https://static.vm0.io/okou-cli/direct-run-test/package.tgz",
+    );
+    const { actor, composeId, runnerGroup } = await seedDirectRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped test actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.R2ZeroCli]: true },
+    );
 
     const response = await accept(
       client().create({
@@ -109,6 +125,12 @@ describe("POST /api/test/agent-runs", () => {
         id: response.body.runId,
         triggerSource: "test",
       }),
+    );
+
+    await runs.heartbeatRunner(runnerGroup);
+    const claim = await runs.claimRunnerJob(response.body.runId);
+    expect(claim.environment?.CLI_PKG_URL).toBe(
+      "https://static.vm0.io/okou-cli/direct-run-test/package.tgz",
     );
 
     await runs.requestCancelRun(actor, response.body.runId, [200]);

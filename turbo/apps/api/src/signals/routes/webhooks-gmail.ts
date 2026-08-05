@@ -3,7 +3,7 @@ import { webhookGmailContract } from "@vm0/api-contracts/contracts/webhooks";
 
 import type { RouteEntry } from "../route-entry";
 import { request$ } from "../context/hono";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { dispatchGmailPubSubPush$ } from "../services/gmail-workflow-event.service";
 
 function jsonError(message: string, status: 400 | 401 | 429 | 503): Response {

@@ -8,7 +8,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import { AccountDropdown } from "../zero-page/zero-sidebar.tsx";
+import { AccountDropdown } from "../zero-page/zero-sidebar-account";
 import {
   ZeroOrgSwitcher,
   ZeroOrgSwitcherCompact,

@@ -12,11 +12,8 @@ import {
 } from "@vm0/api-contracts/contracts/zero-runs";
 
 import { createApp } from "../../../../app-factory";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import {
   createDirectRunFixture,
   listAgentRunsFixture,

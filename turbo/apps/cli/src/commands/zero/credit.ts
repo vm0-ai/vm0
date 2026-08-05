@@ -3,8 +3,11 @@ import chalk from "chalk";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
 
-import { createZeroCreditCheckout, getZeroBillingStatus } from "../../lib/api";
-import { withErrorHandler } from "../../lib/command";
+import {
+  createZeroCreditCheckout,
+  getZeroBillingStatus,
+} from "../../lib/api/domains/zero-billing";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { decodeZeroTokenPayload } from "../../lib/api/zero-token";
 import { getPlatformOrigin } from "./doctor/platform-url";
 import {

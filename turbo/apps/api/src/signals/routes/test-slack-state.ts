@@ -714,28 +714,25 @@ async function upsertOrgCacheForTest(
   db: Db,
   args: {
     readonly orgId: string;
-    readonly slug?: string;
     readonly name?: string;
     readonly createdBy?: string;
   },
 ): Promise<void> {
-  if (!args.slug && !args.name) {
+  if (!args.name) {
     return;
   }
   await db
     .insert(orgCache)
     .values({
       orgId: args.orgId,
-      slug: args.slug ?? args.orgId,
-      name: args.name ?? "Test Org",
+      name: args.name,
       createdBy: args.createdBy,
       cachedAt: nowDate(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
       set: {
-        slug: args.slug ?? args.orgId,
-        name: args.name ?? "Test Org",
+        name: args.name,
         createdBy: args.createdBy,
         cachedAt: nowDate(),
       },
@@ -1098,7 +1095,6 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   const db = set(writeDb$);
   await upsertOrgCacheForTest(db, {
     orgId: actor.orgId,
-    slug: body.org_slug,
     name: body.org_name,
     createdBy: actor.userId,
   });

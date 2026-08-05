@@ -24,7 +24,7 @@ import {
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now, nowDate } from "../../external/time";
+import { now, nowDate } from "../../../lib/time";
 import type { RouteEntry } from "../../route-entry";
 import { createDeferredPromise } from "../../utils";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";

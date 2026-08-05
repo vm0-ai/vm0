@@ -4,7 +4,8 @@ import { registryResourceDownloadContract } from "@vm0/api-contracts/contracts/r
 import { findWebsiteTemplateResource } from "@vm0/core/resource-registry";
 import { describe, expect, it, onTestFinished } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { seedPrivateRegistryResourceVersionFixture } from "../../../test-fixtures/private-registry-resource";
 import { resolvePrivateRegistryResourceArchive } from "../registry-resources-download";

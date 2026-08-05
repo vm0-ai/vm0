@@ -7,10 +7,9 @@ import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq, sql } from "drizzle-orm";
-
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { serverSideZeroAgentCompose$ } from "./agent-compose.service";
 import {
   grantOnboardingCredits,

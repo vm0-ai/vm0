@@ -1,7 +1,7 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   cloneHostedSite,
   publicSlugFromSite,

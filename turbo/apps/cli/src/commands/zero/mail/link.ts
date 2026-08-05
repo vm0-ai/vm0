@@ -1,7 +1,7 @@
 import { Command, Option } from "commander";
 
-import { linkZeroMailDraft } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { linkZeroMailDraft } from "../../../lib/api/domains/zero-mail";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   addRequestedCallbackSearchParams,
   connectorActionCallbackAvailable,

@@ -6,13 +6,13 @@ import {
   getToken,
   decodeZeroTokenPayload,
 } from "../../lib/api/config";
+import { listZeroConnectors } from "../../lib/api/domains/zero-connectors";
 import {
-  listZeroConnectors,
   getZeroAgentUserConnectors,
-  getZeroOrg,
   listZeroUserPermissionGrants,
-} from "../../lib/api";
-import { withErrorHandler } from "../../lib/command";
+} from "../../lib/api/domains/zero-agents";
+import { getZeroOrg } from "../../lib/api/domains/zero-orgs";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { policyIcon } from "../../lib/utils/format-utils";
 import {
   loadConnectorPermissionInfos,

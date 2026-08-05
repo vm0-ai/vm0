@@ -10,8 +10,6 @@ import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export type { ZeroFinanceResponse } from "@vm0/api-contracts/contracts/zero-finance";
-
 export async function callZeroFinanceSearch(
   body: ZeroFinanceSearchRequest,
 ): Promise<ZeroFinanceResponse> {

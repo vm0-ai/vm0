@@ -41,7 +41,6 @@ function selectOptionByText(text: string): HTMLElement {
 function mockInvoicesStory(): void {
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "admin",
   });
@@ -100,7 +99,6 @@ describe("organization invoices settings", () => {
   it("shows invoice row skeletons while history loads", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -207,7 +205,6 @@ describe("organization invoices settings", () => {
   it("hides ZIP downloads while an older API deployment is active", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });

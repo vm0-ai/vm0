@@ -34,7 +34,6 @@ describe("organization general settings", () => {
     context.mocks.data.org({
       id: "org_1",
       name: "Old Name",
-      slug: "old-slug",
       role: "admin",
     });
     context.mocks.http.get("*/api/zero/org/logo", () => {
@@ -47,7 +46,6 @@ describe("organization general settings", () => {
       return respond(200, {
         id: "org_1",
         name: "New Name",
-        slug: "old-slug",
         role: "admin",
       });
     });
@@ -84,7 +82,6 @@ describe("organization general settings", () => {
     context.mocks.data.org({
       id: "org_1",
       name: "Old Name",
-      slug: "old-slug",
       role: "admin",
     });
     context.mocks.api(zeroOrgContract.update, ({ respond }) => {
@@ -118,7 +115,6 @@ describe("organization general settings", () => {
     context.mocks.data.org({
       id: "org_1",
       name: "Acme",
-      slug: "acme",
       role: "admin",
     });
     context.mocks.http.get("*/api/zero/org/logo", () => {
@@ -183,7 +179,6 @@ describe("organization general settings", () => {
     context.mocks.data.org({
       id: "org_1",
       name: "Acme",
-      slug: "acme",
       role: "admin",
     });
 
@@ -232,7 +227,6 @@ describe("organization general settings", () => {
     context.mocks.data.org({
       id: "org_1",
       name: "Acme",
-      slug: "acme",
       role: "admin",
     });
 

@@ -12,6 +12,7 @@ import {
   Plugin,
   PluginKey,
   NodeSelection,
+  Selection,
   type EditorState,
   type Transaction,
 } from "@tiptap/pm/state";
@@ -35,6 +36,7 @@ import {
   type ComposerFeedbackSignals,
   type FeedbackItem,
 } from "./chat-feedback.ts";
+import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import {
   findActiveChatThreadSuggestionRange,
   serializeChatThreadMention,
@@ -160,16 +162,6 @@ function composerPlaceholder(): string {
   return i18n.t(($) => {
     return $.chat.composer.placeholder;
   });
-}
-
-function isIOS(): boolean {
-  if (typeof navigator === "undefined") {
-    return false;
-  }
-  return (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-  );
 }
 
 interface WorkflowHighlightStorage {
@@ -1895,6 +1887,14 @@ const inlineTemplatesDisabled$ = computed((): boolean => {
   return false;
 });
 
+function focusMountedEditorAtEnd(editor: Editor): void {
+  editor.view.dispatch(
+    editor.state.tr.setSelection(Selection.atEnd(editor.state.doc)),
+  );
+  editor.view.focus();
+  editor.commands.scrollIntoView();
+}
+
 function createMountEditorCommand({
   editor,
   draft,
@@ -2006,8 +2006,8 @@ function createMountEditorCommand({
         mountSignal: signal,
       };
       set(registerMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
-      if (autoFocus && !isIOS()) {
-        editor.commands.focus("end");
+      if (autoFocus && !isMobileTextInputDevice()) {
+        focusMountedEditorAtEnd(editor);
       }
       signal.addEventListener("abort", () => {
         set(unregisterMountedWorkflowNamesSync$, mountedWorkflowNamesSync);

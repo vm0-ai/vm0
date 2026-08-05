@@ -3,8 +3,11 @@ import { dirname } from "node:path";
 
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
-import { callZeroMaps, type ZeroMapsResponse } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import {
+  callZeroMaps,
+  type ZeroMapsResponse,
+} from "../../../lib/api/domains/zero-maps";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 const TRAVEL_MODES = ["driving", "walking", "bicycling", "transit"] as const;
 const PLACE_SEARCH_FIELDSETS = ["pro", "enterprise"] as const;

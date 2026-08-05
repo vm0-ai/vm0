@@ -14,15 +14,6 @@ import type {
   RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-launch.service";
 
-export {
-  scheduleTriggerContext,
-  type AutomationRow,
-  type DueWorkflowAutomation,
-  type RunFailure,
-  type RunWorkflowAutomationNowArgs,
-  type RunWorkflowAutomationResult,
-} from "./zero-workflow-automation-launch.service";
-
 /**
  * Durable workflow-event ingress. Every event enters the chat thread queue
  * before the shared scheduler prepares a run; the run persistence transaction

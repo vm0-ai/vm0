@@ -1,6 +1,14 @@
-use std::path::{Path, PathBuf};
+use std::{
+    error::Error as _,
+    io,
+    path::{Path, PathBuf},
+    pin::Pin,
+    sync::{Arc, OnceLock},
+    task::{Context, Poll},
+};
 
 use aws_sdk_s3::error::SdkError;
+use tokio::io::{AsyncRead, ReadBuf};
 
 use super::{
     R2DownloadError, R2Error, R2ImageCache,
@@ -91,7 +99,7 @@ impl R2ImageCache {
             .await
             .map_err(|e| R2DownloadError::Local(R2Error::Io(e)))?;
 
-        let body_reader = resp.body.into_async_read();
+        let (body_reader, body_read_failure) = TrackedBodyReader::new(resp.body.into_async_read());
 
         if let Err(e) = tokio::fs::create_dir_all(&staging).await {
             return Err(finish_file_staging_error(
@@ -105,9 +113,12 @@ impl R2ImageCache {
             unpack_template_into_staging(body_reader, &staging, expected_template_bytes, limits)
                 .await
         {
-            let error = match error {
-                TemplateUnpackError::Invalid(error) => R2DownloadError::InvalidObject(error),
-                TemplateUnpackError::Local(error) => R2DownloadError::Local(error),
+            let error = match body_read_failure.request_error(key) {
+                Some(error) => error,
+                None => match error {
+                    TemplateUnpackError::Invalid(error) => R2DownloadError::InvalidObject(error),
+                    TemplateUnpackError::Local(error) => R2DownloadError::Local(error),
+                },
             };
             return Err(finish_file_staging_error(&staging, error).await);
         }
@@ -166,6 +177,70 @@ impl R2ImageCache {
 
         Ok(true)
     }
+}
+
+#[derive(Clone, Default)]
+struct BodyReadFailure {
+    diagnostic: Arc<OnceLock<String>>,
+}
+
+impl BodyReadFailure {
+    fn record(&self, error: &io::Error) {
+        self.diagnostic.get_or_init(|| error_diagnostic(error));
+    }
+
+    fn request_error(&self, key: &str) -> Option<R2DownloadError> {
+        self.diagnostic.get().map(|diagnostic| {
+            R2DownloadError::Request(R2Error::S3(format!(
+                "get_object {key} body read: {diagnostic}"
+            )))
+        })
+    }
+}
+
+struct TrackedBodyReader<R> {
+    inner: R,
+    failure: BodyReadFailure,
+}
+
+impl<R> TrackedBodyReader<R> {
+    fn new(inner: R) -> (Self, BodyReadFailure) {
+        let failure = BodyReadFailure::default();
+        (
+            Self {
+                inner,
+                failure: failure.clone(),
+            },
+            failure,
+        )
+    }
+}
+
+impl<R: AsyncRead + Unpin> AsyncRead for TrackedBodyReader<R> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffer: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        match Pin::new(&mut self.inner).poll_read(cx, buffer) {
+            Poll::Ready(Err(error)) => {
+                self.failure.record(&error);
+                Poll::Ready(Err(error))
+            }
+            result => result,
+        }
+    }
+}
+
+fn error_diagnostic(error: &io::Error) -> String {
+    let mut diagnostic = error.to_string();
+    let mut source = error.source();
+    while let Some(error) = source {
+        diagnostic.push_str(": ");
+        diagnostic.push_str(&error.to_string());
+        source = error.source();
+    }
+    diagnostic
 }
 
 pub(super) fn file_staging_dir(destination: &Path) -> PathBuf {

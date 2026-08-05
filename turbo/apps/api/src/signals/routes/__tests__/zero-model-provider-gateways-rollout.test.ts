@@ -2,7 +2,8 @@ import { zeroModelProviderConnectionsMainContract } from "@vm0/api-contracts/con
 
 import { closeDbPool } from "../../../lib/db";
 import { env, mockEnv } from "../../../lib/env";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();

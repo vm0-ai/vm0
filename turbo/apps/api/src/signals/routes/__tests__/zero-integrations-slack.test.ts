@@ -9,9 +9,10 @@ import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero
 import { http, HttpResponse } from "msw";
 
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { ROUTES } from "../../route";
 import { SlackFileFetchError } from "../../external/slack-file-fetcher";
@@ -97,7 +98,6 @@ async function seedSlackFixture(
     seed_default_agent: true,
     default_agent_name: "slack-bot",
     default_agent_display_name: "Slack Bot",
-    org_slug: "test-org-slug",
     org_name: "Test Org",
   });
 

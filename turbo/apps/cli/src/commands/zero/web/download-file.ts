@@ -1,8 +1,8 @@
 import { basename, join } from "path";
 import { tmpdir } from "os";
 import { Command } from "commander";
-import { downloadWebFile } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { downloadWebFile } from "../../../lib/api/domains/web";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 /**
  * Derive a local output path for a web-uploaded file id.

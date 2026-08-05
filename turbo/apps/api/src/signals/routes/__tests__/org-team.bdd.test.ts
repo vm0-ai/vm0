@@ -314,7 +314,8 @@ describe("ORG-01: org update and delete error matrix", () => {
       context.mocks.clerk.organizations.updateOrganization,
     ).not.toHaveBeenCalled();
     const unchanged = await api.readOrg(admin);
-    expect(unchanged).toMatchObject({ slug: baseSlug, name: "BDD R5 Org" });
+    expect(unchanged).toMatchObject({ name: "BDD R5 Org" });
+    expect(unchanged).not.toHaveProperty("slug");
 
     // A name update reaches Clerk and returns the refreshed org.
     api.mockClerkOrg(admin, { slug: baseSlug, name: "BDD R5 Org Renamed" });
@@ -325,9 +326,9 @@ describe("ORG-01: org update and delete error matrix", () => {
     );
     expect(renamed.body).toMatchObject({
       id: admin.orgId,
-      slug: baseSlug,
       name: "BDD R5 Org Renamed",
     });
+    expect(renamed.body).not.toHaveProperty("slug");
     expect(
       context.mocks.clerk.organizations.updateOrganization,
     ).toHaveBeenCalledWith(admin.orgId, { name: "BDD R5 Org Renamed" });
@@ -379,7 +380,7 @@ describe("ORG-01: org update and delete error matrix", () => {
     );
     expect(rawDelete.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
     const stillThere = await api.readOrg(admin);
-    expect(stillThere.slug).toBe(baseSlug);
+    expect(stillThere.name).toBe("BDD R5 Org Renamed");
 
     const orphanAdmin = api.user();
     context.mocks.clerk.organizations.getOrganization.mockRejectedValue({
@@ -908,7 +909,6 @@ describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
     const orgRead = await api.requestReadOrgWithBearer(zeroToken, [200]);
     expect(orgRead.body).toMatchObject({
       id: admin.orgId,
-      slug: orgSlug,
       role: "admin",
     });
 

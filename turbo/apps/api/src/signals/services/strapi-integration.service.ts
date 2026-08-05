@@ -11,7 +11,7 @@ import {
 import { and, asc, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
 import { safeUrlParse } from "../utils";
 import {

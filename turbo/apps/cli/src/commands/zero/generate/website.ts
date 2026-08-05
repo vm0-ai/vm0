@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { createHtmlArtifactAuthoringPacket } from "../shared/html-artifact-authoring";
 import {
   findDesignSystem,
@@ -7,7 +7,7 @@ import {
   findTemplate,
   listDesignSystems,
   listTemplates,
-} from "../shared/resource-registry";
+} from "@vm0/core/resource-registry";
 import {
   canonicalizeRegistryId,
   formatRegistryListing,

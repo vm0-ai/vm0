@@ -2,8 +2,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { usageDaily } from "@vm0/db/schema/usage-daily";
 import { command } from "ccstate";
 import { and, count, gte, isNotNull, lt, sql, sum } from "drizzle-orm";
-
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 
 interface AggregateUsageResult {

@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import type { Stripe } from "stripe";
 
 import { env } from "../../lib/env";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";

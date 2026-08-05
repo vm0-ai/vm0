@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.683.2](https://github.com/vm0-ai/vm0/compare/app-v0.683.1...app-v0.683.2) (2026-08-05)
+
+
+### Refactoring
+
+* stop mirroring org slugs ([#25129](https://github.com/vm0-ai/vm0/issues/25129)) ([2739047](https://github.com/vm0-ai/vm0/commit/2739047684009e2a300c88b0d1ce204b6b31fbf1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.273.2
+    * @vm0/core bumped to 8.513.0
+
+## [0.683.1](https://github.com/vm0-ai/vm0/compare/app-v0.683.0...app-v0.683.1) (2026-08-05)
+
+
+### Refactoring
+
+* decouple composer signals and remove internal re-exports ([#25054](https://github.com/vm0-ai/vm0/issues/25054)) ([a5d80a1](https://github.com/vm0-ai/vm0/commit/a5d80a1127cb7533ad763b1f5d22e9fa562afd03))
+* **platform:** remove legacy permission agent reload ([#25096](https://github.com/vm0-ai/vm0/issues/25096)) ([5433a67](https://github.com/vm0-ai/vm0/commit/5433a6702f4e986d21f7b2f9b9e29c959d2b039e))
+* remove zero chat messaging feature switch ([#25101](https://github.com/vm0-ai/vm0/issues/25101)) ([6a6cf24](https://github.com/vm0-ai/vm0/commit/6a6cf24df6b4beeba0d1a95f732c4f52c6b939aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.273.1
+    * @vm0/connectors bumped to 1.202.10
+    * @vm0/core bumped to 8.512.1
+
 ## [0.683.0](https://github.com/vm0-ai/vm0/compare/app-v0.682.0...app-v0.683.0) (2026-08-05)
 
 

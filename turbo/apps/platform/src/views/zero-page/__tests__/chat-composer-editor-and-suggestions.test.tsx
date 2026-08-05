@@ -1,6 +1,5 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatThreadByIdContract,
   chatThreadDraftContract,
@@ -405,54 +404,6 @@ describe("chat composer models", () => {
     expect(editor.querySelector("span.text-primary")).not.toBeInTheDocument();
   });
 
-  it("inserts a current-agent chat thread mention chip from @ suggestions", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent();
-    mockThread();
-    mockComposerThreadSnapshot([
-      { id: THREAD_ID, agentId: AGENT_ID, title: "My thread" },
-      {
-        id: SUGGESTED_THREAD_ID,
-        agentId: AGENT_ID,
-        title: "Project Alpha",
-      },
-      { id: UNTITLED_THREAD_ID, agentId: AGENT_ID, title: null },
-      {
-        id: OTHER_AGENT_THREAD_ID,
-        agentId: OTHER_AGENT_ID,
-        title: "Other Alpha",
-      },
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroChatMessaging]: false,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("Review @ALPHA");
-
-    const menu = await screen.findByTestId("chat-thread-suggestion-menu");
-    expect(within(menu).getByText("Project Alpha")).toBeInTheDocument();
-    expect(within(menu).queryByText("Other Alpha")).not.toBeInTheDocument();
-    expect(within(menu).queryByText("New chat")).not.toBeInTheDocument();
-
-    await user.keyboard("{Enter}next");
-
-    await waitFor(() => {
-      expect(editor).toHaveTextContent("Review Project Alpha next");
-    });
-    const chip = editor.querySelector(
-      `span[data-chat-thread-mention="${SUGGESTED_THREAD_ID}"]`,
-    );
-    expect(chip).toHaveTextContent("Project Alpha");
-  });
-
   it("suggests threads from every agent with aligned agent avatars", async () => {
     const currentAgentAvatarUrl =
       "https://example.com/current-agent-avatar.png";
@@ -490,9 +441,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroChatMessaging]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -532,44 +480,6 @@ describe("chat composer models", () => {
         `span[data-chat-thread-mention="${OTHER_AGENT_THREAD_ID}"]`,
       ),
     ).toHaveTextContent("Other Alpha");
-  });
-
-  it("keeps agent suggestions behind zero chat messaging", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent();
-    mockThread();
-    context.mocks.data.team([
-      suggestionAgent({ id: AGENT_ID, displayName: "Scout" }),
-      suggestionAgent({
-        id: OTHER_AGENT_ID,
-        displayName: "Other Agent",
-      }),
-    ]);
-    mockComposerThreadSnapshot([
-      { id: THREAD_ID, agentId: AGENT_ID, title: null },
-      {
-        id: SUGGESTED_THREAD_ID,
-        agentId: AGENT_ID,
-        title: "Other thread",
-      },
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroChatMessaging]: false,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("@other");
-
-    const menu = await screen.findByTestId("chat-thread-suggestion-menu");
-    expect(within(menu).getByText("Other thread")).toBeInTheDocument();
-    expect(within(menu).queryByText("Other Agent")).not.toBeInTheDocument();
   });
 
   it("suggests agents above chat threads and inserts an agent item", async () => {
@@ -628,9 +538,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroChatMessaging]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -724,9 +631,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroChatMessaging]: true,
-      },
     });
 
     const editor = await findComposerEditor();
