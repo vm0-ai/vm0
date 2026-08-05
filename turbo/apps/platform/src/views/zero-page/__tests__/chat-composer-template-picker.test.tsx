@@ -447,11 +447,11 @@ describe("chat composer templates", () => {
     ).toBeFalsy();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
     expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
-    expect(tabByText("Presentation")).toHaveClass("border-foreground");
+    expect(tabByText("Presentation")).toHaveClass("border-primary");
     expect(tabByText("Presentation")).toHaveClass("font-medium");
     expect(tabByText("Presentation")).toHaveClass("text-foreground");
     expect(tabByText("Illustration")).toHaveClass("border-gray-400");
-    expect(tabByText("Illustration")).not.toHaveClass("border-foreground");
+    expect(tabByText("Illustration")).not.toHaveClass("border-primary");
     const categorySelect = screen.getByRole("combobox", {
       name: "Template category",
     });
@@ -462,9 +462,12 @@ describe("chat composer templates", () => {
     });
     expect(categorySidebar).toBeInstanceOf(HTMLElement);
     expect(categorySidebar).toHaveAttribute("aria-orientation", "horizontal");
-    expect(categorySidebar).toHaveClass("hidden");
-    expect(categorySidebar).toHaveClass("sm:flex");
-    expect(categorySidebar).toHaveClass("border-b");
+    expect(categorySidebar).toHaveClass("flex-wrap");
+    // The tab row and the workflow search share one row, so the responsive
+    // and divider classes live on the wrapper around the tablist.
+    expect(categorySidebar.parentElement).toHaveClass("hidden");
+    expect(categorySidebar.parentElement).toHaveClass("sm:flex");
+    expect(categorySidebar.parentElement).toHaveClass("border-b");
 
     await user.click(categorySelect);
     await user.click(

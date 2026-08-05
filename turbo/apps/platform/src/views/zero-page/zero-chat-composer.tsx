@@ -5,6 +5,7 @@ import type {
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
+  ReactNode,
 } from "react";
 import {
   useGet,
@@ -1090,10 +1091,11 @@ function VideoTemplateCard({
     <div
       className={cn(
         TEMPLATE_TILE_WRAPPER,
+        TEMPLATE_TILE_RING,
         selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
       )}
     >
-      <div className={cn(TEMPLATE_TILE_MEDIA, "aspect-[16/9]")}>
+      <div className={cn(TEMPLATE_TILE_MEDIA, "aspect-[16/9] rounded-xl")}>
         <VideoTemplatePreview item={item} />
         {selected ? (
           <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
@@ -1138,7 +1140,7 @@ function VideoTemplateGrid({
   onSelect: (item: VideoTemplateItem) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {items.map((item) => {
         return (
           <VideoTemplateCard
@@ -1191,16 +1193,12 @@ function WebsiteTemplateCard({
       }}
       className={cn(
         TEMPLATE_TILE_WRAPPER,
-        "cursor-zoom-in focus-visible:outline-none",
+        TEMPLATE_TILE_RING,
+        "cursor-zoom-in focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
       )}
     >
-      <div
-        className={cn(
-          TEMPLATE_TILE_MEDIA,
-          "aspect-[16/9] group-focus-visible/tile:ring-2 group-focus-visible/tile:ring-ring",
-        )}
-      >
+      <div className={cn(TEMPLATE_TILE_MEDIA, "aspect-[16/9] rounded-xl")}>
         <img
           alt={t(
             ($) => {
@@ -1272,7 +1270,7 @@ function WebsiteTemplateGrid({
   onPreview: (item: WebsiteTemplateItem) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {items.map((item) => {
         return (
           <WebsiteTemplateCard
@@ -1364,9 +1362,10 @@ function WorkflowTemplateCard({
   return (
     <div
       className={cn(
-        "group flex flex-col rounded-lg border bg-card p-4 transition-colors hover:bg-muted/20",
+        "group/tile flex flex-col border border-gray-200 bg-card p-4",
         TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
+        TEMPLATE_TILE_RING,
+        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
       )}
     >
       <p className="text-sm font-semibold text-foreground">{item.title}</p>
@@ -1495,7 +1494,7 @@ function WorkflowTemplateGrid({
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {items.map((item) => {
         return (
           <WorkflowTemplateCard
@@ -3794,10 +3793,11 @@ function PptCard({
     <div
       className={cn(
         TEMPLATE_TILE_WRAPPER,
+        TEMPLATE_TILE_RING,
         selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
       )}
     >
-      <div className={TEMPLATE_TILE_MEDIA}>
+      <div className={cn(TEMPLATE_TILE_MEDIA, "rounded-xl")}>
         <TemplatePreview
           item={item}
           onPreview={onPreview}
@@ -4297,11 +4297,10 @@ function IllustrationTemplateCard({
     <div
       data-illustration-template-card=""
       className={cn(
-        "group mb-4 break-inside-avoid overflow-hidden rounded-xl border bg-card transition-colors",
+        "group/tile mb-4 break-inside-avoid overflow-hidden border border-gray-200 bg-card",
         TEMPLATE_CARD_SHADOW,
-        selected
-          ? "border-primary ring-1 ring-primary"
-          : "border-border hover:border-muted-foreground/30",
+        TEMPLATE_TILE_RING,
+        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
       )}
     >
       <IllustrationTemplateHero
@@ -4460,6 +4459,7 @@ function resolveTemplatePickerCategory({
 }
 
 function TemplatePickerCategoryNav({
+  searchSlot,
   selectedCategory,
   hasPptTab,
   hasIllustrationTab,
@@ -4468,6 +4468,7 @@ function TemplatePickerCategoryNav({
   hasWorkflowTab,
   onChange,
 }: {
+  searchSlot?: ReactNode;
   selectedCategory: string;
   hasPptTab: boolean;
   hasIllustrationTab: boolean;
@@ -4561,71 +4562,74 @@ function TemplatePickerCategoryNav({
           </SelectContent>
         </Select>
       </div>
-      <nav
-        role="tablist"
-        aria-label={t(($) => {
-          return $.artifacts.templates.categories;
-        })}
-        aria-orientation="horizontal"
-        data-template-picker-sidebar=""
-        className="hidden shrink-0 flex-wrap items-center gap-2 border-b border-border px-6 py-3.5 sm:flex"
-      >
-        {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
-          const selected = value === selectedCategory;
-          return (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              tabIndex={selected ? 0 : -1}
-              onClick={() => {
-                onChange(value);
-              }}
-              onKeyDown={(event) => {
-                let nextIndex: number | null = null;
-                if (event.key === "ArrowRight") {
-                  nextIndex = (categoryIndex + 1) % categoryOptions.length;
-                } else if (event.key === "ArrowLeft") {
-                  nextIndex =
-                    (categoryIndex - 1 + categoryOptions.length) %
-                    categoryOptions.length;
-                } else if (event.key === "Home") {
-                  nextIndex = 0;
-                } else if (event.key === "End") {
-                  nextIndex = categoryOptions.length - 1;
-                }
-                if (nextIndex === null) {
-                  return;
-                }
-                event.preventDefault();
-                const nextTab = event.currentTarget.parentElement
-                  ?.querySelectorAll<HTMLElement>("[role=tab]")
-                  .item(nextIndex);
-                nextTab?.focus();
-                onChange(categoryOptions[nextIndex]?.value ?? value);
-              }}
-              className={cn(
-                "group inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border bg-transparent px-3.5 text-[13.5px] leading-[18px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-500",
-                selected
-                  ? "border-foreground font-medium text-foreground"
-                  : "border-gray-400 text-gray-800 hover:border-gray-500 hover:bg-gray-50 hover:text-foreground",
-              )}
-            >
-              <Icon
+      <div className="hidden shrink-0 items-center gap-3 border-b border-border px-6 py-3.5 sm:flex">
+        <nav
+          role="tablist"
+          aria-label={t(($) => {
+            return $.artifacts.templates.categories;
+          })}
+          aria-orientation="horizontal"
+          data-template-picker-sidebar=""
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
+        >
+          {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
+            const selected = value === selectedCategory;
+            return (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => {
+                  onChange(value);
+                }}
+                onKeyDown={(event) => {
+                  let nextIndex: number | null = null;
+                  if (event.key === "ArrowRight") {
+                    nextIndex = (categoryIndex + 1) % categoryOptions.length;
+                  } else if (event.key === "ArrowLeft") {
+                    nextIndex =
+                      (categoryIndex - 1 + categoryOptions.length) %
+                      categoryOptions.length;
+                  } else if (event.key === "Home") {
+                    nextIndex = 0;
+                  } else if (event.key === "End") {
+                    nextIndex = categoryOptions.length - 1;
+                  }
+                  if (nextIndex === null) {
+                    return;
+                  }
+                  event.preventDefault();
+                  const nextTab = event.currentTarget.parentElement
+                    ?.querySelectorAll<HTMLElement>("[role=tab]")
+                    .item(nextIndex);
+                  nextTab?.focus();
+                  onChange(categoryOptions[nextIndex]?.value ?? value);
+                }}
                 className={cn(
-                  "h-[15px] w-[15px] shrink-0 transition-colors",
+                  "group inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border bg-transparent px-3.5 text-[13.5px] leading-[18px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-500",
                   selected
-                    ? "text-foreground"
-                    : "text-gray-700 group-hover:text-gray-800",
+                    ? "border-foreground font-medium text-foreground"
+                    : "border-gray-400 text-gray-800 hover:border-gray-500 hover:bg-gray-50 hover:text-foreground",
                 )}
-                stroke={1.8}
-              />
-              <span className="truncate">{label}</span>
-            </button>
-          );
-        })}
-      </nav>
+              >
+                <Icon
+                  className={cn(
+                    "h-[15px] w-[15px] shrink-0 transition-colors",
+                    selected
+                      ? "text-foreground"
+                      : "text-gray-700 group-hover:text-gray-800",
+                  )}
+                  stroke={1.8}
+                />
+                <span className="truncate">{label}</span>
+              </button>
+            );
+          })}
+        </nav>
+        {searchSlot}
+      </div>
     </>
   );
 }
@@ -4657,7 +4661,7 @@ function TemplatePickerWorkflowSearch({
     return null;
   }
   return (
-    <div className="shrink-0 border-b border-border px-4 py-3 sm:w-64 sm:border-0 sm:px-6 sm:pb-0 sm:pt-4">
+    <div className="relative w-56 shrink-0">
       <div className="relative">
         <IconSearch
           className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -4667,7 +4671,7 @@ function TemplatePickerWorkflowSearch({
           aria-label={t(($) => {
             return $.artifacts.templates.searchConnectors;
           })}
-          className="h-9 pl-9 text-sm sm:h-8"
+          className="h-9 pl-9 text-sm"
           value={search}
           onChange={(event) => {
             onSearchChange(event.target.value);
@@ -4735,7 +4739,7 @@ function PptTemplateGrid({
   signals: ComposerSignals;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {items.map((item) => {
         return (
           <PptCard
@@ -5105,6 +5109,13 @@ function TemplatePickerDialog({
             <div className="flex min-h-0 flex-1 flex-col">
               <TemplatePickerHeader />
               <TemplatePickerCategoryNav
+                searchSlot={
+                  <TemplatePickerWorkflowSearch
+                    selectedCategory={selectedCategory}
+                    search={search}
+                    onSearchChange={handleSearchChange}
+                  />
+                }
                 selectedCategory={selectedCategory}
                 hasPptTab={hasPptTab}
                 hasIllustrationTab={hasIllustrationTab}
@@ -5114,11 +5125,6 @@ function TemplatePickerDialog({
                 onChange={handleCategoryChange}
               />
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-                <TemplatePickerWorkflowSearch
-                  selectedCategory={selectedCategory}
-                  search={search}
-                  onSearchChange={handleSearchChange}
-                />
                 <TemplatePickerCategoryContent
                   signals={signals}
                   selectedCategory={selectedCategory}
@@ -5228,7 +5234,7 @@ function TemplatePickerCategoryContent({
       <div
         data-presentation-template-grid-scroll=""
         ref={onRestorePresentationScroll}
-        className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-5 py-4"
+        className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto p-6"
         onScroll={(event) => {
           onPresentationScroll(event.currentTarget.scrollTop);
         }}
@@ -5253,7 +5259,7 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-website-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6"
       >
         {filteredWebsiteItems.length > 0 ? (
           <WebsiteTemplateGrid
@@ -5273,7 +5279,7 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-illustration-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6"
         onScroll={(event) => {
           prewarmIllustrationPreviewImagesNearScroll({
             items: filteredIllustrationItems,
@@ -5303,7 +5309,7 @@ function TemplatePickerCategoryContent({
     return (
       <div
         data-video-template-grid-scroll=""
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6"
       >
         {filteredVideoItems.length > 0 ? (
           <VideoTemplateGrid
@@ -5343,7 +5349,7 @@ function TemplatePickerCategoryContent({
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div
             data-workflow-template-grid-scroll=""
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6"
           >
             {workflowCatalog.items.length > 0 ? (
               <WorkflowTemplateGrid
