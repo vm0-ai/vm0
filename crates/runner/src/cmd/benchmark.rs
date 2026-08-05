@@ -52,11 +52,11 @@ fn parse_env_args(env: &[String]) -> RunnerResult<Vec<(String, String)>> {
 }
 
 fn validate_timezone_arg(timezone: &str) -> RunnerResult<()> {
-    if !timezone.is_empty() && executor::is_valid_guest_timezone_name(timezone) {
+    if executor::is_shell_safe_guest_timezone_name(timezone) {
         return Ok(());
     }
     Err(RunnerError::Config(format!(
-        "invalid --timezone {timezone:?}: expected a non-empty IANA timezone name"
+        "invalid --timezone {timezone:?}: expected a non-empty guest zoneinfo name containing only ASCII letters, digits, '/', '_', '-', or '+'"
     )))
 }
 
@@ -73,7 +73,7 @@ pub struct BenchmarkArgs {
     /// Environment variables to pass (KEY=VALUE), can be repeated
     #[arg(long, short)]
     env: Vec<String>,
-    /// System timezone to configure in the VM before running the command
+    /// Guest zoneinfo name to configure; benchmark fails if unavailable in the VM
     #[arg(long, default_value = DEFAULT_BENCHMARK_TIMEZONE)]
     timezone: String,
     /// Run the command as root (sudo)
@@ -488,7 +488,23 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use async_trait::async_trait;
+    use clap::CommandFactory;
     use sandbox::{Sandbox, SandboxError, SandboxInitializationPhase};
+
+    #[test]
+    fn benchmark_help_describes_required_guest_zoneinfo() {
+        let mut command = crate::Cli::command();
+        let help = command
+            .find_subcommand_mut("benchmark")
+            .expect("runner CLI should expose benchmark")
+            .render_help()
+            .to_string();
+        let normalized_help = help.split_whitespace().collect::<Vec<_>>().join(" ");
+
+        assert!(normalized_help.contains(
+            "Guest zoneinfo name to configure; benchmark fails if unavailable in the VM"
+        ));
+    }
 
     #[test]
     fn parse_env_args_accepts_key_value_pairs() {
@@ -566,12 +582,13 @@ mod tests {
     }
 
     #[test]
-    fn validate_timezone_arg_accepts_default_and_common_names() {
+    fn validate_timezone_arg_accepts_shell_safe_zoneinfo_name_shapes() {
         for timezone in [
             DEFAULT_BENCHMARK_TIMEZONE,
             "Asia/Shanghai",
             "Etc/GMT+1",
             "America/Argentina/Buenos_Aires",
+            "Mars/Olympus",
         ] {
             validate_timezone_arg(timezone).unwrap();
         }
@@ -581,10 +598,14 @@ mod tests {
     fn validate_timezone_arg_rejects_empty_and_shell_metacharacters() {
         for timezone in ["", "UTC;id", "America/New York", "UTC'", "$(date)"] {
             let err = validate_timezone_arg(timezone).unwrap_err();
+            let message = err.to_string();
             assert!(
-                err.to_string().contains("invalid --timezone"),
+                message.contains("invalid --timezone")
+                    && message.contains("non-empty guest zoneinfo name")
+                    && message.contains("ASCII letters"),
                 "timezone {timezone:?} produced unexpected error: {err}"
             );
+            assert!(!message.contains("IANA"), "got: {message}");
         }
     }
 

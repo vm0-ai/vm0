@@ -236,6 +236,13 @@ describe("user message document codec", () => {
           { type: "goal", goalBrief: "Private goal prompt" },
         ],
       },
+      {
+        version: 1,
+        parts: [
+          { type: "text", text: "Keep this text" },
+          { type: "morning_brief", briefDate: "2026-08-05" },
+        ],
+      },
     ];
 
     for (const document of documents) {

@@ -17,13 +17,13 @@ The stable facade covers:
   used by the runner's usage-flush and shutdown protocol.
 
 Production consumers use this package facade for proxy hooks and response
-processing, runner flush lifecycle and terminal reporting, and Claude/Codex
-provider-output timing.
+processing, runner flush lifecycle and terminal reporting, and retained
+diagnostic telemetry.
 Tests should exercise public hook, provider, and lifecycle paths at their
 observable boundaries: runner-visible pending state and in-flight accounting,
 plus the local HTTP webhook boundary. Avoid patching private transport internals.
 Delivery admission tests may target the production ``usage.webhook`` enqueue
-boundary used by buffered usage and provider-output timing; retry and transport
+boundary used by buffered usage and diagnostic telemetry; retry and transport
 helpers remain private.
 """
 
@@ -61,6 +61,7 @@ from .openai_responses import (
     extract_openai_responses_usage_from_event,
     extract_openai_responses_usage_with_error_from_json,
     inspect_openai_responses_event_json,
+    inspect_openai_responses_event_type_json,
     merge_openai_responses_usage_result,
 )
 from .providers.connectors import (
@@ -104,6 +105,7 @@ __all__ = [
     "has_positive_model_provider_usage",
     "increment_in_flight_flows",
     "inspect_openai_responses_event_json",
+    "inspect_openai_responses_event_type_json",
     "is_model_provider_usage_observable",
     "merge_openai_responses_usage_result",
     "needs_connector_response_buffer_fallback",

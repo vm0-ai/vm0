@@ -255,6 +255,9 @@ runs:
         add_secret OPENAI_API_KEY OPENAI_API_KEY
         add_secret FAL_KEY FAL_KEY
         add_secret JOGGAI_API_KEY JOGGAI_API_KEY
+        if [[ "$INPUT_APP" == "api" ]]; then
+          add_secret JOGGAI_WEBHOOK_SECRET JOGGAI_WEBHOOK_SECRET
+        fi
         add_secret BYTEPLUS_API_KEY BYTEPLUS_API_KEY
         add_secret BYTEPLUS_STT_API_KEY BYTEPLUS_STT_API_KEY
         add_secret UNSPLASH_ACCESS_KEY UNSPLASH_ACCESS_KEY

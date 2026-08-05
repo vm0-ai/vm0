@@ -1,5 +1,71 @@
 # Changelog
 
+## [0.158.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.9...runner-rs-v0.158.10) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** preserve network policies across refresh failures ([#25274](https://github.com/vm0-ai/vm0/issues/25274)) ([adb7dd2](https://github.com/vm0-ai/vm0/commit/adb7dd2378f0b63111cdf61d85a106da8b6d2422))
+
+## [0.158.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.8...runner-rs-v0.158.9) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** retain anthropic accounting telemetry ([#25252](https://github.com/vm0-ai/vm0/issues/25252)) ([3cd1bf7](https://github.com/vm0-ai/vm0/commit/3cd1bf7ba468f993e734d1709d36b6c2c669e676))
+
+
+### Documentation
+
+* **python:** document network-log target helpers ([#25244](https://github.com/vm0-ai/vm0/issues/25244)) ([ad2a9f8](https://github.com/vm0-ai/vm0/commit/ad2a9f81491b80761fd560132ba3f3d337f2f9ee))
+
+
+### Performance Improvements
+
+* **runner:** split codex agent and upstream latency ([#25256](https://github.com/vm0-ai/vm0/issues/25256)) ([b654936](https://github.com/vm0-ai/vm0/commit/b654936c10c59650d8d9079b0350887bb1d354a2))
+
+## [0.158.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.7...runner-rs-v0.158.8) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** secure workspace cache publications ([#25224](https://github.com/vm0-ai/vm0/issues/25224)) ([b682d63](https://github.com/vm0-ai/vm0/commit/b682d63d878baaea4ba22b1b358ed23e9492f66e))
+
+
+### Refactoring
+
+* **rust:** consolidate sandbox test proxies ([#25223](https://github.com/vm0-ai/vm0/issues/25223)) ([f2cc0f9](https://github.com/vm0-ai/vm0/commit/f2cc0f92a5c0ef64a21e5e5b8f18e8da204d7c36))
+
+
+### Performance Improvements
+
+* **mitm-addon:** stop decoding after json inspection terminates ([#25221](https://github.com/vm0-ai/vm0/issues/25221)) ([39dff80](https://github.com/vm0-ai/vm0/commit/39dff80fc4f8d8c81c0b2a97fda7d40c010194e3))
+
+## [0.158.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.6...runner-rs-v0.158.7) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** recover anthropic usage from interrupted compressed streams ([#25171](https://github.com/vm0-ai/vm0/issues/25171)) ([4a7affe](https://github.com/vm0-ai/vm0/commit/4a7affead44cb0a3a2721f422a0f243dce55d92c))
+
+
+### Refactoring
+
+* **python:** share runner flush marker envelope parsing ([#25216](https://github.com/vm0-ai/vm0/issues/25216)) ([a384287](https://github.com/vm0-ai/vm0/commit/a384287d897b74b68b09547605352e95b576f11a))
+* remove obsolete cli release bookkeeping ([#25217](https://github.com/vm0-ai/vm0/issues/25217)) ([de04988](https://github.com/vm0-ai/vm0/commit/de0498849576522e622687fe07b630fa8b519847))
+
+## [0.158.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.5...runner-rs-v0.158.6) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** clean setup temps after cancellation ([#25145](https://github.com/vm0-ai/vm0/issues/25145)) ([c279ec5](https://github.com/vm0-ai/vm0/commit/c279ec5db9d53fa76ef215f00e282a8e01a9f0b3))
+
+
+### Documentation
+
+* **python:** document responses websocket inspection contract ([#25196](https://github.com/vm0-ai/vm0/issues/25196)) ([10d97f5](https://github.com/vm0-ai/vm0/commit/10d97f5a468df9111bd2af94eaf60890698700e1))
+
 ## [0.158.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.4...runner-rs-v0.158.5) (2026-08-05)
 
 
@@ -94,12 +160,6 @@
 
 ## [0.156.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.155.1...runner-rs-v0.156.0) (2026-08-04)
 
-
-### Features
-
-* **contracts:** add native zero cli rust bindings ([#24994](https://github.com/vm0-ai/vm0/issues/24994)) ([519c1f6](https://github.com/vm0-ai/vm0/commit/519c1f631e9759eecd25d929c26cbba84989d434))
-
-
 ### Bug Fixes
 
 * **python:** revalidate firewall authorization after auth waits ([#24973](https://github.com/vm0-ai/vm0/issues/24973)) ([2437299](https://github.com/vm0-ai/vm0/commit/2437299c9af55cceaf1048ed7c2c4d07df75f5ec))
@@ -117,12 +177,6 @@
 * measure pre-park successor handoff ([#24938](https://github.com/vm0-ai/vm0/issues/24938)) ([6e7c0aa](https://github.com/vm0-ai/vm0/commit/6e7c0aa73c51d7916efaa354f6ce1ba32b83090f))
 
 ## [0.155.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.154.3...runner-rs-v0.155.0) (2026-08-04)
-
-
-### Features
-
-* add runner-bundled rust zero cli foundation ([#24907](https://github.com/vm0-ai/vm0/issues/24907)) ([8cc6154](https://github.com/vm0-ai/vm0/commit/8cc6154eb9016e8b7a44d72177053c2224dd5d9a))
-
 
 ### Bug Fixes
 

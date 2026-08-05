@@ -10,7 +10,7 @@ use crate::ids::RunId;
 use crate::storage_fingerprints::StorageFingerprints;
 
 use super::fs::{
-    allocated_bytes, ensure_workspace_cache_entry_dir, remove_workspace_cache_path_if_exists,
+    allocated_bytes, remove_workspace_cache_path_if_exists, secure_workspace_cache_publication_file,
 };
 use super::types::WorkspaceCacheTerminalStatus;
 use super::{CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceImageCache};
@@ -141,15 +141,17 @@ impl WorkspaceImageCache {
     ) -> RunnerResult<()> {
         let metadata_path = self.workspace_image_cache_metadata(cache_key);
         let tmp = metadata_path.with_file_name(format!("metadata.json.tmp.{run_id}"));
-        if let Some(parent) = metadata_path.parent() {
-            ensure_workspace_cache_entry_dir(parent).await?;
-        }
+        self.ensure_workspace_cache_entry_dir(cache_key).await?;
         let bytes = serde_json::to_vec_pretty(&metadata)
             .map_err(|e| RunnerError::Internal(format!("serialize workspace metadata: {e}")))?;
         let _ = remove_workspace_cache_path_if_exists(&tmp).await;
         if let Err(e) = fs::write(&tmp, bytes).await {
             let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             return Err(e.into());
+        }
+        if let Err(e) = secure_workspace_cache_publication_file(&tmp) {
+            let _ = remove_workspace_cache_path_if_exists(&tmp).await;
+            return Err(e);
         }
         if let Err(e) = fs::rename(&tmp, &metadata_path).await {
             let _ = remove_workspace_cache_path_if_exists(&tmp).await;

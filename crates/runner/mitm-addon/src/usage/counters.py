@@ -19,6 +19,8 @@ from typing import Any
 
 from mitmproxy import ctx
 
+import runner_flush_request
+
 _counter_lock = threading.Lock()
 _pending_write_lock = threading.Lock()
 _in_flight_flows = 0
@@ -106,19 +108,13 @@ def read_usage_flush_request_id() -> str | None:
         return None
 
     marker_path = Path(pending_path).with_name(_FLUSH_REQUEST_FILE)
-    try:
-        marker = json.loads(marker_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+    request = runner_flush_request.read_runner_flush_request(
+        marker_path,
+        get_usage_state_id=lambda: usage_state_id,
+    )
+    if request is None:
         return None
-
-    if not isinstance(marker, dict):
-        return None
-    if marker.get("usageStateId") != usage_state_id:
-        return None
-    flush_request_id = marker.get("flushRequestId")
-    if not isinstance(flush_request_id, str) or not flush_request_id:
-        return None
-    return flush_request_id
+    return request.flush_request_id
 
 
 def _write_pending_state(pending_path: str, state: dict[str, Any]) -> None:

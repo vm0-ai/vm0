@@ -348,7 +348,8 @@ impl SnapshotAttempt {
 
         // Spawn Firecracker inside `unshare --mount` so the COW-device bind
         // mount lives in a private mount namespace and dies with the process.
-        // Mirrors the spawn pattern in `sandbox.rs::launch_from_snapshot`.
+        // The shared command builder keeps this mount setup aligned with
+        // snapshot restore.
         if let Err(e) = self.cleanup_resources.process.spawn(SnapshotProcessSpawn {
             cow_device_path: &cow_device_path,
             drive_bind: &drive_bind,

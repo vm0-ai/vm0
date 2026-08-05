@@ -17,11 +17,13 @@ const AVATAR_TEMPLATE_FILTER_OPTIONS_PAGE_SIZE = 100;
 interface AvatarTemplateCatalogPage {
   readonly avatars: readonly ZeroAvatarVideoAvatar[];
   readonly hasNext: boolean;
+  readonly generation: number;
 }
 
 interface AvatarTemplateVoiceCatalogPage {
   readonly voices: readonly ZeroAvatarVideoVoice[];
   readonly hasNext: boolean;
+  readonly generation: number;
 }
 
 interface AvatarTemplateFilters {
@@ -187,13 +189,21 @@ function createOffsetCatalogPagingSignals<T>(
       set(internalPages$, (pages) => {
         return [...pages, next];
       });
+      await get(catalog$);
+      signal.throwIfAborted();
+      if (get(internalGeneration$) !== generation) {
+        return;
+      }
       set(internalLoadingMore$, false);
     },
   );
   const loadingMore$ = computed((get) => {
     return get(internalLoadingMore$);
   });
-  return { catalog$, reset$, loadMore$, loadingMore$ };
+  const generation$ = computed((get) => {
+    return get(internalGeneration$);
+  });
+  return { catalog$, reset$, loadMore$, loadingMore$, generation$ };
 }
 
 function avatarCatalogQuery(
@@ -269,6 +279,7 @@ function createAvatarTemplateCatalogSignals() {
       return {
         avatars: catalog.items,
         hasNext: catalog.hasNext,
+        generation: get(paging.generation$),
       };
     },
   );
@@ -277,6 +288,7 @@ function createAvatarTemplateCatalogSignals() {
     avatarTemplateFilters$,
     setAvatarTemplateFilters$,
     avatarTemplateCatalogPage$,
+    avatarTemplateCatalogGeneration$: paging.generation$,
     loadMoreAvatarTemplates$: paging.loadMore$,
     avatarTemplatesLoadingMore$: paging.loadingMore$,
   };
@@ -361,6 +373,7 @@ function createAvatarTemplateVoiceCatalogSignals() {
       return {
         voices: catalog.items,
         hasNext: catalog.hasNext,
+        generation: get(paging.generation$),
       };
     },
   );
@@ -370,6 +383,7 @@ function createAvatarTemplateVoiceCatalogSignals() {
     setAvatarTemplateVoiceFilters$,
     avatarTemplateVoiceFilterOptions$,
     avatarTemplateVoiceCatalogPage$,
+    avatarTemplateVoiceCatalogGeneration$: paging.generation$,
     loadMoreAvatarTemplateVoices$: paging.loadMore$,
     avatarTemplateVoicesLoadingMore$: paging.loadingMore$,
     resetAvatarTemplateVoiceCatalog$: paging.reset$,

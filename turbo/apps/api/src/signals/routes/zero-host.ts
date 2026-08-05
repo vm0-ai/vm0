@@ -1,7 +1,5 @@
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -12,7 +10,6 @@ import {
   getHostedSiteFiles$,
   prepareHostedSiteDeployment$,
 } from "../services/zero-host.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
@@ -25,25 +22,6 @@ function internalError(message: string) {
     },
   };
 }
-
-function forbidden(message: string) {
-  return {
-    status: 403 as const,
-    body: { error: { message, code: "FORBIDDEN" } },
-  };
-}
-
-const hostedArtifactVersionsEnabled$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  return isFeatureEnabled(FeatureSwitchKey.HostedArtifactVersions, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    overrides,
-  });
-});
 
 const prepareBody$ = bodyResultOf(zeroHostContract.prepare);
 const prepareInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -60,16 +38,12 @@ const prepareInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return suspended;
   }
 
-  const versionedArtifactsEnabled = await get(hostedArtifactVersionsEnabled$);
-  signal.throwIfAborted();
-
   const result = await set(
     prepareHostedSiteDeployment$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
       runId: "runId" in auth ? auth.runId : undefined,
-      versionedArtifactsEnabled,
       body: bodyResult.data,
     },
     signal,
@@ -160,11 +134,6 @@ const filesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const deploymentsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(hostedArtifactVersionsEnabled$))) {
-    return forbidden("Hosted artifact versions are not enabled");
-  }
-  signal.throwIfAborted();
-
   const params = get(deploymentsParams$);
   const result = await set(
     getHostedSiteDeployments$,

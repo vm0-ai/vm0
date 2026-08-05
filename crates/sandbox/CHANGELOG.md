@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.38](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.37...sandbox-v0.19.38) (2026-08-05)
+
+
+### Documentation
+
+* **sandbox:** document remote exec timeout normalization ([#25214](https://github.com/vm0-ai/vm0/issues/25214)) ([6138e94](https://github.com/vm0-ai/vm0/commit/6138e94533b3a0d23ccb7fb040b9ff6621c0db29))
+
 ## [0.19.37](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.36...sandbox-v0.19.37) (2026-08-04)
 
 

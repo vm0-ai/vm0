@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use ::sandbox::*;
+use tokio_util::sync::CancellationToken;
 
 use crate::call_records::{
     CopyFileCall, ExecCall, ExecMatcher, ProcessCancelCall, ProcessControlCall, StartProcessCall,
@@ -40,9 +41,16 @@ pub(crate) struct FileOverrideState {
     pub(crate) private_write_file_results: Mutex<VecDeque<Result<()>>>,
     /// FIFO queue of read_file results consumed by factory-created sandboxes.
     pub(crate) read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
+    /// FIFO queue of copy_file results consumed by factory-created sandboxes.
+    pub(crate) copy_file_results: Mutex<VecDeque<Result<Vec<u8>>>>,
     /// Recorded copy_file calls across all sandboxes built from this override
     /// set.
     pub(crate) copy_file_calls: Mutex<Vec<CopyFileCall>>,
+    /// Optional gate entered after copy validation and result assignment but
+    /// before host publication.
+    pub(crate) copy_file_gate: Mutex<Option<MockLifecycleGate>>,
+    /// Optional gate entered before every write_private_file operation.
+    pub(crate) private_write_file_gate: Mutex<Option<MockLifecycleGate>>,
 }
 
 #[derive(Default)]
@@ -83,6 +91,8 @@ pub(crate) struct LifecycleOverrideState {
 }
 
 pub(crate) struct ProcessOverrideState {
+    /// Optional gate entered before every start_process operation.
+    pub(crate) start_process_lifecycle_gate: Mutex<Option<MockLifecycleGate>>,
     /// When `Some`, `wait_process` returns this exit code instead of 0.
     pub(crate) wait_process_code: Option<i32>,
     /// When set, `wait_process` awaits this [`tokio::sync::Notify`] before
@@ -99,6 +109,12 @@ pub(crate) struct ProcessOverrideState {
     /// FIFO queue of full wait_process exits consumed by factory-created
     /// sandboxes. Empty queue follows the existing default/override behavior.
     pub(crate) wait_process_exits: Mutex<VecDeque<ProcessExit>>,
+    /// FIFO tokens cancelled immediately before successful start_process
+    /// results are returned.
+    pub(crate) start_process_result_cancellations: Mutex<VecDeque<CancellationToken>>,
+    /// FIFO tokens cancelled immediately before successful wait_process
+    /// results are returned.
+    pub(crate) wait_process_result_cancellations: Mutex<VecDeque<CancellationToken>>,
     /// Recorded wait_process calls across all sandboxes built from this
     /// override set.
     pub(crate) wait_process_calls: Mutex<Vec<WaitProcessCall>>,
@@ -138,12 +154,15 @@ pub(crate) struct ProcessOverrideState {
 impl Default for ProcessOverrideState {
     fn default() -> Self {
         Self {
+            start_process_lifecycle_gate: Mutex::new(None),
             wait_process_code: None,
             wait_process_gate: None,
             wait_process_lifecycle_gate: Mutex::new(None),
             wait_process_error: None,
             wait_process_error_reason: SandboxOperationReason::Timeout,
             wait_process_exits: Mutex::new(VecDeque::new()),
+            start_process_result_cancellations: Mutex::new(VecDeque::new()),
+            wait_process_result_cancellations: Mutex::new(VecDeque::new()),
             wait_process_calls: Mutex::new(Vec::new()),
             start_process_calls: Mutex::new(Vec::new()),
             start_process_stdout_chunks: Mutex::new(VecDeque::new()),
@@ -220,6 +239,25 @@ impl MockSandboxOverrides {
         overrides
     }
 
+    /// Block every `start_process` call before validation or call recording.
+    pub fn set_start_process_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self
+            .process
+            .start_process_lifecycle_gate
+            .lock_ignoring_poison() = Some(gate);
+    }
+
+    /// Remove the start-process gate for future calls.
+    ///
+    /// Already-entered calls keep waiting on their cloned gate until released
+    /// or cancelled.
+    pub fn clear_start_process_lifecycle_gate(&self) {
+        *self
+            .process
+            .start_process_lifecycle_gate
+            .lock_ignoring_poison() = None;
+    }
+
     /// Block every `wait_process` call with a durable lifecycle gate.
     ///
     /// Prefer this over [`Self::with_wait_process_gate`]: entries and releases
@@ -273,6 +311,24 @@ impl MockSandboxOverrides {
             .wait_process_exits
             .lock_ignoring_poison()
             .push_back(exit);
+    }
+
+    /// Cancel a token immediately before the next successful `start_process`
+    /// result is returned.
+    pub fn cancel_after_next_start_process_result(&self, cancel: CancellationToken) {
+        self.process
+            .start_process_result_cancellations
+            .lock_ignoring_poison()
+            .push_back(cancel);
+    }
+
+    /// Cancel a token immediately before the next successful `wait_process`
+    /// result is returned.
+    pub fn cancel_after_next_wait_process_result(&self, cancel: CancellationToken) {
+        self.process
+            .wait_process_result_cancellations
+            .lock_ignoring_poison()
+            .push_back(cancel);
     }
 
     /// Register a one-shot pattern matcher for an ordinary exited result.
@@ -372,6 +428,45 @@ impl MockSandboxOverrides {
             .read_file_results
             .lock_ignoring_poison()
             .push_back(result);
+    }
+
+    /// Queue a `copy_file` result shared by factory-created sandboxes.
+    ///
+    /// A sandbox-local result takes precedence. Shared results are consumed in
+    /// FIFO order after the local queue is empty.
+    pub fn push_copy_file_result(&self, result: Result<Vec<u8>>) {
+        self.file
+            .copy_file_results
+            .lock_ignoring_poison()
+            .push_back(result);
+    }
+
+    /// Block copy operations after validation and result assignment but before
+    /// host publication.
+    pub fn set_copy_file_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.file.copy_file_gate.lock_ignoring_poison() = Some(gate);
+    }
+
+    /// Remove the copy gate for future calls.
+    ///
+    /// Already-entered copies keep waiting on their cloned gate until released
+    /// or cancelled.
+    pub fn clear_copy_file_lifecycle_gate(&self) {
+        *self.file.copy_file_gate.lock_ignoring_poison() = None;
+    }
+
+    /// Block every `write_private_file` call before validation, recording, or
+    /// queued-result consumption.
+    pub fn set_private_write_file_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.file.private_write_file_gate.lock_ignoring_poison() = Some(gate);
+    }
+
+    /// Remove the private-write gate for future calls.
+    ///
+    /// Already-entered calls keep waiting on their cloned gate until released
+    /// or cancelled.
+    pub fn clear_private_write_file_lifecycle_gate(&self) {
+        *self.file.private_write_file_gate.lock_ignoring_poison() = None;
     }
 
     /// Queue a factory `create()` result applied to the next factory create

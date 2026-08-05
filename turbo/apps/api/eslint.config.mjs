@@ -163,12 +163,6 @@ export default [
   ...config,
   {
     files: ["src/**/*.ts"],
-    languageOptions: {
-      parserOptions: {
-        project: "./tsconfig.json",
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
     plugins: {
       api: apiLintPlugin,
     },
@@ -301,6 +295,10 @@ export default [
       // This focused transaction validates the rollout contract against real
       // PostgreSQL tables before and after the autonomy-budget columns exist.
       "src/signals/services/__tests__/autonomy-budget-rollout.test.ts",
+      // A pre-0835 table cannot be constructed through a production API. This
+      // focused transaction proves Calendar watch reads and initial writes stay
+      // legal on both sides of the transition-column migration.
+      "src/signals/services/__tests__/google-calendar-watch-rollout.test.ts",
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
     ],
     rules: {
@@ -353,6 +351,10 @@ export default [
       // This focused transaction validates the rollout contract against real
       // PostgreSQL tables before and after the autonomy-budget columns exist.
       "src/signals/services/__tests__/autonomy-budget-rollout.test.ts",
+      // A pre-0835 table cannot be constructed through a production API. This
+      // focused transaction proves Calendar watch reads and initial writes stay
+      // legal on both sides of the transition-column migration.
+      "src/signals/services/__tests__/google-calendar-watch-rollout.test.ts",
     ],
     rules: {
       "no-restricted-imports": [

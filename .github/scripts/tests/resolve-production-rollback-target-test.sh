@@ -290,7 +290,6 @@ ruby -e '
   checkout_ref_exceptions = {
     "queue-production-deploy" => "main",
     "refresh-release-pull-request" => "main",
-    "build-desktop-release" => desktop_target,
     "publish-desktop-update-manifest" => desktop_target,
     "update-rollback-dashboard" => "main",
   }

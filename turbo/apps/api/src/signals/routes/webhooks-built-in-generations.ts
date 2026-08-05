@@ -23,6 +23,7 @@ import {
 import {
   completeBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
+  getBuiltInGenerationWebhookJobByProviderJobId$,
   getBuiltInGenerationWebhookJob$,
   readBuiltInGenerationRequestInternal,
   type BuiltInGenerationWebhookJob,
@@ -31,7 +32,10 @@ import {
   completeRunBuiltInAdmission$,
   type RunBuiltInAdmission,
 } from "../services/zero-run-built-in-admission.service";
-import { verifyBuiltInGenerationProviderWebhookToken } from "../services/built-in-generation-provider-webhooks.service";
+import {
+  verifyBuiltInGenerationProviderWebhookToken,
+  verifyJoggAiWebhookSignature,
+} from "../services/built-in-generation-provider-webhooks.service";
 import {
   bytePlusBuiltInGenerationError,
   downloadFalVideo,
@@ -45,6 +49,7 @@ import {
   videoPricingCategoryForOptions,
   videoPricingKey,
 } from "../services/zero-video-io-generate.service";
+import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import {
   avatarVideoPricing$,
@@ -67,13 +72,6 @@ const bytePlusWebhookPathParams$ = pathParamsOf(
 const bytePlusWebhookQuery$ = queryOf(
   webhookBuiltInGenerationBytePlusContract.post,
 );
-const joggAiWebhookPathParams$ = pathParamsOf(
-  webhookBuiltInGenerationJoggAiContract.post,
-);
-const joggAiWebhookQuery$ = queryOf(
-  webhookBuiltInGenerationJoggAiContract.post,
-);
-
 interface GenerationErrorResponse {
   readonly status: number;
   readonly body: {
@@ -919,50 +917,32 @@ const postBytePlusBuiltInGenerationWebhook$ = command(
 
 const postJoggAiBuiltInGenerationWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<FalWebhookResponse> => {
-    const params = get(joggAiWebhookPathParams$);
-    const query = get(joggAiWebhookQuery$);
-    if (
-      !verifyBuiltInGenerationProviderWebhookToken({
-        provider: "joggai",
-        generationId: params.generationId,
-        visualKey: undefined,
-        token: query.token,
-      })
-    ) {
-      L.warn("JoggAI built-in generation webhook rejected invalid token", {
-        generationId: params.generationId,
-      });
-      return jsonError("Invalid token", 401);
+    const webhookSecret = env("JOGGAI_WEBHOOK_SECRET");
+    if (!webhookSecret) {
+      L.error("JoggAI webhook signing secret is not configured");
+      return jsonError("Webhook is not configured", 503);
     }
 
     const request = get(request$);
+    const signature = request.header("x-webhook-signature");
     const rawBody = await request.text();
     signal.throwIfAborted();
-    const parsed = safeJsonParse(rawBody);
-    const job = await set(
-      getBuiltInGenerationWebhookJob$,
-      params.generationId,
-      signal,
-    );
-    if (!job) {
-      L.debug("JoggAI built-in generation webhook ignored inactive job", {
-        generationId: params.generationId,
-      });
-      return okResponse();
+    if (
+      !signature ||
+      !verifyJoggAiWebhookSignature({
+        body: rawBody,
+        secret: webhookSecret,
+        signature,
+      })
+    ) {
+      L.warn("JoggAI built-in generation webhook rejected invalid signature");
+      return jsonError("Invalid signature", 401);
     }
 
-    const internal = readBuiltInGenerationRequestInternal(job.request);
-    if (internal.provider !== "joggai") {
-      L.warn("JoggAI webhook rejected a non-JoggAI generation", {
-        generationId: job.id,
-        provider: internal.provider,
-      });
-      return jsonError("Invalid generation provider", 400);
-    }
-    const payload = parseJoggAiWebhookPayload(parsed, internal.providerJobId);
+    const parsed = safeJsonParse(rawBody);
+    const payload = parseJoggAiWebhookPayload(parsed);
     if (isAvatarVideoErrorResponse(payload)) {
       L.warn("JoggAI built-in generation webhook rejected invalid payload", {
-        generationId: job.id,
         reason: payload.body.error.message,
       });
       return jsonError(payload.body.error.message, 400);
@@ -970,10 +950,23 @@ const postJoggAiBuiltInGenerationWebhook$ = command(
     if (payload.kind === "pending") {
       return okResponse();
     }
+
+    const job = await set(
+      getBuiltInGenerationWebhookJobByProviderJobId$,
+      { provider: "joggai", providerJobId: payload.videoId },
+      signal,
+    );
+    if (!job) {
+      L.debug("JoggAI built-in generation webhook ignored inactive job", {
+        providerVideoId: payload.videoId,
+      });
+      return okResponse();
+    }
+
     if (payload.kind === "failed") {
       L.warn("JoggAI built-in generation webhook reported failure", {
         generationId: job.id,
-        providerVideoId: internal.providerJobId,
+        providerVideoId: payload.videoId,
         providerMessage: payload.message,
       });
       await set(

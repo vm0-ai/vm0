@@ -4,7 +4,6 @@ import {
   zeroBrowserContract,
   type ZeroBrowserSession,
 } from "@vm0/api-contracts/contracts/zero-browser";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -75,9 +74,6 @@ describe("browser session page", () => {
       detachedSetupPage({
         context,
         path: `/browsers/${threadId}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ZeroBrowser]: true,
-        },
       });
 
       await expect(screen.findByText(title)).resolves.toBeInTheDocument();
@@ -92,7 +88,6 @@ describe("browser session page", () => {
     detachedSetupPage({
       context,
       path: "/browsers/not-a-thread-id",
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     await expect(
@@ -120,7 +115,6 @@ describe("browser session page", () => {
     detachedSetupPage({
       context,
       path: `/browsers/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     await expect(
@@ -146,7 +140,6 @@ describe("browser session page", () => {
     detachedSetupPage({
       context,
       path: `/browsers/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     await expect(
@@ -176,7 +169,6 @@ describe("browser session page", () => {
     detachedSetupPage({
       context,
       path: `/browsers/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const frame = await screen.findByTitle("Live browser: booking");
@@ -220,7 +212,6 @@ describe("browser session page", () => {
     detachedSetupPage({
       context,
       path: `/browsers/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const start = await waitFor(() => {

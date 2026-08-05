@@ -19,6 +19,18 @@ use crate::paths::RuntimePaths;
 /// Firecracker-backed sandbox control.
 ///
 /// Stateless - can be created with zero cost and used immediately.
+///
+/// # Remote exec timeouts
+///
+/// Remote exec requires a positive timeout after normalization to whole
+/// seconds. Fractional seconds are truncated, so 1,500 milliseconds becomes
+/// one second, while a positive duration below one second becomes zero and is
+/// rejected before guest execution. The control server's saturating
+/// seconds-to-milliseconds conversion caps the effective command timeout at
+/// `u32::MAX` milliseconds (about 49.7 days).
+///
+/// The control path adds five seconds to its host-side wait budget. That
+/// overhead does not extend the guest command timeout.
 pub struct FirecrackerControl;
 
 #[async_trait]
@@ -218,6 +230,25 @@ mod tests {
 
         assert_eq!(timeout_secs, 5);
         assert_eq!(control_timeout(timeout_secs), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn positive_subsecond_timeout_becomes_zero_second_request() {
+        let timeout_secs = request_timeout_secs(Duration::from_millis(999));
+
+        assert_eq!(timeout_secs, 0);
+        assert_eq!(
+            control_timeout(timeout_secs),
+            Duration::from_millis(CONTROL_SOCKET_OVERHEAD_MS)
+        );
+    }
+
+    #[test]
+    fn fractional_timeout_truncates_to_whole_seconds() {
+        let timeout_secs = request_timeout_secs(Duration::from_millis(1500));
+
+        assert_eq!(timeout_secs, 1);
+        assert_eq!(control_timeout(timeout_secs), Duration::from_secs(6));
     }
 
     #[test]

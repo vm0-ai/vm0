@@ -192,7 +192,6 @@ function mockCancellationRecoveryQueue(options?: {
               id: `${THREAD_ID}-queued-automation`,
               eventType: "input.automation" as const,
               content: null,
-              triggerSource: "workflow-event" as const,
               userMessage: {
                 version: 1 as const,
                 parts: [
@@ -243,8 +242,14 @@ describe("chat run queue", () => {
         {
           id: `${THREAD_ID}-pending-morning-brief`,
           role: "user",
-          content: "Keep the morning brief queued",
-          triggerSource: "workflow-schedule",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Keep the morning brief queued" },
+              { type: "morning_brief", briefDate: "2026-08-05" },
+            ],
+          },
           runId: undefined,
           createdAt: "2026-08-04T10:00:03Z",
         },
@@ -252,7 +257,6 @@ describe("chat run queue", () => {
           id: `${THREAD_ID}-pending-automation`,
           eventType: "input.automation",
           content: null,
-          triggerSource: "workflow-event",
           userMessage: {
             version: 1,
             parts: [

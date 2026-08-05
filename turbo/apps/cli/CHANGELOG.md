@@ -1,5 +1,14 @@
 # Changelog
 
+## [9.279.4](https://github.com/vm0-ai/vm0/compare/cli-v9.279.3...cli-v9.279.4) (2026-08-05)
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.274.3
+    * @vm0/core bumped to 8.515.1
+
 ## [9.279.3](https://github.com/vm0-ai/vm0/compare/cli-v9.279.2...cli-v9.279.3) (2026-08-05)
 
 
@@ -1906,7 +1915,7 @@
 
 ### Refactoring
 
-* remove vm0 info, upgrade, and init commands from @vm0/cli ([#22272](https://github.com/vm0-ai/vm0/issues/22272)) ([d9e5fc1](https://github.com/vm0-ai/vm0/commit/d9e5fc1c2e336b39f30d0be305e2ce1afd58235d))
+* remove vm0 info, upgrade, and init commands from Zero CLI ([#22272](https://github.com/vm0-ai/vm0/issues/22272)) ([d9e5fc1](https://github.com/vm0-ai/vm0/commit/d9e5fc1c2e336b39f30d0be305e2ce1afd58235d))
 
 
 ### Dependencies
@@ -2767,7 +2776,6 @@
 
 ### Bug Fixes
 
-* **cli:** pin npm publisher version ([#20788](https://github.com/vm0-ai/vm0/issues/20788)) ([e4d0813](https://github.com/vm0-ai/vm0/commit/e4d081397961fe0eea1d4623cd9f7db6be721040))
 * **cli:** refresh registry resource release marker ([#20835](https://github.com/vm0-ai/vm0/issues/20835)) ([c445024](https://github.com/vm0-ai/vm0/commit/c44502432d0afd91cc63a213ee0aa79bd730dfd2))
 * refresh website template r2 archives ([#20809](https://github.com/vm0-ai/vm0/issues/20809)) ([8202876](https://github.com/vm0-ai/vm0/commit/820287677c250892fade8b9f298f910675e5ec26))
 * send chat model choices as model ids ([#20639](https://github.com/vm0-ai/vm0/issues/20639)) ([71b30a2](https://github.com/vm0-ai/vm0/commit/71b30a283202188aa4d92659bcf24d63a01d5e26))
@@ -2808,13 +2816,6 @@
   * devDependencies
     * @vm0/api-contracts bumped to 1.174.0
     * @vm0/core bumped to 8.418.2
-
-## [9.232.3](https://github.com/vm0-ai/vm0/compare/cli-v9.232.2...cli-v9.232.3) (2026-07-09)
-
-
-### Bug Fixes
-
-* **cli:** pin npm publisher version ([#20788](https://github.com/vm0-ai/vm0/issues/20788)) ([e4d0813](https://github.com/vm0-ai/vm0/commit/e4d081397961fe0eea1d4623cd9f7db6be721040))
 
 ## [9.232.2](https://github.com/vm0-ai/vm0/compare/cli-v9.232.1...cli-v9.232.2) (2026-07-09)
 
@@ -10827,12 +10828,6 @@
 
 ## [9.79.1](https://github.com/vm0-ai/vm0/compare/cli-v9.79.0...cli-v9.79.1) (2026-03-24)
 
-
-### Bug Fixes
-
-* **cli:** include chunk files in npm package files glob ([#6505](https://github.com/vm0-ai/vm0/issues/6505)) ([b842bf3](https://github.com/vm0-ai/vm0/commit/b842bf3ba8b528be65831f7fe59a95913460978d))
-
-
 ### Dependencies
 
 * The following workspace dependencies were updated
@@ -14513,7 +14508,6 @@
 
 ### Bug Fixes
 
-* **cli:** add repository field for npm provenance verification ([#264](https://github.com/vm0-ai/vm0/issues/264)) ([c6d058c](https://github.com/vm0-ai/vm0/commit/c6d058c50899e1d904f58b2f51dc5f8b92ee8369))
 * use lowercase in error message to match accepted format ([#263](https://github.com/vm0-ai/vm0/issues/263)) ([e88e454](https://github.com/vm0-ai/vm0/commit/e88e454e0d9a6f036327919a3cd5ced78168af47))
 
 ## [1.8.0](https://github.com/vm0-ai/vm0/compare/cli-v1.7.0...cli-v1.8.0) (2025-11-27)
@@ -14664,7 +14658,7 @@
 
 * cli e2e ([78276d7](https://github.com/e7h4n/vm0/commit/78276d78308b5a8aec85cb9ce4d137299ff0587d))
 * cli package ([4ab79ab](https://github.com/e7h4n/vm0/commit/4ab79ab22e35966956080f2652f29692392bb041))
-* update remaining @vm0/cli references to vm0-cli ([bd8a106](https://github.com/e7h4n/vm0/commit/bd8a106f36b95d8dcf1369e8831071f63f3ec80c))
+* update remaining legacy CLI package references to vm0-cli ([bd8a106](https://github.com/e7h4n/vm0/commit/bd8a106f36b95d8dcf1369e8831071f63f3ec80c))
 
 
 ### Dependencies

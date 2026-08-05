@@ -11,27 +11,16 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.GoogleContactsConnector, {})).toBe(
-      true,
-    );
-    expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
-      true,
-    );
-    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.CustomConnectorCliCreate, {}),
     ).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.CustomConnectorOAuth2, {})).toBe(
       true,
     );
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.CustomConnectorPermissions, {}),
-    ).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.ArtifactKeyV2, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.HostedArtifactVersions, {})).toBe(
+    expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.PwaChatKeyboardGestures, {})).toBe(
       true,
     );
-    expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -52,8 +41,6 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.ChatThreadSidebarAutoOpen, {}),
     ).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.RustZeroCli, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.R2ZeroCli, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(false);
   });
 
@@ -126,16 +113,15 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.ChatSteer]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
       staffOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
@@ -153,20 +139,17 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ChatSteer]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(
+    expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.ChatSteer]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
       otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],

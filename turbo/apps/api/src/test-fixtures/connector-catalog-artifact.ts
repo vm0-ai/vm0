@@ -369,6 +369,7 @@ interface StandardOauthMethodArgs {
   readonly connectorSlug: string;
   readonly prefix: string;
   readonly tokenEnvironmentNames: readonly string[];
+  readonly additionalValues?: Readonly<Record<string, string>>;
   readonly scopes?: readonly string[];
   readonly featureSwitch?: string;
   readonly label?: string;
@@ -384,6 +385,7 @@ function standardOauthMethod(
   const accessTokenRef = secret(accessTokenName);
   const values = {
     accessToken: accessTokenRef,
+    ...args.additionalValues,
     refreshToken: secret(refreshTokenName),
   };
   return providerMethod({
@@ -1497,6 +1499,7 @@ const connectors = [
         connectorSlug: "stripe",
         prefix: "STRIPE",
         tokenEnvironmentNames: ["STRIPE_TOKEN"],
+        additionalValues: { livemode: variable("STRIPE_LIVEMODE") },
         scopes: ["read_write"],
       }),
       manualMethod({

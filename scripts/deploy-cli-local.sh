@@ -37,7 +37,7 @@ commit_sha="$(git -C "$PROJECT_ROOT" rev-parse HEAD)"
 
 (
   cd "$PROJECT_ROOT/turbo"
-  pnpm --filter @vm0/cli build
+  pnpm --filter @vm0/zero-cli build
 )
 (
   cd "$PROJECT_ROOT"

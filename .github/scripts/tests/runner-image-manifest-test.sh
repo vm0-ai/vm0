@@ -33,8 +33,7 @@ cat > "${TMPDIR}/manifest.json" <<'JSON'
     "guest-mock-claude": "d",
     "guest-mock-codex": "e",
     "guest-reseed": "f",
-    "guest-write-file": "g",
-    "zero-cli": "h"
+    "guest-write-file": "g"
   },
   "hosts": {
     "dev-1": {

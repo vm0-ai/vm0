@@ -42,7 +42,6 @@ emit_inventory() {
     ".github/scripts/runner-binary-build/digest.sh"
     "crates/Cargo.lock"
     "crates/Cargo.toml"
-    "turbo/apps/cli/generated/zero-cli-surface.v1.json"
   )
   local -A found_paths=()
 
@@ -52,8 +51,7 @@ emit_inventory() {
   mapfile -d '' -t tree_entries < <(
     git -C "$repo_root" ls-tree --full-tree -r -z "$revision" -- \
       .github/scripts/runner-binary-build \
-      crates \
-      turbo/apps/cli/generated/zero-cli-surface.v1.json
+      crates
   )
   for record in "${tree_entries[@]}"; do
     [[ "$record" == *$'\t'* ]] || fail "malformed Git tree entry"

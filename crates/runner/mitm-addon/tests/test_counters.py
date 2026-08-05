@@ -3,8 +3,6 @@
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 import flow_metadata_keys as metadata_keys
 import usage
 from tests.pending_helpers import assert_current_pending, assert_pending
@@ -240,12 +238,6 @@ class TestUsagePendingCounter:
 
         assert usage.read_usage_flush_request_id() is None
 
-    def test_read_usage_flush_request_id_returns_none_when_marker_missing(self, tmp_path):
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
-
-        assert usage.read_usage_flush_request_id() is None
-
     def test_read_usage_flush_request_id_accepts_matching_marker(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
@@ -260,52 +252,6 @@ class TestUsagePendingCounter:
         )
 
         assert usage.read_usage_flush_request_id() == "request-1"
-
-    def test_read_usage_flush_request_id_rejects_stale_marker(self, tmp_path):
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
-        (tmp_path / "usage-flush-request").write_text(
-            json.dumps(
-                {
-                    "usageStateId": "old-state",
-                    "flushRequestId": "request-1",
-                    "requestedAtMs": 1_770_000_000_000,
-                }
-            )
-        )
-
-        assert usage.read_usage_flush_request_id() is None
-
-    def test_read_usage_flush_request_id_ignores_invalid_marker(self, tmp_path):
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
-        (tmp_path / "usage-flush-request").write_text("not-json")
-
-        assert usage.read_usage_flush_request_id() is None
-
-    def test_read_usage_flush_request_id_ignores_invalid_utf8_marker(self, tmp_path):
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
-        (tmp_path / "usage-flush-request").write_bytes(b"\xff")
-
-        assert usage.read_usage_flush_request_id() is None
-
-    @pytest.mark.parametrize(
-        "marker",
-        [
-            [],
-            {},
-            {"usageStateId": "runner-state"},
-            {"usageStateId": "runner-state", "flushRequestId": ""},
-            {"usageStateId": "runner-state", "flushRequestId": 123},
-        ],
-    )
-    def test_read_usage_flush_request_id_rejects_invalid_marker_shape(self, tmp_path, marker):
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
-        (tmp_path / "usage-flush-request").write_text(json.dumps(marker))
-
-        assert usage.read_usage_flush_request_id() is None
 
     def test_decrement_underflow_stays_non_negative_and_logs_once_per_counter(self, tmp_path):
         pending_path = tmp_path / "usage-pending"

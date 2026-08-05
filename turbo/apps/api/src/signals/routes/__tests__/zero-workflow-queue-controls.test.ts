@@ -283,6 +283,7 @@ describe("workflow automation queue controls", () => {
     );
     expect(initial.body.running?.runId).toBe(runningRunId);
     expect(initial.body.pending).toHaveLength(3);
+    expect(initial.body.pending[0]).not.toHaveProperty("triggerSource");
     expect(initial.body.pausedAt).toBeNull();
     expect(initial.body.pauseReason).toBeNull();
 

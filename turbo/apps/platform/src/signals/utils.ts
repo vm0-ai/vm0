@@ -1,5 +1,5 @@
 import { command, state, type Command } from "ccstate";
-import { delay } from "signal-timers";
+import { delay, timeout } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { logger } from "./log.ts";
 
@@ -133,6 +133,23 @@ export const isAbortError = (error: unknown): boolean => {
 
   return false;
 };
+
+/**
+ * Treat cancellation by a nested lifecycle as successful completion while
+ * preserving parent cancellation and unrelated failures.
+ */
+export function completeOnLocalAbort(
+  completion: Promise<void>,
+  localSignal: AbortSignal,
+  parentSignal: AbortSignal,
+): Promise<void> {
+  return completion.then(undefined, (error) => {
+    parentSignal.throwIfAborted();
+    if (!localSignal.aborted || !isAbortError(error)) {
+      throw error;
+    }
+  });
+}
 
 function throwIfNotAbort(e: unknown) {
   if (!isAbortError(e)) {
@@ -358,9 +375,7 @@ async function waitForFibonacciRetry(
   signal: AbortSignal,
 ): Promise<void> {
   const delayMs = fibonacciRetryDelayMs(retryIndex);
-  await (IN_VITEST
-    ? delay(0, { signal: AbortSignal.any([]) })
-    : delay(delayMs, { signal }));
+  await (IN_VITEST ? waitForNextMacrotask(signal) : delay(delayMs, { signal }));
   signal.throwIfAborted();
 }
 
@@ -433,14 +448,12 @@ export async function setLoop(
         return;
       }
       fibIndex = 0;
-      // In VITEST, yield to the macrotask queue via setTimeout so React can
-      // flush renders between iterations. Using Promise.resolve() only queues
-      // a microtask, which starves React's render cycle. We avoid
-      // delay(0, { signal }) because signal-timers' Promise.race leaves an
-      // abandoned promiseFromSignal that rejects as an unhandled rejection
-      // when the abort signal fires during afterEach cleanup.
+      // In VITEST, yield to the macrotask queue so React can flush renders
+      // between iterations. Using Promise.resolve() only queues a microtask,
+      // which starves React's render cycle. The callback timer avoids
+      // signal-timers' delay Promise.race while still honoring the loop signal.
       await (IN_VITEST
-        ? delay(0, { signal: AbortSignal.any([]) })
+        ? waitForNextMacrotask(signal)
         : delay(interval, { signal }));
     } catch (error) {
       throwIfAbort(error);
@@ -462,6 +475,20 @@ export async function setLoop(
       fibIndex++;
     }
   }
+}
+
+function waitForNextMacrotask(signal: AbortSignal): Promise<void> {
+  const deferred = createDeferredPromise<void>(signal);
+  if (!signal.aborted) {
+    timeout(
+      () => {
+        deferred.resolve(undefined);
+      },
+      0,
+      { signal },
+    );
+  }
+  return deferred.promise;
 }
 
 export function resetSignal(): Command<AbortSignal, AbortSignal[]> {

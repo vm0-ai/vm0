@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.37.186](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.185...sandbox-fc-v0.37.186) (2026-08-05)
+
+
+### Refactoring
+
+* **sandbox-fc:** centralize snapshot spawn construction ([#25268](https://github.com/vm0-ai/vm0/issues/25268)) ([98a37c5](https://github.com/vm0-ai/vm0/commit/98a37c5f4127d46527e0a2d79be0d462ebedcbcd))
+
+## [0.37.185](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.184...sandbox-fc-v0.37.185) (2026-08-05)
+
+
+### Documentation
+
+* **sandbox:** document remote exec timeout normalization ([#25214](https://github.com/vm0-ai/vm0/issues/25214)) ([6138e94](https://github.com/vm0-ai/vm0/commit/6138e94533b3a0d23ccb7fb040b9ff6621c0db29))
+
+## [0.37.184](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.183...sandbox-fc-v0.37.184) (2026-08-05)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** wait for progressing balloon reclaim ([#25194](https://github.com/vm0-ai/vm0/issues/25194)) ([c53cdcf](https://github.com/vm0-ai/vm0/commit/c53cdcf63d4fbc028407eea94399e95f53de23e3))
+
 ## [0.37.183](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.182...sandbox-fc-v0.37.183) (2026-08-05)
 
 ## [0.37.182](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.181...sandbox-fc-v0.37.182) (2026-08-05)

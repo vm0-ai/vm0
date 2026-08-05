@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -18,7 +17,6 @@ import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readRunUploadedFileSources } from "./helpers/runtime-state";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -301,19 +299,13 @@ async function createRunUploadedFile(args: {
 }
 
 describe("artifact key compatibility", () => {
-  it("keeps a legacy attachment URL when an enabled org uses an older upload client", async () => {
+  it("keeps a legacy attachment URL when an older upload client omits metadata headers", async () => {
     const owner = await artifactActor(
       "Artifacts API legacy upload compatibility agent",
     );
     if (!owner.actor.orgId) {
       throw new Error("Expected legacy upload test actor to have an org");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...owner.actor, orgId: owner.actor.orgId },
-      { [FeatureSwitchKey.ArtifactKeyV2]: true },
-    );
-
     const prepared = await chat.prepareUpload(owner.actor, {
       filename: "legacy attachment.txt",
       contentType: "text/plain",
@@ -381,16 +373,6 @@ describe("video Artifact previews", () => {
     if (!owner.actor.orgId) {
       throw new Error("Expected video preview test actor to have an org");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        ...owner.actor,
-        orgId: owner.actor.orgId,
-      },
-      {
-        [FeatureSwitchKey.ArtifactKeyV2]: true,
-      },
-    );
     const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
 
     const videoArtifact = await createRunUploadedFile({
@@ -611,11 +593,6 @@ describe("GET /api/zero/artifacts", () => {
     if (!actor.orgId) {
       throw new Error("Expected hosted artifact actor to have an org");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId: actor.orgId },
-      { [FeatureSwitchKey.HostedArtifactVersions]: true },
-    );
     const owner = await artifactActor(
       "Artifacts API hosted versions agent",
       actor,
@@ -697,16 +674,6 @@ describe("GET /api/zero/artifacts", () => {
     }
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
     mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        ...owner.actor,
-        orgId: owner.actor.orgId,
-      },
-      {
-        [FeatureSwitchKey.ArtifactKeyV2]: true,
-      },
-    );
     const snapshotRequests = mockCloudflareSnapshot();
 
     const artifact = await createHostedArtifact({

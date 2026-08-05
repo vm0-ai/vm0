@@ -101,6 +101,7 @@ type JoggAiWebhookPayload =
   | { readonly kind: "pending" }
   | {
       readonly kind: "failed";
+      readonly videoId: string;
       readonly message: string;
     }
   | {
@@ -362,7 +363,6 @@ function joggAiVoiceInput(
 export async function submitJoggAiAvatarVideo(
   options: AvatarVideoOptions,
   apiKey: string,
-  webhookUrl: string,
   signal: AbortSignal,
 ): Promise<JoggAiAvatarVideoHandle | AvatarVideoErrorResponse> {
   const response = await fetch(JOGGAI_CREATE_AVATAR_VIDEO_URL, {
@@ -375,7 +375,6 @@ export async function submitJoggAiAvatarVideo(
         aspect_ratio: options.aspectRatio,
         screen_style: options.screenStyle,
         caption: options.caption,
-        webhook_url: webhookUrl,
         video_name: options.videoName,
       }),
     ),
@@ -624,19 +623,24 @@ function webhookErrorMessage(value: Record<string, unknown>): string {
 
 export function parseJoggAiWebhookPayload(
   value: unknown,
-  expectedVideoId: string | undefined,
 ): JoggAiWebhookPayload | AvatarVideoErrorResponse {
   if (!isRecord(value) || !isRecord(value.data)) {
     return badRequest("Invalid JoggAI webhook payload");
   }
   const event = optionalString(value.event);
   const status = optionalString(value.data.status)?.toLowerCase();
-  const videoId = optionalString(value.data.video_id);
-  if (!videoId || (expectedVideoId && videoId !== expectedVideoId)) {
-    return badRequest("JoggAI webhook video ID does not match the generation");
+  const videoId =
+    optionalString(value.data.project_id) ??
+    optionalString(value.data.video_id);
+  if (!videoId) {
+    return badRequest("JoggAI webhook did not include a video ID");
   }
   if (event === "generated_avatar_video_failed" || status === "failed") {
-    return { kind: "failed", message: webhookErrorMessage(value.data) };
+    return {
+      kind: "failed",
+      videoId,
+      message: webhookErrorMessage(value.data),
+    };
   }
   if (event !== "generated_avatar_video_success" && status !== "completed") {
     return { kind: "pending" };
@@ -735,7 +739,6 @@ export const recordGeneratedAvatarVideo$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: params.userId,
-        orgId: params.orgId,
         filenamePrefix: "avatar-video",
         extension: extensionForContentType(params.generation.contentType),
         body: params.generation.videoBytes,

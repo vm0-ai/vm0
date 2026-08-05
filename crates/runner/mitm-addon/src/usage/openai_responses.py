@@ -11,10 +11,11 @@ model-provider usage billing:
   ``mitm_addon.py`` fallback used by legacy/test flows without
   response-streaming parser state.
 - Single-frame WebSocket event JSON via
-  ``inspect_openai_responses_event_json`` and
+  ``inspect_openai_responses_event_type_json``,
+  ``inspect_openai_responses_event_json``, and
   ``extract_openai_responses_usage_from_event``, consumed by
-  ``mitm_addon.py`` and ``response_streaming.py`` for Responses events received
-  over upgrades.
+  ``mitm_addon.py`` and ``response_streaming.py`` for client event-type timing
+  and server usage events received over upgrades.
 - Per-event usage aggregation via ``merge_openai_responses_usage_result``,
   used by ``response_streaming.py`` to fold terminal SSE and WebSocket event
   usage into a per-flow accumulator.
@@ -135,7 +136,14 @@ _RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR = "work_limit_exceeded"
 
 @dataclass(frozen=True)
 class OpenAIResponsesEvent:
-    """One inspected Responses WebSocket event."""
+    """One inspected Responses WebSocket event.
+
+    ``event_type`` is the top-level string ``type`` observed by the bounded
+    prefix probe. It is ``None`` when that probe cannot return a value, including
+    when the field is beyond the prefix, oversized, non-string, or missing, or
+    when syntax is malformed before the field is complete. ``None`` does not mean
+    that usage extraction cannot classify the retained complete frame.
+    """
 
     event_type: str | None
     _body: bytes = field(repr=False)
@@ -169,14 +177,24 @@ _RESPONSES_SSE_SCALAR_FIELDS = {
 
 
 def inspect_openai_responses_event_json(body: bytes) -> OpenAIResponsesEvent:
-    """Inspect one complete Responses WebSocket event with one bounded type probe."""
+    """Retain one complete Responses event and probe its prefix for ``type``.
+
+    The returned ``event_type`` is only the bounded-prefix observation; this
+    function does not fully parse or validate the frame. Pass the returned event
+    to ``extract_openai_responses_usage_from_event`` for selective full-frame
+    usage inspection.
+    """
     result = _probe_responses_event_type(body)
-    event_type = result.value if result.status == "found" and result.value is not None else None
     return OpenAIResponsesEvent(
-        event_type=event_type,
+        event_type=_observed_responses_event_type(result),
         _body=body,
         _classification=_classify_responses_event_type_result(result),
     )
+
+
+def inspect_openai_responses_event_type_json(body: bytes) -> str | None:
+    """Probe one Responses frame for its top-level ``type`` without retaining it."""
+    return _observed_responses_event_type(_probe_responses_event_type(body))
 
 
 def _probe_responses_event_type(body: bytes) -> TopLevelStringFieldProbeResult:
@@ -186,6 +204,10 @@ def _probe_responses_event_type(body: bytes) -> TopLevelStringFieldProbeResult:
         max_depth=_JSON_PREFILTER_MAX_DEPTH,
         max_string_bytes=_JSON_PREFILTER_MAX_STRING_BYTES,
     )
+
+
+def _observed_responses_event_type(result: TopLevelStringFieldProbeResult) -> str | None:
+    return result.value if result.status == "found" and result.value is not None else None
 
 
 def _classify_responses_event_type(body: bytes) -> _ResponsesEventTypeClassification:
@@ -669,6 +691,11 @@ class OpenAIResponsesJsonUsageExtractor:
     def feed(self, chunk: bytes) -> None:
         self._extractor.feed(chunk)
 
+    def accepts_more_input(self) -> bool:
+        """Return whether the document parser can still consume input."""
+
+        return self._extractor.accepts_more_input()
+
     def finish(self) -> tuple[dict | None, str | None]:
         result = self._extractor.finish()
         if not result.complete:
@@ -734,7 +761,17 @@ def extract_openai_responses_usage_with_error_from_json(
 def extract_openai_responses_usage_from_event(
     event: OpenAIResponsesEvent,
 ) -> tuple[dict | None, str | None]:
-    """Extract usage and inspection error from one Responses WebSocket event."""
+    """Extract usage and an inspection error from a retained Responses event.
+
+    When prefix inspection leaves the event classification unresolved, this
+    function selectively examines the complete retained frame and can resolve a
+    top-level ``type`` independently of ``event.event_type``.
+
+    Returns ``(usage, None)`` when usage is extracted. Exhausting the selective
+    parser's work budget returns ``(None, "work_limit_exceeded")``; no other
+    inspection failure is surfaced. Known non-usage events, other incomplete or
+    malformed frames, and frames without extractable usage return ``(None, None)``.
+    """
     event_type = event._classification
     if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
         return None, None

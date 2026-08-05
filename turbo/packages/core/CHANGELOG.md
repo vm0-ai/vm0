@@ -1,5 +1,63 @@
 # Changelog
 
+## [8.516.3](https://github.com/vm0-ai/vm0/compare/core-v8.516.2...core-v8.516.3) (2026-08-05)
+
+
+### Refactoring
+
+* remove zero browser feature switch ([#25289](https://github.com/vm0-ai/vm0/issues/25289)) ([3b859f1](https://github.com/vm0-ai/vm0/commit/3b859f1f8ed2886f2298c31d8042b7f413e6f8bd))
+
+## [8.516.2](https://github.com/vm0-ai/vm0/compare/core-v8.516.1...core-v8.516.2) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.6
+
+## [8.516.1](https://github.com/vm0-ai/vm0/compare/core-v8.516.0...core-v8.516.1) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.5
+
+## [8.516.0](https://github.com/vm0-ai/vm0/compare/core-v8.515.1...core-v8.516.0) (2026-08-05)
+
+
+### Features
+
+* **platform:** make default model selection explicit ([#25187](https://github.com/vm0-ai/vm0/issues/25187)) ([4b83c3d](https://github.com/vm0-ai/vm0/commit/4b83c3d2a01f2256fffe55e5bc0c447070fa5ca2))
+
+
+### Refactoring
+
+* remove obsolete cli release bookkeeping ([#25217](https://github.com/vm0-ai/vm0/issues/25217)) ([de04988](https://github.com/vm0-ai/vm0/commit/de0498849576522e622687fe07b630fa8b519847))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.4
+
+## [8.515.1](https://github.com/vm0-ai/vm0/compare/core-v8.515.0...core-v8.515.1) (2026-08-05)
+
+
+### Refactoring
+
+* remove graduated feature switches ([#25128](https://github.com/vm0-ai/vm0/issues/25128)) ([c160b0e](https://github.com/vm0-ai/vm0/commit/c160b0e1a25a6c884a0021fc9caf61eab71e4561))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.3
+
 ## [8.515.0](https://github.com/vm0-ai/vm0/compare/core-v8.514.1...core-v8.515.0) (2026-08-05)
 
 
@@ -181,12 +239,6 @@
     * @vm0/api-contracts bumped to 1.268.0
 
 ## [8.508.0](https://github.com/vm0-ai/vm0/compare/core-v8.507.1...core-v8.508.0) (2026-08-04)
-
-
-### Features
-
-* add runner-bundled rust zero cli foundation ([#24907](https://github.com/vm0-ai/vm0/issues/24907)) ([8cc6154](https://github.com/vm0-ai/vm0/commit/8cc6154eb9016e8b7a44d72177053c2224dd5d9a))
-
 
 ### Dependencies
 

@@ -41,11 +41,7 @@ import {
   notFound,
 } from "../../lib/error";
 import { env } from "../../lib/env";
-import {
-  buildArtifactKey,
-  buildArtifactKeyV2,
-  sanitizeArtifactFilename,
-} from "../../lib/file-url";
+import { buildArtifactKeyV2 } from "../../lib/file-url";
 import { logger } from "../../lib/log";
 import type { AuthContext } from "../../types/auth";
 import {
@@ -381,7 +377,6 @@ function shouldTouchThreadSortFromNormalSend(
 }
 
 interface NormalSendFeatureSwitches {
-  readonly artifactKeyV2Enabled: boolean;
   readonly chatSteerEnabled: boolean;
   readonly codexFastModeEnabled: boolean;
   readonly userMessageInlineTemplatesEnabled: boolean;
@@ -731,7 +726,6 @@ const resolveIncomingAttachFileMetadata$ = command(
     args: {
       readonly userId: string;
       readonly attachFiles: readonly AttachFile[] | undefined;
-      readonly artifactKeyV2Enabled: boolean;
     },
     signal: AbortSignal,
   ): Promise<ChatEventAttachFileMetadata[] | null> => {
@@ -740,25 +734,18 @@ const resolveIncomingAttachFileMetadata$ = command(
     }
     const metadata: ChatEventAttachFileMetadata[] = [];
     for (const file of args.attachFiles) {
-      const object = args.artifactKeyV2Enabled
-        ? await set(
-            resolveArtifactObject$,
-            { userId: args.userId, id: file.id },
-            signal,
-          )
-        : null;
+      const object = await set(
+        resolveArtifactObject$,
+        { userId: args.userId, id: file.id },
+        signal,
+      );
       signal.throwIfAborted();
-      const sanitized = sanitizeArtifactFilename(file.filename);
       metadata.push({
         id: file.id,
         filename: file.filename,
         contentType: file.contentType,
         size: file.size,
-        objectKey:
-          object?.key ??
-          (args.artifactKeyV2Enabled
-            ? buildArtifactKeyV2(file.id, file.filename)
-            : buildArtifactKey(args.userId, file.id, sanitized)),
+        objectKey: object?.key ?? buildArtifactKeyV2(file.id, file.filename),
       });
     }
     return metadata;
@@ -918,10 +905,6 @@ async function resolveNormalSendFeatureSwitches(
 ): Promise<NormalSendFeatureSwitches> {
   const context = await loadUserFeatureSwitchContext(db, orgId, userId);
   return {
-    artifactKeyV2Enabled: isFeatureEnabled(
-      FeatureSwitchKey.ArtifactKeyV2,
-      context,
-    ),
     chatSteerEnabled: isFeatureEnabled(FeatureSwitchKey.ChatSteer, context),
     codexFastModeEnabled: isFeatureEnabled(
       FeatureSwitchKey.CodexFastMode,
@@ -1493,6 +1476,7 @@ function appendUnassociatedUserMessage(params: {
       userMessage: params.userMessage,
       runId: null,
       triggerSource: params.triggerSource,
+      ...(params.triggerSource === "web" ? { contextType: "web" } : {}),
       ...(params.agentRunSource
         ? {
             agentRunContext: {
@@ -1623,6 +1607,7 @@ async function appendAssociatedUserMessage(params: {
       eventType: "input.prompt",
       userMessage: params.userMessage,
       runId: params.runId,
+      contextType: "web",
       attachFiles: fileIds,
       generationTemplate: params.generationTemplate,
     };
@@ -2364,7 +2349,6 @@ const prepareNormalSend$ = command(
       {
         userId: args.userId,
         attachFiles: runtimeBody.attachFiles,
-        artifactKeyV2Enabled: featureSwitches.artifactKeyV2Enabled,
       },
       signal,
     );

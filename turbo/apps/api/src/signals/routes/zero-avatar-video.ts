@@ -13,7 +13,6 @@ import { bodyResultOf, queryOf } from "../context/request";
 import { db$ } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import type { RouteEntry } from "../route-entry";
-import { joggAiBuiltInGenerationWebhookUrl } from "../services/built-in-generation-provider-webhooks.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import {
@@ -112,14 +111,7 @@ const submitAvatarVideoJob$ = command(
       return response;
     }
 
-    const handle = await submitJoggAiAvatarVideo(
-      args.options,
-      apiKey,
-      joggAiBuiltInGenerationWebhookUrl({
-        generationId: args.generationId,
-      }),
-      signal,
-    );
+    const handle = await submitJoggAiAvatarVideo(args.options, apiKey, signal);
     signal.throwIfAborted();
     if (isAvatarVideoErrorResponse(handle)) {
       await set(

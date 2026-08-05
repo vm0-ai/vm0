@@ -1,31 +1,12 @@
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+
 import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
-
-import { isDrizzleDeclaration } from "../drizzle.ts";
+  isDatabaseExpression,
+  isDrizzleExecuteCall,
+  memberName,
+  propertyName,
+} from "../syntax.ts";
 import { createRule } from "../utils.ts";
-
-function memberName(node: TSESTree.MemberExpression): string | null {
-  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
-    return node.property.name;
-  }
-  if (node.computed && node.property.type === AST_NODE_TYPES.Literal) {
-    return typeof node.property.value === "string" ? node.property.value : null;
-  }
-  return null;
-}
-
-function propertyName(node: TSESTree.Property): string | null {
-  if (!node.computed && node.key.type === AST_NODE_TYPES.Identifier) {
-    return node.key.name;
-  }
-  if (node.key.type === AST_NODE_TYPES.Literal) {
-    return typeof node.key.value === "string" ? node.key.value : null;
-  }
-  return null;
-}
 
 function onlyDestructuresRowCount(pattern: TSESTree.BindingName): boolean {
   if (
@@ -148,7 +129,6 @@ export const requireExecuteRowSchema = createRule({
       description:
         "Require runtime schemas for rows returned by Drizzle execute",
       recommended: true,
-      requiresTypeChecking: true,
     },
     schema: [],
     messages: {
@@ -172,19 +152,10 @@ export const requireExecuteRowSchema = createRule({
       return {};
     }
 
-    const services = ESLintUtils.getParserServices(context);
-    const checker = services.program.getTypeChecker();
-
     function isDrizzleExecuteMember(node: TSESTree.MemberExpression): boolean {
-      if (memberName(node) !== "execute") {
-        return false;
-      }
-      const tsProperty = services.esTreeNodeToTSNodeMap.get(node.property);
-      const symbol = checker.getSymbolAtLocation(tsProperty);
       return (
-        symbol?.declarations?.some((declaration) => {
-          return isDrizzleDeclaration(declaration);
-        }) === true
+        memberName(node) === "execute" &&
+        isDatabaseExpression(context.sourceCode, node.object)
       );
     }
 
@@ -195,13 +166,12 @@ export const requireExecuteRowSchema = createRule({
       ) {
         return false;
       }
-      const tsPattern = services.esTreeNodeToTSNodeMap.get(node.parent);
-      const patternType = checker.getTypeAtLocation(tsPattern);
-      const executeSymbol = checker.getPropertyOfType(patternType, "execute");
+      const declarator = node.parent.parent;
       return (
-        executeSymbol?.declarations?.some((declaration) => {
-          return isDrizzleDeclaration(declaration);
-        }) === true
+        declarator.type === AST_NODE_TYPES.VariableDeclarator &&
+        declarator.id === node.parent &&
+        declarator.init !== null &&
+        isDatabaseExpression(context.sourceCode, declarator.init)
       );
     }
 
@@ -209,7 +179,7 @@ export const requireExecuteRowSchema = createRule({
       CallExpression(node: TSESTree.CallExpression): void {
         if (
           node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-          !isDrizzleExecuteMember(node.callee)
+          !isDrizzleExecuteCall(context.sourceCode, node)
         ) {
           return;
         }

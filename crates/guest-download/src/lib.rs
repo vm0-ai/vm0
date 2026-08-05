@@ -4,6 +4,27 @@
 //! - Parallel downloads using std::thread (max 4 concurrent)
 //! - Streaming extraction (no temp files)
 //! - Retry logic with 3 attempts
+//!
+//! ## Manifest application and failure semantics
+//!
+//! [`run`] and [`run_manifest_bytes`] apply valid manifests directly to the
+//! filesystem without a transaction. Manifest-requested stale-path and
+//! instruction-file cleanups are attempted before target preparation and
+//! downloads, and a later failure does not restore their changes.
+//!
+//! Downloads whose targets do not overlap may run concurrently. A failed task
+//! does not cancel its siblings, so a `false` result can coexist with targets
+//! successfully materialized by other tasks. Archive attempts extract in place
+//! and retries reuse the same target, so a failed task may also leave changes
+//! written by an earlier entry or attempt.
+//!
+//! On preparation or aggregate download failure, the crate attempts to remove
+//! staged sources used to normalize instruction storage. That targeted cleanup
+//! does not roll back ordinary storage or artifact targets, empty artifact
+//! directories already prepared, or earlier cleanup effects. Cleanup and
+//! instruction normalization are best-effort operations, so the result
+//! reports required target preparation and downloads rather than
+//! transaction-wide success for every filesystem change.
 
 mod archive;
 mod cleanup;
@@ -24,8 +45,13 @@ use std::time::Instant;
 
 const LOG_TAG: &str = "sandbox:download";
 
-/// Run the download process for the given manifest file.
-/// Returns `true` if all downloads succeeded, `false` otherwise.
+/// Apply the manifest read from `manifest_path`.
+///
+/// Returns `true` when the manifest can be read and parsed and all required
+/// target preparations and downloads succeed. Returns `false` otherwise. A
+/// read or parse failure occurs before manifest application; once application
+/// starts, `false` does not roll back completed filesystem changes. See the
+/// manifest application section in the [`crate`] documentation for details.
 pub fn run(manifest_path: &str) -> bool {
     let manifest = match manifest::load(manifest_path) {
         Ok(manifest) => manifest,
@@ -42,8 +68,13 @@ pub fn run(manifest_path: &str) -> bool {
     run_manifest(manifest)
 }
 
-/// Run the download process for a manifest supplied as JSON bytes.
-/// Returns `true` if all downloads succeeded, `false` otherwise.
+/// Apply a manifest supplied as JSON bytes.
+///
+/// Returns `true` when the manifest parses and all required target preparations
+/// and downloads succeed. Returns `false` otherwise. A parse failure occurs
+/// before manifest application; once application starts, `false` does not roll
+/// back completed filesystem changes. See the manifest application section in
+/// the [`crate`] documentation for details.
 pub fn run_manifest_bytes(manifest_json: &[u8]) -> bool {
     let manifest = match manifest::parse(manifest_json) {
         Ok(manifest) => manifest,

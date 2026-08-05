@@ -238,6 +238,14 @@ pub struct TimingConfig {
     // -- Backpressure --------------------------------------------------------
     /// Bounded capacity of the internal event channel (mpsc). Values below 1
     /// are treated as 1 because Tokio channels do not support zero capacity.
+    ///
+    /// [`Event::Message`] delivery is non-blocking and may drop messages when
+    /// this channel is full. Delivery of [`Event::Connected`],
+    /// [`Event::Disconnected`], and [`Event::Error`] instead waits for capacity,
+    /// which can delay reconnect and post-reconnect receive progress until the
+    /// caller drains an event or closes or drops the
+    /// [`Subscription`](crate::Subscription). See that type for the complete
+    /// backpressure and close behavior.
     pub event_channel_capacity: usize,
 }
 

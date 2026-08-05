@@ -37,7 +37,6 @@ import {
   zeroCustomConnectorsContract,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { describe, expect, it } from "vitest";
@@ -682,9 +681,6 @@ describe("team page navigation", () => {
     detachedSetupPage({
       context,
       path: `/agents/${researchAgentId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.CustomConnectorPermissions]: true,
-      },
     });
 
     await screen.findByText("Acme Search");
@@ -760,9 +756,6 @@ describe("team page navigation", () => {
     detachedSetupPage({
       context,
       path: `/agents/${researchAgentId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.CustomConnectorPermissions]: true,
-      },
     });
 
     await screen.findByText("Acme Search");
@@ -794,9 +787,6 @@ describe("team page navigation", () => {
     detachedSetupPage({
       context,
       path: `/agents/${researchAgentId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.CustomConnectorPermissions]: true,
-      },
     });
 
     await screen.findByText("Acme Search");

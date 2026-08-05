@@ -26,6 +26,7 @@ from tests.body_decode_helpers import (
     pseudo_random_ascii,
     track_brotli_decompressor,
 )
+from usage.json_selective import JsonSelectiveExtractor
 
 _ZLIB_INPUT_BOUND = 1024
 
@@ -51,6 +52,7 @@ def _track_zlib_decompressor(monkeypatch):
     real_factory = zlib.decompressobj
     stats = {
         "calls": 0,
+        "input_bytes": 0,
         "objects": 0,
         "max_input": 0,
         "max_unused_data": 0,
@@ -66,6 +68,7 @@ def _track_zlib_decompressor(monkeypatch):
 
         def decompress(self, chunk, *args, **kwargs):
             stats["calls"] += 1
+            stats["input_bytes"] += len(chunk)
             stats["max_input"] = max(stats["max_input"], len(chunk))
             return self._wrapped.decompress(chunk, *args, **kwargs)
 
@@ -225,6 +228,30 @@ class TestStreamDecodeSession:
         assert chunks == [b"hello"]
         assert session.finish_error() is None
 
+    def test_identity_document_parser_termination_stops_callbacks(self, headers):
+        extractor = JsonSelectiveExtractor(max_work_units=1)
+        decoded_callbacks = 0
+
+        def feed(chunk: bytes) -> None:
+            nonlocal decoded_callbacks
+            decoded_callbacks += 1
+            extractor.feed(chunk)
+
+        session = create_stream_decode_session(
+            headers(),
+            feed,
+            should_continue=extractor.accepts_more_input,
+        )
+        assert session is not None
+
+        session.feed(b"[0")
+        assert extractor.accepts_more_input() is False
+
+        session.feed(b"]")
+        assert decoded_callbacks == 1
+        assert extractor.finish().error == "work limit exceeded"
+        assert session.finish_error() is None
+
     def test_gzip_high_ratio_output_is_chunked(self, headers):
         plaintext = b"A" * (STREAM_DECODE_CHUNK_LIMIT * 3 + 123)
         chunks: list[bytes] = []
@@ -236,6 +263,55 @@ class TestStreamDecodeSession:
         assert b"".join(chunks) == plaintext
         assert len(chunks) > 1
         assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
+        assert session.finish_error() is None
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_document_parser_termination_stops_zlib_traversal(self, headers, monkeypatch, encoding):
+        dense_array = b"0," * 40_000 + b"0"
+        random_tail = hashlib.shake_256(b"issue-25212-regression").hexdigest(128 * 1024).encode()
+        plaintext = (
+            b'{"padding":['
+            + dense_array
+            + b'],"random":"'
+            + random_tail
+            + b'","bulk":"'
+            + b"A" * (12 * 1024 * 1024)
+            + b'"}'
+        )
+        compressed = _compress_one_shot_body(encoding, plaintext)
+        assert 50 * len(compressed) < len(plaintext) < 100 * len(compressed)
+
+        extractor = JsonSelectiveExtractor(max_work_units=65_536)
+        decoded_callbacks = 0
+        decoded_bytes = 0
+
+        def feed(chunk: bytes) -> None:
+            nonlocal decoded_bytes, decoded_callbacks
+            decoded_callbacks += 1
+            decoded_bytes += len(chunk)
+            extractor.feed(chunk)
+
+        stats = _track_zlib_decompressor(monkeypatch)
+        session = create_stream_decode_session(
+            headers(("Content-Encoding", encoding)),
+            feed,
+            should_continue=extractor.accepts_more_input,
+        )
+        assert session is not None
+        midpoint = len(compressed) // 2
+
+        session.feed(compressed[:midpoint])
+
+        assert extractor.accepts_more_input() is False
+        assert decoded_callbacks < len(plaintext) // STREAM_DECODE_CHUNK_LIMIT // 10
+        assert decoded_bytes < len(plaintext) // 10
+        assert stats["input_bytes"] < len(compressed) // 10
+        counts_after_termination = (decoded_callbacks, decoded_bytes, stats["calls"])
+
+        session.feed(compressed[midpoint:])
+
+        assert (decoded_callbacks, decoded_bytes, stats["calls"]) == counts_after_termination
+        assert extractor.finish().error == "work limit exceeded"
         assert session.finish_error() is None
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])

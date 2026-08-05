@@ -1,5 +1,116 @@
 # Changelog
 
+## [1.379.3](https://github.com/vm0-ai/vm0/compare/api-v1.379.2...api-v1.379.3) (2026-08-05)
+
+
+### Refactoring
+
+* **api:** reconcile gmail and calendar watch lifecycles ([#25237](https://github.com/vm0-ai/vm0/issues/25237)) ([1ed2af6](https://github.com/vm0-ai/vm0/commit/1ed2af6cf8b915c598d1685b7c1ecf22e9a784e6))
+* **db:** add chat input source discriminators ([#25294](https://github.com/vm0-ai/vm0/issues/25294)) ([9e8fc83](https://github.com/vm0-ai/vm0/commit/9e8fc83b090bf6aa4bb874be9c279e78295d8182))
+* remove zero browser feature switch ([#25289](https://github.com/vm0-ai/vm0/issues/25289)) ([3b859f1](https://github.com/vm0-ai/vm0/commit/3b859f1f8ed2886f2298c31d8042b7f413e6f8bd))
+
+
+### Performance Improvements
+
+* **api:** remove typescript program from database lint rules ([#25277](https://github.com/vm0-ai/vm0/issues/25277)) ([59fcbb8](https://github.com/vm0-ai/vm0/commit/59fcbb81d006162f77eb337a6a2afe3a7ebbf59a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.516.3
+    * @vm0/db bumped to 1.166.5
+
+## [1.379.2](https://github.com/vm0-ai/vm0/compare/api-v1.379.1...api-v1.379.2) (2026-08-05)
+
+
+### Bug Fixes
+
+* **api:** accept joggai webhook project ids ([#25275](https://github.com/vm0-ai/vm0/issues/25275)) ([9582391](https://github.com/vm0-ai/vm0/commit/9582391e53bafaff02b1cd18e362a7381fe9a39a))
+
+
+### Refactoring
+
+* **api:** stop projecting chat event trigger source ([#25278](https://github.com/vm0-ai/vm0/issues/25278)) ([de5898c](https://github.com/vm0-ai/vm0/commit/de5898c6a40f96535c6591ac320d8e8cf2cb35c3))
+* **chat:** remove artifacts from completion events ([#25271](https://github.com/vm0-ai/vm0/issues/25271)) ([d10fe3f](https://github.com/vm0-ai/vm0/commit/d10fe3f32f119f2c3012fe6f34b88b170ba1a434))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.6
+    * @vm0/core bumped to 8.516.2
+    * @vm0/db bumped to 1.166.4
+
+## [1.379.1](https://github.com/vm0-ai/vm0/compare/api-v1.379.0...api-v1.379.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* persist automation trigger prompts in chat events ([#25249](https://github.com/vm0-ai/vm0/issues/25249)) ([26c99e1](https://github.com/vm0-ai/vm0/commit/26c99e14a4d7db973a64eee87d40080fa5be3baf))
+
+## [1.379.0](https://github.com/vm0-ai/vm0/compare/api-v1.378.2...api-v1.379.0) (2026-08-05)
+
+
+### Features
+
+* **connectors:** capture stripe oauth livemode ([#25225](https://github.com/vm0-ai/vm0/issues/25225)) ([9695ead](https://github.com/vm0-ai/vm0/commit/9695ead11858fa939361f1cbacde73b63204af6a))
+
+
+### Bug Fixes
+
+* **billing:** limit receipt download concurrency ([#25226](https://github.com/vm0-ai/vm0/issues/25226)) ([1d8989a](https://github.com/vm0-ai/vm0/commit/1d8989a485d345f2ee8c938f162dca9c896616cd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.5
+    * @vm0/connectors bumped to 1.203.0
+    * @vm0/core bumped to 8.516.1
+    * @vm0/db bumped to 1.166.3
+
+## [1.378.2](https://github.com/vm0-ai/vm0/compare/api-v1.378.1...api-v1.378.2) (2026-08-05)
+
+
+### Bug Fixes
+
+* **api:** use registered joggai webhooks ([#25197](https://github.com/vm0-ai/vm0/issues/25197)) ([ad82a78](https://github.com/vm0-ai/vm0/commit/ad82a78fcf3f39f7005a040ea0456adb27677575))
+
+
+### Refactoring
+
+* remove obsolete cli release bookkeeping ([#25217](https://github.com/vm0-ai/vm0/issues/25217)) ([de04988](https://github.com/vm0-ai/vm0/commit/de0498849576522e622687fe07b630fa8b519847))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.4
+    * @vm0/core bumped to 8.516.0
+    * @vm0/db bumped to 1.166.2
+
+## [1.378.1](https://github.com/vm0-ai/vm0/compare/api-v1.378.0...api-v1.378.1) (2026-08-05)
+
+
+### Refactoring
+
+* add morning brief user message part ([#25174](https://github.com/vm0-ai/vm0/issues/25174)) ([a68b7b3](https://github.com/vm0-ai/vm0/commit/a68b7b3a97db1211a4e2f80411802f55108e191d))
+* remove graduated feature switches ([#25128](https://github.com/vm0-ai/vm0/issues/25128)) ([c160b0e](https://github.com/vm0-ai/vm0/commit/c160b0e1a25a6c884a0021fc9caf61eab71e4561))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.3
+    * @vm0/core bumped to 8.515.1
+    * @vm0/db bumped to 1.166.1
+
 ## [1.378.0](https://github.com/vm0-ai/vm0/compare/api-v1.377.1...api-v1.378.0) (2026-08-05)
 
 
@@ -279,7 +390,6 @@
 
 ### Features
 
-* add runner-bundled rust zero cli foundation ([#24907](https://github.com/vm0-ai/vm0/issues/24907)) ([8cc6154](https://github.com/vm0-ai/vm0/commit/8cc6154eb9016e8b7a44d72177053c2224dd5d9a))
 * refine browser sidebar lifecycle ([#24852](https://github.com/vm0-ai/vm0/issues/24852)) ([498ecb5](https://github.com/vm0-ai/vm0/commit/498ecb5e1da3c3ff517b6322403b6eb59e06fe91))
 
 

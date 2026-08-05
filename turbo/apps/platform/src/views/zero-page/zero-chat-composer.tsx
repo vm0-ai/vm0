@@ -265,7 +265,6 @@ interface ComposerComputerUse {
   readonly loading: boolean;
   readonly selectedHostId: string | null;
   readonly onChange: (hostId: string | null) => void;
-  readonly cloudBrowserAvailable: boolean;
   readonly cloudBrowserEnabled: boolean;
   readonly onCloudBrowserChange: (enabled: boolean) => void;
   readonly downloadUrl: string;
@@ -5990,54 +5989,48 @@ function ComputerUseConnectorMenuSection({
   const { t } = useTranslation();
   return (
     <div className="shrink-0 border-t border-border/50 bg-gray-50 p-1 dark:bg-gray-100">
-      {computerUse.cloudBrowserAvailable && (
-        <>
-          <div
-            onClick={() => {
-              computerUse.onCloudBrowserChange(
-                !computerUse.cloudBrowserEnabled,
-              );
-            }}
-            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
-          >
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-              <IconWorld size={16} stroke={1.5} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm text-foreground">
-                {t(($) => {
-                  return $.chat.computerUse.cloudBrowser;
-                })}
-              </span>
-            </span>
-            <span
-              className="flex shrink-0 items-center"
-              onClick={(event) => {
-                event.stopPropagation();
-              }}
-            >
-              <LoadingSwitch
-                checked={computerUse.cloudBrowserEnabled}
-                onCheckedChange={onDomEventFn((enabled) => {
-                  computerUse.onCloudBrowserChange(enabled);
-                })}
-                loading={false}
-                ariaLabel={
-                  computerUse.cloudBrowserEnabled
-                    ? t(($) => {
-                        return $.chat.computerUse.disableCloudBrowser;
-                      })
-                    : t(($) => {
-                        return $.chat.computerUse.enableCloudBrowser;
-                      })
-                }
-                size="sm"
-              />
-            </span>
-          </div>
-          <div className="mx-2 my-1 border-t border-border/50" />
-        </>
-      )}
+      <div
+        onClick={() => {
+          computerUse.onCloudBrowserChange(!computerUse.cloudBrowserEnabled);
+        }}
+        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
+      >
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+          <IconWorld size={16} stroke={1.5} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm text-foreground">
+            {t(($) => {
+              return $.chat.computerUse.cloudBrowser;
+            })}
+          </span>
+        </span>
+        <span
+          className="flex shrink-0 items-center"
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+        >
+          <LoadingSwitch
+            checked={computerUse.cloudBrowserEnabled}
+            onCheckedChange={onDomEventFn((enabled) => {
+              computerUse.onCloudBrowserChange(enabled);
+            })}
+            loading={false}
+            ariaLabel={
+              computerUse.cloudBrowserEnabled
+                ? t(($) => {
+                    return $.chat.computerUse.disableCloudBrowser;
+                  })
+                : t(($) => {
+                    return $.chat.computerUse.enableCloudBrowser;
+                  })
+            }
+            size="sm"
+          />
+        </span>
+      </div>
+      <div className="mx-2 my-1 border-t border-border/50" />
       <div className="px-2 pb-1 pt-1 text-xs text-muted-foreground">
         {t(($) => {
           return $.chat.computerUse.yourComputer;
@@ -7398,6 +7391,9 @@ function ModelConfigurationWarning({
 function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
+  const explicitDefaultModelActionEnabled = useGet(
+    signals.model.explicitDefaultModelActionEnabled$,
+  );
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const modelSelection = useLastLoadable(signals.model.modelSelection$);
@@ -7473,6 +7469,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
         onOpenChange={setModelPickerOpen}
         disabled={modelPicker.disabled}
         resolveDefaultSelection={false}
+        showDefaultModelAction={explicitDefaultModelActionEnabled}
       />
       <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
     </>
@@ -7699,9 +7696,6 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     computerUseHosts,
     storedComputerUseHostId,
   );
-  const featureSwitches = useGet(featureSwitch$);
-  const cloudBrowserAvailable =
-    featureSwitches[FeatureSwitchKey.ZeroBrowser] ?? false;
   const composerPageSignal = useGet(pageSignal$);
   const computerUse: ComposerComputerUse = {
     hosts: visibleComputerUseHosts(computerUseHosts, resolvedComputerUseHostId),
@@ -7715,8 +7709,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
         Reason.DomCallback,
       );
     },
-    cloudBrowserAvailable,
-    cloudBrowserEnabled: cloudBrowserAvailable && cloudBrowserEnabled,
+    cloudBrowserEnabled,
     onCloudBrowserChange: (enabled) => {
       detach(
         setCloudBrowserEnabled(enabled, composerPageSignal),

@@ -20,131 +20,6 @@ import {
 
 const expectedBindings = [
   {
-    rustModulePath: ["build_info"],
-    rustTypeName: "Response",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["models"],
-    rustTypeName: "ModelProviderCredentialScope",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["models"],
-    rustTypeName: "ModelProviderType",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["models"],
-    rustTypeName: "SupportedRunModel",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["models", "policies"],
-    rustTypeName: "OrgModelPolicyRouteStatus",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["models", "policies"],
-    rustTypeName: "Policy",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["models", "policies"],
-    rustTypeName: "Response",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["models", "preference"],
-    rustTypeName: "Response",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["zero", "banking"],
-    rustTypeName: "AccountsRequest",
-    direction: "request",
-  },
-  {
-    rustModulePath: ["zero", "banking"],
-    rustTypeName: "AccountsResponse",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["zero", "banking"],
-    rustTypeName: "BalancesRequest",
-    direction: "request",
-  },
-  {
-    rustModulePath: ["zero", "banking"],
-    rustTypeName: "BalancesResponse",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["zero", "banking"],
-    rustTypeName: "TransactionsRequest",
-    direction: "request",
-  },
-  {
-    rustModulePath: ["zero", "banking"],
-    rustTypeName: "TransactionsResponse",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["zero", "finance"],
-    rustTypeName: "ChartRequest",
-    direction: "request",
-  },
-  {
-    rustModulePath: ["zero", "finance"],
-    rustTypeName: "ProfileRequest",
-    direction: "request",
-  },
-  {
-    rustModulePath: ["zero", "finance"],
-    rustTypeName: "QuoteRequest",
-    direction: "request",
-  },
-  {
-    rustModulePath: ["zero", "finance"],
-    rustTypeName: "Response",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["zero", "finance"],
-    rustTypeName: "SearchRequest",
-    direction: "request",
-  },
-  {
-    rustModulePath: ["zero", "people_search"],
-    rustTypeName: "Request",
-    direction: "request",
-  },
-  {
-    rustModulePath: ["zero", "people_search"],
-    rustTypeName: "Response",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["zero", "scrape"],
-    rustTypeName: "Request",
-    direction: "request",
-  },
-  {
-    rustModulePath: ["zero", "scrape"],
-    rustTypeName: "Response",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["zero", "web_search"],
-    rustTypeName: "Request",
-    direction: "request",
-  },
-  {
-    rustModulePath: ["zero", "web_search"],
-    rustTypeName: "Response",
-    direction: "response",
-  },
-  {
     rustModulePath: ["runners", "storage"],
     rustTypeName: "ArtifactEntryMissingRootPolicy",
     direction: "response",
@@ -153,11 +28,6 @@ const expectedBindings = [
     rustModulePath: ["runners", "storage"],
     rustTypeName: "StorageMountEntry",
     direction: "response",
-  },
-  {
-    rustModulePath: ["runners", "zero_cli"],
-    rustTypeName: "CompatibilityDescriptor",
-    direction: "request",
   },
   {
     rustModulePath: ["webhooks", "agent", "checkpoints"],
@@ -356,31 +226,6 @@ describe("Rust type bindings", () => {
     expect(firstRender.match(/pub archive_size: Option<u64>,/g)).toHaveLength(
       1,
     );
-    expect(firstRender).toContain("pub enum SupportedRunModel {");
-    expect(firstRender).toContain("Gpt56Sol,");
-    expect(firstRender).toContain("pub enum ModelProviderType {");
-    expect(firstRender).toContain("CodexOauthToken,");
-    expect(firstRender).toContain("pub struct Policy {");
-    expect(firstRender).toContain("pub policies: Vec<Policy>,");
-    expect(firstRender).toContain(
-      "pub workspace_default_model: Option<super::SupportedRunModel>,",
-    );
-    expect(firstRender).toContain("pub struct CompatibilityDescriptor {");
-    expect(firstRender).toContain("pub available: bool,");
-    expect(firstRender).toContain("pub checksum_sha256: Option<String>,");
-    expect(firstRender).toContain("pub mod zero {");
-    expect(firstRender).toContain("#[serde(untagged)]");
-    expect(firstRender).toContain(
-      "StandardMarkdown(ResponseStandardMarkdown),",
-    );
-    expect(firstRender).toContain("EnhancedLinks(ResponseEnhancedLinks),");
-    expect(firstRender).toContain(
-      "pub billing_category: ResponseEnhancedLinksBillingCategory,",
-    );
-    expect(firstRender).toContain("pub result: serde_json::Value,");
-    expect(firstRender).toContain("pub struct ResponseProfile {");
-    expect(firstRender).toContain("pub struct ResponseResult {");
-    expect(firstRender).toContain("pub struct TransactionsResponse {");
   });
 
   it("keeps canonical Storage mount override aligned with its schema", () => {
@@ -562,54 +407,7 @@ describe("Rust type bindings", () => {
     expect(rendered).toContain("Ready,");
   });
 
-  it("renders discriminated unions as strongly typed untagged enums", () => {
-    const rendered = renderExampleRustTypes([
-      validBinding({
-        schema: z.union([
-          z.object({ kind: z.literal("alpha"), value: z.string() }),
-          z.object({ kind: z.literal("beta"), count: z.number().int() }),
-        ]),
-        declarations: [
-          structDeclaration("RequestAlpha", {
-            kind: ["Alpha discriminator."],
-            value: ["Alpha value."],
-          }),
-          structDeclaration("RequestBeta", {
-            kind: ["Beta discriminator."],
-            count: ["Beta count."],
-          }),
-          enumDeclaration("Request", {
-            alpha: ["Alpha response branch."],
-            beta: ["Beta response branch."],
-          }),
-        ],
-      }),
-    ]);
-
-    expect(rendered).toContain("#[serde(untagged)]");
-    expect(rendered).toContain("pub enum Request {");
-    expect(rendered).toContain("Alpha(RequestAlpha),");
-    expect(rendered).toContain("Beta(RequestBeta),");
-    expect(rendered).toContain("pub enum RequestAlphaKind {");
-    expect(rendered).toContain("pub kind: RequestAlphaKind,");
-  });
-
-  it("renders explicit unknown fields as opaque JSON values", () => {
-    const rendered = renderExampleRustTypes([
-      validBinding({
-        schema: z.object({ result: z.unknown() }),
-        declarations: [
-          requestDeclaration({
-            result: ["Opaque provider result."],
-          }),
-        ],
-      }),
-    ]);
-
-    expect(rendered).toContain("pub result: serde_json::Value,");
-  });
-
-  it("fails clearly for unions without a unique string discriminator", () => {
+  it("fails clearly for unsupported unions", () => {
     expect(() => {
       renderExampleRustTypes([
         validBinding({
@@ -619,7 +417,7 @@ describe("Rust type bindings", () => {
           ]),
         }),
       ]);
-    }).toThrow("need a unique string literal discriminator");
+    }).toThrow("unsupported anyOf schema");
   });
 
   it("fails clearly for passthrough object schemas", () => {

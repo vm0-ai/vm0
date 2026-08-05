@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use sandbox::ProcessOutputMode;
 use sandbox_mock::MockLifecycleGate;
@@ -9,9 +8,8 @@ use crate::executor::EXIT_SIGKILL;
 use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
 use crate::executor::codex_model_catalog_prefetch::PREFETCH_HOST_START_TIMEOUT;
 use crate::executor::tests::support::{
-    OperationGateSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, SandboxGatePoint, create_overridden_sandbox,
-    minimal_context, sandbox_exec_error, spawn_run_in_sandbox_test, test_executor_config,
-    test_telemetry,
+    RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox, minimal_context, sandbox_exec_error,
+    spawn_run_in_sandbox_test, test_executor_config, test_telemetry,
 };
 use crate::types::{CodexRuntimeConfig, ExecutionContext, FirewallEntry, SandboxReuseResult};
 
@@ -29,15 +27,11 @@ fn codex_oauth_context() -> ExecutionContext {
 async fn codex_catalog_prefetch_waits_for_guest_state_restore() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
-    let inner = sandbox_mock::MockSandbox::new("test");
-    inner.push_exec_result(Err(sandbox_exec_error("restore failed")));
-    let prefetch_started = Arc::new(Notify::new());
-    let sandbox = OperationGateSandbox {
-        inner: Box::new(inner),
-        point: SandboxGatePoint::StartProcess,
-        entered: Arc::clone(&prefetch_started),
-        release: Arc::new(Notify::new()),
-    };
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let prefetch_gate = MockLifecycleGate::new();
+    overrides.set_start_process_lifecycle_gate(prefetch_gate.clone());
+    let sandbox = sandbox_mock::MockSandbox::with_overrides("test", overrides);
+    sandbox.push_exec_result(Err(sandbox_exec_error("restore failed")));
     let ctx = codex_oauth_context();
     let mut telemetry = test_telemetry(&config, &ctx);
 
@@ -60,10 +54,9 @@ async fn codex_catalog_prefetch_waits_for_guest_state_restore() {
     .unwrap();
 
     assert!(result.is_err());
-    assert!(
-        tokio::time::timeout(Duration::from_millis(10), prefetch_started.notified())
-            .await
-            .is_err(),
+    assert_eq!(
+        prefetch_gate.entered_count(),
+        0,
         "prefetch must not start before guest state restoration succeeds",
     );
 }
@@ -73,18 +66,15 @@ async fn codex_catalog_prefetch_start_observes_run_cancellation() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let prefetch_started = Arc::new(Notify::new());
-    let sandbox = OperationGateSandbox {
-        inner: create_overridden_sandbox(Arc::clone(&overrides)).await,
-        point: SandboxGatePoint::StartProcess,
-        entered: Arc::clone(&prefetch_started),
-        release: Arc::new(Notify::new()),
-    };
+    let prefetch_gate = MockLifecycleGate::new();
+    overrides.set_start_process_lifecycle_gate(prefetch_gate.clone());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = codex_oauth_context();
     let cancel = tokio_util::sync::CancellationToken::new();
-    let run_task = spawn_run_in_sandbox_test(Box::new(sandbox), ctx, config, cancel.clone());
+    let run_task = spawn_run_in_sandbox_test(sandbox, ctx, config, cancel.clone());
 
-    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, prefetch_started.notified())
+    prefetch_gate
+        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
         .await
         .expect("prefetch should enter process start");
     cancel.cancel();
@@ -109,25 +99,23 @@ async fn codex_catalog_prefetch_start_timeout_does_not_delay_agent() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let process_start_entered = Arc::new(Notify::new());
-    let process_start_release = Arc::new(Notify::new());
-    let sandbox = OperationGateSandbox {
-        inner: create_overridden_sandbox(Arc::clone(&overrides)).await,
-        point: SandboxGatePoint::StartProcess,
-        entered: Arc::clone(&process_start_entered),
-        release: Arc::clone(&process_start_release),
-    };
+    let process_start_gate = MockLifecycleGate::new();
+    overrides.set_start_process_lifecycle_gate(process_start_gate.clone());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let run_task = spawn_run_in_sandbox_test(
-        Box::new(sandbox),
+        sandbox,
         codex_oauth_context(),
         config,
         tokio_util::sync::CancellationToken::new(),
     );
 
-    process_start_entered.notified().await;
+    process_start_gate
+        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+        .await
+        .expect("prefetch should enter process start");
+    overrides.clear_start_process_lifecycle_gate();
     tokio::time::advance(PREFETCH_HOST_START_TIMEOUT).await;
     tokio::task::yield_now().await;
-    process_start_release.notify_one();
 
     let result = run_task.await.unwrap().unwrap();
     assert!(result.failure.is_none());
@@ -239,27 +227,21 @@ async fn codex_catalog_prefetch_is_cancelled_on_pre_spawn_exit() {
     let wait_gate = MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
-    let private_write_started = Arc::new(Notify::new());
-    let sandbox = OperationGateSandbox {
-        inner: create_overridden_sandbox(Arc::clone(&overrides)).await,
-        point: SandboxGatePoint::WritePrivateFile,
-        entered: Arc::clone(&private_write_started),
-        release: Arc::new(Notify::new()),
-    };
+    let private_write_gate = MockLifecycleGate::new();
+    overrides.set_private_write_file_lifecycle_gate(private_write_gate.clone());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = codex_oauth_context();
     let cancel = tokio_util::sync::CancellationToken::new();
-    let run_task = spawn_run_in_sandbox_test(Box::new(sandbox), ctx, config, cancel.clone());
+    let run_task = spawn_run_in_sandbox_test(sandbox, ctx, config, cancel.clone());
 
     wait_gate
         .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
         .await
         .expect("prefetch should enter process wait");
-    tokio::time::timeout(
-        RUN_IN_SANDBOX_TEST_TIMEOUT,
-        private_write_started.notified(),
-    )
-    .await
-    .expect("run should enter private-file preparation");
+    private_write_gate
+        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+        .await
+        .expect("run should enter private-file preparation");
     cancel.cancel();
 
     assert!(

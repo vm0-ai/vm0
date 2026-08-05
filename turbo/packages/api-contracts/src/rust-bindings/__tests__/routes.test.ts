@@ -3,84 +3,6 @@ import { type RustRouteBinding, rustRouteBindings } from "../routes";
 
 const expectedBindings = [
   {
-    method: "GET",
-    path: "/api/build-info",
-    rustModulePath: ["build_info"],
-    rustConstName: "GET",
-  },
-  {
-    method: "GET",
-    path: "/api/zero/model-policies",
-    rustModulePath: ["zero", "model_policies"],
-    rustConstName: "LIST",
-  },
-  {
-    method: "GET",
-    path: "/api/zero/user-model-preference",
-    rustModulePath: ["zero", "user_model_preference"],
-    rustConstName: "GET",
-  },
-  {
-    method: "POST",
-    path: "/api/zero/scrape",
-    rustModulePath: ["zero", "scrape"],
-    rustConstName: "SCRAPE",
-  },
-  {
-    method: "POST",
-    path: "/api/zero/people-search",
-    rustModulePath: ["zero", "people_search"],
-    rustConstName: "SEARCH",
-  },
-  {
-    method: "POST",
-    path: "/api/zero/web-search",
-    rustModulePath: ["zero", "web_search"],
-    rustConstName: "SEARCH",
-  },
-  {
-    method: "POST",
-    path: "/api/zero/finance/search",
-    rustModulePath: ["zero", "finance"],
-    rustConstName: "SEARCH",
-  },
-  {
-    method: "POST",
-    path: "/api/zero/finance/profile",
-    rustModulePath: ["zero", "finance"],
-    rustConstName: "PROFILE",
-  },
-  {
-    method: "POST",
-    path: "/api/zero/finance/quote",
-    rustModulePath: ["zero", "finance"],
-    rustConstName: "QUOTE",
-  },
-  {
-    method: "POST",
-    path: "/api/zero/finance/chart",
-    rustModulePath: ["zero", "finance"],
-    rustConstName: "CHART",
-  },
-  {
-    method: "POST",
-    path: "/api/zero/banking/accounts",
-    rustModulePath: ["zero", "banking"],
-    rustConstName: "ACCOUNTS",
-  },
-  {
-    method: "POST",
-    path: "/api/zero/banking/balances",
-    rustModulePath: ["zero", "banking"],
-    rustConstName: "BALANCES",
-  },
-  {
-    method: "POST",
-    path: "/api/zero/banking/transactions",
-    rustModulePath: ["zero", "banking"],
-    rustConstName: "TRANSACTIONS",
-  },
-  {
     method: "POST",
     path: "/api/runners/poll",
     rustModulePath: ["runners", "poll"],
@@ -223,9 +145,7 @@ describe("Rust route bindings", () => {
 
     expect(secondRender).toBe(firstRender);
     for (const binding of expectedBindings) {
-      const methodVariant =
-        binding.method === "GET" ? "crate::Method::Get" : "crate::Method::Post";
-      expect(firstRender).toContain(methodVariant);
+      expect(firstRender).toContain("crate::Method::Post");
       expect(firstRender).toContain(`"${binding.path}"`);
     }
   });

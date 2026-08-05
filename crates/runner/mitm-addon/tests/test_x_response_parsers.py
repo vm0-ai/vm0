@@ -403,6 +403,37 @@ class TestXJsonFinalize:
             "response_data_count": 3_600,
         }
 
+    @pytest.mark.parametrize(
+        "chunk_size",
+        [
+            pytest.param(2, id="two-byte"),
+            pytest.param(None, id="whole-body"),
+        ],
+    )
+    def test_escaped_discarded_strings_stay_within_work_limit_across_chunks(
+        self,
+        real_flow,
+        chunk_size,
+    ):
+        discarded_property = b',"' + b"k" * 26 + b'":"q\\"s\\\\"'
+        body = b'{"data":[{"id":"1"}]' + discarded_property * 13_104 + b"}   "
+        assert len(body) == 497_976
+        resolved_chunk_size = len(body) if chunk_size is None else chunk_size
+        flow = self._billable_x_json_flow(real_flow)
+
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        for offset in range(0, len(body), resolved_chunk_size):
+            chunk = body[offset : offset + resolved_chunk_size]
+            assert callback(chunk) == chunk
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == {
+            "body_parsed": True,
+            "body_truncated": False,
+            "response_data_count": 1,
+        }
+
     def test_x_json_work_limit_discards_partial_state_and_next_flow_recovers(self, real_flow):
         body = json_body_that_exceeds_x_json_work_limit()
         flow = self._billable_x_json_flow(real_flow)

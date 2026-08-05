@@ -28,6 +28,8 @@ describe("zero CLI program", () => {
       "workflow",
       "goal",
       "slack",
+      "feishu",
+      "teams",
       "telegram",
       "github",
       "phone",
@@ -35,6 +37,7 @@ describe("zero CLI program", () => {
       "intro",
       "developer-support",
       "computer-use",
+      "browser",
       "generate",
       "web",
       "video",
@@ -73,7 +76,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 36 commands", () => {
-    expect(commandNames).toHaveLength(36);
+  it("should have exactly 37 commands", () => {
+    expect(commandNames).toHaveLength(37);
   });
 });

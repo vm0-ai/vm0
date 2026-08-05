@@ -91,6 +91,7 @@ import {
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
+  readChatEventContextFixture,
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
@@ -1458,6 +1459,12 @@ describe("CHAT-02: queueing and recalling messages", () => {
     }
     expect(firstPending.body.runId).toBeNull();
     expect(secondPending.body.runId).toBeNull();
+    await expect(
+      readChatEventContextFixture(firstPendingEventId),
+    ).resolves.toMatchObject({
+      contextType: "web",
+      contextId: null,
+    });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith("active-input", {
       runId: active.runId,
     });
@@ -1476,6 +1483,18 @@ describe("CHAT-02: queueing and recalling messages", () => {
     ).resolves.toStrictEqual([]);
 
     const events = await chat.listThreadEvents(actor, active.threadId);
+    const firstClaimed = userMessages(events.events).find((message) => {
+      return message.revokesEventId === firstPendingEventId;
+    });
+    if (!firstClaimed) {
+      throw new Error("Expected the first web message replacement");
+    }
+    await expect(
+      readChatEventContextFixture(firstClaimed.id),
+    ).resolves.toMatchObject({
+      contextType: "web",
+      contextId: null,
+    });
     for (const pendingEventId of [firstPendingEventId, secondPendingEventId]) {
       expect(userMessages(events.events)).toContainEqual(
         expect.objectContaining({
@@ -5393,6 +5412,43 @@ describe("CHAT-02: prior rounds and thread titles", () => {
 });
 
 describe("CHAT-02: generation templates and attachments", () => {
+  it("keeps Morning Brief metadata out of the runtime prompt", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const prompt = "Generate my Morning Brief for 2026-08-05.";
+    const baseline = await sendChatRun(actor, {
+      agentId,
+      prompt,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: prompt }],
+      },
+    });
+    const withMorningBriefPart = await sendChatRun(actor, {
+      agentId,
+      prompt,
+      userMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: prompt },
+          { type: "morning_brief", briefDate: "2026-08-05" },
+        ],
+      },
+    });
+
+    const baselineRun = await api.readRun(actor, baseline.runId);
+    const morningBriefRun = await api.readRun(
+      actor,
+      withMorningBriefPart.runId,
+    );
+    expect(morningBriefRun.prompt).toBe(baselineRun.prompt);
+    expect(morningBriefRun.prompt).toBe(prompt);
+
+    await cancelChatRun(actor, baseline.runId);
+    await cancelChatRun(actor, withMorningBriefPart.runId);
+  }, 90_000);
+
   it("uses the userMessage document for the runtime prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -7015,7 +7071,6 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(firstInput).toMatchObject({
       eventType: "input.prompt",
-      triggerSource: "agent",
       userMessage: {
         version: 1,
         parts: [
