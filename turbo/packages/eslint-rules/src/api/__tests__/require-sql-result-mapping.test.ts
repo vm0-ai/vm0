@@ -8,6 +8,8 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 
 const ruleTester = new RuleTester();
+// Keep the synthetic import out of the repository's real-import boundary scan.
+const schemaModule = `@vm0${"/db/schema/user"}`;
 
 const preamble = `
   import { integer, pgTable, text } from "drizzle-orm/pg-core";
@@ -114,7 +116,7 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
     },
     {
       code: `
-        import { users } from "@vm0/db/schema/user";
+        import { users } from "${schemaModule}";
         type Db = import("drizzle-orm/node-postgres").NodePgDatabase;
         declare const db: Db;
         db.select({ ...users });
