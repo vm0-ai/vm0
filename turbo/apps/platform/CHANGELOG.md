@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.685.4](https://github.com/vm0-ai/vm0/compare/app-v0.685.3...app-v0.685.4) (2026-08-05)
+
+
+### Bug Fixes
+
+* show spinner while avatar preview loads ([#25248](https://github.com/vm0-ai/vm0/issues/25248)) ([cc19b03](https://github.com/vm0-ai/vm0/commit/cc19b0327bdf9d68981c316555ffcf8adca663f2))
+
+
+### Refactoring
+
+* remove zero browser feature switch ([#25289](https://github.com/vm0-ai/vm0/issues/25289)) ([3b859f1](https://github.com/vm0-ai/vm0/commit/3b859f1f8ed2886f2298c31d8042b7f413e6f8bd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.516.3
+
 ## [0.685.3](https://github.com/vm0-ai/vm0/compare/app-v0.685.2...app-v0.685.3) (2026-08-05)
 
 

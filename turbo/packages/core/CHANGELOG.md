@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.516.3](https://github.com/vm0-ai/vm0/compare/core-v8.516.2...core-v8.516.3) (2026-08-05)
+
+
+### Refactoring
+
+* remove zero browser feature switch ([#25289](https://github.com/vm0-ai/vm0/issues/25289)) ([3b859f1](https://github.com/vm0-ai/vm0/commit/3b859f1f8ed2886f2298c31d8042b7f413e6f8bd))
+
 ## [8.516.2](https://github.com/vm0-ai/vm0/compare/core-v8.516.1...core-v8.516.2) (2026-08-05)
 
 
