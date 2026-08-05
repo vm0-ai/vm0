@@ -59,9 +59,10 @@ function useAgentAvatarState(id: string): AgentAvatarState {
  * Render an avatar from an avatarUrl string (preset, svg, or custom upload).
  * Does NOT look up the agent — use this when you already have the avatarUrl.
  *
- * Callers pass shape and size only, never a background fill: preset and
+ * Callers should pass shape and size but not a background fill: preset and
  * uploaded avatars are transparent, so a fill shows through as a gray disc
- * behind the face.
+ * behind the face. WorkflowAgentAvatar is the one deliberate exception, where
+ * the avatar shares a bordered chip style with its initials fallback.
  */
 export function AvatarFromUrl({
   avatarUrl,
