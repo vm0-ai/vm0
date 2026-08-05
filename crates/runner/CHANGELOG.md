@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.158.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.6...runner-rs-v0.158.7) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** recover anthropic usage from interrupted compressed streams ([#25171](https://github.com/vm0-ai/vm0/issues/25171)) ([4a7affe](https://github.com/vm0-ai/vm0/commit/4a7affead44cb0a3a2721f422a0f243dce55d92c))
+
+
+### Refactoring
+
+* **python:** share runner flush marker envelope parsing ([#25216](https://github.com/vm0-ai/vm0/issues/25216)) ([a384287](https://github.com/vm0-ai/vm0/commit/a384287d897b74b68b09547605352e95b576f11a))
+* remove obsolete cli release bookkeeping ([#25217](https://github.com/vm0-ai/vm0/issues/25217)) ([de04988](https://github.com/vm0-ai/vm0/commit/de0498849576522e622687fe07b630fa8b519847))
+
 ## [0.158.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.5...runner-rs-v0.158.6) (2026-08-05)
 
 
