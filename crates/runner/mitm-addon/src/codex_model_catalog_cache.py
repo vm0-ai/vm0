@@ -696,7 +696,18 @@ def _bypass_response(
 
 
 def handle_response_headers(flow: http.HTTPFlow) -> bool:
-    """Select pass-through streaming with bounded catalog capture."""
+    """Prepare catalog handling and tell mitm_addon.responseheaders() whether to continue.
+
+    Return False only for a fresh response served from the local catalog cache; the hook
+    must stop the normal response-header pipeline in that case. Return True for all other flows,
+    including unrelated traffic, cache bypasses, and eligible cold responses, so the hook
+    continues that pipeline. For an eligible cold response, ordinary streaming is installed before
+    wrap_response_stream() composes the bounded catalog capture.
+
+    ``mitm_addon.responseheaders()`` implements this contract. Focused coverage is
+    ``test_fresh_hit_is_partitioned_and_expiry_never_uses_conditions`` for the stop branch and
+    ``test_request_bypasses_do_not_touch_unrelated_traffic`` for continuation.
+    """
     state = flow.metadata.get(_FLOW_STATE)
     telemetry = flow.metadata.get(_FLOW_TELEMETRY)
     if isinstance(telemetry, _FlowTelemetry) and telemetry.status == "model_catalog_fresh_hit":
