@@ -22,8 +22,8 @@ source "$ENV_FILE"
 set +a
 
 : "${R2_ACCOUNT_ID:?R2_ACCOUNT_ID is required in scripts/.env.local}"
-: "${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required in scripts/.env.local}"
-: "${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required in scripts/.env.local}"
+: "${R2_STATIC_ACCESS_KEY_ID:?R2_STATIC_ACCESS_KEY_ID is required in scripts/.env.local}"
+: "${R2_STATIC_SECRET_ACCESS_KEY:?R2_STATIC_SECRET_ACCESS_KEY is required in scripts/.env.local}"
 
 identity="$("$SCRIPT_DIR/cn.sh" -u)"
 if [[ ! "$identity" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]; then
@@ -46,8 +46,8 @@ commit_sha="$(git -C "$PROJECT_ROOT" rev-parse HEAD)"
 
 object_key="okou-cli/local/${identity}/package.tgz"
 r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
-AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
+AWS_ACCESS_KEY_ID="$R2_STATIC_ACCESS_KEY_ID" \
+AWS_SECRET_ACCESS_KEY="$R2_STATIC_SECRET_ACCESS_KEY" \
 AWS_DEFAULT_REGION=auto \
   aws s3api put-object \
     --endpoint-url "$r2_endpoint" \
