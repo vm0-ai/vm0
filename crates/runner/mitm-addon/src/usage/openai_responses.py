@@ -139,9 +139,9 @@ class OpenAIResponsesEvent:
 
     ``event_type`` is the top-level string ``type`` observed by the bounded
     prefix probe. It is ``None`` when that probe cannot return a value, including
-    when the field is beyond the prefix, oversized, non-string, missing, or in
-    malformed JSON. ``None`` does not mean that usage extraction cannot classify
-    the retained complete frame.
+    when the field is beyond the prefix, oversized, non-string, or missing, or
+    when syntax is malformed before the field is complete. ``None`` does not mean
+    that usage extraction cannot classify the retained complete frame.
     """
 
     event_type: str | None
