@@ -1,11 +1,15 @@
 use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
 use futures_util::{SinkExt, Stream, StreamExt};
+use tokio::sync::Mutex;
 use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+use tokio_util::task::TaskTracker;
 
 use super::state::idle_deadline;
 use crate::Error;
@@ -61,30 +65,85 @@ pub(crate) struct WsTransport {
     pub(super) ws_write: WsWrite,
 }
 
+#[derive(Clone)]
+pub(crate) struct TransportCloseTracker {
+    tasks: TaskTracker,
+    state: Arc<TransportCloseTrackerState>,
+}
+
+struct TransportCloseTrackerState {
+    observe_failures: AtomicBool,
+    first_failure: Mutex<Option<Error>>,
+}
+
+impl TransportCloseTracker {
+    pub(crate) fn new() -> Self {
+        Self {
+            tasks: TaskTracker::new(),
+            state: Arc::new(TransportCloseTrackerState {
+                observe_failures: AtomicBool::new(false),
+                first_failure: Mutex::new(None),
+            }),
+        }
+    }
+
+    pub(crate) fn observe_failures(&self) {
+        self.state.observe_failures.store(true, Ordering::Release);
+    }
+
+    fn spawn(&self, transport: WsTransport, close_timeout: Duration) {
+        let tracker = self.clone();
+        let close_task = self.tasks.spawn(async move {
+            if let Err(error) = transport.close(close_timeout).await {
+                if tracker.state.observe_failures.load(Ordering::Acquire) {
+                    let mut first_failure = tracker.state.first_failure.lock().await;
+                    if first_failure.is_none() {
+                        *first_failure = Some(error);
+                    }
+                } else {
+                    tracing::warn!(%error, "Failed to close websocket transport");
+                }
+            }
+        });
+        drop(close_task);
+    }
+
+    pub(crate) async fn close_and_wait(&self) -> Result<(), Error> {
+        self.tasks.close();
+        self.tasks.wait().await;
+        match self.state.first_failure.lock().await.take() {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+}
+
 impl WsTransport {
     fn new(ws_read: WsRead, ws_write: WsWrite) -> Self {
         Self { ws_read, ws_write }
     }
 
-    pub(super) fn close_in_background(self, close_timeout: Duration) {
+    async fn close(self, close_timeout: Duration) -> Result<(), Error> {
         let Self {
             ws_read,
             mut ws_write,
         } = self;
         drop(ws_read);
-        let close_task = tokio::spawn(async move {
-            let result = tokio::time::timeout(close_timeout, async move {
-                let _ = ws_write.close().await;
-            })
-            .await;
-            if result.is_err() {
-                tracing::warn!(
-                    timeout_ms = close_timeout.as_millis(),
-                    "Timed out while closing websocket transport"
-                );
-            }
-        });
-        drop(close_task);
+        tokio::time::timeout(close_timeout, ws_write.close())
+            .await
+            .map_err(|_| Error::Protocol {
+                code: error_code::TIMEOUT,
+                message: "WebSocket transport close timed out".to_string(),
+            })??;
+        Ok(())
+    }
+
+    pub(super) fn close_in_background(
+        self,
+        close_timeout: Duration,
+        tracker: &TransportCloseTracker,
+    ) {
+        tracker.spawn(self, close_timeout);
     }
 }
 
@@ -95,13 +154,19 @@ impl WsTransport {
 pub(super) struct PendingWsTransport {
     transport: Option<WsTransport>,
     close_timeout: Duration,
+    close_tracker: TransportCloseTracker,
 }
 
 impl PendingWsTransport {
-    fn new(transport: WsTransport, close_timeout: Duration) -> Self {
+    fn new(
+        transport: WsTransport,
+        close_timeout: Duration,
+        close_tracker: TransportCloseTracker,
+    ) -> Self {
         Self {
             transport: Some(transport),
             close_timeout,
+            close_tracker,
         }
     }
 
@@ -131,7 +196,7 @@ impl PendingWsTransport {
 impl Drop for PendingWsTransport {
     fn drop(&mut self) {
         if let Some(transport) = self.transport.take() {
-            transport.close_in_background(self.close_timeout);
+            transport.close_in_background(self.close_timeout, &self.close_tracker);
         }
     }
 }
@@ -139,12 +204,14 @@ impl Drop for PendingWsTransport {
 pub(super) async fn connect_pending(
     url: &str,
     close_timeout: Duration,
+    close_tracker: TransportCloseTracker,
 ) -> Result<PendingWsTransport, Error> {
     let (ws, _resp) = tokio_tungstenite::connect_async(url).await?;
     let (ws_write, ws_read) = ws.split();
     Ok(PendingWsTransport::new(
         WsTransport::new(WsRead::new(ws_read), ws_write),
         close_timeout,
+        close_tracker,
     ))
 }
 

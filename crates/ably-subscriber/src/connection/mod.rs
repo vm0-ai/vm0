@@ -15,3 +15,4 @@ pub(crate) use endpoint::{DEFAULT_REALTIME_HOST, rest_host};
 pub(crate) use event_loop::{DropWarningState, EventLoopState, run_event_loop};
 pub(crate) use handshake::connect_and_attach;
 pub(crate) use session::SessionState;
+pub(crate) use transport::TransportCloseTracker;

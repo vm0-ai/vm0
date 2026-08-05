@@ -32,27 +32,27 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const STARTING_CREDITS = 1000;
-const EXPECTED_CHARGE = 13;
+const EXPECTED_CHARGE = 3;
 const RECOGNITION_PRICING_ROWS = [
   {
     kind: "image-recognition",
-    provider: "google/gemini-3.5-flash",
+    provider: "xiaomi/mimo-v2.5",
     category: "tokens.input",
-    unitPrice: 1500,
+    unitPrice: 140,
     unitSize: 1_000_000,
   },
   {
     kind: "image-recognition",
-    provider: "google/gemini-3.5-flash",
+    provider: "xiaomi/mimo-v2.5",
     category: "tokens.cache_read",
-    unitPrice: 150,
+    unitPrice: 3,
     unitSize: 1_000_000,
   },
   {
     kind: "image-recognition",
-    provider: "google/gemini-3.5-flash",
+    provider: "xiaomi/mimo-v2.5",
     category: "tokens.output",
-    unitPrice: 9000,
+    unitPrice: 280,
     unitSize: 1_000_000,
   },
 ] as const;
@@ -246,7 +246,7 @@ describe("POST /api/zero/recognize", () => {
 
     expect(requestBodies).toHaveLength(2);
     expect(requestBodies[0]).toMatchObject({
-      model: "google/gemini-3.5-flash",
+      model: "xiaomi/mimo-v2.5",
       max_tokens: 8192,
       messages: [
         {
@@ -377,7 +377,7 @@ describe("POST /api/zero/recognize", () => {
     await trackPricing(
       deleteUsagePricingRows({
         kind: "image-recognition",
-        provider: "google/gemini-3.5-flash",
+        provider: "xiaomi/mimo-v2.5",
         categories: ["tokens.input", "tokens.cache_read", "tokens.output"],
       }),
     );
@@ -533,7 +533,7 @@ describe("POST /api/zero/recognize", () => {
         await trackPricing(
           deleteUsagePricingRows({
             kind: "image-recognition",
-            provider: "google/gemini-3.5-flash",
+            provider: "xiaomi/mimo-v2.5",
             categories: ["tokens.output"],
           }),
         );

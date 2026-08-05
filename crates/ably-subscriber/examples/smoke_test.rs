@@ -433,11 +433,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     eprintln!();
     eprintln!("--- lifecycle: graceful close ---");
-    renewal_sub.close();
-    // close() sends a CLOSE protocol message and consumes the subscription.
-    // If it panics or the background task deadlocks, this line is not reached.
-    eprintln!("  PASS: graceful-close");
-    passed += 1;
+    match renewal_sub.close_and_wait().await {
+        Ok(()) => {
+            eprintln!("  PASS: graceful-close");
+            passed += 1;
+        }
+        Err(e) => {
+            eprintln!("  FAIL: graceful-close — {e}");
+            failed += 1;
+        }
+    }
 
     // --- Summary ---
     let total = passed + failed;

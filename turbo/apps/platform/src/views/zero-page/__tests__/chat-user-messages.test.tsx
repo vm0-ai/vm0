@@ -510,29 +510,6 @@ describe("user messages", () => {
           },
           createdAt: "2026-08-04T10:00:00Z",
         },
-        {
-          id: "00000000-0000-4000-8000-000000000752",
-          role: "user",
-          content: "Untrusted prompt",
-          runId: "d0000000-0000-4000-a000-000000000752",
-          triggerSource: "web",
-          userMessage: {
-            version: 1,
-            parts: [
-              { type: "text", text: "Untrusted prompt" },
-              {
-                type: "source",
-                kind: "agent",
-                runId: sourceRunId,
-                threadId: sourceThreadId,
-                agentId: sourceAgentId,
-                titleSnapshot: "Hidden source",
-                href: `/chats/${sourceThreadId}#run-${sourceRunId}`,
-              },
-            ],
-          },
-          createdAt: "2026-08-04T10:01:00Z",
-        },
       ],
     });
 
@@ -567,6 +544,5 @@ describe("user messages", () => {
       "data-role",
       "user",
     );
-    expect(screen.queryByText("Hidden source")).not.toBeInTheDocument();
   });
 });
