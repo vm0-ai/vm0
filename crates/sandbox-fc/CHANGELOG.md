@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.181](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.180...sandbox-fc-v0.37.181) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** keep info logs out of axiom ([#25114](https://github.com/vm0-ai/vm0/issues/25114)) ([3c6d123](https://github.com/vm0-ai/vm0/commit/3c6d1235847d344b7e1a9bc8ee885b68d1fd8d5b))
+
 ## [0.37.180](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.179...sandbox-fc-v0.37.180) (2026-08-04)
 
 
