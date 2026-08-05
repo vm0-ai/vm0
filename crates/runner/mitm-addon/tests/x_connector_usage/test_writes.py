@@ -24,6 +24,7 @@ _PLAIN_TEXT_TWEET_BODY = b'{"text":"hello world"}'
 _GZIP_WBITS = 16 + zlib.MAX_WBITS
 _ZLIB_DEFLATE_WBITS = zlib.MAX_WBITS
 _RAW_DEFLATE_WBITS = -zlib.MAX_WBITS
+_ZLIB_INPUT_BOUND = 1024
 
 
 def _gzip_members(*payloads: bytes) -> bytes:
@@ -196,6 +197,73 @@ def test_tweet_create_compressed_plain_text_downgrades_to_content_create(
     p = x_usage.call_and_get_single_billing(flow)
     assert p["category"] == "content.create"
     assert p["quantity"] == 1
+
+
+def test_tweet_create_many_gzip_members_use_bounded_input(x_usage, tmp_path, real_flow):
+    empty_member = _gzip_members(b"")
+    request_body = _GZIP_TWEET_BODY + empty_member * (
+        (REQUEST_BODY_BILLING_INSPECTION_LIMIT - len(_GZIP_TWEET_BODY)) // len(empty_member)
+    )
+    assert (
+        REQUEST_BODY_BILLING_INSPECTION_LIMIT - len(empty_member)
+        < len(request_body)
+        <= REQUEST_BODY_BILLING_INSPECTION_LIMIT
+    )
+
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+        request_body=request_body,
+        request_encoding="gzip",
+    )
+    flow.request.method = "POST"
+
+    real_factory = zlib.decompressobj
+    stats = {"calls": 0, "max_input": 0, "max_unused_data": 0}
+
+    class NonConcatenableUnusedData(bytes):
+        def __add__(self, _other: object) -> bytes:
+            raise TypeError("zlib unused data must not be concatenated")
+
+    class TrackingDecompressionObj:
+        def __init__(self, wrapped):
+            self._wrapped = wrapped
+
+        def decompress(self, chunk, *args, **kwargs):
+            stats["calls"] += 1
+            stats["max_input"] = max(stats["max_input"], len(chunk))
+            return self._wrapped.decompress(chunk, *args, **kwargs)
+
+        @property
+        def eof(self):
+            return self._wrapped.eof
+
+        @property
+        def unused_data(self):
+            unused_data = NonConcatenableUnusedData(self._wrapped.unused_data)
+            stats["max_unused_data"] = max(stats["max_unused_data"], len(unused_data))
+            return unused_data
+
+        @property
+        def unconsumed_tail(self):
+            return self._wrapped.unconsumed_tail
+
+    def factory(*args, **kwargs):
+        return TrackingDecompressionObj(real_factory(*args, **kwargs))
+
+    with patch("billing_body.zlib.decompressobj", factory):
+        p = x_usage.call_and_get_single_billing(flow)
+
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+    assert stats["calls"] > 0
+    assert stats["max_input"] <= _ZLIB_INPUT_BOUND
+    assert stats["max_unused_data"] <= _ZLIB_INPUT_BOUND
 
 
 @pytest.mark.parametrize(
