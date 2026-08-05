@@ -467,12 +467,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ZeroChatMessaging]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Advertise zero chat create, send, and cancel in the agent system prompt and render source annotations for cross-thread messages without gating the CLI commands or API.",
-    enabled: true,
-  },
   [FeatureSwitchKey.RustZeroCli]: {
     maintainer: "yuma@vm0.ai",
     description:

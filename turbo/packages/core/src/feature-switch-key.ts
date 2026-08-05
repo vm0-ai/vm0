@@ -43,7 +43,6 @@ export enum FeatureSwitchKey {
   SpotifyConnector = "spotifyConnector",
   ZeroDebug = "zeroDebug",
   ZeroBrowser = "zeroBrowser",
-  ZeroChatMessaging = "zeroChatMessaging",
   RustZeroCli = "rustZeroCli",
   Banking = "banking",
   Lab = "lab",

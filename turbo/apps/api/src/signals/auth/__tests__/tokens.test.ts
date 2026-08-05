@@ -147,10 +147,8 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("chat-thread:write");
   });
 
-  it("grants chat event read and write independently of prompt discovery", () => {
-    const token = generateZeroToken("user_zero", "run_zero", "org_zero", {
-      [FeatureSwitchKey.ZeroChatMessaging]: false,
-    });
+  it("includes chat event read and write capabilities in zero-scoped tokens", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
     expect(decodeZeroTokenPayloadForTest(token)).toMatchObject({
       capabilities: expect.arrayContaining([
