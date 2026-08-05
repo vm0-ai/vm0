@@ -364,11 +364,11 @@ describe("zero goals", () => {
       claimedGoalEvent.id,
     );
     expect(admittedContext).toMatchObject({
-      contextType: null,
+      contextType: "goal",
       contextId: null,
     });
     expect(claimedContext).toMatchObject({
-      contextType: null,
+      contextType: "goal",
       contextId: null,
     });
     expect(state.runIds).toHaveLength(1);
@@ -450,7 +450,7 @@ describe("zero goals", () => {
     await expect(
       readChatEventContextFixture(admission.eventId),
     ).resolves.toMatchObject({
-      contextType: null,
+      contextType: "goal",
       contextId: null,
     });
     await expect(

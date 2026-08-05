@@ -91,6 +91,7 @@ import {
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
+  readChatEventContextFixture,
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
@@ -1458,6 +1459,12 @@ describe("CHAT-02: queueing and recalling messages", () => {
     }
     expect(firstPending.body.runId).toBeNull();
     expect(secondPending.body.runId).toBeNull();
+    await expect(
+      readChatEventContextFixture(firstPendingEventId),
+    ).resolves.toMatchObject({
+      contextType: "web",
+      contextId: null,
+    });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith("active-input", {
       runId: active.runId,
     });
@@ -1476,6 +1483,18 @@ describe("CHAT-02: queueing and recalling messages", () => {
     ).resolves.toStrictEqual([]);
 
     const events = await chat.listThreadEvents(actor, active.threadId);
+    const firstClaimed = userMessages(events.events).find((message) => {
+      return message.revokesEventId === firstPendingEventId;
+    });
+    if (!firstClaimed) {
+      throw new Error("Expected the first web message replacement");
+    }
+    await expect(
+      readChatEventContextFixture(firstClaimed.id),
+    ).resolves.toMatchObject({
+      contextType: "web",
+      contextId: null,
+    });
     for (const pendingEventId of [firstPendingEventId, secondPendingEventId]) {
       expect(userMessages(events.events)).toContainEqual(
         expect.objectContaining({

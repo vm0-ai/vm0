@@ -114,6 +114,33 @@ async function applyMigrationsBeforeAgentRunContext(
   });
 }
 
+async function applyInputSourceDiscriminatorContract(
+  databaseUrl: string,
+): Promise<void> {
+  await withDatabaseClient(databaseUrl, async (client) => {
+    await client.query(`
+      ALTER TABLE "chat_events"
+        DROP CONSTRAINT "chat_events_context_pair_check",
+        DROP CONSTRAINT "chat_events_context_type_check",
+        ADD CONSTRAINT "chat_events_context_pair_check"
+          CHECK ("context_id" IS NULL OR "context_type" IS NOT NULL),
+        ADD CONSTRAINT "chat_events_context_type_check"
+          CHECK ("context_type" IN (
+            'slack',
+            'feishu',
+            'teams',
+            'telegram',
+            'github',
+            'agentphone',
+            'automation',
+            'goal',
+            'morning_brief',
+            'web'
+          ))
+    `);
+  });
+}
+
 async function createPreAgentRunContextDatabase(
   originalDatabaseUrl: string,
   databaseName: string,
@@ -128,6 +155,10 @@ async function createPreAgentRunContextDatabase(
     databaseName,
   );
   await applyMigrationsBeforeAgentRunContext(preMigrationUrl);
+  // The current API requires the input-source discriminator migration to run
+  // first. Apply only that independent constraint contract while keeping the
+  // agent-run context table absent for this focused compatibility probe.
+  await applyInputSourceDiscriminatorContract(preMigrationUrl);
   return preMigrationUrl;
 }
 
