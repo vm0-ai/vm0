@@ -306,13 +306,12 @@ impl CommandExecution {
                 Ok(Some(status)) => return self.read_output(status),
                 Ok(None) => {}
                 Err(error) => {
-                    let cleanup =
-                        describe_reap(reap_child_with_timeout(child, CHILD_CLEANUP_TIMEOUT));
+                    let cleanup = terminate_and_reap(child);
                     let diagnostics = self.read_diagnostics();
                     return Err(io::Error::new(
                         error.kind(),
                         format!(
-                            "failed to observe proxy child completion: {error}; reap={cleanup}; \
+                            "failed to observe proxy child completion: {error}; cleanup: {cleanup}; \
                              {diagnostics}"
                         ),
                     ));
