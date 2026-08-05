@@ -7588,21 +7588,11 @@ function resolvePagedUserMessageRendering({
 
 function visibleSourceAnnotationPart({
   userMessage,
-  inputEvent,
 }: {
   userMessage: UserMessageDocument | undefined;
-  inputEvent: ChatInputEvent | undefined;
 }) {
   const part = userMessageNonContentPart(userMessage);
-  if (
-    part?.type !== "source" ||
-    (part.kind === "agent" &&
-      (inputEvent?.eventType !== "input.prompt" ||
-        inputEvent.triggerSource !== "agent"))
-  ) {
-    return undefined;
-  }
-  return part;
+  return part?.type === "source" ? part : undefined;
 }
 
 function inputPromptRunAnchor(inputEvent: ChatInputEvent | undefined) {
@@ -7681,7 +7671,6 @@ function PagedUserMessage({
 
   const sourceAnnotationPart = visibleSourceAnnotationPart({
     userMessage,
-    inputEvent,
   });
   return (
     <div
