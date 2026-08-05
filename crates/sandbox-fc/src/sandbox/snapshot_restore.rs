@@ -10,11 +10,6 @@ use crate::api::ApiClient;
 use crate::config::FirecrackerDeviceRateLimits;
 use crate::factory::InvariantConfig;
 
-/// Bash command run inside `unshare --mount` for snapshot restore.
-/// Positional args are documented at the spawn site.
-pub(super) const SNAPSHOT_RESTORE_INNER_CMD: &str = r#"umount -- "$4" 2>/dev/null; umount -- "$6" 2>/dev/null; mount --bind -- "$1" "$2" && mount --bind -- "$3" "$4" && mount --bind -- "$5" "$6" && exec ip netns exec "$7" "$8" --api-sock "$9""#;
-pub(super) const UNSHARE_MOUNT_ARGS: &[&str] = &["--mount", "--propagation", "private"];
-
 pub(super) async fn load_snapshot_and_apply_rate_limits(
     client: &ApiClient,
     snapshot_path: &str,
@@ -226,46 +221,6 @@ async fn unmount_snapshot_drive_bind_target(path: &Path) -> Result<(), SandboxEr
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn snapshot_restore_inner_cmd_uses_positional_args_without_touch() {
-        assert!(!SNAPSHOT_RESTORE_INNER_CMD.contains("$0"));
-        for arg in ["$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9"] {
-            let quoted = format!(r#""{arg}""#);
-            assert!(
-                SNAPSHOT_RESTORE_INNER_CMD.contains(&quoted),
-                "expected quoted positional {arg} in inner_cmd: {SNAPSHOT_RESTORE_INNER_CMD}"
-            );
-        }
-        for unexpected in ["$10", "$11"] {
-            assert!(
-                !SNAPSHOT_RESTORE_INNER_CMD.contains(unexpected),
-                "unexpected positional {unexpected} in inner_cmd: {SNAPSHOT_RESTORE_INNER_CMD}"
-            );
-        }
-
-        assert!(
-            SNAPSHOT_RESTORE_INNER_CMD.starts_with(
-                r#"umount -- "$4" 2>/dev/null; umount -- "$6" 2>/dev/null; mount --bind"#
-            ),
-            "inner_cmd must clear stale bind mount before binding: {SNAPSHOT_RESTORE_INNER_CMD}"
-        );
-        assert!(
-            SNAPSHOT_RESTORE_INNER_CMD.contains(
-                r#"&& mount --bind -- "$3" "$4" && mount --bind -- "$5" "$6" && exec ip netns exec"#
-            ),
-            "inner_cmd must bind COW and workspace devices before execing firecracker: {SNAPSHOT_RESTORE_INNER_CMD}"
-        );
-        assert!(
-            !SNAPSHOT_RESTORE_INNER_CMD.contains("touch"),
-            "bind target creation must stay in Rust: {SNAPSHOT_RESTORE_INNER_CMD}"
-        );
-    }
-
-    #[test]
-    fn snapshot_restore_unshare_uses_private_mount_propagation() {
-        assert_eq!(UNSHARE_MOUNT_ARGS, ["--mount", "--propagation", "private"]);
-    }
 
     #[test]
     fn mountinfo_contains_exact_snapshot_drive_bind_target() {

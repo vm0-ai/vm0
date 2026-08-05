@@ -60,14 +60,12 @@ use crate::process_log::{
     read_process_log_records,
 };
 use crate::runtime_dirs::{prepare_private_runtime_vsock_dir, set_private_runtime_socket_mode};
+use crate::snapshot_mount_namespace::{BindMount, SnapshotMountMode, build_command};
 
 mod snapshot_restore;
 mod state;
 
-use snapshot_restore::{
-    SNAPSHOT_RESTORE_INNER_CMD, UNSHARE_MOUNT_ARGS, ensure_snapshot_drive_bind_target,
-    load_snapshot_and_apply_rate_limits,
-};
+use snapshot_restore::{ensure_snapshot_drive_bind_target, load_snapshot_and_apply_rate_limits};
 pub(crate) use state::SandboxState;
 use state::{
     publish_process_state, publish_watch_state, state_publish_guard, transition_process_state,
@@ -1143,11 +1141,9 @@ impl FirecrackerSandbox {
             "spawning firecracker (snapshot restore)"
         );
 
-        // Use positional args ($1..$9) to avoid shell injection from paths.
-        //
-        // Bind mount targets ($2, $4, $6) are snapshot-level paths shared by
-        // all sandboxes. Each sandbox runs inside `unshare --mount`, so bind
-        // mounts are per-namespace and don't conflict.
+        // Bind mount targets are snapshot-level paths shared by all sandboxes.
+        // Each sandbox runs inside `unshare --mount`, so bind mounts are
+        // per-namespace and don't conflict.
         //
         // IMPORTANT: we must NOT `rm -f` the bind mount target.  The target
         // file is shared across all mount namespaces via the underlying
@@ -1160,19 +1156,19 @@ impl FirecrackerSandbox {
         // namespace (e.g. from a crashed snapshot creation).
         let snapshot_str = snapshot.snapshot_path.display().to_string();
         let memory_str = snapshot.memory_path.display().to_string();
-        let mut command = tokio::process::Command::new("unshare");
-        command
-            .args(UNSHARE_MOUNT_ARGS)
-            .args(["bash", "-c", SNAPSHOT_RESTORE_INNER_CMD, "_"])
-            .arg(self.sock_paths.vsock_dir()) // $1
-            .arg(&snapshot.vsock_bind_dir) // $2
-            .arg(cow_device_path) // $3
-            .arg(&snapshot.drive_bind_path) // $4
-            .arg(&workspace_image_path) // $5
-            .arg(&snapshot.workspace_drive_bind_path) // $6
-            .arg(self.network.name()) // $7
-            .arg(&self.factory_config.binary_path) // $8
-            .arg(&api_sock); // $9
+        let command = build_command(
+            SnapshotMountMode::Restore {
+                vsock: BindMount::new(&self.sock_paths.vsock_dir(), &snapshot.vsock_bind_dir),
+                rootfs: BindMount::new(cow_device_path, &snapshot.drive_bind_path),
+                workspace: BindMount::new(
+                    &workspace_image_path,
+                    &snapshot.workspace_drive_bind_path,
+                ),
+            },
+            self.network.name(),
+            &self.factory_config.binary_path,
+            &api_sock,
+        );
 
         let client = self
             .spawn_and_wait_for_api(command, &api_sock, runtime_cancel, "snapshot restore")
