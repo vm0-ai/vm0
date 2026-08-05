@@ -1199,7 +1199,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     );
   }, 90_000);
 
-  it("rejects restricted model pins for limited-free-1 workspaces", async () => {
+  it("allows free model pins and rejects all other models for limited-free-1 workspaces", async () => {
     const { actor, agentId } = await entitledChatActor(
       "Limited free model pin agent",
     );
@@ -1217,14 +1217,14 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-5",
+        model: "deepseek-v4-flash",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
         modelProviderId: null,
       },
       {
-        model: "MiniMax-M3",
+        model: "gpt-5.6-luna",
         isDefault: false,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -1234,10 +1234,15 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const thread = await chat.createThread(actor, {
       agentId,
-      model: "claude-sonnet-5",
+      model: "deepseek-v4-flash",
       title: "limited free model pin",
     });
-    for (const selectedModel of ["gpt-5.6-sol", "gpt-5.5"] as const) {
+    for (const selectedModel of [
+      "gpt-5.6-sol",
+      "gpt-5.5",
+      "claude-sonnet-5",
+      "MiniMax-M3",
+    ] as const) {
       const restrictedSelection = await chat.requestUpdateThreadModelSelection(
         actor,
         thread.id,
@@ -1256,7 +1261,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       ).resolves.not.toHaveProperty("selectedModel");
     }
 
-    await chat.updateThreadModelSelection(actor, thread.id, "MiniMax-M3");
+    await chat.updateThreadModelSelection(actor, thread.id, "gpt-5.6-luna");
     const detail = await chat.readThread(actor, thread.id);
     expect(detail).not.toHaveProperty("selectedModel");
   }, 90_000);

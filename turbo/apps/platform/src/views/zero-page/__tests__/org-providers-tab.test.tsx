@@ -1,6 +1,7 @@
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import {
+  zeroBillingCheckoutContract,
   zeroBillingStatusContract,
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
@@ -220,6 +221,14 @@ function mockBillingCapabilities(modelCapabilities: {
 }): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     return respond(200, billingStatus("pro", modelCapabilities));
+  });
+}
+
+function mockProCheckout(): void {
+  context.mocks.api(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+    return respond(200, {
+      url: "https://checkout.stripe.com/test-upgrade?tier=" + body.tier,
+    });
   });
 }
 
@@ -727,6 +736,38 @@ describe("organization model providers settings", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("lets limited-free-1 workspaces add DeepSeek V4 Flash", async () => {
+    mockAdminOrg();
+    mockBillingCapabilities({
+      supportByok: false,
+      restrictedVm0Models: true,
+    });
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000222",
+        "gpt-5.6-luna",
+        "GPT 5.6 Luna",
+        true,
+      ),
+    ]);
+    await openProvidersTab();
+
+    click(buttonByText("Add model"));
+    await selectDialogModel("DeepSeek V4 Flash");
+
+    const dialog = screen.getByRole("dialog", { name: "Add model" });
+    expect(within(dialog).queryByText("Upgrade to Pro")).toBeNull();
+    click(buttonByText("Add model", dialog));
+
+    const deepseekRow = await screen.findByTestId(
+      "org-model-policy-row-deepseek-v4-flash",
+    );
+    expect(
+      within(deepseekRow).getByText("DeepSeek V4 Flash"),
+    ).toBeInTheDocument();
+  });
+
   it("opens a workspace API key model route form", async () => {
     await openAddApiKeyModelDialog();
 
@@ -864,6 +905,70 @@ describe("organization model providers settings", () => {
     ).toHaveTextContent("GPT 5.5");
   });
 
+  it("opens compare plans for a limited-free-1 default Pro model", async () => {
+    mockAdminOrg();
+    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000221",
+        "claude-fable-5",
+        "Claude Fable 5",
+        false,
+      ),
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000222",
+        "gpt-5.6-luna",
+        "GPT 5.6 Luna",
+        true,
+      ),
+    ]);
+    await openProvidersTab();
+
+    const defaultRow = screen.getByTestId("default-model-row");
+    click(within(defaultRow).getByRole("combobox"));
+    click(await screen.findByRole("option", { name: /Claude Fable 5.*Pro/u }));
+
+    await expect(
+      screen.findByRole("heading", { name: "Compare plans" }),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("starts Pro checkout when adding a limited-free-1 Pro model", async () => {
+    mockAdminOrg();
+    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
+    mockProCheckout();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000222",
+        "gpt-5.6-luna",
+        "GPT 5.6 Luna",
+        true,
+      ),
+    ]);
+    await openModelSettings();
+
+    click(buttonByText("Add model"));
+    const dialog = screen.getByRole("dialog", { name: "Add model" });
+    click(within(dialog).getByRole("combobox"));
+
+    const gptOption = await screen.findByRole("option", {
+      name: /GPT 5\.5\s+Pro/u,
+    });
+    click(gptOption);
+
+    expect(screen.queryByRole("heading", { name: "Compare plans" })).toBeNull();
+    expect(buttonByText("Upgrade to Pro", dialog)).toBeInTheDocument();
+    click(buttonByText("Upgrade to Pro", dialog));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/test-upgrade?tier=pro",
+      );
+    });
+  });
+
   it("opens compare plans when BYOK is unsupported", async () => {
     mockAdminOrg();
     mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
@@ -885,6 +990,37 @@ describe("organization model providers settings", () => {
       name: /API key\s+Pro/u,
     });
     click(apiKeyRoute);
+
+    await expect(
+      screen.findByRole("heading", { name: "Compare plans" }),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("preserves limited-free restrictions with a legacy billing response", async () => {
+    mockAdminOrg();
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, billingStatus("limited-free-1"));
+    });
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000222",
+        "gpt-5.6-luna",
+        "GPT 5.6 Luna",
+        true,
+      ),
+    ]);
+    await openModelSettings();
+
+    click(buttonByText("Add model"));
+    const dialog = screen.getByRole("dialog", { name: "Add model" });
+    click(within(dialog).getByRole("combobox"));
+    click(await screen.findByRole("option", { name: /GPT 5\.5\s+Pro/u }));
+    expect(buttonByText("Upgrade to Pro", dialog)).toBeInTheDocument();
+
+    await selectDialogModel("DeepSeek V4 Flash");
+    expect(buttonByText("Add model", dialog)).toBeInTheDocument();
+    click(screen.getByRole("radio", { name: /API key\s+Pro/u }));
 
     await expect(
       screen.findByRole("heading", { name: "Compare plans" }),

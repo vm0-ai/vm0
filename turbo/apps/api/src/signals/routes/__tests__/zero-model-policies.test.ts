@@ -557,8 +557,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
       headers: authHeaders(),
       body: {
         policies: [
-          makeVm0Policy("kimi-k2.7-code", true),
-          makeVm0Policy("gpt-5.5"),
+          makeVm0Policy("claude-sonnet-5", true),
+          makeVm0Policy("gpt-5.6-terra"),
         ],
       },
     });
