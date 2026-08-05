@@ -6857,6 +6857,9 @@ function UserMessageTemplateReference({
   const setTemplatePickerSearch = useSet(
     signals.template.setTemplatePickerSearch$,
   );
+  const selectAvatarTemplateForVoice = useSet(
+    signals.template.selectAvatarTemplateForVoice$,
+  );
   return (
     <button
       type="button"
@@ -6873,6 +6876,14 @@ function UserMessageTemplateReference({
       className={STRUCTURED_INLINE_REFERENCE_CLASS}
       title={`${typeLabel ?? part.template.type} · ${part.titleSnapshot}`}
       onClick={() => {
+        const avatar = avatarTemplateSelection(part.template);
+        if (avatar) {
+          selectAvatarTemplateForVoice({
+            id: avatar.avatarId,
+            name: avatar.title,
+            coverUrl: avatar.previewUrl,
+          });
+        }
         setTemplatePickerCategory(
           templatePickerCategoryForReference(part.template),
         );

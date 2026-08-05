@@ -1,6 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { zeroAvatarVideoContract } from "@vm0/api-contracts/contracts/zero-avatar-video";
+import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 
@@ -110,6 +112,89 @@ describe("user messages", () => {
     expect(
       document.querySelector("[data-composer-inline-template]"),
     ).toBeNull();
+  });
+
+  it("opens avatar message templates at the voice picker", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000749";
+    const avatar = {
+      id: 81,
+      name: "Ada",
+      coverUrl: "https://example.com/ada.jpg",
+    };
+    const voice = {
+      id: "en-US-ChristopherNeural",
+      name: "Christopher",
+      sampleUrl: "https://example.com/christopher.mp3",
+      language: "English",
+      gender: "male",
+    };
+    const template = {
+      type: "video" as const,
+      selection: {
+        stylePresetId: avatarTemplateStylePresetId(avatar.id),
+        titleSnapshot: avatar.name,
+        previewUrl: avatar.coverUrl,
+        voiceId: voice.id,
+        aspectRatio: "landscape" as const,
+      },
+    };
+    context.mocks.api(zeroAvatarVideoContract.voices, ({ respond }) => {
+      return respond(200, {
+        voices: [voice],
+        hasMore: false,
+        filterOptions: { languages: ["english"], useCases: [] },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Avatar template reference",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000749",
+          role: "user",
+          content: "Create an avatar video",
+          runId: "d0000000-0000-4000-a000-000000000749",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: avatar.name,
+                template,
+              },
+              { type: "text", text: "Create an avatar video" },
+            ],
+          },
+          createdAt: "2026-08-05T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.JoggAiBuiltIn]: true,
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      },
+    });
+
+    await screen.findByLabelText("Template");
+    await user.click(
+      await screen.findByLabelText(`Message template ${avatar.name}`),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    await expect(
+      within(dialog).findByText(`Choose a voice for ${avatar.name}`),
+    ).resolves.toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText(`Select voice ${voice.name}`),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(dialog).queryByLabelText(`Select template ${avatar.name}`),
+    ).not.toBeInTheDocument();
   });
 
   it("renders ordered snapshots with literal Markdown text", async () => {
