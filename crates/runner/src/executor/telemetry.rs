@@ -3,9 +3,11 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use guest_contracts::epoch_milliseconds::{
+    MIN_PLAUSIBLE_EPOCH_MILLISECONDS, is_plausible_epoch_milliseconds,
+};
 use tracing::warn;
 
-use super::MIN_EPOCH_MS_TIMESTAMP;
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, SandboxReuseResult};
 use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
@@ -260,14 +262,14 @@ pub(super) fn warn_invalid_api_start_time_once(
     warn!(
         run_id = %context.run_id,
         api_start_ms,
-        min_epoch_ms_timestamp = MIN_EPOCH_MS_TIMESTAMP,
+        min_epoch_ms_timestamp = MIN_PLAUSIBLE_EPOCH_MILLISECONDS,
         action_type,
         "skipping API latency telemetry for invalid epoch-ms start timestamp"
     );
 }
 
 pub(super) fn elapsed_since_api_start_ms(api_start_ms: u64, now_ms: u64) -> Option<Duration> {
-    if api_start_ms < MIN_EPOCH_MS_TIMESTAMP {
+    if !is_plausible_epoch_milliseconds(api_start_ms) {
         return None;
     }
 

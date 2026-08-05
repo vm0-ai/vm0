@@ -6743,7 +6743,7 @@ function AgentRunSourceMessageAnnotation({
       <AvatarFromUrl
         avatarUrl={agent?.avatarUrl}
         alt=""
-        className="size-4 shrink-0 overflow-hidden rounded-full bg-muted object-cover object-top"
+        className="size-4 shrink-0 overflow-hidden rounded-full object-cover object-top"
         size={16}
       />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
@@ -7009,7 +7009,7 @@ function UserMessageAgentReference({
       <AvatarFromUrl
         avatarUrl={agent?.avatarUrl}
         alt=""
-        className="size-4 shrink-0 overflow-hidden rounded-full bg-muted object-cover object-top"
+        className="size-4 shrink-0 overflow-hidden rounded-full object-cover object-top"
         size={16}
       />
       <span className="min-w-0 truncate">{name}</span>

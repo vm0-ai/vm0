@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.158.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.3...runner-rs-v0.158.4) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** clean up cancelled setup artifact temps ([#25138](https://github.com/vm0-ai/vm0/issues/25138)) ([8cbc510](https://github.com/vm0-ai/vm0/commit/8cbc51072bc488e3d96dedd8668ecfe43fedb6aa))
+
+
+### Documentation
+
+* **python:** document x json truncation contract ([#25153](https://github.com/vm0-ai/vm0/issues/25153)) ([645f14c](https://github.com/vm0-ai/vm0/commit/645f14c1adb25e7c1371c2ca2a0b6aaee9324a28))
+
+
+### Refactoring
+
+* **rust:** centralize epoch-millisecond validation ([#25159](https://github.com/vm0-ai/vm0/issues/25159)) ([4780d82](https://github.com/vm0-ai/vm0/commit/4780d82181ac10f4f7bfaafc6b16e448f89f2860))
+
+## [0.158.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.2...runner-rs-v0.158.3) (2026-08-05)
+
+
+### Bug Fixes
+
+* **python:** preserve auth base representation lengths ([#25135](https://github.com/vm0-ai/vm0/issues/25135)) ([8c70774](https://github.com/vm0-ai/vm0/commit/8c70774539a77c52148354e49a485b3c5c60be61))
+
+
+### Documentation
+
+* **python:** document catalog response-header continuation contract ([#25134](https://github.com/vm0-ai/vm0/issues/25134)) ([f0e55c4](https://github.com/vm0-ai/vm0/commit/f0e55c4f136323477f881c716061185ec6b79fa2))
+
 ## [0.158.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.1...runner-rs-v0.158.2) (2026-08-05)
 
 ## [0.158.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.0...runner-rs-v0.158.1) (2026-08-05)

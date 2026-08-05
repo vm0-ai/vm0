@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.377.1](https://github.com/vm0-ai/vm0/compare/api-v1.377.0...api-v1.377.1) (2026-08-05)
+
+
+### Refactoring
+
+* remove unused e2b infrastructure ([#25162](https://github.com/vm0-ai/vm0/issues/25162)) ([54ec015](https://github.com/vm0-ai/vm0/commit/54ec015ee993c21c2b4635bbd969edee8d967f74))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.1
+    * @vm0/core bumped to 8.514.1
+    * @vm0/db bumped to 1.165.5
+
+## [1.377.0](https://github.com/vm0-ai/vm0/compare/api-v1.376.0...api-v1.377.0) (2026-08-05)
+
+
+### Features
+
+* **platform:** show limited free model choices ([#25132](https://github.com/vm0-ai/vm0/issues/25132)) ([667807f](https://github.com/vm0-ai/vm0/commit/667807f9e39627bbe3c753371fdff06b321406ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.0
+    * @vm0/core bumped to 8.514.0
+    * @vm0/db bumped to 1.165.4
+
 ## [1.376.0](https://github.com/vm0-ai/vm0/compare/api-v1.375.1...api-v1.376.0) (2026-08-05)
 
 

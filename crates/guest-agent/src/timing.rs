@@ -2,11 +2,11 @@
 
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
+use guest_contracts::epoch_milliseconds::is_plausible_epoch_milliseconds;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
 
 /// Record an E2E duration from an already captured API start timestamp.
@@ -49,7 +49,7 @@ fn e2e_duration_from_api_start(api_start: &str, now_ms: u64) -> Option<Duration>
 
 fn parse_api_start_time_ms(api_start: &str) -> Option<u64> {
     let api_start_ms = api_start.parse::<u64>().ok()?;
-    if api_start_ms < MIN_EPOCH_MS_TIMESTAMP {
+    if !is_plausible_epoch_milliseconds(api_start_ms) {
         return None;
     }
 

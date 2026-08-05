@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.6...guest-contracts-v0.5.7) (2026-08-05)
+
+
+### Refactoring
+
+* **rust:** centralize epoch-millisecond validation ([#25159](https://github.com/vm0-ai/vm0/issues/25159)) ([4780d82](https://github.com/vm0-ai/vm0/commit/4780d82181ac10f4f7bfaafc6b16e448f89f2860))
+
 ## [0.5.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.5...guest-contracts-v0.5.6) (2026-08-04)
 
 

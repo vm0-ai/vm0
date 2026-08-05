@@ -169,6 +169,13 @@
       "when": 1785898851353,
       "tag": "0831_military_power_man",
       "breakpoints": true
+    },
+    {
+      "idx": 832,
+      "version": "7",
+      "when": 1785904194097,
+      "tag": "0832_mixed_justin_hammer",
+      "breakpoints": true
     }
   ]
 }
