@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.380.1](https://github.com/vm0-ai/vm0/compare/api-v1.380.0...api-v1.380.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* **api:** seed chat event input context in benchmark ([#25310](https://github.com/vm0-ai/vm0/issues/25310)) ([dc97df8](https://github.com/vm0-ai/vm0/commit/dc97df81221a00293105e0029f37211f7f0129f5))
+
+
+### Refactoring
+
+* reduce fallback slop in internal contracts ([#25314](https://github.com/vm0-ai/vm0/issues/25314)) ([ba302ae](https://github.com/vm0-ai/vm0/commit/ba302aec452be2be47ac292c4f96efcdb0d81325))
+
 ## [1.380.0](https://github.com/vm0-ai/vm0/compare/api-v1.379.4...api-v1.380.0) (2026-08-05)
 
 
