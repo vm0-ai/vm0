@@ -874,7 +874,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let (producer, drain_rx) = NetworkLogDrainProducer::channel("dns-test");
         let (mut writer, reader) = tokio::io::duplex(1024);
-        let task = tokio::spawn(tail_reader(
+        let mut task = tokio::spawn(tail_reader(
             tokio::io::BufReader::new(reader),
             manager.clone(),
             cancel.clone(),
@@ -906,10 +906,15 @@ mod tests {
         assert_eq!(parsed["dns_event"], "query");
 
         cancel.cancel();
-        assert!(matches!(
-            task.await.unwrap(),
-            DrainableLineReaderExit::Cancelled
-        ));
+        let exit = match tokio::time::timeout(std::time::Duration::from_secs(1), &mut task).await {
+            Ok(result) => result.unwrap(),
+            Err(_) => {
+                task.abort();
+                let _ = task.await;
+                panic!("timed out waiting for DNS tail reader cancellation");
+            }
+        };
+        assert!(matches!(exit, DrainableLineReaderExit::Cancelled));
         drop(writer);
     }
 }
