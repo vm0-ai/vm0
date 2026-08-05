@@ -15,7 +15,6 @@ import type {
   PublicConnectorCatalogStatusItem,
   PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,
@@ -52,6 +51,7 @@ import {
   type ConnectorCatalogValidationAuthority,
 } from "./connector-catalog-validator-authority";
 import type { ApiDispatchTimingActionType } from "./api-dispatch-timing.service";
+import { connectorAuthMethodFeatureSwitch } from "./connector-auth-method-feature-switches";
 
 const log = logger("connector-catalog:reader");
 
@@ -175,14 +175,6 @@ function persistedCatalogValidationAuthority(args: {
         backendVersion: args.backendVersion,
         buildCommitSha: args.buildCommitSha,
       };
-}
-
-function isRecognizedFeatureSwitchKey(
-  value: string,
-): value is FeatureSwitchKey {
-  return Object.values(FeatureSwitchKey).some((key) => {
-    return key === value;
-  });
 }
 
 function requiredScopes(method: ConnectorCatalogAuthMethod): readonly string[] {
@@ -535,16 +527,15 @@ export async function loadAcceptedConnectorCatalogSnapshot(
  * ConnectorActionResolver intentionally does not read them.
  */
 function featureSwitchEnabled(
-  method: ConnectorCatalogAuthMethod,
+  connectorSlug: string,
+  authMethodId: string,
   featureStates: ConnectorFeatureStates,
 ): boolean {
-  if (method.featureSwitch === null) {
-    return true;
-  }
-  return (
-    isRecognizedFeatureSwitchKey(method.featureSwitch) &&
-    featureStates?.[method.featureSwitch] === true
+  const featureSwitch = connectorAuthMethodFeatureSwitch(
+    connectorSlug,
+    authMethodId,
   );
+  return featureSwitch === undefined || featureStates?.[featureSwitch] === true;
 }
 
 function effectiveConnectors(args: {
@@ -563,7 +554,9 @@ function effectiveConnectors(args: {
       if (!method.visible) {
         return false;
       }
-      if (!featureSwitchEnabled(method, args.featureStates)) {
+      if (
+        !featureSwitchEnabled(connector.slug, method.id, args.featureStates)
+      ) {
         return false;
       }
       return true;

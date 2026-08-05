@@ -840,6 +840,11 @@ describe("GET /api/zero/connector-catalog", () => {
     );
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    expect(
+      response.body.connector.authMethods.map((method) => {
+        return method.id;
+      }),
+    ).toStrictEqual(["oauth", "api"]);
     const apiMethod = response.body.connector.authMethods.find((method) => {
       return method.id === "api";
     });

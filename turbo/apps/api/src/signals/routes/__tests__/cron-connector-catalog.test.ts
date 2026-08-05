@@ -2051,20 +2051,20 @@ describe("connector catalog valid lifecycle", () => {
       grantKind: "manual",
       manual: true,
     });
-    gated.featureSwitch = "awsConnector";
     const visible = publicAuthMethod({
       id: "cli",
       grantKind: "manual",
       manual: true,
     });
     const hidden = publicAuthMethod({
-      id: "api",
+      id: "oauth",
       grantKind: "manual",
       manual: true,
     });
     hidden.visible = false;
     const release = buildRelease({
       version: "2026-07-15.external-request-filters",
+      connectorSlug: "cal-com",
       mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [gated, visible, hidden]);
       },
@@ -2083,7 +2083,7 @@ describe("connector catalog valid lifecycle", () => {
             revoke: "none",
           }),
           manualPrivateAuthMethod({
-            id: "api",
+            id: "oauth",
             prefix: "HIDDEN",
             access: "static",
             revoke: "none",
@@ -2114,7 +2114,7 @@ describe("connector catalog valid lifecycle", () => {
       featureClient.update({
         headers,
         body: {
-          switches: { [FeatureSwitchKey.AwsConnector]: true },
+          switches: { [FeatureSwitchKey.CalComConnector]: true },
         },
       }),
       [200],
@@ -2127,23 +2127,28 @@ describe("connector catalog valid lifecycle", () => {
     ).toStrictEqual(["api-token", "cli"]);
     await accept(featureClient.delete({ headers }), [200]);
 
-    const unsupported = buildRelease({
-      version: "2026-07-15.external-all-incompatible",
+    const graduated = buildRelease({
+      version: "2026-07-15.external-graduated-switch",
       mutateCatalog: (artifact) => {
         const method = firstRecord(
           firstRecord(artifact.connectors, "connectors").authMethods,
           "authMethods",
         );
-        method.featureSwitch = "futureConnectorSwitch";
+        method.featureSwitch = "retiredConnectorSwitch";
       },
     });
-    serveObjects(catalogObjects([release, unsupported], unsupported));
+    serveObjects(catalogObjects([release, graduated], graduated));
     await syncCatalog();
-    const allFiltered = await accept(catalogClient.list({ headers }), [200]);
-    expect(allFiltered.body).toStrictEqual({
-      connectors: [],
-      categoryMetadata: { categories: [], groups: [] },
-    });
+    const graduatedVisible = await accept(
+      catalogClient.list({ headers }),
+      [200],
+    );
+    expect(graduatedVisible.body.connectors).toMatchObject([
+      {
+        slug: "external-test",
+        authMethods: [{ id: "api-token" }],
+      },
+    ]);
   });
 
   it("executes an external manual grant with catalog-owned storage", async () => {
