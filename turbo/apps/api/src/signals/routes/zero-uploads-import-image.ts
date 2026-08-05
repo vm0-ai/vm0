@@ -265,7 +265,7 @@ const importImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const orgId = "orgId" in auth ? auth.orgId : null;
   const artifact = await set(
     allocateArtifactObject$,
-    { userId: auth.userId, orgId, filename },
+    { userId: auth.userId, filename },
     signal,
   );
   const { id, key: s3Key, url, metadata } = artifact;

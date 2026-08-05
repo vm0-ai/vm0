@@ -3,21 +3,57 @@
 use tokio::sync::{mpsc, oneshot};
 
 use crate::connection::{
-    DEFAULT_REALTIME_HOST, DropWarningState, EventLoopState, SessionState, connect_and_attach,
-    exchange_token, rest_host, run_event_loop,
+    DEFAULT_REALTIME_HOST, DropWarningState, EventLoopState, SessionState, TransportCloseTracker,
+    connect_and_attach, exchange_token, rest_host, run_event_loop,
 };
 use crate::protocol::error_code;
 use crate::types::{Error, Event, SubscribeConfig};
 
 /// Handle to a running subscription.
 ///
-/// Call [`next`](Subscription::next) to receive events, or [`close`](Subscription::close) to
-/// shut down the connection.
+/// Call [`next`](Subscription::next) to receive events. Use [`close`](Subscription::close) for a
+/// best-effort close request, or [`close_and_wait`](Subscription::close_and_wait) when the caller
+/// must observe bounded shutdown completion.
 ///
 /// Messages may be dropped under backpressure if the consumer falls behind.
 pub struct Subscription {
     rx: mpsc::Receiver<Event>,
-    close_tx: Option<oneshot::Sender<()>>,
+    close_tx: Option<oneshot::Sender<CloseRequest>>,
+    close_timeout: std::time::Duration,
+    transport_close_tracker: TransportCloseTracker,
+}
+
+pub(crate) struct CloseRequest {
+    completion_tx: Option<oneshot::Sender<Result<(), Error>>>,
+}
+
+impl CloseRequest {
+    fn untracked() -> Self {
+        Self {
+            completion_tx: None,
+        }
+    }
+
+    fn tracked(completion_tx: oneshot::Sender<Result<(), Error>>) -> Self {
+        Self {
+            completion_tx: Some(completion_tx),
+        }
+    }
+
+    pub(crate) fn complete(self, result: Result<(), Error>) {
+        match self.completion_tx {
+            Some(completion_tx) => {
+                if let Err(Err(error)) = completion_tx.send(result) {
+                    tracing::warn!(%error, "Failed to close subscription");
+                }
+            }
+            None => {
+                if let Err(error) = result {
+                    tracing::warn!(%error, "Failed to close subscription");
+                }
+            }
+        }
+    }
 }
 
 impl Subscription {
@@ -26,18 +62,51 @@ impl Subscription {
         self.rx.recv().await
     }
 
-    /// Request a graceful close of the background WebSocket connection.
+    /// Request a best-effort graceful close without waiting for completion.
     pub fn close(mut self) {
         if let Some(tx) = self.close_tx.take() {
-            let _ = tx.send(());
+            let _ = tx.send(CloseRequest::untracked());
         }
+    }
+
+    /// Gracefully close the subscription and wait for bounded local completion.
+    ///
+    /// Success means the background event loop finished its caller-requested
+    /// Ably `CLOSE` send, WebSocket close, and outstanding transport cleanup.
+    /// It does not wait for an Ably `CLOSED` acknowledgement from the server.
+    pub async fn close_and_wait(mut self) -> Result<(), Error> {
+        let close_tx = self.close_tx.take().ok_or_else(|| Error::Protocol {
+            code: error_code::FAILED,
+            message: "Subscription close request is unavailable".to_string(),
+        })?;
+        // Receiving the request can cancel a pending reconnect and start its
+        // transport cleanup immediately, so observation must be enabled first.
+        self.transport_close_tracker.observe_failures();
+        let (completion_tx, completion_rx) = oneshot::channel();
+        close_tx
+            .send(CloseRequest::tracked(completion_tx))
+            .map_err(|_| Error::Protocol {
+                code: error_code::FAILED,
+                message: "Subscription event loop is unavailable during close".to_string(),
+            })?;
+
+        tokio::time::timeout(self.close_timeout, completion_rx)
+            .await
+            .map_err(|_| Error::Protocol {
+                code: error_code::TIMEOUT,
+                message: "Subscription close timed out".to_string(),
+            })?
+            .map_err(|_| Error::Protocol {
+                code: error_code::FAILED,
+                message: "Subscription event loop exited before close completed".to_string(),
+            })?
     }
 }
 
 impl Drop for Subscription {
     fn drop(&mut self) {
         if let Some(tx) = self.close_tx.take() {
-            let _ = tx.send(());
+            let _ = tx.send(CloseRequest::untracked());
         }
     }
 }
@@ -51,9 +120,11 @@ impl Drop for Subscription {
 /// heartbeat timeout detection.
 pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
     let timing = config.timing.unwrap_or_default();
+    let close_timeout = timing.close_timeout;
     let event_channel_capacity = timing.event_channel_capacity.max(1);
     let (event_tx, event_rx) = mpsc::channel::<Event>(event_channel_capacity);
-    let (close_tx, close_rx) = oneshot::channel::<()>();
+    let (close_tx, close_rx) = oneshot::channel::<CloseRequest>();
+    let transport_close_tracker = TransportCloseTracker::new();
 
     let realtime_host = config
         .host
@@ -86,6 +157,7 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
             &config.channel,
             config.channel_params.as_ref(),
             &timing,
+            transport_close_tracker.clone(),
         ),
     )
     .await
@@ -110,6 +182,7 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
             get_token: config.get_token,
             timing,
             drop_warnings: DropWarningState::default(),
+            transport_close_tracker: transport_close_tracker.clone(),
         },
         close_rx,
     ));
@@ -117,5 +190,7 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
     Ok(Subscription {
         rx: event_rx,
         close_tx: Some(close_tx),
+        close_timeout,
+        transport_close_tracker,
     })
 }

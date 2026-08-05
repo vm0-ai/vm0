@@ -25,7 +25,7 @@ fi
 
 # Build the supported Zero CLI before testing
 echo -e "${YELLOW}Building Zero CLI...${NC}"
-(cd "$SCRIPT_DIR/../turbo" && pnpm build --filter @vm0/cli)
+(cd "$SCRIPT_DIR/../turbo" && pnpm build --filter @vm0/zero-cli)
 
 # Ensure CLI is available globally
 echo -e "${YELLOW}Linking CLI globally...${NC}"

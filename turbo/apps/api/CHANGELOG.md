@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.378.0](https://github.com/vm0-ai/vm0/compare/api-v1.377.1...api-v1.378.0) (2026-08-05)
+
+
+### Features
+
+* **api:** use mimo for zero recognition ([#25151](https://github.com/vm0-ai/vm0/issues/25151)) ([80668d2](https://github.com/vm0-ai/vm0/commit/80668d20ab522c681dd21cbf1d813aad2940deec))
+
+
+### Bug Fixes
+
+* align oauth connector identity contracts ([#25099](https://github.com/vm0-ai/vm0/issues/25099)) ([78e048f](https://github.com/vm0-ai/vm0/commit/78e048f65b4efbb0f7d9526e2c016749f7ad0b37))
+* **api:** make Slack test agent seeding race-safe ([#25176](https://github.com/vm0-ai/vm0/issues/25176)) ([29ba809](https://github.com/vm0-ai/vm0/commit/29ba80980c9984122ab196a8d695a9ffc7868c58))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.2
+    * @vm0/connectors bumped to 1.202.11
+    * @vm0/core bumped to 8.515.0
+    * @vm0/db bumped to 1.166.0
+
 ## [1.377.1](https://github.com/vm0-ai/vm0/compare/api-v1.377.0...api-v1.377.1) (2026-08-05)
 
 

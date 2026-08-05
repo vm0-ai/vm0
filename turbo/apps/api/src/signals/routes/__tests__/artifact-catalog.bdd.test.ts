@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { ARTIFACT_CATALOG_KINDS } from "@vm0/api-contracts/contracts/artifact-catalog";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { mockOptionalEnv } from "../../../lib/env";
@@ -25,7 +24,6 @@ import {
   insertHostedSiteAsPreviousApi,
   insertLegacyArtifactCatalogFile,
 } from "./helpers/runtime-state";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -55,7 +53,6 @@ function stageUploadObject(key: string, size: number): void {
 async function catalogActor(
   displayName: string,
   actor: ApiTestUser = bdd.user(),
-  switches: Readonly<Partial<Record<FeatureSwitchKey, boolean>>> = {},
   options: { readonly bootstrapOrg?: boolean } = {},
 ): Promise<CatalogActor> {
   chatCallbacks.acceptChatObjectStorage();
@@ -71,11 +68,6 @@ async function catalogActor(
   if (!actor.orgId) {
     throw new Error("Expected artifact catalog test actor to have an org");
   }
-  await updateFeatureSwitchesForUser(
-    context,
-    { userId: actor.userId, orgId: actor.orgId },
-    switches,
-  );
   const agent = await bdd.createAgent(actor, {
     displayName,
     visibility: "private",
@@ -453,9 +445,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
     const owner = await catalogActor(
       "Artifact catalog hosted owner",
       bdd.user(),
-      {
-        [FeatureSwitchKey.HostedArtifactVersions]: true,
-      },
     );
     const site = `catalog-site-${randomUUID().slice(0, 8)}`;
     const hosted = await publishHostedSite({ owner, site, deployments: 2 });
@@ -489,9 +478,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
     const owner = await catalogActor(
       "Artifact catalog chat-scoped hosted owner",
       bdd.user(),
-      {
-        [FeatureSwitchKey.HostedArtifactVersions]: true,
-      },
     );
     host.captureHostedSitesS3();
     const site = `catalog-chat-scope-${randomUUID().slice(0, 8)}`;
@@ -599,9 +585,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
     const owner = await catalogActor(
       "Artifact catalog mixed-scope hosted owner",
       bdd.user(),
-      {
-        [FeatureSwitchKey.HostedArtifactVersions]: true,
-      },
     );
     host.captureHostedSitesS3();
     const site = `catalog-mixed-scope-${randomUUID().slice(0, 8)}`;
@@ -655,9 +638,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
     const owner = await catalogActor(
       "Artifact catalog previous API hosted owner",
       bdd.user(),
-      {
-        [FeatureSwitchKey.HostedArtifactVersions]: true,
-      },
     );
     if (!owner.actor.orgId) {
       throw new Error("Expected previous API hosted owner to have an org");
@@ -738,9 +718,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
     const owner = await catalogActor(
       "Artifact catalog hosted transition owner",
       bdd.user(),
-      {
-        [FeatureSwitchKey.HostedArtifactVersions]: true,
-      },
     );
     const site = `catalog-transition-${randomUUID().slice(0, 8)}`;
     const hosted = await publishHostedSite({
@@ -771,16 +748,10 @@ describe("GET /api/zero/artifacts/catalog", () => {
     const firstOwner = await catalogActor(
       "Artifact catalog first org member",
       bdd.user({ orgId, orgRole: "org:admin" }),
-      {
-        [FeatureSwitchKey.HostedArtifactVersions]: true,
-      },
     );
     const secondOwner = await catalogActor(
       "Artifact catalog second org member",
       bdd.user({ orgId, orgRole: "org:member" }),
-      {
-        [FeatureSwitchKey.HostedArtifactVersions]: true,
-      },
       { bootstrapOrg: false },
     );
     const site = `catalog-shared-${randomUUID().slice(0, 8)}`;

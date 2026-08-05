@@ -19,7 +19,8 @@
             "release-type": "node"
         },
         "turbo/apps/cli": {
-            "release-type": "node"
+            "release-type": "node",
+            "component": "cli"
         },
         "turbo/apps/api": {
             "release-type": "node"
@@ -88,9 +89,6 @@
             "release-type": "rust"
         },
         "crates/guest-write-file": {
-            "release-type": "rust"
-        },
-        "crates/zero-cli": {
             "release-type": "rust"
         },
         "crates/runner": {

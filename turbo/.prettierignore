@@ -14,4 +14,3 @@ Caddyfile
 apps/web/src/db/migrations/
 packages/db/src/migrations/
 packages/db/scripts/migrations/
-apps/cli/generated/zero-cli-surface.v1.json

@@ -30,7 +30,7 @@ import {
   recordOpenRouterUsage$,
 } from "./openrouter-usage.service";
 
-const ZERO_RECOGNITION_MODEL = "google/gemini-3.5-flash";
+const ZERO_RECOGNITION_MODEL = "xiaomi/mimo-v2.5";
 const ZERO_RECOGNITION_OPERATION = "image-recognition";
 const ZERO_RECOGNITION_MAX_TOKENS = 8192;
 

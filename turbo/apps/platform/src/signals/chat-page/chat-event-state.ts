@@ -97,11 +97,11 @@ function isQueuedChatEvent(event: ChatEvent): event is QueuedChatEvent {
 }
 
 function isTemporarilyQueuedMorningBrief(event: ChatEvent): boolean {
-  // Morning Brief is the only scheduled input still represented as a prompt;
-  // scheduled workflow inputs already use input.automation.
   return (
     event.eventType === "input.prompt" &&
-    event.triggerSource === "workflow-schedule"
+    event.userMessage.parts.some((part) => {
+      return part.type === "morning_brief";
+    })
   );
 }
 

@@ -22,7 +22,7 @@ Lifecycle:
 - ``responseheaders()`` offers eligible 401/403 responses to
   ``install_response_stream_if_needed()`` before installing general response
   streaming. A diagnostic stream suppresses the upstream body and emits its
-  replacement body once.
+  replacement content once, except that HEAD remains bodyless.
 - ``response()`` completes streamed replacement or handles buffered 401/403
   replacement before network logging. ``error()`` may synthesize a diagnostic
   response unless response headers already installed a replacement.
@@ -158,6 +158,7 @@ def maybe_make_local_response(
 
     Return ``True`` only after installing a local HTTP 424 response, recording
     failure/timing/firewall metadata, and emitting the diagnostic proxy entry.
+    HEAD keeps the same diagnostic status and metadata without response content.
     The caller must treat that response as terminal for request dispatch.
     """
     if _is_browser_diagnostic_skip(flow):
@@ -171,10 +172,10 @@ def maybe_make_local_response(
     flow_metadata.start_request_timing(flow.metadata)
     _set_failure_metadata(flow, candidate)
     flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
-    flow.response = http.Response.make(
-        _HTTP_STATUS_FAILED_DEPENDENCY,
-        _response_body(candidate, upstream_status=0),
-        {"Content-Type": "application/json"},
+    flow.response = _make_local_response(
+        flow,
+        candidate,
+        upstream_status=0,
     )
     _log_proxy_entry(
         flow,
@@ -205,7 +206,8 @@ def maybe_make_firewall_allow_local_response(
     local response.
 
     Return ``True`` only after installing and logging a local HTTP 424 response
-    and recording the selected candidate and ownership metadata. The caller
+    and recording the selected candidate and ownership metadata. HEAD keeps the
+    same diagnostic status and metadata without response content. The caller
     must stop normal request dispatch on ``True``.
     """
     if _is_browser_diagnostic_skip(flow):
@@ -245,10 +247,10 @@ def maybe_make_firewall_allow_local_response(
     flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_CANDIDATES] = resolution.candidate_connector_slugs
     flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_HINT_STATUS] = resolution.hint_status
     flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
-    flow.response = http.Response.make(
-        _HTTP_STATUS_FAILED_DEPENDENCY,
-        _response_body(candidate, upstream_status=0),
-        {"Content-Type": "application/json"},
+    flow.response = _make_local_response(
+        flow,
+        candidate,
+        upstream_status=0,
     )
     _log_proxy_entry(
         flow,
@@ -262,9 +264,10 @@ def install_response_stream_if_needed(flow: http.HTTPFlow) -> bool:
     """Install diagnostic replacement during the response-header phase.
 
     ``responseheaders()`` must call this before general response streaming. For
-    an eligible unauthenticated 401/403, it replaces the response body and its
-    framing headers, caches the diagnostic body, and installs a callback that
-    discards upstream chunks and emits that body once at end-of-stream.
+    an eligible unauthenticated 401/403, it replaces the response content and
+    framing headers, caches the diagnostic content, and installs a callback that
+    discards upstream chunks and emits that content once at end-of-stream. HEAD
+    caches and emits empty content without a Content-Length field.
 
     Return ``True`` only when this module owns ``flow.response.stream``; the
     caller must then skip installing another stream callback. ``False`` means no
@@ -341,9 +344,11 @@ def maybe_replace_response(
         if isinstance(body, bytes) and not flow.metadata.get(
             _CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT
         ):
-            flow.response.content = body
-            flow.response.headers["Content-Type"] = "application/json"
-            flow.response.headers["Content-Length"] = str(len(body))
+            _apply_diagnostic_response_content(
+                flow.response,
+                body,
+                omit_content_length=_is_head_request(flow),
+            )
         _log_proxy_entry(
             flow,
             original_url=original_url,
@@ -389,7 +394,8 @@ def maybe_make_error_response(
     already installed diagnostic replacement, it does not create or log another
     diagnostic and clears trailers when a response exists. Otherwise an
     eligible non-browser request without auth material receives a local HTTP 424
-    response with upstream status zero and one diagnostic proxy entry.
+    response with upstream status zero and one diagnostic proxy entry. HEAD keeps
+    that response bodyless.
     """
     if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS):
         if flow.response is not None:
@@ -403,10 +409,10 @@ def maybe_make_error_response(
     if _request_has_auth_material(flow, candidate, original_url):
         return
     _set_failure_metadata(flow, candidate)
-    flow.response = http.Response.make(
-        _HTTP_STATUS_FAILED_DEPENDENCY,
-        _response_body(candidate, upstream_status=0),
-        {"Content-Type": "application/json"},
+    flow.response = _make_local_response(
+        flow,
+        candidate,
+        upstream_status=0,
     )
     _log_proxy_entry(
         flow,
@@ -627,6 +633,55 @@ def _response_body(
     return json.dumps(body, separators=(",", ":")).encode()
 
 
+def _is_head_request(flow: http.HTTPFlow) -> bool:
+    return flow.request.method.upper() == "HEAD"
+
+
+def _set_diagnostic_response_content(
+    flow: http.HTTPFlow,
+    response: http.Response,
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+    *,
+    upstream_status: int,
+) -> bytes:
+    bodyless = _is_head_request(flow)
+    content = b"" if bodyless else _response_body(candidate, upstream_status=upstream_status)
+    _apply_diagnostic_response_content(
+        response,
+        content,
+        omit_content_length=bodyless,
+    )
+    return content
+
+
+def _apply_diagnostic_response_content(
+    response: http.Response,
+    content: bytes,
+    *,
+    omit_content_length: bool,
+) -> None:
+    response.content = content
+    response.headers["Content-Type"] = "application/json"
+    if omit_content_length:
+        del response.headers["Content-Length"]
+
+
+def _make_local_response(
+    flow: http.HTTPFlow,
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+    *,
+    upstream_status: int,
+) -> http.Response:
+    response = http.Response.make(_HTTP_STATUS_FAILED_DEPENDENCY)
+    _set_diagnostic_response_content(
+        flow,
+        response,
+        candidate,
+        upstream_status=upstream_status,
+    )
+    return response
+
+
 def _message(
     candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
 ) -> str:
@@ -714,14 +769,12 @@ def _replace_response_content(
         if header in flow.response.headers:
             del flow.response.headers[header]
     flow.response.trailers = None
-    body = _response_body(
+    return _set_diagnostic_response_content(
+        flow,
+        flow.response,
         candidate,
         upstream_status=upstream_status,
     )
-    flow.response.content = body
-    flow.response.headers["Content-Type"] = "application/json"
-    flow.response.headers["Content-Length"] = str(len(body))
-    return body
 
 
 def _log_proxy_entry(

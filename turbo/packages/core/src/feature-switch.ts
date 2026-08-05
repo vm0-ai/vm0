@@ -113,21 +113,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Expensify accounting connector",
     enabled: false,
   },
-  [FeatureSwitchKey.GoogleContactsConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Google Contacts connector",
-    enabled: true,
-  },
-  [FeatureSwitchKey.GoogleFormsConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Google Forms connector",
-    enabled: true,
-  },
-  [FeatureSwitchKey.JoggAiConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the JoggAI video generation connector",
-    enabled: true,
-  },
   [FeatureSwitchKey.JoggAiBuiltIn]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable vm0-managed JoggAI talking-avatar video generation",
@@ -435,18 +420,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ArtifactKeyV2]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Store new user artifacts under flat, ten-character hashed public keys.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.HostedArtifactVersions]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Create immutable hosted artifact versions behind stable site aliases.",
-    enabled: true,
-  },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -460,18 +433,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable thread-scoped Cloud browser access in chat and the Zero CLI.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.RustZeroCli]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Use the runner-bundled Rust zero-cli entry point for Zero CLI commands.",
-    enabled: false,
-  },
-  [FeatureSwitchKey.R2ZeroCli]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Use the commit-addressed R2 npm tarball for Zero CLI commands instead of the published @vm0/cli package.",
-    enabled: false,
   },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",
@@ -489,12 +450,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@vm0.ai",
     description:
       "Allow org admins to add OAuth 2.0 authentication to custom connectors.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.CustomConnectorPermissions]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Allow users to manage agent permission grants for custom connectors.",
     enabled: true,
   },
 };
