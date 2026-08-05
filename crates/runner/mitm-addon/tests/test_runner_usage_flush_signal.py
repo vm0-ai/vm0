@@ -269,12 +269,10 @@ class TestRunnerUsageFlushSignal:
             return
 
         with (
-            patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
-            ),
             patch.object(logging_utils, "flush_log_path") as flush_log_path,
+            running_jsonl_flush_worker(runner_usage_flush_files),
         ):
-            runner_flush_lifecycle._flush_jsonl_for_runner_request()
+            pass
 
         flush_log_path.assert_not_called()
         assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
