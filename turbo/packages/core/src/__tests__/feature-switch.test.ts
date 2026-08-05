@@ -32,6 +32,7 @@ describe("isFeatureEnabled", () => {
       true,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.HtmlResourceIndex, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
