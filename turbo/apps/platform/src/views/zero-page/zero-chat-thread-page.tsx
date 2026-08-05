@@ -6354,6 +6354,143 @@ function AttachmentMaterializationState({
   );
 }
 
+// Images and videos render as thumbnails, every other attachment as a chip.
+// The two shapes never share a row, so they are grouped before rendering.
+function isMediaAttachment(attachment: ResolvedMessageAttachment): boolean {
+  return attachment.isImage || attachment.kind === "video";
+}
+
+function MessageAttachment({
+  attachment: a,
+  onImageClick,
+}: {
+  attachment: ResolvedMessageAttachment;
+  onImageClick: (url: string) => void;
+}) {
+  const { t } = useTranslation();
+  const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
+
+  if (a.assetRef && a.assetRef.materialization.status !== "ready") {
+    return <AttachmentMaterializationState attachment={a} />;
+  }
+  if (a.isImage) {
+    return (
+      <ChatImagePreviewLink
+        alt={a.filename}
+        ariaLabel={t(
+          ($) => {
+            return $.chat.attachments.previewFile;
+          },
+          {
+            filename: a.filename,
+          },
+        )}
+        imageClassName="block h-full w-full object-contain"
+        linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
+        onPreview={() => {
+          onImageClick(a.url);
+        }}
+        placeholderClassName="h-full w-full"
+        url={a.url}
+      />
+    );
+  }
+  if (a.kind === "video") {
+    return (
+      <ChatVideoPreviewButton
+        ariaLabel={t(
+          ($) => {
+            return $.chat.attachments.previewFile;
+          },
+          {
+            filename: a.filename,
+          },
+        )}
+        buttonClassName={CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS}
+        filename={a.filename}
+        onPreview={() => {
+          openVideoLightbox({
+            url: a.url,
+            filename: a.filename,
+          });
+        }}
+        posterClassName="h-full w-full"
+        url={a.url}
+        videoClassName="h-full w-full object-contain"
+      />
+    );
+  }
+  if (
+    a.kind === "markdown" ||
+    a.kind === "text" ||
+    a.kind === "json" ||
+    a.kind === "csv" ||
+    a.kind === "pdf" ||
+    a.kind === "html"
+  ) {
+    return (
+      <PreviewableFileAttachmentChip
+        filename={a.filename}
+        url={a.url}
+        kind={a.kind}
+        text$={a.text$}
+      />
+    );
+  }
+  if (a.kind === "audio") {
+    return (
+      <PreviewableAudioAttachmentChip
+        filename={a.filename}
+        url={a.url}
+        contentType={a.contentType}
+      />
+    );
+  }
+  return (
+    <FileAttachmentChip
+      filename={a.filename}
+      url={a.url}
+      contentType={a.contentType}
+    />
+  );
+}
+
+function UserMessageAttachmentRow({
+  align,
+  attachments,
+  onImageClick,
+  testId,
+}: {
+  align: "start" | "end";
+  attachments: ResolvedMessageAttachment[];
+  onImageClick: (url: string) => void;
+  testId: string;
+}) {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap gap-2",
+        align === "start" ? "justify-start" : "justify-end",
+      )}
+      data-testid={testId}
+    >
+      {attachments.map((a) => {
+        return (
+          <MessageAttachment
+            key={a.id ?? a.url}
+            attachment={a}
+            onImageClick={onImageClick}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function UserMessageAttachments({
   attachments,
   onImageClick,
@@ -6363,9 +6500,6 @@ function UserMessageAttachments({
   onImageClick: (url: string) => void;
   align?: "start" | "end";
 }) {
-  const { t } = useTranslation();
-  const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
-
   if (attachments.length === 0) {
     return null;
   }
@@ -6373,105 +6507,24 @@ function UserMessageAttachments({
   return (
     <div
       className={cn(
-        "flex max-w-[85%] flex-wrap gap-2",
-        align === "start" ? "mt-2 justify-start" : "mb-2 justify-end self-end",
+        "flex max-w-[85%] flex-col gap-2",
+        align === "start" ? "mt-2 items-start" : "mb-2 items-end self-end",
       )}
     >
-      {attachments.map((a) => {
-        if (a.assetRef && a.assetRef.materialization.status !== "ready") {
-          return (
-            <AttachmentMaterializationState
-              key={a.id ?? a.url}
-              attachment={a}
-            />
-          );
-        }
-        if (a.isImage) {
-          return (
-            <ChatImagePreviewLink
-              key={a.url}
-              alt={a.filename}
-              ariaLabel={t(
-                ($) => {
-                  return $.chat.attachments.previewFile;
-                },
-                {
-                  filename: a.filename,
-                },
-              )}
-              imageClassName="block h-full w-full object-contain"
-              linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
-              onPreview={() => {
-                onImageClick(a.url);
-              }}
-              placeholderClassName="h-full w-full"
-              url={a.url}
-            />
-          );
-        }
-        if (a.kind === "video") {
-          return (
-            <ChatVideoPreviewButton
-              key={a.url}
-              ariaLabel={t(
-                ($) => {
-                  return $.chat.attachments.previewFile;
-                },
-                {
-                  filename: a.filename,
-                },
-              )}
-              buttonClassName={CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS}
-              filename={a.filename}
-              onPreview={() => {
-                openVideoLightbox({
-                  url: a.url,
-                  filename: a.filename,
-                });
-              }}
-              posterClassName="h-full w-full"
-              url={a.url}
-              videoClassName="h-full w-full object-contain"
-            />
-          );
-        }
-        if (
-          a.kind === "markdown" ||
-          a.kind === "text" ||
-          a.kind === "json" ||
-          a.kind === "csv" ||
-          a.kind === "pdf" ||
-          a.kind === "html"
-        ) {
-          return (
-            <PreviewableFileAttachmentChip
-              key={a.url}
-              filename={a.filename}
-              url={a.url}
-              kind={a.kind}
-              text$={a.text$}
-            />
-          );
-        }
-        if (a.kind === "audio") {
-          return (
-            <PreviewableAudioAttachmentChip
-              key={a.url}
-              filename={a.filename}
-              url={a.url}
-              contentType={a.contentType}
-            />
-          );
-        }
-        return (
-          <FileAttachmentChip
-            key={a.url}
-            filename={a.filename}
-            url={a.url}
-            contentType={a.contentType}
-          />
-        );
-      })}
+      <UserMessageAttachmentRow
+        align={align}
+        attachments={attachments.filter(isMediaAttachment)}
+        onImageClick={onImageClick}
+        testId="message-media-attachments"
+      />
+      <UserMessageAttachmentRow
+        align={align}
+        attachments={attachments.filter((a) => {
+          return !isMediaAttachment(a);
+        })}
+        onImageClick={onImageClick}
+        testId="message-file-attachments"
+      />
     </div>
   );
 }
@@ -7391,16 +7444,14 @@ function UserMessageContent({
   agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
   composerSignals: ComposerSignals;
 }) {
-  // Images and videos read as media, so they sit above the bubble as
-  // thumbnails instead of interrupting the sentence they were dropped into.
-  const mediaAttachments = attachments.filter((attachment) => {
-    return (
-      attachment.id !== null &&
-      (attachment.isImage || attachment.kind === "video")
-    );
+  // Attachments read as their own object, so they all sit above the bubble
+  // instead of interrupting the sentence they were dropped into. Attachments
+  // without an id cannot be matched to a document part, so they stay inline.
+  const elevatedAttachments = attachments.filter((attachment) => {
+    return attachment.id !== null;
   });
-  const mediaAttachmentIds = new Set(
-    mediaAttachments.flatMap((attachment) => {
+  const elevatedFileIds = new Set(
+    elevatedAttachments.flatMap((attachment) => {
       return attachment.id ? [attachment.id] : [];
     }),
   );
@@ -7412,11 +7463,7 @@ function UserMessageContent({
   const hasBody = document.parts.some((part) => {
     return (
       !isUserMessageNonContentPart(part) &&
-      !isElevatedUserMessagePart(
-        part,
-        mediaAttachmentIds,
-        inlineTemplatesEnabled,
-      )
+      !isElevatedUserMessagePart(part, elevatedFileIds, inlineTemplatesEnabled)
     );
   });
 
@@ -7436,7 +7483,7 @@ function UserMessageContent({
         </div>
       ) : null}
       <UserMessageAttachments
-        attachments={mediaAttachments}
+        attachments={elevatedAttachments}
         onImageClick={onImageClick}
       />
       {hasBody ? (
@@ -7445,7 +7492,7 @@ function UserMessageContent({
             <UserMessageView
               document={document}
               attachments={referenceAttachments}
-              elevatedFileIds={mediaAttachmentIds}
+              elevatedFileIds={elevatedFileIds}
               inlineTemplatesEnabled={inlineTemplatesEnabled}
               agentReferenceSignalsForId={agentReferenceSignalsForId}
               composerSignals={composerSignals}
