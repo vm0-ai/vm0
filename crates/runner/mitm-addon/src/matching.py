@@ -1010,6 +1010,53 @@ def compile_network_policies(raw_network_policies: object | None) -> CompiledNet
     return CompiledNetworkPolicies(MappingProxyType(compiled), False)
 
 
+def with_firewalls_denied(
+    network_policies: CompiledNetworkPolicies,
+    firewalls: object | None,
+    firewall_names: frozenset[str],
+) -> CompiledNetworkPolicies:
+    """Force selected firewall owners deny-all without changing other policies."""
+    if not firewall_names:
+        return network_policies
+
+    blocked_permissions: dict[str, set[str]] = {name: set() for name in firewall_names}
+    if isinstance(firewalls, list):
+        for firewall in firewalls:
+            if not isinstance(firewall, dict):
+                continue
+            name = firewall.get("name")
+            if name not in blocked_permissions:
+                continue
+            apis = firewall.get("apis")
+            if not isinstance(apis, list):
+                continue
+            for api in apis:
+                if not isinstance(api, dict):
+                    continue
+                permissions = api.get("permissions")
+                if not isinstance(permissions, list):
+                    continue
+                for permission in permissions:
+                    if not isinstance(permission, dict):
+                        continue
+                    permission_name = permission.get("name")
+                    if isinstance(permission_name, str):
+                        blocked_permissions[name].add(permission_name)
+
+    policies = dict(network_policies.policies)
+    for name, permissions in blocked_permissions.items():
+        policies[name] = _CompiledNetworkPolicy(
+            frozenset(permissions),
+            "deny",
+            False,
+            False,
+        )
+    return CompiledNetworkPolicies(
+        MappingProxyType(policies),
+        network_policies.top_level_malformed,
+    )
+
+
 def _ensure_compiled_network_policies(
     network_policies: object | None,
 ) -> CompiledNetworkPolicies:

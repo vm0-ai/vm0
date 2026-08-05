@@ -54,6 +54,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use super::api::ApiClient;
+use crate::builtin_firewall_catalog_state::BuiltinFirewallCatalogState;
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::types::Firewall;
@@ -136,6 +137,7 @@ struct BuiltinFirewallCatalogRefreshControllerInner {
     api: ApiClient,
     cache_path: PathBuf,
     lock_path: PathBuf,
+    catalog_state: BuiltinFirewallCatalogState,
     provider_cancel: CancellationToken,
     handle: Mutex<Option<BuiltinFirewallCatalogRefreshHandle>>,
 }
@@ -150,6 +152,7 @@ impl BuiltinFirewallCatalogRefreshController {
         api: ApiClient,
         cache_path: PathBuf,
         lock_path: PathBuf,
+        catalog_state: BuiltinFirewallCatalogState,
         provider_cancel: CancellationToken,
     ) -> Self {
         Self {
@@ -157,6 +160,7 @@ impl BuiltinFirewallCatalogRefreshController {
                 api,
                 cache_path,
                 lock_path,
+                catalog_state,
                 provider_cancel,
                 handle: Mutex::new(None),
             })),
@@ -182,6 +186,7 @@ impl BuiltinFirewallCatalogRefreshController {
             inner.api.clone(),
             inner.cache_path.clone(),
             inner.lock_path.clone(),
+            inner.catalog_state.clone(),
             inner.provider_cancel.clone(),
         )
         .await?;
@@ -205,15 +210,24 @@ impl BuiltinFirewallCatalogRefreshHandle {
         api: ApiClient,
         cache_path: PathBuf,
         lock_path: PathBuf,
+        catalog_state: BuiltinFirewallCatalogState,
         provider_cancel: CancellationToken,
     ) -> RunnerResult<Self> {
-        run_initial_refresh(&api, &cache_path, &lock_path, &provider_cancel).await?;
+        run_initial_refresh(
+            &api,
+            &cache_path,
+            &lock_path,
+            &catalog_state,
+            &provider_cancel,
+        )
+        .await?;
 
         let cancel = provider_cancel.child_token();
         let task = tokio::spawn(run_periodic_refresh(
             api,
             cache_path,
             lock_path,
+            catalog_state,
             cancel.clone(),
             BUILTIN_FIREWALL_CATALOG_REFRESH_INTERVAL,
         ));
@@ -258,10 +272,11 @@ async fn run_initial_refresh(
     api: &ApiClient,
     cache_path: &Path,
     lock_path: &Path,
+    catalog_state: &BuiltinFirewallCatalogState,
     cancel: &CancellationToken,
 ) -> RunnerResult<()> {
     run_initial_refresh_with_delays(
-        |cancel| refresh_once(api, cache_path, lock_path, cancel),
+        |cancel| refresh_once(api, cache_path, lock_path, catalog_state, cancel),
         cache_path,
         cancel,
         &BUILTIN_FIREWALL_CATALOG_INITIAL_RETRY_DELAYS,
@@ -346,11 +361,12 @@ async fn run_periodic_refresh(
     api: ApiClient,
     cache_path: PathBuf,
     lock_path: PathBuf,
+    catalog_state: BuiltinFirewallCatalogState,
     cancel: CancellationToken,
     interval: Duration,
 ) {
     run_periodic_refresh_with_interval(
-        |cancel| refresh_once(&api, &cache_path, &lock_path, cancel),
+        |cancel| refresh_once(&api, &cache_path, &lock_path, &catalog_state, cancel),
         &cache_path,
         &cancel,
         interval,
@@ -402,6 +418,7 @@ async fn refresh_once(
     api: &ApiClient,
     cache_path: &Path,
     lock_path: &Path,
+    catalog_state: &BuiltinFirewallCatalogState,
     cancel: CancellationToken,
 ) -> RunnerResult<()> {
     let catalog = tokio::select! {
@@ -412,7 +429,19 @@ async fn refresh_once(
     if cancel.is_cancelled() {
         return Err(initial_refresh_cancelled_error());
     }
-    write_catalog_cache(cache_path, lock_path, catalog).await
+    publish_catalog_cache(cache_path, lock_path, catalog, catalog_state).await
+}
+
+async fn publish_catalog_cache(
+    cache_path: &Path,
+    lock_path: &Path,
+    catalog: BuiltinFirewallCatalog,
+    catalog_state: &BuiltinFirewallCatalogState,
+) -> RunnerResult<()> {
+    let firewalls = catalog.firewalls.clone();
+    write_catalog_cache(cache_path, lock_path, catalog).await?;
+    catalog_state.publish(firewalls);
+    Ok(())
 }
 
 async fn write_catalog_cache(
@@ -981,6 +1010,43 @@ mod tests {
         assert_eq!(cache.catalog_digest, digest());
         assert_eq!(cache.catalog_version, "test-catalog");
         assert_eq!(cache.firewalls["github"].name, "github");
+    }
+
+    #[tokio::test]
+    async fn publish_catalog_cache_initializes_state_when_file_is_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+        write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+            .await
+            .unwrap();
+        let state = BuiltinFirewallCatalogState::default();
+
+        publish_catalog_cache(&cache_path, &lock_path, catalog("github"), &state)
+            .await
+            .unwrap();
+
+        let snapshot = state.snapshot().expect("published catalog snapshot");
+        assert_eq!(snapshot["github"].name, "github");
+    }
+
+    #[tokio::test]
+    async fn failed_catalog_publication_preserves_previous_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+        let state = BuiltinFirewallCatalogState::default();
+        publish_catalog_cache(&cache_path, &lock_path, catalog("github"), &state)
+            .await
+            .unwrap();
+
+        publish_catalog_cache(&cache_path, &lock_path, oversized_catalog(), &state)
+            .await
+            .unwrap_err();
+
+        let snapshot = state.snapshot().expect("previous catalog snapshot");
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot["github"].name, "github");
     }
 
     #[tokio::test]

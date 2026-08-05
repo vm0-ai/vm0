@@ -1,15 +1,16 @@
 //! Proxy registry schema and file persistence.
 //!
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
+use crate::builtin_firewall_catalog_state::BuiltinFirewallCatalogState;
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::state_file::PROXY_REGISTRY_MAX_BYTES;
-use crate::types::{FirewallEntry, NetworkPolicy, SecretConnectorMetadata};
+use crate::types::{Firewall, FirewallEntry, NetworkPolicy, SecretConnectorMetadata};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +29,8 @@ struct VmEntry {
     network_log_path: String,
     proxy_log_path: String,
     firewalls: Option<Vec<FirewallEntry>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    builtin_firewall_admissions: BTreeMap<String, Firewall>,
     network_policies: Option<HashMap<String, NetworkPolicy>>,
     encrypted_secrets: Option<String>,
     secret_connector_map: Option<HashMap<String, String>>,
@@ -144,6 +147,7 @@ fn fail_closed_capacity_bytes(value: &ProxyRegistry) -> RunnerResult<u64> {
 pub struct ProxyRegistryHandle {
     pub(super) registry_path: PathBuf,
     pub(super) lock_path: PathBuf,
+    pub(super) builtin_firewall_catalog_state: BuiltinFirewallCatalogState,
 }
 
 impl ProxyRegistryHandle {
@@ -153,7 +157,16 @@ impl ProxyRegistryHandle {
         Self {
             registry_path,
             lock_path,
+            builtin_firewall_catalog_state: BuiltinFirewallCatalogState::default(),
         }
+    }
+
+    #[cfg(test)]
+    pub fn publish_builtin_firewall_catalog_for_tests(
+        &self,
+        firewalls: BTreeMap<String, Firewall>,
+    ) {
+        self.builtin_firewall_catalog_state.publish(firewalls);
     }
 
     /// Register a VM in the proxy registry.
@@ -162,6 +175,8 @@ impl ProxyRegistryHandle {
         source_ip: &str,
         registration: &VmRegistration<'_>,
     ) -> RunnerResult<()> {
+        let builtin_firewall_admissions =
+            self.builtin_firewall_admissions(registration.firewalls)?;
         let _guard = lock::acquire(self.lock_path.clone()).await?;
 
         let mut registry = read_registry(&self.registry_path).await?;
@@ -177,6 +192,7 @@ impl ProxyRegistryHandle {
                 network_log_path: registration.network_log_path.to_string_lossy().into_owned(),
                 proxy_log_path: registration.proxy_log_path.to_string_lossy().into_owned(),
                 firewalls,
+                builtin_firewall_admissions,
                 network_policies: registration.network_policies.cloned(),
                 encrypted_secrets: registration.encrypted_secrets.map(String::from),
                 secret_connector_map: registration.secret_connector_map.cloned(),
@@ -195,6 +211,42 @@ impl ProxyRegistryHandle {
             "registered VM in proxy registry"
         );
         Ok(())
+    }
+
+    fn builtin_firewall_admissions(
+        &self,
+        firewalls: Option<&[FirewallEntry]>,
+    ) -> RunnerResult<BTreeMap<String, Firewall>> {
+        let builtin_names = firewalls
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| match entry {
+                FirewallEntry::Builtin { name, .. } => Some(name),
+                FirewallEntry::Inline { .. } => None,
+            })
+            .collect::<Vec<_>>();
+        if builtin_names.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+
+        let catalog = self
+            .builtin_firewall_catalog_state
+            .snapshot()
+            .ok_or_else(|| {
+                RunnerError::Internal(
+                    "builtin firewall catalog is unavailable during VM registration".to_string(),
+                )
+            })?;
+        let mut admissions = BTreeMap::new();
+        for name in builtin_names {
+            let firewall = catalog.get(name).ok_or_else(|| {
+                RunnerError::Internal(format!(
+                    "builtin firewall {name:?} is missing from the published catalog during VM registration"
+                ))
+            })?;
+            admissions.insert(name.clone(), firewall.clone());
+        }
+        Ok(admissions)
     }
 
     /// Unregister a VM from the proxy registry.
@@ -427,6 +479,52 @@ mod tests {
             .collect()
     }
 
+    fn builtin_firewall(connector_slug: &str) -> Firewall {
+        Firewall {
+            name: connector_slug.to_string(),
+            apis: vec![FirewallApi {
+                id: String::new(),
+                base: format!("https://api.{connector_slug}.com"),
+                auth: FirewallAuth {
+                    headers: HashMap::new(),
+                    base: None,
+                    query: None,
+                    aws_sigv4: None,
+                },
+                host_policy: None,
+                permissions: Some(vec![FirewallPermission {
+                    name: "items.read".to_string(),
+                    description: None,
+                    rules: vec!["GET /items".to_string()],
+                }]),
+            }],
+        }
+    }
+
+    fn builtin_entries(connector_slugs: &[&str]) -> Vec<FirewallEntry> {
+        connector_slugs
+            .iter()
+            .map(|connector_slug| FirewallEntry::Builtin {
+                name: (*connector_slug).to_string(),
+                base_url_vars: None,
+            })
+            .collect()
+    }
+
+    fn publish_builtin_catalog(handle: &ProxyRegistryHandle, connector_slugs: &[&str]) {
+        handle.publish_builtin_firewall_catalog_for_tests(
+            connector_slugs
+                .iter()
+                .map(|connector_slug| {
+                    (
+                        (*connector_slug).to_string(),
+                        builtin_firewall(connector_slug),
+                    )
+                })
+                .collect(),
+        );
+    }
+
     fn policy(allow: &[&str], deny: &[&str], ask: &[&str], unknown_policy: &str) -> NetworkPolicy {
         NetworkPolicy {
             allow: allow.iter().map(|value| (*value).to_string()).collect(),
@@ -458,6 +556,7 @@ mod tests {
                 network_log_path: "/tmp/network-test-run.jsonl".to_string(),
                 proxy_log_path: "/tmp/proxy-test-run.jsonl".to_string(),
                 firewalls: None,
+                builtin_firewall_admissions: BTreeMap::new(),
                 network_policies: None,
                 encrypted_secrets: None,
                 secret_connector_map: None,
@@ -634,6 +733,99 @@ mod tests {
 
         // Unregister non-existent IP is a no-op.
         harness.handle.unregister_vm("10.200.0.99").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn builtin_registration_persists_selected_admissions_with_vm_lifetime() {
+        let harness = RegistryHarness::new().await;
+        publish_builtin_catalog(&harness.handle, &["github", "slack", "unused"]);
+        let firewalls = builtin_entries(&["github", "slack"]);
+        let registration = VmRegistration {
+            firewalls: Some(&firewalls),
+            ..base_registration()
+        };
+
+        harness
+            .handle
+            .register_vm("10.200.0.2", &registration)
+            .await
+            .unwrap();
+
+        let loaded = read_registry(harness.registry_path()).await.unwrap();
+        let admissions = &loaded.vms["10.200.0.2"].builtin_firewall_admissions;
+        assert_eq!(
+            admissions.keys().cloned().collect::<Vec<_>>(),
+            ["github", "slack"]
+        );
+        assert_eq!(admissions["github"], builtin_firewall("github"));
+        assert!(!admissions.contains_key("unused"));
+
+        let replacement = VmRegistration {
+            run_id: "run-replacement",
+            ..base_registration()
+        };
+        harness
+            .handle
+            .register_vm("10.200.0.2", &replacement)
+            .await
+            .unwrap();
+        let raw = tokio::fs::read_to_string(harness.registry_path())
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert!(
+            value["vms"]["10.200.0.2"]
+                .get("builtinFirewallAdmissions")
+                .is_none()
+        );
+
+        harness.handle.unregister_vm("10.200.0.2").await.unwrap();
+        assert!(
+            read_registry(harness.registry_path())
+                .await
+                .unwrap()
+                .vms
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_builtin_admission_rejects_registration_without_replacing_registry() {
+        let harness = RegistryHarness::new().await;
+        let existing = VmRegistration {
+            run_id: "run-existing",
+            ..base_registration()
+        };
+        harness
+            .handle
+            .register_vm("10.200.0.2", &existing)
+            .await
+            .unwrap();
+        let previous_bytes = tokio::fs::read(harness.registry_path()).await.unwrap();
+        publish_builtin_catalog(&harness.handle, &["github"]);
+        let firewalls = builtin_entries(&["slack"]);
+        let missing = VmRegistration {
+            run_id: "run-missing",
+            firewalls: Some(&firewalls),
+            ..base_registration()
+        };
+
+        let error = harness
+            .handle
+            .register_vm("10.200.0.2", &missing)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("builtin firewall \"slack\" is missing from the published catalog"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            tokio::fs::read(harness.registry_path()).await.unwrap(),
+            previous_bytes
+        );
     }
 
     #[tokio::test]

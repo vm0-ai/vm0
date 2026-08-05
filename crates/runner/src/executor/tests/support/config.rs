@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -11,7 +12,7 @@ use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths};
 use crate::proxy;
 use crate::telemetry::JobTelemetry;
-use crate::types::ExecutionContext;
+use crate::types::{ExecutionContext, Firewall, FirewallApi, FirewallAuth};
 
 /// Build a real `ExecutorConfig` backed by tempdir files.
 pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> ExecutorConfig {
@@ -22,10 +23,30 @@ pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> Exec
         .unwrap();
     let log_dir = dir.join("logs");
     tokio::fs::create_dir_all(&log_dir).await.unwrap();
+    let registry = proxy::ProxyRegistryHandle::new(registry_path, lock_path);
+    let firewall_name = "model-provider:codex-oauth-token";
+    registry.publish_builtin_firewall_catalog_for_tests(BTreeMap::from([(
+        firewall_name.to_string(),
+        Firewall {
+            name: firewall_name.to_string(),
+            apis: vec![FirewallApi {
+                id: String::new(),
+                base: "https://api.openai.com".to_string(),
+                auth: FirewallAuth {
+                    headers: HashMap::new(),
+                    base: None,
+                    query: None,
+                    aws_sigv4: None,
+                },
+                host_policy: None,
+                permissions: None,
+            }],
+        },
+    )]));
 
     ExecutorConfig {
         api_url: "http://localhost:9999".into(),
-        registry: proxy::ProxyRegistryHandle::new(registry_path, lock_path),
+        registry,
         http: crate::http::HttpClient::new(HttpClientConfig {
             api_url: "http://localhost:9999".into(),
             vercel_bypass: None,

@@ -321,6 +321,16 @@ def _is_valid_catalog_digest(value: str) -> bool:
     )
 
 
+def validate_firewall(name: str, firewall: dict) -> None:
+    """Validate one unresolved builtin firewall at a persisted trust boundary."""
+    try:
+        _validate_firewall_map({name: firewall})
+    except BuiltinFirewallCatalogCacheError:
+        raise
+    except ValueError as exc:
+        raise BuiltinFirewallCatalogCacheError(str(exc)) from exc
+
+
 def _validate_firewall_map(firewalls: dict[str, dict]) -> None:
     for name, firewall in firewalls.items():
         if not isinstance(name, str) or name == "":

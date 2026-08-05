@@ -34,6 +34,7 @@ use super::{
     ReservedReuseClaimObservation, parse_runner_preference,
 };
 use crate::active_input::{ActiveInputNotifications, ActiveInputSource};
+use crate::builtin_firewall_catalog_state::BuiltinFirewallCatalogState;
 use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
@@ -353,6 +354,7 @@ impl ApiProvider {
         token: String,
         config: ApiProviderConfig,
         builtin_firewall_catalog_cache_paths: BuiltinFirewallCatalogCachePaths,
+        builtin_firewall_catalog_state: BuiltinFirewallCatalogState,
         cancel: CancellationToken,
         cancel_tokens: RunCancellationRegistry,
     ) -> Arc<Self> {
@@ -368,6 +370,7 @@ impl ApiProvider {
             api.clone(),
             builtin_firewall_catalog_cache_paths.cache_path,
             builtin_firewall_catalog_cache_paths.lock_path,
+            builtin_firewall_catalog_state,
             cancel.clone(),
         );
         let poll_wakeups = Arc::new(PollWakeups::new(false));

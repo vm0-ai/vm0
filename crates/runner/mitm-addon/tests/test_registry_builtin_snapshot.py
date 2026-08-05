@@ -93,6 +93,65 @@ class TestRegistryBuiltinSnapshot:
                     builtin_firewall_catalog_snapshot=current_snapshot,
                 )
 
+    def test_current_catalog_ignores_stale_admission_state(self):
+        current = cache_firewall("current", "https://current.example.com")
+        vm = builtin_vm("run-current", "current")
+        vm["builtinFirewallAdmissions"] = {"current": "malformed"}
+
+        resolved = registry_firewalls.resolve_firewall_entries(
+            vm,
+            builtin_firewall_catalog_snapshot=_catalog_snapshot(
+                digest_char="a",
+                version="catalog-a",
+                firewalls={"current": current},
+            ),
+        )
+
+        assert resolved.unavailable_names == frozenset()
+        assert resolved.firewalls is not None
+        assert resolved.firewalls[0]["apis"][0]["base"] == "https://current.example.com"
+
+    def test_malformed_admission_for_removed_builtin_fails_closed(self):
+        vm = builtin_vm("run-removed", "removed")
+        vm["builtinFirewallAdmissions"] = {
+            "removed": cache_firewall("different", "https://removed.example.com")
+        }
+
+        with pytest.raises(
+            registry_firewalls.FirewallEntryResolutionError,
+            match="VM admission snapshot is invalid",
+        ):
+            registry_firewalls.resolve_firewall_entries(
+                vm,
+                builtin_firewall_catalog_snapshot=_catalog_snapshot(
+                    digest_char="a",
+                    version="catalog-a",
+                    firewalls={
+                        "retained": cache_firewall("retained", "https://retained.example.com")
+                    },
+                ),
+            )
+
+    def test_unavailable_catalog_never_uses_vm_admission(self):
+        vm = builtin_vm("run-removed", "removed")
+        vm["builtinFirewallAdmissions"] = {
+            "removed": cache_firewall("removed", "https://removed.example.com")
+        }
+        unavailable = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot(
+            dependency_file_key=None,
+            catalog=None,
+            unavailable_reason="cache_file_missing",
+        )
+
+        with pytest.raises(
+            registry_firewalls.FirewallEntryResolutionError,
+            match="catalog cache unavailable: cache_file_missing",
+        ):
+            registry_firewalls.resolve_firewall_entries(
+                vm,
+                builtin_firewall_catalog_snapshot=unavailable,
+            )
+
     def test_catalog_identity_is_checked_only_for_cached_builtin_registry(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
