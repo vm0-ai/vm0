@@ -845,6 +845,10 @@ describe("workflow queue", () => {
     if (admittedTriggerBrief === undefined) {
       throw new Error("Expected the admitted schedule tick trigger brief");
     }
+    const admittedDisplayPrompt = `/${WORKFLOW_NAME}\nTrigger: schedule fired at ${new Date(
+      firedAt,
+    ).toISOString()} (cron "0 9 * * *" in UTC).`;
+    expect(chatEventDisplayText(pendingTick)).toBe(admittedDisplayPrompt);
     const pendingContext = await readChatEventContextFixture(pendingTick.id);
     expect(pendingContext).toMatchObject({
       contextType: "automation",
@@ -872,9 +876,11 @@ describe("workflow queue", () => {
     ).find((event) => {
       return event.eventType === "input.prompt" && event.runId === runIds[1];
     });
-    if (!claimedTick) {
+    if (claimedTick?.eventType !== "input.prompt") {
       throw new Error("Expected the schedule tick to be claimed");
     }
+    expect(claimedTick.userMessage).toStrictEqual(pendingTick.userMessage);
+    expect(chatEventDisplayText(claimedTick)).toBe(admittedDisplayPrompt);
     expect(chatEventAutomationPart(claimedTick)?.automationBrief).toBe(
       admittedTriggerBrief,
     );
@@ -889,11 +895,7 @@ describe("workflow queue", () => {
 
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(runIds[1]!);
-    expect(claim.prompt).toBe(
-      `/${WORKFLOW_NAME}\nTrigger: schedule fired at ${new Date(
-        firedAt,
-      ).toISOString()} (cron "0 9 * * *" in UTC).`,
-    );
+    expect(claim.prompt).toBe(admittedDisplayPrompt);
     expect(claim.prompt).not.toContain(new Date(drainedAt).toISOString());
     expect(claim.appendSystemPrompt).toContain(
       `"firedAt": "${new Date(firedAt).toISOString()}"`,
@@ -1216,44 +1218,32 @@ describe("workflow queue", () => {
       }),
       [200],
     );
-    expect(failedEvents.body.events).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          eventType: "input.rejected",
-          error: expect.any(String),
-          userMessage: {
-            version: 1,
-            parts: [
-              {
-                type: "automation",
-                workflowName: WORKFLOW_NAME,
-                workflowId: scenario.workflowId,
-              },
-            ],
-          },
-        }),
-      ]),
-    );
     const rejectedEvent = failedEvents.body.events.find((event) => {
       return event.eventType === "input.rejected";
     });
-    expect(rejectedEvent).toStrictEqual(
-      expect.objectContaining({
-        userMessage: {
-          version: 1,
-          parts: [
-            {
-              type: "automation",
-              workflowName: WORKFLOW_NAME,
-              workflowId: scenario.workflowId,
-            },
-          ],
-        },
-      }),
-    );
     if (!rejectedEvent?.revokesEventId) {
       throw new Error("Expected the rejected event to revoke its queue input");
     }
+    expect(rejectedEvent.error).toStrictEqual(expect.any(String));
+    expect(chatEventAutomationPart(rejectedEvent)).toStrictEqual({
+      type: "automation",
+      workflowName: WORKFLOW_NAME,
+      workflowId: scenario.workflowId,
+    });
+    const rejectedDisplayPrompt = chatEventDisplayText(rejectedEvent);
+    expect(rejectedDisplayPrompt).toMatch(
+      new RegExp(
+        `^/${WORKFLOW_NAME}\\nTrigger: signed workflow webhook received an HTTP POST at 2026-07-25T12:00:00.000Z \\(delivery .+\\)\\.$`,
+      ),
+    );
+    const admittedEvent = failedEvents.body.events.find((event) => {
+      return event.id === rejectedEvent.revokesEventId;
+    });
+    if (admittedEvent?.eventType !== "input.automation") {
+      throw new Error("Expected the rejected event's admitted queue input");
+    }
+    expect(rejectedEvent.userMessage).toStrictEqual(admittedEvent.userMessage);
+    expect(chatEventDisplayText(admittedEvent)).toBe(rejectedDisplayPrompt);
     await runsApi.ensureOrgModelProvider(scenario.actor);
     const runId = await expectAcceptedRunId(
       await postWorkflowWebhook(automation, "next trigger"),

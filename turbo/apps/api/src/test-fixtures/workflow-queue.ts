@@ -6,7 +6,11 @@ import { eq } from "drizzle-orm";
 
 import { db } from "../lib/db";
 import { admitWorkflowAutomationEvent } from "../signals/services/workflow-chat-event-queue.service";
-import { persistedWorkflowAutomationEventPayload } from "../signals/services/workflow-automation-context.service";
+import {
+  persistedWorkflowAutomationEventPayload,
+  storedWorkflowAutomationContext,
+  workflowAutomationPrompt,
+} from "../signals/services/workflow-automation-context.service";
 
 interface WorkflowAutomationEventFixtureArgs {
   readonly automationId: string;
@@ -33,15 +37,23 @@ export async function admitWorkflowAutomationEventFixture(
   if (!row) {
     throw new Error("Expected the workflow automation to exist");
   }
+  const eventPayload = {
+    receivedAt: "2026-08-01T12:00:00.000Z",
+    deliveryId: args.triggerBrief,
+  } as const;
+  const automationContext = storedWorkflowAutomationContext({
+    workflowName: row.workflowName,
+    eventType: "webhook-received",
+    eventPayload,
+  });
 
   const admission = await admitWorkflowAutomationEvent(db(), {
     automation: row.automation,
     workflowName: row.workflowName,
+    displayPrompt: workflowAutomationPrompt(automationContext),
     workflowAutomationEventType: "webhook-received",
-    workflowAutomationEventPayload: persistedWorkflowAutomationEventPayload({
-      receivedAt: "2026-08-01T12:00:00.000Z",
-      deliveryId: args.triggerBrief,
-    }),
+    workflowAutomationEventPayload:
+      persistedWorkflowAutomationEventPayload(eventPayload),
     chatThreadId: args.chatThreadId,
     triggerSource: "workflow-event",
     triggerBrief: args.triggerBrief,

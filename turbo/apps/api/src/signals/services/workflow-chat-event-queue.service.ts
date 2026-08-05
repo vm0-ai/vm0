@@ -108,6 +108,7 @@ export type PersistWorkflowQueueSourceTransition = (
 interface WorkflowQueueAdmissionArgs {
   readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   readonly workflowName: string;
+  readonly displayPrompt: string;
   readonly workflowAutomationEventType?: WorkflowAutomationEventType;
   readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
   readonly chatThreadId: string;
@@ -142,7 +143,7 @@ async function attemptWorkflowQueueAdmission(
       eventType: "input.automation",
       content: null,
       userMessage: createUserMessageDocument({
-        text: null,
+        text: args.displayPrompt,
         nonContentPart: {
           type: "automation",
           workflowName: args.workflowName,
