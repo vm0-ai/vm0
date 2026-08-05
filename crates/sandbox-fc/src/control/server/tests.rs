@@ -2,6 +2,7 @@ use super::*;
 
 use std::future::Future;
 use std::os::unix::fs::PermissionsExt;
+use std::pin::Pin;
 
 use sandbox::ExecTermination;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -23,6 +24,8 @@ use crate::park_coordinator::{
 use crate::runtime_dirs::PRIVATE_RUNTIME_SOCKET_MODE;
 
 type GuestState = Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>;
+
+const TERMINATION_RENDEZVOUS_TIMEOUT: Duration = Duration::from_secs(1);
 
 struct ControlServerFixture {
     _dir: tempfile::TempDir,
@@ -319,13 +322,71 @@ fn control_exec_result_rejects_invalid_capture_state() {
     assert!(stderr_discarded.to_string().contains("discarded stderr"));
 }
 
-async fn recv_termination_request(
+async fn recv_termination_request_with_timeout<Operation>(
     kill_rx: &mut mpsc::Receiver<ProcessTerminationRequest>,
-) -> ProcessTerminationRequest {
-    kill_rx
-        .recv()
+    mut operation: Pin<&mut Operation>,
+    timeout: Duration,
+) -> Result<ProcessTerminationRequest, tokio::time::error::Elapsed>
+where
+    Operation: Future,
+    Operation::Output: std::fmt::Debug,
+{
+    tokio::time::timeout(timeout, async {
+        tokio::select! {
+            request = kill_rx.recv() => {
+                request.expect("termination request channel closed before notifying process monitor")
+            }
+            outcome = operation.as_mut() => {
+                panic!("terminate operation completed before notifying process monitor: {outcome:?}")
+            }
+        }
+    })
+    .await
+}
+
+async fn recv_termination_request<Operation>(
+    kill_rx: &mut mpsc::Receiver<ProcessTerminationRequest>,
+    operation: Pin<&mut Operation>,
+) -> ProcessTerminationRequest
+where
+    Operation: Future,
+    Operation::Output: std::fmt::Debug,
+{
+    recv_termination_request_with_timeout(kill_rx, operation, TERMINATION_RENDEZVOUS_TIMEOUT)
         .await
-        .expect("terminate request should notify process monitor")
+        .expect("timed out waiting for termination request delivery to process monitor")
+}
+
+async fn complete_termination_operation<Operation>(
+    operation: Pin<&mut Operation>,
+    timeout_message: &str,
+) -> Operation::Output
+where
+    Operation: Future,
+{
+    tokio::time::timeout(TERMINATION_RENDEZVOUS_TIMEOUT, operation)
+        .await
+        .expect(timeout_message)
+}
+
+#[tokio::test]
+async fn termination_request_receive_has_local_deadline_with_live_sender() {
+    let (kill_tx, mut kill_rx) = mpsc::channel(1);
+    let operation = std::future::pending::<()>();
+    tokio::pin!(operation);
+
+    let received = tokio::time::timeout(
+        Duration::from_secs(2),
+        recv_termination_request_with_timeout(&mut kill_rx, operation.as_mut(), Duration::ZERO),
+    )
+    .await
+    .expect("termination request receive exceeded independent regression watchdog");
+    drop(kill_tx);
+
+    assert!(
+        received.is_err(),
+        "termination request receive should honor its local deadline"
+    );
 }
 
 // Basic client/server behavior.
@@ -381,7 +442,7 @@ async fn client_server_terminate_accepted() {
         .unwrap()
         .spawn(CancellationToken::new());
 
-    let client = tokio::spawn({
+    let client = {
         let sock_path = fixture.sock_path.clone();
         async move {
             let request = TerminateRequest {
@@ -390,9 +451,17 @@ async fn client_server_terminate_accepted() {
             };
             send_terminate(&sock_path, &request, Duration::from_secs(5)).await
         }
-    });
-    recv_termination_request(&mut kill_rx).await.acknowledge();
-    let response = client.await.unwrap().unwrap();
+    };
+    tokio::pin!(client);
+    recv_termination_request(&mut kill_rx, client.as_mut())
+        .await
+        .acknowledge();
+    let response = complete_termination_operation(
+        client.as_mut(),
+        "terminate client/server completion timed out after process monitor acknowledgement",
+    )
+    .await
+    .unwrap();
 
     assert_eq!(
         response,
@@ -505,7 +574,7 @@ async fn stale_run_terminate_is_rejected_after_sandbox_reassignment() {
     ));
     assert_eq!(coordinator.state(), CoordinatorState::Open);
 
-    let matching_client = tokio::spawn({
+    let matching_client = {
         let sock_path = fixture.sock_path.clone();
         async move {
             let request = TerminateRequest {
@@ -514,10 +583,18 @@ async fn stale_run_terminate_is_rejected_after_sandbox_reassignment() {
             };
             send_terminate(&sock_path, &request, Duration::from_secs(5)).await
         }
-    });
-    recv_termination_request(&mut kill_rx).await.acknowledge();
+    };
+    tokio::pin!(matching_client);
+    recv_termination_request(&mut kill_rx, matching_client.as_mut())
+        .await
+        .acknowledge();
     assert_eq!(
-        matching_client.await.unwrap().unwrap(),
+        complete_termination_operation(
+            matching_client.as_mut(),
+            "terminate client/server completion timed out after process monitor acknowledgement",
+        )
+        .await
+        .unwrap(),
         TerminateResponse::Status {
             status: TerminateStatus::Accepted
         }
@@ -536,7 +613,7 @@ async fn terminate_response_survives_shutdown_after_request_is_queued() {
         .unwrap()
         .spawn(shutdown.clone());
 
-    let client = tokio::spawn({
+    let client = {
         let sock_path = fixture.sock_path.clone();
         async move {
             let request = TerminateRequest {
@@ -545,12 +622,18 @@ async fn terminate_response_survives_shutdown_after_request_is_queued() {
             };
             send_terminate(&sock_path, &request, Duration::from_secs(5)).await
         }
-    });
-    let request = recv_termination_request(&mut kill_rx).await;
+    };
+    tokio::pin!(client);
+    let request = recv_termination_request(&mut kill_rx, client.as_mut()).await;
 
     shutdown.cancel();
     request.acknowledge();
-    let response = client.await.unwrap().unwrap();
+    let response = complete_termination_operation(
+        client.as_mut(),
+        "terminate client/server completion timed out after process monitor acknowledgement",
+    )
+    .await
+    .unwrap();
 
     assert_eq!(
         response,
@@ -570,29 +653,42 @@ async fn termination_handle_waits_behind_full_channel() {
         .try_send(ProcessTerminationRequest::fire_and_forget())
         .unwrap();
     let termination = ProcessTerminationHandle::new(kill_tx);
-    let terminate_task = tokio::spawn(async move { termination.request_terminate(None).await });
+    let terminate = termination.request_terminate(None);
+    tokio::pin!(terminate);
 
-    let queued_request = recv_termination_request(&mut kill_rx).await;
+    let queued_request = recv_termination_request(&mut kill_rx, terminate.as_mut()).await;
 
-    assert!(!terminate_task.is_finished());
     queued_request.acknowledge();
-    let request = recv_termination_request(&mut kill_rx).await;
-    assert!(!terminate_task.is_finished());
+    let request = recv_termination_request(&mut kill_rx, terminate.as_mut()).await;
     request.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), Ok(TerminateStatus::Accepted));
+    assert_eq!(
+        complete_termination_operation(
+            terminate.as_mut(),
+            "termination handle completion timed out after process monitor acknowledgement",
+        )
+        .await,
+        Ok(TerminateStatus::Accepted)
+    );
 }
 
 #[tokio::test]
 async fn termination_handle_waits_for_monitor_ack_before_accepting() {
     let (kill_tx, mut kill_rx) = mpsc::channel(1);
     let termination = ProcessTerminationHandle::new(kill_tx);
-    let terminate_task = tokio::spawn(async move { termination.request_terminate(None).await });
+    let terminate = termination.request_terminate(None);
+    tokio::pin!(terminate);
 
-    let request = recv_termination_request(&mut kill_rx).await;
+    let request = recv_termination_request(&mut kill_rx, terminate.as_mut()).await;
 
-    assert!(!terminate_task.is_finished());
     request.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), Ok(TerminateStatus::Accepted));
+    assert_eq!(
+        complete_termination_operation(
+            terminate.as_mut(),
+            "termination handle completion timed out after process monitor acknowledgement",
+        )
+        .await,
+        Ok(TerminateStatus::Accepted)
+    );
 }
 
 #[tokio::test]
@@ -600,14 +696,21 @@ async fn termination_handle_blocks_future_park_before_queueing_kill() {
     let (kill_tx, mut kill_rx) = mpsc::channel(1);
     let coordinator = ParkCoordinator::new();
     let termination = ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
-    let terminate_task = tokio::spawn(async move { termination.request_terminate(None).await });
+    let terminate = termination.request_terminate(None);
+    tokio::pin!(terminate);
 
-    let request = recv_termination_request(&mut kill_rx).await;
+    let request = recv_termination_request(&mut kill_rx, terminate.as_mut()).await;
     assert_eq!(coordinator.state(), CoordinatorState::Terminating);
     assert!(coordinator.begin_prepare_park().is_err());
-    assert!(!terminate_task.is_finished());
     request.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), Ok(TerminateStatus::Accepted));
+    assert_eq!(
+        complete_termination_operation(
+            terminate.as_mut(),
+            "termination handle completion timed out after process monitor acknowledgement",
+        )
+        .await,
+        Ok(TerminateStatus::Accepted)
+    );
 }
 
 #[tokio::test]
@@ -616,10 +719,20 @@ async fn termination_handle_accepts_dirty_policy() {
     let coordinator = ParkCoordinator::new();
     coordinator.mark_dirty(DirtyReason::new("transport failed"));
     let termination = ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
-    let terminate_task = tokio::spawn(async move { termination.request_terminate(None).await });
+    let terminate = termination.request_terminate(None);
+    tokio::pin!(terminate);
 
-    recv_termination_request(&mut kill_rx).await.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), Ok(TerminateStatus::Accepted));
+    recv_termination_request(&mut kill_rx, terminate.as_mut())
+        .await
+        .acknowledge();
+    assert_eq!(
+        complete_termination_operation(
+            terminate.as_mut(),
+            "termination handle completion timed out after process monitor acknowledgement",
+        )
+        .await,
+        Ok(TerminateStatus::Accepted)
+    );
     assert_eq!(coordinator.state(), CoordinatorState::Terminating);
 }
 
@@ -628,10 +741,20 @@ async fn termination_handle_accepts_ready_for_park_policy() {
     let (kill_tx, mut kill_rx) = mpsc::channel(1);
     let coordinator = ready_for_park_coordinator();
     let termination = ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
-    let terminate_task = tokio::spawn(async move { termination.request_terminate(None).await });
+    let terminate = termination.request_terminate(None);
+    tokio::pin!(terminate);
 
-    recv_termination_request(&mut kill_rx).await.acknowledge();
-    assert_eq!(terminate_task.await.unwrap(), Ok(TerminateStatus::Accepted));
+    recv_termination_request(&mut kill_rx, terminate.as_mut())
+        .await
+        .acknowledge();
+    assert_eq!(
+        complete_termination_operation(
+            terminate.as_mut(),
+            "termination handle completion timed out after process monitor acknowledgement",
+        )
+        .await,
+        Ok(TerminateStatus::Accepted)
+    );
     assert_eq!(coordinator.state(), CoordinatorState::Terminating);
 }
 

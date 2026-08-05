@@ -70,14 +70,14 @@ pub struct SubmitArgs {
     active_inputs: Vec<String>,
 }
 
-/// Detect the system timezone from the `TZ` env var or `/etc/timezone`.
-fn detect_system_timezone() -> Option<String> {
+/// Detect the system timezone from the `TZ` env var or a timezone file.
+fn detect_system_timezone(timezone_file: &Path) -> Option<String> {
     if let Ok(tz) = std::env::var("TZ")
         && !tz.is_empty()
     {
         return Some(tz);
     }
-    std::fs::read_to_string("/etc/timezone")
+    std::fs::read_to_string(timezone_file)
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -398,7 +398,7 @@ impl SubmitPlan {
             vars: None,
             environment,
             secret_environment,
-            user_timezone: detect_system_timezone(),
+            user_timezone: detect_system_timezone(Path::new("/etc/timezone")),
             profile: Some(profile.clone()),
             reuse_key: chat_thread_id.map(|thread_id| format!("thread:{thread_id}")),
             session_id,
