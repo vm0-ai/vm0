@@ -441,6 +441,78 @@ async fn unavailable_claim_reparks_speculative_sandbox() {
 }
 
 #[tokio::test]
+async fn mismatched_claim_run_id_reparks_speculative_sandbox() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    add_healthy_reuse_preparation_matcher(&overrides);
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: GuestTimezoneIntent::Default,
+            timing: None,
+        },
+    )
+    .await;
+    env.handle.block_claims();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let candidate_run_id = RunId::new_v4();
+    let claimed_run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        candidate_run_id,
+        Some(claimed_context(claimed_run_id, &reuse_key, None)),
+    );
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            candidate_run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+    assert!(
+        env.handle
+            .wait_claim_in_flight(1, Duration::from_secs(5))
+            .await
+    );
+    assert!(
+        overrides
+            .wait_exec_call_count(1, Duration::from_secs(5))
+            .await
+    );
+    env.handle.unblock_claims();
+
+    wait_cancel_token_removed(&env.cancel_tokens, candidate_run_id, Duration::from_secs(5)).await;
+    wait_idle_pool_reuse_keys(&env.idle_pool, &[&reuse_key], Duration::from_secs(5)).await;
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.park_call_count(), 1);
+    assert_eq!(overrides.destroy_call_count(), 0);
+    assert!(overrides.start_process_calls().is_empty());
+    {
+        let completions = env.handle.completions.lock().unwrap();
+        assert!(
+            !completions.iter().any(|completion| {
+                completion.run_id == candidate_run_id || completion.run_id == claimed_run_id
+            }),
+            "mismatched claim must not complete either run"
+        );
+    }
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
 async fn cancellation_during_claim_completes_without_starting_agent_and_reparks() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
