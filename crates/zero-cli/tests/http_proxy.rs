@@ -94,8 +94,10 @@ fn child_timeout_kills_and_reaps_child_and_stops_server() -> io::Result<()> {
     let server_outcome = server.finish()?;
 
     assert_eq!(child_error.kind(), io::ErrorKind::TimedOut);
-    assert!(child_error.to_string().contains(HANG_STDERR_MARKER));
-    assert!(child_error.to_string().contains("reap=completed with"));
+    let child_error = child_error.to_string();
+    assert!(child_error.contains(HANG_STDERR_MARKER));
+    assert!(child_error.contains("kill=signal sent"));
+    assert!(child_error.contains("reap=completed with"));
     assert_eq!(server_outcome, ServerOutcome::Cancelled);
     assert!(
         cleanup_started.elapsed() < REGRESSION_CLEANUP_BOUND,
