@@ -520,17 +520,21 @@ const startConnectorOauthInner$ = command(
     });
     signal.throwIfAborted();
 
-    await set(
-      deleteZeroConnectorLocalState$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        connectorSlug: resolved.connectorSlug,
-        snapshot: resolved.snapshot,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
+    // Stripe automations persist connector IDs as immutable bindings. Keep the
+    // row until the callback atomically replaces its credential state.
+    if (resolved.connectorSlug !== "stripe") {
+      await set(
+        deleteZeroConnectorLocalState$,
+        {
+          orgId: auth.orgId,
+          userId: auth.userId,
+          connectorSlug: resolved.connectorSlug,
+          snapshot: resolved.snapshot,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+    }
 
     const writeDb = set(writeDb$);
     await writeDb.insert(connectorOauthStates).values({

@@ -157,14 +157,6 @@ const createAutomationInner$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    if (
-      bodyResult.data.kind === "event" &&
-      bodyResult.data.eventType === "stripe-invoice-paid"
-    ) {
-      return badRequestMessage(
-        "Stripe invoice-paid workflow automations are not enabled",
-      );
-    }
 
     let autonomyBudget: number | undefined;
     const db = get(db$);

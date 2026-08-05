@@ -23,13 +23,13 @@ const STRIPE_LIVE_MODE_REQUIRED_MESSAGE =
 const STRIPE_BINDING_MISMATCH_MESSAGE =
   "The Stripe connection no longer matches this automation; delete and recreate the automation to bind the current Live-mode Stripe account";
 
-export interface StripeInvoicePaidAutomationBinding {
+interface StripeInvoicePaidAutomationBinding {
   readonly connectorId: string;
   readonly stripeAccountId: string;
   readonly mode: "live";
 }
 
-export type StripeInvoicePaidAutomationReadinessResult =
+type StripeInvoicePaidAutomationReadinessResult =
   | {
       readonly kind: "ok";
       readonly binding: StripeInvoicePaidAutomationBinding;
