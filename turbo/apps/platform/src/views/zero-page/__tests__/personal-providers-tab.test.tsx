@@ -111,7 +111,6 @@ function connectedPersonalClaudeCodeProvider(): ModelProviderResponse {
 function mockPersonalProvidersStory(role: "admin" | "member" = "member"): void {
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role,
   });
@@ -267,7 +266,6 @@ describe("personal model providers settings", () => {
   it("offers Pro upgrade when personal BYOK is unsupported", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -299,7 +297,6 @@ describe("personal model providers settings", () => {
   it("opens personal Claude Code login from model settings", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -345,7 +342,6 @@ describe("personal model providers settings", () => {
   it("connects personal Claude Code with an authorization code", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -410,7 +406,6 @@ describe("personal model providers settings", () => {
   it("keeps Claude Code validation inline and suppresses transport error toasts", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -492,7 +487,6 @@ describe("personal model providers settings", () => {
     mockNow(new Date("2030-01-01T00:48:00.000Z"));
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -550,7 +544,6 @@ describe("personal model providers settings", () => {
     mockNow(new Date("2030-01-01T00:48:00.000Z"));
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -596,7 +589,6 @@ describe("personal model providers settings", () => {
     mockNow(new Date("2030-01-01T00:48:00.000Z"));
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -639,7 +631,6 @@ describe("personal model providers settings", () => {
   it("resets connected personal Codex usage from the row menu", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -692,7 +683,6 @@ describe("personal model providers settings", () => {
     mockBrowserTimeZone("America/New_York");
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -745,7 +735,6 @@ describe("personal model providers settings", () => {
   it("disconnects a connected personal Codex credential", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });

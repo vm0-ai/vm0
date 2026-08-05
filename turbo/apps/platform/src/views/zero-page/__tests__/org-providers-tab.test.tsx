@@ -179,7 +179,6 @@ function mockApiKeyModelRouteStory(): void {
 function mockAdminOrg(): void {
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "admin",
   });
@@ -447,7 +446,6 @@ describe("organization model providers settings", () => {
   it("hides provider connections from non-admin members", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });

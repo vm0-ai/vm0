@@ -140,7 +140,6 @@ function mockBillingStory(): void {
 
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "admin",
   });
@@ -236,7 +235,6 @@ describe("organization billing settings", () => {
   it("localizes plans, credit purchases, and currency in Portuguese", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "localized-org",
       name: "Localized Org",
       role: "admin",
     });
@@ -281,7 +279,6 @@ describe("organization billing settings", () => {
     const scrollIntoView = installScrollIntoViewMock();
     context.mocks.data.org({
       id: "org_1",
-      slug: "credit-org",
       name: "Credit Org",
       role: "admin",
     });
@@ -308,7 +305,6 @@ describe("organization billing settings", () => {
     };
     context.mocks.data.org({
       id: "org_1",
-      slug: "credit-org",
       name: "Credit Org",
       role: "admin",
     });
@@ -358,7 +354,6 @@ describe("organization billing settings", () => {
   it("uses plan capabilities instead of the tier for gated billing controls", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "capability-org",
       name: "Capability Org",
       role: "admin",
     });
@@ -389,7 +384,6 @@ describe("organization billing settings", () => {
 
     context.mocks.data.org({
       id: "org_1",
-      slug: "suspended-org",
       name: "Suspended Org",
       role: "admin",
     });
@@ -445,7 +439,6 @@ describe("organization billing settings", () => {
   it("opens the Stripe customer portal from an active paid plan", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "paid-org",
       name: "Paid Org",
       role: "admin",
     });
@@ -477,7 +470,6 @@ describe("organization billing settings", () => {
   it("shows custom tier access and disables Pro and Team checkout", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "custom-org",
       name: "Custom Org",
       role: "admin",
     });
@@ -519,7 +511,6 @@ describe("organization billing settings", () => {
   it("shows only the end date for a cancelled custom plan", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "custom-cancel-org",
       name: "Custom Cancel Org",
       role: "admin",
     });
@@ -567,7 +558,6 @@ describe("organization billing settings", () => {
 
     context.mocks.data.org({
       id: "org_1",
-      slug: "team-concurrency-org",
       name: "Team Concurrency Org",
       role: "admin",
     });
@@ -695,7 +685,6 @@ describe("organization billing settings", () => {
 
     context.mocks.data.org({
       id: "org_1",
-      slug: "payment-confirm-org",
       name: "Payment Confirm Org",
       role: "admin",
     });
@@ -735,7 +724,6 @@ describe("organization billing settings", () => {
 
     context.mocks.data.org({
       id: "org_1",
-      slug: "restore-confirm-org",
       name: "Restore Confirm Org",
       role: "admin",
     });
@@ -906,7 +894,6 @@ describe("organization billing settings", () => {
 
     context.mocks.data.org({
       id: "org_1",
-      slug: "team-org",
       name: "Team Org",
       role: "admin",
     });
@@ -1032,7 +1019,6 @@ describe("organization billing settings", () => {
 
     context.mocks.data.org({
       id: "org_1",
-      slug: "team-cancel-org",
       name: "Team Cancel Org",
       role: "admin",
     });

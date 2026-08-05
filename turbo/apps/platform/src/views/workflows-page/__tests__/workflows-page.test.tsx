@@ -2960,7 +2960,6 @@ describe("workflow detail page", () => {
   it("shows Pro admins a locked Team webhook card and upgrade action", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -2993,7 +2992,6 @@ describe("workflow detail page", () => {
   it("allows webhook creation when the plan capability overrides the tier", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -3023,7 +3021,6 @@ describe("workflow detail page", () => {
   it("asks non-admins to contact an admin for webhook access", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -3049,7 +3046,6 @@ describe("workflow detail page", () => {
   it("opens the Team upgrade dialog when webhook enable returns TEAM_REQUIRED", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });

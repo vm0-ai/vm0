@@ -98,7 +98,6 @@ async function seedSlackFixture(
     seed_default_agent: true,
     default_agent_name: "slack-bot",
     default_agent_display_name: "Slack Bot",
-    org_slug: "test-org-slug",
     org_name: "Test Org",
   });
 

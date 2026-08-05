@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.376.0](https://github.com/vm0-ai/vm0/compare/api-v1.375.1...api-v1.376.0) (2026-08-05)
+
+
+### Features
+
+* deploy commit-addressed cli packages to r2 ([#25072](https://github.com/vm0-ai/vm0/issues/25072)) ([4201a47](https://github.com/vm0-ai/vm0/commit/4201a475d596ad7f97d2f3777dcc9c34f1037050))
+
+
+### Refactoring
+
+* stop mirroring org slugs ([#25129](https://github.com/vm0-ai/vm0/issues/25129)) ([2739047](https://github.com/vm0-ai/vm0/commit/2739047684009e2a300c88b0d1ce204b6b31fbf1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.273.2
+    * @vm0/core bumped to 8.513.0
+    * @vm0/db bumped to 1.165.3
+
 ## [1.375.1](https://github.com/vm0-ai/vm0/compare/api-v1.375.0...api-v1.375.1) (2026-08-05)
 
 
