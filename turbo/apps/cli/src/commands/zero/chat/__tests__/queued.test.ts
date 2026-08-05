@@ -79,7 +79,6 @@ describe("zero chat queued command", () => {
                 threadId: THREAD_ID,
                 eventType: "input.automation",
                 content: null,
-                triggerSource: "workflow-event",
                 userMessage: {
                   version: 1,
                   parts: [

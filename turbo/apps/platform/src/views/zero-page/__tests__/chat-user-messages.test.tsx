@@ -501,7 +501,6 @@ describe("user messages", () => {
           role: "user",
           content: "Delegated prompt",
           runId: targetRunId,
-          triggerSource: "agent",
           userMessage: {
             version: 1,
             parts: [

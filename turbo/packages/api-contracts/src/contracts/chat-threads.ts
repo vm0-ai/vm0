@@ -6,7 +6,6 @@ import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
-import { triggerSourceSchema } from "./logs";
 import { supportedRunModelSchema } from "./model-providers";
 import {
   avatarVideoAspectRatioSchema,
@@ -494,7 +493,6 @@ const chatEventBaseSchema = z.object({
   content: z.string().nullable(),
   runId: z.string().optional(),
   runGroupId: z.string().optional(),
-  triggerSource: triggerSourceSchema.optional(),
   isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
   revokesEventId: z.string().optional(),
@@ -537,7 +535,6 @@ const inputAutomationEventSchema = chatEventBaseSchema
     eventType: z.literal("input.automation"),
     content: z.null(),
     userMessage: userMessageDocumentSchema.optional(),
-    triggerSource: triggerSourceSchema,
   })
   .strict();
 
@@ -550,7 +547,6 @@ const inputGoalEventSchema = chatEventBaseSchema
     // the user-facing document and stream ordering contract.
     runId: z.never().optional(),
     runGroupId: z.never().optional(),
-    triggerSource: z.never().optional(),
     isGoalRun: z.never().optional(),
     runEventId: z.never().optional(),
     revokesEventId: z.never().optional(),

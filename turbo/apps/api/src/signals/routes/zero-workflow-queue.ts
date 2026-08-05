@@ -53,7 +53,6 @@ async function workflowQueueResponse(
         return {
           id: event.id,
           automationId: event.automationId,
-          triggerSource: event.triggerSource,
           triggerBrief: event.triggerBrief,
           createdAt: event.createdAt.toISOString(),
         };

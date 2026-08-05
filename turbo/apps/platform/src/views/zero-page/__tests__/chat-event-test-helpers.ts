@@ -79,7 +79,6 @@ function baseEvent(
     content,
     runId: message.runId,
     runGroupId: message.runGroupId,
-    triggerSource: message.triggerSource,
     isGoalRun: message.isGoalRun,
     runEventId: message.runEventId,
     revokesEventId: message.revokesEventId,
@@ -131,7 +130,6 @@ const mockChatEventOverrides = {
   "input.automation": (message, id) => {
     return {
       content: null,
-      triggerSource: message.triggerSource ?? "workflow-event",
       userMessage:
         message.userMessage ??
         ({

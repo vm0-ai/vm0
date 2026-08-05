@@ -1098,7 +1098,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000073c",
           runGroupId,
-          triggerSource: "workflow-event",
           userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:00:00Z",
         },
@@ -1108,7 +1107,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: "First workflow result",
           runId: "f0000001-0000-4000-a000-00000000073c",
           runGroupId,
-          triggerSource: "workflow-event",
           createdAt: "2026-06-09T10:00:30Z",
         },
         {
@@ -1117,7 +1115,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000073d",
           runGroupId,
-          triggerSource: "workflow-event",
           userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:02:00Z",
         },
@@ -1127,7 +1124,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: "Latest workflow result",
           runId: "f0000001-0000-4000-a000-00000000073d",
           runGroupId,
-          triggerSource: "workflow-event",
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:02:30Z",
         },
@@ -1176,7 +1172,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000074c",
           runGroupId,
-          triggerSource: "workflow-event",
           userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:00:00Z",
         },
@@ -1186,7 +1181,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: "First workflow result",
           runId: "f0000001-0000-4000-a000-00000000074c",
           runGroupId,
-          triggerSource: "workflow-event",
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:00:30Z",
         },
@@ -1196,7 +1190,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000074d",
           runGroupId,
-          triggerSource: "workflow-event",
           userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:02:00Z",
         },
@@ -1207,7 +1200,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           error: "Run cancelled",
           runId: "f0000001-0000-4000-a000-00000000074d",
           runGroupId,
-          triggerSource: "workflow-event",
           runLifecycleEvent: "cancelled",
           createdAt: "2026-06-09T10:02:30Z",
         },
@@ -1257,7 +1249,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           eventType: "input.automation",
           content: null,
           runId: "f0000001-0000-4000-a000-00000000083c",
-          triggerSource: "workflow-event",
           userMessage: {
             version: 1,
             parts: [
@@ -1276,7 +1267,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           role: "assistant",
           content: "Workflow result",
           runId: "f0000001-0000-4000-a000-00000000083c",
-          triggerSource: "workflow-event",
           createdAt: "2026-06-09T10:00:30Z",
         },
       ],
@@ -1313,7 +1303,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           eventType: "input.automation",
           content: null,
           runId: "f0000001-0000-4000-a000-00000000084c",
-          triggerSource: "workflow-event",
           userMessage: {
             version: 1,
             parts: [
@@ -1360,7 +1349,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           eventType: "input.automation",
           content: null,
           runId: "f0000001-0000-4000-a000-00000000085c",
-          triggerSource: "workflow-event",
           userMessage: {
             version: 1,
             parts: [
@@ -1403,7 +1391,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-claimed-automation",
           eventType: "input.automation",
           content: null,
-          triggerSource: "workflow-event",
           userMessage: {
             version: 1,
             parts: [
@@ -1421,7 +1408,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-pending-automation",
           eventType: "input.automation",
           content: null,
-          triggerSource: "workflow-event",
           userMessage: {
             version: 1,
             parts: [

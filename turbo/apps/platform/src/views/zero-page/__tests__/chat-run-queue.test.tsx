@@ -192,7 +192,6 @@ function mockCancellationRecoveryQueue(options?: {
               id: `${THREAD_ID}-queued-automation`,
               eventType: "input.automation" as const,
               content: null,
-              triggerSource: "workflow-event" as const,
               userMessage: {
                 version: 1 as const,
                 parts: [
@@ -258,7 +257,6 @@ describe("chat run queue", () => {
           id: `${THREAD_ID}-pending-automation`,
           eventType: "input.automation",
           content: null,
-          triggerSource: "workflow-event",
           userMessage: {
             version: 1,
             parts: [

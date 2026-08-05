@@ -10,7 +10,6 @@ const eventIdParams = z.object({ id: z.string().uuid() });
 export const workflowQueueEventSchema = z.object({
   id: z.string(),
   automationId: z.string(),
-  triggerSource: z.string(),
   triggerBrief: z.string().nullable(),
   createdAt: z.string(),
 });
