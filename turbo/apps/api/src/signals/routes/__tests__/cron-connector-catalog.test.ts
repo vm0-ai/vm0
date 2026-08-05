@@ -2057,14 +2057,14 @@ describe("connector catalog valid lifecycle", () => {
       manual: true,
     });
     const hidden = publicAuthMethod({
-      id: "api",
+      id: "oauth",
       grantKind: "manual",
       manual: true,
     });
     hidden.visible = false;
     const release = buildRelease({
       version: "2026-07-15.external-request-filters",
-      connectorSlug: "bentoml",
+      connectorSlug: "cal-com",
       mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [gated, visible, hidden]);
       },
@@ -2083,7 +2083,7 @@ describe("connector catalog valid lifecycle", () => {
             revoke: "none",
           }),
           manualPrivateAuthMethod({
-            id: "api",
+            id: "oauth",
             prefix: "HIDDEN",
             access: "static",
             revoke: "none",
@@ -2114,7 +2114,7 @@ describe("connector catalog valid lifecycle", () => {
       featureClient.update({
         headers,
         body: {
-          switches: { [FeatureSwitchKey.BentomlConnector]: true },
+          switches: { [FeatureSwitchKey.CalComConnector]: true },
         },
       }),
       [200],
