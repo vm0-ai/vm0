@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.62](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.61...vsock-guest-v0.19.62) (2026-08-05)
+
+
+### Refactoring
+
+* remove unused e2b infrastructure ([#25162](https://github.com/vm0-ai/vm0/issues/25162)) ([54ec015](https://github.com/vm0-ai/vm0/commit/54ec015ee993c21c2b4635bbd969edee8d967f74))
+
 ## [0.19.61](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.60...vsock-guest-v0.19.61) (2026-08-04)
 
 ## [0.19.60](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.59...vsock-guest-v0.19.60) (2026-08-04)

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.684.1](https://github.com/vm0-ai/vm0/compare/app-v0.684.0...app-v0.684.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* **auth:** retain organization across mobile token refresh ([#25152](https://github.com/vm0-ai/vm0/issues/25152)) ([bcd7eef](https://github.com/vm0-ai/vm0/commit/bcd7eef852b379d29fa3b344d1f7068c8ec52187))
+* keep avatar selection borders consistent ([#25112](https://github.com/vm0-ai/vm0/issues/25112)) ([04dca55](https://github.com/vm0-ai/vm0/commit/04dca5523cdf579a0941b0b9a2a110f69363d43b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.1
+    * @vm0/core bumped to 8.514.1
+
 ## [0.684.0](https://github.com/vm0-ai/vm0/compare/app-v0.683.2...app-v0.684.0) (2026-08-05)
 
 
