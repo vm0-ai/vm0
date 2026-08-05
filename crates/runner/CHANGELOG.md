@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.158.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.4...runner-rs-v0.158.5) (2026-08-05)
+
+
+### Bug Fixes
+
+* **python:** keep connector diagnostics bodyless for head ([#25167](https://github.com/vm0-ai/vm0/issues/25167)) ([005a633](https://github.com/vm0-ai/vm0/commit/005a6333c81afaad013a5908bafc439fe1d1d9c4))
+
 ## [0.158.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.3...runner-rs-v0.158.4) (2026-08-05)
 
 
