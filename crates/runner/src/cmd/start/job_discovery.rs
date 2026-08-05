@@ -484,6 +484,10 @@ pub(super) async fn handle_discovered_job(
         idle_snapshot,
     )
     .await;
+    #[cfg(test)]
+    ctx.spawn_ctx
+        .test_observer
+        .notify_active_run_status_published(run_id);
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ActiveStatusPublish, started_at);
 
     let job_profile = JobProfile {

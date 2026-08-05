@@ -572,6 +572,7 @@ async fn cancellation_during_claim_completes_without_starting_agent_and_reparks(
     assert_eq!(completion.error.as_deref(), Some("cancelled by user"));
     assert_eq!(completion.sandbox_id, None);
     wait_idle_pool_reuse_keys(&env.idle_pool, &[&reuse_key], Duration::from_secs(5)).await;
+    assert!(!env.start_observer.active_run_status_was_published(run_id));
     assert!(overrides.start_process_calls().is_empty());
     assert_eq!(overrides.park_call_count(), 1);
 
@@ -635,6 +636,7 @@ async fn cancellation_during_timezone_correction_does_not_publish_active_or_star
     let (_, active_runs) =
         status_idle_reuse_keys_and_active_runs(&env._temp_dir.path().join("status.json")).await;
     assert!(active_runs.is_empty());
+    assert!(!env.start_observer.active_run_status_was_published(run_id));
     assert!(overrides.start_process_calls().is_empty());
 
     exec_gate.release_one();
@@ -655,6 +657,7 @@ async fn cancellation_during_timezone_correction_does_not_publish_active_or_star
     let (_, active_runs) =
         status_idle_reuse_keys_and_active_runs(&env._temp_dir.path().join("status.json")).await;
     assert!(active_runs.is_empty());
+    assert!(!env.start_observer.active_run_status_was_published(run_id));
     assert!(overrides.start_process_calls().is_empty());
     assert_eq!(overrides.park_call_count(), 1);
     assert_eq!(overrides.destroy_call_count(), 0);
@@ -730,6 +733,7 @@ async fn cancellation_during_speculative_cleanup_does_not_start_fresh_agent() {
     );
     wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
     wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    assert!(!env.start_observer.active_run_status_was_published(run_id));
     assert!(overrides.start_process_calls().is_empty());
     assert_eq!(overrides.destroy_call_count(), 1);
 
