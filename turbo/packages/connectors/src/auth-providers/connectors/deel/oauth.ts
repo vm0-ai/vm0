@@ -30,6 +30,24 @@ interface DeelRefreshResult {
   expiresIn?: number;
 }
 
+const deelPersonSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]).optional(),
+    full_name: z.string().nullable().optional(),
+    first_name: z.string().nullable().optional(),
+    last_name: z.string().nullable().optional(),
+    email: z.string().nullable().optional(),
+    emails: z
+      .array(
+        z.object({
+          type: z.string().optional(),
+          value: z.string().nullable().optional(),
+        }),
+      )
+      .optional(),
+  })
+  .passthrough();
+
 /**
  * Derive a PKCE code_verifier deterministically from the OAuth state.
  */
@@ -231,38 +249,19 @@ async function fetchDeelUserInfo(
     throw new Error(`Deel user info fetch failed: ${response.status}`);
   }
 
-  const data = z
-    .object({
-      data: z
-        .object({
-          id: z.string().optional(),
-          full_name: z.string().nullable().optional(),
-          first_name: z.string().nullable().optional(),
-          last_name: z.string().nullable().optional(),
-          emails: z
-            .array(
-              z.object({
-                type: z.string().optional(),
-                value: z.string().nullable().optional(),
-              }),
-            )
-            .optional(),
-        })
-        .passthrough()
-        .optional(),
-    })
-    .passthrough()
+  const data = deelPersonSchema
+    .extend({ data: deelPersonSchema.optional() })
     .parse(await response.json());
 
-  const person = data.data;
+  // Deel documents a root profile object, while the v2 endpoint has also returned a `data` wrapper; accept both shapes during that API transition. Ref: https://developer.deel.com/api/reference/endpoints/people/get-my-current-personal-profile-v-2026-01-01
+  const person = data.data ?? data;
   const name =
-    person?.full_name ??
-    [person?.first_name, person?.last_name].filter(Boolean).join(" ") ??
-    null;
-  const email = person?.emails?.[0]?.value ?? null;
+    person.full_name ??
+    [person.first_name, person.last_name].filter(Boolean).join(" ");
+  const email = person.email ?? person.emails?.[0]?.value ?? null;
 
   return {
-    id: requireConnectorGrantUserId(person?.id, "Deel"),
+    id: requireConnectorGrantUserId(person.id?.toString(), "Deel"),
     username: name || null,
     email,
   };

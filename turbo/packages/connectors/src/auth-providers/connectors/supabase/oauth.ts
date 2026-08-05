@@ -9,7 +9,7 @@ const SUPABASE_TOKEN_URL = "https://api.supabase.com/v1/oauth/token";
 const SUPABASE_AUTHORIZATION_URL =
   "https://api.supabase.com/v1/oauth/authorize";
 
-const SUPABASE_ORGANIZATIONS_URL = "https://api.supabase.com/v1/organizations";
+const SUPABASE_PROFILE_URL = "https://api.supabase.com/v1/profile";
 
 interface SupabaseUserInfo {
   id: string;
@@ -213,37 +213,33 @@ export async function exchangeSupabaseCode(
 }
 
 /**
- * Fetch user info from Supabase via the organizations endpoint.
- * Supabase Management API has no dedicated profile endpoint, so we use
- * the first organization to derive user identity.
+ * Fetch the current Supabase user's profile.
  */
 async function fetchSupabaseUserInfo(
   accessToken: string,
 ): Promise<SupabaseUserInfo> {
-  const response = await fetch(SUPABASE_ORGANIZATIONS_URL, {
+  const response = await fetch(SUPABASE_PROFILE_URL, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
   });
 
   if (!response.ok) {
-    throw new Error(`Supabase organizations fetch failed: ${response.status}`);
+    throw new Error(`Supabase profile fetch failed: ${response.status}`);
   }
 
   const data = z
-    .array(
-      z.object({
-        id: z.string(),
-        name: z.string().nullable().optional(),
-      }),
-    )
+    .object({
+      gotrue_id: z.string(),
+      primary_email: z.string().nullable().optional(),
+      username: z.string().nullable().optional(),
+    })
     .parse(await response.json());
 
-  const org = data[0];
-
+  // Supabase documents `gotrue_id` on `/v1/profile` as the OAuth user's identity, avoiding unstable organization-list ordering. Ref: https://api.supabase.com/api/v1#tag/profile/GET/v1/profile
   return {
-    id: requireConnectorGrantUserId(org?.id, "Supabase"),
-    username: org?.name ?? null,
-    email: null,
+    id: requireConnectorGrantUserId(data.gotrue_id, "Supabase"),
+    username: data.username ?? null,
+    email: data.primary_email ?? null,
   };
 }

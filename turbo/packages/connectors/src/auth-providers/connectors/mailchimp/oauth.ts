@@ -22,6 +22,12 @@ interface MailchimpTokenResult {
   };
 }
 
+interface MailchimpUserInfo {
+  id: string;
+  username: string | null;
+  email: string | null;
+}
+
 /**
  * Build Mailchimp OAuth authorization URL.
  * Mailchimp does not use scopes — full account access is granted.
@@ -101,11 +107,7 @@ export async function exchangeMailchimpCode(
  */
 async function fetchMailchimpMetadata(accessToken: string): Promise<{
   apiEndpoint: string;
-  userInfo: {
-    id: string;
-    username: string | null;
-    email: string | null;
-  };
+  userInfo: MailchimpUserInfo;
 }> {
   const response = await fetch(MAILCHIMP_METADATA_URL, {
     headers: {
@@ -122,7 +124,7 @@ async function fetchMailchimpMetadata(accessToken: string): Promise<{
   const data = z
     .object({
       dc: z.string().optional(),
-      user_id: z.number().optional(),
+      user_id: z.union([z.string(), z.number()]).optional(),
       accountname: z.string().nullable().optional(),
       login: z
         .object({
@@ -134,12 +136,58 @@ async function fetchMailchimpMetadata(accessToken: string): Promise<{
     })
     .parse(await response.json());
 
+  if (!data.api_endpoint) {
+    throw new Error("No API endpoint in Mailchimp metadata response");
+  }
+
+  const metadataUserId = data.user_id?.toString();
+  // Mailchimp documents metadata for data-center discovery, so tolerate absent `user_id` via the API root's stable `login_id`. Ref: https://mailchimp.com/developer/marketing/guides/access-user-data-oauth-2/ and https://mailchimp.com/developer/marketing/api/root/list-api-root-resources/
+  const rootUserInfo = metadataUserId
+    ? null
+    : await fetchMailchimpRootUserInfo(data.api_endpoint, accessToken);
+
   return {
-    apiEndpoint: data.api_endpoint ?? "",
+    apiEndpoint: data.api_endpoint,
     userInfo: {
-      id: requireConnectorGrantUserId(data.user_id?.toString(), "Mailchimp"),
-      username: data.login?.login_name ?? data.accountname ?? null,
-      email: data.login?.login_email ?? null,
+      id: requireConnectorGrantUserId(
+        metadataUserId ?? rootUserInfo?.id,
+        "Mailchimp",
+      ),
+      username:
+        data.login?.login_name ??
+        data.accountname ??
+        rootUserInfo?.username ??
+        null,
+      email: data.login?.login_email ?? rootUserInfo?.email ?? null,
     },
+  };
+}
+
+async function fetchMailchimpRootUserInfo(
+  apiEndpoint: string,
+  accessToken: string,
+): Promise<MailchimpUserInfo> {
+  const response = await fetch(`${apiEndpoint}/3.0/`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Mailchimp API root fetch failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      login_id: z.union([z.string(), z.number()]).optional(),
+      account_name: z.string().nullable().optional(),
+      email: z.string().nullable().optional(),
+    })
+    .parse(await response.json());
+
+  return {
+    id: requireConnectorGrantUserId(data.login_id?.toString(), "Mailchimp"),
+    username: data.account_name ?? null,
+    email: data.email ?? null,
   };
 }
