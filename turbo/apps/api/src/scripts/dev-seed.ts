@@ -418,6 +418,8 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.26), 1_000_000],
     ["tokens.cache_creation", usd(1.4), 1_000_000],
   ]),
+  // OpenRouter MiMo-V2.5 base pricing retrieved 2026-08-05 from:
+  // https://openrouter.ai/xiaomi/mimo-v2.5
   ...usageGroup("model", "mimo-v2.5", [
     ["tokens.input", usd(0.14), 1_000_000],
     ["tokens.output", usd(0.28), 1_000_000],
@@ -482,7 +484,12 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ]),
 
   // Managed image tasks — billed under task-scoped kinds at the backing
-  // model's token rates (see migration 0827).
+  // model's token rates (see the image task pricing migrations).
+  ...usageGroup("image-recognition", "xiaomi/mimo-v2.5", [
+    ["tokens.input", usd(0.14), 1_000_000],
+    ["tokens.cache_read", usd(0.0028), 1_000_000],
+    ["tokens.output", usd(0.28), 1_000_000],
+  ]),
   ...usageGroup("image-recognition", "google/gemini-3.5-flash", [
     ["tokens.input", usd(1.5), 1_000_000],
     ["tokens.cache_read", usd(0.15), 1_000_000],
