@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.685.0](https://github.com/vm0-ai/vm0/compare/app-v0.684.3...app-v0.685.0) (2026-08-05)
+
+
+### Features
+
+* **platform:** make default model selection explicit ([#25187](https://github.com/vm0-ai/vm0/issues/25187)) ([4b83c3d](https://github.com/vm0-ai/vm0/commit/4b83c3d2a01f2256fffe55e5bc0c447070fa5ca2))
+
+
+### Bug Fixes
+
+* preserve avatar catalog scroll during pagination ([#25213](https://github.com/vm0-ai/vm0/issues/25213)) ([c5dcca1](https://github.com/vm0-ai/vm0/commit/c5dcca1bacc986001ef3c734721ac3be54465927))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.4
+    * @vm0/core bumped to 8.516.0
+
 ## [0.684.3](https://github.com/vm0-ai/vm0/compare/app-v0.684.2...app-v0.684.3) (2026-08-05)
 
 

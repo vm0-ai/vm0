@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.516.0](https://github.com/vm0-ai/vm0/compare/core-v8.515.1...core-v8.516.0) (2026-08-05)
+
+
+### Features
+
+* **platform:** make default model selection explicit ([#25187](https://github.com/vm0-ai/vm0/issues/25187)) ([4b83c3d](https://github.com/vm0-ai/vm0/commit/4b83c3d2a01f2256fffe55e5bc0c447070fa5ca2))
+
+
+### Refactoring
+
+* remove obsolete cli release bookkeeping ([#25217](https://github.com/vm0-ai/vm0/issues/25217)) ([de04988](https://github.com/vm0-ai/vm0/commit/de0498849576522e622687fe07b630fa8b519847))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.4
+
 ## [8.515.1](https://github.com/vm0-ai/vm0/compare/core-v8.515.0...core-v8.515.1) (2026-08-05)
 
 

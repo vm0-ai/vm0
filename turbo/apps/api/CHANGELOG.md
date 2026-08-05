@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.378.2](https://github.com/vm0-ai/vm0/compare/api-v1.378.1...api-v1.378.2) (2026-08-05)
+
+
+### Bug Fixes
+
+* **api:** use registered joggai webhooks ([#25197](https://github.com/vm0-ai/vm0/issues/25197)) ([ad82a78](https://github.com/vm0-ai/vm0/commit/ad82a78fcf3f39f7005a040ea0456adb27677575))
+
+
+### Refactoring
+
+* remove obsolete cli release bookkeeping ([#25217](https://github.com/vm0-ai/vm0/issues/25217)) ([de04988](https://github.com/vm0-ai/vm0/commit/de0498849576522e622687fe07b630fa8b519847))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.4
+    * @vm0/core bumped to 8.516.0
+    * @vm0/db bumped to 1.166.2
+
 ## [1.378.1](https://github.com/vm0-ai/vm0/compare/api-v1.378.0...api-v1.378.1) (2026-08-05)
 
 

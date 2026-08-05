@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.29.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.136...desktop-v0.29.0) (2026-08-05)
+
+
+### Features
+
+* stage desktop release artifacts in r2 ([#25185](https://github.com/vm0-ai/vm0/issues/25185)) ([b2eab75](https://github.com/vm0-ai/vm0/commit/b2eab7518b09f4dd6bba1396bc4edbaa49759e1a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.4
+
 ## [0.28.136](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.135...desktop-v0.28.136) (2026-08-05)
 
 

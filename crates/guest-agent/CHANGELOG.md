@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.64.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.4...guest-agent-v0.64.5) (2026-08-05)
+
+
+### Bug Fixes
+
+* **guest-agent:** isolate api token from cli descendants ([#25205](https://github.com/vm0-ai/vm0/issues/25205)) ([b057140](https://github.com/vm0-ai/vm0/commit/b057140f03c25cfeeabaa1afc0ed91575f9371ab))
+
 ## [0.64.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.3...guest-agent-v0.64.4) (2026-08-05)
 
 ## [0.64.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.2...guest-agent-v0.64.3) (2026-08-05)
