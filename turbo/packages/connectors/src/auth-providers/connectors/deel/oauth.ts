@@ -8,7 +8,7 @@ const DEEL_TOKEN_URL = "https://app.deel.com/oauth2/tokens";
 
 const DEEL_AUTHORIZATION_URL = "https://app.deel.com/oauth2/authorize";
 
-const DEEL_PEOPLE_ME_URL = "https://api.letsdeel.com/rest/v2/people/me";
+const DEEL_PEOPLE_ME_URL = "https://api.letsdeel.com/rest/people/me";
 
 interface DeelUserInfo {
   id: string;
@@ -229,7 +229,7 @@ export async function exchangeDeelCode(
 }
 
 /**
- * Fetch the current Deel user's personal profile via /rest/v2/people/me.
+ * Fetch the current Deel user's personal profile via /rest/people/me.
  * Requires the people:read scope.
  */
 async function fetchDeelUserInfo(
@@ -253,7 +253,7 @@ async function fetchDeelUserInfo(
     .extend({ data: deelPersonSchema.optional() })
     .parse(await response.json());
 
-  // Deel documents a root profile object, while the v2 endpoint has also returned a `data` wrapper; accept both shapes during that API transition. Ref: https://developer.deel.com/api/reference/endpoints/people/get-my-current-personal-profile-v-2026-01-01
+  // Deel documents a root profile object; tolerate the `data` wrapper observed on the earlier v2 profile response so endpoint migration does not break existing tenant variants. Ref: https://developer.deel.com/api/reference/endpoints/people/get-my-current-personal-profile-v-2026-01-01
   const person = data.data ?? data;
   const name =
     person.full_name ??

@@ -22,7 +22,7 @@ describe("connector/providers/deel", () => {
   describe("exchangeDeelCode", () => {
     it("accepts the documented root profile with a numeric id", async () => {
       const profileHandler = http.get(
-        "https://api.letsdeel.com/rest/v2/people/me",
+        "https://api.letsdeel.com/rest/people/me",
         () => {
           return HttpResponse.json({
             id: 12345,
@@ -52,7 +52,7 @@ describe("connector/providers/deel", () => {
 
     it("tolerates the legacy wrapped profile shape", async () => {
       const profileHandler = http.get(
-        "https://api.letsdeel.com/rest/v2/people/me",
+        "https://api.letsdeel.com/rest/people/me",
         () => {
           return HttpResponse.json({
             data: {
