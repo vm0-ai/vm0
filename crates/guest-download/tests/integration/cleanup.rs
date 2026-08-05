@@ -5,7 +5,7 @@ use std::os::unix::fs::symlink;
 use std::path::Path;
 
 fn cleanup_manifest(
-    cleanup_path: &Path,
+    cleanup_paths: &[&Path],
     preserved_path: Option<&Path>,
 ) -> serde_json::Result<Vec<u8>> {
     let storage_mounts = preserved_path
@@ -20,14 +20,15 @@ fn cleanup_manifest(
 
     serde_json::to_vec(&json!({
         "storageMounts": storage_mounts,
-        "cleanupPaths": [cleanup_path]
+        "cleanupPaths": cleanup_paths
     }))
 }
 
 #[test]
-fn selective_cleanup_rejects_symlinked_root_without_touching_target() {
+fn selective_cleanup_skips_symlinked_root_and_continues() {
     let dir = tempfile::tempdir().unwrap();
     let cleanup_root = dir.path().join("cleanup");
+    let later_cleanup = dir.path().join("later-cleanup-path");
     let target = dir.path().join("target");
     let preserved = cleanup_root.join("keep");
 
@@ -36,12 +37,14 @@ fn selective_cleanup_rejects_symlinked_root_without_touching_target() {
     fs::write(target.join("keep/content.txt"), "keep").unwrap();
     fs::write(target.join("unrelated/content.txt"), "unrelated").unwrap();
     fs::write(target.join("unrelated.txt"), "unrelated").unwrap();
+    fs::create_dir_all(&later_cleanup).unwrap();
+    fs::write(later_cleanup.join("stale.txt"), "remove").unwrap();
     symlink(&target, &cleanup_root).unwrap();
 
-    let manifest = cleanup_manifest(&cleanup_root, Some(&preserved)).unwrap();
+    let manifest = cleanup_manifest(&[&cleanup_root, &later_cleanup], Some(&preserved)).unwrap();
     let success = run_guest_download_manifest_json(&manifest);
 
-    assert!(!success);
+    assert!(success);
     assert!(
         fs::symlink_metadata(&cleanup_root)
             .unwrap()
@@ -60,10 +63,11 @@ fn selective_cleanup_rejects_symlinked_root_without_touching_target() {
         fs::read_to_string(target.join("unrelated.txt")).unwrap(),
         "unrelated"
     );
+    assert!(!later_cleanup.exists());
 }
 
 #[test]
-fn whole_root_cleanup_rejects_symlinked_intermediate_component() {
+fn whole_root_cleanup_skips_symlinked_intermediate_component() {
     let dir = tempfile::tempdir().unwrap();
     let parent = dir.path().join("parent");
     let target = dir.path().join("target");
@@ -76,10 +80,10 @@ fn whole_root_cleanup_rejects_symlinked_intermediate_component() {
     fs::write(target_stale.join("content.txt"), "untouched").unwrap();
     symlink(&target, &alias).unwrap();
 
-    let manifest = cleanup_manifest(&cleanup_path, None).unwrap();
+    let manifest = cleanup_manifest(&[&cleanup_path], None).unwrap();
     let success = run_guest_download_manifest_json(&manifest);
 
-    assert!(!success);
+    assert!(success);
     assert!(
         fs::symlink_metadata(&alias)
             .unwrap()
@@ -102,7 +106,7 @@ fn whole_root_cleanup_removes_final_symlink_without_touching_target() {
     fs::write(target.join("content.txt"), "untouched").unwrap();
     symlink(&target, &cleanup_root).unwrap();
 
-    let manifest = cleanup_manifest(&cleanup_root, None).unwrap();
+    let manifest = cleanup_manifest(&[&cleanup_root], None).unwrap();
     let success = run_guest_download_manifest_json(&manifest);
 
     assert!(success);
@@ -125,7 +129,7 @@ fn selective_cleanup_preserves_cached_child_in_real_directory() {
     fs::write(cleanup_root.join("stale/content.txt"), "remove").unwrap();
     fs::write(cleanup_root.join("stale.txt"), "remove").unwrap();
 
-    let manifest = cleanup_manifest(&cleanup_root, Some(&preserved)).unwrap();
+    let manifest = cleanup_manifest(&[&cleanup_root], Some(&preserved)).unwrap();
     let success = run_guest_download_manifest_json(&manifest);
 
     assert!(success);

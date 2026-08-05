@@ -1,5 +1,5 @@
 use crate::LOG_TAG;
-use guest_common::{log_error, log_info, log_warn};
+use guest_common::{log_info, log_warn};
 use std::cell::OnceCell;
 use std::collections::HashSet;
 use std::ffi::{CString, OsStr, OsString};
@@ -20,35 +20,32 @@ use std::path::{Component, Path, PathBuf};
 ///   the mountpoint directory and clean its contents.
 /// - Otherwise: `remove_dir_all` (clean slate).
 ///
-/// Returns `false` when safe cleanup cannot be completed. Callers must stop
-/// before materializing storage through that path.
-pub(crate) fn cleanup_stale_paths(cleanup_paths: &[String], preserved: &[String]) -> bool {
-    cleanup_stale_paths_with_mountinfo_loader(cleanup_paths, preserved, cleanup_mountinfo)
+/// Failures are logged and cleanup continues with the remaining paths.
+pub(crate) fn cleanup_stale_paths(cleanup_paths: &[String], preserved: &[String]) {
+    cleanup_stale_paths_with_mountinfo_loader(cleanup_paths, preserved, cleanup_mountinfo);
 }
 
 fn cleanup_stale_paths_with_mountinfo_loader<L>(
     cleanup_paths: &[String],
     preserved: &[String],
     load_mountinfo: L,
-) -> bool
-where
+) where
     L: Fn() -> io::Result<String>,
 {
     let detector = CleanupMountPointDetector::new(load_mountinfo);
     cleanup_stale_paths_with_mount_detector(cleanup_paths, preserved, |path| {
         detector.is_mount_point(path)
-    })
+    });
 }
 
 fn cleanup_stale_paths_with_mount_detector<M>(
     cleanup_paths: &[String],
     preserved: &[String],
     is_mount_point: M,
-) -> bool
-where
+) where
     M: Fn(&Path) -> bool,
 {
-    cleanup_stale_paths_with_options(cleanup_paths, preserved, is_mount_point, remove_entry)
+    cleanup_stale_paths_with_options(cleanup_paths, preserved, is_mount_point, remove_entry);
 }
 
 fn cleanup_stale_paths_with_options<M, R>(
@@ -56,8 +53,7 @@ fn cleanup_stale_paths_with_options<M, R>(
     preserved: &[String],
     is_mount_point: M,
     remove_entry: R,
-) -> bool
-where
+) where
     M: Fn(&Path) -> bool,
     R: Fn(&fs::DirEntry) -> io::Result<()>,
 {
@@ -71,8 +67,8 @@ where
 
         if preserved_child_count > 0 {
             if let Err(e) = clean_directory_contents(cleanup_path, preserved, &remove_entry) {
-                log_error!(LOG_TAG, "Failed to safely clean {path}: {e}");
-                return false;
+                log_warn!(LOG_TAG, "Failed to safely clean {path}: {e}");
+                continue;
             }
             log_info!(
                 LOG_TAG,
@@ -83,8 +79,8 @@ where
             // Removing a mounted filesystem root can fail on filesystem metadata
             // such as ext4 lost+found. Keep the mountpoint and remove entries.
             if let Err(e) = clean_directory_contents(cleanup_path, preserved, &remove_entry) {
-                log_error!(LOG_TAG, "Failed to safely clean {path}: {e}");
-                return false;
+                log_warn!(LOG_TAG, "Failed to safely clean {path}: {e}");
+                continue;
             }
             log_info!(LOG_TAG, "Cleaned mountpoint contents: {path}");
         } else {
@@ -94,14 +90,11 @@ where
                 }
                 Ok(RemoveOutcome::Missing) => {}
                 Err(e) => {
-                    log_error!(LOG_TAG, "Failed to safely clean {path}: {e}");
-                    return false;
+                    log_warn!(LOG_TAG, "Failed to safely clean {path}: {e}");
                 }
             }
         }
     }
-
-    true
 }
 
 fn clean_directory_contents<R>(
