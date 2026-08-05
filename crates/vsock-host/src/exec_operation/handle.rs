@@ -632,6 +632,9 @@ impl SupervisedExecHandle {
     }
 
     /// Send an exec-control request for this supervised operation.
+    ///
+    /// This has the same input, timeout, cancellation, and connection-lifecycle
+    /// contract as [`ExecControlHandle::control`].
     pub async fn control(
         &self,
         message_id: &str,
@@ -751,6 +754,25 @@ impl ExecControlHandle {
     /// Only [`ExecControlOutcome::Delivered`] is returned as an
     /// [`ExecControlAck`]. Guest statuses and guest error responses are
     /// converted into `io::Error` values.
+    ///
+    /// # Response abandonment
+    ///
+    /// If the host response wait expires after the request frame is written,
+    /// or this future is cancelled after the frame may have been written, the
+    /// guest may have received the request without the host retaining proof of
+    /// its response. The connection is then unsafe for later normal operations
+    /// or pooling and must be discarded. A late control result or the
+    /// supervised exec's eventual terminal result does not restore reusability.
+    /// Cancelling this future before the frame may have been written does not
+    /// have this consequence.
+    ///
+    /// A guest-reported [`vsock_proto::ExecControlStatus::SinkTimeout`] is
+    /// different: it is a matched response and does not by itself make the
+    /// connection unsafe. This method converts both that guest status and a
+    /// host response timeout to `io::ErrorKind::TimedOut`. Call
+    /// [`ExecControlHandle::control_with_write_observer`] when the distinction
+    /// matters; it returns matched guest statuses as
+    /// [`ExecControlOutcome::GuestStatus`].
     pub async fn control(
         &self,
         message_id: &str,
@@ -769,10 +791,10 @@ impl ExecControlHandle {
 
     /// Send an exec-control request and return the raw guest outcome.
     ///
-    /// This has the same parameter and timeout contract as
-    /// [`ExecControlHandle::control`], but returns [`ExecControlOutcome`] so
-    /// callers can distinguish delivered requests, non-delivered guest
-    /// statuses, and guest error responses.
+    /// This has the same input, timeout, cancellation, and connection-lifecycle
+    /// contract as [`ExecControlHandle::control`], but returns
+    /// [`ExecControlOutcome`] so callers can distinguish delivered requests,
+    /// non-delivered guest statuses, and guest error responses.
     pub async fn control_with_write_observer(
         &self,
         message_id: &str,
