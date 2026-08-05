@@ -508,14 +508,12 @@ function ModelFirstPolicyItems({
   explicitSelectedModel,
   modelCapabilities,
   showSeparator = true,
-  labelThisChat = false,
   defaultModel,
 }: {
   policies: OrgModelPolicy[];
   explicitSelectedModel: string | null;
   modelCapabilities: ModelPlanCapabilities;
   showSeparator?: boolean;
-  labelThisChat?: boolean;
   defaultModel?: string | null;
 }) {
   const { t } = useTranslation();
@@ -549,9 +547,7 @@ function ModelFirstPolicyItems({
         <SelectGroup>
           <SelectLabel className="pl-2 pr-8 py-1.5 text-xs font-medium text-muted-foreground">
             {t(($) => {
-              return labelThisChat
-                ? $.settings.models.picker.thisChat
-                : $.settings.models.picker.models;
+              return $.settings.models.picker.models;
             })}
           </SelectLabel>
           {policies.map((policy) => {
@@ -828,7 +824,6 @@ function ModelFirstModelPickerContentLayout({
             explicitSelectedModel={selectableValue?.selectedModel ?? null}
             modelCapabilities={modelCapabilities}
             showSeparator={false}
-            labelThisChat={newChatDefaults}
             defaultModel={defaultModel}
           />
         </div>

@@ -4216,7 +4216,7 @@
         "builtInModel": "अंतर्निर्मित मॉडल",
         "byokHelp": "आपके कॉन्फ़िगर किए गए प्रोवाइडर का उपयोग करता है",
         "defaultModel": "डिफ़ॉल्ट",
-        "defaultModelDescription": "नई चैट और ऑटोमेशन के लिए उपयोग किया जाता है",
+        "defaultModelDescription": "नई चैट और नए ऑटोमेशन के लिए डिफ़ॉल्ट",
         "defaultModelUpdated": "{{model}} अब आपका डिफ़ॉल्ट मॉडल है",
         "fast": "तेज़",
         "inheritDefault": "ऑर्ग डिफॉल्ट से इनहेरिट करें",
@@ -4240,8 +4240,7 @@
         },
         "runSpeed": "भागने की गति",
         "setModelAsDefault": "{{model}} को डिफ़ॉल्ट के रूप में सेट करें",
-        "standard": "मानक",
-        "thisChat": "यह चैट"
+        "standard": "मानक"
       },
       "policies": {
         "actionsFor": "{{model}} के लिए क्रियाएँ",

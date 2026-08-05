@@ -233,10 +233,12 @@ describe("chat composer models", () => {
     expect(updatedModels).toStrictEqual([]);
 
     await user.click(await findComposerModel("Claude Sonnet 4.6"));
-    expect(screen.getByText("This chat")).toBeInTheDocument();
     const modelPicker = await screen.findByRole("listbox");
+    expect(within(modelPicker).getByText("Models")).toBeInTheDocument();
     expect(
-      within(modelPicker).getByText("Used for new chats and automations"),
+      within(modelPicker).getByText(
+        "Default for new chats and new automations",
+      ),
     ).toBeInTheDocument();
     expect(
       within(modelPicker).getByRole("option", {
@@ -299,7 +301,7 @@ describe("chat composer models", () => {
       expect(updatedModel).toBe("claude-sonnet-4-6");
     });
     expect(
-      screen.queryByText("Used for new chats and automations"),
+      screen.queryByText("Default for new chats and new automations"),
     ).not.toBeInTheDocument();
   });
 
@@ -1326,7 +1328,7 @@ describe("chat composer models", () => {
     await expectComposerModel("Claude Sonnet 4.6");
     expect(preferenceRequestStarted).toBeFalsy();
     expect(
-      screen.queryByText("Used for new chats and automations"),
+      screen.queryByText("Default for new chats and new automations"),
     ).not.toBeInTheDocument();
   });
 

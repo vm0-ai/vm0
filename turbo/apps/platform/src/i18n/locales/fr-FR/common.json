@@ -4283,7 +4283,7 @@
         "builtInModel": "Modèle intégré",
         "byokHelp": "Utilise votre fournisseur configuré",
         "defaultModel": "Par défaut",
-        "defaultModelDescription": "Utilisé pour les nouveaux chats et les nouvelles automatisations",
+        "defaultModelDescription": "Par défaut pour les nouveaux chats et les nouvelles automatisations",
         "defaultModelUpdated": "{{model}} est désormais votre modèle par défaut",
         "fast": "Rapide",
         "inheritDefault": "Hériter des paramètres par défaut de l'organisation",
@@ -4307,8 +4307,7 @@
         },
         "runSpeed": "Vitesse d'exécution",
         "setModelAsDefault": "Définir {{model}} par défaut",
-        "standard": "Standard",
-        "thisChat": "Ce chat"
+        "standard": "Standard"
       },
       "policies": {
         "actionsFor": "Actions pour {{model}}",

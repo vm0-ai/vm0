@@ -4216,7 +4216,7 @@
         "builtInModel": "Model bawaan",
         "byokHelp": "Menggunakan provider yang Anda atur",
         "defaultModel": "Default",
-        "defaultModelDescription": "Digunakan untuk chat dan otomatisasi baru",
+        "defaultModelDescription": "Default untuk chat baru dan otomatisasi baru",
         "defaultModelUpdated": "{{model}} sekarang menjadi model default Anda",
         "fast": "Cepat",
         "inheritDefault": "Warisi dari default organisasi",
@@ -4240,8 +4240,7 @@
         },
         "runSpeed": "Kecepatan jalankan",
         "setModelAsDefault": "Jadikan {{model}} sebagai default",
-        "standard": "Standar",
-        "thisChat": "Chat ini"
+        "standard": "Standar"
       },
       "policies": {
         "actionsFor": "Tindakan untuk {{model}}",

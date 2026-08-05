@@ -4216,7 +4216,7 @@
         "builtInModel": "内蔵モデル",
         "byokHelp": "設定されたプロバイダーを使用します",
         "defaultModel": "デフォルト",
-        "defaultModelDescription": "新しいチャットと自動化で使用されます",
+        "defaultModelDescription": "新しいチャットと新しい自動化のデフォルト",
         "defaultModelUpdated": "{{model}} がデフォルトモデルになりました",
         "fast": "速い",
         "inheritDefault": "組織のデフォルトから継承",
@@ -4240,8 +4240,7 @@
         },
         "runSpeed": "走行速度",
         "setModelAsDefault": "{{model}} をデフォルトに設定",
-        "standard": "標準",
-        "thisChat": "このチャット"
+        "standard": "標準"
       },
       "policies": {
         "actionsFor": "{{model}} のアクション",

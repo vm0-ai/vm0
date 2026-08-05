@@ -4216,7 +4216,7 @@
         "builtInModel": "Built-in model",
         "byokHelp": "Uses your configured provider",
         "defaultModel": "Default",
-        "defaultModelDescription": "Used for new chats and automations",
+        "defaultModelDescription": "Default for new chats and new automations",
         "defaultModelUpdated": "{{model}} is now your default model",
         "fast": "Fast",
         "inheritDefault": "Inherit from org default",
@@ -4240,8 +4240,7 @@
         },
         "runSpeed": "Run speed",
         "setModelAsDefault": "Set {{model}} as default",
-        "standard": "Standard",
-        "thisChat": "This chat"
+        "standard": "Standard"
       },
       "policies": {
         "actionsFor": "Actions for {{model}}",
