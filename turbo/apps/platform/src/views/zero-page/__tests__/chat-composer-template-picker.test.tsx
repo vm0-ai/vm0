@@ -447,11 +447,10 @@ describe("chat composer templates", () => {
     ).toBeFalsy();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
     expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
-    expect(tabByText("Presentation")).toHaveClass("border-primary");
-    expect(tabByText("Presentation")).toHaveClass("font-medium");
+    expect(tabByText("Presentation")).toHaveClass("border-foreground");
     expect(tabByText("Presentation")).toHaveClass("text-foreground");
     expect(tabByText("Illustration")).toHaveClass("border-gray-400");
-    expect(tabByText("Illustration")).not.toHaveClass("border-primary");
+    expect(tabByText("Illustration")).not.toHaveClass("border-foreground");
     const categorySelect = screen.getByRole("combobox", {
       name: "Template category",
     });
@@ -506,7 +505,7 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(tabByText("Workflow")).toHaveFocus();
       expect(tabByText("Workflow")).toHaveAttribute("aria-selected", "true");
-      expect(screen.getByLabelText("Search connectors")).toBeInTheDocument();
+      expect(screen.getByLabelText("Search templates")).toBeInTheDocument();
     });
 
     fireEvent.keyDown(tabByText("Workflow"), { key: "Home" });
@@ -2485,7 +2484,7 @@ describe("chat composer templates", () => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
 
-    expect(screen.queryByLabelText("Search connectors")).toBeNull();
+    expect(screen.queryByLabelText("Search templates")).toBeNull();
     click(
       screen.getByLabelText(`Select template ${illustrationTemplate.title}`),
     );
@@ -3100,7 +3099,7 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.queryByLabelText("Search connectors")).toBeNull();
+    expect(screen.queryByLabelText("Search templates")).toBeNull();
     click(screen.getByLabelText(`Select video template ${videoStyle.title}`));
 
     await waitFor(() => {
@@ -3163,16 +3162,16 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.getByLabelText("Search connectors")).toHaveAttribute(
+    expect(screen.getByLabelText("Search templates")).toHaveAttribute(
       "placeholder",
       "Search connector...",
     );
-    await fill(screen.getByLabelText("Search connectors"), "no workflow match");
+    await fill(screen.getByLabelText("Search templates"), "no workflow match");
     await waitFor(() => {
       expect(screen.getByText("No matches")).toBeInTheDocument();
     });
 
-    await fill(screen.getByLabelText("Search connectors"), "auto-inbox");
+    await fill(screen.getByLabelText("Search templates"), "auto-inbox");
     click(
       screen.getByLabelText(
         `Select workflow template ${workflowTemplate.title}`,
@@ -3262,7 +3261,7 @@ describe("chat composer templates", () => {
       expect(screen.queryByText(websiteTemplate.resourceId)).toBeNull();
       expect(screen.queryByText("Saas Landing")).not.toBeInTheDocument();
     });
-    expect(screen.queryByLabelText("Search connectors")).toBeNull();
+    expect(screen.queryByLabelText("Search templates")).toBeNull();
     click(
       screen.getByLabelText(`Select website template ${websiteTemplate.title}`),
     );

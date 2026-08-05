@@ -1075,8 +1075,6 @@ const TEMPLATE_TILE_USE =
 const TEMPLATE_TILE_CAPTION = "flex items-baseline gap-2 px-0.5 pt-2";
 const TEMPLATE_TILE_NAME =
   "min-w-0 truncate text-[13px] font-medium leading-[18px] text-foreground";
-const TEMPLATE_TILE_META =
-  "ml-auto shrink-0 text-xs leading-[18px] text-gray-700";
 
 function VideoTemplateCard({
   item,
@@ -3465,7 +3463,7 @@ function TemplatePreviewPage({
     <>
       <DialogHeader
         data-presentation-template-detail-header=""
-        className="shrink-0 border-b border-border py-4 pl-5 pr-14 text-left sm:pr-16"
+        className="shrink-0 border-b border-border py-4 pl-5 pr-14 text-left duration-200 animate-in fade-in slide-in-from-right-6 motion-reduce:animate-none sm:pr-16"
       >
         <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
           <button
@@ -3483,7 +3481,7 @@ function TemplatePreviewPage({
           </span>
         </DialogTitle>
       </DialogHeader>
-      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
+      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 duration-200 animate-in fade-in slide-in-from-right-6 motion-reduce:animate-none sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
         <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
           <div
             role="group"
@@ -3788,8 +3786,6 @@ function PptCard({
     themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
   );
 
-  const slideCount = presentationTemplateSlideCount(item);
-
   return (
     <div
       className={cn(
@@ -3844,13 +3840,17 @@ function PptCard({
             <TooltipContent side="bottom">{item.title}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <span className={TEMPLATE_TILE_META}>
-          {t(
-            ($) => {
-              return $.artifacts.templates.slidesCount;
-            },
-            {
-              total: slideCount,
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {presentationTemplateThemeAccentSwatches(item, selectedTheme).map(
+            (swatch) => {
+              return (
+                <span
+                  key={swatch.id}
+                  aria-hidden
+                  className="h-3 w-3 rounded-full ring-1 ring-inset ring-black/10"
+                  style={{ backgroundColor: swatch.color }}
+                />
+              );
             },
           )}
         </span>
@@ -3905,12 +3905,31 @@ function IllustrationTemplateHero({
         )}
         className={cn(
           "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100",
-          navigable && "cursor-pointer",
+          // Same affordance the detail preview uses for slide paging: the
+          // cursor points at the half that will be navigated to.
+          navigable &&
+            "data-[half=left]:cursor-w-resize data-[half=right]:cursor-e-resize",
         )}
         loading={priority ? "eager" : "lazy"}
         decoding="async"
         fetchPriority={priority ? "high" : "low"}
         onMouseEnter={navigable ? preloadNeighbors : undefined}
+        onMouseMove={
+          navigable
+            ? (event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                event.currentTarget.dataset.half =
+                  event.clientX - rect.left < rect.width / 2 ? "left" : "right";
+              }
+            : undefined
+        }
+        onMouseLeave={
+          navigable
+            ? (event) => {
+                delete event.currentTarget.dataset.half;
+              }
+            : undefined
+        }
         onClick={
           navigable
             ? (event) => {
@@ -4611,7 +4630,7 @@ function TemplatePickerCategoryNav({
                 className={cn(
                   "group inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border bg-transparent px-3.5 text-[13.5px] leading-[18px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-500",
                   selected
-                    ? "border-primary font-medium text-foreground"
+                    ? "border-foreground text-foreground"
                     : "border-gray-400 text-gray-800 hover:border-gray-500 hover:bg-gray-50 hover:text-foreground",
                 )}
               >
@@ -4619,7 +4638,7 @@ function TemplatePickerCategoryNav({
                   className={cn(
                     "h-[15px] w-[15px] shrink-0 transition-colors",
                     selected
-                      ? "text-primary"
+                      ? "text-foreground"
                       : "text-gray-700 group-hover:text-gray-800",
                   )}
                   stroke={1.8}
