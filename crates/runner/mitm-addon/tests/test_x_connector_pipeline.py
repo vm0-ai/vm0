@@ -13,13 +13,18 @@ from mitmproxy.flow import Error
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
-from body_limits import STREAM_BUFFER_LIMIT
+from body_limits import (
+    STREAM_BUFFER_LIMIT,
+    STREAM_DECODE_CHUNK_LIMIT,
+    STREAM_DECODE_EXPANSION_GRACE,
+    STREAM_DECODE_MAX_EXPANSION_RATIO,
+)
 from tests.flow_helpers import response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.x_flow_helpers import (
     json_body_that_exceeds_integer_digit_limit,
     json_body_that_exceeds_nesting_limit,
-    json_body_that_exceeds_x_ndjson_work_limit,
+    json_body_that_exceeds_x_json_work_limit,
     make_x_pipeline_flow,
     make_x_stream_pipeline_flow,
 )
@@ -119,6 +124,79 @@ class TestXConnectorResponsePipeline:
             f"Streaming decompression skipped: {_STREAM_DECODE_SKIP_REASONS[encoding_case]}"
             in log.debug.call_args[0][0]
         )
+
+    @pytest.mark.parametrize("encoding_case", ["br", "zstd"])
+    def test_full_response_pipeline_bounds_buffered_x_json_fallback_work(
+        self, tmp_path, real_flow, mitm_ctx, encoding_case
+    ):
+        flow = make_x_pipeline_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/search/recent",
+            query="query=vm0",
+            rule="GET /2/tweets/search/recent",
+            content_encoding=encoding_case,
+        )
+        payload = json_body_that_exceeds_x_json_work_limit()
+        compressed = _compress_body(encoding_case, payload)
+        assert len(compressed) < STREAM_BUFFER_LIMIT < len(payload)
+
+        with mitm_ctx():
+            mitm_addon.responseheaders(flow)
+        assert response_stream(flow)(compressed) == compressed
+
+        with self._usage_webhook_api() as webhook:
+            mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
+
+        assert webhook.request_count == 0
+        entries = read_jsonl_entries_after_flush(
+            Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        )
+        lost_visibility_entries = [
+            entry for entry in entries if "unparseable" in entry["message"].lower()
+        ]
+        assert len(lost_visibility_entries) == 1
+        assert lost_visibility_entries[0]["body_truncated"] is False
+
+    @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
+    def test_full_response_pipeline_bounds_compressed_x_json_work(
+        self, tmp_path, real_flow, encoding_case
+    ):
+        flow = make_x_pipeline_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/search/recent",
+            query="query=vm0",
+            rule="GET /2/tweets/search/recent",
+            content_encoding=encoding_case,
+        )
+        payload = json_body_that_exceeds_x_json_work_limit()
+        compressed = _compress_body(encoding_case, payload)
+        allowed_decoded_bytes = max(
+            STREAM_DECODE_EXPANSION_GRACE,
+            len(compressed) * STREAM_DECODE_MAX_EXPANSION_RATIO,
+        )
+        assert STREAM_DECODE_CHUNK_LIMIT < len(payload) <= allowed_decoded_bytes
+
+        mitm_addon.responseheaders(flow)
+        assert response_stream(flow)(compressed) == compressed
+
+        with self._usage_webhook_api() as webhook:
+            mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
+
+        assert webhook.request_count == 0
+        entries = read_jsonl_entries_after_flush(
+            Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        )
+        lost_visibility_entries = [
+            entry for entry in entries if "unparseable" in entry["message"].lower()
+        ]
+        assert len(lost_visibility_entries) == 1
+        entry = lost_visibility_entries[0]
+        assert entry["body_truncated"] is False
+        assert entry["parse_error"] == "work limit exceeded"
 
     @pytest.mark.parametrize("encoding_case", ["br", "zstd"])
     def test_responseheaders_unsafe_compressed_x_stream_does_not_leave_parser_state(
@@ -367,7 +445,7 @@ class TestXConnectorResponsePipeline:
             pytest.param(json_body_that_exceeds_nesting_limit(), id="excessive-nesting"),
             pytest.param(json_body_that_exceeds_integer_digit_limit(), id="integer-digit-limit"),
             pytest.param(
-                json_body_that_exceeds_x_ndjson_work_limit(),
+                json_body_that_exceeds_x_json_work_limit(),
                 id="work-limit",
             ),
         ],
@@ -512,7 +590,7 @@ class TestXConnectorResponsePipeline:
         flow.metadata[metadata_keys.CAPTURE_BODY] = True
 
         mitm_addon.responseheaders(flow)
-        response_stream(flow)(b'{"data":[{"id":"1"},' + b" " * STREAM_BUFFER_LIMIT)
+        response_stream(flow)(b'{"data":[{"id":"1","text":"' + b"x" * STREAM_BUFFER_LIMIT)
         assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
 
         with self._usage_webhook_api() as webhook:
@@ -528,7 +606,7 @@ class TestXConnectorResponsePipeline:
         entry = lost_visibility_entries[0]
         assert entry["level"] == "error"
         assert entry["body_truncated"] is False
-        assert entry["parse_error"] == "incomplete json"
+        assert entry["parse_error"] == "incomplete string"
         assert "connector_response_finish" not in flow.metadata
 
     def test_response_uses_request_hints_for_incremental_x_json_parse_error(
