@@ -1,7 +1,6 @@
 """Request body decoding policy for connector billing inspection."""
 
 import zlib
-from typing import Literal
 
 from mitmproxy import http
 
@@ -9,39 +8,47 @@ from body_limits import REQUEST_BODY_BILLING_INSPECTION_LIMIT
 from zlib_input import ZlibInputCursor
 
 
-def _decode_zlib_request_body_for_billing(
-    data: bytes, encoding: Literal["gzip", "deflate"], max_output: int
-) -> bytes | None:
-    """Decode every gzip member or one deflate stream under one output cap."""
-    wbits_options = (
-        (16 + zlib.MAX_WBITS,) if encoding == "gzip" else (zlib.MAX_WBITS, -zlib.MAX_WBITS)
-    )
-    for wbits in wbits_options:
-        input_cursor = ZlibInputCursor(data)
-        decoded = bytearray()
-        obj = zlib.decompressobj(wbits)
-        while input_cursor:
-            input_chunk = input_cursor.take()
-            try:
-                decoded.extend(
-                    obj.decompress(
-                        input_chunk,
-                        max_length=max_output - len(decoded) + 1,
-                    )
+def _decode_gzip_request_body_for_billing(data: bytes, max_output: int) -> bytes | None:
+    """Decode every gzip member under one output cap."""
+    input_cursor = ZlibInputCursor(data)
+    decoded = bytearray()
+    wbits = 16 + zlib.MAX_WBITS
+    obj = zlib.decompressobj(wbits)
+    while input_cursor:
+        input_chunk = input_cursor.take()
+        try:
+            decoded.extend(
+                obj.decompress(
+                    input_chunk,
+                    max_length=max_output - len(decoded) + 1,
                 )
-            except zlib.error:
-                break
-            if len(decoded) > max_output:
-                return None
-            if obj.eof:
-                input_cursor.carry(obj.unused_data)
-                if not input_cursor:
-                    return bytes(decoded)
-                if encoding != "gzip":
-                    break
-                obj = zlib.decompressobj(wbits)
-            elif obj.unconsumed_tail:
-                input_cursor.carry(obj.unconsumed_tail)
+            )
+        except zlib.error:
+            return None
+        if len(decoded) > max_output:
+            return None
+        if obj.eof:
+            input_cursor.carry(obj.unused_data)
+            if not input_cursor:
+                return bytes(decoded)
+            obj = zlib.decompressobj(wbits)
+        elif obj.unconsumed_tail:
+            input_cursor.carry(obj.unconsumed_tail)
+    return None
+
+
+def _decode_deflate_request_body_for_billing(data: bytes, max_output: int) -> bytes | None:
+    """Decode one zlib-wrapped or raw deflate stream under one output cap."""
+    for wbits in (zlib.MAX_WBITS, -zlib.MAX_WBITS):
+        obj = zlib.decompressobj(wbits)
+        try:
+            decoded = obj.decompress(data, max_length=max_output + 1)
+        except zlib.error:
+            continue
+        if len(decoded) > max_output:
+            return None
+        if obj.eof and not obj.unused_data:
+            return decoded
     return None
 
 
@@ -69,7 +76,7 @@ def decode_request_body_for_billing(
     if not encoding or encoding == "identity":
         return raw_content if len(raw_content) <= max_decoded else None
     if encoding == "gzip":
-        return _decode_zlib_request_body_for_billing(raw_content, "gzip", max_decoded)
+        return _decode_gzip_request_body_for_billing(raw_content, max_decoded)
     if encoding == "deflate":
-        return _decode_zlib_request_body_for_billing(raw_content, "deflate", max_decoded)
+        return _decode_deflate_request_body_for_billing(raw_content, max_decoded)
     return None
