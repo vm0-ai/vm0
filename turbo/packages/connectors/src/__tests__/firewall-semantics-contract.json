@@ -1040,6 +1040,94 @@
       }
     },
     {
+      "name": "plus greedy blocked permission wins over star greedy allowed permission",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "files.star",
+                  "rules": ["GET /files/{rest*}"]
+                },
+                {
+                  "name": "files.plus",
+                  "rules": ["GET /files/{rest+}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": [],
+          "deny": ["files.plus"],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/files/readme"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/files/readme",
+        "reason": "permission_denied",
+        "permissions": ["files.plus"]
+      }
+    },
+    {
+      "name": "two-code-point literal block wins over one-code-point emoji literal allow",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "files.emoji",
+                  "rules": ["GET /files/😀{id}"]
+                },
+                {
+                  "name": "files.ascii",
+                  "rules": ["GET /files/{id}ab"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": [],
+          "deny": ["files.ascii"],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/files/😀xab"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/files/😀xab",
+        "reason": "permission_denied",
+        "permissions": ["files.ascii"]
+      }
+    },
+    {
       "name": "unknown endpoint follows deny policy",
       "firewalls": [
         {
