@@ -995,6 +995,18 @@ function mockCreateWorkflowAutomation(
           },
         });
       }
+      if (body.eventType === "stripe-invoice-paid") {
+        return respond(201, {
+          ...gmailWorkflowAutomation(),
+          eventType: "stripe-invoice-paid",
+          eventConfig: {
+            ...body.eventConfig,
+            connectorId: "00000000-0000-4000-a000-000000000411",
+            stripeAccountId: "acct_mock_stripe_invoice_paid",
+            mode: "live",
+          },
+        });
+      }
       if (
         body.eventConfig.provider === "github" ||
         body.eventConfig.provider === "google-forms" ||

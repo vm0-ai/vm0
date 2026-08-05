@@ -350,6 +350,8 @@ function workflowAutomationKindLabel(
       return `Notion page content updated: ${formatNotionContentUpdatedScope(automation)}`;
     case "strapi-entry-published":
       return formatStrapiAutomation(automation);
+    case "stripe-invoice-paid":
+      return "Stripe invoice paid";
     case "webhook-received":
       return "Webhook";
   }

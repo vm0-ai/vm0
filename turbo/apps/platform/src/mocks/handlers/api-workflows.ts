@@ -686,6 +686,21 @@ function createWorkflowAutomationSummaryForRequest(
       scheduleSummary: null,
     };
   }
+  if (body.eventType === "stripe-invoice-paid") {
+    return {
+      ...base,
+      kind: "event",
+      eventType: "stripe-invoice-paid",
+      eventConfig: {
+        ...body.eventConfig,
+        connectorId: "b0000000-0000-4000-a000-000000000002",
+        stripeAccountId: "acct_mock_stripe_invoice_paid",
+        mode: "live",
+      },
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
   return passthroughEventAutomationSummaryForRequest(base, body);
 }
 
