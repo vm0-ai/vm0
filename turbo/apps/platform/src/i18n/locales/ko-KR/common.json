@@ -4215,7 +4215,7 @@
         "balancedUse": "균형 잡힌 사용",
         "builtInModel": "내장 모델",
         "byokHelp": "구성된 공급자 사용",
-        "defaultModel": "기본 모델",
+        "defaultModel": "기본값",
         "defaultModelDescription": "새 채팅 및 자동화에 사용됩니다",
         "defaultModelUpdated": "{{model}}을(를) 기본 모델로 설정했습니다",
         "fast": "빠름",

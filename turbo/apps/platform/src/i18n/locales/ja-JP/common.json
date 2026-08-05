@@ -4215,7 +4215,7 @@
         "balancedUse": "バランスよく使う",
         "builtInModel": "内蔵モデル",
         "byokHelp": "設定されたプロバイダーを使用します",
-        "defaultModel": "デフォルトモデル",
+        "defaultModel": "デフォルト",
         "defaultModelDescription": "新しいチャットと自動化で使用されます",
         "defaultModelUpdated": "{{model}} がデフォルトモデルになりました",
         "fast": "速い",

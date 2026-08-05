@@ -234,32 +234,32 @@ describe("chat composer models", () => {
 
     await user.click(await findComposerModel("Claude Sonnet 4.6"));
     expect(screen.getByText("This chat")).toBeInTheDocument();
-    const defaultModelGroup = await screen.findByRole("group", {
-      name: "Default model",
-    });
+    const modelPicker = await screen.findByRole("listbox");
     expect(
-      within(defaultModelGroup).getByText("Used for new chats and automations"),
+      within(modelPicker).getByText("Used for new chats and automations"),
     ).toBeInTheDocument();
     expect(
-      within(defaultModelGroup).getByText("Kimi K2.7 Code"),
+      within(modelPicker).getByRole("option", {
+        name: /Kimi K2\.7 Code.*Default/,
+      }),
     ).toBeInTheDocument();
 
     await user.click(
-      buttonContainingText(
-        "Set Claude Sonnet 4.6 as default",
-        defaultModelGroup,
-      ),
+      buttonContainingText("Set Claude Sonnet 4.6 as default", modelPicker),
     );
 
     await waitFor(() => {
       expect(updatedModels).toStrictEqual(["claude-sonnet-4-6"]);
       expect(
-        queryAllByRoleFast("button", defaultModelGroup).some((button) => {
-          return button.textContent?.includes(
-            "Set Claude Sonnet 4.6 as default",
-          );
+        queryAllByRoleFast("button", modelPicker).some((button) => {
+          return button.textContent === "Set Claude Sonnet 4.6 as default";
         }),
       ).toBeFalsy();
+      expect(
+        within(modelPicker).getByRole("option", {
+          name: /Claude Sonnet 4\.6.*Default/,
+        }),
+      ).toBeInTheDocument();
     });
     await expect(
       screen.findByText("Claude Sonnet 4.6 is now your default model"),
@@ -299,7 +299,7 @@ describe("chat composer models", () => {
       expect(updatedModel).toBe("claude-sonnet-4-6");
     });
     expect(
-      screen.queryByRole("group", { name: "Default model" }),
+      screen.queryByText("Used for new chats and automations"),
     ).not.toBeInTheDocument();
   });
 
@@ -1326,7 +1326,7 @@ describe("chat composer models", () => {
     await expectComposerModel("Claude Sonnet 4.6");
     expect(preferenceRequestStarted).toBeFalsy();
     expect(
-      screen.queryByRole("group", { name: "Default model" }),
+      screen.queryByText("Used for new chats and automations"),
     ).not.toBeInTheDocument();
   });
 

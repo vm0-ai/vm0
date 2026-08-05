@@ -4215,7 +4215,7 @@
         "balancedUse": "Ausgewogene Nutzung",
         "builtInModel": "Einbaumodell",
         "byokHelp": "Verwendet Ihren konfigurierten Anbieter",
-        "defaultModel": "Standardmodell",
+        "defaultModel": "Standard",
         "defaultModelDescription": "Wird für neue Chats und Automatisierungen verwendet",
         "defaultModelUpdated": "{{model}} ist jetzt dein Standardmodell",
         "fast": "Schnell",

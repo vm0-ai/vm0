@@ -4215,7 +4215,7 @@
         "balancedUse": "संतुलित उपयोग",
         "builtInModel": "अंतर्निर्मित मॉडल",
         "byokHelp": "आपके कॉन्फ़िगर किए गए प्रोवाइडर का उपयोग करता है",
-        "defaultModel": "डिफ़ॉल्ट मॉडल",
+        "defaultModel": "डिफ़ॉल्ट",
         "defaultModelDescription": "नई चैट और ऑटोमेशन के लिए उपयोग किया जाता है",
         "defaultModelUpdated": "{{model}} अब आपका डिफ़ॉल्ट मॉडल है",
         "fast": "तेज़",

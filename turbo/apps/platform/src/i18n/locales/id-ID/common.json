@@ -4215,7 +4215,7 @@
         "balancedUse": "Penggunaan seimbang",
         "builtInModel": "Model bawaan",
         "byokHelp": "Menggunakan provider yang Anda atur",
-        "defaultModel": "Model default",
+        "defaultModel": "Default",
         "defaultModelDescription": "Digunakan untuk chat dan otomatisasi baru",
         "defaultModelUpdated": "{{model}} sekarang menjadi model default Anda",
         "fast": "Cepat",
