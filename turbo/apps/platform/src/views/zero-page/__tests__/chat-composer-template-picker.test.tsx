@@ -447,11 +447,11 @@ describe("chat composer templates", () => {
     ).toBeFalsy();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
     expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
-    expect(tabByText("Presentation")).toHaveClass("bg-gray-200");
-    expect(tabByText("Presentation")).toHaveClass("font-medium");
-    expect(tabByText("Presentation")).toHaveClass("text-sidebar-foreground");
-    expect(tabByText("Illustration")).toHaveClass("text-sidebar-foreground");
-    expect(tabByText("Illustration")).not.toHaveClass("bg-gray-200");
+    expect(tabByText("Presentation")).toHaveClass("bg-card");
+    expect(tabByText("Presentation")).toHaveClass("font-semibold");
+    expect(tabByText("Presentation")).toHaveClass("text-foreground");
+    expect(tabByText("Illustration")).toHaveClass("bg-gray-50");
+    expect(tabByText("Illustration")).not.toHaveClass("bg-card");
     const categorySelect = screen.getByRole("combobox", {
       name: "Template category",
     });
@@ -464,7 +464,7 @@ describe("chat composer templates", () => {
     expect(categorySidebar).toHaveAttribute("aria-orientation", "vertical");
     expect(categorySidebar).toHaveClass("hidden");
     expect(categorySidebar).toHaveClass("sm:flex");
-    expect(categorySidebar).toHaveClass("bg-gray-50");
+    expect(categorySidebar).toHaveClass("bg-card");
 
     await user.click(categorySelect);
     await user.click(

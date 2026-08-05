@@ -692,6 +692,7 @@
       "showVariant": "Mostrar variação {{variantNumber}}",
       "singleAccent": "Uma cor de destaque",
       "slidePreview": "Visualização dos slides de {{title}}",
+      "slidesCount": "{{total}} slides",
       "slideThumbnail": "Visualização do slide {{slideNumber}} de {{title}}",
       "template": "Modelo",
       "theme": "Tema",

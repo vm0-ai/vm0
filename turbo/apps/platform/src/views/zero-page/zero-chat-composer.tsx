@@ -26,6 +26,7 @@ import {
   IconAlertTriangle,
   IconArrowUp,
   IconBolt,
+  IconCheck,
   IconColorSwatch,
   IconDeviceDesktop,
   IconDownload,
@@ -1045,6 +1046,24 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
 const TEMPLATE_CARD_SHADOW =
   "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
 
+/**
+ * Lifted-tile hover shadow for the gallery grid, and generated flat
+ * illustrations for the category rail. The art ships as static assets under
+ * public/template-categories (transparent background, cool-gray palette
+ * locked to the design tokens) so no runtime generation is involved.
+ */
+const TEMPLATE_TILE_HOVER_SHADOW =
+  "group-hover/tile:shadow-[0_12px_28px_hsl(220_12%_40%/0.16)]";
+
+const TEMPLATE_CATEGORY_ART: Readonly<Record<string, string>> = {
+  slides: "/template-categories/slides.png",
+  website: "/template-categories/website.png",
+  illustration: "/template-categories/illustration.png",
+  video: "/template-categories/video.png",
+  avatar: "/template-categories/avatar.png",
+  workflow: "/template-categories/workflow.png",
+};
+
 function VideoTemplateCard({
   item,
   selected,
@@ -1056,49 +1075,55 @@ function VideoTemplateCard({
 }) {
   const { t } = useTranslation();
   return (
-    <div
-      className={cn(
-        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
-        TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
-      )}
-    >
-      <div className="relative h-44 shrink-0 overflow-hidden bg-muted">
+    <div className="group/tile relative">
+      <div
+        className={cn(
+          "relative aspect-[16/9] shrink-0 overflow-hidden rounded-xl border bg-muted transition-[box-shadow,transform,border-color] duration-150 motion-reduce:transform-none",
+          TEMPLATE_CARD_SHADOW,
+          selected
+            ? "border-primary ring-1 ring-primary"
+            : cn(
+                "border-gray-200 group-hover/tile:-translate-y-[3px]",
+                TEMPLATE_TILE_HOVER_SHADOW,
+              ),
+        )}
+      >
         <VideoTemplatePreview item={item} />
+        {selected ? (
+          <span className="pointer-events-none absolute right-2 top-2 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <IconCheck size={14} stroke={2.6} />
+          </span>
+        ) : null}
+        <button
+          type="button"
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectVideo;
+            },
+            {
+              title: item.title,
+            },
+          )}
+          aria-pressed={selected}
+          onClick={() => {
+            onSelect(item);
+          }}
+          className="absolute bottom-2.5 right-2.5 z-20 h-8 rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground opacity-0 transition-opacity duration-150 hover:bg-primary-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/tile:opacity-100"
+        >
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
+        </button>
       </div>
-      <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">
-            {item.title}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center">
-          <button
-            type="button"
-            aria-label={t(
-              ($) => {
-                return $.artifacts.templates.selectVideo;
-              },
-              {
-                title: item.title,
-              },
-            )}
-            aria-pressed={selected}
-            onClick={() => {
-              onSelect(item);
-            }}
-            className={cn(
-              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              selected
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-border bg-background text-foreground hover:bg-muted",
-            )}
-          >
-            {t(($) => {
-              return $.artifacts.templates.use;
-            })}
-          </button>
-        </div>
+      <div className="flex items-center gap-2 px-0.5 pt-2.5">
+        <p
+          className={cn(
+            "truncate text-sm font-medium leading-5",
+            selected ? "text-primary-800" : "text-foreground",
+          )}
+        >
+          {item.title}
+        </p>
       </div>
     </div>
   );
@@ -1165,13 +1190,20 @@ function WebsiteTemplateCard({
           preview();
         }
       }}
-      className={cn(
-        "group flex cursor-zoom-in flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
-      )}
+      className="group/tile relative cursor-zoom-in focus-visible:outline-none"
     >
-      <div className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted">
+      <div
+        className={cn(
+          "relative aspect-[16/9] shrink-0 overflow-hidden rounded-xl border bg-muted transition-[box-shadow,transform,border-color] duration-150 group-focus-visible/tile:ring-2 group-focus-visible/tile:ring-ring motion-reduce:transform-none",
+          TEMPLATE_CARD_SHADOW,
+          selected
+            ? "border-primary ring-1 ring-primary"
+            : cn(
+                "border-gray-200 group-hover/tile:-translate-y-[3px]",
+                TEMPLATE_TILE_HOVER_SHADOW,
+              ),
+        )}
+      >
         <img
           alt={t(
             ($) => {
@@ -1196,13 +1228,12 @@ function WebsiteTemplateCard({
           draggable={false}
           className="pointer-events-none h-full w-full bg-background object-cover"
         />
-      </div>
-      <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-foreground">
-            {item.title}
-          </p>
-        </div>
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-16 bg-gradient-to-t from-black/50 to-transparent opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100" />
+        {selected ? (
+          <span className="absolute right-2 top-2 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <IconCheck size={14} stroke={2.6} />
+          </span>
+        ) : null}
         <button
           type="button"
           aria-label={t(
@@ -1218,17 +1249,22 @@ function WebsiteTemplateCard({
             event.stopPropagation();
             onSelect(item);
           }}
-          className={cn(
-            "h-8 shrink-0 cursor-pointer rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            selected
-              ? "border-primary/40 bg-primary/10 text-primary"
-              : "border-border bg-background text-foreground hover:bg-muted",
-          )}
+          className="absolute bottom-2.5 right-2.5 z-20 h-8 cursor-pointer rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground opacity-0 transition-opacity duration-150 hover:bg-primary-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/tile:opacity-100"
         >
           {t(($) => {
             return $.artifacts.templates.use;
           })}
         </button>
+      </div>
+      <div className="flex items-center gap-2 px-0.5 pt-2.5">
+        <p
+          className={cn(
+            "truncate text-sm font-medium leading-5",
+            selected ? "text-primary-800" : "text-foreground",
+          )}
+        >
+          {item.title}
+        </p>
       </div>
     </div>
   );
@@ -3762,34 +3798,35 @@ function PptCard({
     themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
   );
 
+  const slideCount = presentationTemplateSlideCount(item);
+
   return (
-    <div
-      className={cn(
-        "group flex flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
-        TEMPLATE_CARD_SHADOW,
-        selected ? "border-primary ring-1 ring-primary" : "border-border",
-      )}
-    >
-      <TemplatePreview
-        item={item}
-        onPreview={onPreview}
-        runtime={runtime}
-        signals={signals}
-        theme={selectedTheme}
-      />
-      <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">
-        <div className="min-w-0 flex-1">
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <p className="min-w-0 cursor-default truncate text-sm font-semibold leading-5 text-foreground">
-                  {item.title}
-                </p>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{item.title}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+    <div className="group/tile relative">
+      <div
+        className={cn(
+          "relative overflow-hidden rounded-xl border bg-muted transition-[box-shadow,transform,border-color] duration-150 motion-reduce:transform-none",
+          TEMPLATE_CARD_SHADOW,
+          selected
+            ? "border-primary ring-1 ring-primary"
+            : cn(
+                "border-gray-200 group-hover/tile:-translate-y-[3px]",
+                TEMPLATE_TILE_HOVER_SHADOW,
+              ),
+        )}
+      >
+        <TemplatePreview
+          item={item}
+          onPreview={onPreview}
+          runtime={runtime}
+          signals={signals}
+          theme={selectedTheme}
+        />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-16 bg-gradient-to-t from-black/50 to-transparent opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100" />
+        {selected ? (
+          <span className="absolute right-2 top-2 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <IconCheck size={14} stroke={2.6} />
+          </span>
+        ) : null}
         <button
           type="button"
           aria-label={t(
@@ -3804,17 +3841,39 @@ function PptCard({
           onClick={() => {
             onSelect(item, presentationTemplateColorSystemId(selectedTheme.id));
           }}
-          className={cn(
-            "h-8 shrink-0 rounded-md border border-border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            selected
-              ? "bg-primary/10 text-primary"
-              : "bg-background text-foreground hover:bg-muted",
-          )}
+          className="absolute bottom-2.5 right-2.5 z-20 h-8 rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground opacity-0 transition-opacity duration-150 hover:bg-primary-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/tile:opacity-100"
         >
           {t(($) => {
             return $.artifacts.templates.use;
           })}
         </button>
+      </div>
+      <div className="flex items-center gap-2 px-0.5 pt-2.5">
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <p
+                className={cn(
+                  "min-w-0 cursor-default truncate text-sm font-medium leading-5",
+                  selected ? "text-primary-800" : "text-foreground",
+                )}
+              >
+                {item.title}
+              </p>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{item.title}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <span className="ml-auto shrink-0 text-xs text-gray-700">
+          {t(
+            ($) => {
+              return $.artifacts.templates.slidesCount;
+            },
+            {
+              total: slideCount,
+            },
+          )}
+        </span>
       </div>
     </div>
   );
@@ -4530,16 +4589,16 @@ function TemplatePickerCategoryNav({
         })}
         aria-orientation="vertical"
         data-template-picker-sidebar=""
-        className="hidden w-52 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-gray-50 p-3 sm:flex"
+        className="hidden w-[236px] shrink-0 flex-col gap-1.5 overflow-y-auto border-r border-border bg-card p-3 sm:flex"
       >
-        <div className="flex min-h-[50px] items-center px-2">
+        <div className="flex min-h-[44px] items-center px-2">
           <h2 className="text-lg font-semibold tracking-tight text-foreground">
             {t(($) => {
               return $.artifacts.templates.template;
             })}
           </h2>
         </div>
-        {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
+        {categoryOptions.map(({ value, label }, categoryIndex) => {
           const selected = value === selectedCategory;
           return (
             <button
@@ -4575,14 +4634,22 @@ function TemplatePickerCategoryNav({
                 onChange(categoryOptions[nextIndex]?.value ?? value);
               }}
               className={cn(
-                "flex h-8 w-full items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                "group flex h-16 w-full shrink-0 items-center gap-2 rounded-[10px] border py-0 pl-3 pr-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                 selected
-                  ? "bg-gray-200 font-medium text-sidebar-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent focus-visible:bg-sidebar-accent",
+                  ? cn(
+                      "border-gray-300 bg-card font-semibold text-foreground",
+                      TEMPLATE_CARD_SHADOW,
+                    )
+                  : "border-transparent bg-gray-50 text-gray-800 hover:bg-gray-100 focus-visible:bg-gray-100",
               )}
             >
-              <Icon className="h-4 w-4 shrink-0 text-gray-700" stroke={1.8} />
-              <span className="truncate">{label}</span>
+              <span className="min-w-0 flex-1 truncate">{label}</span>
+              <img
+                src={TEMPLATE_CATEGORY_ART[value]}
+                alt=""
+                draggable={false}
+                className="h-[52px] w-[72px] shrink-0 object-contain transition-transform duration-200 group-hover:-translate-y-px group-hover:-rotate-3 group-hover:scale-105 motion-reduce:transform-none motion-reduce:transition-none"
+              />
             </button>
           );
         })}
@@ -4628,7 +4695,7 @@ function TemplatePickerCategoryHeader({
   return (
     <header
       className={cn(
-        "hidden min-h-[74px] shrink-0 items-center border-b border-border px-5 py-4 sm:flex",
+        "hidden h-14 shrink-0 items-center border-b border-border px-5 sm:flex",
         selectedCategory === "workflow" ? "pr-[21rem]" : "pr-14",
       )}
     >
@@ -4655,7 +4722,7 @@ function TemplatePickerWorkflowSearch({
     return null;
   }
   return (
-    <div className="shrink-0 border-b border-border px-4 py-3 sm:absolute sm:right-14 sm:top-[21px] sm:z-10 sm:w-64 sm:border-0 sm:p-0">
+    <div className="shrink-0 border-b border-border px-4 py-3 sm:absolute sm:right-14 sm:top-3 sm:z-10 sm:w-64 sm:border-0 sm:p-0">
       <div className="relative">
         <IconSearch
           className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"

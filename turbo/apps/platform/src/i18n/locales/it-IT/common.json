@@ -692,6 +692,7 @@
       "showVariant": "Mostra variante {{variantNumber}}",
       "singleAccent": "Singolo accento",
       "slidePreview": "{{title}} anteprima diapositiva",
+      "slidesCount": "{{total}} diapositive",
       "slideThumbnail": "{{title}} diapositiva {{slideNumber}} anteprima",
       "template": "Modello",
       "theme": "Tema",

@@ -692,6 +692,7 @@
       "showVariant": "Afficher la variante {{variantNumber}}",
       "singleAccent": "Accent unique",
       "slidePreview": "Aperçu de la diapositive {{title}}",
+      "slidesCount": "{{total}} diapositives",
       "slideThumbnail": "Aperçu de la diapositive {{slideNumber}} de {{title}}",
       "template": "Modèle",
       "theme": "Thème",

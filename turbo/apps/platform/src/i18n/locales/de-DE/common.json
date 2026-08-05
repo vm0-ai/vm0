@@ -675,6 +675,7 @@
       "showVariant": "Variante {{variantNumber}} anzeigen",
       "singleAccent": "Einzelakzent",
       "slidePreview": "{{title}} Folienvorschau",
+      "slidesCount": "{{total}} Folien",
       "slideThumbnail": "{{title}} Folie {{slideNumber}} Vorschau",
       "template": "Vorlage",
       "theme": "Thema",

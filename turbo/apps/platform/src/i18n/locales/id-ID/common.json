@@ -675,6 +675,7 @@
       "showVariant": "Tampilkan varian {{variantNumber}}",
       "singleAccent": "Satu aksen",
       "slidePreview": "pratinjau slide {{title}}",
+      "slidesCount": "{{total}} slide",
       "slideThumbnail": "pratinjau slide {{title}} {{slideNumber}}",
       "template": "Template",
       "theme": "Tema",

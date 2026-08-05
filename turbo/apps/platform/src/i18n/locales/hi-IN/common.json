@@ -675,6 +675,7 @@
       "showVariant": "वैरिएंट {{variantNumber}} दिखाएँ",
       "singleAccent": "एकल-उच्चारण",
       "slidePreview": "{{title}} स्लाइड पूर्वावलोकन",
+      "slidesCount": "{{total}} स्लाइड",
       "slideThumbnail": "{{title}} स्लाइड {{slideNumber}} पूर्वावलोकन",
       "template": "खाका",
       "theme": "विषय",

@@ -675,6 +675,7 @@
       "showVariant": "バリアント {{variantNumber}} を表示",
       "singleAccent": "シングルアクセント",
       "slidePreview": "{{title}} スライド プレビュー",
+      "slidesCount": "{{total}} スライド",
       "slideThumbnail": "{{title}} スライド {{slideNumber}} プレビュー",
       "template": "テンプレート",
       "theme": "テーマ",

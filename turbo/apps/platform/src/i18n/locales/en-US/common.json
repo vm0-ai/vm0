@@ -675,6 +675,7 @@
       "showVariant": "Show variant {{variantNumber}}",
       "singleAccent": "Single-accent",
       "slidePreview": "{{title}} slide preview",
+      "slidesCount": "{{total}} slides",
       "slideThumbnail": "{{title}} slide {{slideNumber}} preview",
       "template": "Template",
       "theme": "Theme",
