@@ -4611,7 +4611,7 @@ function TemplatePickerCategoryNav({
                 className={cn(
                   "group inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border bg-transparent px-3.5 text-[13.5px] leading-[18px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-500",
                   selected
-                    ? "border-foreground font-medium text-foreground"
+                    ? "border-primary font-medium text-foreground"
                     : "border-gray-400 text-gray-800 hover:border-gray-500 hover:bg-gray-50 hover:text-foreground",
                 )}
               >
@@ -4619,7 +4619,7 @@ function TemplatePickerCategoryNav({
                   className={cn(
                     "h-[15px] w-[15px] shrink-0 transition-colors",
                     selected
-                      ? "text-foreground"
+                      ? "text-primary"
                       : "text-gray-700 group-hover:text-gray-800",
                   )}
                   stroke={1.8}

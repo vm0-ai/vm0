@@ -2470,7 +2470,9 @@ describe("chat composer templates", () => {
 
     // Variant thumbnails switch the hero inline within the card; there is no
     // longer a second preview dialog.
-    const card = screen.getByAltText(heroAlt).closest<HTMLElement>("div.group");
+    const card = screen
+      .getByAltText(heroAlt)
+      .closest<HTMLElement>("[data-illustration-template-card]");
     if (!card) {
       throw new Error("Illustration card not found");
     }
@@ -2641,7 +2643,9 @@ describe("chat composer templates", () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(scrollTo).not.toHaveBeenCalled();
 
-    const card = screen.getByAltText(heroAlt).closest<HTMLElement>("div.group");
+    const card = screen
+      .getByAltText(heroAlt)
+      .closest<HTMLElement>("[data-illustration-template-card]");
     if (!card) {
       throw new Error("Illustration card not found");
     }
@@ -2755,7 +2759,7 @@ describe("chat composer templates", () => {
     // Clicking near the right boundary scrolls all the way to the end.
     const remountedCard = screen
       .getByAltText(heroAlt)
-      .closest<HTMLElement>("div.group");
+      .closest<HTMLElement>("[data-illustration-template-card]");
     if (!remountedCard) {
       throw new Error("Remounted illustration card not found");
     }
