@@ -1,5 +1,8 @@
 """Bounded compressed-input traversal for zlib decoders."""
 
+# Bound how much following compressed input zlib can copy into a member tail.
+# One KiB prevents full-body tails while keeping a 64 KiB source to at most
+# 64 fresh source slices.
 _ZLIB_DECOMPRESS_INPUT_CHUNK_SIZE = 1024
 
 
