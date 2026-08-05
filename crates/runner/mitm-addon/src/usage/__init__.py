@@ -61,6 +61,7 @@ from .openai_responses import (
     extract_openai_responses_usage_from_event,
     extract_openai_responses_usage_with_error_from_json,
     inspect_openai_responses_event_json,
+    inspect_openai_responses_event_type_json,
     merge_openai_responses_usage_result,
 )
 from .providers.connectors import (
@@ -104,6 +105,7 @@ __all__ = [
     "has_positive_model_provider_usage",
     "increment_in_flight_flows",
     "inspect_openai_responses_event_json",
+    "inspect_openai_responses_event_type_json",
     "is_model_provider_usage_observable",
     "merge_openai_responses_usage_result",
     "needs_connector_response_buffer_fallback",

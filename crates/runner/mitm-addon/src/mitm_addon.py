@@ -1548,7 +1548,7 @@ def responseheaders(flow: http.HTTPFlow) -> None:
 
 
 def websocket_message(flow: http.HTTPFlow) -> None:
-    """Bound registered WebSocket history and feed model-provider usage."""
+    """Bound WebSocket history and observe model-provider protocol events."""
     if not flow.websocket or not flow.websocket.messages:
         return
     if not flow_metadata.run_id(flow.metadata):
@@ -1558,11 +1558,16 @@ def websocket_message(flow: http.HTTPFlow) -> None:
     websocket_retention.schedule_message_trim(flow)
     if not response_streaming.is_model_websocket_usage_enabled(flow):
         return
+    uses_openai_responses = response_streaming.uses_openai_responses_usage_protocol(flow)
     if getattr(message, "from_client", False):
+        if uses_openai_responses:
+            body = message.content.encode() if isinstance(message.content, str) else message.content
+            event_type = usage.inspect_openai_responses_event_type_json(body)
+            codex_output_timing.observe_client_event(flow, event_type, message.timestamp)
         return
     body = message.content.encode() if isinstance(message.content, str) else message.content
     event = usage.inspect_openai_responses_event_json(body)
-    if response_streaming.uses_openai_responses_usage_protocol(flow):
+    if uses_openai_responses:
         codex_output_timing.observe_server_event(flow, event.event_type)
     response_streaming.feed_model_websocket_usage(flow, event)
 

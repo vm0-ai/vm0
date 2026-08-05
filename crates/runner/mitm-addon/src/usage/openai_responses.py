@@ -11,10 +11,11 @@ model-provider usage billing:
   ``mitm_addon.py`` fallback used by legacy/test flows without
   response-streaming parser state.
 - Single-frame WebSocket event JSON via
-  ``inspect_openai_responses_event_json`` and
+  ``inspect_openai_responses_event_type_json``,
+  ``inspect_openai_responses_event_json``, and
   ``extract_openai_responses_usage_from_event``, consumed by
-  ``mitm_addon.py`` and ``response_streaming.py`` for Responses events received
-  over upgrades.
+  ``mitm_addon.py`` and ``response_streaming.py`` for client event-type timing
+  and server usage events received over upgrades.
 - Per-event usage aggregation via ``merge_openai_responses_usage_result``,
   used by ``response_streaming.py`` to fold terminal SSE and WebSocket event
   usage into a per-flow accumulator.
@@ -184,12 +185,16 @@ def inspect_openai_responses_event_json(body: bytes) -> OpenAIResponsesEvent:
     usage inspection.
     """
     result = _probe_responses_event_type(body)
-    event_type = result.value if result.status == "found" and result.value is not None else None
     return OpenAIResponsesEvent(
-        event_type=event_type,
+        event_type=_observed_responses_event_type(result),
         _body=body,
         _classification=_classify_responses_event_type_result(result),
     )
+
+
+def inspect_openai_responses_event_type_json(body: bytes) -> str | None:
+    """Probe one Responses frame for its top-level ``type`` without retaining it."""
+    return _observed_responses_event_type(_probe_responses_event_type(body))
 
 
 def _probe_responses_event_type(body: bytes) -> TopLevelStringFieldProbeResult:
@@ -199,6 +204,10 @@ def _probe_responses_event_type(body: bytes) -> TopLevelStringFieldProbeResult:
         max_depth=_JSON_PREFILTER_MAX_DEPTH,
         max_string_bytes=_JSON_PREFILTER_MAX_STRING_BYTES,
     )
+
+
+def _observed_responses_event_type(result: TopLevelStringFieldProbeResult) -> str | None:
+    return result.value if result.status == "found" and result.value is not None else None
 
 
 def _classify_responses_event_type(body: bytes) -> _ResponsesEventTypeClassification:
