@@ -30,6 +30,25 @@ impl WorkspaceImageCache {
             statvfs_bytes(&path).await
         }
     }
+
+    pub(super) async fn ensure_workspace_cache_entry_dir(
+        &self,
+        cache_key: &str,
+    ) -> RunnerResult<()> {
+        crate::host_file::ensure_dir(
+            self.workspace_image_cache_dir(),
+            crate::host_file::DirMode::Private,
+            "workspace image cache root",
+        )?;
+        let entry_dir = self.workspace_image_cache_entry_dir(cache_key);
+        remove_non_directory_workspace_cache_entry(&entry_dir).await?;
+        crate::host_file::ensure_dir(
+            &entry_dir,
+            crate::host_file::DirMode::Private,
+            "workspace image cache entry",
+        )?;
+        Ok(())
+    }
 }
 
 pub(super) fn is_workspace_tmp_path_name(name: &str) -> bool {
@@ -112,17 +131,12 @@ pub(super) async fn remove_non_directory_workspace_cache_entry(path: &Path) -> R
     Ok(true)
 }
 
-pub(super) async fn ensure_workspace_cache_entry_dir(path: &Path) -> RunnerResult<()> {
-    remove_non_directory_workspace_cache_entry(path).await?;
-    fs::create_dir_all(path).await?;
-    let metadata = fs::symlink_metadata(path).await?;
-    if metadata.is_dir() {
-        return Ok(());
-    }
-    Err(RunnerError::Internal(format!(
-        "workspace image cache entry is not a directory: {}",
-        path.display()
-    )))
+pub(super) fn secure_workspace_cache_publication_file(path: &Path) -> RunnerResult<()> {
+    crate::host_file::validate_private_file_destination(
+        path,
+        "workspace image cache publication file",
+    )?;
+    Ok(())
 }
 
 pub(super) fn has_copy_headroom(stats: FsStats, budget: CacheBudget, allocated_bytes: u64) -> bool {
