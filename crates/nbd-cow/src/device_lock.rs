@@ -119,16 +119,26 @@ pub fn try_acquire_device_claim_in(
     index: u32,
     lock_dir: &Path,
 ) -> io::Result<Option<NbdDeviceClaim>> {
+    try_acquire_device_claim_in_with(index, lock_dir, |_| {})
+}
+
+fn try_acquire_device_claim_in_with(
+    index: u32,
+    lock_dir: &Path,
+    mut before_current_inode_check: impl FnMut(&Path),
+) -> io::Result<Option<NbdDeviceClaim>> {
     let path = device_lock_path_in(index, lock_dir);
     for _ in 0..MAX_STALE_INODE_RETRIES {
         let file = open_lock_file(&path)?;
         match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
             Ok(lock) => {
+                before_current_inode_check(&path);
                 if lock_inode_is_current(&lock, &path)? {
                     return Ok(Some(NbdDeviceClaim { index, _lock: lock }));
                 }
             }
             Err((file, errno)) if errno == nix::errno::Errno::EWOULDBLOCK => {
+                before_current_inode_check(&path);
                 if file_inode_is_current(&file, &path)? {
                     return Ok(None);
                 }
@@ -260,6 +270,11 @@ mod tests {
 
     use super::*;
 
+    fn replace_lock_file(path: &Path) {
+        std::fs::remove_file(path).expect("remove lock path");
+        drop(create_lock_file(path).expect("recreate lock path"));
+    }
+
     #[test]
     fn second_claim_for_same_index_reports_busy_until_first_drops() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -342,6 +357,74 @@ mod tests {
     }
 
     #[test]
+    fn claim_retries_after_successful_flock_on_replaced_inode() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = device_lock_path_in(7, dir.path());
+        let mut replaced = false;
+
+        let claim = try_acquire_device_claim_in_with(7, dir.path(), |lock_path| {
+            if !replaced {
+                replace_lock_file(lock_path);
+                replaced = true;
+            }
+        })
+        .expect("lock attempt should not fail")
+        .expect("replacement lock should be free");
+
+        assert!(replaced, "lock path should be replaced after flock");
+        assert!(
+            lock_inode_is_current(&claim._lock, &path).expect("inode comparison"),
+            "returned claim should hold the current lock inode"
+        );
+    }
+
+    #[test]
+    fn claim_retries_after_contention_on_replaced_inode() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = device_lock_path_in(7, dir.path());
+        let stale_file = create_lock_file(&path).expect("create stale lock file");
+        let _stale_lock = Flock::lock(stale_file, FlockArg::LockExclusiveNonblock)
+            .map_err(|(_file, errno)| errno)
+            .expect("hold stale lock");
+        let mut replaced = false;
+
+        let claim = try_acquire_device_claim_in_with(7, dir.path(), |lock_path| {
+            if !replaced {
+                replace_lock_file(lock_path);
+                replaced = true;
+            }
+        })
+        .expect("lock attempt should not fail")
+        .expect("replacement lock should be free");
+
+        assert!(replaced, "contended lock path should be replaced");
+        assert!(
+            lock_inode_is_current(&claim._lock, &path).expect("inode comparison"),
+            "returned claim should hold the current lock inode"
+        );
+    }
+
+    #[test]
+    fn claim_errors_after_repeated_lock_path_replacement() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = device_lock_path_in(7, dir.path());
+        let mut replacement_count = 0;
+
+        let error = try_acquire_device_claim_in_with(7, dir.path(), |lock_path| {
+            replace_lock_file(lock_path);
+            replacement_count += 1;
+        })
+        .expect_err("repeated lock path replacement should fail");
+
+        assert_eq!(replacement_count, MAX_STALE_INODE_RETRIES);
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(
+            error.to_string(),
+            format!("lock path {} changed during NBD claim", path.display())
+        );
+    }
+
+    #[test]
     fn held_claim_detects_replaced_lock_file_inode() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = device_lock_path_in(7, dir.path());
@@ -349,8 +432,7 @@ mod tests {
             .expect("lock")
             .expect("claim");
 
-        std::fs::remove_file(&path).expect("remove lock path");
-        drop(create_lock_file(&path).expect("recreate lock path"));
+        replace_lock_file(&path);
 
         assert!(
             !lock_inode_is_current(&claim._lock, &path).expect("inode comparison"),
