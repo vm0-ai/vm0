@@ -11,6 +11,7 @@ use std::time::Instant;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use futures_util::FutureExt;
 use sandbox::SandboxId;
+use tokio::sync::OwnedMutexGuard;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
@@ -44,7 +45,9 @@ use crate::lifecycle::RunnerMode;
 use crate::paths::short_digest;
 use crate::provider::{ClaimedJob, JobCandidate, RunnerPreferenceReason};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
-use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
+use crate::run_cancellation::{
+    RunCancellationHandle, RunCancellationRegistration, RunCancellationRegistry,
+};
 use crate::status::StatusTracker;
 use crate::types::{
     ExecutionContext, HeldWorkspaceState, SandboxReuseResult, WORKSPACE_AFFINITY_VERSION,
@@ -298,9 +301,16 @@ pub(super) async fn handle_discovered_job(
         claimed.context().reuse_key().map(str::to_owned),
     );
 
-    let (reuse_entry, active_lease, reuse_result, idle_snapshot, needs_reuse_state_refresh) =
-        match resource {
-            AdmittedResource::Fresh(job_lease) => {
+    let (
+        reuse_entry,
+        active_lease,
+        reuse_result,
+        idle_snapshot,
+        needs_reuse_state_refresh,
+        activation_transfer_guard,
+    ) = match resource {
+        AdmittedResource::Fresh(job_lease) => {
+            let (reuse_entry, active_lease, reuse_result, idle_snapshot, refresh) =
                 try_reuse_from_pool(
                     run_id,
                     ReuseAdmissionRequest {
@@ -313,99 +323,136 @@ pub(super) async fn handle_discovered_job(
                     &mut ctx,
                     &mut pre_spawn_timing,
                 )
-                .await
-            }
-            AdmittedResource::Reusable(reservation) => {
-                match activate_reserved_idle(
-                    *reservation,
-                    ReservedActivationRequest {
-                        run_id,
-                        profile_name: &profile_name,
-                        workspace_disk_mb: job_workspace_disk_mb,
-                        context: claimed.context(),
-                    },
-                    &mut ctx,
-                    &mut pre_spawn_timing,
-                )
-                .await
-                {
-                    ReservedActivation::Ready {
-                        reuse_entry,
-                        active_lease,
-                        reuse_result,
-                        idle_snapshot,
-                    } => (
-                        reuse_entry.map(|entry| *entry),
-                        active_lease,
-                        reuse_result,
-                        Some(idle_snapshot),
-                        true,
-                    ),
-                    ReservedActivation::CannotStart {
-                        budget_lease,
-                        reuse_result,
-                        error,
-                    } => {
-                        complete_claimed_without_sandbox(
-                            claimed,
-                            cancellation,
-                            AdmittedResource::Fresh(budget_lease),
-                            job_workspace_disk_mb,
-                            Some(reuse_result),
-                            crate::executor::ExecutionFailure::from_error(error),
-                            &mut ctx,
-                        )
-                        .await;
-                        return DiscoveredJobResult::completed(true);
-                    }
+                .await;
+            (
+                reuse_entry,
+                active_lease,
+                reuse_result,
+                idle_snapshot,
+                refresh,
+                None,
+            )
+        }
+        AdmittedResource::Reusable(reservation) => {
+            match activate_reserved_idle(
+                *reservation,
+                ReservedActivationRequest {
+                    run_id,
+                    profile_name: &profile_name,
+                    workspace_disk_mb: job_workspace_disk_mb,
+                    context: claimed.context(),
+                },
+                &mut ctx,
+                &mut pre_spawn_timing,
+            )
+            .await
+            {
+                ReservedActivation::Ready {
+                    reuse_entry,
+                    active_lease,
+                    reuse_result,
+                    idle_snapshot,
+                } => (
+                    reuse_entry.map(|entry| *entry),
+                    active_lease,
+                    reuse_result,
+                    Some(idle_snapshot),
+                    true,
+                    None,
+                ),
+                ReservedActivation::CannotStart {
+                    budget_lease,
+                    reuse_result,
+                    error,
+                } => {
+                    complete_claimed_without_sandbox(
+                        claimed,
+                        cancellation,
+                        AdmittedResource::Fresh(budget_lease),
+                        job_workspace_disk_mb,
+                        Some(reuse_result),
+                        crate::executor::ExecutionFailure::from_error(error),
+                        &mut ctx,
+                    )
+                    .await;
+                    return DiscoveredJobResult::completed(true);
                 }
             }
-            AdmittedResource::ExactSpeculation(speculation) => {
-                match activate_speculated_exact(
-                    speculation,
-                    ReservedActivationRequest {
-                        run_id,
-                        profile_name: &profile_name,
-                        workspace_disk_mb: job_workspace_disk_mb,
-                        context: claimed.context(),
-                    },
-                    &ctx,
-                    &mut pre_spawn_timing,
-                )
-                .await
-                {
-                    ReservedActivation::Ready {
-                        reuse_entry,
-                        active_lease,
+        }
+        AdmittedResource::ExactSpeculation(speculation) => {
+            let pending = activate_speculated_exact(
+                speculation,
+                ReservedActivationRequest {
+                    run_id,
+                    profile_name: &profile_name,
+                    workspace_disk_mb: job_workspace_disk_mb,
+                    context: claimed.context(),
+                },
+                &ctx,
+                &mut pre_spawn_timing,
+            )
+            .await;
+            match finish_exact_activation(pending, &cancellation.handle(), run_id, &ctx).await {
+                ExactActivation::Ready {
+                    reuse_entry,
+                    active_lease,
+                    reuse_result,
+                    idle_snapshot,
+                    transfer_guard,
+                } => (
+                    reuse_entry.map(|entry| *entry),
+                    active_lease,
+                    reuse_result,
+                    Some(idle_snapshot),
+                    true,
+                    Some(transfer_guard),
+                ),
+                ExactActivation::Cancelled {
+                    resource,
+                    reuse_result,
+                } => {
+                    let run_id = complete_claimed_failure(
+                        claimed,
+                        cancellation,
                         reuse_result,
-                        idle_snapshot,
-                    } => (
-                        reuse_entry.map(|entry| *entry),
-                        active_lease,
-                        reuse_result,
-                        Some(idle_snapshot),
-                        true,
-                    ),
-                    ReservedActivation::CannotStart {
-                        budget_lease,
-                        reuse_result,
-                        error,
-                    } => {
-                        complete_claimed_without_sandbox(
-                            claimed,
-                            cancellation,
-                            AdmittedResource::Fresh(budget_lease),
-                            job_workspace_disk_mb,
-                            Some(reuse_result),
-                            crate::executor::ExecutionFailure::from_error(error),
-                            &mut ctx,
-                        )
-                        .await;
-                        return DiscoveredJobResult::completed(true);
+                        crate::executor::ExecutionFailure::cancelled(),
+                        &ctx,
+                    )
+                    .await;
+                    match resource {
+                        CancelledExactResource::Prepared(sandbox) => {
+                            rollback_exact_speculation_outcome(
+                                ExactSpeculationOutcome::Prepared(sandbox),
+                                run_id,
+                                job_workspace_disk_mb,
+                                &mut ctx,
+                            )
+                            .await;
+                        }
+                        CancelledExactResource::Fresh(budget_lease) => drop(budget_lease),
                     }
+                    return DiscoveredJobResult::completed(true);
+                }
+                ExactActivation::CannotStart {
+                    budget_lease,
+                    reuse_result,
+                    error,
+                } => {
+                    complete_claimed_without_sandbox(
+                        claimed,
+                        cancellation,
+                        AdmittedResource::Fresh(budget_lease),
+                        job_workspace_disk_mb,
+                        Some(reuse_result),
+                        crate::executor::ExecutionFailure::from_error(error),
+                        &mut ctx,
+                    )
+                    .await;
+                    return DiscoveredJobResult::completed(true);
                 }
             }
-        };
+        }
+    };
 
     let session_history_restore_plan =
         build_session_history_restore_plan(SessionHistoryRestorePlanInput {
@@ -464,6 +511,7 @@ pub(super) async fn handle_discovered_job(
         ctx.spawn_ctx,
         ctx.jobs,
     );
+    drop(activation_transfer_guard);
     DiscoveredJobResult::completed(needs_reuse_state_refresh)
 }
 
@@ -1088,7 +1136,16 @@ async fn rollback_exact_speculation(
     workspace_disk_mb: u32,
     ctx: &mut DiscoveredJobContext<'_>,
 ) {
-    let destroy_job = match speculation.outcome {
+    rollback_exact_speculation_outcome(speculation.outcome, run_id, workspace_disk_mb, ctx).await;
+}
+
+async fn rollback_exact_speculation_outcome(
+    outcome: ExactSpeculationOutcome,
+    run_id: RunId,
+    workspace_disk_mb: u32,
+    ctx: &mut DiscoveredJobContext<'_>,
+) {
+    let destroy_job = match outcome {
         ExactSpeculationOutcome::Prepared(sandbox) => {
             match sandbox
                 .repark_for_claim_rollback(run_id, u64::from(workspace_disk_mb) * 1024 * 1024)
@@ -1153,12 +1210,89 @@ enum ReservedActivation {
     },
 }
 
+enum FreshFallbackActivation {
+    Ready {
+        active_lease: BudgetLease,
+        reuse_result: SandboxReuseResult,
+        idle_snapshot: IdlePoolSnapshot,
+    },
+    CannotStart {
+        budget_lease: BudgetLease,
+        reuse_result: SandboxReuseResult,
+        error: String,
+    },
+}
+
+impl From<FreshFallbackActivation> for ReservedActivation {
+    fn from(activation: FreshFallbackActivation) -> Self {
+        match activation {
+            FreshFallbackActivation::Ready {
+                active_lease,
+                reuse_result,
+                idle_snapshot,
+            } => Self::Ready {
+                reuse_entry: None,
+                active_lease,
+                reuse_result,
+                idle_snapshot,
+            },
+            FreshFallbackActivation::CannotStart {
+                budget_lease,
+                reuse_result,
+                error,
+            } => Self::CannotStart {
+                budget_lease,
+                reuse_result,
+                error,
+            },
+        }
+    }
+}
+
+enum PendingExactActivation {
+    Prepared {
+        sandbox: Box<SpeculativeIdleSandbox>,
+        guest_state_prepared: bool,
+    },
+    FreshFallback(FreshFallbackActivation),
+}
+
+impl From<FreshFallbackActivation> for PendingExactActivation {
+    fn from(activation: FreshFallbackActivation) -> Self {
+        Self::FreshFallback(activation)
+    }
+}
+
+enum CancelledExactResource {
+    Prepared(Box<SpeculativeIdleSandbox>),
+    Fresh(BudgetLease),
+}
+
+enum ExactActivation {
+    Ready {
+        reuse_entry: Option<Box<ReusableIdleSandbox>>,
+        active_lease: BudgetLease,
+        reuse_result: SandboxReuseResult,
+        idle_snapshot: IdlePoolSnapshot,
+        transfer_guard: OwnedMutexGuard<()>,
+    },
+    Cancelled {
+        resource: CancelledExactResource,
+        reuse_result: Option<SandboxReuseResult>,
+    },
+    CannotStart {
+        budget_lease: BudgetLease,
+        reuse_result: SandboxReuseResult,
+        error: String,
+    },
+}
+
 async fn activate_speculated_exact(
     speculation: ExactSpeculation,
     request: ReservedActivationRequest<'_>,
     ctx: &DiscoveredJobContext<'_>,
     pre_spawn_timing: &mut RunnerPreSpawnTiming,
-) -> ReservedActivation {
+) -> PendingExactActivation {
     let ReservedActivationRequest {
         run_id,
         profile_name,
@@ -1202,7 +1336,8 @@ async fn activate_speculated_exact(
                 "speculative_exact_reuse_prepare_failed",
                 ctx,
             )
-            .await;
+            .await
+            .into();
         }
     };
 
@@ -1225,7 +1360,8 @@ async fn activate_speculated_exact(
             "speculative_reuse_session_mismatch",
             ctx,
         )
-        .await;
+        .await
+        .into();
     }
 
     if let Some(cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
@@ -1254,7 +1390,8 @@ async fn activate_speculated_exact(
                 "speculative_workspace_promotion_mismatch",
                 ctx,
             )
-            .await;
+            .await
+            .into();
         }
     }
 
@@ -1294,7 +1431,8 @@ async fn activate_speculated_exact(
                         "speculative_timezone_correction_failed",
                         ctx,
                     )
-                    .await;
+                    .await
+                    .into();
                 }
                 Err(_) => {
                     speculation_timing.timezone_correction =
@@ -1314,7 +1452,8 @@ async fn activate_speculated_exact(
                         "speculative_timezone_correction_panicked",
                         ctx,
                     )
-                    .await;
+                    .await
+                    .into();
                 }
             }
             true
@@ -1329,18 +1468,78 @@ async fn activate_speculated_exact(
     speculation_timing.timezone_assumption = Some(assumption);
     pre_spawn_timing.record_exact_reuse_speculation(speculation_timing);
 
-    let (reuse_entry, active_lease) = sandbox.commit(guest_state_prepared);
-    info!(
-        run_id = %run_id,
-        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
-        reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
-        "committing speculatively prepared exact-reuse VM"
-    );
-    ReservedActivation::Ready {
-        reuse_entry: Some(Box::new(reuse_entry)),
-        active_lease,
-        reuse_result: SandboxReuseResult::Reused,
-        idle_snapshot: ctx.idle_pool.lock().await.status_snapshot(),
+    PendingExactActivation::Prepared {
+        sandbox,
+        guest_state_prepared,
+    }
+}
+
+async fn finish_exact_activation(
+    activation: PendingExactActivation,
+    cancellation: &RunCancellationHandle,
+    run_id: RunId,
+    ctx: &DiscoveredJobContext<'_>,
+) -> ExactActivation {
+    match activation {
+        PendingExactActivation::Prepared {
+            sandbox,
+            guest_state_prepared,
+        } => {
+            let transfer_guard = cancellation.transfer_guard().await;
+            if cancellation.is_cancelled() {
+                drop(transfer_guard);
+                return ExactActivation::Cancelled {
+                    resource: CancelledExactResource::Prepared(sandbox),
+                    reuse_result: None,
+                };
+            }
+
+            let reuse_key = sandbox.reuse_key().to_owned();
+            let (reuse_entry, active_lease) = sandbox.commit(guest_state_prepared);
+            info!(
+                run_id = %run_id,
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
+                reuse_key_kind = reuse_key_kind(&reuse_key),
+                "committing speculatively prepared exact-reuse VM"
+            );
+            ExactActivation::Ready {
+                reuse_entry: Some(Box::new(reuse_entry)),
+                active_lease,
+                reuse_result: SandboxReuseResult::Reused,
+                idle_snapshot: ctx.idle_pool.lock().await.status_snapshot(),
+                transfer_guard,
+            }
+        }
+        PendingExactActivation::FreshFallback(FreshFallbackActivation::Ready {
+            active_lease,
+            reuse_result,
+            idle_snapshot,
+        }) => {
+            let transfer_guard = cancellation.transfer_guard().await;
+            if cancellation.is_cancelled() {
+                drop(transfer_guard);
+                return ExactActivation::Cancelled {
+                    resource: CancelledExactResource::Fresh(active_lease),
+                    reuse_result: Some(reuse_result),
+                };
+            }
+            ExactActivation::Ready {
+                reuse_entry: None,
+                active_lease,
+                reuse_result,
+                idle_snapshot,
+                transfer_guard,
+            }
+        }
+        PendingExactActivation::FreshFallback(FreshFallbackActivation::CannotStart {
+            budget_lease,
+            reuse_result,
+            error,
+        }) => ExactActivation::CannotStart {
+            budget_lease,
+            reuse_result,
+            error,
+        },
     }
 }
 
@@ -1380,7 +1579,8 @@ async fn activate_reserved_idle(
             "reserved_reuse_session_mismatch",
             ctx,
         )
-        .await;
+        .await
+        .into();
     }
 
     if let Some(cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
@@ -1409,7 +1609,8 @@ async fn activate_reserved_idle(
                 "reserved_reuse_workspace_promotion_mismatch",
                 ctx,
             )
-            .await;
+            .await
+            .into();
         }
     }
 
@@ -1450,6 +1651,7 @@ async fn activate_reserved_idle(
                 ctx,
             )
             .await
+            .into()
         }
     }
 }
@@ -1459,16 +1661,15 @@ async fn cleanup_reserved_for_fresh_fallback(
     reuse_result: SandboxReuseResult,
     cleanup_context: &'static str,
     ctx: &DiscoveredJobContext<'_>,
-) -> ReservedActivation {
+) -> FreshFallbackActivation {
     let cleanup = destroy_job.run_retaining_lease(cleanup_context).await;
     match cleanup.outcome {
-        DestroyOutcome::Completed => ReservedActivation::Ready {
-            reuse_entry: None,
+        DestroyOutcome::Completed => FreshFallbackActivation::Ready {
             active_lease: cleanup.budget_lease,
             reuse_result,
             idle_snapshot: ctx.idle_pool.lock().await.status_snapshot(),
         },
-        DestroyOutcome::Uncertain => ReservedActivation::CannotStart {
+        DestroyOutcome::Uncertain => FreshFallbackActivation::CannotStart {
             budget_lease: cleanup.budget_lease,
             reuse_result,
             error: "reserved idle sandbox cleanup was uncertain; fresh replacement was not started"
@@ -1486,6 +1687,17 @@ async fn complete_claimed_without_sandbox(
     failure: crate::executor::ExecutionFailure,
     ctx: &mut DiscoveredJobContext<'_>,
 ) {
+    let run_id = complete_claimed_failure(claimed, cancellation, reuse_result, failure, ctx).await;
+    rollback_admitted_resource(resource, run_id, workspace_disk_mb, ctx).await;
+}
+
+async fn complete_claimed_failure(
+    claimed: ClaimedJob,
+    cancellation: RunCancellationRegistration,
+    reuse_result: Option<SandboxReuseResult>,
+    failure: crate::executor::ExecutionFailure,
+    ctx: &DiscoveredJobContext<'_>,
+) -> RunId {
     let (context, completion_auth, active_input_source) = claimed.into_parts();
     let run_id = context.run_id;
     drop(active_input_source);
@@ -1501,7 +1713,7 @@ async fn complete_claimed_without_sandbox(
         )
         .await;
     cancellation.unregister().await;
-    rollback_admitted_resource(resource, run_id, workspace_disk_mb, ctx).await;
+    run_id
 }
 
 async fn try_reuse_from_pool(

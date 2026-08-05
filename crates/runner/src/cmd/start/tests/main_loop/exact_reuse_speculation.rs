@@ -579,6 +579,90 @@ async fn cancellation_during_claim_completes_without_starting_agent_and_reparks(
 }
 
 #[tokio::test]
+async fn cancellation_during_timezone_correction_does_not_publish_active_or_start_agent() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let exec_gate = sandbox_mock::MockLifecycleGate::new();
+    overrides.set_exec_lifecycle_gate(exec_gate.clone());
+    add_healthy_reuse_preparation_matcher(&overrides);
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: GuestTimezoneIntent::Configured("Asia/Shanghai".into()),
+            timing: None,
+        },
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        run_id,
+        Some(claimed_context(run_id, &reuse_key, Some("Europe/London"))),
+    );
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+
+    exec_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .unwrap();
+    exec_gate.release_one();
+    exec_gate
+        .wait_entered(2, Duration::from_secs(5))
+        .await
+        .unwrap();
+    let cancellation = wait_cancel_handle(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    assert!(cancellation.request_cooperative_user_cancellation().await);
+
+    let (_, active_runs) =
+        status_idle_reuse_keys_and_active_runs(&env._temp_dir.path().join("status.json")).await;
+    assert!(active_runs.is_empty());
+    assert!(overrides.start_process_calls().is_empty());
+
+    exec_gate.release_one();
+    exec_gate
+        .wait_entered(3, Duration::from_secs(5))
+        .await
+        .unwrap();
+    exec_gate.release_one();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("claimed cancellation should be completed");
+    assert_eq!(completion.error.as_deref(), Some("cancelled by user"));
+    assert_eq!(completion.sandbox_id, None);
+    wait_idle_pool_reuse_keys(&env.idle_pool, &[&reuse_key], Duration::from_secs(5)).await;
+    let (_, active_runs) =
+        status_idle_reuse_keys_and_active_runs(&env._temp_dir.path().join("status.json")).await;
+    assert!(active_runs.is_empty());
+    assert!(overrides.start_process_calls().is_empty());
+    assert_eq!(overrides.park_call_count(), 1);
+    assert_eq!(overrides.destroy_call_count(), 0);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
 async fn closed_parking_gate_destroys_lost_speculation_after_repark() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);

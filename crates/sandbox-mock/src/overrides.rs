@@ -40,6 +40,9 @@ pub(crate) struct ExecOverrideState {
     pub(crate) calls: Mutex<Vec<ExecCall>>,
     /// Wakes tests after an exec call is recorded.
     pub(crate) call_notify: tokio::sync::Notify,
+    /// Optional gate entered after every exec call is recorded but before its
+    /// configured result is selected.
+    pub(crate) lifecycle_gate: Mutex<Option<MockLifecycleGate>>,
 }
 
 #[derive(Default)]
@@ -342,6 +345,11 @@ impl MockSandboxOverrides {
             .wait_process_result_cancellations
             .lock_ignoring_poison()
             .push_back(cancel);
+    }
+
+    /// Block every `exec` call with a durable lifecycle gate after recording it.
+    pub fn set_exec_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.exec.lifecycle_gate.lock_ignoring_poison() = Some(gate);
     }
 
     /// Register a one-shot pattern matcher for an ordinary exited result.

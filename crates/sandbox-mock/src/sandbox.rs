@@ -451,6 +451,7 @@ impl Sandbox for MockSandbox {
         if let Some(overrides) = &self.overrides {
             overrides.exec.calls.lock_ignoring_poison().push(call);
             overrides.exec.call_notify.notify_waiters();
+            wait_lifecycle_gate(&overrides.exec.lifecycle_gate).await;
         }
         // Check pattern matchers before the FIFO queue.
         let result = if let Some(overrides) = &self.overrides {
