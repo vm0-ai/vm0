@@ -3,11 +3,7 @@
 from typing import cast
 
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
-from usage.underbilling import (
-    UnderbillingClass,
-    log_usage_underbilling,
-    log_usage_underbilling_to_stderr,
-)
+from usage.underbilling import UnderbillingClass, log_usage_underbilling
 
 
 def test_underbilling_log_fields_cannot_be_overridden_by_context(tmp_path):
@@ -59,51 +55,6 @@ def test_underbilling_log_without_proxy_path_uses_stderr(mitm_ctx):
         "underbilling_class=risk component=mitm_addon "
     )
     assert message.endswith("Usage underbilling signal")
-
-
-def test_explicit_stderr_signal_coexists_with_per_run_proxy_log(tmp_path, mitm_ctx):
-    proxy_log_path = tmp_path / "proxy.jsonl"
-    log_usage_underbilling(
-        str(proxy_log_path),
-        "Per-run accounting warning",
-        "anthropic_sse_incomplete_compressed_body",
-        "risk",
-        run_id="00000000-0000-0000-0000-000000025133",
-    )
-
-    with mitm_ctx() as log:
-        log_usage_underbilling_to_stderr(
-            "Incomplete Anthropic SSE accounting",
-            "anthropic_sse_incomplete_compressed_body",
-            "risk",
-            run_id="00000000-0000-0000-0000-000000025133",
-            usage_protocol="anthropic_messages_sse",
-            decoder_reason="incomplete_compressed_body",
-            accounting_status="recovered_partial",
-            api_key="must-not-escape",
-            type="wrong_type",
-            component="wrong_component",
-        )
-
-    [entry] = read_jsonl_entries_after_flush(proxy_log_path)
-    assert entry["message"] == "Per-run accounting warning"
-    assert entry["type"] == "usage_underbilling"
-
-    log.error.assert_called_once()
-    message = log.error.call_args.args[0]
-    assert message.startswith(
-        "type=usage_underbilling reason=anthropic_sse_incomplete_compressed_body "
-        "underbilling_class=risk component=mitm_addon "
-    )
-    assert "accounting_status=recovered_partial" in message
-    assert "decoder_reason=incomplete_compressed_body" in message
-    assert "run_id=00000000-0000-0000-0000-000000025133" in message
-    assert "usage_protocol=anthropic_messages_sse" in message
-    assert "api_key=[redacted]" in message
-    assert "must-not-escape" not in message
-    assert "wrong_type" not in message
-    assert "wrong_component" not in message
-    assert message.endswith("Incomplete Anthropic SSE accounting")
 
 
 def test_underbilling_stderr_fallback_preserves_context(mitm_ctx):

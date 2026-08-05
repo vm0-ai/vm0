@@ -204,35 +204,6 @@ def underbilling_fields(
     }
 
 
-def log_usage_underbilling_to_stderr(
-    message: str,
-    reason: str,
-    underbilling_class: UnderbillingClass,
-    /,
-    **extra: object,
-) -> None:
-    """Emit a bounded usage-underbilling signal on mitmdump stderr.
-
-    This explicit path is for diagnostics that must reach runner tracing even
-    when the flow also owns a per-run proxy log. It applies the same protected
-    fields, secret-like key redaction, URL sanitization, escaping, and length
-    bounds as the fallback used by :func:`log_usage_underbilling`.
-    """
-    fields = underbilling_fields(reason, underbilling_class, **extra)
-    parts = [
-        (
-            f"type={USAGE_UNDERBILLING_LOG_TYPE} "
-            f"reason={_single_token_stderr_value(str(reason))} "
-            f"underbilling_class={_single_token_stderr_value(str(underbilling_class))} "
-            f"component={USAGE_UNDERBILLING_COMPONENT_MITM_ADDON}"
-        )
-    ]
-    if rendered_fields := _render_stderr_extra_fields(fields):
-        parts.append(rendered_fields)
-    parts.append(_render_stderr_message(str(message)))
-    ctx.log.error(" ".join(parts))
-
-
 def log_usage_underbilling(
     proxy_log_path: str,
     message: str,
@@ -253,16 +224,22 @@ def log_usage_underbilling(
     contract still applies; callers must not assume broad proxy-log redaction
     for arbitrary context.
     """
+    fields = underbilling_fields(reason, underbilling_class, **extra)
     if not proxy_log_path:
-        log_usage_underbilling_to_stderr(
-            message,
-            reason,
-            underbilling_class,
-            **extra,
-        )
+        parts = [
+            (
+                f"type={USAGE_UNDERBILLING_LOG_TYPE} "
+                f"reason={_single_token_stderr_value(str(reason))} "
+                f"underbilling_class={_single_token_stderr_value(str(underbilling_class))} "
+                f"component={USAGE_UNDERBILLING_COMPONENT_MITM_ADDON}"
+            )
+        ]
+        if rendered_fields := _render_stderr_extra_fields(fields):
+            parts.append(rendered_fields)
+        parts.append(_render_stderr_message(str(message)))
+        ctx.log.error(" ".join(parts))
         return
 
-    fields = underbilling_fields(reason, underbilling_class, **extra)
     log_proxy_entry(
         proxy_log_path,
         "error",

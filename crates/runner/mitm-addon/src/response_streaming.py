@@ -18,6 +18,7 @@ Lifecycle:
 """
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Literal, NamedTuple
 
 from mitmproxy import http
@@ -30,7 +31,8 @@ import flow_metadata_keys as metadata_keys
 import usage
 from body_limits import STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
-from usage.underbilling import log_usage_underbilling, log_usage_underbilling_to_stderr
+from usage.reporting_context import usage_reporting_context
+from usage.underbilling import log_usage_underbilling
 
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
 _HTTP_STATUS_OK_MIN = 200
@@ -50,14 +52,19 @@ _HTTP_OWS_CHARS = " \t"
 _ANTHROPIC_MESSAGES_SSE_PROTOCOL = "anthropic_messages_sse"
 _ANTHROPIC_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
 _ANTHROPIC_MESSAGE_STOP_EVENT = "message_stop"
-_ANTHROPIC_INCOMPLETE_ACCOUNTING_REASON = "anthropic_sse_incomplete_compressed_body"
-_INCOMPLETE_COMPRESSED_BODY_DIAGNOSTIC_REASON = "incomplete_compressed_body"
+_ANTHROPIC_ACCOUNTING_TELEMETRY_LOG_TYPE = "anthropic_sse_accounting"
 
 _AnthropicAccountingStatus = Literal[
     "no_recoverable_usage",
     "recovered_partial",
     "recovered_terminal",
 ]
+
+_ANTHROPIC_ACCOUNTING_ACTION_TYPES: dict[_AnthropicAccountingStatus, str] = {
+    "no_recoverable_usage": "anthropic_sse_incomplete_no_recoverable_usage",
+    "recovered_partial": "anthropic_sse_incomplete_recovered_partial",
+    "recovered_terminal": "anthropic_sse_incomplete_recovered_terminal",
+}
 
 _ResponseChunkParser = Callable[[bytes], None]
 _SseUsageParseErrorLogger = Callable[[str, str], None]
@@ -76,6 +83,36 @@ def _anthropic_incomplete_accounting_status(
     if _ANTHROPIC_MESSAGE_STOP_EVENT in accounting_events:
         return "recovered_terminal"
     return "recovered_partial"
+
+
+def _report_anthropic_incomplete_accounting(
+    flow: http.HTTPFlow,
+    accounting_status: _AnthropicAccountingStatus,
+) -> None:
+    run_id = flow_metadata.run_id(flow.metadata)
+    context = usage_reporting_context(flow)
+    if not run_id or not context.is_complete:
+        return
+
+    payload: dict[str, object] = {
+        "runId": run_id,
+        "sandboxOperations": [
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "action_type": _ANTHROPIC_ACCOUNTING_ACTION_TYPES[accounting_status],
+                "duration_ms": 0,
+                "success": False,
+                "error": body_decoding.INCOMPLETE_COMPRESSED_BODY,
+            }
+        ],
+    }
+    usage.webhook.enqueue_webhook_delivery(
+        context.telemetry_url(),
+        context.sandbox_token,
+        payload,
+        context.proxy_log_path,
+        _ANTHROPIC_ACCOUNTING_TELEMETRY_LOG_TYPE,
+    )
 
 
 class CapturedResponseStreamBody(NamedTuple):
@@ -275,14 +312,9 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                             usage_dict,
                             anthropic_accounting_events,
                         )
-                        log_usage_underbilling_to_stderr(
-                            "Incomplete Anthropic SSE accounting",
-                            _ANTHROPIC_INCOMPLETE_ACCOUNTING_REASON,
-                            "risk",
-                            run_id=flow_metadata.run_id(flow.metadata),
-                            usage_protocol=_ANTHROPIC_MESSAGES_SSE_PROTOCOL,
-                            decoder_reason=_INCOMPLETE_COMPRESSED_BODY_DIAGNOSTIC_REASON,
-                            accounting_status=accounting_status,
+                        _report_anthropic_incomplete_accounting(
+                            flow,
+                            accounting_status,
                         )
                     else:
                         usage_dict.clear()

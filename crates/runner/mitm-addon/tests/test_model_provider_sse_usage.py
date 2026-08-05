@@ -5,6 +5,7 @@ import json
 import uuid
 import zlib
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 import brotli
@@ -22,7 +23,13 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
 )
 from tests.model_provider_flow_helpers import make_model_provider_sse_flow
-from tests.usage_helpers import UsageWebhookServer, compact_observation_quantities
+from tests.usage_helpers import (
+    CapturedWebhookRequest,
+    UsageWebhookServer,
+    compact_observation_quantities,
+)
+
+_TELEMETRY_PATH = "/api/webhooks/agent/telemetry"
 
 
 def _model_provider_sse_flow(
@@ -85,13 +92,23 @@ def _compress_zlib_sse(body: bytes, encoding: str) -> bytes:
     return zlib.compress(body)
 
 
-def _anthropic_accounting_signals(log) -> list[str]:
-    prefix = "type=usage_underbilling reason=anthropic_sse_incomplete_compressed_body "
-    return [
-        call.args[0]
-        for call in log.error.call_args_list
-        if call.args and call.args[0].startswith(prefix)
-    ]
+def _anthropic_accounting_requests(
+    webhook: UsageWebhookServer,
+) -> list[CapturedWebhookRequest]:
+    return [request for request in webhook.requests if request.path == _TELEMETRY_PATH]
+
+
+def _anthropic_accounting_operations(
+    webhook: UsageWebhookServer,
+) -> list[dict[str, object]]:
+    operations: list[dict[str, object]] = []
+    for request in _anthropic_accounting_requests(webhook):
+        request_operations = request.json_body().get("sandboxOperations")
+        assert isinstance(request_operations, list)
+        for operation in request_operations:
+            assert isinstance(operation, dict)
+            operations.append(operation)
+    return operations
 
 
 def _model_sse_parse_warnings(flow: http.HTTPFlow) -> list[dict]:
@@ -144,9 +161,9 @@ class TestModelProviderSseUsage:
             usage.flush_usage_events(trigger="test")
         return webhook
 
-    def _run_with_log(self, flow: http.HTTPFlow, mitm_ctx, *, hook_name: str):
+    def _run_with_webhook(self, flow: http.HTTPFlow, mitm_ctx, *, hook_name: str):
         webhook = UsageWebhookServer()
-        with webhook.run(), mitm_ctx(api_url=webhook.api_url) as log:
+        with webhook.run(), mitm_ctx(api_url=webhook.api_url):
             if hook_name == "error":
                 flow.error = Error("connection reset by peer")
                 mitm_addon.error(flow)
@@ -154,7 +171,7 @@ class TestModelProviderSseUsage:
                 assert hook_name == "response"
                 mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
-        return webhook, log
+        return webhook
 
     def test_full_pipeline_model_sse_finalizes_trailing_event(self, tmp_path, real_flow):
         """response() must flush a trailing SSE usage event before reporting."""
@@ -392,7 +409,7 @@ class TestModelProviderSseUsage:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(_compress_zlib_sse(plaintext, encoding)[:-1])
 
-        webhook, log = self._run_with_log(flow, mitm_ctx, hook_name=hook_name)
+        webhook = self._run_with_webhook(flow, mitm_ctx, hook_name=hook_name)
 
         expected_quantities = {
             "tokens.input": 101,
@@ -414,28 +431,31 @@ class TestModelProviderSseUsage:
             error=body_decoding.INCOMPLETE_COMPRESSED_BODY,
         )
 
-        assert _anthropic_accounting_signals(log) == [
-            "type=usage_underbilling "
-            "reason=anthropic_sse_incomplete_compressed_body "
-            "underbilling_class=risk component=mitm_addon "
-            f"accounting_status={expected_status} "
-            "decoder_reason=incomplete_compressed_body "
-            "run_id=00000000-0000-0000-0000-000000025133 "
-            "usage_protocol=anthropic_messages_sse "
-            "Incomplete Anthropic SSE accounting"
-        ]
-        signal = _anthropic_accounting_signals(log)[0]
+        [request] = _anthropic_accounting_requests(webhook)
+        assert request.header("authorization") == "Bearer tok-xyz"
+        payload = request.json_body()
+        assert payload["runId"] == "00000000-0000-0000-0000-000000025133"
+        [operation] = _anthropic_accounting_operations(webhook)
+        assert set(operation) == {
+            "ts",
+            "action_type",
+            "duration_ms",
+            "success",
+            "error",
+        }
+        assert operation["action_type"] == f"anthropic_sse_incomplete_{expected_status}"
+        assert operation["duration_ms"] == 0
+        assert operation["success"] is False
+        assert operation["error"] == body_decoding.INCOMPLETE_COMPRESSED_BODY
+        assert datetime.fromisoformat(str(operation["ts"])).tzinfo == UTC
+        serialized_request = request.body
         for excluded in [
-            "101",
-            "202",
-            "303",
-            "404",
-            "msg_private",
-            "claude-sonnet-4-6",
-            "sensitive-body",
-            "tokens.",
+            b"msg_private",
+            b"claude-sonnet-4-6",
+            b"sensitive-body",
+            b"tokens.",
         ]:
-            assert excluded not in signal
+            assert excluded not in serialized_request
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     def test_full_pipeline_incomplete_anthropic_sse_without_positive_usage_emits_none_status(
@@ -454,11 +474,12 @@ class TestModelProviderSseUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(_compress_zlib_sse(plaintext, encoding)[:-1])
-        webhook, log = self._run_with_log(flow, mitm_ctx, hook_name="response")
+        webhook = self._run_with_webhook(flow, mitm_ctx, hook_name="response")
 
-        assert webhook.request_count == 0
-        [signal] = _anthropic_accounting_signals(log)
-        assert "accounting_status=no_recoverable_usage" in signal
+        assert webhook.usage_events() == []
+        assert webhook.model_usage_observation_events() == []
+        [operation] = _anthropic_accounting_operations(webhook)
+        assert operation["action_type"] == "anthropic_sse_incomplete_no_recoverable_usage"
         _assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="anthropic_messages_sse",
@@ -482,7 +503,7 @@ class TestModelProviderSseUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(gzip.compress(plaintext)[:-1])
-        webhook, log = self._run_with_log(flow, mitm_ctx, hook_name="response")
+        webhook = self._run_with_webhook(flow, mitm_ctx, hook_name="response")
 
         assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
             "tokens.input": 50
@@ -490,9 +511,9 @@ class TestModelProviderSseUsage:
         assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
             "tokens.input": 50
         }
-        [signal] = _anthropic_accounting_signals(log)
-        assert "accounting_status=recovered_partial" in signal
-        assert "987654" not in signal
+        [operation] = _anthropic_accounting_operations(webhook)
+        assert operation["action_type"] == "anthropic_sse_incomplete_recovered_partial"
+        assert b"987654" not in _anthropic_accounting_requests(webhook)[0].body
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     def test_full_pipeline_invalid_compressed_anthropic_sse_remains_fail_closed(
@@ -509,10 +530,10 @@ class TestModelProviderSseUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(_compress_zlib_sse(plaintext, encoding) + b"not-compressed")
-        webhook, log = self._run_with_log(flow, mitm_ctx, hook_name="response")
+        webhook = self._run_with_webhook(flow, mitm_ctx, hook_name="response")
 
         assert webhook.request_count == 0
-        assert _anthropic_accounting_signals(log) == []
+        assert _anthropic_accounting_operations(webhook) == []
         _assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="anthropic_messages_sse",
@@ -536,10 +557,10 @@ class TestModelProviderSseUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(gzip.compress(plaintext))
-        webhook, log = self._run_with_log(flow, mitm_ctx, hook_name="response")
+        webhook = self._run_with_webhook(flow, mitm_ctx, hook_name="response")
 
         assert webhook.request_count == 0
-        assert _anthropic_accounting_signals(log) == []
+        assert _anthropic_accounting_operations(webhook) == []
         _assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="anthropic_messages_sse",
@@ -547,7 +568,7 @@ class TestModelProviderSseUsage:
             error=body_decoding.DECODED_BODY_LIMIT_EXCEEDED,
         )
 
-    def test_full_pipeline_response_then_error_emits_recovered_usage_and_signal_once(
+    def test_full_pipeline_response_then_error_emits_recovered_usage_and_telemetry_once(
         self, tmp_path, real_flow, mitm_ctx
     ):
         flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
@@ -562,7 +583,7 @@ class TestModelProviderSseUsage:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(gzip.compress(plaintext)[:-1])
         webhook = UsageWebhookServer()
-        with webhook.run(), mitm_ctx(api_url=webhook.api_url) as log:
+        with webhook.run(), mitm_ctx(api_url=webhook.api_url):
             mitm_addon.response(flow)
             flow.error = Error("connection reset after response")
             mitm_addon.error(flow)
@@ -574,7 +595,9 @@ class TestModelProviderSseUsage:
         assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
             "tokens.input": 50
         }
-        assert len(_anthropic_accounting_signals(log)) == 1
+        assert [
+            operation["action_type"] for operation in _anthropic_accounting_operations(webhook)
+        ] == ["anthropic_sse_incomplete_recovered_partial"]
         _assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="anthropic_messages_sse",
