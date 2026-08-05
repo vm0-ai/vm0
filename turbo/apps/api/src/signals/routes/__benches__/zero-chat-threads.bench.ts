@@ -127,7 +127,6 @@ function benchCatalogConnector(args: {
         label: "API token",
         description: null,
         visible: true,
-        featureSwitch: null,
         storage: {
           version: 1,
           secrets: [args.secretName],
