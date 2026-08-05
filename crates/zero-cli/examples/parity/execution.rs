@@ -2,7 +2,7 @@ use std::env;
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::os::unix::fs::{PermissionsExt, symlink};
-use std::os::unix::process::ExitStatusExt;
+use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread::{self, JoinHandle};
@@ -59,6 +59,135 @@ struct ProcessOutput {
     stdout: Vec<u8>,
     stderr: Vec<u8>,
     status: ExitStatus,
+}
+
+struct ProcessGroupChild {
+    child: Child,
+    process_group: libc::pid_t,
+    wait_id: libc::id_t,
+    group_terminated: bool,
+    reaped: bool,
+}
+
+struct ProcessWorkers {
+    stdin: JoinHandle<io::Result<()>>,
+    stdout: JoinHandle<io::Result<Vec<u8>>>,
+    stderr: JoinHandle<io::Result<Vec<u8>>>,
+}
+
+struct WorkerResults {
+    stdin: Result<()>,
+    stdout: Result<Vec<u8>>,
+    stderr: Result<Vec<u8>>,
+}
+
+impl ProcessGroupChild {
+    fn spawn(command: &mut Command, description: &str) -> Result<Self> {
+        command.process_group(0);
+        let child = command
+            .spawn()
+            .map_err(|error| HarnessError::new(format!("spawn {description}: {error}")))?;
+        Self::new(child)
+    }
+
+    fn new(mut child: Child) -> Result<Self> {
+        let child_id = child.id();
+        let process_group = libc::pid_t::try_from(child_id).ok();
+        let wait_id = libc::id_t::try_from(child_id).ok();
+        // SAFETY: `getpgrp` has no pointer or lifetime preconditions.
+        let current_process_group = unsafe { libc::getpgrp() };
+        let Some((process_group, wait_id)) = process_group
+            .zip(wait_id)
+            .filter(|(group, _)| *group > 1 && *group != current_process_group)
+        else {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(HarnessError::new(format!(
+                "spawned child PID {child_id} is not a safe process-group ID"
+            )));
+        };
+        Ok(Self {
+            child,
+            process_group,
+            wait_id,
+            group_terminated: false,
+            reaped: false,
+        })
+    }
+
+    fn exited_without_reaping(&self) -> io::Result<bool> {
+        loop {
+            let mut information = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
+            // SAFETY: `wait_id` identifies the live direct child owned by `self`,
+            // and `information` points to writable storage for `siginfo_t`.
+            let result = unsafe {
+                libc::waitid(
+                    libc::P_PID,
+                    self.wait_id,
+                    information.as_mut_ptr(),
+                    libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+                )
+            };
+            if result == 0 {
+                // SAFETY: successful `waitid` initializes `siginfo_t`; a zero PID
+                // is the specified WNOHANG result when the child is still alive.
+                let information = unsafe { information.assume_init() };
+                return Ok(unsafe { information.si_pid() } != 0);
+            }
+            let error = io::Error::last_os_error();
+            if error.kind() != io::ErrorKind::Interrupted {
+                return Err(error);
+            }
+        }
+    }
+
+    fn terminate_group(&mut self) -> io::Result<()> {
+        if self.group_terminated {
+            return Ok(());
+        }
+        // SAFETY: `process_group` is the validated PID of an unreaped child
+        // spawned with `process_group(0)`, so the negative target cannot name
+        // the harness process group.
+        let result = unsafe { libc::kill(-self.process_group, libc::SIGKILL) };
+        if result == 0 {
+            self.group_terminated = true;
+            return Ok(());
+        }
+        let error = io::Error::last_os_error();
+        if error.raw_os_error() == Some(libc::ESRCH) {
+            self.group_terminated = true;
+            return Ok(());
+        }
+        Err(error)
+    }
+
+    fn reap(&mut self) -> io::Result<ExitStatus> {
+        let status = self.child.wait()?;
+        self.reaped = true;
+        Ok(status)
+    }
+}
+
+impl Drop for ProcessGroupChild {
+    fn drop(&mut self) {
+        if !self.group_terminated {
+            let _ = self.terminate_group();
+        }
+        if !self.reaped {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
+impl ProcessWorkers {
+    fn join(self) -> WorkerResults {
+        WorkerResults {
+            stdin: join_stdin_writer(self.stdin),
+            stdout: join_reader(self.stdout, "stdout"),
+            stderr: join_reader(self.stderr, "stderr"),
+        }
+    }
 }
 
 pub fn observe(
@@ -266,36 +395,32 @@ fn run_piped(mut command: Command, stdin: &[u8], timeout_ms: u64) -> Result<Proc
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .map_err(|error| HarnessError::new(format!("spawn process: {error}")))?;
+    let mut process = ProcessGroupChild::spawn(&mut command, "process")?;
     drop(command);
+    let deadline = process_deadline(timeout_ms)?;
 
-    let child_stdin = child
+    let child_stdin = process
+        .child
         .stdin
         .take()
         .ok_or_else(|| HarnessError::new("piped child stdin was not created"))?;
-    let child_stdout = child
+    let child_stdout = process
+        .child
         .stdout
         .take()
         .ok_or_else(|| HarnessError::new("piped child stdout was not created"))?;
-    let child_stderr = child
+    let child_stderr = process
+        .child
         .stderr
         .take()
         .ok_or_else(|| HarnessError::new("piped child stderr was not created"))?;
 
-    let stdin_thread = spawn_stdin_writer(child_stdin, stdin.to_vec(), false);
-    let stdout_thread = spawn_reader(child_stdout, false);
-    let stderr_thread = spawn_reader(child_stderr, false);
-    let status = wait_with_timeout(&mut child, timeout_ms)?;
-    join_stdin_writer(stdin_thread)?;
-    let stdout = join_reader(stdout_thread, "stdout")?;
-    let stderr = join_reader(stderr_thread, "stderr")?;
-    Ok(ProcessOutput {
-        stdout,
-        stderr,
-        status,
-    })
+    let workers = ProcessWorkers {
+        stdin: spawn_stdin_writer(child_stdin, stdin.to_vec(), false),
+        stdout: spawn_reader(child_stdout, false),
+        stderr: spawn_reader(child_stderr, false),
+    };
+    finish_process(process, workers, deadline, timeout_ms)
 }
 
 fn run_pty(mut command: Command, stdin: &[u8], timeout_ms: u64) -> Result<ProcessOutput> {
@@ -316,18 +441,70 @@ fn run_pty(mut command: Command, stdin: &[u8], timeout_ms: u64) -> Result<Proces
         .stdin(Stdio::from(File::from(stdin_pty.slave)))
         .stdout(Stdio::from(File::from(stdout_pty.slave)))
         .stderr(Stdio::from(File::from(stderr_pty.slave)));
-    let mut child = command
-        .spawn()
-        .map_err(|error| HarnessError::new(format!("spawn PTY process: {error}")))?;
+    let process = ProcessGroupChild::spawn(&mut command, "PTY process")?;
     drop(command);
+    let deadline = process_deadline(timeout_ms)?;
 
-    let stdin_thread = spawn_stdin_writer(File::from(stdin_pty.master), stdin.to_vec(), true);
-    let stdout_thread = spawn_reader(File::from(stdout_pty.master), true);
-    let stderr_thread = spawn_reader(File::from(stderr_pty.master), true);
-    let status = wait_with_timeout(&mut child, timeout_ms)?;
-    join_stdin_writer(stdin_thread)?;
-    let stdout = join_reader(stdout_thread, "stdout")?;
-    let stderr = join_reader(stderr_thread, "stderr")?;
+    let workers = ProcessWorkers {
+        stdin: spawn_stdin_writer(File::from(stdin_pty.master), stdin.to_vec(), true),
+        stdout: spawn_reader(File::from(stdout_pty.master), true),
+        stderr: spawn_reader(File::from(stderr_pty.master), true),
+    };
+    finish_process(process, workers, deadline, timeout_ms)
+}
+
+fn process_deadline(timeout_ms: u64) -> Result<Instant> {
+    Instant::now()
+        .checked_add(Duration::from_millis(timeout_ms))
+        .ok_or_else(|| HarnessError::new("process timeout exceeds supported duration"))
+}
+
+fn finish_process(
+    mut process: ProcessGroupChild,
+    workers: ProcessWorkers,
+    deadline: Instant,
+    timeout_ms: u64,
+) -> Result<ProcessOutput> {
+    let wait_result = wait_until_exit(&process, deadline, timeout_ms);
+    let termination_result = process
+        .terminate_group()
+        .map_err(|error| HarnessError::new(format!("terminate process group: {error}")));
+    let status_result = process
+        .reap()
+        .map_err(|error| HarnessError::new(format!("reap process: {error}")));
+    let worker_results = workers.join();
+
+    if let Err(primary_error) = wait_result {
+        let mut cleanup_errors = Vec::new();
+        if let Err(error) = &termination_result {
+            cleanup_errors.push(error.to_string());
+        }
+        if let Err(error) = &status_result {
+            cleanup_errors.push(error.to_string());
+        }
+        if let Err(error) = &worker_results.stdin {
+            cleanup_errors.push(error.to_string());
+        }
+        if let Err(error) = &worker_results.stdout {
+            cleanup_errors.push(error.to_string());
+        }
+        if let Err(error) = &worker_results.stderr {
+            cleanup_errors.push(error.to_string());
+        }
+        if cleanup_errors.is_empty() {
+            return Err(primary_error);
+        }
+        return Err(HarnessError::new(format!(
+            "{primary_error}; cleanup failed: {}",
+            cleanup_errors.join("; ")
+        )));
+    }
+
+    termination_result?;
+    let status = status_result?;
+    worker_results.stdin?;
+    let stdout = worker_results.stdout?;
+    let stderr = worker_results.stderr?;
     Ok(ProcessOutput {
         stdout,
         stderr,
@@ -397,26 +574,16 @@ fn is_closed_stream_error(error: &io::Error) -> bool {
     error.kind() == io::ErrorKind::BrokenPipe || error.raw_os_error() == Some(Errno::EIO as i32)
 }
 
-fn wait_with_timeout(child: &mut Child, timeout_ms: u64) -> Result<ExitStatus> {
-    let timeout = Duration::from_millis(timeout_ms);
-    let deadline = Instant::now()
-        .checked_add(timeout)
-        .ok_or_else(|| HarnessError::new("process timeout exceeds supported duration"))?;
+fn wait_until_exit(process: &ProcessGroupChild, deadline: Instant, timeout_ms: u64) -> Result<()> {
     loop {
-        if let Some(status) = child
-            .try_wait()
+        if process
+            .exited_without_reaping()
             .map_err(|error| HarnessError::new(format!("wait for process: {error}")))?
         {
-            return Ok(status);
+            return Ok(());
         }
         let now = Instant::now();
         if now >= deadline {
-            child
-                .kill()
-                .map_err(|error| HarnessError::new(format!("kill timed-out process: {error}")))?;
-            child
-                .wait()
-                .map_err(|error| HarnessError::new(format!("reap timed-out process: {error}")))?;
             return Err(HarnessError::new(format!(
                 "process exceeded fixture timeout of {timeout_ms} ms"
             )));
@@ -633,8 +800,155 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
     use std::process::Command;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
 
     use super::*;
+
+    const DESCENDANT_PID_PATH_ENV: &str = "ZERO_CLI_PARITY_DESCENDANT_PID_PATH";
+    const TEST_EXECUTION_BOUND: Duration = Duration::from_secs(5);
+    const TEST_CLEANUP_BOUND: Duration = Duration::from_secs(5);
+    const TEST_SYNC_INTERVAL: Duration = Duration::from_millis(10);
+
+    struct DescendantProcess {
+        pid: libc::pid_t,
+        armed: bool,
+    }
+
+    impl DescendantProcess {
+        fn terminate(&mut self) {
+            if self.armed {
+                // SAFETY: the PID was written by the isolated test shell,
+                // validated as positive, and is signalled only for test cleanup.
+                unsafe {
+                    libc::kill(self.pid, libc::SIGKILL);
+                }
+                self.armed = false;
+            }
+        }
+
+        fn disarm(&mut self) {
+            self.armed = false;
+        }
+    }
+
+    impl Drop for DescendantProcess {
+        fn drop(&mut self) {
+            self.terminate();
+        }
+    }
+
+    fn run_descendant_case(
+        terminal_mode: TerminalMode,
+        script: &str,
+        stdin: Vec<u8>,
+        timeout_ms: u64,
+    ) -> Result<ProcessOutput> {
+        let temp = tempfile::tempdir().unwrap();
+        let pid_path = temp.path().join("processes");
+        let mut command = Command::new("/bin/sh");
+        command
+            .arg("-c")
+            .arg(script)
+            .env(DESCENDANT_PID_PATH_ENV, &pid_path);
+        let (result_sender, result_receiver) = mpsc::channel();
+        let execution = thread::spawn(move || {
+            let result = match terminal_mode {
+                TerminalMode::Pipe => run_piped(command, &stdin, timeout_ms),
+                TerminalMode::Pty => run_pty(command, &stdin, timeout_ms),
+            };
+            result_sender.send(result).unwrap();
+        });
+        let mut descendant = wait_for_descendant_process(&pid_path);
+
+        let result = match result_receiver.recv_timeout(TEST_EXECUTION_BOUND) {
+            Ok(result) => result,
+            Err(error) => {
+                descendant.terminate();
+                let cleanup = result_receiver.recv_timeout(TEST_CLEANUP_BOUND);
+                let joined = cleanup.is_ok().then(|| execution.join());
+                assert!(
+                    cleanup.is_ok(),
+                    "test process cleanup did not finish: {error}"
+                );
+                assert!(joined.unwrap().is_ok(), "execution thread panicked");
+                panic!("parity execution exceeded the test-owned bound: {error}");
+            }
+        };
+        execution.join().unwrap();
+
+        let descendant_terminated = wait_for_process_termination(descendant.pid);
+        if !descendant_terminated {
+            descendant.terminate();
+        } else {
+            descendant.disarm();
+        }
+        assert!(
+            descendant_terminated,
+            "descendant {} remained alive after parity execution",
+            descendant.pid
+        );
+        result
+    }
+
+    fn wait_for_descendant_process(path: &Path) -> DescendantProcess {
+        let deadline = Instant::now() + TEST_EXECUTION_BOUND;
+        loop {
+            match fs::read_to_string(path) {
+                Ok(value) => {
+                    let mut pids = value.split_ascii_whitespace();
+                    let descendant = pids.next().and_then(|pid| pid.parse().ok());
+                    if let (Some(pid), None) = (descendant, pids.next())
+                        && pid > 1
+                    {
+                        return DescendantProcess { pid, armed: true };
+                    }
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => panic!("read child process IDs: {error}"),
+            }
+            assert!(
+                Instant::now() < deadline,
+                "child process IDs were not published"
+            );
+            thread::sleep(TEST_SYNC_INTERVAL);
+        }
+    }
+
+    fn wait_for_process_termination(pid: libc::pid_t) -> bool {
+        let deadline = Instant::now() + TEST_CLEANUP_BOUND;
+        loop {
+            if !process_is_live(pid) {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(TEST_SYNC_INTERVAL);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn process_is_live(pid: libc::pid_t) -> bool {
+        let status = match fs::read_to_string(format!("/proc/{pid}/status")) {
+            Ok(status) => status,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return false,
+            Err(_) => return true,
+        };
+        !status.lines().any(|line| {
+            line.strip_prefix("State:")
+                .and_then(|state| state.split_ascii_whitespace().next())
+                == Some("Z")
+        })
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn process_is_live(pid: libc::pid_t) -> bool {
+        // SAFETY: signal zero only probes the positive PID parsed from the
+        // isolated test shell and does not alter the process.
+        let result = unsafe { libc::kill(pid, 0) };
+        result == 0 || io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+    }
 
     #[test]
     fn validates_native_and_fallback_execution_markers() {
@@ -681,6 +995,72 @@ printf 'stderr=%s' "$stderr_mode" >&2
         assert!(output.status.success());
         assert_eq!(output.stdout, b"stdin=tty;stdout=tty;input=fixture-input");
         assert_eq!(output.stderr, b"stderr=tty");
+    }
+
+    #[test]
+    fn piped_execution_terminates_descendant_after_direct_child_exit() {
+        let output = run_descendant_case(
+            TerminalMode::Pipe,
+            r#"
+sleep 60 &
+descendant=$!
+printf '%s\n' "$descendant" > "$ZERO_CLI_PARITY_DESCENDANT_PID_PATH"
+printf 'before-exit'
+exit 0
+"#,
+            vec![b'x'; 1024 * 1024],
+            500,
+        )
+        .unwrap();
+
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"before-exit");
+        assert!(output.stderr.is_empty());
+    }
+
+    #[test]
+    fn pty_execution_terminates_descendant_after_direct_child_exit() {
+        let output = run_descendant_case(
+            TerminalMode::Pty,
+            r#"
+sleep 60 &
+descendant=$!
+printf '%s\n' "$descendant" > "$ZERO_CLI_PARITY_DESCENDANT_PID_PATH"
+printf 'before-exit'
+exit 0
+"#,
+            Vec::new(),
+            500,
+        )
+        .unwrap();
+
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"before-exit");
+        assert!(output.stderr.is_empty());
+    }
+
+    #[test]
+    fn timed_out_execution_terminates_descendant_and_blocked_stdin_writer() {
+        let result = run_descendant_case(
+            TerminalMode::Pipe,
+            r#"
+sleep 60 &
+descendant=$!
+printf '%s\n' "$descendant" > "$ZERO_CLI_PARITY_DESCENDANT_PID_PATH"
+wait "$descendant"
+"#,
+            vec![b'x'; 1024 * 1024],
+            100,
+        );
+        let error = match result {
+            Ok(_) => panic!("timed-out execution unexpectedly succeeded"),
+            Err(error) => error,
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "process exceeded fixture timeout of 100 ms"
+        );
     }
 
     #[test]

@@ -22,6 +22,12 @@ terminal mode. `pipe` uses ordinary non-TTY streams. `pty` gives stdin, stdout,
 and stderr separate fixed-size pseudoterminals so both streams remain
 independently observable while reporting TTY status.
 
+Each observation owns a dedicated process group and one post-spawn deadline.
+When the direct child exits or the deadline expires, the harness terminates
+remaining descendants in that group, reaps the direct child, and joins all
+standard-stream workers before continuing. A helper process therefore cannot
+hold the harness open beyond its fixture's execution boundary.
+
 Every implementation receives its own temporary root containing:
 
 - an independently materialized workspace;
