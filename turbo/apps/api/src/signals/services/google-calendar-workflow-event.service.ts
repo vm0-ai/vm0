@@ -1253,14 +1253,29 @@ async function restorePreparedCalendarWatch(args: {
   readonly calendarId: string;
   readonly prepared: PreparedGoogleCalendarWatch;
 }): Promise<void> {
+  const lifecycleSignal = AbortSignal.timeout(WATCH_LIFECYCLE_TIMEOUT_MS);
   await args.db.transaction(async (tx) => {
     await lockGoogleCalendarLifecycle(
       tx,
       args.access.connectorId,
       args.calendarId,
     );
+    const current = await loadCalendarWatchState({
+      db: tx,
+      connectorId: args.access.connectorId,
+      calendarId: args.calendarId,
+      signal: lifecycleSignal,
+    });
+    if (
+      !current ||
+      current.id !== args.prepared.stateId ||
+      current.channelId !== args.prepared.channelId
+    ) {
+      return;
+    }
+    const retainedPrevious = previousCalendarChannel(current);
     const previous = args.prepared.previousState;
-    if (!previous) {
+    if (!retainedPrevious) {
       await tx
         .delete(googleCalendarWatchStates)
         .where(
@@ -1270,6 +1285,14 @@ async function restorePreparedCalendarWatch(args: {
           ),
         );
       return;
+    }
+    if (
+      !previous ||
+      previous.channelId !== retainedPrevious.channelId ||
+      previous.channelToken !== retainedPrevious.channelToken ||
+      previous.resourceId !== retainedPrevious.resourceId
+    ) {
+      throw new Error("Prepared Google Calendar watch state changed");
     }
     await tx
       .update(googleCalendarWatchStates)
@@ -1294,6 +1317,66 @@ async function restorePreparedCalendarWatch(args: {
         ),
       );
   });
+}
+
+async function retainRegisteredCalendarWatchForRetry(args: {
+  readonly db: Db;
+  readonly access: GoogleCalendarAccess;
+  readonly calendarId: string;
+  readonly prepared: PreparedGoogleCalendarWatch;
+  readonly resourceId: string;
+  readonly resourceUri: string;
+  readonly expiration: string | number | undefined;
+}): Promise<void> {
+  const lifecycleSignal = AbortSignal.timeout(WATCH_LIFECYCLE_TIMEOUT_MS);
+  await args.db.transaction(async (tx) => {
+    await lockGoogleCalendarLifecycle(
+      tx,
+      args.access.connectorId,
+      args.calendarId,
+    );
+    const currentTime = nowDate();
+    await tx
+      .update(googleCalendarWatchStates)
+      .set({
+        resourceId: args.resourceId,
+        resourceUri: args.resourceUri,
+        watchExpirationAt: watchExpirationDate(args.expiration, currentTime),
+        needsRewatch: true,
+        updatedAt: currentTime,
+      })
+      .where(
+        and(
+          eq(googleCalendarWatchStates.id, args.prepared.stateId),
+          eq(googleCalendarWatchStates.channelId, args.prepared.channelId),
+        ),
+      );
+    lifecycleSignal.throwIfAborted();
+  });
+}
+
+async function cleanupRegisteredCalendarWatch(args: {
+  readonly db: Db;
+  readonly access: GoogleCalendarAccess;
+  readonly calendarId: string;
+  readonly prepared: PreparedGoogleCalendarWatch;
+  readonly resourceId: string;
+  readonly resourceUri: string;
+  readonly expiration: string | number | undefined;
+}): Promise<void> {
+  const stopped = await stopCalendarChannelWithLifecycleOwnership({
+    accessToken: args.access.accessToken,
+    channel: {
+      channelId: args.prepared.channelId,
+      channelToken: args.prepared.channelToken,
+      resourceId: args.resourceId,
+    },
+  });
+  if (stopped) {
+    await restorePreparedCalendarWatch(args);
+    return;
+  }
+  await retainRegisteredCalendarWatchForRetry(args);
 }
 
 async function clearPreviousCalendarChannel(args: {
@@ -1331,6 +1414,83 @@ async function clearPreviousCalendarChannel(args: {
   });
 }
 
+async function finalizePreparedCalendarWatch(args: {
+  readonly db: Db;
+  readonly access: GoogleCalendarAccess;
+  readonly calendarId: string;
+  readonly prepared: PreparedGoogleCalendarWatch;
+  readonly watch: z.infer<typeof calendarWatchResponseSchema>;
+}): Promise<
+  | { readonly kind: "active"; readonly state: GoogleCalendarWatchStateRow }
+  | { readonly kind: "inactive" }
+> {
+  const lifecycleSignal = AbortSignal.timeout(WATCH_LIFECYCLE_TIMEOUT_MS);
+  const currentTime = nowDate();
+  return await args.db.transaction(async (tx) => {
+    await lockGoogleCalendarLifecycle(
+      tx,
+      args.access.connectorId,
+      args.calendarId,
+    );
+    const current = await loadCalendarWatchState({
+      db: tx,
+      connectorId: args.access.connectorId,
+      calendarId: args.calendarId,
+      signal: lifecycleSignal,
+    });
+    if (
+      !current ||
+      current.id !== args.prepared.stateId ||
+      current.channelId !== args.prepared.channelId
+    ) {
+      throw new Error("Failed to load pending Google Calendar watch state");
+    }
+    const hasConsumer = await hasEnabledGoogleCalendarConsumer({
+      db: tx,
+      orgId: current.orgId,
+      userId: current.userId,
+      calendarId: current.calendarId,
+      signal: lifecycleSignal,
+    });
+    if (!hasConsumer) {
+      return { kind: "inactive" };
+    }
+    const [updated] = await tx
+      .update(googleCalendarWatchStates)
+      .set({
+        resourceId: args.watch.resourceId,
+        resourceUri: args.watch.resourceUri,
+        watchExpirationAt: watchExpirationDate(
+          args.watch.expiration,
+          currentTime,
+        ),
+        lastWatchRenewedAt: currentTime,
+        needsRewatch: false,
+        updatedAt: currentTime,
+      })
+      .where(
+        and(
+          eq(googleCalendarWatchStates.id, args.prepared.stateId),
+          eq(googleCalendarWatchStates.channelId, args.prepared.channelId),
+        ),
+      )
+      .returning({ id: googleCalendarWatchStates.id });
+    if (!updated) {
+      throw new Error("Failed to finalize Google Calendar watch state");
+    }
+    const finalized = await loadCalendarWatchState({
+      db: tx,
+      connectorId: args.access.connectorId,
+      calendarId: args.calendarId,
+      signal: lifecycleSignal,
+    });
+    if (!finalized) {
+      throw new Error("Failed to load finalized Google Calendar watch state");
+    }
+    return { kind: "active", state: finalized };
+  });
+}
+
 async function activatePreparedCalendarWatch(args: {
   readonly db: Db;
   readonly access: GoogleCalendarAccess;
@@ -1359,60 +1519,34 @@ async function activatePreparedCalendarWatch(args: {
     };
   }
 
-  const currentTime = nowDate();
-  const state = await onRejection(
-    args.db.transaction(async (tx) => {
-      await lockGoogleCalendarLifecycle(
-        tx,
-        args.access.connectorId,
-        args.calendarId,
-      );
-      const [updated] = await tx
-        .update(googleCalendarWatchStates)
-        .set({
-          resourceId: watch.value.resourceId,
-          resourceUri: watch.value.resourceUri,
-          watchExpirationAt: watchExpirationDate(
-            watch.value.expiration,
-            currentTime,
-          ),
-          lastWatchRenewedAt: currentTime,
-          needsRewatch: false,
-          updatedAt: currentTime,
-        })
-        .where(
-          and(
-            eq(googleCalendarWatchStates.id, args.prepared.stateId),
-            eq(googleCalendarWatchStates.channelId, args.prepared.channelId),
-          ),
-        )
-        .returning({ id: googleCalendarWatchStates.id });
-      if (!updated) {
-        throw new Error("Failed to finalize Google Calendar watch state");
-      }
-      const finalized = await loadCalendarWatchState({
-        db: tx,
-        connectorId: args.access.connectorId,
-        calendarId: args.calendarId,
-        signal: lifecycleSignal,
-      });
-      if (!finalized) {
-        throw new Error("Failed to load finalized Google Calendar watch state");
-      }
-      return finalized;
+  const finalization = await onRejection(
+    finalizePreparedCalendarWatch({
+      ...args,
+      watch: watch.value,
     }),
     async () => {
-      await stopCalendarChannelWithLifecycleOwnership({
-        accessToken: args.access.accessToken,
-        channel: {
-          channelId: args.prepared.channelId,
-          channelToken: args.prepared.channelToken,
-          resourceId: watch.value.resourceId,
-        },
+      await cleanupRegisteredCalendarWatch({
+        ...args,
+        resourceId: watch.value.resourceId,
+        resourceUri: watch.value.resourceUri,
+        expiration: watch.value.expiration,
       });
     },
   );
+  if (finalization.kind === "inactive") {
+    await cleanupRegisteredCalendarWatch({
+      ...args,
+      resourceId: watch.value.resourceId,
+      resourceUri: watch.value.resourceUri,
+      expiration: watch.value.expiration,
+    });
+    return {
+      kind: "bad_request",
+      message: "Google Calendar watch no longer has an enabled automation",
+    };
+  }
 
+  const state = finalization.state;
   const previous = previousCalendarChannel(state);
   if (previous) {
     const stopped = await stopCalendarChannelWithLifecycleOwnership({

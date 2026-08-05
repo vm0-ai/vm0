@@ -2080,12 +2080,12 @@ describe("zero workflow automations", () => {
     const first = await setupFixture();
     const sharedEmail = `renew-fallback-${first.fixture.userId}@example.com`;
     await connectGmail(first, sharedEmail, {
-      refreshToken: "gmail-broken-refresh-token",
+      refreshToken: "gmail-first-refresh-token",
     });
     mockNow(startedAt + 1000);
     const second = await setupFixture();
     await connectGmail(second, sharedEmail, {
-      refreshToken: "gmail-healthy-refresh-token",
+      refreshToken: "gmail-second-refresh-token",
     });
     const watch = configureGmailWatchMock([
       "history-first",
@@ -2124,10 +2124,9 @@ describe("zero workflow automations", () => {
           throw new Error("Expected a Gmail refresh token");
         }
         refreshTokens.push(refreshToken);
-        if (refreshToken === "gmail-broken-refresh-token") {
+        if (refreshTokens.length === 1) {
           return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
         }
-        expect(refreshToken).toBe("gmail-healthy-refresh-token");
         return HttpResponse.json({
           access_token: "gmail-access-token",
           expires_in: 3600,
@@ -2135,7 +2134,7 @@ describe("zero workflow automations", () => {
         });
       }),
     );
-    mockNow(startedAt + 6 * 24 * 60 * 60 * 1000);
+    mockNow(startedAt + 6 * 24 * 60 * 60 * 1000 + 2000);
 
     const renewed = await accept(
       renewGmailWatchesClient().renew({
@@ -2149,10 +2148,9 @@ describe("zero workflow automations", () => {
       renewed: 1,
       failed: 0,
     });
-    expect(refreshTokens).toStrictEqual([
-      "gmail-broken-refresh-token",
-      "gmail-healthy-refresh-token",
-    ]);
+    expect(new Set(refreshTokens)).toStrictEqual(
+      new Set(["gmail-first-refresh-token", "gmail-second-refresh-token"]),
+    );
     expect(watch.calls).toBe(3);
   });
 
@@ -2215,6 +2213,131 @@ describe("zero workflow automations", () => {
     );
     expect(watch.watchCalls).toBe(2);
     expect(watch.baselineCalls).toBe(2);
+  });
+
+  it("keeps a concurrent Calendar disable authoritative during registration", async () => {
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    const registrationStarted = createDeferredPromise<void>(context.signal);
+    const releaseRegistration = createDeferredPromise<void>(context.signal);
+    let blockRegistration = true;
+    const watch = configureGoogleCalendarWatchMock({
+      onWatchRegistered: async () => {
+        if (!blockRegistration) {
+          return;
+        }
+        blockRegistration = false;
+        registrationStarted.resolve(undefined);
+        await releaseRegistration.promise;
+      },
+    });
+    const stop = configureGoogleCalendarStopMock();
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+          enabled: false,
+        },
+      }),
+      [201],
+    );
+
+    const enabling = accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200, 400],
+    );
+    await registrationStarted.promise;
+    const disabled = await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    releaseRegistration.resolve(undefined);
+
+    expect(disabled.body.enabled).toBeFalsy();
+    const supersededEnable = await enabling;
+    expect(supersededEnable.status).toBe(400);
+    expect(stop.requests).toStrictEqual([
+      { id: watch.channelIds[0], resourceId: "calendar-resource-1" },
+    ]);
+    await expect(wf.readAutomation(created.body.id)).resolves.toMatchObject({
+      enabled: false,
+    });
+
+    const enabled = await accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(enabled.body.enabled).toBeTruthy();
+    expect(watch.watchCalls).toBe(2);
+  });
+
+  it("recovers after Calendar registration outlives its connector state", async () => {
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    let deleteConnector = true;
+    const watch = configureGoogleCalendarWatchMock({
+      onWatchRegistered: async () => {
+        if (!deleteConnector) {
+          return;
+        }
+        deleteConnector = false;
+        await connectorsApi.deleteConnectorBySlug(
+          scenario.actor,
+          "google-calendar",
+        );
+      },
+    });
+    const stop = configureGoogleCalendarStopMock();
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+          enabled: false,
+        },
+      }),
+      [201],
+    );
+
+    const failedEnable = await createApp({ signal: context.signal }).request(
+      `/api/zero/workflow-automations/${created.body.id}/enable`,
+      {
+        method: "POST",
+        headers: authHeaders(),
+      },
+    );
+    expect(failedEnable.status).toBe(500);
+    expect(stop.requests).toStrictEqual([
+      { id: watch.channelIds[0], resourceId: "calendar-resource-1" },
+    ]);
+    await expect(wf.readAutomation(created.body.id)).resolves.toMatchObject({
+      enabled: false,
+    });
+
+    await connectGoogleCalendar(scenario);
+    const enabled = await accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(enabled.body.enabled).toBeTruthy();
+    expect(watch.watchCalls).toBe(2);
   });
 
   it("does not create a Calendar channel when baseline setup fails", async () => {
