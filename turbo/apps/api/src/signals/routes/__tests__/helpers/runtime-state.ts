@@ -401,7 +401,10 @@ export async function readChatEventAssetRefIds(
     action: "read-chat-event-asset-refs",
     event_id: eventId,
   });
-  return response.chat_event_asset_ref_ids ?? [];
+  if (response.chat_event_asset_ref_ids === undefined) {
+    throw new Error("readChatEventAssetRefIds missing asset ref ids");
+  }
+  return response.chat_event_asset_ref_ids;
 }
 
 export async function insertChatEventAssetRefFixture(

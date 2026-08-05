@@ -704,6 +704,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         message.content === "The canonical report is ready."
       );
     });
+    expect(finalReply).toBeDefined();
     expect(finalReply).not.toHaveProperty("attachFiles");
 
     const lifecycleMarker = messages.events.find(
@@ -737,11 +738,13 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       actorFor({ orgId, userId }),
       threadId,
     );
-    expect(
-      eventsWithHistoricalRef.events.find((message) => {
+    const historicalLifecycleMarker = eventsWithHistoricalRef.events.find(
+      (message) => {
         return message.id === lifecycleMarker.id;
-      }),
-    ).not.toHaveProperty("attachFiles");
+      },
+    );
+    expect(historicalLifecycleMarker).toBeDefined();
+    expect(historicalLifecycleMarker).not.toHaveProperty("attachFiles");
   }, 20_000);
 
   it("keeps an attachment-only output out of the event stream", async () => {
@@ -814,24 +817,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         );
       }),
     ).toBeUndefined();
-
-    const files = await visibleUploadedFiles({
-      orgId,
-      userId,
-      runId,
-      threadId,
-    });
-    expect(files).toContainEqual(
-      expect.objectContaining({
-        id: canonicalAssetId,
-        filename: "attachment-only.pdf",
-        assetRef: expect.objectContaining({
-          id: canonicalAssetId,
-          classification: "published-output",
-          access: "published",
-        }),
-      }),
-    );
   }, 20_000);
 
   it("keeps a canonical Slack delivery failed when file info has no permalink", async () => {

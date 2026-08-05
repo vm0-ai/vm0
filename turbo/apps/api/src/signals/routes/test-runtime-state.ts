@@ -1094,6 +1094,11 @@ type PreviousApiRunnerJobContextProfileAction = Extract<
   { action: "set-runner-job-context-profile-as-previous-api" }
 >;
 
+type ChatEventAssetRefFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-chat-event-asset-refs" | "insert-chat-event-asset-ref" }
+>;
+
 type PreviousApiBrowserTabSnapshotAction = Extract<
   TestRuntimeStateActionBody,
   { action: "set-browser-tab-snapshot-as-previous-api" }
@@ -1171,6 +1176,7 @@ type CompatibilityFixtureAction =
   | PreviousApiComputerAccessAction
   | PreviousApiBrowserTabSnapshotAction
   | PreviousApiRunnerJobContextProfileAction
+  | ChatEventAssetRefFixtureAction
   | ConnectorPermissionBaselineMutationAction;
 
 function isCompatibilityFixtureAction(
@@ -1189,6 +1195,8 @@ function isCompatibilityFixtureAction(
     "set-computer-use-host-as-previous-api",
     "set-browser-tab-snapshot-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
+    "read-chat-event-asset-refs",
+    "insert-chat-event-asset-ref",
     "mutate-runner-job-connector-permission-baseline",
   ].includes(body.action);
 }
@@ -1219,6 +1227,32 @@ async function compatibilityFixtureActionResponse(
     }
     case "set-runner-job-context-profile-as-previous-api": {
       return await setRunnerJobContextProfileAsPreviousApi(db, body, signal);
+    }
+    case "read-chat-event-asset-refs": {
+      const rows = await db
+        .select({ assetId: chatEventAssetRefs.assetId })
+        .from(chatEventAssetRefs)
+        .where(eq(chatEventAssetRefs.chatEventId, body.event_id))
+        .orderBy(chatEventAssetRefs.position);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          chat_event_asset_ref_ids: rows.map((row) => {
+            return row.assetId;
+          }),
+        },
+      };
+    }
+    case "insert-chat-event-asset-ref": {
+      await db.insert(chatEventAssetRefs).values({
+        chatEventId: body.event_id,
+        assetId: body.asset_id,
+        position: body.position,
+      });
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
     }
     case "mutate-runner-job-connector-permission-baseline": {
       await mutateRunnerJobConnectorPermissionBaseline(db, body, signal);
@@ -1354,32 +1388,6 @@ const postRuntimeStateAction$ = command(
             }),
           },
         };
-      }
-      case "read-chat-event-asset-refs": {
-        const rows = await db
-          .select({ assetId: chatEventAssetRefs.assetId })
-          .from(chatEventAssetRefs)
-          .where(eq(chatEventAssetRefs.chatEventId, body.event_id))
-          .orderBy(chatEventAssetRefs.position);
-        signal.throwIfAborted();
-        return {
-          status: 200 as const,
-          body: {
-            ok: true as const,
-            chat_event_asset_ref_ids: rows.map((row) => {
-              return row.assetId;
-            }),
-          },
-        };
-      }
-      case "insert-chat-event-asset-ref": {
-        await db.insert(chatEventAssetRefs).values({
-          chatEventId: body.event_id,
-          assetId: body.asset_id,
-          position: body.position,
-        });
-        signal.throwIfAborted();
-        return { status: 200 as const, body: { ok: true as const } };
       }
     }
   },
