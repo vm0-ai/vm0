@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
+use child_exit_notifier::ChildExitNotifier;
 use guest_common::log_warn;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -28,8 +29,7 @@ use tokio::task::JoinHandle;
 use crate::error::AgentError;
 
 use super::{
-    LOG_TAG, child_env, child_exit_notifier::ChildExitNotifier, diagnostics, exec_boundary,
-    line_reader, process_group::ChildProcessGroup,
+    LOG_TAG, child_env, diagnostics, exec_boundary, line_reader, process_group::ChildProcessGroup,
 };
 
 const METHOD_NOT_FOUND: i64 = -32601;

@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+child-exit-notifier.workspace = true
 futures-util.workspace = true
 guest-contracts.workspace = true
 nbd-cow.workspace = true

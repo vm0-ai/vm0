@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use child_exit_notifier::ChildExitNotifier;
 use sandbox::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessCancelHandle,
     GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, ProcessControlAck,
@@ -54,7 +55,7 @@ use crate::park_coordinator::{
     PrepareParkError, PrepareParkEvidence, RunControlBindError,
 };
 use crate::paths::{SandboxPaths, SockPaths};
-use crate::process::{ChildExitNotifier, kill_process_group};
+use crate::process::kill_process_group;
 use crate::process_log::{
     PROCESS_LOG_RECORD_MAX_BYTES, PROCESS_LOG_RECORD_TRUNCATED, ProcessLogRecord,
     read_process_log_records,
@@ -1515,7 +1516,17 @@ fn monitor_process_with_log_readers(
     context: ProcessMonitorContext,
     readers: ProcessLogReaders,
 ) -> ProcessMonitorHandle {
-    let exit_notifier = ChildExitNotifier::open(&child);
+    let exit_notifier = match ChildExitNotifier::open(&child) {
+        Ok(exit_notifier) => Some(exit_notifier),
+        Err(reason) => {
+            warn!(
+                id = %id,
+                reason = %reason,
+                "pidfd child exit notification unavailable; natural exit cleanup will not signal by cached PID after reap"
+            );
+            None
+        }
+    };
     monitor_process_with_log_readers_and_exit_notifier(id, child, context, readers, exit_notifier)
 }
 
@@ -1524,19 +1535,13 @@ fn monitor_process_with_log_readers_and_exit_notifier(
     mut child: tokio::process::Child,
     context: ProcessMonitorContext,
     readers: ProcessLogReaders,
-    exit_notifier: ChildExitNotifier,
+    exit_notifier: Option<ChildExitNotifier>,
 ) -> ProcessMonitorHandle {
-    if let Some(reason) = exit_notifier.unavailable_reason() {
-        warn!(
-            id = %id,
-            reason = %reason,
-            "pidfd child exit notification unavailable; natural exit cleanup will not signal by cached PID after reap"
-        );
-    }
     let id = id.to_owned();
     let (kill_tx, mut kill_rx) = mpsc::channel::<control::ProcessTerminationRequest>(1);
     let task = tokio::spawn(async move {
-        let exit = wait_for_process_monitor_exit(&mut child, &exit_notifier, &mut kill_rx).await;
+        let exit =
+            wait_for_process_monitor_exit(&mut child, exit_notifier.as_ref(), &mut kill_rx).await;
         let (prev, status) = match exit {
             ProcessMonitorExit::NaturalPreReap => {
                 let prev = publish_process_monitor_exit(&context);
@@ -1573,12 +1578,17 @@ fn monitor_process_with_log_readers_and_exit_notifier(
 
 async fn wait_for_process_monitor_exit(
     child: &mut tokio::process::Child,
-    exit_notifier: &ChildExitNotifier,
+    exit_notifier: Option<&ChildExitNotifier>,
     kill_rx: &mut mpsc::Receiver<control::ProcessTerminationRequest>,
 ) -> ProcessMonitorExit {
-    let has_exit_notifier = exit_notifier.is_available();
+    let has_exit_notifier = exit_notifier.is_some();
     tokio::select! {
-        exit = exit_notifier.wait_for_exit(), if has_exit_notifier => {
+        exit = async {
+            match exit_notifier {
+                Some(exit_notifier) => exit_notifier.wait_for_exit().await,
+                None => std::future::pending().await,
+            }
+        }, if has_exit_notifier => {
             match exit {
                 Ok(()) => ProcessMonitorExit::NaturalPreReap,
                 Err(error) => {

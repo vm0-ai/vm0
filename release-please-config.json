@@ -54,6 +54,9 @@
             "component": "api-contracts-rs",
             "skip-changelog": true
         },
+        "crates/child-exit-notifier": {
+            "release-type": "rust"
+        },
         "crates/nbd-cow": {
             "release-type": "rust"
         },
