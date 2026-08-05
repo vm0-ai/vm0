@@ -492,8 +492,12 @@ describe("zero workflow automations", () => {
   async function connectGmail(
     scenario: AutomationScenario,
     email = GMAIL_EMAIL,
+    oauth?: {
+      readonly accessToken?: string;
+      readonly refreshToken?: string;
+    },
   ): Promise<string> {
-    mockGmailConnectorOAuth({ email });
+    mockGmailConnectorOAuth({ email, ...oauth });
     await wf.connectConnector(scenario.actor, "gmail");
     const connector = await connectorsApi.readConnectorBySlug(
       scenario.actor,
@@ -1817,25 +1821,22 @@ describe("zero workflow automations", () => {
     expect(watchRecorder.baselineCalls).toBe(1);
   });
 
-  it("accepts Calendar changes while the provider watch request is in flight", async () => {
+  it("catches up Calendar changes from the channel startup sync", async () => {
+    const runnerGroup = runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
     const scenario = await setupFixture();
     await connectGoogleCalendar(scenario);
-    const notificationStatuses: number[] = [];
+    const notifications: { readonly status: number; readonly body: unknown }[] =
+      [];
     const watch = configureGoogleCalendarWatchMock({
-      baselineItems: [
+      baselineItems: [],
+      incrementalItems: [
         {
           id: "registration-window-event",
           etag: '"version-1"',
           status: "confirmed",
-          summary: "Before registration",
-        },
-      ],
-      incrementalItems: [
-        {
-          id: "registration-window-event",
-          etag: '"version-2"',
-          status: "confirmed",
-          summary: "During registration",
+          summary: "Created between baseline and channel registration",
         },
       ],
       onWatchRegistered: async ({ channelId, channelToken, resourceId }) => {
@@ -1847,12 +1848,15 @@ describe("zero workflow automations", () => {
               "x-goog-channel-id": channelId,
               "x-goog-channel-token": channelToken,
               "x-goog-resource-id": resourceId,
-              "x-goog-resource-state": "exists",
+              "x-goog-resource-state": "sync",
               "x-goog-message-number": "1",
             },
           },
         );
-        notificationStatuses.push(response.status);
+        notifications.push({
+          status: response.status,
+          body: await response.json(),
+        });
       },
     });
 
@@ -1868,9 +1872,22 @@ describe("zero workflow automations", () => {
       [201],
     );
 
-    expect(notificationStatuses).toStrictEqual([200]);
+    expect(notifications).toStrictEqual([
+      {
+        status: 200,
+        body: {
+          success: true,
+          watchStates: 1,
+          dispatched: 1,
+          duplicates: 0,
+        },
+      },
+    ]);
     expect(watch.baselineCalls).toBe(1);
     expect(watch.incrementalCalls).toBe(1);
+    await runs.heartbeatRunner(runnerGroup);
+    const job = await runs.pollRunner(runnerGroup);
+    expect(job.body.job?.runId).toStrictEqual(expect.any(String));
   });
 
   it("does not create provider watches for disabled Gmail or Calendar automations", async () => {
@@ -2054,6 +2071,89 @@ describe("zero workflow automations", () => {
       [200],
     );
     expect(stop.calls).toBe(1);
+  });
+
+  it("renews a shared Gmail mailbox through another healthy identity", async () => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    const startedAt = Date.parse("2026-08-05T08:00:00.000Z");
+    mockNow(startedAt);
+    const first = await setupFixture();
+    const sharedEmail = `renew-fallback-${first.fixture.userId}@example.com`;
+    await connectGmail(first, sharedEmail, {
+      refreshToken: "gmail-broken-refresh-token",
+    });
+    mockNow(startedAt + 1000);
+    const second = await setupFixture();
+    await connectGmail(second, sharedEmail, {
+      refreshToken: "gmail-healthy-refresh-token",
+    });
+    const watch = configureGmailWatchMock([
+      "history-first",
+      "history-second",
+      "history-renewed",
+    ]);
+
+    for (const scenario of [first, second]) {
+      mocks.clerk.session(
+        scenario.fixture.userId,
+        scenario.fixture.orgId,
+        "org:member",
+      );
+      await accept(
+        automationsClient().create({
+          headers: authHeaders(),
+          params: { workflowId: scenario.workflowId },
+          body: {
+            kind: "event",
+            eventType: "gmail-new-message",
+            eventConfig: { provider: "gmail", event: "new_message" },
+          },
+        }),
+        [201],
+      );
+    }
+    expect(watch.calls).toBe(2);
+
+    const refreshTokens: string[] = [];
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", async ({ request }) => {
+        const body = new URLSearchParams(await request.text());
+        expect(body.get("grant_type")).toBe("refresh_token");
+        const refreshToken = body.get("refresh_token");
+        if (!refreshToken) {
+          throw new Error("Expected a Gmail refresh token");
+        }
+        refreshTokens.push(refreshToken);
+        if (refreshToken === "gmail-broken-refresh-token") {
+          return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+        }
+        expect(refreshToken).toBe("gmail-healthy-refresh-token");
+        return HttpResponse.json({
+          access_token: "gmail-access-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+        });
+      }),
+    );
+    mockNow(startedAt + 6 * 24 * 60 * 60 * 1000);
+
+    const renewed = await accept(
+      renewGmailWatchesClient().renew({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+
+    expect(renewed.body).toStrictEqual({
+      success: true,
+      renewed: 1,
+      failed: 0,
+    });
+    expect(refreshTokens).toStrictEqual([
+      "gmail-broken-refresh-token",
+      "gmail-healthy-refresh-token",
+    ]);
+    expect(watch.calls).toBe(3);
   });
 
   it("stops Calendar with the persisted channel pair after the last consumer", async () => {
