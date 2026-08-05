@@ -375,17 +375,13 @@ async fn termination_request_receive_has_local_deadline_with_live_sender() {
     let operation = std::future::pending::<()>();
     tokio::pin!(operation);
 
-    let delayed_delivery = async move {
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        kill_tx
-            .send(ProcessTerminationRequest::fire_and_forget())
-            .await
-            .expect("live process monitor channel should accept delayed request");
-    };
-    let (received, ()) = tokio::join!(
+    let received = tokio::time::timeout(
+        Duration::from_secs(2),
         recv_termination_request_with_timeout(&mut kill_rx, operation.as_mut(), Duration::ZERO),
-        delayed_delivery,
-    );
+    )
+    .await
+    .expect("termination request receive exceeded independent regression watchdog");
+    drop(kill_tx);
 
     assert!(
         received.is_err(),
