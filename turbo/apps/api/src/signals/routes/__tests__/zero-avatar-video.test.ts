@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
@@ -36,8 +36,8 @@ const mocks = createZeroRouteMocks(context);
 const JOGGAI_CREATE_URL = "https://api.jogg.ai/v2/create_video_from_avatar";
 const JOGGAI_AVATARS_URL = "https://api.jogg.ai/v2/avatars/public";
 const JOGGAI_VOICES_URL = "https://api.jogg.ai/v2/voices";
+const JOGGAI_WEBHOOK_SECRET = randomUUID();
 const GENERATED_VIDEO_URL = "https://res.jogg.ai/avatar-video.mp4";
-const WEB_ORIGIN = "https://www.vm0.test";
 const VIDEO_BYTES = Buffer.from("generated avatar video");
 
 interface AvatarVideoFixture {
@@ -141,14 +141,6 @@ function readGenerationId(value: unknown, userId: string): string {
   return body.generationId;
 }
 
-function readWebhookUrl(value: unknown): URL {
-  const webhookUrl = asRecord(value).webhook_url;
-  if (typeof webhookUrl !== "string") {
-    throw new Error("Expected JoggAI webhook URL");
-  }
-  return new URL(webhookUrl);
-}
-
 async function orgCredits(fixture: AvatarVideoFixture): Promise<number> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   const response = await createAvatarVideoTestApp().request(
@@ -165,10 +157,9 @@ async function orgCredits(fixture: AvatarVideoFixture): Promise<number> {
 
 describe("JoggAI built-in avatar video routes", () => {
   beforeEach(() => {
-    mockEnv("VM0_API_BACKEND_URL", WEB_ORIGIN);
-    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     mockEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://artifacts.vm0.test");
     mockEnv("JOGGAI_API_KEY", "test-joggai-key");
+    mockEnv("JOGGAI_WEBHOOK_SECRET", JOGGAI_WEBHOOK_SECRET);
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
@@ -461,29 +452,45 @@ describe("JoggAI built-in avatar video routes", () => {
       caption: false,
       video_name: "vm0 introduction",
     });
+    expect(asRecord(observedBody)).not.toHaveProperty("webhook_url");
 
-    const webhookUrl = readWebhookUrl(observedBody);
-    expect(webhookUrl.origin).toBe(WEB_ORIGIN);
-    expect(webhookUrl.pathname).toBe(
-      `/api/webhooks/built-in-generations/joggai/${generationId}`,
-    );
-    const webhookResponse = await app.request(
-      `${webhookUrl.pathname}${webhookUrl.search}`,
+    const webhookBody = JSON.stringify({
+      event_id: "event-1",
+      event: "generated_avatar_video_success",
+      timestamp: 1_700_000_000,
+      data: {
+        video_id: "jogg-video-123",
+        status: "completed",
+        video_url: GENERATED_VIDEO_URL,
+        cover_url: "https://res.jogg.ai/avatar-video.jpg",
+        duration: 121,
+      },
+    });
+    const invalidWebhookResponse = await app.request(
+      "/api/webhooks/built-in-generations/joggai",
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          event_id: "event-1",
-          event: "generated_avatar_video_success",
-          timestamp: 1_700_000_000,
-          data: {
-            video_id: "jogg-video-123",
-            status: "completed",
-            video_url: GENERATED_VIDEO_URL,
-            cover_url: "https://res.jogg.ai/avatar-video.jpg",
-            duration: 121,
-          },
-        }),
+        headers: {
+          "content-type": "application/json",
+          "x-webhook-signature": "invalid-signature",
+        },
+        body: webhookBody,
+      },
+    );
+    expect(invalidWebhookResponse.status).toBe(401);
+
+    const signature = createHmac("sha256", JOGGAI_WEBHOOK_SECRET)
+      .update(webhookBody)
+      .digest("hex");
+    const webhookResponse = await app.request(
+      "/api/webhooks/built-in-generations/joggai",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-webhook-signature": signature,
+        },
+        body: webhookBody,
       },
     );
     expect(webhookResponse.status).toBe(200);
