@@ -5794,7 +5794,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(queue.body.concurrency.active).toBe(0);
   });
 
-  it("defaults limited-free runs to Luna, allows Terra, rejects Sol, and normalizes retired Auto", async () => {
+  it("defaults limited-free runs to DeepSeek, allows Luna, and rejects Sol", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
@@ -5825,7 +5825,10 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       }),
     ).toMatchObject({ isDefault: true });
 
-    for (const model of ["gpt-5.6-terra", "gpt-5.6-luna"] as const) {
+    for (const model of [
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      "gpt-5.6-luna",
+    ] as const) {
       await seedVm0ManagedModelKey(model);
       const sent = await chat.requestSendEvent(
         actor,
@@ -9948,6 +9951,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       },
       {
         [FeatureSwitchKey.ZeroBrowser]: true,
+        [FeatureSwitchKey.ZeroChatMessaging]: false,
       },
     );
     bdd.acceptAgentStorageWrites();

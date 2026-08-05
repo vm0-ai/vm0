@@ -505,6 +505,37 @@ RUNNER_VETH_PREFIX=${RUNNER_POOL_PREFIX/vm0-ns-/vm0-ve-}
 ATTACKER_IF=${ATTACKER_NS/vm0-ns-/vm0-ve-}
 VICTIM_IF=${VICTIM_NS/vm0-ns-/vm0-ve-}
 
+ATTACKER_POOL_HEX=${ATTACKER_NS#vm0-ns-}
+ATTACKER_POOL_HEX=${ATTACKER_POOL_HEX%-*}
+ATTACKER_NAMESPACE_HEX=${ATTACKER_NS##*-}
+ATTACKER_EXPECTED_ROOT_MAC="02:56:4d:${ATTACKER_POOL_HEX}:${ATTACKER_NAMESPACE_HEX}:01"
+ATTACKER_UDEV_PROPERTIES=""
+for _ in $(seq 1 100); do
+  ATTACKER_UDEV_PROPERTIES=$(sudo udevadm info --query=property \
+    --path="/sys/class/net/${ATTACKER_IF}" 2>/dev/null || true)
+  if printf '%s\n' "$ATTACKER_UDEV_PROPERTIES" \
+    | grep -F -- "ID_NET_LINK_FILE=" >/dev/null; then
+    break
+  fi
+  sleep 0.05
+done
+ATTACKER_LINK_FILE=$(printf '%s\n' "$ATTACKER_UDEV_PROPERTIES" \
+  | sed -n 's/^ID_NET_LINK_FILE=//p' \
+  | head -n 1)
+[ -n "$ATTACKER_LINK_FILE" ] \
+  || fail "udev did not record link processing for $ATTACKER_IF"
+ATTACKER_ROOT_MAC=$(sudo ip -j link show dev "$ATTACKER_IF" \
+  | jq -r '.[0].address // empty') \
+  || fail "failed to read root veth MAC: $ATTACKER_IF"
+[ "$ATTACKER_ROOT_MAC" = "$ATTACKER_EXPECTED_ROOT_MAC" ] \
+  || fail "root veth MAC changed after udev processing: device=$ATTACKER_IF link_file=$ATTACKER_LINK_FILE expected=$ATTACKER_EXPECTED_ROOT_MAC actual=$ATTACKER_ROOT_MAC"
+ATTACKER_ROOT_ADDR_ASSIGN_TYPE=$(sudo cat \
+  "/sys/class/net/${ATTACKER_IF}/addr_assign_type") \
+  || fail "failed to read root veth address assignment type: $ATTACKER_IF"
+[ "$ATTACKER_ROOT_ADDR_ASSIGN_TYPE" = 3 ] \
+  || fail "root veth MAC is not userspace-set: device=$ATTACKER_IF addr_assign_type=$ATTACKER_ROOT_ADDR_ASSIGN_TYPE"
+echo "PASS: root veth MAC remains stable after udev processing"
+
 ATTACKER_PROXY_RULE=$(printf '%s\n' "$PROXY_RULES" \
   | grep -F -- "$ATTACKER_NS" \
   | head -n 1 || true)

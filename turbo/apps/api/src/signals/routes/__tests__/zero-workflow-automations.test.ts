@@ -12,6 +12,12 @@ import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
+import {
+  readRunAutonomyBudgetFixture,
+  readWorkflowAutomationAutonomyFixture,
+  setRunAutonomyBudgetFixture,
+} from "./helpers/runtime-state";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import {
   createConnectorBddApi,
@@ -2424,5 +2430,198 @@ describe("zero workflow automations", () => {
     expect(chatEventAutomationPart(workflowMessage!)?.automationBrief).toMatch(
       /^Once at \d{1,2}:\d{2} [AP]M, [A-Z][a-z]{2} \d{1,2}, \d{4} \(Asia\/Shanghai\)$/u,
     );
+  });
+
+  it("derives automation budgets and blocks creation from budget zero", async () => {
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    const { actor, workflowId } = await setupFixture();
+    const rootAutomation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          schedule: { type: "loop", intervalSeconds: 3600 },
+        },
+      }),
+      [201],
+    );
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, rootAutomation.body.id),
+    ).resolves.toMatchObject({ autonomyBudget: 10 });
+
+    const rootRun = await accept(
+      automationsClient().run({
+        headers: authHeaders(),
+        params: { id: rootAutomation.body.id },
+      }),
+      [201],
+    );
+    if (!rootRun.body.runId) {
+      throw new Error("Expected the root automation to start a run");
+    }
+    await expect(
+      readRunAutonomyBudgetFixture(context, rootRun.body.runId),
+    ).resolves.toBe(10);
+    const rootToken = runs.zeroTokenForRunWithCapabilities(
+      actor,
+      rootRun.body.runId,
+      ["agent:write"],
+    );
+
+    const derivedAutomation = await accept(
+      automationsClient().create({
+        headers: { authorization: `Bearer ${rootToken}` },
+        params: { workflowId },
+        body: {
+          schedule: { type: "loop", intervalSeconds: 3601 },
+        },
+      }),
+      [201],
+    );
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, derivedAutomation.body.id),
+    ).resolves.toMatchObject({ autonomyBudget: 9 });
+
+    await setRunAutonomyBudgetFixture(context, rootRun.body.runId, 1);
+    const zeroBudgetAutomation = await accept(
+      automationsClient().create({
+        headers: { authorization: `Bearer ${rootToken}` },
+        params: { workflowId },
+        body: {
+          schedule: { type: "loop", intervalSeconds: 3602 },
+        },
+      }),
+      [201],
+    );
+    await expect(
+      readWorkflowAutomationAutonomyFixture(
+        context,
+        zeroBudgetAutomation.body.id,
+      ),
+    ).resolves.toMatchObject({ autonomyBudget: 0 });
+    await runs.requestCancelRun(actor, rootRun.body.runId, [200]);
+    await flushWaitUntilForTest();
+
+    const exhaustedRun = await accept(
+      automationsClient().run({
+        headers: authHeaders(),
+        params: { id: zeroBudgetAutomation.body.id },
+      }),
+      [201],
+    );
+    if (!exhaustedRun.body.runId) {
+      throw new Error("Expected the zero-budget automation to start its run");
+    }
+    await expect(
+      readRunAutonomyBudgetFixture(context, exhaustedRun.body.runId),
+    ).resolves.toBe(0);
+    const exhaustedToken = runs.zeroTokenForRunWithCapabilities(
+      actor,
+      exhaustedRun.body.runId,
+      ["agent:write"],
+    );
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: derivedAutomation.body.id },
+      }),
+      [200],
+    );
+    const blockedEnable = await accept(
+      automationsClient().enable({
+        headers: { authorization: `Bearer ${exhaustedToken}` },
+        params: { id: derivedAutomation.body.id },
+      }),
+      [409],
+    );
+    expect(blockedEnable.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, derivedAutomation.body.id),
+    ).resolves.toMatchObject({ autonomyBudget: 9, enabled: false });
+
+    await setRunAutonomyBudgetFixture(context, exhaustedRun.body.runId, 2);
+    await accept(
+      automationsClient().enable({
+        headers: { authorization: `Bearer ${exhaustedToken}` },
+        params: { id: derivedAutomation.body.id },
+      }),
+      [200],
+    );
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, derivedAutomation.body.id),
+    ).resolves.toMatchObject({ autonomyBudget: 1, enabled: true });
+    await setRunAutonomyBudgetFixture(context, exhaustedRun.body.runId, 0);
+
+    const blocked = await accept(
+      automationsClient().create({
+        headers: { authorization: `Bearer ${exhaustedToken}` },
+        params: { workflowId },
+        body: {
+          schedule: { type: "loop", intervalSeconds: 7200 },
+        },
+      }),
+      [409],
+    );
+    expect(blocked.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
+    await runs.requestCancelRun(actor, exhaustedRun.body.runId, [200]);
+  });
+
+  it("derives manual run budgets and rejects exhausted Zero callers", async () => {
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    const { actor, workflowId } = await setupFixture();
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          schedule: { type: "loop", intervalSeconds: 3600 },
+        },
+      }),
+      [201],
+    );
+    const sourceRun = await accept(
+      automationsClient().run({
+        headers: authHeaders(),
+        params: { id: automation.body.id },
+      }),
+      [201],
+    );
+    if (!sourceRun.body.runId) {
+      throw new Error("Expected the source automation run to start");
+    }
+    const sourceToken = runs.zeroTokenForRunWithCapabilities(
+      actor,
+      sourceRun.body.runId,
+      ["agent:write"],
+    );
+    await runs.requestCancelRun(actor, sourceRun.body.runId, [200]);
+    await flushWaitUntilForTest();
+
+    await setRunAutonomyBudgetFixture(context, sourceRun.body.runId, 1);
+    const childRun = await accept(
+      automationsClient().run({
+        headers: { authorization: `Bearer ${sourceToken}` },
+        params: { id: automation.body.id },
+      }),
+      [201],
+    );
+    if (!childRun.body.runId) {
+      throw new Error("Expected a budget-one caller to start a child run");
+    }
+    await expect(
+      readRunAutonomyBudgetFixture(context, childRun.body.runId),
+    ).resolves.toBe(0);
+    await runs.requestCancelRun(actor, childRun.body.runId, [200]);
+    await flushWaitUntilForTest();
+
+    await setRunAutonomyBudgetFixture(context, sourceRun.body.runId, 0);
+    const blocked = await accept(
+      automationsClient().run({
+        headers: { authorization: `Bearer ${sourceToken}` },
+        params: { id: automation.body.id },
+      }),
+      [409],
+    );
+    expect(blocked.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
   });
 });

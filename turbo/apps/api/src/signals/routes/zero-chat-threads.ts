@@ -10,6 +10,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   clientVersionSupportsCapability,
+  CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
   CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
   CLIENT_TYPE_APP,
   CLIENT_TYPE_HEADER,
@@ -42,6 +43,7 @@ import {
   getChatThreadEventsSince,
   getChatThreadSnapshot,
 } from "../services/zero-chat-thread-event.service";
+import { withoutAgentRunSourceAnnotation } from "../services/zero-chat-user-message.service";
 import type { RouteEntry } from "../route-entry";
 import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifacts-sync";
 import { zeroChatThreadComputerUseHostRoutes } from "./zero-chat-threads-computer-use-host";
@@ -81,17 +83,55 @@ const canonicalBrowserLifecycleEvents$ = computed((get): boolean => {
 function chatEventForClient(
   event: ChatEvent,
   canonicalBrowserLifecycleEvents: boolean,
+  supportsAgentRunSource: boolean,
 ): CompatibleChatEvent {
+  const projectedEvent = projectChatEventForClient(
+    event,
+    supportsAgentRunSource,
+  );
   if (canonicalBrowserLifecycleEvents) {
+    return projectedEvent;
+  }
+  if (projectedEvent.eventType === "browser.open") {
+    return { ...projectedEvent, eventType: "browser.started" };
+  }
+  if (projectedEvent.eventType === "browser.close") {
+    return { ...projectedEvent, eventType: "browser.stopped" };
+  }
+  return projectedEvent;
+}
+
+function projectChatEventForClient(
+  event: ChatEvent,
+  supportsAgentRunSource: boolean,
+): ChatEvent {
+  if (supportsAgentRunSource) {
     return event;
   }
-  if (event.eventType === "browser.open") {
-    return { ...event, eventType: "browser.started" };
+  if (
+    event.eventType === "input.prompt" ||
+    event.eventType === "input.goal" ||
+    event.eventType === "input.rejected"
+  ) {
+    return {
+      ...event,
+      userMessage: withoutAgentRunSourceAnnotation(event.userMessage),
+    };
   }
-  if (event.eventType === "browser.close") {
-    return { ...event, eventType: "browser.stopped" };
+  if (event.eventType === "input.automation" && event.userMessage) {
+    return {
+      ...event,
+      userMessage: withoutAgentRunSourceAnnotation(event.userMessage),
+    };
   }
   return event;
+}
+
+function clientSupportsAgentRunSource(version: string | null): boolean {
+  return clientVersionSupportsCapability(
+    version,
+    CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
+  );
 }
 
 const getChatThreadInner$ = computed(async (get) => {
@@ -178,6 +218,9 @@ const listChatEventsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.list));
   const query = get(queryOf(chatThreadEventsContract.list));
+  const supportsAgentRunSource = clientSupportsAgentRunSource(
+    get(request$).raw.headers.get(CLIENT_VERSION_HEADER),
+  );
 
   const events = await get(
     zeroChatThreadEventsPage({
@@ -199,7 +242,11 @@ const listChatEventsInner$ = computed(async (get) => {
     status: 200 as const,
     body: {
       events: events.map((event) => {
-        return chatEventForClient(event, canonicalBrowserLifecycleEvents);
+        return chatEventForClient(
+          event,
+          canonicalBrowserLifecycleEvents,
+          supportsAgentRunSource,
+        );
       }),
     },
   };
@@ -208,6 +255,9 @@ const listChatEventsInner$ = computed(async (get) => {
 const getChatThreadEventInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.get));
+  const supportsAgentRunSource = clientSupportsAgentRunSource(
+    get(request$).raw.headers.get(CLIENT_VERSION_HEADER),
+  );
 
   const event = await get(
     zeroChatThreadEventById({
@@ -222,7 +272,11 @@ const getChatThreadEventInner$ = computed(async (get) => {
 
   return {
     status: 200 as const,
-    body: chatEventForClient(event, get(canonicalBrowserLifecycleEvents$)),
+    body: chatEventForClient(
+      event,
+      get(canonicalBrowserLifecycleEvents$),
+      supportsAgentRunSource,
+    ),
   };
 });
 

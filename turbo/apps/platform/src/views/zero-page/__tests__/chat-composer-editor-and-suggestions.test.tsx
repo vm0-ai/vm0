@@ -428,6 +428,9 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroChatMessaging]: false,
+      },
     });
 
     const editor = await findComposerEditor();
@@ -555,6 +558,9 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroChatMessaging]: false,
+      },
     });
 
     const editor = await findComposerEditor();

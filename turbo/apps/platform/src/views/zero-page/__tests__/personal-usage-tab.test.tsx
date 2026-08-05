@@ -101,10 +101,12 @@ function usageRow(args: {
   };
 }
 
-function mockBillingStatus(): void {
+function mockBillingStatus(tier: "limited-free-1" | "pro" = "pro"): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     return respond(200, {
-      tier: "pro",
+      tier,
+      supportByok: tier !== "limited-free-1",
+      restrictedVm0Models: tier === "limited-free-1",
       credits: 12_500,
       onboardingPaymentPending: false,
       subscriptionStatus: "active",
@@ -139,6 +141,7 @@ function mockBillingStatus(): void {
 
 function mockPersonalUsageStory(
   rows: UsageRecordRow[] = usageRows(),
+  tier: "limited-free-1" | "pro" = "pro",
 ): string[] {
   const requestedRanges: string[] = [];
 
@@ -148,7 +151,7 @@ function mockPersonalUsageStory(
     name: "Test Org",
     role: "member",
   });
-  mockBillingStatus();
+  mockBillingStatus(tier);
   context.mocks.api(zeroUsageRecordContract.get, ({ query, respond }) => {
     requestedRanges.push(query.range);
     const offset = (query.page - 1) * query.pageSize;
@@ -237,6 +240,38 @@ describe("personal usage settings", () => {
     await waitFor(() => {
       expect(screen.getByText("Last 7 days")).toBeInTheDocument();
       expect(requestedRanges).toContain("7d");
+    });
+  });
+
+  it("hides model names for limited-free-1 usage", async () => {
+    const user = userEvent.setup();
+    const row = usageRow({
+      title: "Limited free model usage",
+      credits: 100,
+      runId: "run-limited-free-model",
+    });
+    mockPersonalUsageStory(
+      [
+        {
+          ...row,
+          breakdown: [
+            {
+              kind: "model",
+              credits: 100,
+              providers: [{ provider: "gpt-5.6-luna", credits: 100 }],
+            },
+          ],
+        },
+      ],
+      "limited-free-1",
+    );
+    await openUsageSettings();
+
+    await user.hover(screen.getByTestId("usage-kind-segment-model"));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("model").length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText("GPT 5.6 Luna")).not.toBeInTheDocument();
     });
   });
 

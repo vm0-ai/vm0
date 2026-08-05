@@ -1122,6 +1122,10 @@ function registerEventAgentReferences(
       agentReferenceSignals.register(part.agentId);
       continue;
     }
+    if (part.type === "source" && part.kind === "agent") {
+      agentReferenceSignals.register(part.agentId);
+      continue;
+    }
     if (part.type !== "feedback") {
       continue;
     }

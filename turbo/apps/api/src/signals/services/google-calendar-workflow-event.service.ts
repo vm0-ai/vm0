@@ -26,6 +26,7 @@ import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import {
   connectorCredentialRuntimeValueRef,
@@ -1154,7 +1155,7 @@ async function loadGoogleCalendarEventAutomations(args: {
 }): Promise<GoogleCalendarEventAutomationRow[]> {
   const automationRows = await args.db
     .select({
-      automation: zeroWorkflowAutomations,
+      automation: rolloutCompatibleWorkflowAutomationColumns(false),
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.158.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.157.2...runner-rs-v0.158.0) (2026-08-04)
+
+
+### Features
+
+* annotate cross-thread agent prompts and bound autonomous delegation depth ([#24934](https://github.com/vm0-ai/vm0/issues/24934)) ([2f2c72a](https://github.com/vm0-ai/vm0/commit/2f2c72af84481a07844bda1eb78fc73612cec3f2))
+
+## [0.157.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.157.1...runner-rs-v0.157.2) (2026-08-04)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** reduce balloon settle detection latency ([#25069](https://github.com/vm0-ai/vm0/issues/25069)) ([16893fa](https://github.com/vm0-ai/vm0/commit/16893fa7ffa416a8859a112119a8082229da2d88))
+
 ## [0.157.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.157.0...runner-rs-v0.157.1) (2026-08-04)
 
 

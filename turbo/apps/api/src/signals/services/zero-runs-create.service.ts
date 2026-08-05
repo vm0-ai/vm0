@@ -140,6 +140,7 @@ interface ZeroRunMetadata {
   readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
   readonly goalId?: string;
+  readonly autonomyBudget?: number;
 }
 
 interface CreateZeroRunCommandArgs {
@@ -263,7 +264,8 @@ function buildIntegrationToolsPrompt(
   });
 
   switch (triggerSource) {
-    case "web": {
+    case "web":
+    case "agent": {
       return [
         "- Web chat files: use `zero web download-file -h` when a web chat message includes a `[Web file]` block. `zero web upload-file -h` can share a local file back to the web chat user when file delivery is needed.",
         "- Cross-integration messages from web chat: if the user explicitly asks you to send or post through another integration, use the integration CLI and ask for the destination when it is missing. Feishu: `zero feishu message send --help` for chats, DMs, and replies. Microsoft Teams: `zero teams message send --help` for conversations and thread replies. Telegram: `zero telegram bot list` to choose the bot, then `zero telegram message send --help` for chats, replies, and forum topics. AgentPhone/SMS: `zero phone message --help`. GitHub does not currently have a dedicated Zero message-send command, so do not invent `zero github message` commands.",

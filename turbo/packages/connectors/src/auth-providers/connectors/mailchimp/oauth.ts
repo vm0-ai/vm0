@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
 
 const MAILCHIMP_TOKEN_URL = "https://login.mailchimp.com/oauth2/token";
@@ -136,7 +137,7 @@ async function fetchMailchimpMetadata(accessToken: string): Promise<{
   return {
     apiEndpoint: data.api_endpoint ?? "",
     userInfo: {
-      id: data.user_id?.toString() ?? "",
+      id: requireConnectorGrantUserId(data.user_id?.toString(), "Mailchimp"),
       username: data.login?.login_name ?? data.accountname ?? null,
       email: data.login?.login_email ?? null,
     },

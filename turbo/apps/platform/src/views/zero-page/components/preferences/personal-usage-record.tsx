@@ -1,5 +1,10 @@
 import type { MouseEvent } from "react";
-import { useLastLoadable, useLoadable, useSet } from "ccstate-react";
+import {
+  useLastLoadable,
+  useLastResolved,
+  useLoadable,
+  useSet,
+} from "ccstate-react";
 import {
   IconBrandGithub,
   IconBrandSlack,
@@ -41,6 +46,7 @@ import {
 } from "../../../../signals/zero-page/settings/personal-usage-record.ts";
 import { orgMembers$ } from "../../../../signals/external/org-members.ts";
 import { closeSettingsModal$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
+import { modelPlanCapabilities$ } from "../../../../signals/zero-page/model-plan-capabilities.ts";
 import { nowDate } from "../../../../lib/time.ts";
 import { getCreditUsageDisplayName } from "../../../../lib/credit-usage-display.ts";
 import { Link } from "../../../router/link.tsx";
@@ -296,6 +302,13 @@ export function UsageRangeSelect({
 }
 
 function UsageBreakdownBar({ row, max }: { row: UsageRecordRow; max: number }) {
+  const modelCapabilitiesLoadable = useLoadable(modelPlanCapabilities$);
+  const lastModelCapabilities = useLastResolved(modelPlanCapabilities$);
+  const modelCapabilities =
+    modelCapabilitiesLoadable.state === "hasData"
+      ? modelCapabilitiesLoadable.data
+      : lastModelCapabilities;
+  const genericModelName = modelCapabilities?.restrictedVm0Models ?? true;
   const segments = row.breakdown.filter((segment) => {
     return segment.credits > 0;
   });
@@ -353,6 +366,7 @@ function UsageBreakdownBar({ row, max }: { row: UsageRecordRow; max: number }) {
                             {getCreditUsageDisplayName(
                               usageKind.kind,
                               provider.provider,
+                              genericModelName,
                             )}
                           </span>
                           <span className="shrink-0 tabular-nums">
