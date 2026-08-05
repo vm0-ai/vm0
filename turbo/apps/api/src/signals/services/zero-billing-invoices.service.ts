@@ -3,6 +3,7 @@ import { command, computed, type Computed } from "ccstate";
 import type { BillingInvoicesResponse } from "@vm0/api-contracts/contracts/zero-billing";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
+import { delay } from "signal-timers";
 
 import { db$ } from "../external/db";
 import { listStripeInvoices } from "../external/stripe-client";
@@ -28,6 +29,16 @@ interface ReceiptEntry {
   readonly content: Buffer;
 }
 
+interface ReceiptDownload {
+  readonly id: string;
+  readonly number: string | null;
+  readonly url: string;
+}
+
+const RECEIPT_DOWNLOAD_CONCURRENCY = 10;
+const RECEIPT_DOWNLOAD_ATTEMPTS = 3;
+const RECEIPT_DOWNLOAD_RETRY_BASE_DELAY_MS = 500;
+
 function monthlyRange(
   startMonth: string,
   endMonth: string,
@@ -48,6 +59,71 @@ function monthlyRange(
 function receiptFilename(invoiceNumber: string | null, id: string): string {
   const reference = (invoiceNumber ?? id).replace(/[^a-zA-Z0-9._-]+/gu, "-");
   return `receipt-${reference}.pdf`;
+}
+
+async function downloadReceipt(
+  receipt: ReceiptDownload,
+  signal: AbortSignal,
+): Promise<ReceiptEntry | null> {
+  for (let attempt = 0; attempt < RECEIPT_DOWNLOAD_ATTEMPTS; attempt += 1) {
+    const response = await tapError(fetch(receipt.url, { signal }));
+    signal.throwIfAborted();
+    if (!response) {
+      return null;
+    }
+
+    const content = await tapError(response.arrayBuffer());
+    signal.throwIfAborted();
+    if (response.ok) {
+      if (!content) {
+        return null;
+      }
+      return {
+        path: receiptFilename(receipt.number, receipt.id),
+        content: Buffer.from(content),
+      };
+    }
+
+    const retryable = response.status === 429 || response.status >= 500;
+    const hasAnotherAttempt = attempt + 1 < RECEIPT_DOWNLOAD_ATTEMPTS;
+    if (!retryable || !hasAnotherAttempt) {
+      return null;
+    }
+    await delay(RECEIPT_DOWNLOAD_RETRY_BASE_DELAY_MS * 2 ** attempt, {
+      signal,
+    });
+  }
+  return null;
+}
+
+async function downloadReceipts(
+  receipts: readonly ReceiptDownload[],
+  signal: AbortSignal,
+): Promise<readonly (ReceiptEntry | null)[]> {
+  const downloaded: (ReceiptEntry | null | undefined)[] = Array.from({
+    length: receipts.length,
+  });
+  const workerCount = Math.min(RECEIPT_DOWNLOAD_CONCURRENCY, receipts.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async (_, workerIndex) => {
+      for (
+        let receiptIndex = workerIndex;
+        receiptIndex < receipts.length;
+        receiptIndex += workerCount
+      ) {
+        const receipt = receipts[receiptIndex];
+        if (!receipt) {
+          return;
+        }
+        downloaded[receiptIndex] = await downloadReceipt(receipt, signal);
+      }
+    }),
+  );
+
+  return downloaded.map((entry) => {
+    return entry ?? null;
+  });
 }
 
 async function assembleReceiptArchive(
@@ -157,30 +233,23 @@ export const downloadZeroOrgReceiptArchive$ = command(
       monthlyRange(args.startMonth, args.endMonth),
     );
     signal.throwIfAborted();
-    const receipts = invoices.filter((invoice) => {
-      return invoice.invoice_pdf !== null;
+    const receipts = invoices.flatMap((invoice): readonly ReceiptDownload[] => {
+      if (!invoice.invoice_pdf) {
+        return [];
+      }
+      return [
+        {
+          id: invoice.id,
+          number: invoice.number,
+          url: invoice.invoice_pdf,
+        },
+      ];
     });
     if (receipts.length === 0) {
       return { kind: "not_found" };
     }
 
-    const downloaded = await Promise.all(
-      receipts.map(async (invoice) => {
-        const url = invoice.invoice_pdf;
-        if (!url) {
-          return null;
-        }
-        const response = await tapError(fetch(url, { signal }));
-        signal.throwIfAborted();
-        if (!response?.ok) {
-          return null;
-        }
-        return {
-          path: receiptFilename(invoice.number, invoice.id),
-          content: Buffer.from(await response.arrayBuffer()),
-        };
-      }),
-    );
+    const downloaded = await downloadReceipts(receipts, signal);
     signal.throwIfAborted();
     if (
       downloaded.some((entry) => {
