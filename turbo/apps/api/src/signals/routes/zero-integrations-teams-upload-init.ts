@@ -28,7 +28,6 @@ const init$ = command(async ({ get, set }, signal: AbortSignal) => {
     allocateArtifactObject$,
     {
       userId: auth.userId,
-      orgId: auth.orgId,
       filename: body.filename,
       allowV2: body.supportsUploadHeaders === true,
     },

@@ -16,7 +16,6 @@ import {
   integrationsSlackUploadMaterializeContract,
 } from "@vm0/api-contracts/contracts/integrations";
 import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -45,7 +44,6 @@ import {
   deleteUsageInsightFixture$,
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 type CompletedChatEvent = Extract<ChatEvent, { eventType: "run.completed" }>;
 
@@ -466,9 +464,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
   it("binds one canonical output asset to the completion event, Slack, and Google Drive", async () => {
     const { orgId, userId, runId, threadId, runnerGroup, agentId } =
       await seedRunScoped();
-    await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
-      [FeatureSwitchKey.ArtifactKeyV2]: true,
-    });
     const objectStore = chatCallbacks.acceptChatObjectStorage();
     const operationId = randomUUID();
     const token = zeroToken({ userId, orgId, runId });
