@@ -297,9 +297,7 @@ impl CommandExecution {
             .child
             .take()
             .ok_or_else(|| io::Error::other("proxy child was already consumed"))?;
-        let deadline = Instant::now()
-            .checked_add(timeout)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "child timeout overflow"))?;
+        let deadline = Instant::now() + timeout;
 
         loop {
             match child.try_wait() {
@@ -383,7 +381,10 @@ fn terminate_and_reap(mut child: Child) -> String {
         Ok(()) => "signal sent".to_owned(),
         Err(error) => format!("failed: {error}"),
     };
-    let reap = describe_reap(reap_child_with_timeout(child, CHILD_CLEANUP_TIMEOUT));
+    let reap = match reap_child_with_timeout(child, CHILD_CLEANUP_TIMEOUT) {
+        Ok(status) => format!("completed with {status}"),
+        Err(error) => format!("failed: {error}"),
+    };
     format!("kill={kill}, reap={reap}")
 }
 
@@ -410,13 +411,6 @@ fn reap_child_with_timeout(mut child: Child, timeout: Duration) -> io::Result<Ex
             drop(reaper);
             Err(io::Error::other("proxy child reaper exited without status"))
         }
-    }
-}
-
-fn describe_reap(result: io::Result<ExitStatus>) -> String {
-    match result {
-        Ok(status) => format!("completed with {status}"),
-        Err(error) => format!("failed: {error}"),
     }
 }
 
@@ -493,9 +487,7 @@ fn finish_proxy_case(child: CommandExecution, server: HttpServer) -> io::Result<
 }
 
 fn wait_for_ready(path: &Path, timeout: Duration) -> io::Result<()> {
-    let deadline = Instant::now()
-        .checked_add(timeout)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ready timeout overflow"))?;
+    let deadline = Instant::now() + timeout;
     loop {
         match fs::read(path) {
             Ok(contents) if contents == b"ready" => return Ok(()),
