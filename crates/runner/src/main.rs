@@ -12,6 +12,7 @@ mod error;
 mod executor;
 mod firewall_hostname_policy;
 mod group;
+mod guest_timezone;
 mod helper_exec;
 mod host;
 mod host_env;

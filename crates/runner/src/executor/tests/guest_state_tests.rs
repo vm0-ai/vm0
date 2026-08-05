@@ -31,6 +31,8 @@ async fn restore_guest_state_combines_clock_sync_and_reseed() {
     assert!(clock_sync_index < reseed_index);
     assert!(calls[0].cmd.contains("guest clock sync failed"));
     assert!(calls[0].cmd.contains("guest-reseed failed"));
+    assert!(calls[0].cmd.contains("/usr/share/zoneinfo/UTC"));
+    assert!(calls[0].cmd.contains("echo 'TZ=UTC' >> /etc/environment"));
     assert!(calls[0].sudo);
     let stdin_bytes = calls[0].stdin_bytes.as_ref().unwrap();
     assert_eq!(stdin_bytes.len(), 256);

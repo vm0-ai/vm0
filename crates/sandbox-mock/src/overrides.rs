@@ -17,16 +17,32 @@ pub(crate) struct ExecMatcherResult {
     pub(crate) result: ExecResult,
 }
 
+pub(crate) struct ExecMatcherBehavior {
+    pub(crate) pattern: String,
+    pub(crate) outcome: ExecMatcherOutcome,
+}
+
+pub(crate) enum ExecMatcherOutcome {
+    Return(ExecResult),
+    Error(SandboxError),
+    Panic(String),
+}
+
 #[derive(Default)]
 pub(crate) struct ExecOverrideState {
-    /// Pattern-matched exec results. First matching pattern wins and is
+    /// Pattern-matched exec behaviors. First matching pattern wins and is
     /// consumed (one-shot).
-    pub(crate) matchers: Mutex<Vec<ExecMatcherResult>>,
+    pub(crate) matchers: Mutex<Vec<ExecMatcherBehavior>>,
     /// Pattern-matched exec results that remain available for every matching
     /// call after one-shot matchers have been checked.
     pub(crate) persistent_matchers: Mutex<Vec<ExecMatcherResult>>,
     /// Recorded exec calls across all sandboxes built from this override set.
     pub(crate) calls: Mutex<Vec<ExecCall>>,
+    /// Wakes tests after an exec call is recorded.
+    pub(crate) call_notify: tokio::sync::Notify,
+    /// Optional gate entered after every exec call is recorded but before its
+    /// configured result is selected.
+    pub(crate) lifecycle_gate: Mutex<Option<MockLifecycleGate>>,
 }
 
 #[derive(Default)]
@@ -331,6 +347,11 @@ impl MockSandboxOverrides {
             .push_back(cancel);
     }
 
+    /// Block every `exec` call with a durable lifecycle gate after recording it.
+    pub fn set_exec_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.exec.lifecycle_gate.lock_ignoring_poison() = Some(gate);
+    }
+
     /// Register a one-shot pattern matcher for an ordinary exited result.
     ///
     /// The first registered matcher whose pattern occurs in a command is
@@ -340,9 +361,13 @@ impl MockSandboxOverrides {
         self.exec
             .matchers
             .lock_ignoring_poison()
-            .push(ExecMatcherResult {
+            .push(ExecMatcherBehavior {
                 pattern: matcher.pattern,
-                result: ExecResult::new(matcher.exit_code, matcher.stdout, matcher.stderr),
+                outcome: ExecMatcherOutcome::Return(ExecResult::new(
+                    matcher.exit_code,
+                    matcher.stdout,
+                    matcher.stderr,
+                )),
             });
     }
 
@@ -355,17 +380,38 @@ impl MockSandboxOverrides {
         self.exec
             .matchers
             .lock_ignoring_poison()
-            .push(ExecMatcherResult {
+            .push(ExecMatcherBehavior {
                 pattern: pattern.into(),
-                result,
+                outcome: ExecMatcherOutcome::Return(result),
+            });
+    }
+
+    /// Register a one-shot pattern matcher that returns an exec transport error.
+    pub fn add_exec_error_matcher(&self, pattern: impl Into<String>, error: SandboxError) {
+        self.exec
+            .matchers
+            .lock_ignoring_poison()
+            .push(ExecMatcherBehavior {
+                pattern: pattern.into(),
+                outcome: ExecMatcherOutcome::Error(error),
+            });
+    }
+
+    /// Register a one-shot pattern matcher that panics from the exec boundary.
+    pub fn add_exec_panic_matcher(&self, pattern: impl Into<String>, message: impl Into<String>) {
+        self.exec
+            .matchers
+            .lock_ignoring_poison()
+            .push(ExecMatcherBehavior {
+                pattern: pattern.into(),
+                outcome: ExecMatcherOutcome::Panic(message.into()),
             });
     }
 
     /// Register a persistent matcher for an ordinary exited result.
     ///
-    /// One-shot matchers registered with [`Self::add_exec_matcher`] or
-    /// [`Self::add_exec_result_matcher`] take precedence. The persistent
-    /// matcher is not consumed and can serve repeated calls across sandboxes.
+    /// One-shot matchers take precedence. The persistent matcher is not
+    /// consumed and can serve repeated calls across sandboxes.
     pub fn add_persistent_exec_matcher(&self, matcher: ExecMatcher) {
         self.exec
             .persistent_matchers
@@ -383,6 +429,28 @@ impl MockSandboxOverrides {
     /// is captured before exec matchers or queued exec results are consumed.
     pub fn exec_calls(&self) -> Vec<ExecCall> {
         self.exec.calls.lock_ignoring_poison().clone()
+    }
+
+    /// Wait until at least `expected` exec calls have been recorded.
+    pub async fn wait_exec_call_count(&self, expected: usize, timeout: Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let notified = self.exec.call_notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+
+            if self.exec.calls.lock_ignoring_poison().len() >= expected {
+                return true;
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            if tokio::time::timeout(remaining, notified).await.is_err() {
+                return false;
+            }
+        }
     }
 
     /// Return recorded write-file calls across all sandboxes built from this
