@@ -1935,7 +1935,11 @@ def done():
 
 
 def tcp_start(flow: tcp.TCPFlow) -> None:
-    """Track TCP connection start time and look up VM info."""
+    """Apply ``tcp_logging.start()``'s canonical registry-admission contract.
+
+    The delegated contract includes its no-op outcomes and fail-closed flow killing before TCP
+    logging metadata is installed.
+    """
     tcp_logging.start(flow, registry_path=get_registry_path())
 
 
