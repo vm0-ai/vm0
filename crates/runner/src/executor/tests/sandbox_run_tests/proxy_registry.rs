@@ -1,4 +1,5 @@
 use super::*;
+use crate::executor::tests::support::RUN_IN_SANDBOX_TEST_TIMEOUT;
 use crate::executor::{SandboxReuseDisposition, SandboxReuseRejection};
 
 fn capture_proxy_register_events(action: impl FnOnce()) -> Vec<CapturedEvent> {
@@ -169,17 +170,16 @@ async fn execute_inner_proxy_unregister_failure_marks_successful_run_failed() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_copy_file_result(Ok(b"guest system log\n".to_vec()));
+    let copy_gate = MockLifecycleGate::new();
+    overrides.set_copy_file_lifecycle_gate(copy_gate.clone());
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let source_ip = sandbox.source_ip().to_string();
     let network_log_session = register_proxy(&config, &ctx, &source_ip).await.unwrap();
-    let sandbox: Box<dyn Sandbox> = Box::new(
-        QueuedCopyFileSandbox::new(sandbox, vec![b"guest system log\n".to_vec()])
-            .with_remove_path_before_copy(dir.path().join("proxy-registry.json")),
-    );
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let outcome = execute_prepared_sandbox_run(
+    let run = execute_prepared_sandbox_run(
         PreparedSandboxRun {
             sandbox,
             source_ip,
@@ -195,8 +195,25 @@ async fn execute_inner_proxy_unregister_failure_marks_successful_run_failed() {
         },
         &mut telemetry,
         RunControls::new(tokio_util::sync::CancellationToken::new(), None),
-    )
-    .await;
+    );
+    tokio::pin!(run);
+
+    tokio::select! {
+        outcome = &mut run => {
+            let _ = outcome;
+            panic!("run finished before the diagnostic copy gate");
+        }
+        entered = copy_gate.wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT) => {
+            entered.expect("run should reach the diagnostic copy gate");
+        }
+    }
+    tokio::fs::remove_file(dir.path().join("proxy-registry.json"))
+        .await
+        .unwrap();
+    overrides.clear_copy_file_lifecycle_gate();
+    copy_gate.release_many(overrides.copy_file_calls().len());
+
+    let outcome = run.await;
 
     assert_eq!(outcome.exit_code(), 1);
     let error = outcome.error().unwrap();

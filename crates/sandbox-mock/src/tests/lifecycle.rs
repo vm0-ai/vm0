@@ -1,12 +1,86 @@
 use super::*;
 use std::sync::Arc;
 
+#[derive(Default)]
+struct RecordingFinalExecParkObserver {
+    records: Vec<(SandboxFinalExecParkStage, bool)>,
+}
+
+impl SandboxFinalExecParkObserver for RecordingFinalExecParkObserver {
+    fn record_stage(
+        &mut self,
+        stage: SandboxFinalExecParkStage,
+        _duration: Duration,
+        success: bool,
+    ) {
+        self.records.push((stage, success));
+    }
+}
+
 #[tokio::test]
 async fn sandbox_lifecycle() {
     let mut sandbox = MockSandbox::new("test-1");
     sandbox.start().await.unwrap();
     sandbox.stop().await.unwrap();
     sandbox.kill().await.unwrap();
+}
+
+#[tokio::test]
+async fn operation_overrides_preserve_unrelated_sandbox_behavior() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.set_start_process_lifecycle_gate(MockLifecycleGate::new());
+    overrides.set_copy_file_lifecycle_gate(MockLifecycleGate::new());
+    overrides.set_private_write_file_lifecycle_gate(MockLifecycleGate::new());
+    let mut sandbox = MockSandbox::with_overrides("test-1", Arc::clone(&overrides));
+
+    sandbox.bind_run_control("run-1").unwrap();
+    sandbox
+        .write_files(&[
+            WriteFileEntry {
+                path: "/tmp/a.txt",
+                content: b"a",
+            },
+            WriteFileEntry {
+                path: "/tmp/b.txt",
+                content: b"b",
+            },
+        ])
+        .await
+        .unwrap();
+
+    let mut observer = RecordingFinalExecParkObserver::default();
+    let outcome = sandbox
+        .final_exec_and_park_with_observer(
+            &ExecRequest {
+                cmd: "true",
+                timeout: test_timeout(),
+                env: &[],
+                sudo: false,
+                expected_exit_codes: &[],
+                stdin_bytes: None,
+                output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
+            },
+            "test",
+            &mut observer,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        outcome.park_outcome,
+        SandboxParkOutcome::Reusable,
+        "operation overrides must not replace lifecycle behavior"
+    );
+    assert_eq!(overrides.run_control_bind_calls(), vec!["run-1"]);
+    assert_eq!(overrides.write_files_calls().len(), 1);
+    assert_eq!(overrides.write_file_calls().len(), 2);
+    assert_eq!(
+        observer.records,
+        vec![
+            (SandboxFinalExecParkStage::ReusePreparation, true),
+            (SandboxFinalExecParkStage::PhysicalPark, true),
+        ]
+    );
 }
 
 #[tokio::test]
