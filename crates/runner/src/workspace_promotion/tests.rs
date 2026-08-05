@@ -1,6 +1,8 @@
 use super::test_support::{TEST_WORKSPACE_IMAGE_SIZE_BYTES, WorkspacePromotionFixture};
 use super::*;
 
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -27,6 +29,10 @@ use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::workspace_image_cache::{
     WorkspaceCacheCheckoutResult, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
 };
+
+fn mode(path: &Path) -> u32 {
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
 
 async fn mock_sandbox_with_overrides(
     sandbox_id: SandboxId,
@@ -398,6 +404,38 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     assert_eq!(tokio::fs::read(sidecar.path).await.unwrap(), history);
 }
 
+#[tokio::test]
+async fn active_workspace_permission_failure_skips_cache_publication() {
+    let fixture = WorkspacePromotionFixture::new("sess-active-permission-failure").await;
+    let paths = crate::paths::RunnerPaths::new(fixture._dir.path().join("runner"));
+    let active_image = paths.active_workspace_image(&fixture.sandbox_id);
+    tokio::fs::set_permissions(&active_image, std::fs::Permissions::from_mode(0o660))
+        .await
+        .unwrap();
+    let cache = fixture.cache.clone();
+    let reuse_key = fixture.reuse_key.clone();
+    let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
+
+    let (promoted, events) = capture_promotion_events(prepare_and_publish_workspace_image(
+        &sandbox,
+        fixture.promotion,
+    ))
+    .await;
+
+    assert!(!promoted);
+    let event = captured_event(&events, "workspace image cache promotion failed");
+    assert!(
+        event
+            .fields
+            .get("error")
+            .is_some_and(|error| error.contains("group/other writable"))
+    );
+    assert_eq!(
+        WorkspacePromotionFixture::checkout_result(&cache, &reuse_key).await,
+        WorkspaceCacheCheckoutResult::Miss
+    );
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn active_workspace_promotion_keeps_history_read_failure_warning() {
     let reuse_key = "thread:active-sidecar-read-failure";
@@ -468,6 +506,9 @@ async fn session_history_sidecar_staging_is_protected_from_gc() {
                 let entry_dir = tmp_path.parent().unwrap();
                 assert!(tmp_path.is_file());
                 assert!(entry_dir.is_dir());
+                assert_eq!(mode(entry_dir.parent().unwrap()), 0o700);
+                assert_eq!(mode(entry_dir), 0o700);
+                assert_eq!(mode(tmp_path), 0o600);
 
                 let freed = cache.gc(false).await.unwrap();
 

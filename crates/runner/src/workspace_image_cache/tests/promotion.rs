@@ -20,7 +20,6 @@ use super::support::{
 use crate::error::RunnerError;
 use crate::ids::RunId;
 use crate::paths::{RunnerPaths, workspace_image_cache_key};
-use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::test_fixtures::ignored_child::{
     ignored_child_test_env_guard_enabled, run_ignored_child_test,
@@ -667,55 +666,6 @@ async fn promotion_rejects_group_writable_image_without_publishing_metadata() {
             .exists()
     );
     assert!(!cache.workspace_image_cache_metadata(&cache_key).exists());
-}
-
-#[tokio::test]
-async fn sidecar_staging_guard_secures_cache_directories_before_copy() {
-    let (_dir, _paths, cache) = local_cache().await;
-    let run_id = RunId::new_v4();
-    let sandbox_id = sandbox::SandboxId::new_v4();
-    let reuse_key = "sess-sidecar-staging-permissions";
-    let image_size_bytes = 4096;
-    let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
-            identity: WorkspaceImageLeaseIdentity {
-                run_id,
-                sandbox_id,
-                profile_name: TEST_PROFILE_NAME,
-                reuse_key: Some(reuse_key),
-                working_dir: "/workspace",
-                image_size_bytes,
-            },
-            workspace_drive_required: false,
-        })
-        .await;
-    let restored_session_identity = RestoredSessionIdentity::claude_code_for_test("history-hash");
-    let promotion = lease
-        .into_promotion_context(WorkspaceImagePromotionRequest {
-            run_id,
-            sandbox_id,
-            restored_session_identity: Some(&restored_session_identity),
-            terminal_status: WorkspaceCacheTerminalStatus::Success,
-            completed_at: "2026-05-02T00:00:00.000Z".into(),
-            storage_fingerprints: StorageFingerprints::default(),
-        })
-        .unwrap();
-
-    let guard = promotion
-        .try_acquire_session_history_sidecar_entry_guard()
-        .await
-        .unwrap();
-    let cache_key =
-        cache.scoped_cache_key(TEST_PROFILE_NAME, reuse_key, "/workspace", image_size_bytes);
-    assert_eq!(mode(cache.workspace_image_cache_dir()), 0o700);
-    assert_eq!(
-        mode(&cache.workspace_image_cache_entry_dir(&cache_key)),
-        0o700
-    );
-    assert_eq!(
-        guard.session_history_sidecar_tmp_path(),
-        cache.workspace_image_cache_tmp_sidecar(&cache_key, run_id)
-    );
 }
 
 #[tokio::test]
