@@ -696,7 +696,14 @@ def _bypass_response(
 
 
 def handle_response_headers(flow: http.HTTPFlow) -> bool:
-    """Select pass-through streaming with bounded catalog capture."""
+    """Prepare catalog handling and report whether the caller should continue.
+
+    Return False only for a fresh response served from the local catalog cache; the caller
+    must stop the normal response-header pipeline in that case. Return True for all other flows,
+    including unrelated traffic, cache bypasses, and eligible cold responses, so the caller
+    continues that pipeline. For an eligible cold response, ordinary streaming is installed before
+    wrap_response_stream() composes the bounded catalog capture.
+    """
     state = flow.metadata.get(_FLOW_STATE)
     telemetry = flow.metadata.get(_FLOW_TELEMETRY)
     if isinstance(telemetry, _FlowTelemetry) and telemetry.status == "model_catalog_fresh_hit":
