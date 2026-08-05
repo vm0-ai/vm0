@@ -705,6 +705,10 @@ describe("works page", () => {
     expect(queryRole("button", "Show next Feishu guide image")).toBeNull();
     expect(screen.getByText("User token scope JSON")).toBeInTheDocument();
     const scopeImportJson = screen.getByTestId("feishu-user-scope-import-json");
+    expect(scopeImportJson.parentElement).not.toHaveClass(
+      "max-h-56",
+      "overflow-y-auto",
+    );
     expect(JSON.parse(scopeImportJson.textContent ?? "")).toStrictEqual({
       scopes: {
         tenant: [],
@@ -942,11 +946,24 @@ describe("works page", () => {
     await expect(
       screen.findByText("Create an enterprise custom app"),
     ).resolves.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveClass(
+      "h-[min(800px,calc(100dvh-2rem))]",
+      "!overflow-hidden",
+    );
+    expect(screen.getByTestId("feishu-setup-step-content")).toHaveClass(
+      "min-h-0",
+      "flex-1",
+      "overflow-y-auto",
+    );
     expect(
-      screen.getByRole("img", {
-        name: "Feishu app creation form with the app name, icon, and Create button highlighted",
-      }),
-    ).toBeInTheDocument();
+      screen.getByRole("heading", { name: "Add a Feishu bot" }).parentElement,
+    ).toHaveClass("shrink-0");
+    expect(getRole("button", "Next").parentElement).toHaveClass("shrink-0");
+    const createGuideImage = screen.getByRole("img", {
+      name: "Feishu app creation form with the app name, icon, and Create button highlighted",
+    });
+    expect(createGuideImage).toHaveAttribute("width", "1234");
+    expect(createGuideImage).toHaveAttribute("height", "998");
     expect(queryRole("button", "Show creating a Feishu app guide")).toBeNull();
     expect(
       screen.getByText("Download the VM0 icon").closest("a"),
@@ -956,11 +973,11 @@ describe("works page", () => {
 
     await expect(screen.findByLabelText("App ID")).resolves.toBeInTheDocument();
     expect(screen.getByLabelText("App Secret")).toBeInTheDocument();
-    expect(
-      screen.getByRole("img", {
-        name: "Feishu app creation result showing where to find the App ID and App Secret",
-      }),
-    ).toBeInTheDocument();
+    const credentialsGuideImage = screen.getByRole("img", {
+      name: "Feishu app creation result showing where to find the App ID and App Secret",
+    });
+    expect(credentialsGuideImage).toHaveAttribute("width", "1190");
+    expect(credentialsGuideImage).toHaveAttribute("height", "1076");
     expect(
       screen.queryByLabelText("Verification Token"),
     ).not.toBeInTheDocument();

@@ -96,6 +96,19 @@ const feishuIconImg = settingsIconAssetUrl("lark");
 const FEISHU_DEVELOPER_CONSOLE_URL =
   "https://open.feishu.cn/page/launcher?from=backend_oneclick";
 const FEISHU_APP_CONSOLE_URL = "https://open.feishu.cn/app";
+const FEISHU_GUIDE_IMAGE_SOURCES = [
+  platformFeishuCreateEnterpriseCustomAppImg,
+  platformFeishuAppCreatedCredentialsImg,
+  platformFeishuEncryptionStrategyImg,
+  platformFeishuSecuritySettingsRedirectUrlImg,
+  platformFeishuPermissionsScopesBatchImportMenuImg,
+  platformFeishuPermissionsScopesBatchImportReviewImg,
+  platformFeishuEventSubscriptionModeImg,
+  platformFeishuEventRequestUrlImg,
+  platformFeishuVersionManagementCreateVersionImg,
+  platformFeishuVersionAvailabilityEditImg,
+  platformFeishuAvailabilitySettingsAllMembersImg,
+] as const;
 
 type FeishuDialogData = FeishuBotInstallation;
 
@@ -159,13 +172,25 @@ function SetupStatus({
   );
 }
 
-function FeishuGuideImage({ src, alt }: { src: string; alt: string }) {
+function FeishuGuideImage({
+  src,
+  alt,
+  width,
+  height,
+}: {
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+}) {
   return (
     <img
       src={src}
       alt={alt}
+      width={width}
+      height={height}
       loading="lazy"
-      className="w-full rounded-lg border border-border bg-white"
+      className="h-auto w-full rounded-lg border border-border bg-white"
     />
   );
 }
@@ -174,6 +199,8 @@ interface FeishuGuideImageItem {
   readonly src: string;
   readonly alt: string;
   readonly label: string;
+  readonly width: number;
+  readonly height: number;
 }
 
 function FeishuGuideImages({
@@ -186,7 +213,12 @@ function FeishuGuideImages({
       {images.map((image) => {
         return (
           <figure key={image.src} className="space-y-2">
-            <FeishuGuideImage src={image.src} alt={image.alt} />
+            <FeishuGuideImage
+              src={image.src}
+              alt={image.alt}
+              width={image.width}
+              height={image.height}
+            />
             <figcaption className="text-xs text-muted-foreground">
               {image.label}
             </figcaption>
@@ -471,6 +503,8 @@ function FeishuCreateStep() {
         <div className="mt-4">
           <FeishuGuideImage
             src={platformFeishuCreateEnterpriseCustomAppImg}
+            width={1234}
+            height={998}
             alt={t(($) => {
               return $.connectors.providerSettings.feishu.create.imageAlt;
             })}
@@ -547,6 +581,8 @@ function FeishuCredentialsStep({
         <div className="mt-4">
           <FeishuGuideImage
             src={platformFeishuAppCreatedCredentialsImg}
+            width={1190}
+            height={1076}
             alt={t(($) => {
               return $.connectors.providerSettings.feishu.credentials.imageAlt;
             })}
@@ -602,6 +638,8 @@ function FeishuTokensStep({
         <div className="mt-4">
           <FeishuGuideImage
             src={platformFeishuEncryptionStrategyImg}
+            width={2356}
+            height={1184}
             alt={t(($) => {
               return $.connectors.providerSettings.feishu.tokens.imageAlt;
             })}
@@ -655,6 +693,8 @@ function FeishuEventsStep({ data }: { data: FeishuDialogData | null }) {
             images={[
               {
                 src: platformFeishuEventSubscriptionModeImg,
+                width: 2562,
+                height: 1296,
                 alt: t(($) => {
                   return $.connectors.providerSettings.feishu.events
                     .subscriptionAlt;
@@ -666,6 +706,8 @@ function FeishuEventsStep({ data }: { data: FeishuDialogData | null }) {
               },
               {
                 src: platformFeishuEventRequestUrlImg,
+                width: 2442,
+                height: 1278,
                 alt: t(($) => {
                   return $.connectors.providerSettings.feishu.events.requestAlt;
                 }),
@@ -738,6 +780,8 @@ function FeishuRedirectStep({ data }: { data: FeishuDialogData | null }) {
       </div>
       <FeishuGuideImage
         src={platformFeishuSecuritySettingsRedirectUrlImg}
+        width={3190}
+        height={1220}
         alt={t(($) => {
           return $.connectors.providerSettings.feishu.redirect.imageAlt;
         })}
@@ -788,6 +832,8 @@ function FeishuPermissionsStep({ data }: { data: FeishuDialogData | null }) {
             images={[
               {
                 src: platformFeishuPermissionsScopesBatchImportMenuImg,
+                width: 1209,
+                height: 838,
                 alt: t(($) => {
                   return $.connectors.providerSettings.feishu.permissions
                     .menuAlt;
@@ -799,6 +845,8 @@ function FeishuPermissionsStep({ data }: { data: FeishuDialogData | null }) {
               },
               {
                 src: platformFeishuPermissionsScopesBatchImportReviewImg,
+                width: 838,
+                height: 893,
                 alt: t(($) => {
                   return $.connectors.providerSettings.feishu.permissions
                     .reviewAlt;
@@ -828,7 +876,7 @@ function FeishuPermissionsStep({ data }: { data: FeishuDialogData | null }) {
             />
           ) : null}
         </div>
-        <div className="max-h-56 overflow-y-auto rounded-md bg-muted/40 p-3">
+        <div className="rounded-md bg-muted/40 p-3">
           <code
             className="whitespace-pre-wrap break-words text-xs text-foreground"
             data-testid="feishu-user-scope-import-json"
@@ -887,6 +935,8 @@ function FeishuPublishStep({
             images={[
               {
                 src: platformFeishuVersionManagementCreateVersionImg,
+                width: 3822,
+                height: 1708,
                 alt: t(($) => {
                   return $.connectors.providerSettings.feishu.publish
                     .createVersionAlt;
@@ -898,6 +948,8 @@ function FeishuPublishStep({
               },
               {
                 src: platformFeishuVersionAvailabilityEditImg,
+                width: 3046,
+                height: 1780,
                 alt: t(($) => {
                   return $.connectors.providerSettings.feishu.publish
                     .editAvailabilityAlt;
@@ -909,6 +961,8 @@ function FeishuPublishStep({
               },
               {
                 src: platformFeishuAvailabilitySettingsAllMembersImg,
+                width: 1630,
+                height: 544,
                 alt: t(($) => {
                   return $.connectors.providerSettings.feishu.publish
                     .allMembersAlt;
@@ -1157,7 +1211,7 @@ function FeishuSetupWizardFooter({
     readOnly,
   });
   return (
-    <DialogFooter>
+    <DialogFooter className="mt-5 shrink-0 border-t border-border pt-5">
       <Button
         type="button"
         variant="outline"
@@ -1275,18 +1329,25 @@ function FeishuSetupWizard({
   };
 
   return (
-    <form className="flex flex-col gap-5" onSubmit={submit}>
-      <FeishuSetupProgress step={step} />
-      <FeishuSetupStepContent
-        step={step}
-        data={data}
-        form={form}
-        agents={agents}
-        orgDefaultAgentId={orgDefaultAgentId}
-        orgDefaultAgentName={orgDefaultAgentName}
-        saving={saving}
-        readOnly={readOnly}
-      />
+    <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
+      <div className="shrink-0 pb-5">
+        <FeishuSetupProgress step={step} />
+      </div>
+      <div
+        className="-mr-3 min-h-0 flex-1 overflow-y-auto pr-3 [scrollbar-gutter:stable]"
+        data-testid="feishu-setup-step-content"
+      >
+        <FeishuSetupStepContent
+          step={step}
+          data={data}
+          form={form}
+          agents={agents}
+          orgDefaultAgentId={orgDefaultAgentId}
+          orgDefaultAgentName={orgDefaultAgentName}
+          saving={saving}
+          readOnly={readOnly}
+        />
+      </div>
       <FeishuSetupWizardFooter
         step={step}
         data={data}
@@ -1889,7 +1950,7 @@ function FeishuSetupDialog({
       }}
     >
       <DialogContent
-        className="max-h-[90vh] max-w-2xl overflow-y-auto"
+        className="!flex h-[min(800px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-2xl !flex-col !overflow-hidden"
         closeLabel={t(($) => {
           return $.connectors.actions.close;
         })}
@@ -1897,7 +1958,10 @@ function FeishuSetupDialog({
           event.preventDefault();
         }}
       >
-        <DialogHeader>
+        {FEISHU_GUIDE_IMAGE_SOURCES.map((src) => {
+          return <link key={src} rel="preload" as="image" href={src} />;
+        })}
+        <DialogHeader className="shrink-0">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
