@@ -4634,17 +4634,12 @@ function TemplatePickerCategoryNav({
 function TemplatePickerHeader() {
   const { t } = useTranslation();
   return (
-    <header className="hidden shrink-0 flex-col gap-0.5 px-6 pb-0 pr-14 pt-[18px] sm:flex">
+    <header className="hidden shrink-0 items-center px-6 pr-14 pt-[18px] sm:flex">
       <h2 className="text-[17px] font-semibold leading-6 tracking-tight text-foreground">
         {t(($) => {
           return $.artifacts.templates.template;
         })}
       </h2>
-      <p className="text-[13px] leading-[18px] text-gray-800">
-        {t(($) => {
-          return $.artifacts.templates.pickStartingPoint;
-        })}
-      </p>
     </header>
   );
 }
