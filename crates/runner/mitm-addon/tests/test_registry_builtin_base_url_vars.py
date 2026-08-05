@@ -1043,7 +1043,7 @@ class TestRegistryBuiltinBaseUrlVars:
         invalid_vm = assert_invalid_builtin_vm(path)
         assert "ZENDESK_SUBDOMAIN" in invalid_vm.message
 
-    def test_unknown_builtin_firewall_entry_rejects_vm(self, tmp_path):
+    def test_unknown_builtin_firewall_entry_is_omitted(self, tmp_path):
         path = tmp_path / "registry.json"
         write_builtin_firewall_registry(
             path,
@@ -1053,5 +1053,13 @@ class TestRegistryBuiltinBaseUrlVars:
             cache_firewall=_builtin_firewall("zendesk"),
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert "missing-firewall" in invalid_vm.message
+        context = registry.get_vm_context("10.200.0.1", str(path))
+        state = registry.load_registry_state(str(path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert vm_info["firewalls"] == []
+        assert compiled_firewalls is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert state.invalid_vms == {}
+        assert state.omitted_builtin_firewalls == {"10.200.0.1": frozenset({"missing-firewall"})}
