@@ -3164,7 +3164,7 @@ describe("chat composer templates", () => {
 
     expect(screen.getByLabelText("Search templates")).toHaveAttribute(
       "placeholder",
-      "Search connector...",
+      "Search templates",
     );
     await fill(screen.getByLabelText("Search templates"), "no workflow match");
     await waitFor(() => {
