@@ -1623,7 +1623,6 @@ export const recordGeneratedImage$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: params.userId,
-        orgId: params.orgId,
         filenamePrefix: "image",
         extension: extensionForFormat(params.generation.outputFormat),
         body: params.generation.imageBytes,

@@ -1655,7 +1655,6 @@ export const recordGeneratedVideo$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: params.userId,
-        orgId: params.orgId,
         filenamePrefix: "video",
         extension: extensionForContentType(params.generation.contentType),
         body: params.generation.videoBytes,

@@ -225,7 +225,6 @@ const renderAndStoreArtifactPreview$ = command(
       allocateArtifactObject$,
       {
         userId: args.userId,
-        orgId: args.orgId,
         id: args.id,
         filename,
         variant: filename,
