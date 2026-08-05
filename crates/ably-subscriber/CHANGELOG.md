@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.12](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.11...ably-subscriber-v1.0.12) (2026-08-05)
+
+
+### Documentation
+
+* **ably-subscriber:** document status event backpressure ([#25243](https://github.com/vm0-ai/vm0/issues/25243)) ([06e5e9c](https://github.com/vm0-ai/vm0/commit/06e5e9cd4b1f8e2293d5266aa11b33c8a769dd5c))
+
 ## [1.0.11](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.10...ably-subscriber-v1.0.11) (2026-08-05)
 
 

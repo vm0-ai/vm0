@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.158.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.8...runner-rs-v0.158.9) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** retain anthropic accounting telemetry ([#25252](https://github.com/vm0-ai/vm0/issues/25252)) ([3cd1bf7](https://github.com/vm0-ai/vm0/commit/3cd1bf7ba468f993e734d1709d36b6c2c669e676))
+
+
+### Documentation
+
+* **python:** document network-log target helpers ([#25244](https://github.com/vm0-ai/vm0/issues/25244)) ([ad2a9f8](https://github.com/vm0-ai/vm0/commit/ad2a9f81491b80761fd560132ba3f3d337f2f9ee))
+
+
+### Performance Improvements
+
+* **runner:** split codex agent and upstream latency ([#25256](https://github.com/vm0-ai/vm0/issues/25256)) ([b654936](https://github.com/vm0-ai/vm0/commit/b654936c10c59650d8d9079b0350887bb1d354a2))
+
 ## [0.158.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.7...runner-rs-v0.158.8) (2026-08-05)
 
 

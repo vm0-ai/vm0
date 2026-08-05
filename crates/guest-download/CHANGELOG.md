@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.18](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.17...guest-download-v0.22.18) (2026-08-05)
+
+
+### Documentation
+
+* **guest-download:** document manifest partial failures ([#25272](https://github.com/vm0-ai/vm0/issues/25272)) ([a3fe705](https://github.com/vm0-ai/vm0/commit/a3fe705e88cd9a7ccd433bc1229e47d2c247a930))
+
 ## [0.22.17](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.16...guest-download-v0.22.17) (2026-08-05)
 
 ## [0.22.16](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.15...guest-download-v0.22.16) (2026-08-04)

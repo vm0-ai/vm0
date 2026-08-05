@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "1.0.11"
+version = "1.0.12"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
@@ -1316,7 +1316,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.22.17"
+version = "0.22.18"
 dependencies = [
  "flate2",
  "guest-common",
@@ -2605,7 +2605,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.158.8"
+version = "0.158.9"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2829,7 +2829,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.185"
+version = "0.37.186"
 dependencies = [
  "async-trait",
  "clap",
