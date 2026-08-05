@@ -1559,12 +1559,13 @@ def websocket_message(flow: http.HTTPFlow) -> None:
     if not response_streaming.is_model_websocket_usage_enabled(flow):
         return
     uses_openai_responses = response_streaming.uses_openai_responses_usage_protocol(flow)
-    body = message.content.encode() if isinstance(message.content, str) else message.content
     if getattr(message, "from_client", False):
         if uses_openai_responses:
+            body = message.content.encode() if isinstance(message.content, str) else message.content
             event_type = usage.inspect_openai_responses_event_type_json(body)
             codex_output_timing.observe_client_event(flow, event_type, message.timestamp)
         return
+    body = message.content.encode() if isinstance(message.content, str) else message.content
     event = usage.inspect_openai_responses_event_json(body)
     if uses_openai_responses:
         codex_output_timing.observe_server_event(flow, event.event_type)
