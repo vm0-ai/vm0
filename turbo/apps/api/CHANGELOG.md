@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.375.0](https://github.com/vm0-ai/vm0/compare/api-v1.374.0...api-v1.375.0) (2026-08-05)
+
+
+### Features
+
+* **core:** enable zero chat messaging globally ([#25093](https://github.com/vm0-ai/vm0/issues/25093)) ([76c4a9e](https://github.com/vm0-ai/vm0/commit/76c4a9edf14808ddab0a85c8f94ab61cf07c27b5))
+* simplify models for limited free workspaces ([#25066](https://github.com/vm0-ai/vm0/issues/25066)) ([831de16](https://github.com/vm0-ai/vm0/commit/831de1612cb1a7012eafea8a85cfd4bededbf8e5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.273.0
+    * @vm0/connectors bumped to 1.202.9
+    * @vm0/core bumped to 8.512.0
+    * @vm0/db bumped to 1.165.1
+
 ## [1.374.0](https://github.com/vm0-ai/vm0/compare/api-v1.373.2...api-v1.374.0) (2026-08-04)
 
 

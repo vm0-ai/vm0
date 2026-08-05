@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.278.0](https://github.com/vm0-ai/vm0/compare/cli-v9.277.3...cli-v9.278.0) (2026-08-05)
+
+
+### Features
+
+* **core:** enable zero chat messaging globally ([#25093](https://github.com/vm0-ai/vm0/issues/25093)) ([76c4a9e](https://github.com/vm0-ai/vm0/commit/76c4a9edf14808ddab0a85c8f94ab61cf07c27b5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.273.0
+    * @vm0/connectors bumped to 1.202.9
+    * @vm0/core bumped to 8.512.0
+
 ## [9.277.3](https://github.com/vm0-ai/vm0/compare/cli-v9.277.2...cli-v9.277.3) (2026-08-04)
 
 
