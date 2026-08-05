@@ -100,8 +100,8 @@ impl Body for ControlledBody {
             return Poll::Ready(Some(Ok(Frame::data(bytes))));
         }
 
-        // Extraction requests this next frame only for its final trailing-byte
-        // check, after the archive member has been materialized in staging.
+        // This post-frame poll proves that the real extraction worker consumed
+        // the R2 archive frame. Hold EOF so its async waiter can be cancelled.
         self.state.blocked.notify_one();
         if self.state.released.load(Ordering::Acquire) {
             return Poll::Ready(None);
