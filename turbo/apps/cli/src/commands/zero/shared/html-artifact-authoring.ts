@@ -1,19 +1,23 @@
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { decodeZeroTokenPayload } from "../../../lib/api/zero-token";
-import {
-  type GenerationOutputKind,
-  type ResourceCandidateSlice,
-  type GenerationTarget,
-  selectResourceCandidates,
+import type {
+  GenerationOutputKind,
+  GenerationTarget,
 } from "./resource-registry";
 
-type HtmlArtifactKind = GenerationTarget;
+/** Generation targets authored as static HTML from a target-specific resource index. */
+export type HtmlArtifactKind = Extract<
+  GenerationTarget,
+  | "website"
+  | "report"
+  | "poster"
+  | "dashboard-design"
+  | "mobile-app-design"
+  | "docs-design"
+>;
 
 const HTML_RESOURCE_INDEX_BASE_URL =
   "https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d";
 
-const HTML_RESOURCE_INDEX_URLS: Partial<Record<HtmlArtifactKind, string>> = {
+const HTML_RESOURCE_INDEX_URLS: Record<HtmlArtifactKind, string> = {
   website: `${HTML_RESOURCE_INDEX_BASE_URL}/website.json`,
   report: `${HTML_RESOURCE_INDEX_BASE_URL}/report.json`,
   poster: `${HTML_RESOURCE_INDEX_BASE_URL}/poster.json`,
@@ -31,25 +35,17 @@ interface HtmlArtifactAuthoringOptions {
   readonly artifactRules: readonly string[];
 }
 
-type HtmlArtifactSelectionOutputSchema =
-  | {
-      readonly skills: "string[]";
-      readonly template: "string";
-      readonly designSystem: "string | null";
-      readonly rationale: "string";
-    }
-  | {
-      readonly skills: "string[]";
-      readonly templates: "string[]";
-      readonly designSystems: "string[]";
-      readonly rationale: "string";
-    };
+interface HtmlArtifactSelectionOutputSchema {
+  readonly skills: "string[]";
+  readonly templates: "string[]";
+  readonly designSystems: "string[]";
+  readonly rationale: "string";
+}
 
 interface HtmlArtifactAuthoringPacket {
   readonly type: "generation-source-selection";
   readonly kind: HtmlArtifactKind;
   readonly prompt: string;
-  readonly registryVersion: string;
   readonly artifact: {
     readonly outputMode: "primary-artifact-with-supporting-assets";
     readonly primaryArtifact: {
@@ -65,7 +61,7 @@ interface HtmlArtifactAuthoringPacket {
     readonly outputDir: string;
   };
   readonly selection: {
-    readonly candidates: ResourceCandidateSlice["candidates"];
+    readonly indexUrl: string;
     readonly outputSchema: HtmlArtifactSelectionOutputSchema;
   };
   readonly authoring: {
@@ -91,13 +87,10 @@ function slugify(value: string): string {
 
 function titleForKind(kind: HtmlArtifactKind): string {
   const titles: Record<HtmlArtifactKind, string> = {
-    image: "image",
-    presentation: "HTML presentation",
     website: "hosted website",
     "dashboard-design": "dashboard design prototype",
     "mobile-app-design": "mobile app design prototype",
     poster: "poster",
-    "intro-video": "intro video storyboard",
     report: "report",
     "docs-design": "documentation design prototype",
   };
@@ -115,107 +108,54 @@ export function createHtmlArtifactAuthoringPacket(
   const site =
     options.siteSlug ?? slugify(options.slugSource ?? options.prompt);
   const outputDir = outputDirForSite(site);
-  const artifactKindFlag =
-    options.kind === "presentation" ? " --artifact-kind presentation-html" : "";
-  const hostCommand = `zero host ${outputDir} --site ${site}${artifactKindFlag}${
+  const hostCommand = `zero host ${outputDir} --site ${site}${
     options.kind === "website" ? " --spa" : ""
   }`;
   const title = titleForKind(options.kind);
-  const candidateSlice = selectResourceCandidates(options.kind);
-  const tokenPayload = decodeZeroTokenPayload();
-  const resourceIndexUrl = isFeatureEnabled(
-    FeatureSwitchKey.HtmlResourceIndex,
-    {
-      userId: tokenPayload?.userId,
-      orgId: tokenPayload?.orgId,
-      overrides: tokenPayload?.featureSwitchOverrides,
-    },
-  )
-    ? HTML_RESOURCE_INDEX_URLS[options.kind]
-    : undefined;
-  const selectionSchema: HtmlArtifactSelectionOutputSchema = resourceIndexUrl
-    ? {
-        skills: "string[]",
-        templates: "string[]",
-        designSystems: "string[]",
-        rationale: "string",
-      }
-    : {
-        skills: "string[]",
-        template: "string",
-        designSystem: "string | null",
-        rationale: "string",
-      };
-  const selectionLines = resourceIndexUrl
-    ? [
-        "## Stage 1: Resource Selection",
-        "- Download only the target-specific Resource Index listed below.",
-        "- The index contains templates and target-specific skills for this target, plus design systems for HTML generation.",
-        "- Derive keywords from the user prompt and search the index's `id`, `name`, and `description` fields.",
-        "- Select resources only when they are useful for the request. There is no fixed selection count for any resource type.",
-        "- Choose only IDs present in the index; do not invent resource IDs.",
-        "- Treat the selection JSON as internal working state, then continue to authoring.",
-        "",
-        "## Selection Output Schema",
-        "```json",
-        JSON.stringify(selectionSchema, null, 2),
-        "```",
-        "",
-        "## Resource Index",
-        `URL: \`${resourceIndexUrl}\``,
-        "",
-      ]
-    : [
-        "## Stage 1: Resource Selection",
-        "- Choose generation resources from the bundled registry slice below.",
-        "- Select one template, one or more skills, and zero or one design system.",
-        "- Choose only IDs present in this packet; do not invent registry IDs.",
-        "- Prefer compatible resources, but the user prompt is the highest-priority signal.",
-        "- Treat the selection JSON as internal working state, then continue to authoring.",
-        "",
-        "## Selection Output Schema",
-        "```json",
-        JSON.stringify(selectionSchema, null, 2),
-        "```",
-        "",
-        "## Candidate Registry Slice",
-        `Registry: \`${candidateSlice.registryVersion}\``,
-        `Default Git Source: \`${candidateSlice.source.repo}@${candidateSlice.source.ref}\``,
-        "",
-        "```json",
-        JSON.stringify(candidateSlice.candidates, null, 2),
-        "```",
-        "",
-      ];
-  const resolutionLines = resourceIndexUrl
-    ? [
-        "## Stage 2: Resolve Selected Resources",
-        "- Resolve and download only resources selected from the index. Do not fetch unselected resources.",
-        "- For a selected entry without `source.archive`, resolve its `source.path` from the index's pinned `source.repo@source.ref`. Do not run `zero resource pull` for it.",
-        ...(options.kind === "website"
-          ? [
-              "- For a selected entry with `source.archive`, run its exact `source.pull.command`, then use `source.pull.resolvedPath`. Do not construct or guess a direct R2 URL.",
-              "- The Website index includes vm0 built-in R2 template packages as template entries with `source.archive`.",
-              "- Each built-in Website template entry includes the exact pull command and extracted package path in `source.pull`.",
-            ]
-          : []),
-        "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
-        "- If a source file cannot be fetched, state that limitation and fall back to the index metadata for that resource.",
-        "",
-      ]
-    : [
-        "## Stage 2: Resolve Selected Resources",
-        "- First resolve every required resource listed above, then resolve every selected resource before authoring.",
-        "- For a candidate without `source.archive`, resolve `source.path` only from the pinned Git Source above. Do not run `zero resource pull` for it.",
-        "- For a candidate with `source.archive`, run `zero resource pull <candidate-id> --dir ./generated/resources` with that candidate's `id`, then resolve it at `./generated/resources/<source.path>`. Do not look for it in the Git Source.",
-        "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
-        "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
-        "",
-      ];
+  const resourceIndexUrl = HTML_RESOURCE_INDEX_URLS[options.kind];
+  const selectionSchema: HtmlArtifactSelectionOutputSchema = {
+    skills: "string[]",
+    templates: "string[]",
+    designSystems: "string[]",
+    rationale: "string",
+  };
+  const selectionLines = [
+    "## Stage 1: Resource Selection",
+    "- Download only the target-specific Resource Index listed below.",
+    "- The index contains templates and target-specific skills for this target, plus design systems for HTML generation.",
+    "- Derive keywords from the user prompt and search the index's `id`, `name`, and `description` fields.",
+    "- Select resources only when they are useful for the request. There is no fixed selection count for any resource type.",
+    "- Choose only IDs present in the index; do not invent resource IDs.",
+    "- Treat the selection JSON as internal working state, then continue to authoring.",
+    "",
+    "## Selection Output Schema",
+    "```json",
+    JSON.stringify(selectionSchema, null, 2),
+    "```",
+    "",
+    "## Resource Index",
+    `URL: \`${resourceIndexUrl}\``,
+    "",
+  ];
+  const resolutionLines = [
+    "## Stage 2: Resolve Selected Resources",
+    "- Resolve and download only resources selected from the index. Do not fetch unselected resources.",
+    "- For a selected entry without `source.archive`, resolve its `source.path` from the index's pinned `source.repo@source.ref`. Do not run `zero resource pull` for it.",
+    ...(options.kind === "website"
+      ? [
+          "- For a selected entry with `source.archive`, run its exact `source.pull.command`, then use `source.pull.resolvedPath`. Do not construct or guess a direct R2 URL.",
+          "- The Website index includes vm0 built-in R2 template packages as template entries with `source.archive`.",
+          "- Each built-in Website template entry includes the exact pull command and extracted package path in `source.pull`.",
+        ]
+      : []),
+    "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
+    "- If a source file cannot be fetched, state that limitation and fall back to the index metadata for that resource.",
+    "",
+  ];
   const artifact = {
     outputMode: "primary-artifact-with-supporting-assets",
     primaryArtifact: {
-      kind: options.kind as GenerationOutputKind,
+      kind: options.kind,
       path: `${outputDir}/index.html`,
     },
     supportingAssets: [
@@ -311,10 +251,9 @@ export function createHtmlArtifactAuthoringPacket(
     type: "generation-source-selection",
     kind: options.kind,
     prompt: options.prompt,
-    registryVersion: candidateSlice.registryVersion,
     artifact,
     selection: {
-      candidates: candidateSlice.candidates,
+      indexUrl: resourceIndexUrl,
       outputSchema: selectionSchema,
     },
     authoring: {

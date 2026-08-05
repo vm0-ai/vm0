@@ -31,7 +31,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.HostedArtifactVersions, {})).toBe(
       true,
     );
-    expect(isFeatureEnabled(FeatureSwitchKey.HtmlResourceIndex, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(true);
   });
 
@@ -136,7 +135,6 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
       staffOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
@@ -168,7 +166,6 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
       otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],

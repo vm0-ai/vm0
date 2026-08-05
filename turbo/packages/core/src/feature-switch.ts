@@ -447,12 +447,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Create immutable hosted artifact versions behind stable site aliases.",
     enabled: true,
   },
-  [FeatureSwitchKey.HtmlResourceIndex]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Use target-specific static indexes for HTML generation resource selection.",
-    enabled: true,
-  },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {
     maintainer: "lancy@vm0.ai",
     description:
