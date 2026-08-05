@@ -2997,12 +2997,31 @@ function attachUsageToCompletedWorkGroups(
   groups: readonly ChatEventGroup[],
   usageByRunId: ReadonlyMap<string, ChatEventUsagePayload>,
 ): ChatEventGroup[] {
-  return groups.map((group) => {
+  const lastAssistantGroupIndexByRunId = new Map<string, number>();
+  for (const [index, group] of groups.entries()) {
+    if (
+      group.role !== "assistant" ||
+      !group.events.some(isRenderableAssistantEvent)
+    ) {
+      continue;
+    }
+    const runId = firstRunIdForEvents(group.events);
+    if (runId !== undefined) {
+      lastAssistantGroupIndexByRunId.set(runId, index);
+    }
+  }
+  return groups.map((group, index) => {
     if (group.role !== "assistant") {
       return group;
     }
     const runId = firstRunIdForEvents(group.events);
-    const usage = runId === undefined ? undefined : usageByRunId.get(runId);
+    if (
+      runId === undefined ||
+      lastAssistantGroupIndexByRunId.get(runId) !== index
+    ) {
+      return group;
+    }
+    const usage = usageByRunId.get(runId);
     return usage === undefined ? group : { ...group, usage };
   });
 }
@@ -3036,6 +3055,118 @@ function terminatedRunIdsForCompletedWork(
   return terminatedChatRunIds(events);
 }
 
+function splitCompletedWorkEventsAtUsers(
+  events: readonly EnrichedChatEvent[],
+): EnrichedChatEvent[][] {
+  const phases: EnrichedChatEvent[][] = [];
+  let phase: EnrichedChatEvent[] = [];
+  for (const event of events) {
+    if (
+      phase.length > 0 &&
+      chatEventCompatibilityRole(event.eventType) === "user"
+    ) {
+      phases.push(phase);
+      phase = [];
+    }
+    phase.push(event);
+  }
+  if (phase.length > 0) {
+    phases.push(phase);
+  }
+  return phases;
+}
+
+function lastCompletedWorkEventIndex(
+  events: readonly EnrichedChatEvent[],
+  predicate: (event: EnrichedChatEvent) => boolean,
+): number {
+  for (let index = events.length - 1; index >= 0; index--) {
+    if (predicate(events[index]!)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function completedWorkFinalEventIndex(
+  events: readonly EnrichedChatEvent[],
+): number {
+  const primaryResultIndex = lastCompletedWorkEventIndex(
+    events,
+    isPrimaryAssistantResultEvent,
+  );
+  return primaryResultIndex >= 0
+    ? primaryResultIndex
+    : lastCompletedWorkEventIndex(events, isRenderableAssistantEvent);
+}
+
+function canFoldCompletedWorkTrailingEvent(
+  event: EnrichedChatEvent,
+  chatSteerEnabled: boolean,
+): boolean {
+  const role = chatEventCompatibilityRole(event.eventType);
+  if (chatSteerEnabled && role === "user") {
+    return true;
+  }
+  return (
+    role === "assistant" &&
+    (!isRenderableAssistantEvent(event) || event.eventType === "run.completed")
+  );
+}
+
+interface CompletedWorkPhaseFolding {
+  visibleEvents: readonly EnrichedChatEvent[];
+  fold: CompletedWorkFold | null;
+}
+
+function foldCompletedWorkPhase(
+  runId: string,
+  events: readonly EnrichedChatEvent[],
+  chatSteerEnabled: boolean,
+): CompletedWorkPhaseFolding {
+  const finalEventIndex = completedWorkFinalEventIndex(events);
+  const finalEvent =
+    finalEventIndex >= 0 ? events[finalEventIndex]! : undefined;
+  const precedingEvents =
+    finalEventIndex > 0 ? events.slice(0, finalEventIndex) : [];
+  const hiddenEvents = precedingEvents.filter((event) => {
+    return (
+      chatEventCompatibilityRole(event.eventType) !== "user" &&
+      !isThinkingOnlyAssistantEvent(event)
+    );
+  });
+  const userEvents = (chatSteerEnabled ? events : precedingEvents).filter(
+    (event) => {
+      return chatEventCompatibilityRole(event.eventType) === "user";
+    },
+  );
+  const trailingEvents =
+    finalEventIndex >= 0 ? events.slice(finalEventIndex + 1) : [];
+  const trailingEventsCanFold = trailingEvents.every((event) => {
+    return canFoldCompletedWorkTrailingEvent(event, chatSteerEnabled);
+  });
+  if (
+    finalEvent === undefined ||
+    hiddenEvents.length === 0 ||
+    !trailingEventsCanFold
+  ) {
+    return { visibleEvents: events, fold: null };
+  }
+  return {
+    visibleEvents: [
+      ...userEvents,
+      finalEvent,
+      ...trailingEvents.filter(isRenderableAssistantEvent),
+    ],
+    fold: {
+      key: `${runId}:${finalEvent.id}`,
+      finalEventId: finalEvent.id,
+      hiddenGroups: groupEventsByRole(hiddenEvents),
+      labelGroups: groupEventsByRole(events),
+    },
+  };
+}
+
 function buildCompletedWorkFolding(
   groups: readonly ChatEventGroup[],
   chatSteerEnabled: boolean,
@@ -3047,6 +3178,7 @@ function buildCompletedWorkFolding(
   const terminatedRunIds = terminatedRunIdsForCompletedWork(events);
   const visibleEvents: EnrichedChatEvent[] = [];
   const folds: CompletedWorkFold[] = [];
+  let hasCompletedWorkPhaseBoundary = false;
 
   for (let index = 0; index < events.length; ) {
     const runId = events[index]!.runId;
@@ -3068,70 +3200,28 @@ function buildCompletedWorkFolding(
       continue;
     }
 
-    let finalEventIndex = -1;
-    for (let offset = runEvents.length - 1; offset >= 0; offset--) {
-      if (isPrimaryAssistantResultEvent(runEvents[offset]!)) {
-        finalEventIndex = offset;
-        break;
-      }
+    const completedWorkEventGroups = chatSteerEnabled
+      ? splitCompletedWorkEventsAtUsers(runEvents)
+      : [runEvents];
+    if (completedWorkEventGroups.length > 1) {
+      hasCompletedWorkPhaseBoundary = true;
     }
-    if (finalEventIndex < 0) {
-      for (let offset = runEvents.length - 1; offset >= 0; offset--) {
-        if (isRenderableAssistantEvent(runEvents[offset]!)) {
-          finalEventIndex = offset;
-          break;
-        }
+    for (const completedWorkEvents of completedWorkEventGroups) {
+      const phaseFolding = foldCompletedWorkPhase(
+        runId,
+        completedWorkEvents,
+        chatSteerEnabled,
+      );
+      visibleEvents.push(...phaseFolding.visibleEvents);
+      if (phaseFolding.fold !== null) {
+        folds.push(phaseFolding.fold);
       }
-    }
-    const finalEvent =
-      finalEventIndex >= 0 ? runEvents[finalEventIndex]! : undefined;
-    const precedingEvents =
-      finalEventIndex > 0 ? runEvents.slice(0, finalEventIndex) : [];
-    const hiddenEvents = precedingEvents.filter((event) => {
-      return (
-        chatEventCompatibilityRole(event.eventType) !== "user" &&
-        !isThinkingOnlyAssistantEvent(event)
-      );
-    });
-    const userEvents = (chatSteerEnabled ? runEvents : precedingEvents).filter(
-      (event) => {
-        return chatEventCompatibilityRole(event.eventType) === "user";
-      },
-    );
-    const trailingEvents =
-      finalEventIndex >= 0 ? runEvents.slice(finalEventIndex + 1) : [];
-    const trailingEventsCanFold = trailingEvents.every((event) => {
-      const role = chatEventCompatibilityRole(event.eventType);
-      return (
-        (chatSteerEnabled && role === "user") ||
-        (role === "assistant" &&
-          (!isRenderableAssistantEvent(event) ||
-            event.eventType === "run.completed"))
-      );
-    });
-    const visibleTrailingEvents = trailingEvents.filter((event) => {
-      return isRenderableAssistantEvent(event);
-    });
-    if (
-      finalEvent !== undefined &&
-      hiddenEvents.length > 0 &&
-      trailingEventsCanFold
-    ) {
-      visibleEvents.push(...userEvents, finalEvent, ...visibleTrailingEvents);
-      folds.push({
-        key: `${runId}:${finalEvent.id}`,
-        finalEventId: finalEvent.id,
-        hiddenGroups: groupEventsByRole(hiddenEvents),
-        labelGroups: groupEventsByRole(runEvents),
-      });
-    } else {
-      visibleEvents.push(...runEvents);
     }
 
     index = endIndex;
   }
 
-  if (folds.length === 0) {
+  if (folds.length === 0 && !hasCompletedWorkPhaseBoundary) {
     return null;
   }
 
