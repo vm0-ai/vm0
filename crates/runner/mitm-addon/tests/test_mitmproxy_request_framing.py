@@ -51,6 +51,10 @@ from tests.aws_sigv4_helpers import (
     resolved_aws_sigv4_credentials,
 )
 from tests.codex_model_catalog_cache_helpers import catalog_flow
+from tests.connector_diagnostic_helpers import (
+    record_connector_diagnostic_requestheaders_context,
+    write_connector_diagnostic_capture_registry,
+)
 from tests.firewall_aws_sigv4_helpers import aws_api_entry
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
@@ -498,6 +502,94 @@ async def _catalog_http_stream(
     stream.client_state = stream.state_done
     stream.server_state = stream.state_wait_for_response_headers
     return stream, flow
+
+
+async def test_head_connector_diagnostic_emits_no_response_data(
+    tmp_path: Path,
+    real_flow,
+) -> None:
+    registry_path = write_connector_diagnostic_capture_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip=_CLIENT_IP,
+        host="fal.run",
+        path="/fal-ai/nano-banana-pro",
+        method="HEAD",
+    )
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        addon_context.options.update(
+            vm0_api_url="https://api.vm0.ai",
+            vm0_builtin_firewall_catalog_cache_path=str(
+                tmp_path / "builtin-firewall-catalog-cache.json"
+            ),
+            vm0_proxy_registry_path=str(registry_path),
+        )
+        record_connector_diagnostic_requestheaders_context(flow)
+        _, http_layer = _start_http_layer(
+            addon_context,
+            alpn=b"h2",
+            host="fal.run",
+        )
+        stream = HttpStream(http_layer.context.fork(), 1)
+        list(stream.handle_event(events.Start()))
+        stream.flow = flow
+        flow.live = True
+        stream.client_state = stream.state_done
+        stream.server_state = stream.state_wait_for_response_headers
+
+        upstream_response = tutils.tresp(
+            status_code=401,
+            headers=header_map(
+                {
+                    "Content-Length": "8",
+                    "Content-Type": "text/plain",
+                }
+            ),
+            content=b"",
+        )
+        response_header_commands = list(
+            stream.handle_event(ResponseHeaders(1, upstream_response, end_stream=True))
+        )
+        response_headers_hook = next(
+            command
+            for command in response_header_commands
+            if isinstance(command, HttpResponseHeadersHook)
+        )
+        await addon_context.master.addons.invoke_addon(
+            mitm_addon,
+            response_headers_hook,
+        )
+        after_headers = list(stream.handle_event(events.HookCompleted(response_headers_hook, None)))
+
+        end_commands = list(stream.handle_event(ResponseEndOfMessage(1)))
+        response_hook = next(
+            command for command in end_commands if isinstance(command, HttpResponseHook)
+        )
+        await addon_context.master.addons.invoke_addon(mitm_addon, response_hook)
+        after_response = list(stream.handle_event(events.HookCompleted(response_hook, None)))
+
+    assert flow.response is not None
+    assert flow.response.status_code == 401
+    assert flow.response.raw_content == b""
+    assert flow.response.headers["Content-Type"] == "application/json"
+    assert flow.response.headers.get_all("Content-Length") == []
+    client_events = [
+        command.event
+        for command in [*after_headers, *end_commands, *after_response]
+        if isinstance(command, SendHttp)
+    ]
+    assert any(
+        isinstance(event, ResponseHeaders)
+        and event.response.status_code == 401
+        and event.end_stream
+        for event in client_events
+    )
+    assert not any(isinstance(event, ResponseData) for event in client_events)
+    assert any(isinstance(event, ResponseEndOfMessage) for event in client_events)
 
 
 async def test_http2_brotli_catalog_is_streamed_unchanged_while_cached(
