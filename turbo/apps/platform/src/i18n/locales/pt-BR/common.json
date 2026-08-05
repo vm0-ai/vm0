@@ -674,6 +674,7 @@
       "placeholder": "Espaço reservado para visualização do site {{title}}",
       "playVideo": "Reproduzir a visualização do modelo de vídeo {{title}}",
       "previewAvatarVideo": "Visualizar vídeo do avatar {{title}}",
+      "pickStartingPoint": "Escolha um ponto de partida — você ainda pode mudar tudo depois",
       "previewCurrentSlide": "Visualizar {{title}} no slide atual",
       "previewSlide": "Visualizar slide {{slideNumber}}",
       "previewVoice": "Ouvir a voz {{title}}",

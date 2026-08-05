@@ -657,6 +657,7 @@
       "placeholder": "{{title}} Platzhalter für die Website-Vorschau",
       "playVideo": "Vorschau der Videovorlage abspielen {{title}}",
       "previewAvatarVideo": "Avatar-Video {{title}} ansehen",
+      "pickStartingPoint": "Wähle einen Startpunkt — danach lässt sich alles noch ändern",
       "previewCurrentSlide": "Vorschau von {{title}} auf der aktuellen Folie",
       "previewSlide": "Vorschaufolie {{slideNumber}}",
       "previewVoice": "Stimme {{title}} anhören",

@@ -1057,22 +1057,25 @@ const TEMPLATE_CARD_SHADOW =
   "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
 
 /**
- * Lifted-tile hover shadow for the gallery grid, and generated flat
- * illustrations for the category rail. The art ships as static assets under
- * public/template-categories (transparent background, cool-gray palette
- * locked to the design tokens) so no runtime generation is involved.
+ * Gallery tile hover: a hairline ring drawn on the padded wrapper so it sits
+ * clear of the artwork instead of hugging it, plus a small lift on the media.
  */
-const TEMPLATE_TILE_HOVER_SHADOW =
-  "group-hover/tile:shadow-[0_12px_28px_hsl(220_12%_40%/0.16)]";
-
-const TEMPLATE_CATEGORY_ART: Readonly<Record<string, string>> = {
-  slides: "/template-categories/slides.png",
-  website: "/template-categories/website.png",
-  illustration: "/template-categories/illustration.png",
-  video: "/template-categories/video.png",
-  avatar: "/template-categories/avatar.png",
-  workflow: "/template-categories/workflow.png",
-};
+const TEMPLATE_TILE_WRAPPER =
+  "group/tile relative -m-2 cursor-pointer rounded-2xl p-2 transition-shadow duration-150";
+const TEMPLATE_TILE_RING_HOVER =
+  "hover:shadow-[0_0_0_1px_hsl(var(--gray-400))]";
+const TEMPLATE_TILE_RING_SELECTED = "shadow-[0_0_0_1px_hsl(var(--primary))]";
+const TEMPLATE_TILE_MEDIA =
+  "relative overflow-hidden rounded-[10px] border border-gray-200 bg-muted transition-[transform,box-shadow] duration-150 group-hover/tile:-translate-y-0.5 group-hover/tile:shadow-[0_8px_20px_hsl(220_12%_40%/0.14)] motion-reduce:transform-none";
+const TEMPLATE_TILE_SCRIM =
+  "pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-14 bg-gradient-to-t from-black/45 to-transparent opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100";
+const TEMPLATE_TILE_USE =
+  "absolute bottom-2 right-2 z-20 h-[30px] rounded-lg bg-primary px-3 text-[12.5px] font-medium text-primary-foreground opacity-0 transition-opacity duration-150 hover:bg-primary-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/tile:opacity-100";
+const TEMPLATE_TILE_CAPTION = "flex items-baseline gap-2 px-0.5 pt-2";
+const TEMPLATE_TILE_NAME =
+  "min-w-0 truncate text-[13px] font-medium leading-[18px] text-foreground";
+const TEMPLATE_TILE_META =
+  "ml-auto shrink-0 text-xs leading-[18px] text-gray-700";
 
 function VideoTemplateCard({
   item,
@@ -1085,22 +1088,16 @@ function VideoTemplateCard({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="group/tile relative">
-      <div
-        className={cn(
-          "relative aspect-[16/9] shrink-0 overflow-hidden rounded-xl border bg-muted transition-[box-shadow,transform,border-color] duration-150 motion-reduce:transform-none",
-          TEMPLATE_CARD_SHADOW,
-          selected
-            ? "border-primary ring-1 ring-primary"
-            : cn(
-                "border-gray-200 group-hover/tile:-translate-y-[3px]",
-                TEMPLATE_TILE_HOVER_SHADOW,
-              ),
-        )}
-      >
+    <div
+      className={cn(
+        TEMPLATE_TILE_WRAPPER,
+        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+      )}
+    >
+      <div className={cn(TEMPLATE_TILE_MEDIA, "aspect-[16/9]")}>
         <VideoTemplatePreview item={item} />
         {selected ? (
-          <span className="pointer-events-none absolute right-2 top-2 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <IconCheck size={14} stroke={2.6} />
           </span>
         ) : null}
@@ -1118,22 +1115,15 @@ function VideoTemplateCard({
           onClick={() => {
             onSelect(item);
           }}
-          className="absolute bottom-2.5 right-2.5 z-20 h-8 rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground opacity-0 transition-opacity duration-150 hover:bg-primary-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/tile:opacity-100"
+          className={TEMPLATE_TILE_USE}
         >
           {t(($) => {
             return $.artifacts.templates.use;
           })}
         </button>
       </div>
-      <div className="flex items-center gap-2 px-0.5 pt-2.5">
-        <p
-          className={cn(
-            "truncate text-sm font-medium leading-5",
-            selected ? "text-primary-800" : "text-foreground",
-          )}
-        >
-          {item.title}
-        </p>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <p className={TEMPLATE_TILE_NAME}>{item.title}</p>
       </div>
     </div>
   );
@@ -1149,7 +1139,7 @@ function VideoTemplateGrid({
   onSelect: (item: VideoTemplateItem) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {items.map((item) => {
         return (
           <VideoTemplateCard
@@ -1200,18 +1190,16 @@ function WebsiteTemplateCard({
           preview();
         }
       }}
-      className="group/tile relative cursor-zoom-in focus-visible:outline-none"
+      className={cn(
+        TEMPLATE_TILE_WRAPPER,
+        "cursor-zoom-in focus-visible:outline-none",
+        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+      )}
     >
       <div
         className={cn(
-          "relative aspect-[16/9] shrink-0 overflow-hidden rounded-xl border bg-muted transition-[box-shadow,transform,border-color] duration-150 group-focus-visible/tile:ring-2 group-focus-visible/tile:ring-ring motion-reduce:transform-none",
-          TEMPLATE_CARD_SHADOW,
-          selected
-            ? "border-primary ring-1 ring-primary"
-            : cn(
-                "border-gray-200 group-hover/tile:-translate-y-[3px]",
-                TEMPLATE_TILE_HOVER_SHADOW,
-              ),
+          TEMPLATE_TILE_MEDIA,
+          "aspect-[16/9] group-focus-visible/tile:ring-2 group-focus-visible/tile:ring-ring",
         )}
       >
         <img
@@ -1238,9 +1226,9 @@ function WebsiteTemplateCard({
           draggable={false}
           className="pointer-events-none h-full w-full bg-background object-cover"
         />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-16 bg-gradient-to-t from-black/50 to-transparent opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100" />
+        <div className={TEMPLATE_TILE_SCRIM} />
         {selected ? (
-          <span className="absolute right-2 top-2 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <span className="absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <IconCheck size={14} stroke={2.6} />
           </span>
         ) : null}
@@ -1259,22 +1247,15 @@ function WebsiteTemplateCard({
             event.stopPropagation();
             onSelect(item);
           }}
-          className="absolute bottom-2.5 right-2.5 z-20 h-8 cursor-pointer rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground opacity-0 transition-opacity duration-150 hover:bg-primary-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/tile:opacity-100"
+          className={cn(TEMPLATE_TILE_USE, "cursor-pointer")}
         >
           {t(($) => {
             return $.artifacts.templates.use;
           })}
         </button>
       </div>
-      <div className="flex items-center gap-2 px-0.5 pt-2.5">
-        <p
-          className={cn(
-            "truncate text-sm font-medium leading-5",
-            selected ? "text-primary-800" : "text-foreground",
-          )}
-        >
-          {item.title}
-        </p>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <p className={TEMPLATE_TILE_NAME}>{item.title}</p>
       </div>
     </div>
   );
@@ -1292,7 +1273,7 @@ function WebsiteTemplateGrid({
   onPreview: (item: WebsiteTemplateItem) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {items.map((item) => {
         return (
           <WebsiteTemplateCard
@@ -1515,7 +1496,7 @@ function WorkflowTemplateGrid({
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {items.map((item) => {
         return (
           <WorkflowTemplateCard
@@ -3811,19 +3792,13 @@ function PptCard({
   const slideCount = presentationTemplateSlideCount(item);
 
   return (
-    <div className="group/tile relative">
-      <div
-        className={cn(
-          "relative overflow-hidden rounded-xl border bg-muted transition-[box-shadow,transform,border-color] duration-150 motion-reduce:transform-none",
-          TEMPLATE_CARD_SHADOW,
-          selected
-            ? "border-primary ring-1 ring-primary"
-            : cn(
-                "border-gray-200 group-hover/tile:-translate-y-[3px]",
-                TEMPLATE_TILE_HOVER_SHADOW,
-              ),
-        )}
-      >
+    <div
+      className={cn(
+        TEMPLATE_TILE_WRAPPER,
+        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+      )}
+    >
+      <div className={TEMPLATE_TILE_MEDIA}>
         <TemplatePreview
           item={item}
           onPreview={onPreview}
@@ -3831,9 +3806,9 @@ function PptCard({
           signals={signals}
           theme={selectedTheme}
         />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-16 bg-gradient-to-t from-black/50 to-transparent opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100" />
+        <div className={TEMPLATE_TILE_SCRIM} />
         {selected ? (
-          <span className="absolute right-2 top-2 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <span className="absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <IconCheck size={14} stroke={2.6} />
           </span>
         ) : null}
@@ -3851,30 +3826,25 @@ function PptCard({
           onClick={() => {
             onSelect(item, presentationTemplateColorSystemId(selectedTheme.id));
           }}
-          className="absolute bottom-2.5 right-2.5 z-20 h-8 rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground opacity-0 transition-opacity duration-150 hover:bg-primary-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/tile:opacity-100"
+          className={TEMPLATE_TILE_USE}
         >
           {t(($) => {
             return $.artifacts.templates.use;
           })}
         </button>
       </div>
-      <div className="flex items-center gap-2 px-0.5 pt-2.5">
+      <div className={TEMPLATE_TILE_CAPTION}>
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <p
-                className={cn(
-                  "min-w-0 cursor-default truncate text-sm font-medium leading-5",
-                  selected ? "text-primary-800" : "text-foreground",
-                )}
-              >
+              <p className={cn(TEMPLATE_TILE_NAME, "cursor-default")}>
                 {item.title}
               </p>
             </TooltipTrigger>
             <TooltipContent side="bottom">{item.title}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <span className="ml-auto shrink-0 text-xs text-gray-700">
+        <span className={TEMPLATE_TILE_META}>
           {t(
             ($) => {
               return $.artifacts.templates.slidesCount;
@@ -4597,18 +4567,11 @@ function TemplatePickerCategoryNav({
         aria-label={t(($) => {
           return $.artifacts.templates.categories;
         })}
-        aria-orientation="vertical"
+        aria-orientation="horizontal"
         data-template-picker-sidebar=""
-        className="hidden w-[236px] shrink-0 flex-col gap-1.5 overflow-y-auto border-r border-border bg-card p-3 sm:flex"
+        className="hidden shrink-0 flex-wrap items-center gap-2 border-b border-border px-6 py-3.5 sm:flex"
       >
-        <div className="flex min-h-[44px] items-center px-2">
-          <h2 className="text-lg font-semibold tracking-tight text-foreground">
-            {t(($) => {
-              return $.artifacts.templates.template;
-            })}
-          </h2>
-        </div>
-        {categoryOptions.map(({ value, label }, categoryIndex) => {
+        {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
           const selected = value === selectedCategory;
           return (
             <button
@@ -4622,9 +4585,9 @@ function TemplatePickerCategoryNav({
               }}
               onKeyDown={(event) => {
                 let nextIndex: number | null = null;
-                if (event.key === "ArrowDown") {
+                if (event.key === "ArrowRight") {
                   nextIndex = (categoryIndex + 1) % categoryOptions.length;
-                } else if (event.key === "ArrowUp") {
+                } else if (event.key === "ArrowLeft") {
                   nextIndex =
                     (categoryIndex - 1 + categoryOptions.length) %
                     categoryOptions.length;
@@ -4644,22 +4607,22 @@ function TemplatePickerCategoryNav({
                 onChange(categoryOptions[nextIndex]?.value ?? value);
               }}
               className={cn(
-                "group flex h-16 w-full shrink-0 items-center gap-2 rounded-[10px] border py-0 pl-3 pr-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                "group inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border bg-transparent px-3.5 text-[13.5px] leading-[18px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-500",
                 selected
-                  ? cn(
-                      "border-gray-300 bg-card font-semibold text-foreground",
-                      TEMPLATE_CARD_SHADOW,
-                    )
-                  : "border-transparent bg-gray-50 text-gray-800 hover:bg-gray-100 focus-visible:bg-gray-100",
+                  ? "border-foreground font-medium text-foreground"
+                  : "border-gray-400 text-gray-800 hover:border-gray-500 hover:bg-gray-50 hover:text-foreground",
               )}
             >
-              <span className="min-w-0 flex-1 truncate">{label}</span>
-              <img
-                src={TEMPLATE_CATEGORY_ART[value]}
-                alt=""
-                draggable={false}
-                className="h-[52px] w-[72px] shrink-0 object-contain transition-transform duration-200 group-hover:-translate-y-px group-hover:-rotate-3 group-hover:scale-105 motion-reduce:transform-none motion-reduce:transition-none"
+              <Icon
+                className={cn(
+                  "h-[15px] w-[15px] shrink-0 transition-colors",
+                  selected
+                    ? "text-foreground"
+                    : "text-gray-700 group-hover:text-gray-800",
+                )}
+                stroke={1.8}
               />
+              <span className="truncate">{label}</span>
             </button>
           );
         })}
@@ -4668,52 +4631,20 @@ function TemplatePickerCategoryNav({
   );
 }
 
-function TemplatePickerCategoryHeader({
-  selectedCategory,
-}: {
-  selectedCategory: string;
-}) {
+function TemplatePickerHeader() {
   const { t } = useTranslation();
-  const title =
-    selectedCategory === "slides"
-      ? t(($) => {
-          return $.artifacts.kinds.presentation;
-        })
-      : selectedCategory === "website"
-        ? t(($) => {
-            return $.artifacts.templates.website;
-          })
-        : selectedCategory === "illustration"
-          ? t(($) => {
-              return $.artifacts.templates.illustration;
-            })
-          : selectedCategory === "video"
-            ? t(($) => {
-                return $.artifacts.kinds.video;
-              })
-            : selectedCategory === "avatar"
-              ? t(($) => {
-                  return $.artifacts.templates.avatar;
-                })
-              : selectedCategory === "workflow"
-                ? t(($) => {
-                    return $.artifacts.templates.workflow;
-                  })
-                : t(($) => {
-                    return $.artifacts.templates.template;
-                  });
   return (
-    <header
-      className={cn(
-        "hidden h-14 shrink-0 items-center border-b border-border px-5 sm:flex",
-        selectedCategory === "workflow" ? "pr-[21rem]" : "pr-14",
-      )}
-    >
-      <div className="min-w-0">
-        <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">
-          {title}
-        </h2>
-      </div>
+    <header className="hidden shrink-0 flex-col gap-0.5 px-6 pb-0 pr-14 pt-[18px] sm:flex">
+      <h2 className="text-[17px] font-semibold leading-6 tracking-tight text-foreground">
+        {t(($) => {
+          return $.artifacts.templates.template;
+        })}
+      </h2>
+      <p className="text-[13px] leading-[18px] text-gray-800">
+        {t(($) => {
+          return $.artifacts.templates.pickStartingPoint;
+        })}
+      </p>
     </header>
   );
 }
@@ -4732,7 +4663,7 @@ function TemplatePickerWorkflowSearch({
     return null;
   }
   return (
-    <div className="shrink-0 border-b border-border px-4 py-3 sm:absolute sm:right-14 sm:top-3 sm:z-10 sm:w-64 sm:border-0 sm:p-0">
+    <div className="shrink-0 border-b border-border px-4 py-3 sm:w-64 sm:border-0 sm:px-6 sm:pb-0 sm:pt-4">
       <div className="relative">
         <IconSearch
           className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -4810,7 +4741,7 @@ function PptTemplateGrid({
   signals: ComposerSignals;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {items.map((item) => {
         return (
           <PptCard
@@ -5177,7 +5108,8 @@ function TemplatePickerDialog({
                 })}
               </DialogTitle>
             </DialogHeader>
-            <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+            <div className="flex min-h-0 flex-1 flex-col">
+              <TemplatePickerHeader />
               <TemplatePickerCategoryNav
                 selectedCategory={selectedCategory}
                 hasPptTab={hasPptTab}
@@ -5188,9 +5120,6 @@ function TemplatePickerDialog({
                 onChange={handleCategoryChange}
               />
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-                <TemplatePickerCategoryHeader
-                  selectedCategory={selectedCategory}
-                />
                 <TemplatePickerWorkflowSearch
                   selectedCategory={selectedCategory}
                   search={search}

@@ -674,6 +674,7 @@
       "placeholder": "{{title}} segnaposto anteprima sito web",
       "playVideo": "Riproduci l'anteprima del modello video {{title}}",
       "previewAvatarVideo": "Anteprima del video avatar {{title}}",
+      "pickStartingPoint": "Scegli un punto di partenza: potrai cambiare tutto dopo",
       "previewCurrentSlide": "Anteprima {{title}} nella diapositiva corrente",
       "previewSlide": "Diapositiva di anteprima {{slideNumber}}",
       "previewVoice": "Ascolta la voce {{title}}",

@@ -674,6 +674,7 @@
       "placeholder": "Espace réservé pour l'aperçu du site {{title}}",
       "playVideo": "Lire l'aperçu vidéo du modèle {{title}}",
       "previewAvatarVideo": "Prévisualiser la vidéo de l'avatar {{title}}",
+      "pickStartingPoint": "Choisissez un point de départ — vous pourrez tout modifier ensuite",
       "previewCurrentSlide": "Aperçu de {{title}} à la diapositive actuelle",
       "previewSlide": "Aperçu de la diapositive {{slideNumber}}",
       "previewVoice": "Écouter la voix {{title}}",

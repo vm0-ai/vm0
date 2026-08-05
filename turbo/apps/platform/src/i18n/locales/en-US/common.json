@@ -657,6 +657,7 @@
       "placeholder": "{{title}} website preview placeholder",
       "playVideo": "Play video template preview {{title}}",
       "previewAvatarVideo": "Preview avatar video {{title}}",
+      "pickStartingPoint": "Pick a starting point — you can still change everything after",
       "previewCurrentSlide": "Preview {{title}} at current slide",
       "previewSlide": "Preview slide {{slideNumber}}",
       "previewVoice": "Preview voice {{title}}",

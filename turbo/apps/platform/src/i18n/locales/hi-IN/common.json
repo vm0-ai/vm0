@@ -657,6 +657,7 @@
       "placeholder": "{{title}} वेबसाइट पूर्वावलोकन प्लेसहोल्डर",
       "playVideo": "वीडियो टेम्पलेट पूर्वावलोकन {{title}} चलाएँ",
       "previewAvatarVideo": "अवतार वीडियो {{title}} का पूर्वावलोकन करें",
+      "pickStartingPoint": "एक शुरुआती बिंदु चुनें — बाद में आप सब कुछ बदल सकते हैं",
       "previewCurrentSlide": "वर्तमान स्लाइड पर {{title}} का पूर्वावलोकन करें",
       "previewSlide": "पूर्वावलोकन स्लाइड {{slideNumber}}",
       "previewVoice": "आवाज़ {{title}} सुनें",
