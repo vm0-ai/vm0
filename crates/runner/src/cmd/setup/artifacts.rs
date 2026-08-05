@@ -210,6 +210,7 @@ mod tests {
     use sha2::{Digest, Sha256};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+    use tokio::sync::oneshot;
     use tokio::task::JoinHandle;
 
     use super::*;
@@ -294,6 +295,50 @@ mod tests {
         (format!("http://{address}/artifact"), task)
     }
 
+    async fn spawn_gated_http_response(
+        response_prefix: Vec<u8>,
+    ) -> (
+        String,
+        oneshot::Receiver<()>,
+        oneshot::Sender<()>,
+        JoinHandle<std::io::Result<()>>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (body_sent_tx, body_sent_rx) = oneshot::channel();
+        let (release_tx, release_rx) = oneshot::channel();
+        let task = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await?;
+            let mut request = [0_u8; 1024];
+            let request_size = stream.read(&mut request).await?;
+            if request_size == 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "setup fixture received an empty request",
+                ));
+            }
+            stream.write_all(&response_prefix).await?;
+            body_sent_tx.send(()).map_err(|()| {
+                std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "setup fixture body signal receiver dropped",
+                )
+            })?;
+            release_rx.await.map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "setup fixture release sender dropped",
+                )
+            })
+        });
+        (
+            format!("http://{address}/artifact"),
+            body_sent_rx,
+            release_tx,
+            task,
+        )
+    }
+
     async fn finish_http_response(task: JoinHandle<std::io::Result<()>>) {
         tokio::time::timeout(Duration::from_secs(2), task)
             .await
@@ -321,6 +366,20 @@ mod tests {
             }
         }
         temp_files
+    }
+
+    async fn wait_for_setup_temp_count(root: &Path, expected: usize) -> Vec<PathBuf> {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let temp_files = setup_temp_files(root);
+                if temp_files.len() == expected {
+                    return temp_files;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("setup temp count did not converge")
     }
 
     #[test]
@@ -479,6 +538,55 @@ mod tests {
         download.assert_calls_async(1).await;
         assert_eq!(std::fs::read(&target).unwrap(), content);
         assert_eq!(mode(&target), SETUP_KERNEL_ARTIFACT_MODE);
+    }
+
+    #[tokio::test]
+    async fn cancelling_direct_artifact_download_cleans_temp() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = b"cancelled download".to_vec();
+        let mut response_prefix = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            content.len()
+        )
+        .into_bytes();
+        response_prefix.extend_from_slice(&content[..4]);
+        let (url, body_sent, release, server_task) =
+            spawn_gated_http_response(response_prefix).await;
+        let target = dir.path().join("artifact.bin");
+        let artifact = SetupArtifact {
+            label: "direct",
+            display_name: "direct artifact".to_owned(),
+            target: target.clone(),
+            installed: content_identity(&content),
+            mode: SETUP_KERNEL_ARTIFACT_MODE,
+            url,
+            source: SetupArtifactSource::Direct,
+        };
+        let client = test_client();
+        let install_task =
+            tokio::spawn(async move { install_setup_artifact(&client, artifact).await });
+
+        tokio::time::timeout(Duration::from_secs(2), body_sent)
+            .await
+            .expect("setup fixture did not send the partial body")
+            .expect("setup fixture body signal sender dropped");
+        let temp_files = wait_for_setup_temp_count(dir.path(), 1).await;
+        assert!(
+            temp_files[0]
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .contains(".download.")
+        );
+
+        install_task.abort();
+        let join_error = install_task.await.unwrap_err();
+        assert!(join_error.is_cancelled());
+
+        assert!(wait_for_setup_temp_count(dir.path(), 0).await.is_empty());
+        assert!(!target.exists());
+        release.send(()).unwrap();
+        finish_http_response(server_task).await;
     }
 
     #[tokio::test]
