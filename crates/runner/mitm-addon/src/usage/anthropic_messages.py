@@ -15,11 +15,15 @@ from .model_tokens import ANTHROPIC_USAGE_FIELD_CATEGORIES
 from .sse import SseUsageScanner
 
 _ANTHROPIC_MESSAGES_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
+_ANTHROPIC_MESSAGES_ACCOUNTING_EVENTS = frozenset(
+    (*_ANTHROPIC_MESSAGES_USAGE_EVENTS, "message_stop")
+)
 # Bound dense syntax and slow scalar inspection while retaining the selective
 # parser's bulk-scan path for ordinary large content strings.
 _ANTHROPIC_MESSAGES_MAX_WORK_UNITS = 65_536
 _SseUsageParseErrorCallback = Callable[[str, str], None]
 AnthropicMessagesLifecycleCallback = Callable[[str, str | None], None]
+AnthropicMessagesAccountingEventCallback = Callable[[str], None]
 
 _MODEL_JSON_SCALAR_FIELDS = {
     ("id",): ScalarField("string", max_bytes=1024),
@@ -66,6 +70,7 @@ def _store_selected_usage_values(values: dict, target: dict, prefix: tuple[str, 
 def create_anthropic_messages_sse_usage_extractor(
     on_parse_error: _SseUsageParseErrorCallback | None = None,
     on_lifecycle_event: AnthropicMessagesLifecycleCallback | None = None,
+    on_accounting_event: AnthropicMessagesAccountingEventCallback | None = None,
 ) -> tuple[SseUsageScanner, dict]:
     """Create an incremental SSE parser that extracts usage from Anthropic API streams.
 
@@ -103,6 +108,12 @@ def create_anthropic_messages_sse_usage_extractor(
     boundary; message text, thinking text, tool input, and other response
     payload content do not.
 
+    ``on_accounting_event(event_type)`` receives only successfully parsed
+    ``message_start``, ``message_delta``, and ``message_stop`` event identities.
+    Unlike usage extraction, requesting this callback makes ``message_stop`` a
+    captured event so callers can distinguish terminal from partial accounting.
+    No selected scalar value or response payload crosses this callback boundary.
+
     HTTP content decoding and decoder errors remain caller-owned; this parser
     receives decoded bytes and owns only SSE framing and selected JSON fields.
     """
@@ -112,6 +123,7 @@ def create_anthropic_messages_sse_usage_extractor(
             usage,
             on_parse_error=on_parse_error,
             on_lifecycle_event=on_lifecycle_event,
+            on_accounting_event=on_accounting_event,
         ),
         # Anthropic-shaped streams can omit SSE event names and rely on JSON
         # "type" fields to classify message_start/message_delta payloads.
@@ -127,15 +139,19 @@ class _AnthropicMessagesSseUsageHandler:
         *,
         on_parse_error: _SseUsageParseErrorCallback | None = None,
         on_lifecycle_event: AnthropicMessagesLifecycleCallback | None = None,
+        on_accounting_event: AnthropicMessagesAccountingEventCallback | None = None,
     ) -> None:
         self._usage = usage
         self._extractor: JsonSelectiveExtractor | None = None
         self._on_parse_error = on_parse_error
         self._on_lifecycle_event = on_lifecycle_event
+        self._on_accounting_event = on_accounting_event
 
     def should_capture_event(self, event_name: str | None) -> bool:
-        return event_name in _ANTHROPIC_MESSAGES_USAGE_EVENTS or (
-            event_name == "content_block_start" and self._on_lifecycle_event is not None
+        return (
+            event_name in _ANTHROPIC_MESSAGES_USAGE_EVENTS
+            or (event_name == "message_stop" and self._on_accounting_event is not None)
+            or (event_name == "content_block_start" and self._on_lifecycle_event is not None)
         )
 
     def on_event_start(self, event_name: str | None) -> None:
@@ -177,6 +193,8 @@ class _AnthropicMessagesSseUsageHandler:
         event_type = event_name
         if event_type is None and isinstance(data_type, str):
             event_type = data_type
+        if isinstance(data_type, str) and event_name is not None and data_type != event_name:
+            return
 
         if event_type == "message_start":
             model = result.values.get(("message", "model"))
@@ -189,18 +207,21 @@ class _AnthropicMessagesSseUsageHandler:
         elif event_type == "message_delta":
             _store_selected_usage_values(result.values, self._usage, ("usage",))
 
-        if self._on_lifecycle_event is None:
-            return
-        if isinstance(data_type, str) and event_name is not None and data_type != event_name:
-            return
-        if event_type == "message_start":
-            self._on_lifecycle_event(event_type, None)
-        elif event_type == "content_block_start":
-            block_type = result.values.get(("content_block", "type"))
-            self._on_lifecycle_event(
-                event_type,
-                block_type if isinstance(block_type, str) else None,
-            )
+        if self._on_lifecycle_event is not None:
+            if event_type == "message_start":
+                self._on_lifecycle_event(event_type, None)
+            elif event_type == "content_block_start":
+                block_type = result.values.get(("content_block", "type"))
+                self._on_lifecycle_event(
+                    event_type,
+                    block_type if isinstance(block_type, str) else None,
+                )
+
+        if (
+            self._on_accounting_event is not None
+            and event_type in _ANTHROPIC_MESSAGES_ACCOUNTING_EVENTS
+        ):
+            self._on_accounting_event(event_type)
 
     def on_event_discard(self, event_name: str | None) -> None:
         self._extractor = None
