@@ -1,8 +1,8 @@
 import { basename, join } from "path";
 import { tmpdir } from "os";
 import { Command } from "commander";
-import { downloadTelegramFile } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { downloadTelegramFile } from "../../../lib/api/domains/integrations-telegram";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 /**
  * Derive a local output path for a Telegram file id.

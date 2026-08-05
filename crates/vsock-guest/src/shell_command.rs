@@ -65,7 +65,7 @@ fn shell_command_user() -> Option<&'static str> {
 
     #[cfg(not(any(debug_assertions, feature = "test-support")))]
     {
-        // Default user for command execution (UID 1000, matching E2B sandbox)
+        // Default user for command execution (UID 1000)
         Some(crate::user::sandbox_user_name())
     }
 }

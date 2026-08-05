@@ -31,8 +31,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.HostedArtifactVersions, {})).toBe(
       true,
     );
-    expect(isFeatureEnabled(FeatureSwitchKey.HtmlResourceIndex, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -54,6 +52,7 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.ChatThreadSidebarAutoOpen, {}),
     ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.RustZeroCli, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.R2ZeroCli, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(false);
   });
 
@@ -127,16 +126,15 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatSteer]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
       staffOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
@@ -155,11 +153,11 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.ChatSteer]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(
       false,
     );
@@ -168,7 +166,6 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
       otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],

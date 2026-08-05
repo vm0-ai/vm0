@@ -9,7 +9,8 @@ import {
   type ZeroWeatherConditionsResponse,
 } from "@vm0/api-contracts/contracts/zero-weather";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import {
   seedOrgMetadata,
   seedUsagePricingRows,

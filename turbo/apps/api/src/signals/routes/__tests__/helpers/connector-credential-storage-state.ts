@@ -4,8 +4,8 @@ import {
   type TestConnectorCredentialStorageStateActionResponse,
 } from "@vm0/api-contracts/contracts/test-connector-credential-storage-state";
 
-import { accept, setupApp } from "../../../../__tests__/test-helpers";
-import type { TestContext } from "../../../../__tests__/test-context";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { testConnectorCredentialStorageStateRoutes } from "../../test-connector-credential-storage-state";
 
 async function postAction(

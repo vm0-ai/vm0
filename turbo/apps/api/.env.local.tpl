@@ -11,6 +11,8 @@ FEISHU_CALLBACK_BASE_URL=https://api.vm7.ai:8443
 VM0_WEB_URL=https://www.vm7.ai:8443
 APP_URL=https://app.vm7.ai:8443
 
+# CLI_PKG_URL is appended by scripts/sync-env.sh using the local machine identity.
+
 # Optional: Atom redeem service for onboarding codes
 ATOM_URL=https://atom-api.vm7.ai:8442
 VM0_MACHINE_SECRET_KEY=op://Development/clerk/VM0_MACHINE_SECRET_KEY
@@ -20,10 +22,6 @@ ENV=development
 
 # Required: git commit SHA used as OTel service.version and Sentry release
 GIT_COMMIT_SHA=local-dev
-
-# Required: Sandbox Runtime (E2B)
-E2B_API_KEY=op://Development/e2b/E2B_API_KEY
-E2B_TEMPLATE_NAME=vm0-claude-code-dev
 
 # Optional: Sandbox Runtime (Vercel Sandbox access-token auth)
 VERCEL_TEAM_ID=op://Development/vercel/VERCEL_TEAM_ID

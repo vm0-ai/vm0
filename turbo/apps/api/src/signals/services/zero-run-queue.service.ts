@@ -15,9 +15,8 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-
 import { writeDb$, type Db } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import {
   publishOrgSignal,
   publishThreadListChanged,

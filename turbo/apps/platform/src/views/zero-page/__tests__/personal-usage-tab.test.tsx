@@ -147,7 +147,6 @@ function mockPersonalUsageStory(
 
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "member",
   });
@@ -243,7 +242,7 @@ describe("personal usage settings", () => {
     });
   });
 
-  it("hides model names for limited-free-1 usage", async () => {
+  it("shows model names for limited-free-1 usage", async () => {
     const user = userEvent.setup();
     const row = usageRow({
       title: "Limited free model usage",
@@ -270,8 +269,9 @@ describe("personal usage settings", () => {
     await user.hover(screen.getByTestId("usage-kind-segment-model"));
 
     await waitFor(() => {
-      expect(screen.getAllByText("model").length).toBeGreaterThanOrEqual(1);
-      expect(screen.queryByText("GPT 5.6 Luna")).not.toBeInTheDocument();
+      expect(screen.getAllByText("GPT 5.6 Luna").length).toBeGreaterThanOrEqual(
+        1,
+      );
     });
   });
 
@@ -293,7 +293,6 @@ describe("personal usage settings", () => {
   it("refreshes personal usage when billing realtime changes", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });

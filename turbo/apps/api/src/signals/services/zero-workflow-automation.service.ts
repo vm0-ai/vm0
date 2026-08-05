@@ -100,10 +100,8 @@ import {
   revealWorkflowWebhookSecretFields,
 } from "./workflow-webhook-automation.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import {
-  runWorkflowAutomationNow$,
-  type RunWorkflowAutomationResult,
-} from "./zero-workflow-automation-run.service";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import type { RunWorkflowAutomationResult } from "./zero-workflow-automation-launch.service";
 import {
   ensureWorkflowUserAutomationThread,
   loadWorkflowUserAutomationThreadId,

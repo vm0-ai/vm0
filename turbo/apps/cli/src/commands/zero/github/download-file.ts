@@ -1,8 +1,8 @@
 import { basename, join } from "path";
 import { tmpdir } from "os";
 import { Command } from "commander";
-import { downloadGithubFile } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { downloadGithubFile } from "../../../lib/api/domains/integrations-github";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 function filenameFromUrl(fileUrl: string): string {
   if (URL.canParse(fileUrl)) {

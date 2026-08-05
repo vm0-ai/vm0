@@ -8,6 +8,8 @@ const CHAT_COMPOSER_SELECTOR = "[data-chat-composer] .zero-composer";
 const KEYBOARD_SCROLL_RESERVE_PROPERTY = "--zero-keyboard-scroll-reserve";
 const COMPOSER_KEYBOARD_GAP_PX = 16;
 const STANDALONE_DISPLAY_MODE_QUERY = "(display-mode: standalone)";
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
+const FINE_POINTER_QUERY = "(any-pointer: fine)";
 
 const TEXT_ENTRY_SELECTOR = `textarea, select, ${CONTENTEDITABLE_SELECTOR}`;
 
@@ -89,7 +91,7 @@ function viewportHasKeyboardOcclusion(
  * a phone. A shrunk visual viewport over an unchanged layout viewport is the
  * device's own evidence that the on-screen keyboard produced the keystroke.
  */
-export function softwareKeyboardOccludesViewport(): boolean {
+function softwareKeyboardOccludesViewport(): boolean {
   const viewport = window.visualViewport;
   if (!viewport) {
     return false;
@@ -97,6 +99,35 @@ export function softwareKeyboardOccludesViewport(): boolean {
   return viewportHasKeyboardOcclusion(
     readLayoutViewportHeight(viewport),
     viewport,
+  );
+}
+
+function isIOSDevice(): boolean {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+/**
+ * Reports whether text entry should use mobile-safe interaction behavior.
+ *
+ * A fine pointer normally means a hardware keyboard is available, while the
+ * visual viewport detects an active software keyboard. WebKit reports a fine
+ * pointer on iOS even without one, so iOS also needs an explicit fallback.
+ */
+export function isMobileTextInputDevice(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return (
+    window.matchMedia(COARSE_POINTER_QUERY).matches &&
+    (!window.matchMedia(FINE_POINTER_QUERY).matches ||
+      isIOSDevice() ||
+      softwareKeyboardOccludesViewport())
   );
 }
 

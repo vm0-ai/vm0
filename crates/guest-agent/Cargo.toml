@@ -1,6 +1,6 @@
 [package]
 name = "guest-agent"
-version = "0.64.1"
+version = "0.64.3"
 edition.workspace = true
 
 [dependencies]
@@ -19,7 +19,7 @@ http-body = "1"
 libc.workspace = true
 pin-project-lite = "0.2"
 reqwest = { workspace = true }
-rustix.workspace = true
+rustix = { workspace = true, features = ["process"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 hex.workspace = true

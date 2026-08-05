@@ -25,7 +25,8 @@ import {
 
 import { createApp } from "../../../app-factory";
 import { createAppWithRoutes } from "../../../app-factory-core";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { generateSandboxToken } from "../../auth/tokens";

@@ -1,7 +1,7 @@
 import { createStore } from "ccstate";
 import { describe, it } from "vitest";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { seedOwnedConnectorSecret } from "./helpers/connector-credential-storage-state";
 import {
   deleteUsageInsightFixture$,

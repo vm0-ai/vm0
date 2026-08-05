@@ -6,6 +6,14 @@
 
 load '../../helpers/setup'
 
+set_r2_zero_cli() {
+    local enabled="$1"
+    e2e_api_curl "/api/zero/feature-switches" \
+        -X POST \
+        -d "{\"switches\":{\"r2ZeroCli\":${enabled}}}" \
+        >/dev/null
+}
+
 setup_file() {
     export AGENT_NAME="e2e-t58-$(date +%s%3N)-$RANDOM"
     export TEST_DIR="$(mktemp -d)"
@@ -32,6 +40,7 @@ EOF
 }
 
 teardown_file() {
+    set_r2_zero_cli false || true
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi
@@ -64,4 +73,17 @@ EOF
     assert_output --partial '"subtype":"success"'
     [ -n "$(run_fixture_field "$output" '.checkpointId')" ]
     [ -n "$(run_fixture_field "$output" '.sessionId')" ]
+}
+
+@test "t58-2: CLI_PKG_URL reaches the runner guest" {
+    set_r2_zero_cli true
+
+    run run_compose_fixture \
+        "$AGENT_NAME" \
+        'test -n "$CLI_PKG_URL" && printf "CLI_PKG_URL=%s" "$CLI_PKG_URL"'
+
+    set_r2_zero_cli false
+
+    assert_success
+    assert_output --regexp 'CLI_PKG_URL=https://static\.vm0\.io/okou-cli/[0-9a-f]{40}/package\.tgz'
 }

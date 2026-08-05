@@ -3,7 +3,7 @@ import { mkdirSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { Command } from "commander";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { downloadWebFile } from "../../../lib/api/domains/web";
 
 interface ExtractedFrame {

@@ -19,14 +19,14 @@ import {
   deleteWorkflowAutomation,
   disableWorkflowAutomation,
   enableWorkflowAutomation,
-  getZeroChatThread,
   getWorkflowAutomation,
   listWorkspaceWorkflowAutomations,
-  listZeroModelPolicies,
   listWorkflowAutomations,
   updateWorkflowAutomation,
-} from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+} from "../../../../lib/api/domains/zero-workflows";
+import { getZeroChatThread } from "../../../../lib/api/domains/zero-chat";
+import { listZeroModelPolicies } from "../../../../lib/api/domains/zero-model-policies";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 import { decodeZeroTokenPayload } from "../../../../lib/api/zero-token";
 import { parseDurationSeconds } from "../../shared/duration";
 import {
@@ -123,10 +123,12 @@ const EVENT_KINDS = [
   "google-calendar-event-created",
   "google-calendar-event-updated",
   "google-calendar-event-cancelled",
+  "google-meet-transcript-generated",
   "notion-child-page-created",
   "notion-database-item-created",
   "notion-page-content-updated",
   "webhook",
+  "chat-run-finished",
 ] as const;
 const GITHUB_WEBHOOK_EVENT_KINDS = [
   "github-workflow-job-completed",
@@ -135,7 +137,6 @@ const GITHUB_WEBHOOK_EVENT_KINDS = [
   "github-issue-comment-created",
 ] as const;
 const STRAPI_EVENT_KINDS = ["strapi-entry-published"] as const;
-const CHAT_EVENT_KINDS = ["chat-run-finished"] as const;
 const CHAT_RUN_FINISHED_STATUSES = [
   "completed",
   "failed",
@@ -145,14 +146,6 @@ const CHAT_RUN_FINISHED_STATUSES = [
 function githubWebhookAutomationsEnabled(): boolean {
   const payload = decodeZeroTokenPayload();
   return isFeatureEnabled(FeatureSwitchKey.GithubWebhookAutomations, {
-    userId: payload?.userId,
-    orgId: payload?.orgId,
-  });
-}
-
-function zeroChatMessagingEnabled(): boolean {
-  const payload = decodeZeroTokenPayload();
-  return isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {
     userId: payload?.userId,
     orgId: payload?.orgId,
   });
@@ -172,7 +165,6 @@ function automationKinds(): readonly string[] {
     ...EVENT_KINDS,
     ...(githubWebhookAutomationsEnabled() ? GITHUB_WEBHOOK_EVENT_KINDS : []),
     ...(strapiIntegrationEnabled() ? STRAPI_EVENT_KINDS : []),
-    ...(zeroChatMessagingEnabled() ? CHAT_EVENT_KINDS : []),
   ];
 }
 
@@ -1346,6 +1338,26 @@ function buildGoogleCalendarEventCreateRequest(
   };
 }
 
+function buildGoogleMeetTranscriptGeneratedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasEventAddOptions(options)) {
+    throw new Error(
+      "Google Meet transcript automations do not accept event filter options",
+    );
+  }
+  return {
+    kind: "event",
+    eventType: "google-meet-transcript-generated",
+    eventConfig: {
+      provider: "google-meet",
+      event: "transcript_generated",
+      scope: { type: "organizer_user" },
+    },
+  };
+}
+
 function buildNotionChildPageCreatedCreateRequest(
   options: AddOptions,
 ): ZeroWorkflowAutomationCreateRequest {
@@ -1638,6 +1650,8 @@ function buildCreateRequest(
       return buildGoogleCalendarEventCreateRequest(kind, options);
     case "google-calendar-event-cancelled":
       return buildGoogleCalendarEventCreateRequest(kind, options);
+    case "google-meet-transcript-generated":
+      return buildGoogleMeetTranscriptGeneratedCreateRequest(options);
     case "notion-child-page-created":
       return buildNotionChildPageCreatedCreateRequest(options);
     case "notion-database-item-created":
@@ -1982,6 +1996,7 @@ Examples:
   zero workflow automation add triage --agent <agent-id> google-calendar-event-created
   zero workflow automation add triage --agent <agent-id> google-calendar-event-updated
   zero workflow automation add triage --agent <agent-id> google-calendar-event-cancelled
+  zero workflow automation add meeting-notes --agent <agent-id> google-meet-transcript-generated
   zero workflow automation add research-notes --agent <agent-id> notion-child-page-created --parent-page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
   zero workflow automation add research-notes --agent <agent-id> notion-database-item-created --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
   zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
@@ -1995,6 +2010,7 @@ Notes:
   - Gmail automations match all inbound messages when no text match rules are provided
   - GitHub automations require the GitHub App installation in the workspace
   - GitHub workflow run filters accept comma-separated values; omit a filter to match any value
+  - Google Meet automations run only when a meeting you organize generates a transcript
   - Webhook automations print the signing secret only once after creation
   - Use the workflow ID when a name is ambiguous`,
   )
@@ -2012,11 +2028,6 @@ Notes:
         if (kind === "strapi-entry-published" && !strapiIntegrationEnabled()) {
           throw new Error(
             "Strapi workflow automations are not enabled for this workspace",
-          );
-        }
-        if (kind === "chat-run-finished" && !zeroChatMessagingEnabled()) {
-          throw new Error(
-            "Chat run finished automations are not enabled for this workspace",
           );
         }
         if (

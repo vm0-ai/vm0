@@ -21,7 +21,6 @@ import {
   sql,
   sum,
 } from "drizzle-orm";
-
 import {
   nullableDriverValueDecoder,
   pgIntegerDecoder,
@@ -32,7 +31,7 @@ import { logger } from "../../lib/log";
 import { getDatasetName, queryAxiom } from "../external/axiom";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { getLocalToday, resolveUserTimezones } from "./local-day";
 import { tapError } from "../utils";
 import { buildFinalizedUsageRelation } from "./finalized-usage-relation";

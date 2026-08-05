@@ -132,8 +132,8 @@ import {
   FileAttachmentChip,
   PreviewableAudioAttachmentChip,
   PreviewableFileAttachmentChip,
-  publicAttachmentUrl,
 } from "./zero-attachment-chips.tsx";
+import { publicAttachmentUrl } from "./zero-attachment-url";
 import { MailDraftCard } from "./mail-draft-card.tsx";
 import { BrowserSessionCard } from "./browser-session-card.tsx";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
@@ -222,7 +222,6 @@ import {
   atTimeInTimezone,
   cronWallTimeInTimezone,
 } from "../../signals/zero-page/cron.ts";
-
 import {
   buildGmailLabelAppliedEventConfig,
   buildGmailNewMessageEventConfig,
@@ -235,7 +234,6 @@ import {
   WorkflowAutomationCard,
   type WorkflowAutomationCardRow,
 } from "../workflows-page/workflow-automation-card.tsx";
-
 import {
   renameChatThread$,
   type EnrichedChatEvent,
@@ -289,7 +287,6 @@ import {
   startCreditCheckout$,
 } from "../../signals/zero-page/billing.ts";
 import { orgPlanCapabilitiesFromBilling } from "../../signals/zero-page/org-plan-capabilities.ts";
-import { modelPlanCapabilities$ } from "../../signals/zero-page/model-plan-capabilities.ts";
 import {
   imageLoadStatusByKey$,
   imageLoadStatusRef$,
@@ -5808,12 +5805,6 @@ function AssistantRecoveryActions({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const modelCapabilitiesLoadable = useLoadable(modelPlanCapabilities$);
-  const lastModelCapabilities = useLastResolved(modelPlanCapabilities$);
-  const modelCapabilities =
-    modelCapabilitiesLoadable.state === "hasData"
-      ? modelCapabilitiesLoadable.data
-      : lastModelCapabilities;
   const setModelSelection = useSet(thread.composer.model.setModelSelection$);
   const [retryLoadable, retry] = useLoadableSet(thread.retryAssistantError$);
   const [resetLoadable, resetAndRetry] = useLoadableSet(
@@ -5848,19 +5839,16 @@ function AssistantRecoveryActions({
           })}
         </Button>
       )}
-      {modelCapabilities !== undefined &&
-        !modelCapabilities.restrictedVm0Models && (
-          <ModelProviderPicker
-            value={null}
-            onChange={handleModelSelection}
-            placeholder={t(($) => {
-              return $.chat.errors.recovery.selectModel;
-            })}
-            triggerClassName="h-8 w-auto min-w-[9rem] bg-background text-sm"
-            compactTrigger
-            resolveDefaultSelection={false}
-          />
-        )}
+      <ModelProviderPicker
+        value={null}
+        onChange={handleModelSelection}
+        placeholder={t(($) => {
+          return $.chat.errors.recovery.selectModel;
+        })}
+        triggerClassName="h-8 w-auto min-w-[9rem] bg-background text-sm"
+        compactTrigger
+        resolveDefaultSelection={false}
+      />
       <Button
         type="button"
         size="sm"
@@ -6755,7 +6743,7 @@ function AgentRunSourceMessageAnnotation({
       <AvatarFromUrl
         avatarUrl={agent?.avatarUrl}
         alt=""
-        className="size-4 shrink-0 overflow-hidden rounded-full bg-muted object-cover object-top"
+        className="size-4 shrink-0 overflow-hidden rounded-full object-cover object-top"
         size={16}
       />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
@@ -7021,7 +7009,7 @@ function UserMessageAgentReference({
       <AvatarFromUrl
         avatarUrl={agent?.avatarUrl}
         alt=""
-        className="size-4 shrink-0 overflow-hidden rounded-full bg-muted object-cover object-top"
+        className="size-4 shrink-0 overflow-hidden rounded-full object-cover object-top"
         size={16}
       />
       <span className="min-w-0 truncate">{name}</span>
@@ -7944,7 +7932,6 @@ function parseUsageKind(kind: string): {
 
 function buildRunUsageDisplayRows(
   usage: ChatEventUsagePayload,
-  genericModelName: boolean,
 ): readonly RunUsageDisplayRow[] {
   const rows = new Map<string, RunUsageDisplayRow>();
 
@@ -7958,8 +7945,7 @@ function buildRunUsageDisplayRows(
       rows.set(key, {
         key,
         label:
-          existing?.label ??
-          getCreditUsageDisplayName(parsed.kind, provider, genericModelName),
+          existing?.label ?? getCreditUsageDisplayName(parsed.kind, provider),
         credits: (existing?.credits ?? 0) + credits,
       });
     }
@@ -7983,17 +7969,8 @@ function UsageChip({
   open: boolean;
   setOpen: (open: boolean) => void;
 }) {
-  const modelCapabilitiesLoadable = useLoadable(modelPlanCapabilities$);
-  const lastModelCapabilities = useLastResolved(modelPlanCapabilities$);
-  const modelCapabilities =
-    modelCapabilitiesLoadable.state === "hasData"
-      ? modelCapabilitiesLoadable.data
-      : lastModelCapabilities;
   const total = formatCredits(usage.totalCredits);
-  const displayRows = buildRunUsageDisplayRows(
-    usage,
-    modelCapabilities?.restrictedVm0Models ?? true,
-  );
+  const displayRows = buildRunUsageDisplayRows(usage);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

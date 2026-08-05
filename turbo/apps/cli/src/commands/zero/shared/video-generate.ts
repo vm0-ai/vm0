@@ -1,12 +1,13 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
+import { ApiRequestError } from "../../../lib/api/core/client-factory";
+import { generateWebVideo } from "../../../lib/api/domains/web";
+import { getZeroBillingStatus } from "../../../lib/api/domains/zero-billing";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
-  ApiRequestError,
-  generateWebVideo,
-  getZeroBillingStatus,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
-import { findVideoTemplate, listVideoTemplates } from "./resource-registry";
+  findVideoTemplate,
+  listVideoTemplates,
+} from "@vm0/core/resource-registry";
 import { formatRegistryListing } from "./resource-listing";
 import { createVideoTemplateAuthoringPacket } from "./video-template-authoring";
 import {

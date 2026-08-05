@@ -57,11 +57,8 @@ import { http, HttpResponse } from "msw";
 import { onTestFinished } from "vitest";
 import { z } from "zod";
 
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { createApp } from "../../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";

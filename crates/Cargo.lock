@@ -1253,7 +1253,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.64.1"
+version = "0.64.3"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1292,7 +1292,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.61"
+version = "0.2.62"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1304,7 +1304,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.5.6"
+version = "0.5.7"
 dependencies = [
  "libc",
  "serde",
@@ -1315,7 +1315,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.22.16"
+version = "0.22.17"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1331,7 +1331,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.142"
+version = "0.16.143"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1342,7 +1342,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.39"
+version = "0.21.40"
 dependencies = [
  "api-contracts",
  "guest-contracts",
@@ -1382,7 +1382,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.49"
+version = "0.1.50"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2605,7 +2605,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.158.0"
+version = "0.158.4"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2627,6 +2627,7 @@ dependencies = [
  "guest-reseed",
  "guest-write-file",
  "hex",
+ "http-body 1.1.0",
  "httpmock",
  "idna",
  "libc",
@@ -2829,7 +2830,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.180"
+version = "0.37.183"
 dependencies = [
  "async-trait",
  "clap",
@@ -2840,6 +2841,7 @@ dependencies = [
  "nbd-cow",
  "nix",
  "reqwest",
+ "rustix",
  "sandbox",
  "serde",
  "serde_json",
@@ -2859,7 +2861,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.69"
+version = "0.8.70"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3792,7 +3794,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.61"
+version = "0.19.62"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3825,7 +3827,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-test"
-version = "0.9.186"
+version = "0.9.187"
 dependencies = [
  "guest-write-file",
  "libc",
@@ -4258,7 +4260,7 @@ dependencies = [
 
 [[package]]
 name = "zero-cli"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "api-contracts",
  "async-trait",

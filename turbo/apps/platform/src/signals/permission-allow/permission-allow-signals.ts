@@ -13,7 +13,7 @@ import {
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
-import { agentById, currentAgentId$, reloadAgentById$ } from "../agent.ts";
+import { agentById, currentAgentId$ } from "../agent.ts";
 import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { retryTransientLoad } from "../utils.ts";
@@ -62,10 +62,7 @@ export const permissionAllowExpiresIn$ = computed((get) => {
 // Agent data
 // ---------------------------------------------------------------------------
 
-const internalAgentReload$ = state(0);
-
 export const permissionAllowAgent$ = computed((get) => {
-  get(internalAgentReload$);
   const agentId = get(permissionAllowAgentId$);
   if (!agentId) {
     return null;
@@ -223,10 +220,6 @@ export const applyUserPermissionGrants$ = command(
     set(internalUserPermissionGrantsReload$, (prev) => {
       return prev + 1;
     });
-    set(internalAgentReload$, (prev) => {
-      return prev + 1;
-    });
-    set(reloadAgentById$);
     return result.body;
   },
 );

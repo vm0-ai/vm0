@@ -24,7 +24,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { env } from "../../lib/env";
 import { generatePresignedGetUrl } from "../external/s3";
 import type { Db } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { settle } from "../utils";
 import {
   resolveWorkflowSkillStoragePresignedUrls,

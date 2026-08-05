@@ -25,7 +25,8 @@ import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feish
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { getCustomConnectorSkillStorageName } from "@vm0/core/storage-names";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { extractFileFromTarGz } from "../../../lib/tar";
@@ -37,7 +38,7 @@ import {
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { createDeferredPromise } from "../../utils";
 import { zeroFeishuBrowserConnectRoutes } from "../zero-feishu-browser-connect";
 import { zeroFeishuEventsRoutes } from "../zero-feishu-events";

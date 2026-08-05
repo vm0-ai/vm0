@@ -1,7 +1,7 @@
 import { Command, Option } from "commander";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import type { ConnectorCheckPolicy } from "@vm0/api-contracts/contracts/zero-connector-check";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { getPlatformOrigin } from "../doctor/platform-url";
 import {
   isComputerUsePermissionTarget,
@@ -11,11 +11,9 @@ import {
   isBrowserPermissionTarget,
   printBrowserPermissionGuidance,
 } from "./browser-guidance";
-import {
-  ApiRequestError,
-  createBrowserAuthorizationRequest,
-  createComputerUseAuthorizationRequest,
-} from "../../../lib/api";
+import { ApiRequestError } from "../../../lib/api/core/client-factory";
+import { createBrowserAuthorizationRequest } from "../../../lib/api/domains/zero-browser";
+import { createComputerUseAuthorizationRequest } from "../../../lib/api/domains/zero-computer-use";
 import { diagnoseZeroConnectorCheck } from "../../../lib/api/domains/zero-connectors";
 import {
   addRequestedCallbackSearchParams,

@@ -2,12 +2,11 @@ import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { zeroCustomConnectorByIdContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { notFound } from "../../lib/error";
 import {
   getCustomConnectorResponse,

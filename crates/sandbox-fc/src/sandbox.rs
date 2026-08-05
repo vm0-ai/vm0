@@ -3201,8 +3201,16 @@ fn idle_transition_error(
 
 /// Maximum time to wait for balloon inflation before pausing vCPUs.
 const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
-/// Initial poll interval while waiting for balloon inflation.
-const BALLOON_SETTLE_INITIAL_POLL: Duration = Duration::from_millis(25);
+/// Fast-start poll intervals while waiting for balloon inflation.
+const BALLOON_SETTLE_FAST_POLL_INTERVALS: [Duration; 7] = [
+    Duration::from_millis(25),
+    Duration::from_millis(50),
+    Duration::from_millis(100),
+    Duration::from_millis(100),
+    Duration::from_millis(100),
+    Duration::from_millis(200),
+    Duration::from_millis(200),
+];
 /// Maximum poll interval while waiting for balloon inflation.
 const BALLOON_SETTLE_MAX_POLL: Duration = Duration::from_millis(500);
 /// Upper bound for accepting residual differences between requested and
@@ -3427,7 +3435,7 @@ fn emit_balloon_settle_summary(
     park_outcome: SandboxParkOutcome,
 ) {
     info!(
-        target: crate::BALLOON_SETTLE_AXIOM_TARGET,
+        target: "sandbox_fc::balloon_settle",
         measurement = "balloon_settle",
         outcome = settle_outcome.as_str(),
         elapsed_ms,
@@ -3465,7 +3473,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
     let deadline = tokio::time::Instant::now() + BALLOON_SETTLE_TIMEOUT;
     let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
     let mut summary = BalloonSettleSummary::new(target_mib);
-    let mut poll_interval = BALLOON_SETTLE_INITIAL_POLL;
+    let mut fast_poll_intervals = BALLOON_SETTLE_FAST_POLL_INTERVALS.into_iter();
     loop {
         if tokio::time::Instant::now() >= deadline {
             let outcome = summary.park_outcome();
@@ -3610,6 +3618,9 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
             }
         }
 
+        let poll_interval = fast_poll_intervals
+            .next()
+            .unwrap_or(BALLOON_SETTLE_MAX_POLL);
         let next_poll = tokio::time::Instant::now() + poll_interval;
         tokio::time::sleep_until(if next_poll < deadline {
             next_poll
@@ -3617,7 +3628,6 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
             deadline
         })
         .await;
-        poll_interval = poll_interval.saturating_mul(2).min(BALLOON_SETTLE_MAX_POLL);
     }
 }
 

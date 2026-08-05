@@ -1,6 +1,5 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
-
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 import {
@@ -35,7 +34,7 @@ import {
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { settle } from "../utils";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";

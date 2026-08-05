@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { getVm0ModelPriceTier } from "@vm0/api-contracts/contracts/model-providers";
-import { listZeroModelPolicies } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { listZeroModelPolicies } from "../../../lib/api/domains/zero-model-policies";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   formatModelPolicyStatus,
   formatModelProviderRoute,

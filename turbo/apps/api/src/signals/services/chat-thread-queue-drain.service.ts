@@ -9,7 +9,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import {
   publishActiveInputToRunnerGroup,
   publishChatThreadDetailChangedSafely,

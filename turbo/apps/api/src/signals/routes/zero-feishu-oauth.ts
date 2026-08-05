@@ -14,7 +14,7 @@ import {
   fetchFeishuUserInfo,
   type FeishuUserInfo,
 } from "../external/feishu-client";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import {
   claimCustomConnectorOAuthState,

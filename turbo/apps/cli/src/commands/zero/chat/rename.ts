@@ -1,8 +1,8 @@
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { renameZeroChatThread } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { renameZeroChatThread } from "../../../lib/api/domains/zero-chat";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { isUuid } from "../../../lib/utils/uuid";
 
 interface RenameOptions {

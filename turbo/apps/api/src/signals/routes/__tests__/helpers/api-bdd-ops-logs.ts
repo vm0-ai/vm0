@@ -1,11 +1,8 @@
 import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
 import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { createDeferredPromise } from "../../../utils";
 import { modelStatsContract } from "../../model-stats";
 import type { ApiTestUser } from "./api-bdd";

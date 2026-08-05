@@ -8,7 +8,7 @@ import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route-entry";
 import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { safeJsonParse, safeSync, tapError } from "../utils";
 import {
   gitHubDeploymentStatusEventSchema,

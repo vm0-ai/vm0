@@ -8,7 +8,7 @@ import { z } from "zod";
 import { executeRawRows } from "../../lib/db-raw-rows";
 import type { Db } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
-import { nowDate, timestampWithoutTimeZone } from "../external/time";
+import { nowDate, timestampWithoutTimeZone } from "../../lib/time";
 
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 type StoragePresignedUrlCacheScope =

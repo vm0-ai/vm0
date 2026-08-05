@@ -295,8 +295,7 @@ const agentDefinitionSchema = z.object({
    */
   skills: z.array(z.string()).optional(),
   /**
-   * Route this agent to a self-hosted runner instead of E2B.
-   * When specified, runs will be queued for the specified runner group.
+   * Route this agent to the specified runner group instead of the default.
    */
   experimental_runner: z
     .object({

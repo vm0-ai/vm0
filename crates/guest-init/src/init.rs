@@ -3,9 +3,13 @@
 //! The kernel mounts the ext4 rootfs via `root=/dev/vda rw` boot arg and
 //! auto-mounts devtmpfs on `/dev` (`CONFIG_DEVTMPFS_MOUNT=y`).
 //!
-//! This module handles the remaining setup:
-//! 1. Mount virtual filesystems (/proc, /sys)
-//! 2. Configure TCP keepalive and environment variables
+//! This module completes the ordered boot setup:
+//! 1. Mount `/proc`.
+//! 2. Configure TCP keepalive.
+//! 3. Mount `/sys` and initialize cgroup v2 exec process containment.
+//! 4. Mount `/dev/shm`.
+//! 5. Load shared environment variables.
+//! 6. Enter `/root`.
 
 use nix::mount::{MsFlags, mount};
 use std::fs;
@@ -19,14 +23,15 @@ const CGROUP_EVENTS_FILE: &str = "cgroup.events";
 const CGROUP_KILL_FILE: &str = "cgroup.kill";
 const CGROUP_SUBTREE_CONTROL_FILE: &str = "cgroup.subtree_control";
 
-/// Initialize virtual filesystems and environment.
+/// Initialize guest boot filesystems, exec process containment, and environment.
 ///
 /// The kernel has already mounted `/dev/vda` as root (`root=/dev/vda rw`)
 /// and devtmpfs on `/dev` (`CONFIG_DEVTMPFS_MOUNT=y`).
+/// Errors returned here are fatal to PID 1 before it forks `vsock-guest`.
 pub fn init_filesystem() -> Result<(), InitError> {
     eprintln!("[guest-init] Starting filesystem initialization");
 
-    // 1. Mount virtual filesystems
+    // 1. Mount /proc.
     mount(
         Some("proc"),
         "/proc",
@@ -39,7 +44,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
         source: e,
     })?;
 
-    // Configure aggressive TCP keepalive for faster dead connection detection.
+    // 2. Configure aggressive TCP keepalive for faster dead connection detection.
     // Default values (7200s/75s/9 probes = ~2h11m) exceed JOB_TIMEOUT (2h),
     // so dead connections are never detected. These values reduce detection to ~2min.
     for (param, value) in [
@@ -53,6 +58,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
         }
     }
 
+    // 3. Mount /sys and initialize exec process containment.
     mount(
         Some("sys"),
         "/sys",
@@ -67,7 +73,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
 
     initialize_process_containment()?;
 
-    // Mount tmpfs on /dev/shm — required by Chromium for shared memory.
+    // 4. Mount tmpfs on /dev/shm — required by Chromium for shared memory.
     // devtmpfs (CONFIG_DEVTMPFS_MOUNT=y) doesn't create /dev/shm.
     let _ = fs::create_dir_all("/dev/shm");
     mount(
@@ -84,7 +90,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
 
     eprintln!("[guest-init] Virtual filesystems mounted");
 
-    // 2. Load environment variables.
+    // 5. Load environment variables.
     //
     // /etc/environment is baked into the rootfs by customize-rootfs.sh and
     // contains variables shared by ALL users (LANG, NODE_EXTRA_CA_CERTS, …).
@@ -100,7 +106,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
         std::env::set_var("SHELL", "/bin/bash");
     }
 
-    // 3. Change to root home directory (init runs as root;
+    // 6. Change to root home directory (init runs as root;
     // `su - user` will cd to /home/user automatically)
     let _ = std::env::set_current_dir("/root");
 
@@ -143,6 +149,14 @@ impl std::fmt::Display for InitError {
 
 impl std::error::Error for InitError {}
 
+/// Mount cgroup v2 and validate the canonical exec process-containment base.
+///
+/// Cgroup v2 is mounted at `CGROUP_V2_MOUNT_PATH`. The exec base at
+/// `EXEC_CGROUP_BASE_PATH` must expose `cgroup.procs`, `cgroup.events`,
+/// `cgroup.kill`, and `cgroup.subtree_control` as files, with no resource
+/// controllers enabled for its subtree. `vsock-guest` depends on this invariant
+/// for per-exec process cleanup and for validating quiescence before sandbox
+/// reuse.
 fn initialize_process_containment() -> Result<(), InitError> {
     create_dir_all(Path::new(CGROUP_V2_MOUNT_PATH))?;
     mount(

@@ -1,10 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroLogs } from "../../../lib/api";
+import { listZeroLogs } from "../../../lib/api/domains/zero-logs";
 import { parseTime } from "../../../lib/utils/time-parser";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { isUuid } from "../../../lib/utils/uuid";
 
 function formatStatus(status: string): string {

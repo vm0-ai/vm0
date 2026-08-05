@@ -3,7 +3,7 @@ import { runBuiltInAdmissions } from "@vm0/db/schema/run-built-in-admission";
 import { and, count, eq, lte, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 
 const RUN_BUILT_IN_MAX_IN_FLIGHT = 3;
 const RUN_BUILT_IN_MAX_STARTED = 50;

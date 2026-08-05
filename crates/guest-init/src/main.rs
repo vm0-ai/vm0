@@ -21,7 +21,8 @@
 //!   they cannot race with each other.
 //!
 //! Startup sequence:
-//! 1. Initialize filesystem (mount /proc, /sys, set env vars)
+//! 1. Initialize guest filesystems, environment, and cgroup v2 exec containment.
+//!    Failure is fatal before `vsock-guest` is forked.
 //! 2. Configure PID 1 signals and block supervised signals
 //! 3. Fork child process
 //! 4. Child (PID 2): restore its inherited signal mask, run vsock-guest
@@ -37,7 +38,7 @@ const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(1);
 fn main() {
     eprintln!("[guest-init] Starting...");
 
-    // Step 1: Initialize filesystem
+    // Step 1: Initialize guest filesystems, environment, and exec containment.
     if let Err(e) = init::init_filesystem() {
         eprintln!("[guest-init] FATAL: Filesystem init failed: {}", e);
         std::process::exit(1);

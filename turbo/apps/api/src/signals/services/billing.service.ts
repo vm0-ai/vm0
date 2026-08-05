@@ -4,7 +4,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
 import { db$, writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { getStripeClient } from "../external/stripe-client";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 

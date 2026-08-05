@@ -3,7 +3,7 @@ import { sql, eq } from "drizzle-orm";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { getStripeClient } from "../external/stripe-client";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 
