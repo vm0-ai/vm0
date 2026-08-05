@@ -11,24 +11,10 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.GoogleContactsConnector, {})).toBe(
-      true,
-    );
-    expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
-      true,
-    );
-    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.CustomConnectorCliCreate, {}),
     ).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.CustomConnectorOAuth2, {})).toBe(
-      true,
-    );
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.CustomConnectorPermissions, {}),
-    ).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.ArtifactKeyV2, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.HostedArtifactVersions, {})).toBe(
       true,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
@@ -134,8 +120,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
       staffOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
@@ -165,8 +149,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
       otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],

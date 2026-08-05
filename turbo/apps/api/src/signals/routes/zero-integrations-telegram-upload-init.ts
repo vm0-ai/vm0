@@ -29,7 +29,6 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     allocateArtifactObject$,
     {
       userId: auth.userId,
-      orgId: auth.orgId,
       filename,
       allowV2: bodyResult.data.supportsUploadHeaders === true,
     },

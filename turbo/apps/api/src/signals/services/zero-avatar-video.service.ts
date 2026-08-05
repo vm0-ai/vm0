@@ -737,7 +737,6 @@ export const recordGeneratedAvatarVideo$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: params.userId,
-        orgId: params.orgId,
         filenamePrefix: "avatar-video",
         extension: extensionForContentType(params.generation.contentType),
         body: params.generation.videoBytes,

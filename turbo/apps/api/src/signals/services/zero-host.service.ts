@@ -44,7 +44,6 @@ interface PrepareDeploymentArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly runId?: string;
-  readonly versionedArtifactsEnabled: boolean;
   readonly body: HostedSitePrepareRequest;
 }
 
@@ -152,32 +151,14 @@ type SiteDeploymentCreationResult =
       readonly deployment: HostedDeploymentRow;
     }
   | { readonly kind: "slug_conflict" };
-type CreatedSiteDeployment = Extract<
-  SiteDeploymentCreationResult,
-  { readonly kind: "ok" }
->;
 
-type CreateHostedSiteDeploymentContext =
-  | {
-      readonly kind: "legacy";
-      readonly now: Date;
-      readonly publicSlug: string;
-      readonly url: string;
-      readonly allowExistingPublicSlug: boolean;
-    }
-  | {
-      readonly kind: "versioned";
-      readonly now: Date;
-    };
-
-type LegacyHostedSiteDeploymentContext = Extract<
-  CreateHostedSiteDeploymentContext,
-  { readonly kind: "legacy" }
->;
+interface CreateHostedSiteDeploymentContext {
+  readonly now: Date;
+}
 
 interface HostedSiteAllocation {
   readonly site: HostedSiteRow;
-  readonly deploymentVersion: number | null;
+  readonly deploymentVersion: number;
 }
 
 type HostedSiteFilesTargetResult =
@@ -241,35 +222,12 @@ function immutableDeploymentPointerKey(deploymentId: string): string {
   return `sites/deployments/${deploymentId}.json`;
 }
 
-function legacyDeploymentPrefix(
-  publicSlug: string,
-  deploymentId: string,
-): string {
-  return `sites/${publicSlug}/deployments/${deploymentId}`;
-}
-
-function versionedDeploymentPrefix(
+function deploymentPrefix(
   orgId: string,
   site: string,
   deploymentVersion: number,
 ): string {
   return `sites/orgs/${encodeURIComponent(orgId)}/${site}/versions/${deploymentVersion}`;
-}
-
-function orgSlugHash(orgId: string): string {
-  return createHash("sha256").update(orgId).digest("hex").substring(0, 8);
-}
-
-function randomSlugSuffix(): string {
-  return crypto.randomUUID().replaceAll("-", "").substring(0, 8);
-}
-
-function publicSlugForSite(
-  site: string,
-  orgId: string,
-  slugSuffix: string,
-): string {
-  return `${site}-${orgSlugHash(orgId)}-${slugSuffix}`;
 }
 
 function shortPublicSlugHash(
@@ -291,7 +249,7 @@ function isImmutableDeploymentHostLabel(value: string): boolean {
   return IMMUTABLE_DEPLOYMENT_HOST_PATTERN.test(value);
 }
 
-function versionedPublicSlugCandidate(
+function publicSlugCandidate(
   site: string,
   orgId: string,
   scopeKey: string,
@@ -461,23 +419,6 @@ function deploymentVersionResponseFields(deployment: HostedDeploymentRow): {
   };
 }
 
-function hostedSiteUsesVersionedArtifacts(site: HostedSiteRow): boolean {
-  return (
-    site.activeDeploymentVersion !== null || site.nextDeploymentVersion > 1
-  );
-}
-
-async function shouldUseVersionedArtifacts(
-  db: Db,
-  args: ScopedPrepareDeploymentArgs,
-): Promise<boolean> {
-  if (args.versionedArtifactsEnabled) {
-    return true;
-  }
-  const site = await findScopedHostedSite(db, args, false);
-  return site !== undefined && hostedSiteUsesVersionedArtifacts(site);
-}
-
 function fileKey(prefix: string, path: string): string {
   return `${prefix}${path}`;
 }
@@ -622,102 +563,7 @@ function hostedSiteArtifactArgs(deployment: HostedDeploymentRow) {
   };
 }
 
-async function allocateLegacyHostedSite(
-  db: Db,
-  args: ScopedPrepareDeploymentArgs,
-  context: LegacyHostedSiteDeploymentContext,
-): Promise<HostedSiteRow | null> {
-  const existingSite = await findScopedHostedSite(db, args, true);
-  const [existingPublicSite] = await db
-    .select()
-    .from(hostedSites)
-    .where(
-      and(
-        eq(hostedSites.publicSlug, context.publicSlug),
-        isNull(hostedSites.deletedAt),
-      ),
-    )
-    .limit(1);
-  if (
-    existingPublicSite &&
-    (!context.allowExistingPublicSlug ||
-      existingPublicSite.id !== existingSite?.id)
-  ) {
-    return null;
-  }
-
-  if (existingSite) {
-    const [updatedSite] = await db
-      .update(hostedSites)
-      .set({ publicSlug: context.publicSlug, updatedAt: context.now })
-      .where(eq(hostedSites.id, existingSite.id))
-      .returning();
-    if (!updatedSite) {
-      throw new Error("Failed to update hosted site");
-    }
-    return updatedSite;
-  }
-
-  const scopeKey = hostedSiteScopeKey(args);
-  for (let attempt = 0; attempt < MAX_PUBLIC_SLUG_ATTEMPTS; attempt += 1) {
-    const compatibilitySlug = versionedPublicSlugCandidate(
-      args.body.site,
-      args.orgId,
-      scopeKey,
-      attempt,
-    );
-    const [createdSite] = await db
-      .insert(hostedSites)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        slug: compatibilitySlug,
-        requestedSlug: args.body.site,
-        chatThreadId: args.chatThreadId,
-        publicSlug: context.publicSlug,
-        createdFromRunId: args.runId,
-        updatedAt: context.now,
-      })
-      .onConflictDoNothing()
-      .returning();
-    if (createdSite) {
-      return createdSite;
-    }
-
-    const concurrentSite = await findScopedHostedSite(db, args, true);
-    if (concurrentSite) {
-      const [publicSlugOwner] = await db
-        .select({ id: hostedSites.id })
-        .from(hostedSites)
-        .where(
-          and(
-            eq(hostedSites.publicSlug, context.publicSlug),
-            isNull(hostedSites.deletedAt),
-          ),
-        )
-        .limit(1);
-      if (
-        publicSlugOwner &&
-        (!context.allowExistingPublicSlug ||
-          publicSlugOwner.id !== concurrentSite.id)
-      ) {
-        return null;
-      }
-      const [updatedSite] = await db
-        .update(hostedSites)
-        .set({ publicSlug: context.publicSlug, updatedAt: context.now })
-        .where(eq(hostedSites.id, concurrentSite.id))
-        .returning();
-      if (!updatedSite) {
-        throw new Error("Failed to update hosted site");
-      }
-      return updatedSite;
-    }
-  }
-  return null;
-}
-
-async function findOrCreateVersionedHostedSite(
+async function findOrCreateHostedSite(
   db: Db,
   args: ScopedPrepareDeploymentArgs,
   now: Date,
@@ -729,7 +575,7 @@ async function findOrCreateVersionedHostedSite(
 
   const scopeKey = hostedSiteScopeKey(args);
   for (let attempt = 0; attempt < MAX_PUBLIC_SLUG_ATTEMPTS; attempt += 1) {
-    const publicSlug = versionedPublicSlugCandidate(
+    const publicSlug = publicSlugCandidate(
       args.body.site,
       args.orgId,
       scopeKey,
@@ -761,12 +607,12 @@ async function findOrCreateVersionedHostedSite(
   return null;
 }
 
-async function allocateVersionedHostedSite(
+async function allocateHostedSite(
   db: Db,
   args: ScopedPrepareDeploymentArgs,
   now: Date,
 ): Promise<HostedSiteAllocation | null> {
-  const site = await findOrCreateVersionedHostedSite(db, args, now);
+  const site = await findOrCreateHostedSite(db, args, now);
   if (!site) {
     return null;
   }
@@ -785,18 +631,6 @@ async function allocateVersionedHostedSite(
   return { site: updatedSite, deploymentVersion };
 }
 
-async function allocateHostedSite(
-  db: Db,
-  args: ScopedPrepareDeploymentArgs,
-  context: CreateHostedSiteDeploymentContext,
-): Promise<HostedSiteAllocation | null> {
-  if (context.kind === "versioned") {
-    return allocateVersionedHostedSite(db, args, context.now);
-  }
-  const site = await allocateLegacyHostedSite(db, args, context);
-  return site ? { site, deploymentVersion: null } : null;
-}
-
 async function insertHostedDeployment(
   db: Db,
   args: ScopedPrepareDeploymentArgs,
@@ -805,14 +639,9 @@ async function insertHostedDeployment(
 ): Promise<HostedDeploymentRow> {
   const { deploymentVersion, site } = allocation;
   const deploymentId = crypto.randomUUID();
-  const aliasUrl =
-    context.kind === "legacy" ? context.url : publicUrl(site.publicSlug);
-  const artifactUrl =
-    deploymentVersion === null ? null : deploymentUrl(deploymentId);
-  const prefix =
-    deploymentVersion === null
-      ? legacyDeploymentPrefix(site.publicSlug, deploymentId)
-      : versionedDeploymentPrefix(args.orgId, site.slug, deploymentVersion);
+  const aliasUrl = publicUrl(site.publicSlug);
+  const artifactUrl = deploymentUrl(deploymentId);
+  const prefix = deploymentPrefix(args.orgId, site.slug, deploymentVersion);
   const manifest = buildManifest({
     deploymentId,
     siteId: site.id,
@@ -862,7 +691,7 @@ function createHostedSiteDeployment(
   context: CreateHostedSiteDeploymentContext,
 ): Promise<SiteDeploymentCreationResult> {
   return writeDb.transaction(async (tx) => {
-    const allocation = await allocateHostedSite(tx, args, context);
+    const allocation = await allocateHostedSite(tx, args, context.now);
     if (!allocation) {
       return { kind: "slug_conflict" };
     }
@@ -907,77 +736,20 @@ export const prepareHostedSiteDeployment$ = command(
     }
     signal.throwIfAborted();
     const now = nowDate();
-    const useVersionedArtifacts = await shouldUseVersionedArtifacts(
+    const siteAndDeployment = await createHostedSiteDeployment(
       writeDb,
       scopedArgs,
+      { now },
     );
     signal.throwIfAborted();
-    let siteAndDeployment: CreatedSiteDeployment | null = null;
-    let publicSlug = "";
-    let url = "";
-
-    if (useVersionedArtifacts) {
-      const result = await createHostedSiteDeployment(writeDb, scopedArgs, {
-        kind: "versioned",
-        now,
-      });
-      signal.throwIfAborted();
-      if (result.kind === "ok") {
-        siteAndDeployment = result;
-        publicSlug = result.site.publicSlug;
-        url = result.deployment.url;
-      }
-    } else if (args.body.slugSuffix) {
-      publicSlug = publicSlugForSite(
-        args.body.site,
-        args.orgId,
-        args.body.slugSuffix,
-      );
-      url = publicUrl(publicSlug);
-      const result = await createHostedSiteDeployment(writeDb, scopedArgs, {
-        kind: "legacy",
-        now,
-        publicSlug,
-        url,
-        allowExistingPublicSlug: true,
-      });
-      signal.throwIfAborted();
-      if (result.kind === "slug_conflict") {
-        return {
-          status: "conflict",
-          message: `Hosted site slug is already in use: ${publicSlug}`,
-        };
-      }
-      siteAndDeployment = result;
-    } else {
-      for (let attempt = 0; attempt < MAX_PUBLIC_SLUG_ATTEMPTS; attempt += 1) {
-        publicSlug = publicSlugForSite(
-          args.body.site,
-          args.orgId,
-          randomSlugSuffix(),
-        );
-        url = publicUrl(publicSlug);
-        const result = await createHostedSiteDeployment(writeDb, scopedArgs, {
-          kind: "legacy",
-          now,
-          publicSlug,
-          url,
-          allowExistingPublicSlug: false,
-        });
-        signal.throwIfAborted();
-        if (result.kind === "ok") {
-          siteAndDeployment = result;
-          break;
-        }
-      }
-    }
-
-    if (!siteAndDeployment) {
+    if (siteAndDeployment.kind === "slug_conflict") {
       return {
         status: "conflict",
         message: "Unable to allocate a unique hosted site slug",
       };
     }
+    const publicSlug = siteAndDeployment.site.publicSlug;
+    const url = siteAndDeployment.deployment.url;
 
     const uploads = await Promise.all(
       Object.values(siteAndDeployment.deployment.manifest.files).map(

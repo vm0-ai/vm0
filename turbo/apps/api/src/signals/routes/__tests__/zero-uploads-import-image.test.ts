@@ -57,15 +57,9 @@ describe("POST /api/zero/uploads/import-image", () => {
 
   it("imports a remote image into user artifact storage", async () => {
     const userId = `user_${randomUUID().slice(0, 8)}`;
-    const putObjectInputs: Record<string, unknown>[] = [];
 
     mocks.clerk.session(userId, null);
-    context.mocks.s3.send.mockImplementation((command: unknown) => {
-      if (commandName(command) === "PutObjectCommand") {
-        putObjectInputs.push(commandInput(command));
-      }
-      return Promise.resolve({});
-    });
+    mocks.s3.listObjects([]);
     server.use(
       http.get(REMOTE_IMAGE_URL, () => {
         return new HttpResponse(new Uint8Array(IMAGE_BYTES), {
@@ -90,22 +84,32 @@ describe("POST /api/zero/uploads/import-image", () => {
       contentType: "image/png",
       size: IMAGE_BYTES.byteLength,
     });
-    expect(response.body.url).toContain(
-      `/artifacts/${encodeURIComponent(userId)}/`,
+    expect(response.body.url).toMatch(
+      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.png$/u,
     );
-    expect(response.body.url).toMatch(/\/strawberry\.png$/);
-    const putObjectInput = putObjectInputs[0];
-    if (!putObjectInput) {
+    expect(response.body.url).not.toContain(userId);
+    const putObjectCommand = context.mocks.s3.send.mock.calls
+      .map(([command]) => {
+        return command;
+      })
+      .find((command) => {
+        return commandName(command) === "PutObjectCommand";
+      });
+    if (!putObjectCommand) {
       throw new Error("Expected imported image to be uploaded");
     }
+    const putObjectInput = commandInput(putObjectCommand);
     expect(putObjectInput).toMatchObject({
       Bucket: "test-user-artifacts",
+      Key: expect.stringMatching(/^artifacts\/[0-9a-z]{10}\.png$/u),
       ContentType: "image/png",
+      Metadata: {
+        "artifact-id": response.body.id,
+        filename: encodeURIComponent("strawberry.png"),
+        "user-id": encodeURIComponent(userId),
+      },
     });
-    expect(String(putObjectInput?.Key)).toContain(
-      `artifacts/${encodeURIComponent(userId)}/`,
-    );
-    const body = putObjectInput?.Body;
+    const body = putObjectInput.Body;
     if (!Buffer.isBuffer(body)) {
       throw new Error("Expected imported image bytes to be uploaded");
     }
@@ -210,6 +214,7 @@ describe("POST /api/zero/uploads/import-image", () => {
     let lookupCount = 0;
 
     mocks.clerk.session(userId, null);
+    mocks.s3.listObjects([]);
     context.mocks.dns.lookupOverrides.set("rebind-host.example.test", () => {
       lookupCount += 1;
       return lookupCount === 1
