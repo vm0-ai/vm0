@@ -521,6 +521,10 @@ describe("chat composer models", () => {
     expect(currentAgentThreadAvatar).toHaveClass("h-5", "w-5");
     expect(otherAgentThreadAvatar).toHaveAttribute("src", otherAgentAvatarUrl);
     expect(otherAgentThreadAvatar).toHaveClass("h-5", "w-5");
+    // Avatars are transparent, so any background fill shows through as a gray
+    // disc behind the face.
+    expect(currentAgentThreadAvatar).not.toHaveClass("bg-muted");
+    expect(otherAgentThreadAvatar).not.toHaveClass("bg-muted");
 
     await user.click(otherAgentThread);
 
@@ -670,6 +674,13 @@ describe("chat composer models", () => {
         within(filteredMenu).queryByText("Project Alpha"),
       ).not.toBeInTheDocument();
     });
+    // Avatars are transparent, so any background fill shows through as a gray
+    // disc behind the face.
+    const zetaAgentAvatar = screen
+      .getByTestId("chat-thread-suggestion-menu")
+      .querySelector("img");
+    expect(zetaAgentAvatar).toHaveAttribute("src", zetaAvatarUrl);
+    expect(zetaAgentAvatar).not.toHaveClass("bg-muted");
     await user.keyboard("{Enter}");
 
     const item = editor.querySelector(
