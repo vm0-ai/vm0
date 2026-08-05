@@ -17,6 +17,7 @@ use std::time::Duration;
 use nix::fcntl::{OFlag, open, openat};
 use nix::sys::stat::{Mode, SFlag, fstat, mkdirat};
 use sha2::{Digest, Sha256};
+use tempfile::TempPath;
 use tokio::io::AsyncWriteExt;
 
 use crate::deps::{FIRECRACKER_VERSION, MITMPROXY_VERSION, SYSTEM_CA_BUNDLE};
@@ -49,36 +50,8 @@ const START_SYSTEM_DEPENDENCIES: [&str; 11] = [
 ];
 const OTHER_COMMAND_SYSTEM_DEPENDENCIES: [&str; 3] = ["pgrep", "debootstrap", "flock"];
 
-#[derive(Debug)]
-struct SetupTempPath {
-    path: PathBuf,
-    active: bool,
-}
-
-impl SetupTempPath {
-    fn new(path: PathBuf) -> Self {
-        Self { path, active: true }
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-
-    fn disarm(&mut self) {
-        self.active = false;
-    }
-}
-
-impl Drop for SetupTempPath {
-    fn drop(&mut self) {
-        if self.active {
-            let _ = std::fs::remove_file(&self.path);
-        }
-    }
-}
-
 struct ProducedSetupArtifact {
-    temp_path: SetupTempPath,
+    path: TempPath,
     file: File,
     sha256: String,
 }
@@ -408,7 +381,7 @@ fn setup_dir_open_flags() -> OFlag {
     OFlag::O_RDONLY | OFlag::O_DIRECTORY | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC
 }
 
-fn create_setup_temp_file(target: &Path, kind: &str) -> RunnerResult<(SetupTempPath, File)> {
+fn create_setup_temp_file(target: &Path, kind: &str) -> RunnerResult<(TempPath, File)> {
     let parent = file_parent(target);
     ensure_setup_shared_dir(parent)?;
     let file_name = target.file_name().ok_or_else(|| {
@@ -430,9 +403,13 @@ fn create_setup_temp_file(target: &Path, kind: &str) -> RunnerResult<(SetupTempP
 
         match open_setup_temp_file_at(&tmp_path) {
             Ok(file) => {
-                let temp_path = SetupTempPath::new(tmp_path);
-                secure_setup_temp_file(&file, temp_path.path())?;
-                return Ok((temp_path, file));
+                let cleanup_path = tmp_path.clone();
+                let tmp_path = TempPath::try_from_path(tmp_path).map_err(|e| {
+                    let _ = std::fs::remove_file(cleanup_path);
+                    RunnerError::Internal(format!("own setup temp artifact path: {e}"))
+                })?;
+                secure_setup_temp_file(&file, &tmp_path)?;
+                return Ok((tmp_path, file));
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => {
@@ -451,7 +428,7 @@ fn create_setup_temp_file(target: &Path, kind: &str) -> RunnerResult<(SetupTempP
 }
 
 #[cfg(test)]
-fn create_setup_temp_file_at(path: &Path) -> RunnerResult<(SetupTempPath, File)> {
+fn create_setup_temp_file_at(path: &Path) -> RunnerResult<File> {
     ensure_setup_shared_dir(file_parent(path))?;
     let file = open_setup_temp_file_at(path).map_err(|e| {
         RunnerError::Internal(format!(
@@ -459,9 +436,8 @@ fn create_setup_temp_file_at(path: &Path) -> RunnerResult<(SetupTempPath, File)>
             path.display()
         ))
     })?;
-    let temp_path = SetupTempPath::new(path.to_owned());
-    secure_setup_temp_file(&file, temp_path.path())?;
-    Ok((temp_path, file))
+    secure_setup_temp_file(&file, path)?;
+    Ok(file)
 }
 
 fn open_setup_temp_file_at(path: &Path) -> std::io::Result<File> {
@@ -502,63 +478,41 @@ fn secure_setup_temp_file(file: &File, path: &Path) -> RunnerResult<()> {
 }
 
 fn install_produced_artifact(
-    mut artifact: ProducedSetupArtifact,
+    artifact: ProducedSetupArtifact,
     target: &Path,
     mode: u32,
 ) -> RunnerResult<()> {
-    let produced_stat = setup_file_stat(
-        &artifact.file,
-        artifact.temp_path.path(),
-        "produced setup artifact",
-    )?;
-    validate_trusted_regular_setup_file(
-        &produced_stat,
-        artifact.temp_path.path(),
-        "produced setup artifact",
-    )?;
+    let ProducedSetupArtifact {
+        path,
+        file,
+        sha256: _,
+    } = artifact;
+    let produced_stat = setup_file_stat(&file, &path, "produced setup artifact")?;
+    validate_trusted_regular_setup_file(&produced_stat, &path, "produced setup artifact")?;
     if (produced_stat.st_mode & GROUP_OR_OTHER_WRITE_BITS) != 0 {
         return Err(RunnerError::Internal(format!(
             "{} is group/other writable",
-            artifact.temp_path.path().display()
+            path.display()
         )));
     }
 
-    let temp_path_file =
-        open_setup_file_for_identity(artifact.temp_path.path(), "produced setup artifact")?;
-    let temp_path_stat = setup_file_stat(
-        &temp_path_file,
-        artifact.temp_path.path(),
-        "produced setup artifact",
-    )?;
+    let temp_path_file = open_setup_file_for_identity(&path, "produced setup artifact")?;
+    let temp_path_stat = setup_file_stat(&temp_path_file, &path, "produced setup artifact")?;
     validate_same_setup_file_identity(
         &produced_stat,
         &temp_path_stat,
-        artifact.temp_path.path(),
+        &path,
         "produced setup artifact",
     )?;
 
-    chmod_fd(
-        &artifact.file,
-        artifact.temp_path.path(),
-        mode,
-        "produced setup artifact",
-    )?;
-    let chmod_stat = setup_file_stat(
-        &artifact.file,
-        artifact.temp_path.path(),
-        "produced setup artifact",
-    )?;
-    validate_setup_artifact_mode(
-        &chmod_stat,
-        artifact.temp_path.path(),
-        mode,
-        "produced setup artifact",
-    )?;
+    chmod_fd(&file, &path, mode, "produced setup artifact")?;
+    let chmod_stat = setup_file_stat(&file, &path, "produced setup artifact")?;
+    validate_setup_artifact_mode(&chmod_stat, &path, mode, "produced setup artifact")?;
     drop(temp_path_file);
 
-    std::fs::rename(artifact.temp_path.path(), target)
-        .map_err(|e| RunnerError::Internal(format!("rename to {}: {e}", target.display())))?;
-    artifact.temp_path.disarm();
+    path.persist(target).map_err(|e| {
+        RunnerError::Internal(format!("rename to {}: {}", target.display(), e.error))
+    })?;
 
     let target_file = open_setup_file_for_identity(target, "installed setup artifact")?;
     let target_stat = setup_file_stat(&target_file, target, "installed setup artifact")?;
@@ -842,7 +796,7 @@ async fn stream_to_file(
     Ok((file.into_std().await, hex::encode(hasher.finalize())))
 }
 
-/// Download a URL to an owned temp file that cleans itself up until installed.
+/// Download a URL to a lifecycle-owned temp file.
 async fn download_to_temp(
     client: &reqwest::Client,
     url: &str,
@@ -873,24 +827,24 @@ async fn download_to_temp(
         )));
     }
 
-    let (temp_path, file) = create_setup_temp_file(target, kind)?;
+    let (tmp_path, file) = create_setup_temp_file(target, kind)?;
     let (file, sha256) = stream_to_file(
         response,
         tokio::fs::File::from_std(file),
-        temp_path.path(),
+        &tmp_path,
         expected,
         label,
     )
     .await?;
     verify_sha256(&sha256, &expected.sha256, &format!("{label} source"))?;
     Ok(ProducedSetupArtifact {
-        temp_path,
+        path: tmp_path,
         file,
         sha256,
     })
 }
 
-/// Download an owned tarball and extract a named entry into another owned temp.
+/// Download a tarball and extract a named entry.
 async fn download_and_extract(
     client: &reqwest::Client,
     url: &str,
@@ -900,124 +854,143 @@ async fn download_and_extract(
     archive_identity: &SetupArtifactIdentity,
     installed_identity: &SetupArtifactIdentity,
 ) -> RunnerResult<ProducedSetupArtifact> {
-    let archive = download_to_temp(client, url, target, "tarball", label, archive_identity).await?;
-    extract_tar_entry(archive, target, entry_name, label, installed_identity).await
+    let tarball = download_to_temp(client, url, target, "tarball", label, archive_identity).await?;
+
+    extract_tar_entry(tarball, target, entry_name, label, installed_identity).await
 }
 
 /// Extract a named entry from a gzipped tarball, writing to tmp_path.
 /// Matches by file_name (last path component).
 async fn extract_tar_entry(
-    archive: ProducedSetupArtifact,
+    tarball: ProducedSetupArtifact,
     target: &Path,
     entry_name: &str,
     label: &str,
     installed_identity: &SetupArtifactIdentity,
 ) -> RunnerResult<ProducedSetupArtifact> {
+    extract_tar_entry_with_temp_created(
+        tarball,
+        target,
+        entry_name,
+        label,
+        installed_identity,
+        |_| {},
+    )
+    .await
+}
+
+async fn extract_tar_entry_with_temp_created<F>(
+    tarball: ProducedSetupArtifact,
+    target: &Path,
+    entry_name: &str,
+    label: &str,
+    installed_identity: &SetupArtifactIdentity,
+    on_temp_created: F,
+) -> RunnerResult<ProducedSetupArtifact>
+where
+    F: FnOnce(&Path) + Send + 'static,
+{
     let target = target.to_owned();
     let entry_name = entry_name.to_owned();
     let label = label.to_owned();
     let expected_size = installed_identity.size;
 
     tokio::task::spawn_blocking(move || {
-        extract_tar_entry_blocking(archive, &target, &entry_name, &label, expected_size)
+        let ProducedSetupArtifact {
+            path: tarball_path,
+            file: mut tarball_file,
+            sha256: _,
+        } = tarball;
+        tarball_file.seek(SeekFrom::Start(0)).map_err(|e| {
+            RunnerError::Internal(format!(
+                "seek verified tarball {}: {e}",
+                tarball_path.display()
+            ))
+        })?;
+        let decoder = flate2::read::GzDecoder::new(tarball_file);
+        let mut archive = tar::Archive::new(decoder);
+
+        let entries = archive
+            .entries()
+            .map_err(|e| RunnerError::Internal(format!("read tarball entries: {e}")))?;
+
+        for entry in entries {
+            let mut entry =
+                entry.map_err(|e| RunnerError::Internal(format!("read tarball entry: {e}")))?;
+
+            let path = entry
+                .path()
+                .map_err(|e| RunnerError::Internal(format!("read entry path: {e}")))?;
+
+            let file_name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
+
+            if file_name == entry_name {
+                let declared_size = entry.size();
+                if declared_size != expected_size {
+                    return Err(RunnerError::Internal(format!(
+                        "{label} entry size mismatch: expected {expected_size} bytes, got {declared_size} bytes"
+                    )));
+                }
+
+                let (tmp, mut out) = create_setup_temp_file(&target, "extract")?;
+                on_temp_created(&tmp);
+                let result = (|| {
+                    let mut hasher = Sha256::new();
+                    let mut buf = [0u8; 64 * 1024];
+                    let mut observed_size = 0_u64;
+                    loop {
+                        let n = entry
+                            .read(&mut buf)
+                            .map_err(|e| RunnerError::Internal(format!("read tar entry: {e}")))?;
+                        if n == 0 {
+                            if observed_size != expected_size {
+                                return Err(RunnerError::Internal(format!(
+                                    "{label} entry size mismatch: expected {expected_size} bytes, got {observed_size} bytes"
+                                )));
+                            }
+                            std::io::Write::flush(&mut out)
+                                .map_err(|e| RunnerError::Internal(format!("flush binary: {e}")))?;
+                            return Ok(hex::encode(hasher.finalize()));
+                        }
+                        let chunk = buf.get(..n).ok_or_else(|| {
+                            RunnerError::Internal("read returned invalid length".into())
+                        })?;
+                        let chunk_size = u64::try_from(chunk.len()).map_err(|e| {
+                            RunnerError::Internal(format!("measure {label} tar entry chunk: {e}"))
+                        })?;
+                        let next_size = observed_size.checked_add(chunk_size).ok_or_else(|| {
+                            RunnerError::Internal(format!(
+                                "{label} entry size overflow while extracting"
+                            ))
+                        })?;
+                        if next_size > expected_size {
+                            return Err(RunnerError::Internal(format!(
+                                "{label} entry exceeds expected size of {expected_size} bytes (read at least {next_size} bytes)"
+                            )));
+                        }
+                        hasher.update(chunk);
+                        std::io::Write::write_all(&mut out, chunk)
+                            .map_err(|e| RunnerError::Internal(format!("write binary: {e}")))?;
+                        observed_size = next_size;
+                    }
+                })();
+                return result.map(|sha256| ProducedSetupArtifact {
+                    path: tmp,
+                    file: out,
+                    sha256,
+                });
+            }
+        }
+
+        Err(RunnerError::Internal(format!(
+            "'{entry_name}' not found in tarball"
+        )))
     })
     .await
     .map_err(|e| RunnerError::Internal(format!("extract task failed: {e}")))?
-}
-
-fn extract_tar_entry_blocking(
-    archive: ProducedSetupArtifact,
-    target: &Path,
-    entry_name: &str,
-    label: &str,
-    expected_size: u64,
-) -> RunnerResult<ProducedSetupArtifact> {
-    let ProducedSetupArtifact {
-        temp_path: archive_path,
-        mut file,
-        sha256: _,
-    } = archive;
-    file.seek(SeekFrom::Start(0)).map_err(|e| {
-        RunnerError::Internal(format!(
-            "seek verified tarball {}: {e}",
-            archive_path.path().display()
-        ))
-    })?;
-    let decoder = flate2::read::GzDecoder::new(file);
-    let mut archive = tar::Archive::new(decoder);
-
-    let entries = archive
-        .entries()
-        .map_err(|e| RunnerError::Internal(format!("read tarball entries: {e}")))?;
-
-    for entry in entries {
-        let mut entry =
-            entry.map_err(|e| RunnerError::Internal(format!("read tarball entry: {e}")))?;
-
-        let path = entry
-            .path()
-            .map_err(|e| RunnerError::Internal(format!("read entry path: {e}")))?;
-
-        let file_name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or_default();
-
-        if file_name == entry_name {
-            let declared_size = entry.size();
-            if declared_size != expected_size {
-                return Err(RunnerError::Internal(format!(
-                    "{label} entry size mismatch: expected {expected_size} bytes, got {declared_size} bytes"
-                )));
-            }
-
-            let (temp_path, mut out) = create_setup_temp_file(target, "extract")?;
-            let mut hasher = Sha256::new();
-            let mut buf = [0u8; 64 * 1024];
-            let mut observed_size = 0_u64;
-            loop {
-                let n = entry
-                    .read(&mut buf)
-                    .map_err(|e| RunnerError::Internal(format!("read tar entry: {e}")))?;
-                if n == 0 {
-                    if observed_size != expected_size {
-                        return Err(RunnerError::Internal(format!(
-                            "{label} entry size mismatch: expected {expected_size} bytes, got {observed_size} bytes"
-                        )));
-                    }
-                    std::io::Write::flush(&mut out)
-                        .map_err(|e| RunnerError::Internal(format!("flush binary: {e}")))?;
-                    return Ok(ProducedSetupArtifact {
-                        temp_path,
-                        file: out,
-                        sha256: hex::encode(hasher.finalize()),
-                    });
-                }
-                let chunk = buf
-                    .get(..n)
-                    .ok_or_else(|| RunnerError::Internal("read returned invalid length".into()))?;
-                let chunk_size = u64::try_from(chunk.len()).map_err(|e| {
-                    RunnerError::Internal(format!("measure {label} tar entry chunk: {e}"))
-                })?;
-                let next_size = observed_size.checked_add(chunk_size).ok_or_else(|| {
-                    RunnerError::Internal(format!("{label} entry size overflow while extracting"))
-                })?;
-                if next_size > expected_size {
-                    return Err(RunnerError::Internal(format!(
-                        "{label} entry exceeds expected size of {expected_size} bytes (read at least {next_size} bytes)"
-                    )));
-                }
-                hasher.update(chunk);
-                std::io::Write::write_all(&mut out, chunk)
-                    .map_err(|e| RunnerError::Internal(format!("write binary: {e}")))?;
-                observed_size = next_size;
-            }
-        }
-    }
-
-    Err(RunnerError::Internal(format!(
-        "'{entry_name}' not found in tarball"
-    )))
 }
 
 /// Verify SHA256, set permissions through the produced fd, and atomically rename to target.
@@ -1030,13 +1003,9 @@ async fn verify_and_install(
     mode: u32,
 ) -> RunnerResult<()> {
     let verification = (|| {
-        let stat = setup_file_stat(
-            &artifact.file,
-            artifact.temp_path.path(),
-            "produced setup artifact",
-        )?;
+        let stat = setup_file_stat(&artifact.file, &artifact.path, "produced setup artifact")?;
         let actual_size =
-            setup_artifact_file_size(&stat, artifact.temp_path.path(), "produced setup artifact")?;
+            setup_artifact_file_size(&stat, &artifact.path, "produced setup artifact")?;
         if actual_size != expected.size {
             return Err(RunnerError::Internal(format!(
                 "{label} size mismatch: expected {} bytes, got {actual_size} bytes",
@@ -1063,16 +1032,31 @@ async fn verify_and_install(
     }
 }
 
-/// Prepare a produced artifact through its fd, then atomically rename and disarm cleanup.
+/// Prepare a produced artifact through its fd, then atomically rename it.
 async fn atomic_install_produced(
     artifact: ProducedSetupArtifact,
     target: &Path,
     mode: u32,
 ) -> RunnerResult<()> {
+    atomic_install_produced_with_start(artifact, target, mode, || {}).await
+}
+
+async fn atomic_install_produced_with_start<F>(
+    artifact: ProducedSetupArtifact,
+    target: &Path,
+    mode: u32,
+    on_start: F,
+) -> RunnerResult<()>
+where
+    F: FnOnce() + Send + 'static,
+{
     let target = target.to_owned();
-    tokio::task::spawn_blocking(move || install_produced_artifact(artifact, &target, mode))
-        .await
-        .map_err(|e| RunnerError::Internal(format!("install task failed: {e}")))?
+    tokio::task::spawn_blocking(move || {
+        on_start();
+        install_produced_artifact(artifact, &target, mode)
+    })
+    .await
+    .map_err(|e| RunnerError::Internal(format!("install task failed: {e}")))?
 }
 
 #[allow(clippy::unreachable)] // arch validated by check_architecture
@@ -1183,17 +1167,22 @@ mod tests {
     use std::os::unix::fs::{PermissionsExt, symlink};
     use std::os::unix::net::UnixListener;
     use std::sync::mpsc;
+    use std::time::Duration;
+
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    use tokio::sync::oneshot;
 
     fn mode(path: &Path) -> u32 {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777
     }
 
     fn produced_artifact(path: &Path, content: &[u8]) -> ProducedSetupArtifact {
-        let (temp_path, mut file) = create_setup_temp_file_at(path).unwrap();
+        let mut file = create_setup_temp_file_at(path).unwrap();
         std::io::Write::write_all(&mut file, content).unwrap();
         std::io::Write::flush(&mut file).unwrap();
         ProducedSetupArtifact {
-            temp_path,
+            path: TempPath::try_from_path(path).unwrap(),
             file,
             sha256: hex::encode(Sha256::digest(content)),
         }
@@ -1207,7 +1196,7 @@ mod tests {
     }
 
     fn tarball_with_entry(entry_name: &str, content: &[u8]) -> Vec<u8> {
-        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        let encoder = GzEncoder::new(Vec::new(), Compression::default());
         let mut builder = tar::Builder::new(encoder);
         let mut header = tar::Header::new_gnu();
         header.set_size(content.len() as u64);
@@ -1219,29 +1208,14 @@ mod tests {
         builder.into_inner().unwrap().finish().unwrap()
     }
 
-    fn setup_temp_files(root: &Path) -> Vec<PathBuf> {
-        std::fs::read_dir(root)
-            .unwrap()
-            .map(|entry| entry.unwrap().path())
-            .filter(|path| {
-                path.file_name()
-                    .is_some_and(|name| name.to_string_lossy().ends_with(".tmp"))
-            })
-            .collect()
-    }
-
-    async fn wait_for_setup_temp_count(root: &Path, expected: usize) -> Vec<PathBuf> {
+    async fn wait_until_path_is_removed(path: &Path) {
         tokio::time::timeout(Duration::from_secs(2), async {
-            loop {
-                let temp_files = setup_temp_files(root);
-                if temp_files.len() == expected {
-                    return temp_files;
-                }
+            while path.exists() {
                 tokio::task::yield_now().await;
             }
         })
         .await
-        .expect("setup temp count did not converge")
+        .expect("setup temp was not removed");
     }
 
     #[test]
@@ -1376,13 +1350,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(".artifact.tmp");
 
-        let (temp_path, file) = create_setup_temp_file_at(&path).unwrap();
+        let file = create_setup_temp_file_at(&path).unwrap();
         drop(file);
 
-        assert!(path.exists());
         assert_eq!(mode(&path), SETUP_TEMP_ARTIFACT_MODE);
-        drop(temp_path);
-        assert!(!path.exists());
     }
 
     #[test]
@@ -1643,122 +1614,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn detached_blocking_extraction_cleans_owned_temps() {
-        let dir = tempfile::tempdir().unwrap();
-        let content = b"extracted content";
-        let tarball = tarball_with_entry("tool", content);
-        let archive_path = dir.path().join(".tool.tarball.test.tmp");
-        let target = dir.path().join("tool");
-        let archive = produced_artifact(&archive_path, &tarball);
-        let expected_size = u64::try_from(content.len()).unwrap();
-        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
-        let (release_extract_tx, release_extract_rx) = mpsc::channel();
-        let (output_ready_tx, output_ready_rx) = tokio::sync::oneshot::channel();
-        let (release_return_tx, release_return_rx) = mpsc::channel();
-        let blocking_target = target.clone();
-        let extraction_task = tokio::spawn(async move {
-            tokio::task::spawn_blocking(move || {
-                entered_tx.send(()).unwrap();
-                release_extract_rx.recv().unwrap();
-                let result = extract_tar_entry_blocking(
-                    archive,
-                    &blocking_target,
-                    "tool",
-                    "test",
-                    expected_size,
-                );
-                output_ready_tx.send(()).unwrap();
-                release_return_rx.recv().unwrap();
-                result
-            })
-            .await
-        });
-
-        tokio::time::timeout(Duration::from_secs(2), entered_rx)
-            .await
-            .expect("blocking extraction did not start")
-            .expect("blocking extraction start sender dropped");
-        assert!(archive_path.exists());
-        assert_eq!(setup_temp_files(dir.path()), vec![archive_path.clone()]);
-
-        extraction_task.abort();
-        let join_error = match extraction_task.await {
-            Err(error) => error,
-            Ok(_) => panic!("extraction task completed before cancellation"),
-        };
-        assert!(join_error.is_cancelled());
-        release_extract_tx.send(()).unwrap();
-
-        tokio::time::timeout(Duration::from_secs(2), output_ready_rx)
-            .await
-            .expect("detached extraction did not produce output")
-            .expect("detached extraction output sender dropped");
-        assert!(!archive_path.exists());
-        let extracted_temps = wait_for_setup_temp_count(dir.path(), 1).await;
-        assert!(
-            extracted_temps[0]
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .contains(".extract.")
-        );
-        assert!(!target.exists());
-
-        release_return_tx.send(()).unwrap();
-        assert!(wait_for_setup_temp_count(dir.path(), 0).await.is_empty());
-        assert!(!target.exists());
-    }
-
-    #[tokio::test]
-    async fn detached_blocking_install_failure_cleans_owned_temp() {
-        let dir = tempfile::tempdir().unwrap();
-        let temp_path = dir.path().join(".tool.install.test.tmp");
-        let target = dir.path().join("target");
-        std::fs::create_dir(&target).unwrap();
-        let artifact = produced_artifact(&temp_path, b"content");
-        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
-        let (release_tx, release_rx) = mpsc::channel();
-        let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
-        let blocking_target = target.clone();
-        let install_task = tokio::spawn(async move {
-            tokio::task::spawn_blocking(move || {
-                entered_tx.send(()).unwrap();
-                release_rx.recv().unwrap();
-                let result = install_produced_artifact(
-                    artifact,
-                    &blocking_target,
-                    SETUP_EXECUTABLE_ARTIFACT_MODE,
-                );
-                finished_tx.send(result.is_err()).unwrap();
-                result
-            })
-            .await
-        });
-
-        tokio::time::timeout(Duration::from_secs(2), entered_rx)
-            .await
-            .expect("blocking install did not start")
-            .expect("blocking install start sender dropped");
-        assert!(temp_path.exists());
-
-        install_task.abort();
-        let join_error = match install_task.await {
-            Err(error) => error,
-            Ok(_) => panic!("install task completed before cancellation"),
-        };
-        assert!(join_error.is_cancelled());
-        release_tx.send(()).unwrap();
-
-        let failed = tokio::time::timeout(Duration::from_secs(2), finished_rx)
-            .await
-            .expect("detached blocking install did not finish")
-            .expect("detached blocking install result sender dropped");
-        assert!(failed);
-        assert!(wait_for_setup_temp_count(dir.path(), 0).await.is_empty());
-        assert!(target.is_dir());
-    }
-
-    #[tokio::test]
     async fn verify_and_install_installs_produced_artifact() {
         let dir = tempfile::tempdir().unwrap();
         let tmp_path = dir.path().join("tmp.bin");
@@ -1877,6 +1732,88 @@ mod tests {
         assert!(result.is_err());
         assert!(target.is_dir());
         assert!(!tmp_path.exists(), "failed install should clean temp file");
+    }
+
+    #[tokio::test]
+    async fn cancelled_blocking_extraction_removes_archive_and_output_temps() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = b"extracted content";
+        let tarball = tarball_with_entry("tool", content);
+        let archive_path = dir.path().join("archive.tarball.tmp");
+        let archive = produced_artifact(&archive_path, &tarball);
+        let target = dir.path().join("tool");
+        let expected = artifact_identity(content);
+        let (entered_tx, entered_rx) = oneshot::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let target_for_task = target.clone();
+
+        let task = tokio::spawn(async move {
+            extract_tar_entry_with_temp_created(
+                archive,
+                &target_for_task,
+                "tool",
+                "test",
+                &expected,
+                move |path| {
+                    entered_tx.send(path.to_owned()).unwrap();
+                    release_rx.recv().unwrap();
+                },
+            )
+            .await
+        });
+
+        let output_path = tokio::time::timeout(Duration::from_secs(2), entered_rx)
+            .await
+            .expect("blocking extraction did not create its output temp")
+            .expect("blocking extraction dropped its output signal");
+        assert!(archive_path.exists());
+        assert!(output_path.exists());
+
+        task.abort();
+        assert!(task.await.err().is_some_and(|error| error.is_cancelled()));
+        release_tx.send(()).unwrap();
+
+        wait_until_path_is_removed(&archive_path).await;
+        wait_until_path_is_removed(&output_path).await;
+        assert!(!target.exists());
+    }
+
+    #[tokio::test]
+    async fn cancelled_blocking_install_removes_uninstalled_temp() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp_path = dir.path().join("tmp.bin");
+        let target = dir.path().join("target.bin");
+        std::fs::create_dir(&target).unwrap();
+        let artifact = produced_artifact(&tmp_path, b"content");
+        let (entered_tx, entered_rx) = oneshot::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let target_for_task = target.clone();
+
+        let task = tokio::spawn(async move {
+            atomic_install_produced_with_start(
+                artifact,
+                &target_for_task,
+                SETUP_EXECUTABLE_ARTIFACT_MODE,
+                move || {
+                    entered_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                },
+            )
+            .await
+        });
+
+        tokio::time::timeout(Duration::from_secs(2), entered_rx)
+            .await
+            .expect("blocking install did not start")
+            .expect("blocking install dropped its start signal");
+        assert!(tmp_path.exists());
+
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        release_tx.send(()).unwrap();
+
+        wait_until_path_is_removed(&tmp_path).await;
+        assert!(target.is_dir());
     }
 
     #[tokio::test]

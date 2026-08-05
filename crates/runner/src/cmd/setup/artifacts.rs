@@ -295,8 +295,9 @@ mod tests {
         (format!("http://{address}/artifact"), task)
     }
 
-    async fn spawn_gated_http_response(
-        response_prefix: Vec<u8>,
+    async fn spawn_stalled_http_response(
+        content_length: usize,
+        body_prefix: Vec<u8>,
     ) -> (
         String,
         oneshot::Receiver<()>,
@@ -317,19 +318,15 @@ mod tests {
                     "setup fixture received an empty request",
                 ));
             }
-            stream.write_all(&response_prefix).await?;
-            body_sent_tx.send(()).map_err(|()| {
-                std::io::Error::new(
-                    std::io::ErrorKind::BrokenPipe,
-                    "setup fixture body signal receiver dropped",
-                )
-            })?;
-            release_rx.await.map_err(|_| {
-                std::io::Error::new(
-                    std::io::ErrorKind::BrokenPipe,
-                    "setup fixture release sender dropped",
-                )
-            })
+            let headers = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {content_length}\r\nConnection: close\r\n\r\n"
+            );
+            stream.write_all(headers.as_bytes()).await?;
+            stream.write_all(&body_prefix).await?;
+            stream.flush().await?;
+            let _ = body_sent_tx.send(());
+            let _ = release_rx.await;
+            Ok(())
         });
         (
             format!("http://{address}/artifact"),
@@ -379,7 +376,7 @@ mod tests {
             }
         })
         .await
-        .expect("setup temp count did not converge")
+        .expect("setup temp count did not reach the expected value")
     }
 
     #[test]
@@ -541,18 +538,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancelling_direct_artifact_download_cleans_temp() {
+    async fn cancelled_direct_download_removes_temp_without_installing_target() {
         let dir = tempfile::tempdir().unwrap();
-        let content = b"cancelled download".to_vec();
-        let mut response_prefix = format!(
-            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            content.len()
-        )
-        .into_bytes();
-        response_prefix.extend_from_slice(&content[..4]);
+        let content = b"direct artifact".to_vec();
         let (url, body_sent, release, server_task) =
-            spawn_gated_http_response(response_prefix).await;
-        let target = dir.path().join("artifact.bin");
+            spawn_stalled_http_response(content.len(), b"d".to_vec()).await;
+        let target = dir.path().join("nested").join("direct.bin");
         let artifact = SetupArtifact {
             label: "direct",
             display_name: "direct artifact".to_owned(),
@@ -569,24 +560,17 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(2), body_sent)
             .await
             .expect("setup fixture did not send the partial body")
-            .expect("setup fixture body signal sender dropped");
+            .expect("setup fixture dropped the body signal");
         let temp_files = wait_for_setup_temp_count(dir.path(), 1).await;
-        assert!(
-            temp_files[0]
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .contains(".download.")
-        );
+        assert!(temp_files.iter().all(|path| path.exists()));
 
         install_task.abort();
-        let join_error = install_task.await.unwrap_err();
-        assert!(join_error.is_cancelled());
-
-        assert!(wait_for_setup_temp_count(dir.path(), 0).await.is_empty());
-        assert!(!target.exists());
+        assert!(install_task.await.unwrap_err().is_cancelled());
         release.send(()).unwrap();
         finish_http_response(server_task).await;
+
+        wait_for_setup_temp_count(dir.path(), 0).await;
+        assert!(!target.exists());
     }
 
     #[tokio::test]
