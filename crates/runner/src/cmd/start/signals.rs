@@ -244,52 +244,154 @@ mod tests {
 
     use super::*;
     use crate::ids::RunId;
+    use crate::test_fixtures::ignored_child::{
+        ignored_child_test_env_guard_enabled, run_ignored_child_test,
+    };
 
-    /// Regression test for issue #10416: SIGUSR1 arriving between
-    /// `EarlySignals::register()` and `SignalController::spawn` must still
-    /// drive the mode transition. Previously the handler was registered
-    /// inside the spawned task, so signals delivered during the startup
-    /// window hit the default Term disposition and killed the process.
-    ///
-    /// Timing: raising SIGUSR1 before `spawn()` is deterministic in program
-    /// order, and the outer `timeout(2s)` absorbs the
-    /// `kernel → sigaction → pipe → driver → watch → recv` propagation
-    /// regardless of scheduling — no artificial sleep is needed.
-    ///
-    /// This test raises SIGUSR1 process-wide. It is safe only because no
-    /// other test subscribes to SIGUSR1 — all other tests use
-    /// `SignalSource::Override` and never call `signal()`. If another
-    /// signal-raising test is added, serialize them (e.g. with a
-    /// `Mutex` shared via `OnceLock`) to avoid cross-talk.
+    const EARLY_SIGNAL_CHILD_ENV: &str = "VM0_RUNNER_EARLY_SIGNAL_TEST";
+    const EARLY_SIGTERM_CHILD: &str =
+        "cmd::start::signals::tests::early_sigterm_buffered_before_spawn_child";
+    const EARLY_SIGINT_CHILD: &str =
+        "cmd::start::signals::tests::early_sigint_buffered_before_spawn_child";
+    const EARLY_SIGUSR1_CHILD: &str =
+        "cmd::start::signals::tests::early_sigusr1_buffered_before_spawn_child";
+    const EARLY_SIGUSR2_CHILD: &str =
+        "cmd::start::signals::tests::early_sigusr2_buffered_before_spawn_child";
+
+    #[derive(Clone, Copy)]
+    enum EarlySignalScenario {
+        Terminate,
+        Interrupt,
+        Drain,
+        Resume,
+    }
+
+    impl EarlySignalScenario {
+        fn signal(self) -> nix::sys::signal::Signal {
+            match self {
+                Self::Terminate => nix::sys::signal::Signal::SIGTERM,
+                Self::Interrupt => nix::sys::signal::Signal::SIGINT,
+                Self::Drain => nix::sys::signal::Signal::SIGUSR1,
+                Self::Resume => nix::sys::signal::Signal::SIGUSR2,
+            }
+        }
+
+        fn expected_mode(self) -> RunnerMode {
+            match self {
+                Self::Terminate | Self::Interrupt => RunnerMode::Stopping,
+                Self::Drain => RunnerMode::Draining,
+                Self::Resume => RunnerMode::Running,
+            }
+        }
+    }
+
+    /// Regression coverage for issues #10416 and #25211: every lifecycle
+    /// signal raised after registration but before the consumer starts must
+    /// reach its controller branch. Each signal runs in a separate child
+    /// because a missing registration restores its terminating disposition.
     #[tokio::test]
-    async fn signal_buffered_before_spawn_is_delivered() {
+    async fn early_lifecycle_signals_buffer_before_spawn() {
+        for (child_test, scenario) in [
+            (EARLY_SIGTERM_CHILD, "sigterm"),
+            (EARLY_SIGINT_CHILD, "sigint"),
+            (EARLY_SIGUSR1_CHILD, "sigusr1"),
+            (EARLY_SIGUSR2_CHILD, "sigusr2"),
+        ] {
+            run_ignored_child_test(
+                child_test,
+                (EARLY_SIGNAL_CHILD_ENV, scenario),
+                &[],
+                Duration::from_secs(5),
+            )
+            .await;
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "spawned by early_lifecycle_signals_buffer_before_spawn"]
+    async fn early_sigterm_buffered_before_spawn_child() {
+        if !ignored_child_test_env_guard_enabled((EARLY_SIGNAL_CHILD_ENV, "sigterm")) {
+            return;
+        }
+        assert_early_signal_buffered(EarlySignalScenario::Terminate).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "spawned by early_lifecycle_signals_buffer_before_spawn"]
+    async fn early_sigint_buffered_before_spawn_child() {
+        if !ignored_child_test_env_guard_enabled((EARLY_SIGNAL_CHILD_ENV, "sigint")) {
+            return;
+        }
+        assert_early_signal_buffered(EarlySignalScenario::Interrupt).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "spawned by early_lifecycle_signals_buffer_before_spawn"]
+    async fn early_sigusr1_buffered_before_spawn_child() {
+        if !ignored_child_test_env_guard_enabled((EARLY_SIGNAL_CHILD_ENV, "sigusr1")) {
+            return;
+        }
+        assert_early_signal_buffered(EarlySignalScenario::Drain).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "spawned by early_lifecycle_signals_buffer_before_spawn"]
+    async fn early_sigusr2_buffered_before_spawn_child() {
+        if !ignored_child_test_env_guard_enabled((EARLY_SIGNAL_CHILD_ENV, "sigusr2")) {
+            return;
+        }
+        assert_early_signal_buffered(EarlySignalScenario::Resume).await;
+    }
+
+    async fn assert_early_signal_buffered(scenario: EarlySignalScenario) {
         let signals = EarlySignals::register().expect("register");
 
-        nix::sys::signal::raise(nix::sys::signal::Signal::SIGUSR1).expect("raise");
+        nix::sys::signal::raise(scenario.signal()).expect("raise lifecycle signal");
 
+        let cancel = CancellationToken::new();
         let controller = SignalController::spawn(
-            CancellationToken::new(),
+            cancel.clone(),
             RunCancellationRegistry::new(),
             signals,
             ParkingGate::new_open(),
         );
         let mut mode_rx = controller.mode_rx;
 
-        tokio::time::timeout(Duration::from_secs(2), mode_rx.changed())
-            .await
-            .expect("buffered SIGUSR1 should drive mode within 2s")
-            .expect("mode channel closed");
-        assert_eq!(*mode_rx.borrow(), RunnerMode::Draining);
-
-        // Abort so the task releases its Signal stream subscriptions
-        // and does not linger to consume signals raised by later tests.
-        if let Some(handler_task) = controller.handler_task {
-            let result = handler_task
-                .abort_and_wait()
-                .await
-                .expect_err("signal handler should be cancelled");
-            assert!(result.is_cancelled());
+        if matches!(scenario, EarlySignalScenario::Resume) {
+            assert_eq!(
+                controller.lifecycle.enter_soft_drain(),
+                SoftDrainOutcome::EnteredDraining
+            );
+            assert_eq!(
+                controller.lifecycle.mark_startup_ready(),
+                RunnerMode::Draining
+            );
+            assert_eq!(*mode_rx.borrow_and_update(), RunnerMode::Draining);
         }
+
+        match scenario {
+            EarlySignalScenario::Terminate | EarlySignalScenario::Interrupt => {
+                tokio::time::timeout(Duration::from_secs(2), cancel.cancelled())
+                    .await
+                    .expect("buffered stopping signal should cancel within 2s");
+            }
+            EarlySignalScenario::Drain | EarlySignalScenario::Resume => {
+                tokio::time::timeout(Duration::from_secs(2), mode_rx.changed())
+                    .await
+                    .expect("buffered lifecycle signal should change mode within 2s")
+                    .expect("mode channel closed");
+            }
+        }
+        assert_eq!(*mode_rx.borrow(), scenario.expected_mode());
+
+        let handler_task = controller
+            .handler_task
+            .expect("real signal controller should own a handler task");
+        let result = handler_task
+            .abort_and_wait()
+            .await
+            .expect_err("signal handler should be cancelled");
+        assert!(result.is_cancelled());
     }
 
     #[tokio::test]
