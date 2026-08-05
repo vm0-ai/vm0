@@ -45,22 +45,17 @@ type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const STALE_CONTEXT_FIXTURES = [
   {
-    contextType: null,
-    eventType: "input.prompt",
-    triggerSource: null,
-  },
-  {
-    contextType: null,
+    contextType: "web",
     eventType: "input.prompt",
     triggerSource: "web",
   },
   {
-    contextType: null,
+    contextType: "web",
     eventType: "input.prompt",
     triggerSource: "test",
   },
   {
-    contextType: null,
+    contextType: "agent_run",
     eventType: "input.prompt",
     triggerSource: "agent",
   },
@@ -193,6 +188,7 @@ async function seedGoalFixture(
     .insert(chatEvents)
     .values({
       chatThreadId: args.threadId,
+      contextType: "goal",
       eventType: "input.goal",
       runGroupId: goal.id,
       userMessage: createUserMessageDocument({
@@ -316,6 +312,23 @@ async function seedFixture(
         }),
       ];
     }
+    if (fixtureKind === "queued-integration") {
+      const [event] = await tx
+        .insert(chatEvents)
+        .values({
+          ...baseEvent,
+          contextType: "slack",
+          contextId: randomUUID(),
+          eventType: "input.prompt",
+          triggerSource: "slack",
+          seqId: 1,
+        })
+        .returning({ id: chatEvents.id });
+      if (!event) {
+        throw new Error("Failed to seed queued integration event");
+      }
+      return [event];
+    }
     const event =
       fixtureKind === "failed-message"
         ? await insertChatEvent(tx, {
@@ -325,9 +338,9 @@ async function seedFixture(
           })
         : await insertChatEvent(tx, {
             ...baseEvent,
+            contextType: "web",
             eventType: "input.prompt",
-            triggerSource:
-              fixtureKind === "queued-integration" ? "slack" : "web",
+            triggerSource: "web",
           });
     return [event];
   });
