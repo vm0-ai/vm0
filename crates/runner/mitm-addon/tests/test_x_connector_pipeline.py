@@ -180,7 +180,12 @@ class TestXConnectorResponsePipeline:
         assert STREAM_DECODE_CHUNK_LIMIT < len(payload) <= allowed_decoded_bytes
 
         mitm_addon.responseheaders(flow)
-        assert response_stream(flow)(compressed) == compressed
+        callback = response_stream(flow)
+        assert callback(compressed) == compressed
+        corrupt_followup = bytearray(_compress_body(encoding_case, b""))
+        checksum_offset = -8 if encoding_case == "gzip" else -1
+        corrupt_followup[checksum_offset] ^= 0xFF
+        assert callback(bytes(corrupt_followup)) == bytes(corrupt_followup)
 
         with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)

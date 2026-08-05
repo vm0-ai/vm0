@@ -204,7 +204,14 @@ class TestModelProviderJsonStreaming:
         )
 
         mitm_addon.responseheaders(flow)
-        assert response_stream(flow)(compressed) == compressed
+        callback = response_stream(flow)
+        assert callback(compressed) == compressed
+        corrupt_followup = bytearray(
+            gzip.compress(b"") if encoding_case == "gzip" else zlib.compress(b"")
+        )
+        checksum_offset = -8 if encoding_case == "gzip" else -1
+        corrupt_followup[checksum_offset] ^= 0xFF
+        assert callback(bytes(corrupt_followup)) == bytes(corrupt_followup)
 
         webhook = run_response(flow, self._usage_webhook_api)
 

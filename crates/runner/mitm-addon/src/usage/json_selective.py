@@ -276,6 +276,15 @@ class JsonSelectiveExtractor:
         self._slow_work_bytes_remaining = 0
         self._discarded_ascii_work_bytes_remaining = 0
 
+    def accepts_more_input(self) -> bool:
+        """Return whether later bytes can still affect this document parser.
+
+        A completed root remains active so trailing data is still validated.
+        Only a permanent parse or configured-bound error stops input.
+        """
+
+        return self._error is None
+
     def feed(self, chunk: bytes) -> None:
         """Consume the next bytes for this JSON document.
 
