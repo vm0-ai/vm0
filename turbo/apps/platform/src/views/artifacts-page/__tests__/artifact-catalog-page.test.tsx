@@ -169,6 +169,53 @@ describe("artifact catalog page", () => {
     expect(requestedKinds).toStrictEqual(["presentation", "avatar"]);
   });
 
+  it("keeps the avatar filter visible while avatar artifacts load", async () => {
+    const releaseAvatarResponse = context.mocks.deferred<void>();
+    context.mocks.api(
+      artifactCatalogContract.list,
+      async ({ query, respond }) => {
+        if (query.kind === "avatar") {
+          await releaseAvatarResponse.promise;
+          return respond(200, {
+            artifacts: [
+              artifact({ kind: "avatar", title: "avatar-video.mp4" }),
+            ],
+            nextCursor: null,
+            supportedKinds: [...ARTIFACT_CATALOG_KINDS],
+          });
+        }
+        return respond(200, {
+          artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
+          nextCursor: null,
+          supportedKinds: [...ARTIFACT_CATALOG_KINDS],
+        });
+      },
+    );
+
+    setupArtifactCatalogPage();
+    await findCard("launch-deck");
+
+    const avatarFilter = buttonByLabel("Show avatar artifacts");
+    if (!avatarFilter) {
+      throw new Error("Expected an avatar kind filter");
+    }
+    click(avatarFilter);
+
+    await expect(
+      screen.findByLabelText("Loading artifacts"),
+    ).resolves.toBeInTheDocument();
+    expect(buttonByLabel("Show avatar artifacts")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await act(async () => {
+      releaseAvatarResponse.resolve();
+      await releaseAvatarResponse.promise;
+    });
+    await findCard("avatar-video.mp4");
+  });
+
   it("localizes the catalog and filters without changing artifact titles", async () => {
     document.documentElement.lang = "pt-BR";
     const requestedKinds: (string | undefined)[] = [];

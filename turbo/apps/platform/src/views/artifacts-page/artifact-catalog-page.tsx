@@ -13,7 +13,7 @@ import {
   IconWorld,
 } from "@tabler/icons-react";
 import { r2ImageTransformUrl } from "@vm0/core";
-import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
 import { Alert, AlertDescription } from "@vm0/ui/components/ui/alert";
 import { useTranslation } from "react-i18next";
@@ -398,6 +398,7 @@ export function ArtifactCatalogPage() {
   const pageSignal = useGet(pageSignal$);
   const lightboxUrl = useGet(lightboxUrl$);
   const catalog = useLoadable(artifactCatalog$);
+  const lastCatalog = useLastLoadable(artifactCatalog$);
   const artifacts = catalog.state === "hasData" ? catalog.data.artifacts : [];
   const hasMore =
     catalog.state === "hasData" && catalog.data.nextCursor !== null;
@@ -445,8 +446,8 @@ export function ArtifactCatalogPage() {
           <ArtifactCatalogKindFilter
             selectedKind={selectedKind}
             supportedKinds={
-              catalog.state === "hasData"
-                ? catalog.data.supportedKinds
+              lastCatalog.state === "hasData"
+                ? lastCatalog.data.supportedKinds
                 : undefined
             }
             onKindChange={setKind}
