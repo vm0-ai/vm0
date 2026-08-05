@@ -150,6 +150,39 @@ class TestErrorHandler:
         assert proxy_entries[0]["upstream_status"] == 0
         assert proxy_entries[1]["type"] == "connection_error"
 
+    async def test_head_connector_candidate_error_gets_bodyless_diagnostic(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="HEAD",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            record_connector_diagnostic_requestheaders_context(flow)
+            flow.error = Error("connection reset by peer")
+            mitm_addon.error(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 424
+        assert flow.response.raw_content == b""
+        assert flow.response.headers["Content-Type"] == "application/json"
+        assert flow.response.headers.get_all("Content-Length") == []
+        assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] == "fal"
+        [network_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert network_entry["response_size"] == 0
+        assert network_entry["error"] == "connection reset by peer"
+        assert "response_body" not in network_entry
+        [connector_entry, connection_entry] = read_jsonl_entries_after_flush(
+            tmp_path / "proxy.jsonl"
+        )
+        assert connector_entry["type"] == "connector_diagnostic"
+        assert connection_entry["type"] == "connection_error"
+
     def test_streamed_connector_candidate_error_before_request_gets_diagnostic(
         self, tmp_path, real_flow, mitm_ctx
     ):

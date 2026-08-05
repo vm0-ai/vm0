@@ -29,7 +29,6 @@ import {
   toggleAgentCustomConnector$,
 } from "../../signals/zero-page/job-detail/custom-connectors.ts";
 import { agentDetail$ } from "../../signals/zero-page/job-detail/detail.ts";
-import { customConnectorPermissionsEnabled$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { CustomConnectorIcon } from "../zero-page/components/settings/custom-connector-icon.tsx";
@@ -141,7 +140,6 @@ export function JobCustomConnectorsSection() {
   const [, toggle] = useLoadableSet(toggleAgentCustomConnector$);
   const pageSignal = useGet(pageSignal$);
   const saving = useGet(agentCustomConnectorToggleSaving$);
-  const permissionEditingEnabled = useGet(customConnectorPermissionsEnabled$);
   const permissionDraft = useGet(customConnectorPermissionDraft$);
   const openPermissions = useSet(openCustomConnectorPermissions$);
   const closePermissions = useSet(closeCustomConnectorPermissions$);
@@ -210,7 +208,6 @@ export function JobCustomConnectorsSection() {
             loading={saving}
             disabled={!c.hasSecret && !enabled}
             showManage={
-              permissionEditingEnabled &&
               c.hasSecret &&
               c.permissionBundleRef !== null &&
               c.permissionBundleRef !== undefined &&

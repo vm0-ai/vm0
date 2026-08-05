@@ -558,7 +558,6 @@ const materializeCanonicalSlackInputFile$ = command(
       allocateArtifactObject$,
       {
         userId: args.userId,
-        orgId: args.orgId,
         filename,
       },
       signal,
@@ -908,7 +907,6 @@ export const prepareCanonicalPublishedAsset$ = command(
       allocateArtifactObject$,
       {
         userId: args.userId,
-        orgId: args.orgId,
         filename: args.filename,
         allowV2: args.allowV2,
       },

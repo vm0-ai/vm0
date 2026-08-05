@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.515.0](https://github.com/vm0-ai/vm0/compare/core-v8.514.1...core-v8.515.0) (2026-08-05)
+
+
+### Features
+
+* **core:** enable Teams integration globally ([#25137](https://github.com/vm0-ai/vm0/issues/25137)) ([285dd56](https://github.com/vm0-ai/vm0/commit/285dd5687156a5c79b2c19f8c62c6d1c03d7ed7a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.2
+
 ## [8.514.1](https://github.com/vm0-ai/vm0/compare/core-v8.514.0...core-v8.514.1) (2026-08-05)
 
 

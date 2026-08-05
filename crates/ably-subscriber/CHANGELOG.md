@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.11](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.10...ably-subscriber-v1.0.11) (2026-08-05)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** await graceful shutdown completion ([#25155](https://github.com/vm0-ai/vm0/issues/25155)) ([a54deb6](https://github.com/vm0-ai/vm0/commit/a54deb69811cc546fc94d8c1be547eef16784256))
+
 ## [1.0.10](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.9...ably-subscriber-v1.0.10) (2026-08-02)
 
 

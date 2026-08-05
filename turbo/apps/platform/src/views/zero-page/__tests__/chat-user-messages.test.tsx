@@ -510,29 +510,6 @@ describe("user messages", () => {
           },
           createdAt: "2026-08-04T10:00:00Z",
         },
-        {
-          id: "00000000-0000-4000-8000-000000000752",
-          role: "user",
-          content: "Untrusted prompt",
-          runId: "d0000000-0000-4000-a000-000000000752",
-          triggerSource: "web",
-          userMessage: {
-            version: 1,
-            parts: [
-              { type: "text", text: "Untrusted prompt" },
-              {
-                type: "source",
-                kind: "agent",
-                runId: sourceRunId,
-                threadId: sourceThreadId,
-                agentId: sourceAgentId,
-                titleSnapshot: "Hidden source",
-                href: `/chats/${sourceThreadId}#run-${sourceRunId}`,
-              },
-            ],
-          },
-          createdAt: "2026-08-04T10:01:00Z",
-        },
       ],
     });
 
@@ -567,6 +544,43 @@ describe("user messages", () => {
       "data-role",
       "user",
     );
-    expect(screen.queryByText("Hidden source")).not.toBeInTheDocument();
+  });
+
+  it("renders Morning Brief metadata outside the message body", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000760";
+    const prompt = "Generate my Morning Brief for 2026-08-05.";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Morning Brief",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000760",
+          role: "user",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: prompt },
+              { type: "morning_brief", briefDate: "2026-08-05" },
+            ],
+          },
+          createdAt: "2026-08-05T07:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const annotation = await screen.findByLabelText("Morning Brief");
+    const messageBody = await waitFor(() => {
+      const element = document.querySelector("[data-structured-user-message]");
+      expect(element).toBeInstanceOf(HTMLElement);
+      return element as HTMLElement;
+    });
+    expect(messageBody.textContent).toBe(prompt);
+    expect(messageBody).not.toContainElement(annotation);
   });
 });

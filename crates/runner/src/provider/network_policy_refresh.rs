@@ -1388,6 +1388,128 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shutdown_cancels_stalled_in_flight_refresh() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let run_id = RunId::nil();
+        let harness = NetworkPolicyRefreshHarness::new_with_api(
+            api_client_for_url(api_url),
+            run_id,
+            &["slack"],
+        )
+        .await;
+        let policy_before_shutdown = harness.slack_policy().await;
+        let (request_received_tx, request_received_rx) = tokio::sync::oneshot::channel();
+        let (verify_shutdown_tx, verify_shutdown_rx) = tokio::sync::oneshot::channel();
+        let mut server_tasks = tokio::task::JoinSet::new();
+        server_tasks.spawn(async move {
+            let (mut socket, request) = accept_http_request(&listener).await;
+            request_received_tx
+                .send(())
+                .expect("request receiver should remain available");
+
+            if verify_shutdown_rx.await.is_err() {
+                let body = network_policy_refresh_response(json!({
+                    "connectorSlug": "slack",
+                }))
+                .to_string();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                return (request, None);
+            }
+
+            let mut byte = [0_u8; 1];
+            let closed = socket.read(&mut byte).await.unwrap();
+            let listener = listener
+                .into_std()
+                .expect("listener should convert to a nonblocking standard socket");
+            let retry_connection_queued = match listener.accept() {
+                Ok(_) => true,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => false,
+                Err(error) => panic!("failed to inspect retry connection: {error}"),
+            };
+            (request, Some((closed, retry_connection_queued)))
+        });
+
+        harness
+            .handle
+            .notify_network_policy_refresh(run_id, "slack".to_string())
+            .await;
+        tokio::time::timeout(Duration::from_secs(1), request_received_rx)
+            .await
+            .expect("refresh request should reach the server before shutdown")
+            .expect("refresh request sender should remain available");
+
+        let shutdown = harness.handle.shutdown();
+        tokio::pin!(shutdown);
+        let shutdown_completed_promptly =
+            tokio::time::timeout(Duration::from_secs(1), shutdown.as_mut())
+                .await
+                .is_ok();
+        if shutdown_completed_promptly {
+            verify_shutdown_tx
+                .send(())
+                .expect("server should remain available for shutdown verification");
+        } else {
+            drop(verify_shutdown_tx);
+        }
+
+        let (request, server_verification) =
+            tokio::time::timeout(Duration::from_secs(1), server_tasks.join_next())
+                .await
+                .expect("refresh server should finish before timeout")
+                .expect("refresh server task should be present")
+                .expect("refresh server task should succeed");
+        assert!(server_tasks.is_empty());
+
+        if !shutdown_completed_promptly {
+            tokio::time::timeout(Duration::from_secs(1), shutdown.as_mut())
+                .await
+                .expect("network policy refresh shutdown cleanup timed out");
+            panic!("network policy refresh shutdown waited for the HTTP request timeout");
+        }
+
+        assert_network_policy_refresh_request(&request, &run_id);
+        let (closed, retry_connection_queued) =
+            server_verification.expect("server should verify prompt shutdown");
+        assert_eq!(closed, 0, "shutdown should drop the in-flight request");
+        assert!(
+            !retry_connection_queued,
+            "shutdown should not retry the cancelled refresh request"
+        );
+        assert!(
+            harness
+                .handle
+                .worker
+                .task
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .is_none(),
+            "shutdown should reap the refresh worker task"
+        );
+        assert!(
+            harness
+                .handle
+                .core
+                .inner
+                .active_runs
+                .lock()
+                .await
+                .is_empty(),
+            "shutdown should clear active refresh state"
+        );
+        assert_eq!(
+            harness.slack_policy().await,
+            policy_before_shutdown,
+            "shutdown should not mutate the network policy"
+        );
+    }
+
+    #[tokio::test]
     async fn drop_last_handle_cancels_refresh_worker_task() {
         let server = MockServer::start();
         let handle = NetworkPolicyRefreshHandle::new(api_client_for_server(&server));

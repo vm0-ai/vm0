@@ -25,7 +25,6 @@ members = [
     "vsock-host",
     "vsock-proto",
     "vsock-test",
-    "zero-cli",
 ]
 
 [workspace.package]
@@ -55,7 +54,6 @@ tracing-test-support = { path = "tracing-test-support" }
 vsock-guest = { path = "vsock-guest" }
 vsock-host = { path = "vsock-host" }
 vsock-proto = { path = "vsock-proto" }
-zero-cli = { path = "zero-cli" }
 
 # External dependencies
 aho-corasick = "1"

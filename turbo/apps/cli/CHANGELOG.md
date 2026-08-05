@@ -1,5 +1,16 @@
 # Changelog
 
+## [9.279.3](https://github.com/vm0-ai/vm0/compare/cli-v9.279.2...cli-v9.279.3) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.274.2
+    * @vm0/connectors bumped to 1.202.11
+    * @vm0/core bumped to 8.515.0
+
 ## [9.279.2](https://github.com/vm0-ai/vm0/compare/cli-v9.279.1...cli-v9.279.2) (2026-08-05)
 
 
@@ -1895,7 +1906,7 @@
 
 ### Refactoring
 
-* remove vm0 info, upgrade, and init commands from @vm0/cli ([#22272](https://github.com/vm0-ai/vm0/issues/22272)) ([d9e5fc1](https://github.com/vm0-ai/vm0/commit/d9e5fc1c2e336b39f30d0be305e2ce1afd58235d))
+* remove vm0 info, upgrade, and init commands from Zero CLI ([#22272](https://github.com/vm0-ai/vm0/issues/22272)) ([d9e5fc1](https://github.com/vm0-ai/vm0/commit/d9e5fc1c2e336b39f30d0be305e2ce1afd58235d))
 
 
 ### Dependencies
@@ -14653,7 +14664,7 @@
 
 * cli e2e ([78276d7](https://github.com/e7h4n/vm0/commit/78276d78308b5a8aec85cb9ce4d137299ff0587d))
 * cli package ([4ab79ab](https://github.com/e7h4n/vm0/commit/4ab79ab22e35966956080f2652f29692392bb041))
-* update remaining @vm0/cli references to vm0-cli ([bd8a106](https://github.com/e7h4n/vm0/commit/bd8a106f36b95d8dcf1369e8831071f63f3ec80c))
+* update remaining legacy CLI package references to vm0-cli ([bd8a106](https://github.com/e7h4n/vm0/commit/bd8a106f36b95d8dcf1369e8831071f63f3ec80c))
 
 
 ### Dependencies

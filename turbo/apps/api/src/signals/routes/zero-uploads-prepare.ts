@@ -59,7 +59,6 @@ const prepareUploadInner$ = command(
       allocateArtifactObject$,
       {
         userId: auth.userId,
-        orgId: auth.orgId,
         filename,
         allowV2:
           bodyResult.data.multipart === true ||
