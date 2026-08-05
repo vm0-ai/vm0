@@ -244,6 +244,32 @@ class TestAuthBaseUrlRewriteForwarding:
         assert flow.response.raw_content == b""
         assert flow.response.headers.get_all("Content-Length") == expected_content_lengths
 
+    async def test_url_rewrite_does_not_restore_content_length_for_head_204(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            method="HEAD",
+        )
+
+        with (
+            fake_forwarder_upstream(
+                status=204,
+                body=b"",
+                headers=[("Content-Length", "123")],
+            ),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == 204
+        assert flow.response.raw_content == b""
+        assert flow.response.headers.get_all("Content-Length") == ["0"]
+
     async def test_url_rewrite_sends_resolved_auth_headers(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
