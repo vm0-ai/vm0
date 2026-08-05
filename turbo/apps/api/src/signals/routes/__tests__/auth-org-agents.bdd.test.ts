@@ -81,10 +81,10 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     const org = await api.readOrg(admin);
     expect(org).toMatchObject({
       id: admin.orgId,
-      slug: orgSlug,
       name: "BDD Chain Org",
       role: "admin",
     });
+    expect(org).not.toHaveProperty("slug");
 
     const missingOrg = await api.requestReadOrg(noOrg, [404]);
     expectApiError(missingOrg.body);
@@ -183,6 +183,27 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     expectApiError(deleted.body);
     expect(deleted.body.error.code).toBe("NOT_FOUND");
   });
+
+  it("reads and caches a Clerk organization whose slug is null", async () => {
+    const admin = api.user();
+    api.mockClerkOrg(admin, { slug: null, name: "Slugless Workspace" });
+
+    const refreshed = await api.readOrg(admin);
+    expect(refreshed).toMatchObject({
+      id: admin.orgId,
+      name: "Slugless Workspace",
+      role: "admin",
+    });
+    expect(refreshed).not.toHaveProperty("slug");
+
+    const cached = await api.readOrg(admin);
+    expect(cached).toMatchObject({
+      id: admin.orgId,
+      name: "Slugless Workspace",
+      role: "admin",
+    });
+    expect(cached).not.toHaveProperty("slug");
+  });
 });
 
 describe("AUTH-03", () => {
@@ -244,7 +265,6 @@ describe("ORG-01 and ORG-02", () => {
 
     const adminOrg = await api.readOrg(admin);
     expect(adminOrg).toMatchObject({
-      slug: baseSlug,
       name: "BDD Org",
       role: "admin",
     });
@@ -270,9 +290,9 @@ describe("ORG-01 and ORG-02", () => {
     });
     const updated = await api.updateOrg(admin, { name: "BDD Org Updated" });
     expect(updated).toMatchObject({
-      slug: nextSlug,
       name: "BDD Org Updated",
     });
+    expect(updated).not.toHaveProperty("slug");
 
     api.mockClerkOrg(member, {
       slug: nextSlug,

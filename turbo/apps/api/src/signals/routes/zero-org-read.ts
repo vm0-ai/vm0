@@ -65,7 +65,6 @@ const updateOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     status: 200 as const,
     body: {
       id: result.id,
-      slug: result.slug,
       name: result.name,
       tier: result.tier,
     },
