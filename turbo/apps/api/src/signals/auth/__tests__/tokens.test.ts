@@ -240,51 +240,27 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(eligibleToken)?.capabilities).toContain(
       "image-recognition:write",
     );
-    expect(decodeZeroTokenPayloadForTest(eligibleToken)).not.toHaveProperty(
-      "featureSwitchOverrides",
-    );
   });
 
-  it("gates browser capabilities on both the rollout and thread access", () => {
-    const defaultToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-    );
+  it("gates browser capabilities on thread access", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
     const enabledToken = generateZeroToken(
       "user_zero",
       "run_zero",
-      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      "org_zero",
       undefined,
       { cloudBrowserEnabled: true },
     );
-    const disabledToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      { [FeatureSwitchKey.ZeroBrowser]: false },
-      { cloudBrowserEnabled: true },
-    );
 
-    for (const token of [defaultToken, disabledToken]) {
-      expect(verifyZeroToken(token)?.capabilities).not.toContain(
-        "browser:read",
-      );
-      expect(verifyZeroToken(token)?.capabilities).not.toContain(
-        "browser:write",
-      );
-    }
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "browser:read",
+    );
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "browser:write",
+    );
     expect(verifyZeroToken(enabledToken)).toMatchObject({
       cloudBrowserEnabled: true,
       capabilities: expect.arrayContaining(["browser:read", "browser:write"]),
-    });
-    expect(decodeZeroTokenPayloadForTest(disabledToken)).not.toHaveProperty(
-      "cloudBrowserEnabled",
-    );
-    expect(decodeZeroTokenPayloadForTest(disabledToken)).toMatchObject({
-      featureSwitchOverrides: {
-        [FeatureSwitchKey.ZeroBrowser]: false,
-      },
     });
   });
 

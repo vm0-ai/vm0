@@ -17,7 +17,6 @@ import { formatAppNumber } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
-import { zeroBrowserEnabled$ } from "../external/feature-switch.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import { setAblyPayloadLoop$ } from "../realtime.ts";
 import { onRef, settle, setLoop, withCleanup } from "../utils.ts";
@@ -116,7 +115,7 @@ function createFitWindowSignals(
       aspectRatio: number,
       signal: AbortSignal,
     ): Promise<void> => {
-      if (!get(zeroBrowserEnabled$) || get(fittingWindowState$)) {
+      if (get(fittingWindowState$)) {
         return;
       }
       set(fittingWindowState$, true);
@@ -168,9 +167,6 @@ function createStartBrowserSignals({
 > {
   const startingState$ = state(false);
   const start$ = command(async ({ get, set }, signal: AbortSignal) => {
-    if (!get(zeroBrowserEnabled$)) {
-      return;
-    }
     const eventId = crypto.randomUUID();
     set(startingState$, true);
     if (optimisticEvents) {
@@ -216,9 +212,6 @@ function createCloseBrowserSignals({
   optimisticEvents,
 }: BrowserMutationSignalContext): Pick<BrowserSessionSignals, "close$"> {
   const close$ = command(async ({ get, set }, signal: AbortSignal) => {
-    if (!get(zeroBrowserEnabled$)) {
-      return;
-    }
     const eventId = crypto.randomUUID();
     if (optimisticEvents) {
       await set(
@@ -297,9 +290,6 @@ export function createBrowserSessionSignals(
   );
   const session$ = computed(async (get): Promise<ZeroBrowserSession | null> => {
     get(reloadVersion$);
-    if (!get(zeroBrowserEnabled$)) {
-      return null;
-    }
     const override = get(sessionOverride$);
     return override === undefined
       ? await fetchBrowserSession(
@@ -338,9 +328,6 @@ export function createBrowserSessionSignals(
       async ({ get, set }, _element: HTMLElement, signal: AbortSignal) => {
         await setLoop(
           async () => {
-            if (!get(zeroBrowserEnabled$)) {
-              return true;
-            }
             if (!viewerIsVisible()) {
               return false;
             }

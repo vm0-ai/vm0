@@ -27,8 +27,6 @@ const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
 
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
-  ["browser:read", FeatureSwitchKey.ZeroBrowser],
-  ["browser:write", FeatureSwitchKey.ZeroBrowser],
   ["connector:write", FeatureSwitchKey.CustomConnectorCliCreate],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
@@ -76,7 +74,6 @@ const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   runId: z.string().min(1),
   orgId: z.string().min(1),
   capabilities: zeroCapabilitiesSchema,
-  featureSwitchOverrides: z.record(z.string(), z.boolean()).optional(),
   computerUseHostId: z.string().uuid().optional(),
   cloudBrowserEnabled: z.literal(true).optional(),
 });
@@ -339,7 +336,6 @@ export function generateZeroToken(
     runId,
     orgId,
     capabilities,
-    ...(overrides === undefined ? {} : { featureSwitchOverrides: overrides }),
     ...(capabilities.includes("computer-use:write") &&
     options?.computerUseHostId
       ? { computerUseHostId: options.computerUseHostId }

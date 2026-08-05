@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Command, Help } from "commander";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { buildZeroHelpText, registerZeroCommands } from "../zero";
 import { decodeZeroTokenPayload } from "../lib/api/zero-token";
 
@@ -48,11 +47,9 @@ function buildCommands(): Command[] {
   ];
 }
 
-function buildProgram(
-  featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>,
-): Command {
+function buildProgram(): Command {
   const prog = new Command();
-  registerZeroCommands(prog, buildCommands(), featureSwitchOverrides);
+  registerZeroCommands(prog, buildCommands());
   return prog;
 }
 
@@ -92,9 +89,6 @@ describe("decodeZeroTokenPayload", () => {
       orgId: "org-1",
       scope: "zero",
       capabilities: ["agent:read", "connector:read"],
-      featureSwitchOverrides: {
-        [FeatureSwitchKey.ZeroBrowser]: true,
-      },
       iat: 1000,
       exp: 2000,
     });
@@ -105,9 +99,6 @@ describe("decodeZeroTokenPayload", () => {
       orgId: "org-1",
       scope: "zero",
       capabilities: ["agent:read", "connector:read"],
-      featureSwitchOverrides: {
-        [FeatureSwitchKey.ZeroBrowser]: true,
-      },
       iat: 1000,
       exp: 2000,
     });
@@ -155,7 +146,7 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
     expect(hiddenCommandNames(prog)).toEqual(["recognize"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
-    expect(registeredCommandNames(prog)).not.toContain("browser");
+    expect(visibleCommandNames(prog)).toContain("browser");
   });
 
   it("should hide unmapped commands and show capable ones with valid token", () => {
@@ -190,6 +181,7 @@ describe("registerZeroCommands", () => {
       "teams",
       "telegram",
       "phone",
+      "browser",
       "host",
       "maps",
       "weather",
@@ -203,17 +195,17 @@ describe("registerZeroCommands", () => {
     ]);
   });
 
-  it("should hide run-only commands and keep feature commands unregistered with malformed token", () => {
+  it("should hide run-only commands and keep global commands visible with malformed token", () => {
     vi.stubEnv("ZERO_TOKEN", "not-a-valid-token");
 
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toEqual(["recognize"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
-    expect(registeredCommandNames(prog)).not.toContain("browser");
+    expect(visibleCommandNames(prog)).toContain("browser");
   });
 
-  it("should hide run-only commands and keep feature commands unregistered outside zero scope", () => {
+  it("should hide run-only commands and keep global commands visible outside zero scope", () => {
     const token = buildZeroToken({
       scope: "sandbox",
       capabilities: ["agent:read"],
@@ -224,7 +216,7 @@ describe("registerZeroCommands", () => {
 
     expect(hiddenCommandNames(prog)).toEqual(["recognize"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
-    expect(registeredCommandNames(prog)).not.toContain("browser");
+    expect(visibleCommandNames(prog)).toContain("browser");
   });
 
   it("should show globally enabled commands when capabilities array is empty", () => {
@@ -698,28 +690,12 @@ describe("registerZeroCommands", () => {
     expect(buildZeroHelpText()).toContain("Upgrade plan?");
   });
 
-  it("should register browser only when its feature switch and capability are enabled", () => {
-    const disabledToken = buildZeroToken({
-      scope: "zero",
-      userId: "user-1",
-      orgId: "org-1",
-      capabilities: ["browser:read"],
-      featureSwitchOverrides: {
-        [FeatureSwitchKey.ZeroBrowser]: false,
-      },
-    });
-    vi.stubEnv("ZERO_TOKEN", disabledToken);
-
-    expect(registeredCommandNames(buildProgram())).not.toContain("browser");
-
+  it("should expose browser when its capability is enabled", () => {
     const enabledToken = buildZeroToken({
       scope: "zero",
       userId: "user-1",
       orgId: "org-1",
       capabilities: ["browser:read"],
-      featureSwitchOverrides: {
-        [FeatureSwitchKey.ZeroBrowser]: true,
-      },
     });
     vi.stubEnv("ZERO_TOKEN", enabledToken);
 
