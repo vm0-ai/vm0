@@ -462,6 +462,11 @@ class _XJsonResponseExtractor:
     def feed(self, chunk: bytes) -> None:
         self._extractor.feed(chunk)
 
+    def accepts_more_input(self) -> bool:
+        """Return whether the document parser can still consume input."""
+
+        return self._extractor.accepts_more_input()
+
     def finish(self) -> tuple[dict, str | None]:
         result: dict = {"body_parsed": False, "body_truncated": False}
         extracted = self._extractor.finish()
@@ -533,6 +538,7 @@ def create_response_parser(
         report_on_interruption=False,
         finish=finish_json_state,
         finish_decode_error=finish_json_decode_error,
+        should_continue=extractor.accepts_more_input,
     )
 
 

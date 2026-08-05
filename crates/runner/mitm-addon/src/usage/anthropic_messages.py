@@ -246,6 +246,11 @@ class AnthropicMessagesJsonUsageExtractor:
     def feed(self, chunk: bytes) -> None:
         self._extractor.feed(chunk)
 
+    def accepts_more_input(self) -> bool:
+        """Return whether the document parser can still consume input."""
+
+        return self._extractor.accepts_more_input()
+
     def finish(self) -> tuple[dict | None, str | None]:
         result = self._extractor.finish()
         if not result.complete:
