@@ -749,11 +749,32 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     buffer; decoder/parser completeness is reported separately from forensic
     buffer truncation.
 
-    Buffered JSON fallback failures (truncated buffer, malformed JSON,
-    unexpected shape) leave ``body_parsed=False`` and emit no count fields, so
-    analysis can distinguish "field absent in response" from "we couldn't
-    parse it". NDJSON stream parser failures are reported through
-    ``ndjson_lines_failed``.
+    Ordinary X JSON responses use an incremental parser that publishes
+    ``flow.metadata[metadata_keys.X_JSON_STATE]`` at normal response
+    finalization. When present, that state is authoritative over the capped
+    forensic buffer and buffered fallback because billing inspection consumed
+    decoded response chunks independently of that buffer. Its
+    ``body_truncated=False`` therefore means billing inspection was not capped
+    by the forensic buffer; it does not mean the optional forensic capture
+    retained the full response. Parser and decoder failures are reported
+    separately through ``parse_error``.
+
+    Only when neither incremental state is present does the buffered JSON
+    fallback parse ``flow.metadata[metadata_keys.STREAM_BUFFER]``. On that path,
+    ``body_truncated`` retains ``STREAM_BUFFER_STATE["truncated"]`` because the
+    capped buffer is the billing input. Buffered fallback failures (truncated
+    buffer, malformed JSON, unexpected shape) leave ``body_parsed=False`` and
+    emit no count fields, so analysis can distinguish "field absent in
+    response" from "we couldn't parse it". NDJSON stream parser failures are
+    reported through ``ndjson_lines_failed``.
+
+    Focused coverage is
+    ``test_forensic_buffer_truncation_does_not_stop_x_json_parser`` for complete
+    incremental state after capture truncation,
+    ``test_response_logs_x_json_parse_error_after_forensic_buffer_truncates``
+    for incremental parse-error state after capture truncation, and
+    ``test_truncated_buffer_with_no_hints_skips_billing`` for the buffered
+    fallback branch.
     """
     state = flow.metadata.get(metadata_keys.STREAM_BUFFER_STATE) or {}
     truncated = bool(state.get("truncated", False))
