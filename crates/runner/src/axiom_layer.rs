@@ -24,7 +24,7 @@ use tracing_subscriber::filter::{self, FilterFn};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
-use crate::telemetry::PRE_PARK_HANDOFF_AXIOM_TARGET;
+use crate::telemetry::{PRE_PARK_HANDOFF_AXIOM_TARGET, RESERVED_REUSE_CLAIM_AXIOM_TARGET};
 
 /// Bounded-channel capacity between tracing callers and the dispatcher task.
 /// WARN+ and the selected-candidate measurement events are low-volume, so 1024
@@ -172,13 +172,14 @@ pub(crate) struct AxiomLayer {
 }
 
 fn should_ingest(metadata: &Metadata<'_>) -> bool {
-    // Errors and warnings remain the general threshold. Two exact INFO targets
+    // Errors and warnings remain the general threshold. Three exact INFO targets
     // carry bounded production measurements that have no authenticated
     // per-job telemetry owner. DEBUG/TRACE and all other INFO events stay
     // local-only.
     (*metadata.level() <= tracing::Level::WARN && metadata.target() != INTERNAL_TARGET)
         || (*metadata.level() == tracing::Level::INFO
             && (metadata.target() == PRE_PARK_HANDOFF_AXIOM_TARGET
+                || metadata.target() == RESERVED_REUSE_CLAIM_AXIOM_TARGET
                 || metadata.target() == BALLOON_SETTLE_AXIOM_TARGET))
 }
 
