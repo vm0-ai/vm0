@@ -198,10 +198,10 @@ interface CalendarWatchRecorder {
 }
 
 interface CalendarStopRecorder extends StopCallRecorder {
-  readonly requests: Array<{
+  readonly requests: {
     readonly id: string;
     readonly resourceId: string;
-  }>;
+  }[];
 }
 
 function configureGoogleCalendarStopMock(
@@ -1822,8 +1822,8 @@ describe("zero workflow automations", () => {
       [201],
     );
 
-    expect(gmail.body.enabled).toBe(false);
-    expect(calendar.body.enabled).toBe(false);
+    expect(gmail.body.enabled).toBeFalsy();
+    expect(calendar.body.enabled).toBeFalsy();
     expect(gmailWatch.calls).toBe(0);
     expect(calendarWatch.watchCalls).toBe(0);
     expect(calendarWatch.baselineCalls).toBe(0);
@@ -1894,7 +1894,7 @@ describe("zero workflow automations", () => {
       }),
       [200],
     );
-    expect(enabled.body.enabled).toBe(true);
+    expect(enabled.body.enabled).toBeTruthy();
     expect(watch.calls).toBe(2);
   });
 
@@ -2298,7 +2298,7 @@ describe("zero workflow automations", () => {
 
     await disabling;
     const enabled = await enabling;
-    expect(enabled.body.enabled).toBe(true);
+    expect(enabled.body.enabled).toBeTruthy();
     expect(stopCalls).toBe(1);
     expect(watch.calls).toBe(2);
     await expect(wf.readAutomation(created.body.id)).resolves.toMatchObject({
