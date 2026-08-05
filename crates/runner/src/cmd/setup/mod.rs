@@ -868,129 +868,116 @@ async fn extract_tar_entry(
     label: &str,
     installed_identity: &SetupArtifactIdentity,
 ) -> RunnerResult<ProducedSetupArtifact> {
-    extract_tar_entry_with_temp_created(
-        tarball,
-        target,
-        entry_name,
-        label,
-        installed_identity,
-        |_| {},
-    )
-    .await
-}
-
-async fn extract_tar_entry_with_temp_created<F>(
-    tarball: ProducedSetupArtifact,
-    target: &Path,
-    entry_name: &str,
-    label: &str,
-    installed_identity: &SetupArtifactIdentity,
-    on_temp_created: F,
-) -> RunnerResult<ProducedSetupArtifact>
-where
-    F: FnOnce(&Path) + Send + 'static,
-{
     let target = target.to_owned();
     let entry_name = entry_name.to_owned();
     let label = label.to_owned();
     let expected_size = installed_identity.size;
 
     tokio::task::spawn_blocking(move || {
-        let ProducedSetupArtifact {
-            path: tarball_path,
-            file: mut tarball_file,
-            sha256: _,
-        } = tarball;
-        tarball_file.seek(SeekFrom::Start(0)).map_err(|e| {
-            RunnerError::Internal(format!(
-                "seek verified tarball {}: {e}",
-                tarball_path.display()
-            ))
-        })?;
-        let decoder = flate2::read::GzDecoder::new(tarball_file);
-        let mut archive = tar::Archive::new(decoder);
-
-        let entries = archive
-            .entries()
-            .map_err(|e| RunnerError::Internal(format!("read tarball entries: {e}")))?;
-
-        for entry in entries {
-            let mut entry =
-                entry.map_err(|e| RunnerError::Internal(format!("read tarball entry: {e}")))?;
-
-            let path = entry
-                .path()
-                .map_err(|e| RunnerError::Internal(format!("read entry path: {e}")))?;
-
-            let file_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or_default();
-
-            if file_name == entry_name {
-                let declared_size = entry.size();
-                if declared_size != expected_size {
-                    return Err(RunnerError::Internal(format!(
-                        "{label} entry size mismatch: expected {expected_size} bytes, got {declared_size} bytes"
-                    )));
-                }
-
-                let (tmp, mut out) = create_setup_temp_file(&target, "extract")?;
-                on_temp_created(&tmp);
-                let result = (|| {
-                    let mut hasher = Sha256::new();
-                    let mut buf = [0u8; 64 * 1024];
-                    let mut observed_size = 0_u64;
-                    loop {
-                        let n = entry
-                            .read(&mut buf)
-                            .map_err(|e| RunnerError::Internal(format!("read tar entry: {e}")))?;
-                        if n == 0 {
-                            if observed_size != expected_size {
-                                return Err(RunnerError::Internal(format!(
-                                    "{label} entry size mismatch: expected {expected_size} bytes, got {observed_size} bytes"
-                                )));
-                            }
-                            std::io::Write::flush(&mut out)
-                                .map_err(|e| RunnerError::Internal(format!("flush binary: {e}")))?;
-                            return Ok(hex::encode(hasher.finalize()));
-                        }
-                        let chunk = buf.get(..n).ok_or_else(|| {
-                            RunnerError::Internal("read returned invalid length".into())
-                        })?;
-                        let chunk_size = u64::try_from(chunk.len()).map_err(|e| {
-                            RunnerError::Internal(format!("measure {label} tar entry chunk: {e}"))
-                        })?;
-                        let next_size = observed_size.checked_add(chunk_size).ok_or_else(|| {
-                            RunnerError::Internal(format!(
-                                "{label} entry size overflow while extracting"
-                            ))
-                        })?;
-                        if next_size > expected_size {
-                            return Err(RunnerError::Internal(format!(
-                                "{label} entry exceeds expected size of {expected_size} bytes (read at least {next_size} bytes)"
-                            )));
-                        }
-                        hasher.update(chunk);
-                        std::io::Write::write_all(&mut out, chunk)
-                            .map_err(|e| RunnerError::Internal(format!("write binary: {e}")))?;
-                        observed_size = next_size;
-                    }
-                })();
-                return result.map(|sha256| ProducedSetupArtifact {
-                    path: tmp,
-                    file: out,
-                    sha256,
-                });
-            }
-        }
-
-        Err(RunnerError::Internal(format!(
-            "'{entry_name}' not found in tarball"
-        )))
+        extract_tar_entry_blocking(tarball, &target, &entry_name, &label, expected_size)
     })
     .await
     .map_err(|e| RunnerError::Internal(format!("extract task failed: {e}")))?
+}
+
+fn extract_tar_entry_blocking(
+    tarball: ProducedSetupArtifact,
+    target: &Path,
+    entry_name: &str,
+    label: &str,
+    expected_size: u64,
+) -> RunnerResult<ProducedSetupArtifact> {
+    let ProducedSetupArtifact {
+        path: tarball_path,
+        file: mut tarball_file,
+        sha256: _,
+    } = tarball;
+    tarball_file.seek(SeekFrom::Start(0)).map_err(|e| {
+        RunnerError::Internal(format!(
+            "seek verified tarball {}: {e}",
+            tarball_path.display()
+        ))
+    })?;
+    let decoder = flate2::read::GzDecoder::new(tarball_file);
+    let mut archive = tar::Archive::new(decoder);
+
+    let entries = archive
+        .entries()
+        .map_err(|e| RunnerError::Internal(format!("read tarball entries: {e}")))?;
+
+    for entry in entries {
+        let mut entry =
+            entry.map_err(|e| RunnerError::Internal(format!("read tarball entry: {e}")))?;
+
+        let path = entry
+            .path()
+            .map_err(|e| RunnerError::Internal(format!("read entry path: {e}")))?;
+
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+
+        if file_name == entry_name {
+            let declared_size = entry.size();
+            if declared_size != expected_size {
+                return Err(RunnerError::Internal(format!(
+                    "{label} entry size mismatch: expected {expected_size} bytes, got {declared_size} bytes"
+                )));
+            }
+
+            let (tmp, mut out) = create_setup_temp_file(target, "extract")?;
+            let result = (|| {
+                let mut hasher = Sha256::new();
+                let mut buf = [0u8; 64 * 1024];
+                let mut observed_size = 0_u64;
+                loop {
+                    let n = entry
+                        .read(&mut buf)
+                        .map_err(|e| RunnerError::Internal(format!("read tar entry: {e}")))?;
+                    if n == 0 {
+                        if observed_size != expected_size {
+                            return Err(RunnerError::Internal(format!(
+                                "{label} entry size mismatch: expected {expected_size} bytes, got {observed_size} bytes"
+                            )));
+                        }
+                        std::io::Write::flush(&mut out)
+                            .map_err(|e| RunnerError::Internal(format!("flush binary: {e}")))?;
+                        return Ok(hex::encode(hasher.finalize()));
+                    }
+                    let chunk = buf.get(..n).ok_or_else(|| {
+                        RunnerError::Internal("read returned invalid length".into())
+                    })?;
+                    let chunk_size = u64::try_from(chunk.len()).map_err(|e| {
+                        RunnerError::Internal(format!("measure {label} tar entry chunk: {e}"))
+                    })?;
+                    let next_size = observed_size.checked_add(chunk_size).ok_or_else(|| {
+                        RunnerError::Internal(format!(
+                            "{label} entry size overflow while extracting"
+                        ))
+                    })?;
+                    if next_size > expected_size {
+                        return Err(RunnerError::Internal(format!(
+                            "{label} entry exceeds expected size of {expected_size} bytes (read at least {next_size} bytes)"
+                        )));
+                    }
+                    hasher.update(chunk);
+                    std::io::Write::write_all(&mut out, chunk)
+                        .map_err(|e| RunnerError::Internal(format!("write binary: {e}")))?;
+                    observed_size = next_size;
+                }
+            })();
+            return result.map(|sha256| ProducedSetupArtifact {
+                path: tmp,
+                file: out,
+                sha256,
+            });
+        }
+    }
+
+    Err(RunnerError::Internal(format!(
+        "'{entry_name}' not found in tarball"
+    )))
 }
 
 /// Verify SHA256, set permissions through the produced fd, and atomically rename to target.
@@ -1038,25 +1025,10 @@ async fn atomic_install_produced(
     target: &Path,
     mode: u32,
 ) -> RunnerResult<()> {
-    atomic_install_produced_with_start(artifact, target, mode, || {}).await
-}
-
-async fn atomic_install_produced_with_start<F>(
-    artifact: ProducedSetupArtifact,
-    target: &Path,
-    mode: u32,
-    on_start: F,
-) -> RunnerResult<()>
-where
-    F: FnOnce() + Send + 'static,
-{
     let target = target.to_owned();
-    tokio::task::spawn_blocking(move || {
-        on_start();
-        install_produced_artifact(artifact, &target, mode)
-    })
-    .await
-    .map_err(|e| RunnerError::Internal(format!("install task failed: {e}")))?
+    tokio::task::spawn_blocking(move || install_produced_artifact(artifact, &target, mode))
+        .await
+        .map_err(|e| RunnerError::Internal(format!("install task failed: {e}")))?
 }
 
 #[allow(clippy::unreachable)] // arch validated by check_architecture
@@ -1744,36 +1716,42 @@ mod tests {
         let target = dir.path().join("tool");
         let expected = artifact_identity(content);
         let (entered_tx, entered_rx) = oneshot::channel();
-        let (release_tx, release_rx) = mpsc::channel();
+        let (start_tx, start_rx) = mpsc::channel();
+        let (output_tx, output_rx) = oneshot::channel();
+        let (finish_tx, finish_rx) = mpsc::channel();
         let target_for_task = target.clone();
 
-        let task = tokio::spawn(async move {
-            extract_tar_entry_with_temp_created(
+        let task = tokio::task::spawn_blocking(move || {
+            entered_tx.send(()).unwrap();
+            start_rx.recv().unwrap();
+            let output = extract_tar_entry_blocking(
                 archive,
                 &target_for_task,
                 "tool",
                 "test",
-                &expected,
-                move |path| {
-                    entered_tx.send(path.to_owned()).unwrap();
-                    release_rx.recv().unwrap();
-                },
-            )
-            .await
+                expected.size,
+            )?;
+            output_tx.send(output.path.to_path_buf()).unwrap();
+            finish_rx.recv().unwrap();
+            Ok::<ProducedSetupArtifact, RunnerError>(output)
         });
 
-        let output_path = tokio::time::timeout(Duration::from_secs(2), entered_rx)
+        tokio::time::timeout(Duration::from_secs(2), entered_rx)
+            .await
+            .expect("blocking extraction did not start")
+            .expect("blocking extraction dropped its start signal");
+        assert!(archive_path.exists());
+
+        drop(task);
+        start_tx.send(()).unwrap();
+        let output_path = tokio::time::timeout(Duration::from_secs(2), output_rx)
             .await
             .expect("blocking extraction did not create its output temp")
             .expect("blocking extraction dropped its output signal");
-        assert!(archive_path.exists());
-        assert!(output_path.exists());
-
-        task.abort();
-        assert!(task.await.err().is_some_and(|error| error.is_cancelled()));
-        release_tx.send(()).unwrap();
 
         wait_until_path_is_removed(&archive_path).await;
+        assert!(output_path.exists());
+        finish_tx.send(()).unwrap();
         wait_until_path_is_removed(&output_path).await;
         assert!(!target.exists());
     }
@@ -1789,17 +1767,10 @@ mod tests {
         let (release_tx, release_rx) = mpsc::channel();
         let target_for_task = target.clone();
 
-        let task = tokio::spawn(async move {
-            atomic_install_produced_with_start(
-                artifact,
-                &target_for_task,
-                SETUP_EXECUTABLE_ARTIFACT_MODE,
-                move || {
-                    entered_tx.send(()).unwrap();
-                    release_rx.recv().unwrap();
-                },
-            )
-            .await
+        let task = tokio::task::spawn_blocking(move || {
+            entered_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+            install_produced_artifact(artifact, &target_for_task, SETUP_EXECUTABLE_ARTIFACT_MODE)
         });
 
         tokio::time::timeout(Duration::from_secs(2), entered_rx)
@@ -1808,8 +1779,7 @@ mod tests {
             .expect("blocking install dropped its start signal");
         assert!(tmp_path.exists());
 
-        task.abort();
-        assert!(task.await.unwrap_err().is_cancelled());
+        drop(task);
         release_tx.send(()).unwrap();
 
         wait_until_path_is_removed(&tmp_path).await;
