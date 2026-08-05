@@ -4215,6 +4215,9 @@
         "balancedUse": "バランスよく使う",
         "builtInModel": "内蔵モデル",
         "byokHelp": "設定されたプロバイダーを使用します",
+        "defaultModel": "デフォルトモデル",
+        "defaultModelDescription": "新しいチャットと自動化で使用されます",
+        "defaultModelUpdated": "{{model}} がデフォルトモデルになりました",
         "fast": "速い",
         "inheritDefault": "組織のデフォルトから継承",
         "loadError": "モデルをロードできません。",
@@ -4236,7 +4239,9 @@
           "deepseek": "ディープシーク"
         },
         "runSpeed": "走行速度",
-        "standard": "標準"
+        "setModelAsDefault": "{{model}} をデフォルトに設定",
+        "standard": "標準",
+        "thisChat": "このチャット"
       },
       "policies": {
         "actionsFor": "{{model}} のアクション",

@@ -4215,6 +4215,9 @@
         "balancedUse": "Ausgewogene Nutzung",
         "builtInModel": "Einbaumodell",
         "byokHelp": "Verwendet Ihren konfigurierten Anbieter",
+        "defaultModel": "Standardmodell",
+        "defaultModelDescription": "Wird für neue Chats und Automatisierungen verwendet",
+        "defaultModelUpdated": "{{model}} ist jetzt dein Standardmodell",
         "fast": "Schnell",
         "inheritDefault": "Von der Standardeinstellung der Organisation übernehmen",
         "loadError": "Modelle können nicht geladen werden.",
@@ -4236,7 +4239,9 @@
           "deepseek": "Deepseek"
         },
         "runSpeed": "Ausführungsgeschwindigkeit",
-        "standard": "Standard"
+        "setModelAsDefault": "{{model}} als Standard festlegen",
+        "standard": "Standard",
+        "thisChat": "Dieser Chat"
       },
       "policies": {
         "actionsFor": "Aktionen für {{model}}",

@@ -19,7 +19,10 @@ import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-c
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
+import {
+  zeroUserModelPreferenceContract,
+  type UserModelPreferenceResponse,
+} from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
@@ -43,6 +46,7 @@ import {
   click,
   detachedSetupPage,
   fill,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
@@ -185,6 +189,118 @@ describe("chat composer models", () => {
       expect(document.title).toContain("Scout");
     });
     await expectComposerModel("Claude Opus 4.7");
+  });
+
+  it("keeps a new-chat model choice separate from the default until the explicit action", async () => {
+    const user = userEvent.setup({ delay: null });
+    let preference: UserModelPreferenceResponse = {
+      selectedModel: "kimi-k2.7-code",
+      updatedAt: "2026-03-10T00:00:00Z",
+    };
+    const updatedModels: UserModelPreferenceResponse["selectedModel"][] = [];
+
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
+      return respond(200, preference);
+    });
+    context.mocks.api(
+      zeroUserModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updatedModels.push(body.selectedModel);
+        preference = {
+          selectedModel: body.selectedModel,
+          updatedAt: "2026-03-10T00:01:00Z",
+        };
+        return respond(200, preference);
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await expectComposerModel("Kimi K2.7 Code");
+    await user.click(await findComposerModel("Kimi K2.7 Code"));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await expectComposerModel("Claude Sonnet 4.6");
+    expect(updatedModels).toStrictEqual([]);
+
+    await user.click(await findComposerModel("Claude Sonnet 4.6"));
+    expect(screen.getByText("This chat")).toBeInTheDocument();
+    const defaultModelGroup = await screen.findByRole("group", {
+      name: "Default model",
+    });
+    expect(
+      within(defaultModelGroup).getByText("Used for new chats and automations"),
+    ).toBeInTheDocument();
+    expect(
+      within(defaultModelGroup).getByText("Kimi K2.7 Code"),
+    ).toBeInTheDocument();
+
+    await user.click(
+      buttonContainingText(
+        "Set Claude Sonnet 4.6 as default",
+        defaultModelGroup,
+      ),
+    );
+
+    await waitFor(() => {
+      expect(updatedModels).toStrictEqual(["claude-sonnet-4-6"]);
+      expect(
+        queryAllByRoleFast("button", defaultModelGroup).some((button) => {
+          return button.textContent?.includes(
+            "Set Claude Sonnet 4.6 as default",
+          );
+        }),
+      ).toBeFalsy();
+    });
+    await expect(
+      screen.findByText("Claude Sonnet 4.6 is now your default model"),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("preserves selection-as-default behavior while the feature switch is off", async () => {
+    const user = userEvent.setup({ delay: null });
+    let updatedModel: string | null = null;
+
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.api(
+      zeroUserModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updatedModel = body.selectedModel;
+        return respond(200, {
+          selectedModel: body.selectedModel,
+          updatedAt: "2026-03-10T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.NewChatDefaultModelAction]: false,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("Kimi K2.7 Code"));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await waitFor(() => {
+      expect(updatedModel).toBe("claude-sonnet-4-6");
+    });
+    expect(
+      screen.queryByRole("group", { name: "Default model" }),
+    ).not.toBeInTheDocument();
   });
 
   it("sends Codex fast mode as a run option from the model picker", async () => {
@@ -1194,7 +1310,13 @@ describe("chat composer models", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
 
     await screen.findByText("Use GLM");
     await user.click(await findComposerModel("GLM-5.1"));
@@ -1203,6 +1325,9 @@ describe("chat composer models", () => {
     );
     await expectComposerModel("Claude Sonnet 4.6");
     expect(preferenceRequestStarted).toBeFalsy();
+    expect(
+      screen.queryByRole("group", { name: "Default model" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows limited-free-1 models and opens plans for Pro models", async () => {

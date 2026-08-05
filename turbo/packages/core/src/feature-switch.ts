@@ -312,6 +312,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.NewChatDefaultModelAction]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Make changing the personal default model an explicit action in the new-chat model picker.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:

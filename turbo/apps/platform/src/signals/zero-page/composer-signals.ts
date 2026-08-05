@@ -146,6 +146,7 @@ interface ComposerDraftSignals extends ComposerDraftUiSignals {
 }
 
 interface ComposerModelSignals extends ComposerModelUiSignals {
+  readonly explicitDefaultModelActionEnabled$: Computed<boolean>;
   readonly modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
   readonly selectedModelOauthAvailable$: Computed<Promise<boolean>>;
   readonly setModelSelection$: Command<
@@ -445,6 +446,12 @@ export function createComposerSignals(
       false
     );
   });
+  const explicitDefaultModelActionEnabled$ = computed((get): boolean => {
+    return (
+      options.threadId === undefined &&
+      (get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false)
+    );
+  });
   const workflowComposer = createWorkflowComposerSignals(
     draft,
     agentId$,
@@ -493,6 +500,7 @@ export function createComposerSignals(
     },
     model: {
       ...ui.model,
+      explicitDefaultModelActionEnabled$,
       modelSelection$: options.modelSelection$,
       selectedModelOauthAvailable$: options.selectedModelOauthAvailable$,
       setModelSelection$: options.setModelSelection$,

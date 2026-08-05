@@ -4215,6 +4215,9 @@
         "balancedUse": "संतुलित उपयोग",
         "builtInModel": "अंतर्निर्मित मॉडल",
         "byokHelp": "आपके कॉन्फ़िगर किए गए प्रोवाइडर का उपयोग करता है",
+        "defaultModel": "डिफ़ॉल्ट मॉडल",
+        "defaultModelDescription": "नई चैट और ऑटोमेशन के लिए उपयोग किया जाता है",
+        "defaultModelUpdated": "{{model}} अब आपका डिफ़ॉल्ट मॉडल है",
         "fast": "तेज़",
         "inheritDefault": "ऑर्ग डिफॉल्ट से इनहेरिट करें",
         "loadError": "मॉडल लोड करने में असमर्थ.",
@@ -4236,7 +4239,9 @@
           "deepseek": "गहन खोज"
         },
         "runSpeed": "भागने की गति",
-        "standard": "मानक"
+        "setModelAsDefault": "{{model}} को डिफ़ॉल्ट के रूप में सेट करें",
+        "standard": "मानक",
+        "thisChat": "यह चैट"
       },
       "policies": {
         "actionsFor": "{{model}} के लिए क्रियाएँ",
