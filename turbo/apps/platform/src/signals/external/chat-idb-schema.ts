@@ -20,7 +20,10 @@ const CHAT_IDB_ANNOTATION_CUTOVER_VERSION = 25;
 // Source, automation, and goal display metadata now lives inside userMessage.
 // Rebuild event caches that still carry the retired projection fields.
 const CHAT_IDB_USER_MESSAGE_PARTS_CUTOVER_VERSION = 26;
-const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_USER_MESSAGE_PARTS_CUTOVER_VERSION;
+// Morning Brief identity now lives in userMessage. Rebuild event caches whose
+// documents predate the dedicated non-content part.
+const CHAT_IDB_MORNING_BRIEF_PART_CUTOVER_VERSION = 27;
+const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_MORNING_BRIEF_PART_CUTOVER_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 const LEGACY_ARTIFACT_ITEMS_STORE = "artifact_items";
 const LEGACY_ARTIFACT_SYNC_STORE = "artifact_sync";
@@ -112,6 +115,11 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   }
 
   if (oldVersion < CHAT_IDB_USER_MESSAGE_PARTS_CUTOVER_VERSION) {
+    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteChatThreadEventStores(db);
+  }
+
+  if (oldVersion < CHAT_IDB_MORNING_BRIEF_PART_CUTOVER_VERSION) {
     deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
     deleteChatThreadEventStores(db);
   }

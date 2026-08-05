@@ -44,6 +44,7 @@ import {
   IconPackage,
   IconRoute,
   IconSearch,
+  IconSunrise,
   IconTarget,
   IconTemplate,
   IconX,
@@ -309,14 +310,17 @@ type RecommendedFollowup = NonNullable<
 
 type UserMessageNonContentPart = Extract<
   UserMessagePart,
-  { readonly type: "source" | "automation" | "goal" }
+  { readonly type: "source" | "automation" | "goal" | "morning_brief" }
 >;
 
 function isUserMessageNonContentPart(
   part: UserMessagePart,
 ): part is UserMessageNonContentPart {
   return (
-    part.type === "source" || part.type === "automation" || part.type === "goal"
+    part.type === "source" ||
+    part.type === "automation" ||
+    part.type === "goal" ||
+    part.type === "morning_brief"
   );
 }
 
@@ -6596,6 +6600,23 @@ function MessageAnnotation({
       </div>
     );
   }
+  if (part.type === "morning_brief") {
+    return (
+      <div
+        aria-label={t(($) => {
+          return $.settings.preferences.morningBrief.title;
+        })}
+        className={className}
+      >
+        <IconSunrise size={15} stroke={1.8} className="shrink-0" />
+        <span>
+          {t(($) => {
+            return $.settings.preferences.morningBrief.title;
+          })}
+        </span>
+      </div>
+    );
+  }
   return (
     <SourceMessageAnnotation
       part={part}
@@ -7205,7 +7226,7 @@ function UserMessageFeedbackGroup({
 
 type UserMessageContentPart = Exclude<
   UserMessagePart,
-  { readonly type: "source" | "automation" | "goal" }
+  { readonly type: "source" | "automation" | "goal" | "morning_brief" }
 >;
 type UserMessageStandalonePart = Exclude<
   UserMessageContentPart,
@@ -7669,9 +7690,13 @@ function PagedUserMessage({
     return <GoalUserMessage event={event} />;
   }
 
+  const nonContentPart = userMessageNonContentPart(userMessage);
+  const morningBriefAnnotationPart =
+    nonContentPart?.type === "morning_brief" ? nonContentPart : undefined;
   const sourceAnnotationPart = visibleSourceAnnotationPart({
     userMessage,
   });
+  const annotationPart = morningBriefAnnotationPart ?? sourceAnnotationPart;
   return (
     <div
       id={inputPromptRunAnchor(inputEvent)}
@@ -7682,9 +7707,9 @@ function PagedUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          {sourceAnnotationPart ? (
+          {annotationPart ? (
             <MessageAnnotation
-              part={sourceAnnotationPart}
+              part={annotationPart}
               agentReferenceSignalsForId={thread.agentReferenceSignalsForId}
             />
           ) : null}

@@ -218,7 +218,7 @@ describe("upgradeChatIdb local cache resets", () => {
 });
 
 describe("upgradeChatIdb user-message part cutover", () => {
-  it.each([23, 24, 25])(
+  it.each([23, 24, 25, 26])(
     "rebuilds every chat event cache for contract cutovers from v%i",
     (oldVersion) => {
       const { db, createdStores, createObjectStore, deleteObjectStore } =

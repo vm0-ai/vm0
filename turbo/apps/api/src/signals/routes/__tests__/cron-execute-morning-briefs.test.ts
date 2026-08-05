@@ -788,6 +788,22 @@ describe("cron execute morning briefs", () => {
       scenario,
       threadId,
     );
+    const morningBriefRunMessage = threadMessages.find((message) => {
+      return (
+        message.eventType === "input.prompt" &&
+        chatEventDisplayText(message) === chatMessage &&
+        message.runId !== undefined
+      );
+    });
+    expect(morningBriefRunMessage).toMatchObject({
+      userMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: chatMessage },
+          { type: "morning_brief", briefDate: BRIEF_DATE },
+        ],
+      },
+    });
     expect(
       threadMessages.filter((message) => {
         return (

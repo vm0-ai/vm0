@@ -434,6 +434,12 @@ const userMessagePartSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("morning_brief"),
+      briefDate: z.string(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("file"),
       fileId: z.string().min(1),
       filenameSnapshot: z.string().min(1),
@@ -471,7 +477,8 @@ const userMessageDocumentSchema = z
               return (
                 part.type === "source" ||
                 part.type === "automation" ||
-                part.type === "goal"
+                part.type === "goal" ||
+                part.type === "morning_brief"
               );
             }).length <= 1
           );
