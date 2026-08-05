@@ -36,7 +36,7 @@ const mocks = createZeroRouteMocks(context);
 const JOGGAI_CREATE_URL = "https://api.jogg.ai/v2/create_video_from_avatar";
 const JOGGAI_AVATARS_URL = "https://api.jogg.ai/v2/avatars/public";
 const JOGGAI_VOICES_URL = "https://api.jogg.ai/v2/voices";
-const JOGGAI_WEBHOOK_SECRET = "test-joggai-webhook-secret";
+const JOGGAI_WEBHOOK_SECRET = randomUUID();
 const GENERATED_VIDEO_URL = "https://res.jogg.ai/avatar-video.mp4";
 const VIDEO_BYTES = Buffer.from("generated avatar video");
 
