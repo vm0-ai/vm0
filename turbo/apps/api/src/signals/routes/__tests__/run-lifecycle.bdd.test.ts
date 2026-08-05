@@ -9919,6 +9919,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       },
       {
         [FeatureSwitchKey.ZeroBrowser]: true,
+        [FeatureSwitchKey.ZeroChatMessaging]: false,
       },
     );
     bdd.acceptAgentStorageWrites();
