@@ -5,6 +5,8 @@ use std::os::unix::ffi::OsStringExt as _;
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, Stdio};
 
+const CLI_PKG_URL: &str = "https://static.vm0.io/okou-cli/test-commit/package.tgz";
+
 #[test]
 fn unknown_command_preserves_arguments_streams_and_exit_status() {
     let temp_dir = tempfile::tempdir().unwrap();
@@ -28,6 +30,7 @@ exit 23
     let mut child = Command::new(env!("CARGO_BIN_EXE_zero-cli"))
         .args(["definitely-unknown", "two words"])
         .env("PATH", temp_dir.path())
+        .env("CLI_PKG_URL", CLI_PKG_URL)
         .env("ZERO_CLI_TEST_ARGS_PATH", &args_path)
         .env("ZERO_CLI_TEST_STDIN_PATH", &stdin_path)
         .stdin(Stdio::piped())
@@ -46,9 +49,39 @@ exit 23
     assert_eq!(output.stderr, b"forwarded stderr");
     assert_eq!(
         fs::read_to_string(args_path).unwrap(),
-        "-p\n@vm0/cli\nzero\ndefinitely-unknown\ntwo words\n"
+        "--yes\n--package=https://static.vm0.io/okou-cli/test-commit/package.tgz\nzero\ndefinitely-unknown\ntwo words\n"
     );
     assert_eq!(fs::read(stdin_path).unwrap(), b"forwarded stdin");
+}
+
+#[test]
+fn missing_package_url_uses_published_cli() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let npx_path = temp_dir.path().join("npx");
+    let args_path = temp_dir.path().join("args");
+
+    fs::write(
+        &npx_path,
+        r#"#!/bin/sh
+printf '%s\n' "$@" > "$ZERO_CLI_TEST_ARGS_PATH"
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&npx_path, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_zero-cli"))
+        .args(["unknown", "two words"])
+        .env("PATH", temp_dir.path())
+        .env_remove("CLI_PKG_URL")
+        .env("ZERO_CLI_TEST_ARGS_PATH", &args_path)
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(
+        fs::read_to_string(args_path).unwrap(),
+        "-p\n@vm0/cli\nzero\nunknown\ntwo words\n"
+    );
 }
 
 #[test]
@@ -74,6 +107,7 @@ printf '%s\0' "$@" > "$ZERO_CLI_TEST_ARGS_PATH"
             OsString::new(),
         ])
         .env("PATH", temp_dir.path())
+        .env("CLI_PKG_URL", CLI_PKG_URL)
         .env("ZERO_CLI_TEST_ARGS_PATH", &args_path)
         .output()
         .unwrap();
@@ -81,7 +115,7 @@ printf '%s\0' "$@" > "$ZERO_CLI_TEST_ARGS_PATH"
     assert!(output.status.success());
     assert_eq!(
         fs::read(args_path).unwrap(),
-        b"-p\0@vm0/cli\0zero\0unknown\0two words\0raw\xffx\0\0"
+        b"--yes\0--package=https://static.vm0.io/okou-cli/test-commit/package.tgz\0zero\0unknown\0two words\0raw\xffx\0\0"
     );
 }
 
@@ -104,6 +138,7 @@ while :; do :; done
     let mut child = Command::new(env!("CARGO_BIN_EXE_zero-cli"))
         .arg("unknown")
         .env("PATH", temp_dir.path())
+        .env("CLI_PKG_URL", CLI_PKG_URL)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
