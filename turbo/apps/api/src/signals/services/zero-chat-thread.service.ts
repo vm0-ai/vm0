@@ -19,10 +19,6 @@ import {
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
-  triggerSourceSchema,
-  type TriggerSource,
-} from "@vm0/api-contracts/contracts/logs";
-import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
   type ModelProviderCredentialScope,
@@ -109,9 +105,6 @@ import {
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.service";
 
-const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
-  zodEnumDriverValueDecoder(triggerSourceSchema),
-);
 const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
 const matchedChatEvent = alias(chatEvents, "matched_chat_event");
 const hostedRunUploadedFiles = alias(runUploadedFiles, "hosted_files");
@@ -126,7 +119,6 @@ type ChatEventRow = {
   readonly thinking: string | null;
   readonly runId: string | null;
   readonly runGroupId: string | null;
-  readonly triggerSource: TriggerSource | null;
   readonly isGoalRun: boolean;
   readonly usagePayload: ChatEventUsagePayload | null;
   readonly runEventId: string | null;
@@ -282,9 +274,6 @@ const eventColumns = {
 function chatEventMetadataSubquery(db: Pick<Db, "select">) {
   return db
     .select({
-      runTriggerSource: sql`${zeroRuns.triggerSource}`
-        .mapWith(nullableTriggerSourceDecoder)
-        .as("run_trigger_source"),
       goalId: zeroRuns.goalId,
     })
     .from(zeroRuns)
@@ -298,12 +287,6 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
   return db
     .select({
       ...eventColumns,
-      triggerSource: sql`COALESCE(
-        ${chatEvents.triggerSource},
-        ${metadata.runTriggerSource}
-      )`
-        .mapWith(nullableTriggerSourceDecoder)
-        .as("trigger_source"),
       isGoalRun: isNotNull(metadata.goalId).mapWith(pgBooleanDecoder),
     })
     .from(chatEvents)
@@ -608,7 +591,6 @@ function baseChatEventFromRow(row: ChatEventRow, content: string | null) {
     content,
     runId: row.runId ?? undefined,
     runGroupId: row.runGroupId ?? undefined,
-    triggerSource: row.triggerSource ?? undefined,
     isGoalRun: row.isGoalRun || undefined,
     runEventId: row.runEventId ?? undefined,
     revokesEventId: row.revokesEventId ?? undefined,
@@ -646,11 +628,6 @@ const chatEventBuilders = {
       eventType: "input.automation",
       content: null,
       userMessage: row.userMessage ?? undefined,
-      triggerSource: requiredChatEventField(
-        row.triggerSource,
-        row.eventType,
-        "triggerSource",
-      ),
     };
   },
   "input.goal": (row, event) => {

@@ -589,7 +589,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       phoneEvents.events.some((event) => {
         return (
           event.eventType === "input.prompt" &&
-          event.triggerSource === "agentphone"
+          event.userMessage.parts.some((part) => {
+            return part.type === "source" && part.kind === "agentphone";
+          })
         );
       }),
     ).toBeTruthy();

@@ -133,7 +133,6 @@ describe("chat lifecycle", () => {
           role: "user",
           content: "Check the production rollout",
           runId: "run-slack-origin",
-          triggerSource: "slack",
           userMessage: {
             version: 1,
             parts: [
@@ -155,7 +154,6 @@ describe("chat lifecycle", () => {
           role: "user",
           content: "This source link was unavailable",
           runId: "run-slack-origin-without-link",
-          triggerSource: "slack",
           userMessage: {
             version: 1,
             parts: [
@@ -200,7 +198,6 @@ describe("chat lifecycle", () => {
           role: "user",
           content: "Check the Feishu conversation",
           runId: "run-feishu-origin",
-          triggerSource: "feishu",
           userMessage: {
             version: 1,
             parts: [
@@ -222,7 +219,6 @@ describe("chat lifecycle", () => {
           role: "user",
           content: "This source link was unavailable",
           runId: "run-feishu-origin-without-link",
-          triggerSource: "feishu",
           userMessage: {
             version: 1,
             parts: [

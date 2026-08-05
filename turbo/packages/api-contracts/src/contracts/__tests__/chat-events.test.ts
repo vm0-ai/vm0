@@ -55,7 +55,6 @@ const chatEvents = [
         },
       ],
     },
-    triggerSource: "workflow-event",
     createdAt: "2026-07-23T00:00:01.000Z",
   },
   {
@@ -88,7 +87,6 @@ const chatEvents = [
       ],
     },
     error: "Insufficient credits",
-    triggerSource: "workflow-event",
     createdAt: CREATED_AT,
   },
   {
@@ -309,6 +307,12 @@ describe("ChatEvent catalog", () => {
       chatEventSchema.safeParse({
         ...automation,
         encryptedParams: "must-stay-server-side",
+      }).success,
+    ).toBe(false);
+    expect(
+      chatEventSchema.safeParse({
+        ...automation,
+        triggerSource: "workflow-event",
       }).success,
     ).toBe(false);
     const goal = chatEvents[2];
