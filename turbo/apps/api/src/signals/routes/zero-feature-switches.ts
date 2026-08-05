@@ -20,6 +20,7 @@ const featureSwitchesAuthOptions = {
 } as const;
 
 const LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH = "zeroMailReplyFollowUp";
+const LEGACY_ZERO_BROWSER_SWITCH = "zeroBrowser";
 function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
@@ -41,6 +42,9 @@ function featureSwitchResponseBody(params: {
   const effectiveSwitches = {
     ...registeredEffectiveSwitches,
     [LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH]: false,
+    // Platform bundles loaded before the Zero Browser full rollout still
+    // carry this key. Keep them enabled until the old frontend release drains.
+    [LEGACY_ZERO_BROWSER_SWITCH]: true,
   };
 
   return {
