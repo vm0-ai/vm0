@@ -135,7 +135,14 @@ _RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR = "work_limit_exceeded"
 
 @dataclass(frozen=True)
 class OpenAIResponsesEvent:
-    """One inspected Responses WebSocket event."""
+    """One inspected Responses WebSocket event.
+
+    ``event_type`` is the top-level string ``type`` observed by the bounded
+    prefix probe. It is ``None`` when that probe cannot return a value, including
+    when the field is beyond the prefix, oversized, non-string, or missing, or
+    when syntax is malformed before the field is complete. ``None`` does not mean
+    that usage extraction cannot classify the retained complete frame.
+    """
 
     event_type: str | None
     _body: bytes = field(repr=False)
@@ -169,7 +176,13 @@ _RESPONSES_SSE_SCALAR_FIELDS = {
 
 
 def inspect_openai_responses_event_json(body: bytes) -> OpenAIResponsesEvent:
-    """Inspect one complete Responses WebSocket event with one bounded type probe."""
+    """Retain one complete Responses event and probe its prefix for ``type``.
+
+    The returned ``event_type`` is only the bounded-prefix observation; this
+    function does not fully parse or validate the frame. Pass the returned event
+    to ``extract_openai_responses_usage_from_event`` for selective full-frame
+    usage inspection.
+    """
     result = _probe_responses_event_type(body)
     event_type = result.value if result.status == "found" and result.value is not None else None
     return OpenAIResponsesEvent(
@@ -734,7 +747,17 @@ def extract_openai_responses_usage_with_error_from_json(
 def extract_openai_responses_usage_from_event(
     event: OpenAIResponsesEvent,
 ) -> tuple[dict | None, str | None]:
-    """Extract usage and inspection error from one Responses WebSocket event."""
+    """Extract usage and an inspection error from a retained Responses event.
+
+    When prefix inspection leaves the event classification unresolved, this
+    function selectively examines the complete retained frame and can resolve a
+    top-level ``type`` independently of ``event.event_type``.
+
+    Returns ``(usage, None)`` when usage is extracted. Exhausting the selective
+    parser's work budget returns ``(None, "work_limit_exceeded")``; no other
+    inspection failure is surfaced. Known non-usage events, other incomplete or
+    malformed frames, and frames without extractable usage return ``(None, None)``.
+    """
     event_type = event._classification
     if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
         return None, None
