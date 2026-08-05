@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.158.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.2...runner-rs-v0.158.3) (2026-08-05)
+
+
+### Bug Fixes
+
+* **python:** preserve auth base representation lengths ([#25135](https://github.com/vm0-ai/vm0/issues/25135)) ([8c70774](https://github.com/vm0-ai/vm0/commit/8c70774539a77c52148354e49a485b3c5c60be61))
+
+
+### Documentation
+
+* **python:** document catalog response-header continuation contract ([#25134](https://github.com/vm0-ai/vm0/issues/25134)) ([f0e55c4](https://github.com/vm0-ai/vm0/commit/f0e55c4f136323477f881c716061185ec6b79fa2))
+
 ## [0.158.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.1...runner-rs-v0.158.2) (2026-08-05)
 
 ## [0.158.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.0...runner-rs-v0.158.1) (2026-08-05)
