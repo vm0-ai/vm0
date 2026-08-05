@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.686.0](https://github.com/vm0-ai/vm0/compare/app-v0.685.4...app-v0.686.0) (2026-08-05)
+
+
+### Features
+
+* add google forms response trigger ([#25308](https://github.com/vm0-ai/vm0/issues/25308)) ([463f489](https://github.com/vm0-ai/vm0/commit/463f48920b56866b11363f5bf5f2ddd0dbe5529a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.275.0
+    * @vm0/core bumped to 8.517.0
+
 ## [0.685.4](https://github.com/vm0-ai/vm0/compare/app-v0.685.3...app-v0.685.4) (2026-08-05)
 
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.380.0](https://github.com/vm0-ai/vm0/compare/api-v1.379.4...api-v1.380.0) (2026-08-05)
+
+
+### Features
+
+* add google forms response trigger ([#25308](https://github.com/vm0-ai/vm0/issues/25308)) ([463f489](https://github.com/vm0-ai/vm0/commit/463f48920b56866b11363f5bf5f2ddd0dbe5529a))
+
+
+### Refactoring
+
+* **api:** own connector auth-method feature switches ([#25298](https://github.com/vm0-ai/vm0/issues/25298)) ([6670ff6](https://github.com/vm0-ai/vm0/commit/6670ff6f17ad06757fe6ff7778b7b48a2dcd914e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.275.0
+    * @vm0/core bumped to 8.517.0
+    * @vm0/db bumped to 1.167.0
+
 ## [1.379.4](https://github.com/vm0-ai/vm0/compare/api-v1.379.3...api-v1.379.4) (2026-08-05)
 
 
