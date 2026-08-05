@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.375.1](https://github.com/vm0-ai/vm0/compare/api-v1.375.0...api-v1.375.1) (2026-08-05)
+
+
+### Refactoring
+
+* decouple composer signals and remove internal re-exports ([#25054](https://github.com/vm0-ai/vm0/issues/25054)) ([a5d80a1](https://github.com/vm0-ai/vm0/commit/a5d80a1127cb7533ad763b1f5d22e9fa562afd03))
+* remove zero chat messaging feature switch ([#25101](https://github.com/vm0-ai/vm0/issues/25101)) ([6a6cf24](https://github.com/vm0-ai/vm0/commit/6a6cf24df6b4beeba0d1a95f732c4f52c6b939aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.273.1
+    * @vm0/connectors bumped to 1.202.10
+    * @vm0/core bumped to 8.512.1
+    * @vm0/db bumped to 1.165.2
+
 ## [1.375.0](https://github.com/vm0-ai/vm0/compare/api-v1.374.0...api-v1.375.0) (2026-08-05)
 
 
