@@ -15,13 +15,12 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-
 import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadMessageCreatedSafely,
   publishThreadListChangedSafely,
 } from "../external/realtime";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { resolvedArtifactObject } from "./artifact-storage.service";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
 import { insertChatEvents } from "./zero-chat-event.service";

@@ -1,12 +1,12 @@
 import { Command } from "commander";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   findDesignSystem,
   findTemplate,
   listDesignSystems,
   listTemplates,
   type GenerationTarget,
-} from "./resource-registry";
+} from "@vm0/core/resource-registry";
 import {
   canonicalizeRegistryId,
   formatRegistryListing,

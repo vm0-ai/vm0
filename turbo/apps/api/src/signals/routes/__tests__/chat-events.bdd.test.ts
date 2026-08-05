@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import {
@@ -37,11 +36,11 @@ import {
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
-
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
@@ -92,7 +91,6 @@ import {
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
-  readChatEventContextFixture,
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
@@ -6965,14 +6963,6 @@ describe("CHAT-02: shared user message queue", () => {
   it("persists agent-run provenance for messages sent across chat threads", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ZeroChatMessaging]: true },
-    );
 
     const firstTargetThread = await chat.createThread(actor, { agentId });
     const secondTargetThread = await chat.createThread(actor, { agentId });
@@ -7159,19 +7149,14 @@ describe("CHAT-02: shared user message queue", () => {
       titleSnapshot: "New thread",
       href: `/chats/${source.threadId}#run-${source.runId}`,
     });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ZeroChatMessaging]: false },
-    );
-    const gatedTargetThread = await chat.createThread(actor, { agentId });
+    const forgedTargetThread = await chat.createThread(actor, { agentId });
     const forgedEventId = randomUUID();
     const forged = await requestSendEventWithBearer(
       sourceToken,
       {
         agentId,
         clientEventId: forgedEventId,
-        threadId: gatedTargetThread.id,
+        threadId: forgedTargetThread.id,
         prompt: "forged provenance",
         userMessage: {
           version: 1,
@@ -7202,62 +7187,12 @@ describe("CHAT-02: shared user message queue", () => {
     });
     const messagesAfterForgedSend = await chat.listThreadEvents(
       actor,
-      gatedTargetThread.id,
+      forgedTargetThread.id,
     );
     expect(messagesAfterForgedSend.events).not.toContainEqual(
       expect.objectContaining({ id: forgedEventId }),
     );
 
-    const gatedEventId = randomUUID();
-    const gatedSend = await requestSendEventWithBearer(
-      sourceToken,
-      {
-        agentId,
-        clientEventId: gatedEventId,
-        threadId: gatedTargetThread.id,
-        prompt: "provenance rollout disabled",
-      },
-      [201],
-    );
-    if (gatedSend.status !== 201) {
-      throw new Error("Expected the gated delegated prompt to be accepted");
-    }
-    if (!gatedSend.body.runId) {
-      throw new Error("Expected the gated delegated prompt to queue a run");
-    }
-    const gatedTargetRunId = gatedSend.body.runId;
-    expect(gatedSend.body.status).toBe("queued");
-    await expect(
-      readRunAutonomyBudgetFixture(context, gatedTargetRunId),
-    ).resolves.toBe(9);
-    const gatedMessages = await waitForThreadMessages(
-      actor,
-      gatedTargetThread.id,
-      (events) => {
-        return userMessages(events).some((event) => {
-          return event.id === gatedEventId;
-        });
-      },
-    );
-    expect(
-      userMessages(gatedMessages.events).find((event) => {
-        return event.id === gatedEventId;
-      }),
-    ).toMatchObject({
-      eventType: "input.prompt",
-      triggerSource: "agent",
-      userMessage: {
-        version: 1,
-        parts: [{ type: "text", text: "provenance rollout disabled" }],
-      },
-    });
-    await expect(
-      readChatEventContextFixture(gatedEventId),
-    ).resolves.toMatchObject({
-      contextType: "agent_run",
-      contextId: source.runId,
-    });
-    await cancelChatRun(actor, gatedTargetRunId);
     await cancelChatRun(actor, nowTargetRunId);
     await cancelChatRun(actor, secondTargetRunId);
     await cancelChatRun(actor, firstTargetRunId);
@@ -7271,11 +7206,6 @@ describe("CHAT-02: shared user message queue", () => {
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ZeroChatMessaging]: true },
-    );
 
     const source = await sendChatRun(actor, {
       agentId,

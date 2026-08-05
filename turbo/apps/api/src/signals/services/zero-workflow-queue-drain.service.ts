@@ -4,12 +4,11 @@ import {
 } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
-
 import { logger } from "../../lib/log";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { writeDb$, type Db } from "../external/db";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { AUTONOMY_BUDGET_EXHAUSTED_MESSAGE } from "../../lib/error";
 import {
   childAutonomyBudget,

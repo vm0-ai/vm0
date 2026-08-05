@@ -5,9 +5,9 @@ import {
   getZeroAgentInstructions,
   getZeroAgentUserConnectors,
   listZeroUserPermissionGrants,
-  listZeroConnectors,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/zero-agents";
+import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import type { ZeroConnector } from "../../../lib/api/domains/zero-connectors";
 import { policyIcon } from "../../../lib/utils/format-utils";
 import { formatAvatar } from "./avatar";

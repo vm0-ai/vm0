@@ -12,13 +12,14 @@ import { zeroFeishuConnectContract } from "@vm0/api-contracts/contracts/zero-fei
 import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feishu-oauth";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";

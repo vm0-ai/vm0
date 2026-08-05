@@ -6,9 +6,11 @@ import type {
   FirewallPolicies,
   FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
-import { getZeroConnectorCatalogPermissions } from "../../../lib/api";
+import {
+  getZeroConnectorCatalogPermissions,
+  type ZeroConnectorCatalogPermissionDetail,
+} from "../../../lib/api/domains/zero-connectors";
 import type { ZeroUserPermissionGrant } from "../../../lib/api/domains/zero-agents";
-import type { ZeroConnectorCatalogPermissionDetail } from "../../../lib/api/domains/zero-connectors";
 
 export interface ConnectorPermissionInfo {
   readonly connectorSlug: string;

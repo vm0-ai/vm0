@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { now } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { deleteAgentRunFixture } from "../../../test-fixtures/chat-events";

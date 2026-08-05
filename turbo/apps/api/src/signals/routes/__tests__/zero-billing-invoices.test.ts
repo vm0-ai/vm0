@@ -5,7 +5,8 @@ import AdmZip from "adm-zip";
 import { createStore } from "ccstate";
 import { http, HttpResponse } from "msw";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { mockListStripeInvoices } from "../../external/stripe-client";
 import {

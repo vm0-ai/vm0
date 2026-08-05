@@ -35,7 +35,6 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { useTranslation } from "react-i18next";
-
 import { i18n } from "../../i18n/index.ts";
 import { agents$ } from "../../signals/agent.ts";
 import {
@@ -77,7 +76,7 @@ import {
   gmailAutomationTitle,
   workflowTitle,
 } from "../workflows-page/workflow-shared.tsx";
-import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
+import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../signals/chat-page/workflow-prompt-action";
 
 export { CREATE_WORKFLOW_WITH_CHAT_PROMPT };
 

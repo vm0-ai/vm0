@@ -1,5 +1,4 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-
 import { command } from "ccstate";
 import { v5 as uuidv5 } from "uuid";
 import {
@@ -19,10 +18,9 @@ import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { and, desc, eq, isNull, notExists, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-
 import { env } from "../../lib/env";
 import { inferMimetype } from "../../lib/mimetype";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import {
   publishChatThreadMessageCreatedSafely,
   publishThreadListChanged,

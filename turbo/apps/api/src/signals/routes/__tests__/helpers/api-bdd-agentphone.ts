@@ -15,11 +15,8 @@ import type { z } from "zod";
 import { createApp } from "../../../../app-factory";
 import { env } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { server } from "../../../../mocks/server";
 import { flushWaitUntilForTest } from "../../../context/wait-until";
 import type { ApiTestUser } from "./api-bdd";

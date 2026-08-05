@@ -26,8 +26,6 @@ import {
 } from "./source";
 import { isConnectorCatalogIconKey } from "./icon";
 
-export { connectorCatalogVersionSchema } from "./common";
-
 export const SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION = 2;
 export const CONNECTOR_CATALOG_ACTIVE_KEY = `connectors/v${SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION}/active.json`;
 

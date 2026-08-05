@@ -13,7 +13,7 @@ import {
 } from "../agent.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { setActiveAgent$ } from "../zero-page/zero-job-detail.ts";
+import { setActiveAgent$ } from "../zero-page/job-detail";
 import { setChatAgentId$ } from "../agent-chat.ts";
 import { i18n } from "../../i18n/index.ts";
 

@@ -3,8 +3,8 @@ import { Command } from "commander";
 import { foldPendingChatQueueEvents } from "@vm0/api-contracts/contracts/chat-events";
 import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 
-import { listZeroChatEvents } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { listZeroChatEvents } from "../../../lib/api/domains/zero-chat";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { resolveChatThreadId } from "./shared";
 

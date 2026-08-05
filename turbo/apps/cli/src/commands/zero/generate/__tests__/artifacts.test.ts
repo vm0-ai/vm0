@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chalk from "chalk";
 import { generateCommand } from "../index";
 import { reportCommand } from "../artifacts";
-import { selectResourceCandidates } from "../../shared/resource-registry";
+import { selectResourceCandidates } from "@vm0/core/resource-registry";
 
 describe("zero generate source-backed artifact commands", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {

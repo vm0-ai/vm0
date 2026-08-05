@@ -1,5 +1,4 @@
 import { isDeepStrictEqual } from "node:util";
-
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 import { FEISHU_OAUTH_SCOPES } from "@vm0/api-contracts/contracts/zero-feishu-connect";
@@ -8,8 +7,7 @@ import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { secrets } from "@vm0/db/schema/secret";
-
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
 

@@ -4,7 +4,8 @@ import { HttpResponse, http } from "msw";
 
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import {
   createFixtureTracker,
   createZeroRouteMocks,

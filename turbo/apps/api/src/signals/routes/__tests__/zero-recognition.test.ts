@@ -9,7 +9,8 @@ import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
 import { HttpResponse, http } from "msw";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { buildArtifactKey } from "../../../lib/file-url";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";

@@ -12,7 +12,7 @@ import {
   verifySandboxToken,
   verifyZeroToken,
 } from "../tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { safeJsonParse } from "../../utils";
 
 function currentSecond(): number {
@@ -147,10 +147,8 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("chat-thread:write");
   });
 
-  it("grants chat event read and write independently of prompt discovery", () => {
-    const token = generateZeroToken("user_zero", "run_zero", "org_zero", {
-      [FeatureSwitchKey.ZeroChatMessaging]: false,
-    });
+  it("includes chat event read and write capabilities in zero-scoped tokens", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
     expect(decodeZeroTokenPayloadForTest(token)).toMatchObject({
       capabilities: expect.arrayContaining([

@@ -11,7 +11,6 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { delay } from "signal-timers";
-
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { buildTelegramResponse, splitMessage } from "../../lib/telegram-format";
@@ -27,7 +26,7 @@ import {
   getOfficialTelegramBotConfig,
   isOfficialTelegramBotId,
 } from "../external/telegram-official";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { bestEffort, settleIncludingAbort } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";

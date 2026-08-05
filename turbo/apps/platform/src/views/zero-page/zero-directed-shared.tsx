@@ -7,7 +7,7 @@ import {
   settingsDialogOpen$,
 } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
-import { AccountDropdown } from "./zero-sidebar.tsx";
+import { AccountDropdown } from "./zero-sidebar-account";
 import { Link } from "../router/link.tsx";
 
 export function MinimalSidebarLayout({ children }: { children: ReactNode }) {

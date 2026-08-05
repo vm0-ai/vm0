@@ -8,7 +8,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
 
 export type AgentPhoneChannel = "imessage" | "sms" | "mms";

@@ -5,7 +5,8 @@ import { HttpResponse, http } from "msw";
 import { beforeEach, expect } from "vitest";
 import { zeroDeveloperSupportContract } from "@vm0/api-contracts/contracts/zero-developer-support";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";

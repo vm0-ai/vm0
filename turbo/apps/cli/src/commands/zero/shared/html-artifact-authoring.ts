@@ -1,7 +1,7 @@
 import type {
   GenerationOutputKind,
   GenerationTarget,
-} from "./resource-registry";
+} from "@vm0/core/resource-registry";
 
 /** Generation targets authored as static HTML from a target-specific resource index. */
 export type HtmlArtifactKind = Extract<

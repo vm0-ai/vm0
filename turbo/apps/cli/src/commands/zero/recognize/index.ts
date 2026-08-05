@@ -8,13 +8,13 @@ import {
 } from "@vm0/api-contracts/contracts/zero-recognition";
 import { Command } from "commander";
 
+import { ApiRequestError } from "../../../lib/api/core/client-factory";
+import { callZeroRecognition } from "../../../lib/api/domains/zero-recognition";
 import {
-  ApiRequestError,
-  callZeroRecognition,
   inferWebUploadContentType,
   uploadWebFile,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/web";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 interface RecognizeOptions {
   readonly file: string;

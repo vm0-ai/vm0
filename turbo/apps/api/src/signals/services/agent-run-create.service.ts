@@ -20,7 +20,6 @@ import { modelProviderSurfaceProtocolSchema } from "@vm0/api-contracts/contracts
 import {
   getDefaultModel,
   getModelProviderCodexRuntimeConfig,
-  getModelProviderFirewall,
   getModelProviderEnvBindings,
   getModelImageInputSupport,
   getFrameworkForType,
@@ -36,6 +35,7 @@ import {
   type ModelProviderCodexRuntimeConfig,
   type ModelProviderEnvBindings,
   type ModelProviderCredentialScope,
+  getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -70,8 +70,10 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
+  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomConnectorSkillName,
@@ -98,8 +100,8 @@ import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { blobs } from "@vm0/db/schema/blob";
 import { conversations } from "@vm0/db/schema/conversation";
+import { blobs } from "@vm0/db/schema/blob";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import {
   modelProviderConnections,
@@ -126,7 +128,6 @@ import {
   type WithSubquery,
 } from "drizzle-orm";
 import { z } from "zod";
-
 import { env, optionalEnv } from "../../lib/env";
 import {
   nullableDriverValueDecoder,
@@ -149,7 +150,7 @@ import {
   publishOrgSignal,
   publishRunChangedForUserSafely,
 } from "../external/realtime";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { generateZeroToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
 import {
@@ -5232,6 +5233,13 @@ async function buildStoredExecutionContextDraft(args: {
       connectorVars: args.connectorContext.vars,
     }),
     ...args.extraEnvironment,
+    ...(isFeatureEnabled(
+      FeatureSwitchKey.R2ZeroCli,
+      args.featureSwitchContext,
+    ) &&
+    !isFeatureEnabled(FeatureSwitchKey.RustZeroCli, args.featureSwitchContext)
+      ? { CLI_PKG_URL: env("CLI_PKG_URL") }
+      : {}),
   };
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {

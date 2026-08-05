@@ -12,7 +12,7 @@ import {
   type ZeroConnectorCheckDiagnosticResult,
 } from "../../../lib/api/domains/zero-connectors";
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { toPlatformUrl } from "../doctor/platform-url";
 import {
   isComputerUsePermissionTarget,

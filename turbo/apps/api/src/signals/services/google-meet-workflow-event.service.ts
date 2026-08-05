@@ -1,10 +1,8 @@
 import { Buffer } from "node:buffer";
-
 import { OAuth2Client } from "google-auth-library";
 import { command } from "ccstate";
 import { and, eq, lte, or } from "drizzle-orm";
 import { z } from "zod";
-
 import { googleMeetTranscriptGeneratedEventConfigSchema } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   googleWorkspaceEventSubscriptionStates,
@@ -15,11 +13,10 @@ import {
   zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
-
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { safeJsonParse, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
@@ -34,10 +31,8 @@ import {
   WorkflowEventSourceTiming,
   type WorkflowEventRunTiming,
 } from "./workflow-event-source-timing.service";
-import {
-  runWorkflowAutomationNow$,
-  type AutomationRow,
-} from "./zero-workflow-automation-run.service";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import type { AutomationRow } from "./zero-workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 

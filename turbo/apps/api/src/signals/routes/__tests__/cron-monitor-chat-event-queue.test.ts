@@ -7,7 +7,8 @@ import {
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { testCronMonitorChatEventQueueStateRoutes } from "../test-cron-monitor-chat-event-queue-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";

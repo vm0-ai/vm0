@@ -20,7 +20,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { i18n } from "../../i18n/index.ts";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
-import { softwareKeyboardOccludesViewport } from "../../lib/visual-viewport-keyboard.ts";
+import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import {
   IconAdjustmentsHorizontal,
   IconAlertTriangle,
@@ -56,28 +56,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
+import { Button } from "@vm0/ui/components/ui/button";
+import { Card, CardContent } from "@vm0/ui/components/ui/card";
+import { Input } from "@vm0/ui/components/ui/input";
 import {
-  Button,
-  Card,
-  CardContent,
-  Input,
   Popover,
   PopoverClose,
   PopoverContent,
   PopoverTrigger,
+} from "@vm0/ui/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+} from "@vm0/ui/components/ui/select";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  cn,
-  processShortcut,
-  type KeyboardEventLike,
-} from "@vm0/ui";
+} from "@vm0/ui/components/ui/tooltip";
+import { cn } from "@vm0/ui/lib/utils";
+import { processShortcut, type KeyboardEventLike } from "@vm0/ui";
 import {
   bestEffort,
   detach,
@@ -112,21 +114,29 @@ import {
 } from "./presentation-html-preview.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
+  type IllustrationTemplateItem,
+} from "@vm0/core/illustration-template-items";
+import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  type PresentationTemplateItem,
+} from "@vm0/core/presentation-template-items";
+import {
   VIDEO_TEMPLATE_ITEMS,
+  findVideoTemplateItem,
+  type VideoTemplateItem,
+} from "@vm0/core/video-template-items";
+import {
   WEBSITE_TEMPLATE_ITEMS,
+  findWebsiteTemplateItem,
+  type WebsiteTemplateItem,
+} from "@vm0/core/website-template-items";
+import {
   WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
-  findWebsiteTemplateItem,
-  findVideoTemplateItem,
   findWorkflowTemplateItem,
-  r2ImageTransformUrl,
-  type IllustrationTemplateItem,
-  type PresentationTemplateItem,
-  type VideoTemplateItem,
-  type WebsiteTemplateItem,
   type WorkflowTemplateItem,
-} from "@vm0/core";
+} from "@vm0/core/workflow-template-items";
+import { r2ImageTransformUrl } from "@vm0/core/r2-image-transform";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
@@ -7277,11 +7287,7 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
 
   const handleKeyDown = (event: KeyboardEventLike) => {
     const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
-    const isTouchOnlyDevice =
-      isTouchDevice &&
-      (!window.matchMedia("(any-pointer: fine)").matches ||
-        softwareKeyboardOccludesViewport());
-    if (isTouchOnlyDevice) {
+    if (isMobileTextInputDevice()) {
       processShortcut({ "mod+enter": submit }, event);
       return;
     }

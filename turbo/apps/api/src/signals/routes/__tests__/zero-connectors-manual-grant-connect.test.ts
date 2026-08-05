@@ -9,7 +9,8 @@ import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-f
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { afterEach } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import {
   readConnectorCredentialStorageState,

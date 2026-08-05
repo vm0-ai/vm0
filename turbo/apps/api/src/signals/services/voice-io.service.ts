@@ -4,7 +4,7 @@ import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { db$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   AUDIO_INPUT_BEHAVIOR_KEY,
   sttDailyDurationKey,

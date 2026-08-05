@@ -59,9 +59,9 @@ import { attachCanonicalWebInputAssetsToEvent } from "./canonical-asset.service"
 import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
 import {
   childAutonomyBudget,
-  INITIAL_AUTONOMY_BUDGET,
   type ChildAutonomyBudget,
 } from "./autonomy-budget.service";
+import { INITIAL_AUTONOMY_BUDGET } from "./autonomy-budget.constants";
 import {
   autonomyBudgetSchemaAvailable,
   rolloutCompatibleAutonomyBudgetColumn,

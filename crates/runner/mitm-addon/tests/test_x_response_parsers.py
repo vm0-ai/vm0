@@ -11,7 +11,7 @@ import response_streaming
 from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT, STREAM_BUFFER_LIMIT
 from tests.flow_helpers import response_stream
 from tests.x_flow_helpers import (
-    json_body_that_exceeds_x_ndjson_work_limit,
+    json_body_that_exceeds_x_json_work_limit,
     make_x_response_flow,
 )
 
@@ -132,7 +132,7 @@ class TestNdjsonExtractor:
                 id="dense-array",
             ),
             pytest.param(
-                json_body_that_exceeds_x_ndjson_work_limit(),
+                json_body_that_exceeds_x_json_work_limit(),
                 id="dense-objects",
             ),
         ],
@@ -387,6 +387,52 @@ class TestXJsonFinalize:
 
         response_streaming.finalize_connector_response_state(flow)
         assert flow.metadata[metadata_keys.X_JSON_STATE] == state
+
+    def test_protocol_shaped_data_array_stays_within_work_limit(self, real_flow):
+        flow = self._billable_x_json_flow(real_flow)
+        data_item = b'{"id":"123456"}'
+        body = b'{"data":[' + b",".join([data_item] * 3_600) + b"]}"
+
+        mitm_addon.responseheaders(flow)
+        assert response_stream(flow)(body) == body
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == {
+            "body_parsed": True,
+            "body_truncated": False,
+            "response_data_count": 3_600,
+        }
+
+    def test_x_json_work_limit_discards_partial_state_and_next_flow_recovers(self, real_flow):
+        body = json_body_that_exceeds_x_json_work_limit()
+        flow = self._billable_x_json_flow(real_flow)
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        midpoint = len(body) // 2
+
+        assert callback(body[:midpoint]) == body[:midpoint]
+        assert callback(body[midpoint:]) == body[midpoint:]
+        response_streaming.finalize_connector_response_state(flow)
+
+        state = {
+            "body_parsed": False,
+            "body_truncated": False,
+            "parse_error": "work limit exceeded",
+        }
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == state
+        response_streaming.finalize_connector_response_state(flow)
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == state
+
+        next_flow = self._billable_x_json_flow(real_flow)
+        mitm_addon.responseheaders(next_flow)
+        response_stream(next_flow)(b'{"data":[{"id":"after"}]}')
+        response_streaming.finalize_connector_response_state(next_flow)
+
+        assert next_flow.metadata[metadata_keys.X_JSON_STATE] == {
+            "body_parsed": True,
+            "body_truncated": False,
+            "response_data_count": 1,
+        }
 
     def test_forensic_buffer_truncation_does_not_stop_x_json_parser(self, real_flow):
         flow = make_x_response_flow(

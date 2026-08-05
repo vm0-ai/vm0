@@ -1,13 +1,12 @@
 import { randomUUID } from "node:crypto";
-
 import { MODEL_PROVIDER_ENV_PLACEHOLDERS } from "@vm0/api-contracts/contracts/model-providers";
 import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
   type CreateModelProviderConnectionRequest,
 } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
-
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
