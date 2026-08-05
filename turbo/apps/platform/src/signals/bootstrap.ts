@@ -1,4 +1,5 @@
 import { command, type Command } from "ccstate";
+import { timeout } from "signal-timers";
 import { createElement } from "react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
@@ -440,11 +441,18 @@ const setupFeatureSwitches$ = command(async ({ set }, signal: AbortSignal) => {
   await set(syncLocalePreference$, signal);
 });
 
-function showSuccessToastAfterMount(message: string): void {
+function showSuccessToastAfterMount(
+  message: string,
+  signal: AbortSignal,
+): void {
   const showToast = () => {
-    window.setTimeout(() => {
-      toast.success(message);
-    }, 0);
+    timeout(
+      () => {
+        toast.success(message);
+      },
+      0,
+      { signal },
+    );
   };
 
   if (document.readyState === "complete") {
@@ -452,10 +460,10 @@ function showSuccessToastAfterMount(message: string): void {
     return;
   }
 
-  window.addEventListener("load", showToast, { once: true });
+  window.addEventListener("load", showToast, { once: true, signal });
 }
 
-const handleBillingRedirect$ = command(({ set }) => {
+const handleBillingRedirect$ = command(({ set }, signal: AbortSignal) => {
   const url = new URL(window.location.href);
   const billing = url.searchParams.get("billing");
   const credits = url.searchParams.get("credits");
@@ -487,6 +495,7 @@ const handleBillingRedirect$ = command(({ set }) => {
         },
         { plan: label },
       ),
+      signal,
     );
     set(reloadBillingStatus$);
   }
@@ -496,6 +505,7 @@ const handleBillingRedirect$ = command(({ set }) => {
       i18n.t(($) => {
         return $.billing.toasts.creditsAdded;
       }),
+      signal,
     );
     set(reloadBillingStatus$);
   }
@@ -505,6 +515,7 @@ const handleBillingRedirect$ = command(({ set }) => {
       i18n.t(($) => {
         return $.billing.toasts.concurrencyAdded;
       }),
+      signal,
     );
     set(reloadBillingStatus$);
   }
@@ -541,7 +552,7 @@ export const bootstrap$ = command(
 
     render();
 
-    set(handleBillingRedirect$);
+    set(handleBillingRedirect$, signal);
     set(handleSlackRedirect$);
 
     await Promise.all([

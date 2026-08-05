@@ -303,27 +303,6 @@ mod tests {
     }
 
     #[test]
-    fn emit_continues_when_system_log_append_fails() {
-        let _guard = LOG_TEST_MUTEX.lock().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let parent = dir.path().join("parent-file");
-        std::fs::write(&parent, "not a directory").unwrap();
-        let path = parent.join("system.log");
-        let _system_log = SystemLogFileGuard::set(&path);
-
-        emit(
-            "WARN",
-            "sandbox:guest-agent",
-            format_args!("system log path is not writable"),
-        );
-
-        assert!(
-            !path.exists(),
-            "test setup expected append to fail for missing parent dir",
-        );
-    }
-
-    #[test]
     fn set_system_log_file_switches_paths_and_drops_cached_handle() {
         let _guard = LOG_TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();

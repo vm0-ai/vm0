@@ -20,6 +20,7 @@ import type {
   ServerInferResponses,
 } from "@vm0/api-contracts/contracts/trpc-contract";
 import { http, HttpResponse, type HttpHandler, type PathParams } from "msw";
+import { delay } from "signal-timers";
 import { createDeferredPromise } from "../signals/utils.ts";
 
 export interface SignalContextLike {
@@ -77,20 +78,7 @@ async function withSignal<T>(
 }
 
 function delayWithSignal(ms: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) {
-    return Promise.reject(getAbortReason(signal));
-  }
-  return new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      window.clearTimeout(timer);
-      reject(getAbortReason(signal));
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
+  return delay(ms, { signal });
 }
 
 function neverWithSignal(signal: AbortSignal): Promise<never> {

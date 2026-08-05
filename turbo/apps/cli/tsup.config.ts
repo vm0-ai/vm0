@@ -27,14 +27,6 @@ export default defineConfig({
       "const require = __createRequire(import.meta.url);",
     ].join("\n"),
   },
-  // @ngrok/ngrok contains platform-specific native binaries (.node) that
-  // cannot be bundled by esbuild — must remain external.
-  // All other dependencies live in devDependencies and are bundled by tsup.
-  // @sentry/node was previously external due to ImportInTheMiddle ESM loader
-  // hook issues, but that was fixed upstream in sentry-javascript v8.8.0
-  // (see getsentry/sentry-javascript#12009). It is now in devDependencies
-  // and bundled like everything else.
-  external: ["@ngrok/ngrok"],
   // Resolve packages from the CLI's node_modules when bundling workspace deps
   // (e.g. @vm0/core imports zod, which lives in apps/cli/node_modules)
   esbuildOptions(options) {

@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.685.3](https://github.com/vm0-ai/vm0/compare/app-v0.685.2...app-v0.685.3) (2026-08-05)
+
+
+### Refactoring
+
+* **api:** stop projecting chat event trigger source ([#25278](https://github.com/vm0-ai/vm0/issues/25278)) ([de5898c](https://github.com/vm0-ai/vm0/commit/de5898c6a40f96535c6591ac320d8e8cf2cb35c3))
+* **chat:** remove artifacts from completion events ([#25271](https://github.com/vm0-ai/vm0/issues/25271)) ([d10fe3f](https://github.com/vm0-ai/vm0/commit/d10fe3f32f119f2c3012fe6f34b88b170ba1a434))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.6
+    * @vm0/core bumped to 8.516.2
+
+## [0.685.2](https://github.com/vm0-ai/vm0/compare/app-v0.685.1...app-v0.685.2) (2026-08-05)
+
+
+### Bug Fixes
+
+* **chat:** show every message attachment above the bubble ([#25242](https://github.com/vm0-ai/vm0/issues/25242)) ([9668f00](https://github.com/vm0-ai/vm0/commit/9668f0006ebf5f7eeb47ce126592bf44087d03d9))
+* persist automation trigger prompts in chat events ([#25249](https://github.com/vm0-ai/vm0/issues/25249)) ([26c99e1](https://github.com/vm0-ai/vm0/commit/26c99e14a4d7db973a64eee87d40080fa5be3baf))
+
+
+### Refactoring
+
+* **platform:** replace native timers with abortable signal timers ([#25250](https://github.com/vm0-ai/vm0/issues/25250)) ([e483222](https://github.com/vm0-ai/vm0/commit/e4832229c259f0a7c32718b142793054a9ef04fe))
+
+## [0.685.1](https://github.com/vm0-ai/vm0/compare/app-v0.685.0...app-v0.685.1) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.5
+    * @vm0/connectors bumped to 1.203.0
+    * @vm0/core bumped to 8.516.1
+
 ## [0.685.0](https://github.com/vm0-ai/vm0/compare/app-v0.684.3...app-v0.685.0) (2026-08-05)
 
 

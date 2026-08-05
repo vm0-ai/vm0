@@ -18,12 +18,12 @@ Lifecycle:
 """
 
 from collections.abc import Callable
-from datetime import UTC, datetime
-from typing import Literal, NamedTuple
+from typing import NamedTuple
 
 from mitmproxy import http
 from wsproto.utilities import generate_accept_token
 
+import anthropic_accounting
 import body_decoding
 import claude_output_timing
 import flow_metadata
@@ -31,7 +31,6 @@ import flow_metadata_keys as metadata_keys
 import usage
 from body_limits import STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
-from usage.reporting_context import usage_reporting_context
 from usage.underbilling import log_usage_underbilling
 
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
@@ -52,19 +51,6 @@ _HTTP_OWS_CHARS = " \t"
 _ANTHROPIC_MESSAGES_SSE_PROTOCOL = "anthropic_messages_sse"
 _ANTHROPIC_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
 _ANTHROPIC_MESSAGE_STOP_EVENT = "message_stop"
-_ANTHROPIC_ACCOUNTING_TELEMETRY_LOG_TYPE = "anthropic_sse_accounting"
-
-_AnthropicAccountingStatus = Literal[
-    "no_recoverable_usage",
-    "recovered_partial",
-    "recovered_terminal",
-]
-
-_ANTHROPIC_ACCOUNTING_ACTION_TYPES: dict[_AnthropicAccountingStatus, str] = {
-    "no_recoverable_usage": "anthropic_sse_incomplete_no_recoverable_usage",
-    "recovered_partial": "anthropic_sse_incomplete_recovered_partial",
-    "recovered_terminal": "anthropic_sse_incomplete_recovered_terminal",
-}
 
 _ResponseChunkParser = Callable[[bytes], None]
 _SseUsageParseErrorLogger = Callable[[str, str], None]
@@ -74,7 +60,7 @@ _AnthropicLifecycleObserver = Callable[[str, str | None], None]
 def _anthropic_incomplete_accounting_status(
     usage_dict: dict,
     accounting_events: set[str],
-) -> _AnthropicAccountingStatus:
+) -> anthropic_accounting.AnthropicAccountingStatus:
     has_recoverable_usage = bool(accounting_events & _ANTHROPIC_USAGE_EVENTS) and (
         usage.has_positive_model_provider_usage(usage_dict)
     )
@@ -83,36 +69,6 @@ def _anthropic_incomplete_accounting_status(
     if _ANTHROPIC_MESSAGE_STOP_EVENT in accounting_events:
         return "recovered_terminal"
     return "recovered_partial"
-
-
-def _report_anthropic_incomplete_accounting(
-    flow: http.HTTPFlow,
-    accounting_status: _AnthropicAccountingStatus,
-) -> None:
-    run_id = flow_metadata.run_id(flow.metadata)
-    context = usage_reporting_context(flow)
-    if not run_id or not context.is_complete:
-        return
-
-    payload: dict[str, object] = {
-        "runId": run_id,
-        "sandboxOperations": [
-            {
-                "ts": datetime.now(UTC).isoformat(),
-                "action_type": _ANTHROPIC_ACCOUNTING_ACTION_TYPES[accounting_status],
-                "duration_ms": 0,
-                "success": False,
-                "error": body_decoding.INCOMPLETE_COMPRESSED_BODY,
-            }
-        ],
-    }
-    usage.webhook.enqueue_webhook_delivery(
-        context.telemetry_url(),
-        context.sandbox_token,
-        payload,
-        context.proxy_log_path,
-        _ANTHROPIC_ACCOUNTING_TELEMETRY_LOG_TYPE,
-    )
 
 
 class CapturedResponseStreamBody(NamedTuple):
@@ -318,7 +274,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                             usage_dict,
                             anthropic_accounting_events,
                         )
-                        _report_anthropic_incomplete_accounting(
+                        anthropic_accounting.report_incomplete(
                             flow,
                             accounting_status,
                         )

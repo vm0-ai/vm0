@@ -1042,45 +1042,6 @@ describe("zero attachment chips", () => {
     ).toBeNull();
   });
 
-  it("renders an Agent-published attachment on an otherwise empty reply", async () => {
-    const assetId = "a0000000-0000-4000-a000-000000000053";
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      chatEvents: [
-        {
-          id: "msg-canonical-agent-output-completed",
-          role: "assistant",
-          content: null,
-          runId: "run-canonical-output",
-          runLifecycleEvent: "completed",
-          attachFiles: [
-            {
-              id: assetId,
-              filename: "final-report.pdf",
-              contentType: "application/pdf",
-              size: 4096,
-              url: "https://cdn.vm7.io/artifacts/test/final-report.pdf",
-              assetRef: {
-                id: assetId,
-                classification: "published-output",
-                access: "published",
-                materialization: { status: "ready" },
-                provenance: { provider: "agent" },
-              },
-            },
-          ],
-          createdAt: "2026-03-10T00:00:02Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    await expect(
-      screen.findByLabelText("Open pdf preview for final-report.pdf"),
-    ).resolves.toBeInTheDocument();
-  });
-
   it("renders canonical user video attachments at the same size as image attachments", async () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/media/photo.png";
     const videoUrl = "https://cdn.vm7.io/artifacts/test/media/screencast.mp4";
@@ -1136,7 +1097,7 @@ describe("zero attachment chips", () => {
     expect(screen.getByText("this is the screencast")).toBeInTheDocument();
   });
 
-  it("shows user video attachments before the text bubble and keeps file chips inline", async () => {
+  it("shows user attachments above the text bubble with media and file chips on separate rows", async () => {
     const videoUrl = "https://cdn.vm7.io/artifacts/test/elevated/clip.mp4";
     const docUrl = "https://cdn.vm7.io/artifacts/test/elevated/README.md";
     mockChatLifecycle(context, {
@@ -1178,12 +1139,25 @@ describe("zero attachment chips", () => {
 
     expect(textBubble).not.toBeNull();
     expect(videoPreview.closest(".zero-chat-bubble-user")).toBeNull();
+    expect(docChip.closest(".zero-chat-bubble-user")).toBeNull();
     expect(
       videoPreview.compareDocumentPosition(textBubble!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(docChip.closest(".zero-chat-bubble-user")).toBe(textBubble);
-    expect(docChip.parentElement).toHaveClass("mx-1");
+    expect(
+      docChip.compareDocumentPosition(textBubble!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId("message-media-attachments")).getByLabelText(
+        "Preview clip.mp4",
+      ),
+    ).toBe(videoPreview);
+    expect(
+      within(screen.getByTestId("message-file-attachments")).getByLabelText(
+        "Open markdown preview for README.md",
+      ),
+    ).toBe(docChip);
   });
 
   it("opens persisted canonical audio, video, and document attachments", async () => {

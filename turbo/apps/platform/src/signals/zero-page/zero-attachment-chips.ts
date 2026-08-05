@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { timeout } from "signal-timers";
 import { openArtifactInOpenSidebar$ } from "../chat-page/thread-sidebar-coordinator.ts";
 import {
   createTextPreviewComputed,
@@ -6,7 +7,7 @@ import {
   type TextPreviewComputed,
   type TextPreviewKind,
 } from "../text-preview.ts";
-import { onRef } from "../utils.ts";
+import { onRef, resetSignal } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Lightbox state — tracks which attachment is open in the global preview UI
@@ -90,6 +91,7 @@ const internalLightboxState$ = state<AttachmentLightboxState | null>(null);
 const internalLightboxDialogVisible$ = state(false);
 const internalLightboxDialogFullscreen$ = state(false);
 const internalLightboxDialogCloseToken$ = state(0);
+const resetLightboxDialogCloseSignal$ = resetSignal();
 
 export const lightboxUrl$ = computed((get) => {
   return get(internalLightboxState$);
@@ -121,14 +123,21 @@ const closeLightboxForDialogExitToken$ = command(
   },
 );
 
-export const closeLightboxWithDialogExit$ = command(({ get, set }) => {
-  const token = get(internalLightboxDialogCloseToken$) + 1;
-  set(internalLightboxDialogCloseToken$, token);
-  set(internalLightboxDialogVisible$, false);
-  window.setTimeout(() => {
-    set(closeLightboxForDialogExitToken$, token);
-  }, LIGHTBOX_DIALOG_EXIT_DURATION_MS);
-});
+export const closeLightboxWithDialogExit$ = command(
+  ({ get, set }, signal: AbortSignal) => {
+    const closeSignal = set(resetLightboxDialogCloseSignal$, signal);
+    const token = get(internalLightboxDialogCloseToken$) + 1;
+    set(internalLightboxDialogCloseToken$, token);
+    set(internalLightboxDialogVisible$, false);
+    timeout(
+      () => {
+        set(closeLightboxForDialogExitToken$, token);
+      },
+      LIGHTBOX_DIALOG_EXIT_DURATION_MS,
+      { signal: closeSignal },
+    );
+  },
+);
 
 /**
  * An open artifact sidebar owns every artifact click that could live in it, so
@@ -284,7 +293,7 @@ const closeLightboxOnEscape$ = command(
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
-          set(closeLightboxWithDialogExit$);
+          set(closeLightboxWithDialogExit$, signal);
         }
       },
       { capture: true, signal },

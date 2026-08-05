@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -222,7 +222,7 @@ describe("user messages", () => {
       return element as HTMLElement;
     });
     expect(userMessageElement.textContent).toBe(
-      "Start Archived source with PDForiginal-report.pdf, then " +
+      "Start Archived source with , then " +
         "TXTdeleted-notes.txt.\n" +
         "Use **literal** <span>.",
     );
@@ -244,17 +244,26 @@ describe("user messages", () => {
       image.compareDocumentPosition(userMessageElement) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    // Resolved files leave the bubble too, so they show the live filename
+    // rather than the snapshot the message was written with.
+    const pdf = screen.getByLabelText(
+      "Open pdf preview for renamed-report.pdf",
+    );
     expect(
-      userMessageElement.querySelector(
-        'button[aria-label="Open pdf preview for original-report.pdf"]',
+      within(screen.getByTestId("message-file-attachments")).getByLabelText(
+        "Open pdf preview for renamed-report.pdf",
       ),
-    ).toBeInTheDocument();
+    ).toBe(pdf);
+    expect(
+      pdf.compareDocumentPosition(userMessageElement) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.getByLabelText("File deleted-notes.txt")).toBeInTheDocument();
     expect(
       screen.queryByText("Legacy structured body should stay hidden"),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Retired template")).not.toBeInTheDocument();
-    expect(screen.queryByText("renamed-report.pdf")).not.toBeInTheDocument();
+    expect(screen.queryByText("original-report.pdf")).not.toBeInTheDocument();
 
     const literalMarkdown = await screen.findByText(
       "Canonical **bold** remains",
@@ -492,7 +501,6 @@ describe("user messages", () => {
           role: "user",
           content: "Delegated prompt",
           runId: targetRunId,
-          triggerSource: "agent",
           userMessage: {
             version: 1,
             parts: [

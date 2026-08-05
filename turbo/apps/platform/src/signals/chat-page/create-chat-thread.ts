@@ -6,7 +6,7 @@ import {
   type Computed,
   type State,
 } from "ccstate";
-import { delay } from "signal-timers";
+import { delay, timeout } from "signal-timers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { IN_VITEST } from "../../env.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -740,7 +740,7 @@ function createThreadUIState() {
 
   // Copy state with 2s auto-clear
   const internalCopiedId$ = state<string | null>(null);
-  const internalCopiedTimerId$ = state<number | null>(null);
+  const resetCopiedSignal$ = resetSignal();
 
   const copiedEventId$ = computed((get) => {
     return get(internalCopiedId$);
@@ -758,16 +758,22 @@ function createThreadUIState() {
       if (!ok) {
         return;
       }
-      const existingTimerId = get(internalCopiedTimerId$);
-      if (existingTimerId !== null) {
-        window.clearTimeout(existingTimerId);
-      }
+      const copiedSignal = set(resetCopiedSignal$, signal);
       set(internalCopiedId$, eventId);
-      const timerId = window.setTimeout(() => {
-        set(internalCopiedId$, null);
-        set(internalCopiedTimerId$, null);
-      }, 2000);
-      set(internalCopiedTimerId$, timerId);
+      const clearCopiedId = () => {
+        if (get(internalCopiedId$) === eventId) {
+          set(internalCopiedId$, null);
+        }
+      };
+      copiedSignal.addEventListener("abort", clearCopiedId, { once: true });
+      timeout(
+        () => {
+          copiedSignal.removeEventListener("abort", clearCopiedId);
+          clearCopiedId();
+        },
+        2000,
+        { signal: copiedSignal },
+      );
     },
   );
 

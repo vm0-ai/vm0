@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import { timeout } from "signal-timers";
 import {
   useGet,
   useSet,
@@ -813,16 +814,29 @@ function ChatThreadsSkeleton() {
   );
 }
 
-function markPointerFocus(viewport: HTMLElement) {
+function markPointerFocus(viewport: HTMLElement, signal: AbortSignal) {
+  signal.throwIfAborted();
   const token = Math.random().toString(36);
   viewport.dataset.sidebarPointerFocusToken = token;
-  viewport.ownerDocument.defaultView?.setTimeout(() => {
+  const clearPointerFocus = () => {
     if (viewport.dataset.sidebarPointerFocusToken !== token) {
       return;
     }
 
     delete viewport.dataset.sidebarPointerFocusToken;
-  }, 350);
+  };
+  const clearPointerFocusOnAbort = () => {
+    clearPointerFocus();
+  };
+  signal.addEventListener("abort", clearPointerFocusOnAbort, { once: true });
+  timeout(
+    () => {
+      signal.removeEventListener("abort", clearPointerFocusOnAbort);
+      clearPointerFocus();
+    },
+    350,
+    { signal },
+  );
 }
 
 function consumePointerFocus(viewport: HTMLElement) {
@@ -947,7 +961,7 @@ function ExpandedChatThreadsContent() {
       data-testid="sidebar-scroll-area"
       tabIndex={currentMainThreadId ? 0 : undefined}
       onPointerDownCapture={(event) => {
-        markPointerFocus(event.currentTarget);
+        markPointerFocus(event.currentTarget, pageSignal);
       }}
       onFocus={(event) => {
         if (event.target !== event.currentTarget) {

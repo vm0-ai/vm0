@@ -141,7 +141,6 @@ import {
   integrationCompletionFallbackEventIdForRun,
   recommendedFollowupsEventIdForRun,
 } from "./assistant-event-id";
-import { attachCanonicalPublishedAssetsToCompletionEvent } from "./canonical-published-asset-event.service";
 import {
   failQueuedUserMessage,
   loadNextUnclaimedQueuedUserMessage,
@@ -1687,13 +1686,6 @@ async function insertRunLifecycleMarkerTransaction(args: {
   );
   if (!marker) {
     return null;
-  }
-  if (input.event === "completed") {
-    await attachCanonicalPublishedAssetsToCompletionEvent(args.tx, {
-      runId: input.runId,
-      threadId: input.threadId,
-      completedEventId: marker.id,
-    });
   }
   const slackDeliveryCallbackId =
     deliveryEvent && input.slackDelivery

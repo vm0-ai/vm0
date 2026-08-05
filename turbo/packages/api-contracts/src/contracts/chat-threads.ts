@@ -6,7 +6,6 @@ import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
-import { triggerSourceSchema } from "./logs";
 import { supportedRunModelSchema } from "./model-providers";
 import {
   avatarVideoAspectRatioSchema,
@@ -494,7 +493,6 @@ const chatEventBaseSchema = z.object({
   content: z.string().nullable(),
   runId: z.string().optional(),
   runGroupId: z.string().optional(),
-  triggerSource: triggerSourceSchema.optional(),
   isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
   revokesEventId: z.string().optional(),
@@ -537,7 +535,6 @@ const inputAutomationEventSchema = chatEventBaseSchema
     eventType: z.literal("input.automation"),
     content: z.null(),
     userMessage: userMessageDocumentSchema.optional(),
-    triggerSource: triggerSourceSchema,
   })
   .strict();
 
@@ -550,7 +547,6 @@ const inputGoalEventSchema = chatEventBaseSchema
     // the user-facing document and stream ordering contract.
     runId: z.never().optional(),
     runGroupId: z.never().optional(),
-    triggerSource: z.never().optional(),
     isGoalRun: z.never().optional(),
     runEventId: z.never().optional(),
     revokesEventId: z.never().optional(),
@@ -620,7 +616,6 @@ const runCompletedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("run.completed"),
     runId: z.string(),
-    attachFiles: z.array(resolvedAttachFileSchema).optional(),
     runLifecycleEvent: z.literal("completed"),
   })
   .strict();
@@ -736,14 +731,32 @@ if (CHAT_EVENT_TYPES.length !== chatEventSchema.options.length) {
   );
 }
 
-// The previous browser bundle only understands started/stopped. Keep those
-// response leaves while it can remain open; canonical application state is
-// normalized at the client persistence boundary.
-const compatibleChatEventSchema = z.discriminatedUnion("eventType", [
-  ...chatEventSchema.options,
-  browserStartedEventSchema,
-  browserStoppedEventSchema,
-]);
+function normalizeCompatibleChatEvent(value: unknown): unknown {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("eventType" in value) ||
+    value.eventType !== "run.completed" ||
+    !("attachFiles" in value)
+  ) {
+    return value;
+  }
+  const canonical = { ...value };
+  Reflect.deleteProperty(canonical, "attachFiles");
+  return canonical;
+}
+
+// The previous browser bundle only understands started/stopped, while
+// preceding API responses and cached event logs may still include completion
+// attachments. Normalize both previous shapes at the persistence boundary.
+const compatibleChatEventSchema = z.preprocess(
+  normalizeCompatibleChatEvent,
+  z.discriminatedUnion("eventType", [
+    ...chatEventSchema.options,
+    browserStartedEventSchema,
+    browserStoppedEventSchema,
+  ]),
+);
 
 const chatThreadDetailSchema = z.object({
   /**

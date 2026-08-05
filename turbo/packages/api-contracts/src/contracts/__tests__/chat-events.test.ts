@@ -55,7 +55,6 @@ const chatEvents = [
         },
       ],
     },
-    triggerSource: "workflow-event",
     createdAt: "2026-07-23T00:00:01.000Z",
   },
   {
@@ -88,7 +87,6 @@ const chatEvents = [
       ],
     },
     error: "Insufficient credits",
-    triggerSource: "workflow-event",
     createdAt: CREATED_AT,
   },
   {
@@ -311,6 +309,12 @@ describe("ChatEvent catalog", () => {
         encryptedParams: "must-stay-server-side",
       }).success,
     ).toBe(false);
+    expect(
+      chatEventSchema.safeParse({
+        ...automation,
+        triggerSource: "workflow-event",
+      }).success,
+    ).toBe(false);
     const goal = chatEvents[2];
     expect(
       chatEventSchema.safeParse({
@@ -338,6 +342,38 @@ describe("ChatEvent catalog", () => {
         ...browserOpen,
         browserId: "must-not-exist",
       }).success,
+    ).toBe(false);
+  });
+
+  it("accepts attachments only on input events", () => {
+    const attachment = {
+      id: "attachment-1",
+      filename: "brief.txt",
+      contentType: "text/plain",
+      size: 5,
+      url: "https://example.com/brief.txt",
+    };
+    const prompt = chatEvents.find((event) => {
+      return event.eventType === "input.prompt";
+    });
+    const rejected = chatEvents.find((event) => {
+      return event.eventType === "input.rejected";
+    });
+    const completed = chatEvents.find((event) => {
+      return event.eventType === "run.completed";
+    });
+
+    expect(
+      chatEventSchema.safeParse({ ...prompt, attachFiles: [attachment] })
+        .success,
+    ).toBe(true);
+    expect(
+      chatEventSchema.safeParse({ ...rejected, attachFiles: [attachment] })
+        .success,
+    ).toBe(true);
+    expect(
+      chatEventSchema.safeParse({ ...completed, attachFiles: [attachment] })
+        .success,
     ).toBe(false);
   });
 
@@ -375,6 +411,31 @@ describe("ChatEvent catalog", () => {
         }),
       ),
     ).toMatchObject({ eventType: "browser.close" });
+  });
+
+  it("normalizes completion attachments from previous clients and storage", () => {
+    const completed = chatEvents.find((event) => {
+      return event.eventType === "run.completed";
+    });
+    if (!completed) {
+      throw new Error("Expected a completed event fixture");
+    }
+
+    const compatible = compatibleChatEventSchema.parse({
+      ...completed,
+      attachFiles: [
+        {
+          id: "previous-completion-attachment",
+          filename: "report.pdf",
+          contentType: "application/pdf",
+          size: 1024,
+          url: "https://example.com/report.pdf",
+        },
+      ],
+    });
+
+    expect(compatible).toStrictEqual(completed);
+    expect(canonicalChatEvent(compatible)).toStrictEqual(completed);
   });
 
   it("rejects a response that only carries the retired rich-input field", () => {

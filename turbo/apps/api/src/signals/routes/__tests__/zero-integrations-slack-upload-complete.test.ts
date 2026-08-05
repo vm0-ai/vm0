@@ -34,6 +34,10 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  insertChatEventAssetRefFixture,
+  readChatEventAssetRefIds,
+} from "./helpers/runtime-state";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteSlackIntegrationFixture$,
@@ -461,7 +465,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     });
   });
 
-  it("binds one canonical output asset to the completion event, Slack, and Google Drive", async () => {
+  it("keeps one canonical output in artifact, Slack, and Google Drive surfaces", async () => {
     const { orgId, userId, runId, threadId, runnerGroup, agentId } =
       await seedRunScoped();
     const objectStore = chatCallbacks.acceptChatObjectStorage();
@@ -700,6 +704,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         message.content === "The canonical report is ready."
       );
     });
+    expect(finalReply).toBeDefined();
     expect(finalReply).not.toHaveProperty("attachFiles");
 
     const lifecycleMarker = messages.events.find(
@@ -713,20 +718,36 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     );
     expect(lifecycleMarker).toBeDefined();
     expect(lifecycleMarker?.content).toBeNull();
-    expect(lifecycleMarker?.attachFiles).toHaveLength(1);
-    expect(lifecycleMarker?.attachFiles?.[0]).toMatchObject({
-      id: canonicalAssetId,
-      filename: "report.csv",
-      assetRef: {
-        id: canonicalAssetId,
-        classification: "published-output",
-        access: "published",
-        materialization: { status: "ready" },
-      },
+    expect(lifecycleMarker).not.toHaveProperty("attachFiles");
+    if (!lifecycleMarker) {
+      throw new Error("Expected a completed lifecycle marker");
+    }
+
+    // Completion-to-output refs have no production write API after this
+    // change. The test-only state boundary verifies the writer stopped, then
+    // simulates one pre-cutover row while the assertion stays on the public API.
+    await expect(
+      readChatEventAssetRefIds(context, lifecycleMarker.id),
+    ).resolves.toStrictEqual([]);
+    await insertChatEventAssetRefFixture(context, {
+      eventId: lifecycleMarker.id,
+      assetId: canonicalAssetId,
+      position: 0,
     });
+    const eventsWithHistoricalRef = await chatApi.listThreadEvents(
+      actorFor({ orgId, userId }),
+      threadId,
+    );
+    const historicalLifecycleMarker = eventsWithHistoricalRef.events.find(
+      (message) => {
+        return message.id === lifecycleMarker.id;
+      },
+    );
+    expect(historicalLifecycleMarker).toBeDefined();
+    expect(historicalLifecycleMarker).not.toHaveProperty("attachFiles");
   }, 20_000);
 
-  it("binds a canonical output to the completion event when there is no text", async () => {
+  it("keeps an attachment-only output out of the event stream", async () => {
     const { orgId, userId, runId, threadId, runnerGroup } =
       await seedRunScoped();
     const operationId = randomUUID();
@@ -777,16 +798,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     );
     expect(lifecycleMarker).toBeDefined();
     expect(lifecycleMarker?.content).toBeNull();
-    expect(lifecycleMarker?.attachFiles?.[0]).toMatchObject({
-      id: canonicalAssetId,
-      filename: "attachment-only.pdf",
-      assetRef: {
-        id: canonicalAssetId,
-        classification: "published-output",
-        access: "published",
-        materialization: { status: "pending" },
-      },
-    });
+    expect(lifecycleMarker).not.toHaveProperty("attachFiles");
     const separateAttachmentReply = messages.events.find((message) => {
       return (
         message.eventType !== "run.completed" &&
@@ -798,6 +810,13 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       );
     });
     expect(separateAttachmentReply).toBeUndefined();
+    expect(
+      messages.events.find((message) => {
+        return (
+          message.eventType === "output.message" && message.runId === runId
+        );
+      }),
+    ).toBeUndefined();
   }, 20_000);
 
   it("keeps a canonical Slack delivery failed when file info has no permalink", async () => {

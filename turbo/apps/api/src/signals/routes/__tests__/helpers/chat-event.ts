@@ -20,7 +20,11 @@ export function chatEventAutomationPart(
 export function chatEventDisplayText(event: ChatEvent): string | null {
   switch (event.eventType) {
     case "input.prompt":
+    case "input.automation":
     case "input.rejected": {
+      if (!event.userMessage) {
+        return null;
+      }
       return event.userMessage.parts
         .flatMap((part) => {
           return part.type === "text" ? [part.text] : [];

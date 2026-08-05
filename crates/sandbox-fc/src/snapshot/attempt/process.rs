@@ -13,11 +13,9 @@ use crate::process_log::{
     PROCESS_LOG_RECORD_MAX_BYTES, PROCESS_LOG_RECORD_TRUNCATED, ProcessLogRecord,
     read_process_log_records,
 };
+use crate::snapshot_mount_namespace::{BindMount, SnapshotMountMode, build_command};
 
 use super::super::SnapshotError;
-
-const SPAWN_INNER_CMD: &str = r#"mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" "$6" --api-sock "$7""#;
-const UNSHARE_MOUNT_ARGS: &[&str] = &["--mount", "--propagation", "private"];
 
 /// Number of recent stderr lines retained from the spawn chain, used to
 /// surface the underlying cause when the chain (`unshare → bash → ip netns
@@ -85,23 +83,22 @@ impl Default for SnapshotProcess {
 
 impl SnapshotProcess {
     pub(super) fn spawn(&mut self, spawn: SnapshotProcessSpawn<'_>) -> std::io::Result<()> {
-        let mut child = tokio::process::Command::new("unshare")
-            .args(UNSHARE_MOUNT_ARGS)
-            .args(["bash", "-c", SPAWN_INNER_CMD, "_"])
-            .arg(spawn.cow_device_path) // $1
-            .arg(spawn.drive_bind) // $2
-            .arg(spawn.workspace_image) // $3
-            .arg(spawn.workspace_drive_bind) // $4
-            .arg(spawn.network_name) // $5
-            .arg(spawn.binary_path) // $6
-            .arg(spawn.api_sock) // $7
-            .current_dir(spawn.current_dir)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .process_group(0)
-            .kill_on_drop(true)
-            .spawn()?;
+        let mut child = build_command(
+            SnapshotMountMode::Creation {
+                rootfs: BindMount::new(spawn.cow_device_path, spawn.drive_bind),
+                workspace: BindMount::new(spawn.workspace_image, spawn.workspace_drive_bind),
+            },
+            spawn.network_name,
+            spawn.binary_path,
+            spawn.api_sock,
+        )
+        .current_dir(spawn.current_dir)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .process_group(0)
+        .kill_on_drop(true)
+        .spawn()?;
 
         // Stream stdout/stderr lines to tracing (same pattern as sandbox.rs).
         // Stderr is also retained in a bounded ring buffer so that an early
@@ -685,51 +682,5 @@ mod tests {
             &stderr_buf_with_lines(&["noise"]),
         );
         assert!(result.is_ok(), "ok should pass through");
-    }
-
-    /// Structural assertion that the unshare inner_cmd uses positional
-    /// parameters (no path interpolation that could shell-inject) and
-    /// performs the bind-then-exec sequence.
-    ///
-    /// The bind mount must run inside `unshare --mount` so it auto-cleans
-    /// when the FC process dies — see issue #9494. This test guards against
-    /// refactor regressions before the kernel-interaction CI job runs.
-    #[test]
-    fn spawn_inner_cmd_uses_positional_args() {
-        // Only positional args, no $0 or unquoted vars.
-        assert!(!SPAWN_INNER_CMD.contains("$0"));
-        for arg in ["$1", "$2", "$3", "$4", "$5", "$6", "$7"] {
-            let quoted = format!(r#""{arg}""#);
-            assert!(
-                SPAWN_INNER_CMD.contains(&quoted),
-                "expected quoted positional {arg} in inner_cmd: {SPAWN_INNER_CMD}"
-            );
-        }
-        // Strictly 7 positional args — if someone adds a `$8`..`$9` without
-        // updating the spawn site's `.arg(...)` count, the bash call
-        // silently expands to empty strings and fails at runtime.
-        for unexpected in ["$8", "$9"] {
-            assert!(
-                !SPAWN_INNER_CMD.contains(unexpected),
-                "unexpected positional {unexpected} in inner_cmd: {SPAWN_INNER_CMD}"
-            );
-        }
-
-        // Flow: bind the device, then exec into ip netns exec firecracker.
-        // `exec` is critical so signals reach FC directly without an extra
-        // bash layer holding a process slot.
-        assert!(
-            SPAWN_INNER_CMD.starts_with("mount --bind"),
-            "inner_cmd must establish bind mount first: {SPAWN_INNER_CMD}"
-        );
-        assert!(
-            SPAWN_INNER_CMD.contains("&& exec ip netns exec"),
-            "inner_cmd must exec ip netns exec firecracker: {SPAWN_INNER_CMD}"
-        );
-    }
-
-    #[test]
-    fn snapshot_create_unshare_uses_private_mount_propagation() {
-        assert_eq!(UNSHARE_MOUNT_ARGS, ["--mount", "--propagation", "private"]);
     }
 }

@@ -26,7 +26,7 @@ def assert_pending(
     flows, including billable model-provider and connector flows plus
     non-billable observable model-provider flows.  ``buffered`` is the number
     of unadmitted addon work units, including usage source events and retained
-    provider timing reports, and ``reports`` is the number of pending webhook
+    diagnostic reports, and ``reports`` is the number of pending webhook
     report deliveries.
 
     When ``flush_request_id`` is provided, the snapshot must include a matching

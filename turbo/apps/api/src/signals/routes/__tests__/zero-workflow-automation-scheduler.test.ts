@@ -18,6 +18,7 @@ import { deleteAgentRunRootFixture } from "../../../test-fixtures/run-deletion";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { mockGmailConnectorOAuth } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -33,6 +34,7 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
+const runReadsApi = createRunReadsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 const chatFilesApi = createChatFilesBddApi(context);
 const computerUseApi = createComputerUseBddApi(context);
@@ -165,7 +167,6 @@ async function executeDueWorkflowAutomations(
 interface WorkflowRunMessage {
   readonly runId: string;
   readonly runGroupId?: string;
-  readonly triggerSource: string | undefined;
   readonly triggerBrief: string | null | undefined;
   readonly workflowId: string | undefined;
   readonly workflowName: string;
@@ -194,7 +195,6 @@ async function workflowRunMessages(
         ...(message.runGroupId === undefined
           ? {}
           : { runGroupId: message.runGroupId }),
-        triggerSource: message.triggerSource,
         triggerBrief: automationPart.automationBrief,
         workflowId: automationPart.workflowId,
         workflowName: automationPart.workflowName,
@@ -430,7 +430,13 @@ describe("zero workflow automation scheduler", () => {
 
     const run = await onlyWorkflowRunMessage(threadId);
     expect(run.runGroupId).toBeUndefined();
-    expect(run.triggerSource).toBe("workflow-schedule");
+    const logs = await runReadsApi.requestListLogs(scenario.actor, {}, [200]);
+    expect(logs.body.data).toContainEqual(
+      expect.objectContaining({
+        id: run.runId,
+        triggerSource: "workflow-schedule",
+      }),
+    );
     expect(run.triggerBrief).toMatch(
       new RegExp(
         `^${friendlyTriggeredAtPattern(
@@ -810,7 +816,6 @@ describe("zero workflow automation scheduler", () => {
     expect(historicalRuns).toStrictEqual([
       {
         runId: run.runId,
-        triggerSource: "workflow-schedule",
         triggerBrief: run.triggerBrief,
         workflowId: scenario.workflowId,
         workflowName: WORKFLOW_NAME,

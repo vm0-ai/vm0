@@ -78,7 +78,6 @@ function setupWorkflowQueuePage({
         id: EVENT_ID_1,
         eventType: "input.automation",
         content: null,
-        triggerSource: "workflow-event",
         userMessage: {
           version: 1,
           parts: [{ type: "automation", workflowName: "customer-followup" }],
@@ -90,7 +89,6 @@ function setupWorkflowQueuePage({
         id: EVENT_ID_2,
         eventType: "input.automation",
         content: null,
-        triggerSource: "workflow-event",
         userMessage: {
           version: 1,
           parts: [

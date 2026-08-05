@@ -1098,7 +1098,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000073c",
           runGroupId,
-          triggerSource: "workflow-event",
           userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:00:00Z",
         },
@@ -1108,7 +1107,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: "First workflow result",
           runId: "f0000001-0000-4000-a000-00000000073c",
           runGroupId,
-          triggerSource: "workflow-event",
           createdAt: "2026-06-09T10:00:30Z",
         },
         {
@@ -1117,7 +1115,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000073d",
           runGroupId,
-          triggerSource: "workflow-event",
           userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:02:00Z",
         },
@@ -1127,7 +1124,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: "Latest workflow result",
           runId: "f0000001-0000-4000-a000-00000000073d",
           runGroupId,
-          triggerSource: "workflow-event",
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:02:30Z",
         },
@@ -1176,7 +1172,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000074c",
           runGroupId,
-          triggerSource: "workflow-event",
           userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:00:00Z",
         },
@@ -1186,7 +1181,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: "First workflow result",
           runId: "f0000001-0000-4000-a000-00000000074c",
           runGroupId,
-          triggerSource: "workflow-event",
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:00:30Z",
         },
@@ -1196,7 +1190,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: workflowPrompt,
           runId: "f0000001-0000-4000-a000-00000000074d",
           runGroupId,
-          triggerSource: "workflow-event",
           userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:02:00Z",
         },
@@ -1207,7 +1200,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           error: "Run cancelled",
           runId: "f0000001-0000-4000-a000-00000000074d",
           runGroupId,
-          triggerSource: "workflow-event",
           runLifecycleEvent: "cancelled",
           createdAt: "2026-06-09T10:02:30Z",
         },
@@ -1244,7 +1236,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
-  it("renders workflow automation user messages with the workflow title and brief", async () => {
+  it("keeps rendering legacy workflow automation briefs without text", async () => {
     const threadId = "thread-workflow-user-message-marker";
     const workflowPrompt = "/daily-workflow";
 
@@ -1257,7 +1249,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           eventType: "input.automation",
           content: null,
           runId: "f0000001-0000-4000-a000-00000000083c",
-          triggerSource: "workflow-event",
           userMessage: {
             version: 1,
             parts: [
@@ -1276,7 +1267,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           role: "assistant",
           content: "Workflow result",
           runId: "f0000001-0000-4000-a000-00000000083c",
-          triggerSource: "workflow-event",
           createdAt: "2026-06-09T10:00:30Z",
         },
       ],
@@ -1299,6 +1289,97 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
+  it("renders the persisted workflow prompt instead of its brief", async () => {
+    const threadId = "thread-workflow-user-message-prompt";
+    const workflowPrompt =
+      '/daily-workflow\nTrigger: Gmail applied label "todo" to message msg-123.';
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Workflow user message prompt",
+      chatEvents: [
+        {
+          id: "msg-workflow-prompt-user",
+          eventType: "input.automation",
+          content: null,
+          runId: "f0000001-0000-4000-a000-00000000084c",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: workflowPrompt },
+              {
+                type: "automation",
+                workflowName: "Daily workflow",
+                workflowId: "f0000001-0000-4000-a000-000000000841",
+                automationBrief: "Gmail label applied",
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const annotation = await screen.findByLabelText("Workflow Daily workflow");
+    const userTurn = annotation.closest('[data-role="user"]');
+    expect(userTurn).not.toBeNull();
+    expect(userTurn).toHaveTextContent("/daily-workflow");
+    expect(userTurn).toHaveTextContent(
+      'Trigger: Gmail applied label "todo" to message msg-123.',
+    );
+    expect(userTurn).not.toHaveTextContent("Gmail label applied");
+  });
+
+  it("renders persisted workflow prompts without a trigger brief", async () => {
+    const threadId = "thread-workflow-user-message-no-brief";
+    const workflowPrompt =
+      '/turbo-flaky-test-repair\nTrigger: GitHub Actions workflow "Turbo" completed with conclusion "failure".';
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Workflow user message without brief",
+      chatEvents: [
+        {
+          id: "msg-workflow-no-brief-user",
+          eventType: "input.automation",
+          content: null,
+          runId: "f0000001-0000-4000-a000-00000000085c",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: workflowPrompt },
+              {
+                type: "automation",
+                workflowName: "turbo-flaky-test-repair",
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const annotation = await screen.findByLabelText(
+      "Workflow turbo-flaky-test-repair",
+    );
+    const userTurn = annotation.closest('[data-role="user"]');
+    expect(userTurn).not.toBeNull();
+    expect(userTurn).toHaveTextContent("/turbo-flaky-test-repair");
+    expect(userTurn).toHaveTextContent(
+      'Trigger: GitHub Actions workflow "Turbo" completed with conclusion "failure".',
+    );
+  });
+
   it("renders a pending automation only as an automation event", async () => {
     const threadId = "thread-pending-automation-event";
 
@@ -1310,7 +1391,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-claimed-automation",
           eventType: "input.automation",
           content: null,
-          triggerSource: "workflow-event",
           userMessage: {
             version: 1,
             parts: [
@@ -1328,7 +1408,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-pending-automation",
           eventType: "input.automation",
           content: null,
-          triggerSource: "workflow-event",
           userMessage: {
             version: 1,
             parts: [
