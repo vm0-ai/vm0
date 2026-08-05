@@ -139,7 +139,7 @@ def test_lone_surrogate_key_does_not_abort_later_selected_fields():
     assert result.values == {("usage", "input_tokens"): 7}
 
 
-def test_bulk_skips_large_unselected_string_without_storing_value():
+def test_bulk_skips_large_unselected_string_after_escape_without_storing_value():
     bytewise_accept_calls = 0
     accept_string_byte_code = JsonSelectiveExtractor._accept_string_byte.__code__
 
@@ -154,7 +154,7 @@ def test_bulk_skips_large_unselected_string_without_storing_value():
         scalar_fields={("usage", "input_tokens"): ScalarField("int")}
     )
     large_text = b"x" * (2 * 1024 * 1024)
-    payload = b'{"content":[{"text":"' + large_text + b'"}],"usage":{"input_tokens":7}}'
+    payload = b'{"content":[{"text":"prefix\\n' + large_text + b'"}],"usage":{"input_tokens":7}}'
 
     chunk_size = 64 * 1024
     previous_profile = sys.getprofile()
