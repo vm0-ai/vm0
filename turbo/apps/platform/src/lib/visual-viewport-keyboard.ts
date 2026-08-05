@@ -1,3 +1,6 @@
+import { delay } from "signal-timers";
+import { detach, Reason } from "../signals/utils.ts";
+
 const KEYBOARD_SHRINK_RATIO = 0.15;
 const MIN_KEYBOARD_SHRINK_PX = 120;
 const LAYOUT_VIEWPORT_CHANGE_TOLERANCE_PX = 8;
@@ -226,7 +229,11 @@ function updateKeyboardViewportState(
   setKeyboardOpen(readKeyboardOcclusion(state.baselineHeight, viewport));
 }
 
-export function setupVisualViewportKeyboardState(): () => void {
+export function setupVisualViewportKeyboardState(
+  signal: AbortSignal,
+  resetSettledSignal: () => AbortSignal,
+): () => void {
+  signal.throwIfAborted();
   const viewport = window.visualViewport;
 
   if (!viewport) {
@@ -243,13 +250,23 @@ export function setupVisualViewportKeyboardState(): () => void {
   };
   let scheduledFrameId: number | null = null;
   let revealFrameId: number | null = null;
-  let settledTimerId: number | null = null;
+  let settledTimerSignal: AbortSignal | null = null;
 
   const cancelSettledUpdate = () => {
-    if (settledTimerId !== null) {
-      window.clearTimeout(settledTimerId);
-      settledTimerId = null;
+    if (settledTimerSignal) {
+      resetSettledSignal();
+      settledTimerSignal = null;
     }
+  };
+
+  const commitSettledUpdate = async (settledSignal: AbortSignal) => {
+    await delay(VIEWPORT_SETTLE_DELAY_MS, { signal: settledSignal });
+    settledSignal.throwIfAborted();
+    if (settledTimerSignal !== settledSignal) {
+      return;
+    }
+    settledTimerSignal = null;
+    update(true);
   };
 
   const update = (commitOpening: boolean) => {
@@ -288,10 +305,13 @@ export function setupVisualViewportKeyboardState(): () => void {
     // The short trailing read also prevents the first stale resize sample from
     // moving the page before the native focus pan has settled.
     cancelSettledUpdate();
-    settledTimerId = window.setTimeout(() => {
-      settledTimerId = null;
-      update(true);
-    }, VIEWPORT_SETTLE_DELAY_MS);
+    const settledSignal = resetSettledSignal();
+    settledTimerSignal = settledSignal;
+    detach(
+      commitSettledUpdate(settledSignal),
+      Reason.DomCallback,
+      "visual viewport settle",
+    );
   };
 
   const scheduleBaselineReset = () => {
@@ -319,7 +339,13 @@ export function setupVisualViewportKeyboardState(): () => void {
   document.addEventListener("focusout", scheduleUpdate);
   update(false);
 
-  return () => {
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) {
+      return;
+    }
+    cleanedUp = true;
+    signal.removeEventListener("abort", cleanup);
     viewport.removeEventListener("resize", scheduleUpdate);
     viewport.removeEventListener("scroll", scheduleUpdate);
     window.removeEventListener("orientationchange", scheduleBaselineReset);
@@ -334,4 +360,6 @@ export function setupVisualViewportKeyboardState(): () => void {
     cancelSettledUpdate();
     setKeyboardClosed();
   };
+  signal.addEventListener("abort", cleanup, { once: true });
+  return cleanup;
 }

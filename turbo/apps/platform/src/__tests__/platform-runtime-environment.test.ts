@@ -192,7 +192,9 @@ describe("portable platform runtime environment", () => {
       ),
     ).toBe("https://cdn.vm0.io/artifacts/user_1/artifact_1/report.html");
 
-    runtime.plausible.initPlausible();
+    const plausibleController = new AbortController();
+    await runtime.plausible.initPlausible(plausibleController.signal);
+    plausibleController.abort();
     runtime.plausible.capturePlausibleEvent("runtime_environment_test");
     runtime.posthog.initPostHog();
     runtime.sentry.initSentry();
@@ -239,7 +241,9 @@ describe("portable platform runtime environment", () => {
       ),
     ).toBe("https://cdn.vm7.io/artifacts/user_1/artifact_1/report.html");
 
-    runtime.plausible.initPlausible();
+    const plausibleController = new AbortController();
+    await runtime.plausible.initPlausible(plausibleController.signal);
+    plausibleController.abort();
     runtime.posthog.initPostHog();
     runtime.sentry.initSentry();
 

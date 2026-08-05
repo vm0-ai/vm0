@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { timeout } from "signal-timers";
 import {
   zeroVoiceIoQuotaContract,
   type AudioInputQuotaResponse,
@@ -27,6 +28,7 @@ import { i18n } from "../../i18n/index.ts";
 const L = logger("VoiceIO:STT");
 
 const resetRecord$ = resetSignal();
+const resetVoiceSilenceTimer$ = resetSignal();
 // ---------------------------------------------------------------------------
 // Internal state
 // ---------------------------------------------------------------------------
@@ -130,6 +132,10 @@ function reportMicStartFailure(error: unknown): void {
   toast.error(microphoneAccessDeniedMessage());
 }
 
+function reportAudioActivityMonitorStartFailure(error: unknown): void {
+  L.error("Audio activity monitor start failed", error);
+}
+
 function microphoneAccessDeniedMessage(): string {
   return i18n.t(($) => {
     return $.chat.voice.microphoneAccessDenied;
@@ -200,6 +206,7 @@ interface VoiceSilenceTimer {
 }
 
 interface VoiceSilenceTimerOptions {
+  readonly resetTimerSignal: () => AbortSignal;
   readonly isStopped: () => boolean;
   readonly markStopped: () => void;
   readonly isVoiceActivityReliable: () => boolean;
@@ -698,6 +705,7 @@ interface VoiceSegmentSessionOptions {
     signal: AbortSignal,
   ) => Promise<SttSegmentResult>;
   readonly isVoiceActivityReliable: () => boolean;
+  readonly resetSilenceTimerSignal: () => AbortSignal;
   readonly onLongSilence: () => void;
   readonly onQuotaExceeded: () => void;
   readonly onRecorderChanged: (recorder: MediaRecorder) => void;
@@ -863,12 +871,12 @@ function createVoiceSegmentTranscriber(
 function createVoiceSilenceTimer(
   options: VoiceSilenceTimerOptions,
 ): VoiceSilenceTimer {
-  let timerId: number | null = null;
+  let timerSignal: AbortSignal | null = null;
 
   const clear = (): void => {
-    if (timerId !== null) {
-      window.clearTimeout(timerId);
-      timerId = null;
+    if (timerSignal) {
+      options.resetTimerSignal();
+      timerSignal = null;
     }
   };
 
@@ -877,14 +885,23 @@ function createVoiceSilenceTimer(
     if (options.isStopped() || !options.isVoiceActivityReliable()) {
       return;
     }
-    timerId = window.setTimeout(() => {
-      timerId = null;
-      if (options.isStopped() || !options.isVoiceActivityReliable()) {
-        return;
-      }
-      options.markStopped();
-      options.onLongSilence();
-    }, VOICE_ACTIVITY_AUTO_STOP_MS);
+    const signal = options.resetTimerSignal();
+    timerSignal = signal;
+    timeout(
+      () => {
+        if (timerSignal !== signal) {
+          return;
+        }
+        timerSignal = null;
+        if (options.isStopped() || !options.isVoiceActivityReliable()) {
+          return;
+        }
+        options.markStopped();
+        options.onLongSilence();
+      },
+      VOICE_ACTIVITY_AUTO_STOP_MS,
+      { signal },
+    );
   };
 
   return { clear, start };
@@ -921,6 +938,7 @@ function createVoiceSegmentSession(
   };
 
   const silenceTimer = createVoiceSilenceTimer({
+    resetTimerSignal: options.resetSilenceTimerSignal,
     isStopped: () => {
       return stopped;
     },
@@ -993,7 +1011,7 @@ export const startRecording$ = command(
 
     let audioActivityMonitor: AudioActivityMonitor | null = null;
     let voiceActivityReliable = false;
-    let longSilenceStop: ReturnType<typeof createDeferredPromise<void>> | null =
+    let silenceStop: ReturnType<typeof createDeferredPromise<void>> | null =
       null;
     const starting = withCleanup(
       (async (): Promise<VoiceRecordingStartup | null> => {
@@ -1018,9 +1036,12 @@ export const startRecording$ = command(
           isVoiceActivityReliable: () => {
             return voiceActivityReliable;
           },
+          resetSilenceTimerSignal: () => {
+            return set(resetVoiceSilenceTimer$, signal);
+          },
           onLongSilence: () => {
-            if (longSilenceStop && !longSilenceStop.settled()) {
-              longSilenceStop.resolve(undefined);
+            if (silenceStop && !silenceStop.settled()) {
+              silenceStop.resolve(undefined);
             }
           },
           onQuotaExceeded: () => {
@@ -1072,9 +1093,7 @@ export const startRecording$ = command(
         },
         signal,
       ),
-      (error) => {
-        L.error("Audio activity monitor start failed", error);
-      },
+      reportAudioActivityMonitorStartFailure,
     );
     signal.throwIfAborted();
     if (startedAudioActivityMonitor === undefined) {
@@ -1090,13 +1109,13 @@ export const startRecording$ = command(
     set(internalVoiceActivityAvailable$, audioActivityMonitor !== null);
     set(internalVoiceActivityCoversRecording$, voiceActivityReliable);
     if (voiceActivityReliable) {
-      longSilenceStop = createDeferredPromise<void>(signal);
+      silenceStop = createDeferredPromise<void>(signal);
       recordingSession.startSilenceTimeout();
     } else {
       return;
     }
 
-    await longSilenceStop.promise;
+    await silenceStop.promise;
     signal.throwIfAborted();
     await set(stopAndTranscribe$, signal);
   },
