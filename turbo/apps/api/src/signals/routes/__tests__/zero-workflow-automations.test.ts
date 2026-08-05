@@ -194,7 +194,14 @@ function configureGmailStopMock(
 interface CalendarWatchRecorder {
   watchCalls: number;
   baselineCalls: number;
+  incrementalCalls: number;
   readonly channelIds: string[];
+}
+
+interface CalendarWatchRegistration {
+  readonly channelId: string;
+  readonly channelToken: string;
+  readonly resourceId: string;
 }
 
 interface CalendarStopRecorder extends StopCallRecorder {
@@ -235,10 +242,15 @@ function configureGoogleCalendarStopMock(
 function configureGoogleCalendarWatchMock(args?: {
   readonly calendarId?: string;
   readonly baselineItems?: readonly Record<string, unknown>[];
+  readonly incrementalItems?: readonly Record<string, unknown>[];
+  readonly onWatchRegistered?: (
+    registration: CalendarWatchRegistration,
+  ) => Promise<void>;
 }): CalendarWatchRecorder {
   const recorder: CalendarWatchRecorder = {
     watchCalls: 0,
     baselineCalls: 0,
+    incrementalCalls: 0,
     channelIds: [],
   };
   const calendarId = args?.calendarId ?? "primary";
@@ -266,10 +278,18 @@ function configureGoogleCalendarWatchMock(args?: {
         });
         expect(body.id).toBeTruthy();
         expect(body.token).toBeTruthy();
-        recorder.channelIds.push(String(body.id));
+        const channelId = String(body.id);
+        const channelToken = String(body.token);
+        const resourceId = `calendar-resource-${recorder.watchCalls}`;
+        recorder.channelIds.push(channelId);
+        await args?.onWatchRegistered?.({
+          channelId,
+          channelToken,
+          resourceId,
+        });
         return HttpResponse.json({
           id: body.id,
-          resourceId: "calendar-resource-1",
+          resourceId,
           resourceUri: `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`,
           expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
         });
@@ -278,7 +298,6 @@ function configureGoogleCalendarWatchMock(args?: {
     http.get(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
       ({ request, params }) => {
-        recorder.baselineCalls += 1;
         expect(params.calendarId).toBe(calendarId);
         expect(request.headers.get("authorization")).toBe(
           "Bearer calendar-access-token",
@@ -286,7 +305,16 @@ function configureGoogleCalendarWatchMock(args?: {
         const url = new URL(request.url);
         expect(url.searchParams.get("showDeleted")).toBe("true");
         expect(url.searchParams.get("maxResults")).toBe("2500");
-        expect(url.searchParams.get("syncToken")).toBeNull();
+        const syncToken = url.searchParams.get("syncToken");
+        if (syncToken) {
+          recorder.incrementalCalls += 1;
+          expect(syncToken).toBe("calendar-sync-baseline");
+          return HttpResponse.json({
+            items: args?.incrementalItems ?? [],
+            nextSyncToken: "calendar-sync-incremental",
+          });
+        }
+        recorder.baselineCalls += 1;
         return HttpResponse.json({
           items: args?.baselineItems ?? [],
           nextSyncToken: "calendar-sync-baseline",
@@ -1789,6 +1817,62 @@ describe("zero workflow automations", () => {
     expect(watchRecorder.baselineCalls).toBe(1);
   });
 
+  it("accepts Calendar changes while the provider watch request is in flight", async () => {
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    const notificationStatuses: number[] = [];
+    const watch = configureGoogleCalendarWatchMock({
+      baselineItems: [
+        {
+          id: "registration-window-event",
+          etag: '"version-1"',
+          status: "confirmed",
+          summary: "Before registration",
+        },
+      ],
+      incrementalItems: [
+        {
+          id: "registration-window-event",
+          etag: '"version-2"',
+          status: "confirmed",
+          summary: "During registration",
+        },
+      ],
+      onWatchRegistered: async ({ channelId, channelToken, resourceId }) => {
+        const response = await createApp({ signal: context.signal }).request(
+          "/api/webhooks/google-calendar",
+          {
+            method: "POST",
+            headers: {
+              "x-goog-channel-id": channelId,
+              "x-goog-channel-token": channelToken,
+              "x-goog-resource-id": resourceId,
+              "x-goog-resource-state": "exists",
+              "x-goog-message-number": "1",
+            },
+          },
+        );
+        notificationStatuses.push(response.status);
+      },
+    });
+
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+
+    expect(notificationStatuses).toStrictEqual([200]);
+    expect(watch.baselineCalls).toBe(1);
+    expect(watch.incrementalCalls).toBe(1);
+  });
+
   it("does not create provider watches for disabled Gmail or Calendar automations", async () => {
     const scenario = await setupFixture();
     await connectGmail(scenario);
@@ -2033,7 +2117,7 @@ describe("zero workflow automations", () => {
     expect(watch.baselineCalls).toBe(2);
   });
 
-  it("stops a newly created Calendar channel when baseline setup fails", async () => {
+  it("does not create a Calendar channel when baseline setup fails", async () => {
     const scenario = await setupFixture();
     await connectGoogleCalendar(scenario);
     const watch = configureGoogleCalendarWatchMock();
@@ -2062,9 +2146,8 @@ describe("zero workflow automations", () => {
       [400],
     );
 
-    expect(stop.requests).toStrictEqual([
-      { id: watch.channelIds[0], resourceId: "calendar-resource-1" },
-    ]);
+    expect(watch.watchCalls).toBe(0);
+    expect(stop.calls).toBe(0);
     const listed = await accept(
       automationsClient().list({
         headers: authHeaders(),
@@ -2181,6 +2264,71 @@ describe("zero workflow automations", () => {
       id: watch.channelIds[0],
       resourceId: "calendar-resource-1",
     });
+  });
+
+  it("retains a replaced Calendar channel until its stop succeeds", async () => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    const startedAt = Date.parse("2026-08-05T08:00:00.000Z");
+    mockNow(startedAt);
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    const watch = configureGoogleCalendarWatchMock();
+    const stop = configureGoogleCalendarStopMock([500, 204]);
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", () => {
+        return HttpResponse.json({
+          access_token: "calendar-access-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+        });
+      }),
+    );
+    mockNow(startedAt + 6 * 24 * 60 * 60 * 1000);
+    const renewed = await accept(
+      renewGoogleCalendarWatchesClient().renew({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+    expect(renewed.body).toStrictEqual({
+      success: true,
+      renewed: 1,
+      failed: 0,
+    });
+    expect(watch.watchCalls).toBe(2);
+    expect(watch.baselineCalls).toBe(1);
+    expect(stop.requests).toStrictEqual([
+      { id: watch.channelIds[0], resourceId: "calendar-resource-1" },
+    ]);
+
+    const reconciled = await accept(
+      renewGoogleCalendarWatchesClient().renew({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+    expect(reconciled.body).toStrictEqual({
+      success: true,
+      renewed: 0,
+      failed: 0,
+    });
+    expect(watch.watchCalls).toBe(2);
+    expect(stop.requests).toStrictEqual([
+      { id: watch.channelIds[0], resourceId: "calendar-resource-1" },
+      { id: watch.channelIds[0], resourceId: "calendar-resource-1" },
+    ]);
   });
 
   it("leaves a Gmail automation disabled when watch setup fails", async () => {

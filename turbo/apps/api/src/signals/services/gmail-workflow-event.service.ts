@@ -672,6 +672,7 @@ async function persistEnsuredGmailWatch(args: {
   readonly topicName: string;
   readonly activeStates: readonly GmailWatchStateRow[];
   readonly inactiveStates: readonly GmailWatchStateRow[];
+  readonly resetCurrentCursor: boolean;
   readonly watch: z.infer<typeof gmailWatchResponseSchema>;
   readonly currentTime: Date;
 }): Promise<void> {
@@ -681,7 +682,6 @@ async function persistEnsuredGmailWatch(args: {
     await args.db
       .update(gmailWatchStates)
       .set({
-        lastHistoryId: args.watch.historyId,
         watchExpirationAt: expiration,
         lastWatchRenewedAt: args.currentTime,
         needsRewatch: false,
@@ -715,7 +715,9 @@ async function persistEnsuredGmailWatch(args: {
       target: [gmailWatchStates.connectorId, gmailWatchStates.topicName],
       set: {
         emailAddress: args.emailAddress,
-        lastHistoryId: args.watch.historyId,
+        ...(args.resetCurrentCursor
+          ? { lastHistoryId: args.watch.historyId }
+          : {}),
         watchExpirationAt: expiration,
         lastWatchRenewedAt: args.currentTime,
         needsRewatch: false,
@@ -795,6 +797,7 @@ async function ensureGmailWatchWithResolvedAccess(args: {
       topicName: args.topicName,
       activeStates: active,
       inactiveStates: inactive,
+      resetCurrentCursor: args.forceRefresh,
       watch: watch.value,
       currentTime,
     });
@@ -935,7 +938,6 @@ async function reconcileActiveGmailStates(args: {
   await args.db
     .update(gmailWatchStates)
     .set({
-      lastHistoryId: watch.value.historyId,
       watchExpirationAt: watchExpirationDate(watch.value.expiration),
       lastWatchRenewedAt: currentTime,
       needsRewatch: false,

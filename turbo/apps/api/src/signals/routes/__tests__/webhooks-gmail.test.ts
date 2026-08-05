@@ -152,15 +152,27 @@ function configureGmailEnv(): void {
   configureGoogleOidcCertMock();
 }
 
-function configureGmailWatchMock(historyId = "100"): void {
+interface GmailWatchRecorder {
+  calls: number;
+}
+
+function configureGmailWatchMock(
+  historyIds: string | readonly string[] = "100",
+): GmailWatchRecorder {
+  const recorder: GmailWatchRecorder = { calls: 0 };
   server.use(
     http.post("https://gmail.googleapis.com/gmail/v1/users/me/watch", () => {
+      recorder.calls += 1;
       return HttpResponse.json({
-        historyId,
+        historyId:
+          typeof historyIds === "string"
+            ? historyIds
+            : historyIds[Math.min(recorder.calls - 1, historyIds.length - 1)],
         expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
       });
     }),
   );
+  return recorder;
 }
 
 function uniqueGmailEmail(): string {
@@ -467,9 +479,11 @@ async function connectGmail(
   });
 }
 
-async function setupFixture(): Promise<GmailTestFixture> {
+async function setupFixture(
+  email = "gmail-webhook-owner@example.test",
+): Promise<GmailTestFixture> {
   const actor = bdd.user({
-    email: "gmail-webhook-owner@example.test",
+    email,
     orgRole: "org:admin",
   });
   if (!actor.orgId) {
@@ -701,6 +715,80 @@ describe("POST /api/webhooks/gmail", () => {
       }),
       [204],
     );
+  });
+
+  it("preserves existing Gmail cursors when another identity starts watching the mailbox", async () => {
+    const gmailEmail = uniqueGmailEmail();
+    configureGmailEnv();
+    const watch = configureGmailWatchMock(["100", "200"]);
+    const first = await setupFixture(
+      `gmail-first-${randomUUID()}@example.test`,
+    );
+    await connectGmail(first.actor, gmailEmail);
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(first.actor),
+        params: { workflowId: first.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+
+    const second = await setupFixture(
+      `gmail-second-${randomUUID()}@example.test`,
+    );
+    await connectGmail(second.actor, gmailEmail);
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(second.actor),
+        params: { workflowId: second.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    expect(watch.calls).toBe(2);
+
+    const startHistoryIds: string[] = [];
+    server.use(
+      http.get(
+        "https://gmail.googleapis.com/gmail/v1/users/me/history",
+        ({ request }) => {
+          const startHistoryId = new URL(request.url).searchParams.get(
+            "startHistoryId",
+          );
+          if (!startHistoryId) {
+            throw new Error("Expected Gmail history cursor");
+          }
+          startHistoryIds.push(startHistoryId);
+          return HttpResponse.json({ history: [], historyId: "201" });
+        },
+      ),
+    );
+
+    const response = await postGmailWebhook(
+      gmailPushBody({
+        emailAddress: gmailEmail,
+        historyId: 201,
+        messageId: "pubsub-shared-mailbox",
+      }),
+    );
+
+    expectResponseStatus(response, 200);
+    expect(response.body).toStrictEqual({
+      success: true,
+      watchStates: 2,
+      dispatched: 0,
+      duplicates: 0,
+    });
+    expect(startHistoryIds.sort()).toStrictEqual(["100", "200"]);
   });
 
   it("dispatches matching new inbound messages and de-duplicates retries", async () => {
