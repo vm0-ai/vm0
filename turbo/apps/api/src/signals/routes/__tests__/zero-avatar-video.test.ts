@@ -459,10 +459,8 @@ describe("JoggAI built-in avatar video routes", () => {
       event: "generated_avatar_video_success",
       timestamp: 1_700_000_000,
       data: {
-        video_id: "jogg-video-123",
-        status: "completed",
+        project_id: "jogg-video-123",
         video_url: GENERATED_VIDEO_URL,
-        cover_url: "https://res.jogg.ai/avatar-video.jpg",
         duration: 121,
       },
     });
