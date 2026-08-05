@@ -2916,7 +2916,7 @@ function createCancelRunWithQueuedRecall({
 // Sub-factory: thinking phrases
 // ---------------------------------------------------------------------------
 
-const THINKING_TYPEWRITER_INTERVAL_MS = 100;
+const THINKING_TYPEWRITER_INTERVAL_MS = IN_VITEST ? 10 : 100;
 const THINKING_TYPEWRITER_CHUNK_HOLD_MS = 700;
 const THINKING_TYPEWRITER_CHUNK_HOLD_TICKS = IN_VITEST
   ? 1
