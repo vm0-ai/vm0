@@ -474,7 +474,7 @@ function canonicalAssetMaterialization(
   };
 }
 
-async function canonicalEventAttachments(
+async function canonicalInputEventAttachments(
   db: ReadonlyDb,
   userId: string,
   eventIds: readonly string[],
@@ -496,8 +496,6 @@ async function canonicalEventAttachments(
       source: runUploadedFiles.source,
       externalId: runUploadedFiles.externalId,
       url: runUploadedFiles.url,
-      classification: runUploadedFiles.classification,
-      accessLevel: runUploadedFiles.accessLevel,
     })
     .from(chatEventAssetRefs)
     .innerJoin(
@@ -509,16 +507,8 @@ async function canonicalEventAttachments(
         inArray(chatEventAssetRefs.chatEventId, [...eventIds]),
         eq(runUploadedFiles.userId, userId),
         eq(runUploadedFiles.assetVersion, CANONICAL_ASSET_VERSION),
-        or(
-          and(
-            eq(runUploadedFiles.classification, "input"),
-            eq(runUploadedFiles.accessLevel, "private"),
-          ),
-          and(
-            eq(runUploadedFiles.classification, "published-output"),
-            eq(runUploadedFiles.accessLevel, "published"),
-          ),
-        ),
+        eq(runUploadedFiles.classification, "input"),
+        eq(runUploadedFiles.accessLevel, "private"),
       ),
     )
     .orderBy(
@@ -529,28 +519,20 @@ async function canonicalEventAttachments(
   const byEvent = new Map<string, ResolvedAttachFile[]>();
   for (const row of rows) {
     const filename = row.filename ?? row.assetId;
-    const isPublishedOutput =
-      row.classification === "published-output" &&
-      row.accessLevel === "published";
     const attachments = byEvent.get(row.eventId) ?? [];
     attachments.push({
-      id:
-        !isPublishedOutput && row.source === "web"
-          ? row.externalId
-          : row.assetId,
+      id: row.source === "web" ? row.externalId : row.assetId,
       filename,
       contentType: row.contentType ?? inferMimetype(filename),
       size: row.sizeBytes ?? 0,
       url:
-        isPublishedOutput && row.url
+        row.source === "web" && row.url
           ? row.url
-          : row.source === "web" && row.url
-            ? row.url
-            : privateCanonicalAssetUrl(row.assetId),
+          : privateCanonicalAssetUrl(row.assetId),
       assetRef: {
         id: row.assetId,
-        classification: isPublishedOutput ? "published-output" : "input",
-        access: isPublishedOutput ? "published" : "private",
+        classification: "input",
+        access: "private",
         materialization: canonicalAssetMaterialization(row.status, row.error),
         ...(row.provenance
           ? { provenance: { provider: row.provenance.provider } }
@@ -757,12 +739,11 @@ const chatEventBuilders = {
       ),
     };
   },
-  "run.completed": (row, event, attachFiles) => {
+  "run.completed": (row, event) => {
     return {
       ...event,
       eventType: "run.completed",
       runId: requiredChatEventField(row.runId, row.eventType, "runId"),
-      attachFiles: attachFiles ? [...attachFiles] : undefined,
       runLifecycleEvent: "completed",
     };
   },
@@ -855,9 +836,10 @@ function toChatEvent(
   canonicalAttachments: readonly ResolvedAttachFile[],
 ): Computed<Promise<ChatEvent>> {
   return computed(async (get): Promise<ChatEvent> => {
-    const attachFiles = await get(
-      chatEventAttachFiles(userId, row, canonicalAttachments),
-    );
+    const attachFiles =
+      row.eventType === "input.prompt" || row.eventType === "input.rejected"
+        ? await get(chatEventAttachFiles(userId, row, canonicalAttachments))
+        : undefined;
     const eventType =
       (row.eventType as string) === "browser.started"
         ? "browser.open"
@@ -2059,17 +2041,25 @@ function chatEventsWithAssets(args: {
   readonly rows: readonly ChatEventRow[];
 }): Computed<Promise<readonly ChatEvent[]>> {
   return computed(async (get) => {
-    const canonicalByEvent = await canonicalEventAttachments(
+    const attachmentEventIds = args.rows.flatMap((row) => {
+      return row.eventType === "input.prompt" ||
+        row.eventType === "input.rejected"
+        ? [row.id]
+        : [];
+    });
+    const canonicalInputByEvent = await canonicalInputEventAttachments(
       get(db$),
       args.userId,
-      args.rows.map((row) => {
-        return row.id;
-      }),
+      attachmentEventIds,
     );
     return await Promise.all(
       args.rows.map((row) => {
         return get(
-          toChatEvent(args.userId, row, canonicalByEvent.get(row.id) ?? []),
+          toChatEvent(
+            args.userId,
+            row,
+            canonicalInputByEvent.get(row.id) ?? [],
+          ),
         );
       }),
     );

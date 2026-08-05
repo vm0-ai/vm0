@@ -620,7 +620,6 @@ const runCompletedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("run.completed"),
     runId: z.string(),
-    attachFiles: z.array(resolvedAttachFileSchema).optional(),
     runLifecycleEvent: z.literal("completed"),
   })
   .strict();
@@ -736,14 +735,32 @@ if (CHAT_EVENT_TYPES.length !== chatEventSchema.options.length) {
   );
 }
 
-// The previous browser bundle only understands started/stopped. Keep those
-// response leaves while it can remain open; canonical application state is
-// normalized at the client persistence boundary.
-const compatibleChatEventSchema = z.discriminatedUnion("eventType", [
-  ...chatEventSchema.options,
-  browserStartedEventSchema,
-  browserStoppedEventSchema,
-]);
+function normalizeCompatibleChatEvent(value: unknown): unknown {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("eventType" in value) ||
+    value.eventType !== "run.completed" ||
+    !("attachFiles" in value)
+  ) {
+    return value;
+  }
+  const canonical = { ...value };
+  Reflect.deleteProperty(canonical, "attachFiles");
+  return canonical;
+}
+
+// The previous browser bundle only understands started/stopped, while
+// preceding API responses and cached event logs may still include completion
+// attachments. Normalize both previous shapes at the persistence boundary.
+const compatibleChatEventSchema = z.preprocess(
+  normalizeCompatibleChatEvent,
+  z.discriminatedUnion("eventType", [
+    ...chatEventSchema.options,
+    browserStartedEventSchema,
+    browserStoppedEventSchema,
+  ]),
+);
 
 const chatThreadDetailSchema = z.object({
   /**

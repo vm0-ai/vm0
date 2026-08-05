@@ -1042,45 +1042,6 @@ describe("zero attachment chips", () => {
     ).toBeNull();
   });
 
-  it("renders an Agent-published attachment on an otherwise empty reply", async () => {
-    const assetId = "a0000000-0000-4000-a000-000000000053";
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      chatEvents: [
-        {
-          id: "msg-canonical-agent-output-completed",
-          role: "assistant",
-          content: null,
-          runId: "run-canonical-output",
-          runLifecycleEvent: "completed",
-          attachFiles: [
-            {
-              id: assetId,
-              filename: "final-report.pdf",
-              contentType: "application/pdf",
-              size: 4096,
-              url: "https://cdn.vm7.io/artifacts/test/final-report.pdf",
-              assetRef: {
-                id: assetId,
-                classification: "published-output",
-                access: "published",
-                materialization: { status: "ready" },
-                provenance: { provider: "agent" },
-              },
-            },
-          ],
-          createdAt: "2026-03-10T00:00:02Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    await expect(
-      screen.findByLabelText("Open pdf preview for final-report.pdf"),
-    ).resolves.toBeInTheDocument();
-  });
-
   it("renders canonical user video attachments at the same size as image attachments", async () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/media/photo.png";
     const videoUrl = "https://cdn.vm7.io/artifacts/test/media/screencast.mp4";

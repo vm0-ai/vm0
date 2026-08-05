@@ -358,10 +358,8 @@ function eventNonContentPart(
 }
 
 function chatEventAttachments(event: ChatEvent) {
-  return isInputChatEvent(event) || event.eventType === "run.completed"
-    ? "attachFiles" in event
-      ? event.attachFiles
-      : undefined
+  return isInputChatEvent(event) && "attachFiles" in event
+    ? event.attachFiles
     : undefined;
 }
 
@@ -3037,13 +3035,6 @@ function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   );
 }
 
-function isPrimaryAssistantResultEvent(event: EnrichedChatEvent): boolean {
-  return (
-    (event.eventType !== "run.completed" || Boolean(event.content)) &&
-    isRenderableAssistantEvent(event)
-  );
-}
-
 function isThinkingOnlyAssistantEvent(event: EnrichedChatEvent): boolean {
   return (
     event.eventType === "output.thinking" && event.thinking.trim().length > 0
@@ -3092,13 +3083,7 @@ function lastCompletedWorkEventIndex(
 function completedWorkFinalEventIndex(
   events: readonly EnrichedChatEvent[],
 ): number {
-  const primaryResultIndex = lastCompletedWorkEventIndex(
-    events,
-    isPrimaryAssistantResultEvent,
-  );
-  return primaryResultIndex >= 0
-    ? primaryResultIndex
-    : lastCompletedWorkEventIndex(events, isRenderableAssistantEvent);
+  return lastCompletedWorkEventIndex(events, isRenderableAssistantEvent);
 }
 
 function canFoldCompletedWorkTrailingEvent(
@@ -3109,10 +3094,7 @@ function canFoldCompletedWorkTrailingEvent(
   if (chatSteerEnabled && role === "user") {
     return true;
   }
-  return (
-    role === "assistant" &&
-    (!isRenderableAssistantEvent(event) || event.eventType === "run.completed")
-  );
+  return role === "assistant" && !isRenderableAssistantEvent(event);
 }
 
 interface CompletedWorkPhaseFolding {
@@ -6456,12 +6438,10 @@ function MessageAttachment({
 }
 
 function UserMessageAttachmentRow({
-  align,
   attachments,
   onImageClick,
   testId,
 }: {
-  align: "start" | "end";
   attachments: ResolvedMessageAttachment[];
   onImageClick: (url: string) => void;
   testId: string;
@@ -6471,13 +6451,7 @@ function UserMessageAttachmentRow({
   }
 
   return (
-    <div
-      className={cn(
-        "flex flex-wrap gap-2",
-        align === "start" ? "justify-start" : "justify-end",
-      )}
-      data-testid={testId}
-    >
+    <div className="flex flex-wrap justify-end gap-2" data-testid={testId}>
       {attachments.map((a) => {
         return (
           <MessageAttachment
@@ -6494,31 +6468,22 @@ function UserMessageAttachmentRow({
 function UserMessageAttachments({
   attachments,
   onImageClick,
-  align = "end",
 }: {
   attachments: ReturnType<typeof resolveAttachments>;
   onImageClick: (url: string) => void;
-  align?: "start" | "end";
 }) {
   if (attachments.length === 0) {
     return null;
   }
 
   return (
-    <div
-      className={cn(
-        "flex max-w-[85%] flex-col gap-2",
-        align === "start" ? "mt-2 items-start" : "mb-2 items-end self-end",
-      )}
-    >
+    <div className="mb-2 flex max-w-[85%] flex-col items-end gap-2 self-end">
       <UserMessageAttachmentRow
-        align={align}
         attachments={attachments.filter(isMediaAttachment)}
         onImageClick={onImageClick}
         testId="message-media-attachments"
       />
       <UserMessageAttachmentRow
-        align={align}
         attachments={attachments.filter((a) => {
           return !isMediaAttachment(a);
         })}
@@ -7908,12 +7873,6 @@ function PagedAssistantEventItem({
   const openLightbox = (url: string) => {
     openImageLightbox({ threadId: thread.threadId, url });
   };
-  const attachments = resolveAttachments(
-    event,
-    [],
-    thread.artifactSignalsForUrl,
-  );
-
   const error = chatEventError(event);
   if (error) {
     return (
@@ -7933,7 +7892,7 @@ function PagedAssistantEventItem({
     );
   }
 
-  if (event.content || event.blocks.length > 0 || attachments.length > 0) {
+  if (event.content || event.blocks.length > 0) {
     const { blocks } = event;
     return (
       <div
@@ -7950,11 +7909,6 @@ function PagedAssistantEventItem({
             hardBreaks={false}
           />
         ) : null}
-        <UserMessageAttachments
-          attachments={attachments}
-          onImageClick={openLightbox}
-          align="start"
-        />
       </div>
     );
   }
