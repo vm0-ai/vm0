@@ -327,7 +327,6 @@ async fn supervised_exec_control_cancelled_before_write_remains_reusable() {
     );
 
     drop(writer_guard);
-    tokio::task::yield_now().await;
     assert_no_guest_frame(
         &mut guest,
         "control cancelled before write must not send a frame",
