@@ -1,5 +1,4 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { fileURLToPath } from "node:url";
 import { afterAll, describe, it } from "vitest";
 
 import { requireExecuteRowSchema } from "../rules/require-execute-row-schema.ts";
@@ -8,24 +7,7 @@ RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 
-const dbPackageRoot = fileURLToPath(
-  new URL("../../../../db/", import.meta.url),
-);
-const ruleTester = new RuleTester({
-  defaultFilenames: {
-    ts: `${dbPackageRoot}rule-test.ts`,
-    tsx: `${dbPackageRoot}rule-test.tsx`,
-  },
-  languageOptions: {
-    parserOptions: {
-      projectService: {
-        allowDefaultProject: ["rule-test.ts", "rule-test.tsx"],
-      },
-      tsconfigRootDir: dbPackageRoot,
-    },
-  },
-});
-const untypedRuleTester = new RuleTester();
+const ruleTester = new RuleTester();
 
 const drizzlePreamble = `
     type DrizzleDatabase =
@@ -142,6 +124,39 @@ ruleTester.run("require-execute-row-schema", requireExecuteRowSchema, {
         const result = await run<Row>("SELECT 1");
       `,
     },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        const db = {
+          execute<T>(_query: unknown): T {
+            throw new Error("not implemented");
+          },
+        };
+        const result = db.execute<Row>(sql\`SELECT 1\`);
+        void result;
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        type Db = { execute<T>(query: unknown): T };
+        declare const db: Db;
+        const result = db.execute<Row>(sql\`SELECT 1\`);
+        void result;
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        declare const client: {
+          transaction<T>(callback: (tx: { execute<T>(query: unknown): T }) => T): T;
+        };
+        client.transaction((tx) => {
+          const result = tx.execute<Row>(sql\`SELECT 1\`);
+          return result;
+        });
+      `,
+    },
   ],
   invalid: [
     {
@@ -155,6 +170,39 @@ ruleTester.run("require-execute-row-schema", requireExecuteRowSchema, {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
         const result = await db.execute(sql\`SELECT 1 AS value\`);
+      `,
+      errors: [{ messageId: "rawResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        interface QueryArgs {
+          readonly db: DrizzleDatabase;
+        }
+        async function query(args: QueryArgs) {
+          const result = await args.db.execute(sql\`SELECT 1 AS value\`);
+          return result;
+        }
+      `,
+      errors: [{ messageId: "rawResult" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { db as createDb } from "./lib/db";
+        type Database = ReturnType<typeof createDb>;
+        declare const database: Database;
+        const result = await database.execute(sql\`SELECT 1 AS value\`);
+      `,
+      errors: [{ messageId: "rawResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        async function query(args: { readonly db: DrizzleDatabase }) {
+          const result = await args.db.execute(sql\`SELECT 1 AS value\`);
+          return result;
+        }
       `,
       errors: [{ messageId: "rawResult" }],
     },
@@ -442,12 +490,3 @@ ruleTester.run("require-execute-row-schema", requireExecuteRowSchema, {
     },
   ],
 });
-
-untypedRuleTester.run(
-  "require-execute-row-schema without parser services",
-  requireExecuteRowSchema,
-  {
-    valid: ["const value = 1;"],
-    invalid: [],
-  },
-);
