@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.158.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.7...runner-rs-v0.158.8) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** secure workspace cache publications ([#25224](https://github.com/vm0-ai/vm0/issues/25224)) ([b682d63](https://github.com/vm0-ai/vm0/commit/b682d63d878baaea4ba22b1b358ed23e9492f66e))
+
+
+### Refactoring
+
+* **rust:** consolidate sandbox test proxies ([#25223](https://github.com/vm0-ai/vm0/issues/25223)) ([f2cc0f9](https://github.com/vm0-ai/vm0/commit/f2cc0f92a5c0ef64a21e5e5b8f18e8da204d7c36))
+
+
+### Performance Improvements
+
+* **mitm-addon:** stop decoding after json inspection terminates ([#25221](https://github.com/vm0-ai/vm0/issues/25221)) ([39dff80](https://github.com/vm0-ai/vm0/commit/39dff80fc4f8d8c81c0b2a97fda7d40c010194e3))
+
 ## [0.158.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.6...runner-rs-v0.158.7) (2026-08-05)
 
 
