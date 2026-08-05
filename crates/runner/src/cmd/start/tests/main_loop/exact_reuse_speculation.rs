@@ -706,6 +706,7 @@ async fn duplicate_repark_keeps_newer_idle_sandbox_and_destroys_speculation() {
 
     wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
     wait_idle_pool_reuse_keys(&env.idle_pool, &[&reuse_key], Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
     assert_eq!(
         env.idle_pool.lock().await.status_snapshot().idle_vms[0].sandbox_id,
         replacement_id
