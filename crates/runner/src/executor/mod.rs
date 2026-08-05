@@ -128,7 +128,6 @@ fn job_supervisor_timeout() -> Duration {
 fn job_terminal_wait_timeout() -> Duration {
     job_supervisor_timeout() + JOB_TERMINAL_GRACE_TIMEOUT
 }
-const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
 const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
     "BASH_ENV",
     "ENV",
