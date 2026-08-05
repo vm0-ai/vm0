@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.379.0](https://github.com/vm0-ai/vm0/compare/api-v1.378.2...api-v1.379.0) (2026-08-05)
+
+
+### Features
+
+* **connectors:** capture stripe oauth livemode ([#25225](https://github.com/vm0-ai/vm0/issues/25225)) ([9695ead](https://github.com/vm0-ai/vm0/commit/9695ead11858fa939361f1cbacde73b63204af6a))
+
+
+### Bug Fixes
+
+* **billing:** limit receipt download concurrency ([#25226](https://github.com/vm0-ai/vm0/issues/25226)) ([1d8989a](https://github.com/vm0-ai/vm0/commit/1d8989a485d345f2ee8c938f162dca9c896616cd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.5
+    * @vm0/connectors bumped to 1.203.0
+    * @vm0/core bumped to 8.516.1
+    * @vm0/db bumped to 1.166.3
+
 ## [1.378.2](https://github.com/vm0-ai/vm0/compare/api-v1.378.1...api-v1.378.2) (2026-08-05)
 
 
