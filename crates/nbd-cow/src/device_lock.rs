@@ -280,7 +280,7 @@ mod tests {
 
     const CONCURRENT_CLAIM_RESULT_TIMEOUT: Duration = Duration::from_secs(5);
     const CLAIM_WORKER_RELEASE_TIMEOUT: Duration = Duration::from_secs(10);
-    const DELAYED_WORKER_RELEASE_TIMEOUT: Duration = Duration::from_secs(1);
+    const WAITING_WORKER_RELEASE_TIMEOUT: Duration = Duration::from_secs(1);
 
     type ClaimAttemptResult = Result<bool, String>;
 
@@ -489,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn claim_result_timeout_releases_and_joins_delayed_worker() {
+    fn claim_result_timeout_releases_and_joins_waiting_worker() {
         let (result_tx, result_rx) = mpsc::channel();
         let (release_tx, release_rx) = mpsc::channel();
         let release_observed = Arc::new(AtomicBool::new(false));
@@ -497,12 +497,13 @@ mod tests {
         let release_observed_by_worker = Arc::clone(&release_observed);
         let worker_completed_by_worker = Arc::clone(&worker_completed);
         let handle = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(10));
-            result_tx.send(Ok(false)).expect("send delayed result");
             let released = release_rx
-                .recv_timeout(DELAYED_WORKER_RELEASE_TIMEOUT)
+                .recv_timeout(WAITING_WORKER_RELEASE_TIMEOUT)
                 .is_ok();
             release_observed_by_worker.store(released, Ordering::SeqCst);
+            result_tx
+                .send(Ok(false))
+                .expect("send result after release");
             worker_completed_by_worker.store(true, Ordering::SeqCst);
         });
 
@@ -513,7 +514,7 @@ mod tests {
             vec![release_tx],
             vec![handle],
         )
-        .expect_err("delayed result should exceed the collection deadline");
+        .expect_err("waiting result should exceed the collection deadline");
 
         assert!(
             error.contains("0 of 1 workers completed"),
