@@ -2605,7 +2605,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.158.1"
+version = "0.158.2"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -4259,7 +4259,7 @@ dependencies = [
 
 [[package]]
 name = "zero-cli"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "api-contracts",
  "async-trait",
