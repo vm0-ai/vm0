@@ -2627,6 +2627,7 @@ dependencies = [
  "guest-reseed",
  "guest-write-file",
  "hex",
+ "http-body 1.1.0",
  "httpmock",
  "idna",
  "libc",
