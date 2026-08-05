@@ -741,6 +741,81 @@ async fn cancellation_during_speculative_cleanup_does_not_start_fresh_agent() {
 }
 
 #[tokio::test]
+async fn cancellation_wins_when_speculative_cleanup_is_uncertain() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+    overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+        transition: sandbox::SandboxIdleTransition::Unpark,
+        message: "simulated speculative unpark failure".into(),
+    }));
+    overrides.push_destroy_panic("simulated speculative destroy panic");
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: GuestTimezoneIntent::Default,
+            timing: None,
+        },
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(claimed_context(run_id, &reuse_key, None)));
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+
+    destroy_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .unwrap();
+    let cancellation = wait_cancel_handle(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    assert!(cancellation.request_cooperative_user_cancellation().await);
+    destroy_gate.release_one();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("claimed cancellation should win after uncertain speculative cleanup");
+    assert_eq!(completion.error.as_deref(), Some("cancelled by user"));
+    assert_eq!(completion.sandbox_id, None);
+    assert_eq!(
+        completion.reuse_result,
+        Some(SandboxReuseResult::UnparkFailed)
+    );
+    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    let (_, active_runs) =
+        status_idle_reuse_keys_and_active_runs(&env._temp_dir.path().join("status.json")).await;
+    assert!(active_runs.is_empty());
+    assert!(!env.start_observer.active_run_status_was_published(run_id));
+    assert!(overrides.start_process_calls().is_empty());
+    assert_eq!(overrides.destroy_call_count(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
 async fn closed_parking_gate_destroys_lost_speculation_after_repark() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);

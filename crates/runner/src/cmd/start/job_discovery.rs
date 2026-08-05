@@ -1539,11 +1539,22 @@ async fn finish_exact_activation(
             budget_lease,
             reuse_result,
             error,
-        }) => ExactActivation::CannotStart {
-            budget_lease,
-            reuse_result,
-            error,
-        },
+        }) => {
+            let transfer_guard = cancellation.transfer_guard().await;
+            if cancellation.is_cancelled() {
+                drop(transfer_guard);
+                return ExactActivation::Cancelled {
+                    resource: CancelledExactResource::Fresh(budget_lease),
+                    reuse_result: Some(reuse_result),
+                };
+            }
+            drop(transfer_guard);
+            ExactActivation::CannotStart {
+                budget_lease,
+                reuse_result,
+                error,
+            }
+        }
     }
 }
 
