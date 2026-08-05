@@ -76,7 +76,10 @@ const osxNotarize = desktopNotarizeOptions();
 
 // Forge 7 bundles Packager 18, whose CommonJS signing adapter cannot call osx-sign v2.
 async function signPackagedDarwinApps(_forgeConfig, packageResult) {
-  if (packageResult.platform !== "darwin") {
+  if (
+    packageResult.platform !== "darwin" ||
+    process.env.VM0_DESKTOP_SKIP_SIGNING === "true"
+  ) {
     return;
   }
 

@@ -221,14 +221,18 @@ jobs:
           shellcheck \
             e2e/helpers/http.bash \
             e2e/helpers/storage-fixtures.bash \
+            .github/scripts/build-okou-desktop-artifact.sh \
             .github/scripts/check-release-please-component-releases.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
             .github/scripts/cloudflare-ssh-command.sh \
             .github/scripts/cloudflare-ssh-diagnostics.sh \
             .github/scripts/cloudflare-ssh-preconnect.sh \
+            .github/scripts/fetch-okou-desktop-artifact.sh \
             .github/scripts/pass-release-pr-ci-gates.sh \
+            .github/scripts/resolve-desktop-version-change.sh \
             .github/scripts/run-semgrep.sh \
             .github/scripts/runner-behavior-*.sh \
+            .github/scripts/verify-okou-desktop-artifact.sh \
             .github/scripts/tests/ansible-ssh-control-path-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \
             .github/scripts/tests/check-workflow-shell-compatibility-test.sh \
@@ -236,6 +240,10 @@ jobs:
             .github/scripts/tests/cloudflare-ssh-command-test.sh \
             .github/scripts/tests/cloudflare-ssh-preconnect-test.sh \
             .github/scripts/tests/cloudflare-ssh-proxy-test.sh \
+            .github/scripts/tests/deploy-desktop-workflow-test.sh \
+            .github/scripts/tests/fetch-okou-desktop-artifact-test.sh \
+            .github/scripts/tests/okou-desktop-artifact-test.sh \
+            .github/scripts/tests/resolve-desktop-version-change-test.sh \
             .github/scripts/tests/runner-promotion-ansible-test.sh \
             .github/scripts/tests/run-semgrep-test.sh \
             .github/scripts/tests/semgrep-results-test.sh \
