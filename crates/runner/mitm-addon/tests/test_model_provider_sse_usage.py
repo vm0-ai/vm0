@@ -3,6 +3,7 @@
 import gzip
 import json
 import uuid
+import zlib
 from collections.abc import Callable
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import pytest
 from mitmproxy import http
 from mitmproxy.flow import Error
 
+import body_decoding
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
@@ -20,7 +22,7 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
 )
 from tests.model_provider_flow_helpers import make_model_provider_sse_flow
-from tests.usage_helpers import compact_observation_quantities
+from tests.usage_helpers import UsageWebhookServer, compact_observation_quantities
 
 
 def _model_provider_sse_flow(
@@ -61,6 +63,37 @@ def _openai_responses_sse_flow(
     )
 
 
+def _anthropic_messages_sse_flow(
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+) -> http.HTTPFlow:
+    flow = _model_provider_sse_flow(
+        tmp_path,
+        real_flow,
+        host="api.anthropic.com",
+        original_url="https://api.anthropic.com/v1/messages",
+        firewall_name="model-provider:anthropic-api-key",
+    )
+    flow.metadata[metadata_keys.VM_RUN_ID] = "00000000-0000-0000-0000-000000025133"
+    return flow
+
+
+def _compress_zlib_sse(body: bytes, encoding: str) -> bytes:
+    if encoding == "gzip":
+        return gzip.compress(body)
+    assert encoding == "deflate"
+    return zlib.compress(body)
+
+
+def _anthropic_accounting_signals(log) -> list[str]:
+    prefix = "type=usage_underbilling reason=anthropic_sse_incomplete_compressed_body "
+    return [
+        call.args[0]
+        for call in log.error.call_args_list
+        if call.args and call.args[0].startswith(prefix)
+    ]
+
+
 def _model_sse_parse_warnings(flow: http.HTTPFlow) -> list[dict]:
     proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
     if not jsonl_exists_after_flush(proxy_log):
@@ -77,6 +110,7 @@ def _assert_single_model_sse_parse_warning(
     *,
     usage_protocol: str,
     event: str,
+    error: str | None = None,
 ) -> None:
     usage_warnings = _model_sse_parse_warnings(flow)
     assert len(usage_warnings) == 1
@@ -85,7 +119,10 @@ def _assert_single_model_sse_parse_warning(
     assert warning["type"] == "usage_event"
     assert warning["usage_protocol"] == usage_protocol
     assert warning["event"] == event
-    assert warning["error"]
+    if error is None:
+        assert warning["error"]
+    else:
+        assert warning["error"] == error
 
 
 class TestModelProviderSseUsage:
@@ -106,6 +143,18 @@ class TestModelProviderSseUsage:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
         return webhook
+
+    def _run_with_log(self, flow: http.HTTPFlow, mitm_ctx, *, hook_name: str):
+        webhook = UsageWebhookServer()
+        with webhook.run(), mitm_ctx(api_url=webhook.api_url) as log:
+            if hook_name == "error":
+                flow.error = Error("connection reset by peer")
+                mitm_addon.error(flow)
+            else:
+                assert hook_name == "response"
+                mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
+        return webhook, log
 
     def test_full_pipeline_model_sse_finalizes_trailing_event(self, tmp_path, real_flow):
         """response() must flush a trailing SSE usage event before reporting."""
@@ -297,6 +346,240 @@ class TestModelProviderSseUsage:
             flow,
             usage_protocol="openai_responses_sse",
             event="compressed_body",
+        )
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    @pytest.mark.parametrize("hook_name", ["response", "error"])
+    @pytest.mark.parametrize(
+        ("include_message_stop", "expected_status"),
+        [
+            (False, "recovered_partial"),
+            (True, "recovered_terminal"),
+        ],
+        ids=["partial", "terminal"],
+    )
+    def test_full_pipeline_incomplete_compressed_anthropic_sse_recovers_complete_usage_events(
+        self,
+        tmp_path,
+        real_flow,
+        mitm_ctx,
+        encoding,
+        hook_name,
+        include_message_stop,
+        expected_status,
+    ):
+        flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = encoding
+        plaintext = (
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"id":"msg_private",'
+            b'"model":"claude-sonnet-4-6","usage":{"input_tokens":101,'
+            b'"cache_read_input_tokens":202,"cache_creation_input_tokens":303,'
+            b'"output_tokens":1}}}\n\n'
+            b"event: content_block_delta\n"
+            b'data: {"type":"content_block_delta","delta":{"text":"sensitive-body"}}\n\n'
+            b"event: message_delta\n"
+            b'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},'
+            b'"usage":{"output_tokens":404}}\n\n'
+            + (
+                b'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+                if include_message_stop
+                else b""
+            )
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(_compress_zlib_sse(plaintext, encoding)[:-1])
+
+        webhook, log = self._run_with_log(flow, mitm_ctx, hook_name=hook_name)
+
+        expected_quantities = {
+            "tokens.input": 101,
+            "tokens.output": 404,
+            "tokens.cache_read": 202,
+            "tokens.cache_creation": 303,
+        }
+        assert {
+            event["category"]: event["quantity"] for event in webhook.usage_events()
+        } == expected_quantities
+        assert (
+            compact_observation_quantities(webhook.model_usage_observation_events())
+            == expected_quantities
+        )
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="anthropic_messages_sse",
+            event="compressed_body",
+            error=body_decoding.INCOMPLETE_COMPRESSED_BODY,
+        )
+
+        assert _anthropic_accounting_signals(log) == [
+            "type=usage_underbilling "
+            "reason=anthropic_sse_incomplete_compressed_body "
+            "underbilling_class=risk component=mitm_addon "
+            f"accounting_status={expected_status} "
+            "decoder_reason=incomplete_compressed_body "
+            "run_id=00000000-0000-0000-0000-000000025133 "
+            "usage_protocol=anthropic_messages_sse "
+            "Incomplete Anthropic SSE accounting"
+        ]
+        signal = _anthropic_accounting_signals(log)[0]
+        for excluded in [
+            "101",
+            "202",
+            "303",
+            "404",
+            "msg_private",
+            "claude-sonnet-4-6",
+            "sensitive-body",
+            "tokens.",
+        ]:
+            assert excluded not in signal
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_full_pipeline_incomplete_anthropic_sse_without_positive_usage_emits_none_status(
+        self, tmp_path, real_flow, mitm_ctx, encoding
+    ):
+        flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = encoding
+        plaintext = (
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":0,"output_tokens":0}}}\n\n'
+            b"event: message_stop\n"
+            b'data: {"type":"message_stop"}\n\n'
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(_compress_zlib_sse(plaintext, encoding)[:-1])
+        webhook, log = self._run_with_log(flow, mitm_ctx, hook_name="response")
+
+        assert webhook.request_count == 0
+        [signal] = _anthropic_accounting_signals(log)
+        assert "accounting_status=no_recoverable_usage" in signal
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="anthropic_messages_sse",
+            event="compressed_body",
+            error=body_decoding.INCOMPLETE_COMPRESSED_BODY,
+        )
+
+    def test_full_pipeline_incomplete_compressed_anthropic_sse_does_not_flush_fragment(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = "gzip"
+        plaintext = (
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":50,"output_tokens":0}}}\n\n'
+            b"event: message_delta\n"
+            b'data: {"type":"message_delta","usage":{"output_tokens":987654}}'
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(gzip.compress(plaintext)[:-1])
+        webhook, log = self._run_with_log(flow, mitm_ctx, hook_name="response")
+
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
+            "tokens.input": 50
+        }
+        assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
+            "tokens.input": 50
+        }
+        [signal] = _anthropic_accounting_signals(log)
+        assert "accounting_status=recovered_partial" in signal
+        assert "987654" not in signal
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_full_pipeline_invalid_compressed_anthropic_sse_remains_fail_closed(
+        self, tmp_path, real_flow, mitm_ctx, encoding
+    ):
+        flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = encoding
+        plaintext = (
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":50}}}\n\n'
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(_compress_zlib_sse(plaintext, encoding) + b"not-compressed")
+        webhook, log = self._run_with_log(flow, mitm_ctx, hook_name="response")
+
+        assert webhook.request_count == 0
+        assert _anthropic_accounting_signals(log) == []
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="anthropic_messages_sse",
+            event="compressed_body",
+            error=body_decoding.INVALID_COMPRESSED_BODY,
+        )
+
+    def test_full_pipeline_decoded_limit_anthropic_sse_remains_fail_closed(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = "gzip"
+        plaintext = (
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":50}}}\n\n'
+            b"event: content_block_delta\n"
+            b"data: " + b"x" * (5 * 1024 * 1024 + 1)
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(gzip.compress(plaintext))
+        webhook, log = self._run_with_log(flow, mitm_ctx, hook_name="response")
+
+        assert webhook.request_count == 0
+        assert _anthropic_accounting_signals(log) == []
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="anthropic_messages_sse",
+            event="compressed_body",
+            error=body_decoding.DECODED_BODY_LIMIT_EXCEEDED,
+        )
+
+    def test_full_pipeline_response_then_error_emits_recovered_usage_and_signal_once(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = "gzip"
+        plaintext = (
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":50}}}\n\n'
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(gzip.compress(plaintext)[:-1])
+        webhook = UsageWebhookServer()
+        with webhook.run(), mitm_ctx(api_url=webhook.api_url) as log:
+            mitm_addon.response(flow)
+            flow.error = Error("connection reset after response")
+            mitm_addon.error(flow)
+            usage.flush_usage_events(trigger="test")
+
+        assert [(event["category"], event["quantity"]) for event in webhook.usage_events()] == [
+            ("tokens.input", 50)
+        ]
+        assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
+            "tokens.input": 50
+        }
+        assert len(_anthropic_accounting_signals(log)) == 1
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="anthropic_messages_sse",
+            event="compressed_body",
+            error=body_decoding.INCOMPLETE_COMPRESSED_BODY,
         )
 
     def test_full_pipeline_anthropic_sse_logs_truncated_message_start(self, tmp_path, real_flow):

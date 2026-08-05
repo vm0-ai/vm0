@@ -34,6 +34,14 @@ def _create_parser_with_lifecycle_events():
     return parse, usage, lifecycle_events
 
 
+def _create_parser_with_accounting_events():
+    accounting_events: list[str] = []
+    parse, usage = create_anthropic_messages_sse_usage_extractor(
+        on_accounting_event=accounting_events.append
+    )
+    return parse, usage, accounting_events
+
+
 class TestAnthropicSseUsageExtractor:
     """Tests for the incremental SSE usage parser."""
 
@@ -179,6 +187,55 @@ class TestAnthropicSseUsageExtractor:
         parse(b'data: {"type":"message_delta","usage":{"output_tokens":250}}\n\n')
         assert usage["tokens.input"] == 40
         assert usage["tokens.output"] == 250
+
+    def test_reports_only_bounded_accounting_event_identities(self):
+        parse, usage, accounting_events = _create_parser_with_accounting_events()
+
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"id":"msg_secret",'
+            b'"model":"claude-sonnet-4-6","content":[{"text":"secret"}],'
+            b'"usage":{"input_tokens":40}}}\n\n'
+            b'data: {"type":"message_delta","usage":{"output_tokens":250}}\n\n'
+            b"event: message_stop\n"
+            b'data: {"type":"message_stop"}\n\n'
+        )
+
+        assert usage["tokens.input"] == 40
+        assert usage["tokens.output"] == 250
+        assert accounting_events == ["message_start", "message_delta", "message_stop"]
+
+    def test_conflicting_event_identity_does_not_update_usage_or_accounting(self):
+        parse, usage, accounting_events = _create_parser_with_accounting_events()
+
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_delta","message":{"model":"conflict",'
+            b'"usage":{"input_tokens":99}},"usage":{"output_tokens":88}}\n\n'
+            b"event: message_stop\n"
+            b'data: {"type":"message_delta"}\n\n'
+        )
+
+        assert usage == {}
+        assert accounting_events == []
+
+    def test_malformed_and_incomplete_events_do_not_report_accounting_state(self):
+        parse, usage, accounting_events = _create_parser_with_accounting_events()
+
+        parse(b'event: message_start\ndata: {"type":"message_start"\n\n')
+        parse(b'event: message_stop\ndata: {"type":"message_stop"')
+
+        assert usage == {}
+        assert accounting_events == []
+
+    def test_finish_reports_complete_trailing_message_stop(self):
+        parse, usage, accounting_events = _create_parser_with_accounting_events()
+
+        parse(b'event: message_stop\ndata: {"type":"message_stop"}')
+        parse.finish()
+
+        assert usage == {}
+        assert accounting_events == ["message_stop"]
 
     def test_reports_content_free_lifecycle_fields_for_selected_events(self):
         parse, usage, lifecycle_events = _create_parser_with_lifecycle_events()
