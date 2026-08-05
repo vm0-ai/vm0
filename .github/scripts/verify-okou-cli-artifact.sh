@@ -55,7 +55,8 @@ jq -e \
 
 package_json="$(tar -xOf "$artifact_dir/package.tgz" package/package.json)"
 jq -e '
-  .name == "@vm0/cli"
+  .name == "@vm0/zero-cli"
+  and .private == true
   and .bin.zero == "zero.js"
   and ((.dependencies // {}) | length == 0)
   and ((.optionalDependencies // {}) | length == 0)

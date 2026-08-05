@@ -695,12 +695,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
-      - name: Check Zero CLI surface inventory
-        working-directory: turbo
-        run: pnpm --filter @vm0/cli check:surface
       - name: Test CLI
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/cli --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@vm0/zero-cli --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -1954,8 +1951,8 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # Build one self-contained npm package per checked-out commit and publish it
-  # to the same canonical R2 bucket used by deploy-app. The ready marker is
+  # Build one self-contained package archive per checked-out commit and upload
+  # it to the same canonical R2 bucket used by deploy-app. The ready marker is
   # written last so PR, merge-group, main, and release runs can safely reuse it.
   deploy-cli:
     runs-on: ubuntu-latest
@@ -2063,10 +2060,12 @@ jobs:
 
       - name: Install CLI dependencies
         if: steps.existing.outputs.exists != 'true'
-        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/cli...
+        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/zero-cli...
       - name: Build CLI
         if: steps.existing.outputs.exists != 'true'
-        run: cd turbo && pnpm --filter @vm0/cli build
+        run: cd turbo && pnpm --filter @vm0/zero-cli build
+        env:
+          DEFAULT_SENTRY_DSN: ${{ vars.SENTRY_DSN_CLI }}
 
       - name: Create canonical CLI artifact
         if: steps.existing.outputs.exists != 'true'
@@ -2217,7 +2216,7 @@ jobs:
           package_root="$(mktemp -d)"
           tar -xzf /tmp/cli-package/package.tgz -C "$package_root"
           node_prefix=$(dirname "$(dirname "$(command -v node)")")
-          cli_dir="$node_prefix/lib/node_modules/@vm0/cli"
+          cli_dir="$node_prefix/lib/node_modules/@vm0/zero-cli"
           sudo rm -rf "$cli_dir"
           sudo mkdir -p "$node_prefix/lib/node_modules/@vm0"
           sudo cp -a "$package_root/package" "$cli_dir"

@@ -73,7 +73,6 @@ jobs:
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
       nbd-cow-changed: ${{ steps.detect.outputs.nbd-cow-changed }}
       vsock-test-changed: ${{ steps.detect.outputs.vsock-test-changed }}
-      zero-cli-parity-changed: ${{ steps.detect.outputs.zero-cli-parity-changed }}
       crates-runner-consumer-needed: ${{ steps.runner-tests.outputs.crates-runner-consumer-needed }}
       metal-job-ref: ${{ steps.runner-job-ref.outputs.job-ref }}
       runner-image-job-ref: ${{ steps.runner-job-ref.outputs.image-job-ref }}
@@ -120,22 +119,12 @@ jobs:
           check_crate runner
           check_crate nbd-cow
           check_crate vsock-test
-          check_crate zero-cli
 
           # Aggregate: true if any crate or CI config changed
           if grep -q "=true" "$GITHUB_OUTPUT"; then
             echo "any-changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "any-changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          # The executable-only parity lane spans the Rust entry point and the
-          # public TypeScript package artifact. Keep it separate so TypeScript-
-          # only CLI changes do not select unrelated Rust coverage jobs.
-          if git diff --name-only "$BASE_REF" HEAD | grep -qE '^crates/(Cargo\.(toml|lock)|zero-cli/)|^turbo/(apps/cli/|packages/(api-contracts|connectors|core)/|pnpm-lock\.yaml$)|^\.github/workflows/crates\.yml$'; then
-            echo "zero-cli-parity-changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "zero-cli-parity-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           # The api-contracts Rust bindings are generated from selected
@@ -398,30 +387,6 @@ jobs:
             cargo test -p vsock-guest --release --no-default-features \
               --test production_identity -- \
               --ignored --exact production_write_file_identity_matches_sudo_policy
-
-  zero-cli-parity:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
-    needs: [detect]
-    if: |
-      needs.detect.outputs.ci-changed == 'true' ||
-      needs.detect.outputs.zero-cli-parity-changed == 'true'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-
-      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
-        with:
-          workspaces: crates -> target
-          shared-key: zero-cli-parity
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Run TypeScript-Rust Zero CLI parity cases
-        shell: bash
-        run: crates/zero-cli/tests/parity/run.sh
 
   coverage:
     runs-on: ubuntu-latest-8-cores
@@ -926,7 +891,6 @@ jobs:
       - detect-release
       - detect
       - check
-      - zero-cli-parity
       - coverage
       - api-contracts-rust-bindings
       - runner-firewall-contract-test
@@ -977,7 +941,6 @@ jobs:
 
           # May-skip: only run when relevant crates change
           check_result "check" "${{ needs.check.result }}" "true"
-          check_result "zero-cli-parity" "${{ needs.zero-cli-parity.result }}" "true"
           check_result "coverage" "${{ needs.coverage.result }}" "true"
           check_result "api-contracts-rust-bindings" "${{ needs.api-contracts-rust-bindings.result }}" "true"
           check_result "runner-firewall-contract-test" "${{ needs.runner-firewall-contract-test.result }}" "true"

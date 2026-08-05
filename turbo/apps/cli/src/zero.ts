@@ -10,16 +10,10 @@ import {
   type ZeroTokenPayload,
 } from "./lib/api/zero-token.js";
 
-export interface ZeroCommandDefinition {
+interface ZeroCommandDefinition {
   name: string;
   description: string;
   load: () => Promise<Command>;
-}
-
-export interface ZeroCommandVisibilityRule {
-  capability: string | readonly string[] | null | undefined;
-  featureSwitch: FeatureSwitchKey | undefined;
-  runOnly: boolean;
 }
 
 /**
@@ -87,7 +81,7 @@ const RUN_ONLY_COMMANDS = new Set(["recognize"]);
 
 type FeatureSwitchOverrides = Partial<Record<FeatureSwitchKey, boolean>>;
 
-export const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
+const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   {
     name: "model",
     description: "List available models and model-switching guidance",
@@ -409,16 +403,6 @@ function isCommandFeatureEnabled(
   );
 }
 
-export function getZeroCommandVisibilityRule(
-  name: string,
-): ZeroCommandVisibilityRule {
-  return {
-    capability: COMMAND_CAPABILITY_MAP[name],
-    featureSwitch: COMMAND_FEATURE_SWITCH_MAP[name],
-    runOnly: RUN_ONLY_COMMANDS.has(name),
-  };
-}
-
 function addZeroCommand(
   prog: Command,
   cmd: Command,
@@ -625,21 +609,19 @@ export function registerZeroCommands(
   }
 }
 
+const program = new Command();
+
 declare const __CLI_VERSION__: string;
 
-export function createZeroProgram(): Command {
-  return new Command()
-    .name("zero")
-    .description(
-      "Zero CLI — interact with the zero platform from inside the sandbox",
-    )
-    .version(__CLI_VERSION__)
-    .addHelpText("after", () => {
-      return buildZeroHelpText();
-    });
-}
-
-const program = createZeroProgram();
+program
+  .name("zero")
+  .description(
+    "Zero CLI — interact with the zero platform from inside the sandbox",
+  )
+  .version(__CLI_VERSION__)
+  .addHelpText("after", () => {
+    return buildZeroHelpText();
+  });
 
 export { program };
 

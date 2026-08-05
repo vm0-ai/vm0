@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { program, registerZeroCommands } from "../zero";
 
 describe("zero CLI program", () => {
-  registerZeroCommands(program);
+  registerZeroCommands(program, undefined, {
+    [FeatureSwitchKey.ZeroBrowser]: true,
+  });
   const commandNames = program.commands.map((cmd) => {
     return cmd.name();
   });
@@ -28,6 +31,8 @@ describe("zero CLI program", () => {
       "workflow",
       "goal",
       "slack",
+      "feishu",
+      "teams",
       "telegram",
       "github",
       "phone",
@@ -35,6 +40,7 @@ describe("zero CLI program", () => {
       "intro",
       "developer-support",
       "computer-use",
+      "browser",
       "generate",
       "web",
       "video",
@@ -73,7 +79,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 36 commands", () => {
-    expect(commandNames).toHaveLength(36);
+  it("should have exactly 37 commands", () => {
+    expect(commandNames).toHaveLength(37);
   });
 });

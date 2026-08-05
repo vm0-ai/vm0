@@ -988,51 +988,33 @@ describe("runner claim request contract", () => {
     expect(body.telemetry).toEqual({});
   });
 
-  it("accepts an optional non-sensitive bundled Zero CLI descriptor", () => {
-    const body = runnersJobClaimContract.claim.body.parse({
+  it("keeps legacy and current runner claim generations compatible", () => {
+    const legacyClaimBodySchema = runnersJobClaimContract.claim.body.extend({
+      zeroCli: z
+        .object({
+          available: z.boolean(),
+          version: z.string().min(1).optional(),
+          buildId: z.string().min(1).optional(),
+          checksumSha256: z
+            .string()
+            .regex(/^[a-f0-9]{64}$/u)
+            .optional(),
+        })
+        .optional(),
+    });
+    const legacyRunnerBody = {
       zeroCli: {
         available: true,
         version: "1.2.3",
         buildId: "runner-rs@1.2.3",
         checksumSha256: "a".repeat(64),
-        token: "must-not-survive",
-        commandArguments: ["secret"],
-      },
-    });
-
-    expect(body).toEqual({
-      zeroCli: {
-        available: true,
-        version: "1.2.3",
-        buildId: "runner-rs@1.2.3",
-        checksumSha256: "a".repeat(64),
-      },
-    });
-  });
-
-  it("keeps old and new runner claim generations compatible", () => {
-    const previousClaimBodySchema = runnersJobClaimContract.claim.body.omit({
-      zeroCli: true,
-    });
-    const newRunnerBody = {
-      zeroCli: {
-        available: false,
       },
     };
 
-    expect(runnersJobClaimContract.claim.body.parse({})).toEqual({});
-    expect(previousClaimBodySchema.parse(newRunnerBody)).toEqual({});
-  });
-
-  it("rejects malformed bundled Zero CLI checksums", () => {
-    expect(
-      runnersJobClaimContract.claim.body.safeParse({
-        zeroCli: {
-          available: true,
-          checksumSha256: "not-a-sha256",
-        },
-      }).success,
-    ).toBe(false);
+    expect(runnersJobClaimContract.claim.body.parse(legacyRunnerBody)).toEqual(
+      {},
+    );
+    expect(legacyClaimBodySchema.parse({})).toEqual({});
   });
 });
 

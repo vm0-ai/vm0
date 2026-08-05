@@ -40,8 +40,6 @@ export enum FeatureSwitchKey {
   SpotifyConnector = "spotifyConnector",
   ZeroDebug = "zeroDebug",
   ZeroBrowser = "zeroBrowser",
-  RustZeroCli = "rustZeroCli",
-  R2ZeroCli = "r2ZeroCli",
   Banking = "banking",
   Lab = "lab",
   NotionWorkflowAutomations = "notionWorkflowAutomations",

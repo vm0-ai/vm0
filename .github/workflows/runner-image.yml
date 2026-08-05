@@ -114,7 +114,7 @@ jobs:
           web_changed=$(echo "$CHANGES_JSON" | jq -r '."web" // false')
           platform_changed=$(echo "$CHANGES_JSON" | jq -r '."@vm0/app" // false')
           api_changed=$(echo "$CHANGES_JSON" | jq -r '."api" // false')
-          cli_changed=$(echo "$CHANGES_JSON" | jq -r '."@vm0/cli" // false')
+          cli_changed=$(echo "$CHANGES_JSON" | jq -r '."@vm0/zero-cli" // false')
 
           if git diff --name-only "$BASE_REF" HEAD | grep -q "^crates/"; then
             crates_changed=true
