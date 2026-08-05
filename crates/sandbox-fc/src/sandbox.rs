@@ -3201,6 +3201,9 @@ fn idle_transition_error(
 
 /// Maximum time to wait for balloon inflation before pausing vCPUs.
 const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
+/// Additional bounded wait when the balloon is still making progress and the
+/// guest reports enough unused memory to finish reclaiming safely.
+const BALLOON_SETTLE_PROGRESS_GRACE: Duration = Duration::from_secs(5);
 /// Fast-start poll intervals while waiting for balloon inflation.
 const BALLOON_SETTLE_FAST_POLL_INTERVALS: [Duration; 7] = [
     Duration::from_millis(25),
@@ -3238,6 +3241,7 @@ struct BalloonSettleSummary {
     last_observed_target_mib: Option<u32>,
     target_observed: bool,
     first_actual_mib: Option<u32>,
+    previous_actual_mib: Option<u32>,
     last_actual_mib: Option<u32>,
     max_actual_mib: Option<u32>,
     last_deficit_mib: Option<u32>,
@@ -3256,6 +3260,7 @@ impl BalloonSettleSummary {
             last_observed_target_mib: None,
             target_observed: false,
             first_actual_mib: None,
+            previous_actual_mib: None,
             last_actual_mib: None,
             max_actual_mib: None,
             last_deficit_mib: None,
@@ -3273,6 +3278,7 @@ impl BalloonSettleSummary {
         self.last_observed_target_mib = Some(stats.target_mib);
         self.target_observed |= stats.target_mib == self.requested_target_mib;
         self.first_actual_mib.get_or_insert(stats.actual_mib);
+        self.previous_actual_mib = self.last_actual_mib;
         self.last_actual_mib = Some(stats.actual_mib);
         self.max_actual_mib = Some(
             self.max_actual_mib
@@ -3341,6 +3347,31 @@ impl BalloonSettleSummary {
                 .is_some_and(|deficit| deficit >= self.severe_deficit_threshold_mib())
     }
 
+    fn can_extend_for_progress(&self) -> bool {
+        let (
+            Some(previous_actual_mib),
+            Some(last_actual_mib),
+            Some(deficit_mib),
+            Some(free_mib),
+            Some(available_mib),
+        ) = (
+            self.previous_actual_mib,
+            self.last_actual_mib,
+            self.last_deficit_mib,
+            self.reported_free_mib(),
+            self.reported_available_mib(),
+        )
+        else {
+            return false;
+        };
+
+        self.is_severe_deficit()
+            && self.last_observed_target_mib == Some(self.requested_target_mib)
+            && last_actual_mib > previous_actual_mib
+            && free_mib >= i64::from(deficit_mib)
+            && available_mib >= i64::from(deficit_mib) + balloon::PRESSURE_AVAILABLE_MIB
+    }
+
     fn park_outcome(&self) -> SandboxParkOutcome {
         if self.is_severe_deficit() {
             SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
@@ -3370,6 +3401,7 @@ fn log_balloon_settle_timeout(
     log_id: &str,
     target_mib: u32,
     tolerance_mib: u32,
+    settle_timeout: Duration,
     summary: &BalloonSettleSummary,
     outcome: SandboxParkOutcome,
 ) {
@@ -3394,7 +3426,27 @@ fn log_balloon_settle_timeout(
         reason = summary.reason(),
         admission_action = park_admission_action(outcome),
         "balloon inflate incomplete after {}s, pausing anyway",
-        BALLOON_SETTLE_TIMEOUT.as_secs()
+        settle_timeout.as_secs()
+    );
+}
+
+fn log_balloon_settle_progress_grace(
+    log_id: &str,
+    target_mib: u32,
+    summary: &BalloonSettleSummary,
+) {
+    info!(
+        id = %log_id,
+        actual = ?summary.last_actual_mib,
+        target = target_mib,
+        deficit_mib = ?summary.last_deficit_mib,
+        elapsed_ms = summary.elapsed_ms(),
+        sample_count = summary.sample_count,
+        previous_actual_mib = ?summary.previous_actual_mib,
+        reported_free_mib = ?summary.reported_free_mib(),
+        reported_available_mib = ?summary.reported_available_mib(),
+        grace_ms = duration_ms(BALLOON_SETTLE_PROGRESS_GRACE),
+        "balloon inflation still progressing, extending settle deadline"
     );
 }
 
@@ -3465,20 +3517,37 @@ fn complete_balloon_settle(
 /// **before** pausing. Returns when `actual_mib >= target_mib`, when
 /// the remaining deficit is within [`balloon_settle_tolerance_mib`],
 /// when guest pressure indicates further reclaim is unsafe, or after
-/// [`BALLOON_SETTLE_TIMEOUT`] (partial inflation is better than none). The
-/// returned outcome rejects only the existing severe-deficit classification.
-/// Errors from stats fetching are non-fatal — we log and
-/// proceed to pause.
+/// [`BALLOON_SETTLE_TIMEOUT`]. A severe deficit that is still progressing with
+/// enough unused guest memory gets one bounded
+/// [`BALLOON_SETTLE_PROGRESS_GRACE`]. The returned outcome rejects only the
+/// existing severe-deficit classification. Errors from stats fetching are
+/// non-fatal — we log and proceed to pause.
 async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> SandboxParkOutcome {
-    let deadline = tokio::time::Instant::now() + BALLOON_SETTLE_TIMEOUT;
     let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
     let mut summary = BalloonSettleSummary::new(target_mib);
+    let mut settle_timeout = BALLOON_SETTLE_TIMEOUT;
+    let mut deadline = summary.started_at + settle_timeout;
+    let mut progress_grace_used = false;
     let mut fast_poll_intervals = BALLOON_SETTLE_FAST_POLL_INTERVALS.into_iter();
     loop {
         if tokio::time::Instant::now() >= deadline {
-            let outcome = summary.park_outcome();
-            log_balloon_settle_timeout(log_id, target_mib, tolerance_mib, &summary, outcome);
-            return complete_balloon_settle(&summary, BalloonSettleOutcome::Deadline, outcome);
+            if !progress_grace_used && summary.can_extend_for_progress() {
+                progress_grace_used = true;
+                settle_timeout += BALLOON_SETTLE_PROGRESS_GRACE;
+                deadline = summary.started_at + settle_timeout;
+                log_balloon_settle_progress_grace(log_id, target_mib, &summary);
+            } else {
+                let outcome = summary.park_outcome();
+                log_balloon_settle_timeout(
+                    log_id,
+                    target_mib,
+                    tolerance_mib,
+                    settle_timeout,
+                    &summary,
+                    outcome,
+                );
+                return complete_balloon_settle(&summary, BalloonSettleOutcome::Deadline, outcome);
+            }
         }
 
         match tokio::time::timeout_at(deadline, client.get_balloon_statistics()).await {
@@ -3613,7 +3682,14 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
             }
             Err(_) => {
                 let outcome = summary.park_outcome();
-                log_balloon_settle_timeout(log_id, target_mib, tolerance_mib, &summary, outcome);
+                log_balloon_settle_timeout(
+                    log_id,
+                    target_mib,
+                    tolerance_mib,
+                    settle_timeout,
+                    &summary,
+                    outcome,
+                );
                 return complete_balloon_settle(&summary, BalloonSettleOutcome::Deadline, outcome);
             }
         }
