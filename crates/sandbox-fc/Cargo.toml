@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
-child-exit-notifier.workspace = true
 futures-util.workspace = true
 guest-contracts.workspace = true
 nbd-cow.workspace = true
@@ -26,6 +25,9 @@ uuid = { workspace = true, features = ["v4"] }
 vsock-host.workspace = true
 vsock-proto.workspace = true
 which.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { workspace = true, features = ["process"] }
 
 [dev-dependencies]
 clap = { workspace = true, features = ["derive"] }

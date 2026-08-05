@@ -747,15 +747,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "child-exit-notifier"
-version = "0.1.0"
-dependencies = [
- "rustix",
- "thiserror 2.0.19",
- "tokio",
-]
-
-[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1268,7 +1259,6 @@ dependencies = [
  "api-contracts",
  "base64 0.23.0",
  "bytes",
- "child-exit-notifier",
  "chrono",
  "flate2",
  "futures-util",
@@ -2843,7 +2833,6 @@ name = "sandbox-fc"
 version = "0.37.181"
 dependencies = [
  "async-trait",
- "child-exit-notifier",
  "clap",
  "futures-util",
  "guest-contracts",
@@ -2852,6 +2841,7 @@ dependencies = [
  "nbd-cow",
  "nix",
  "reqwest",
+ "rustix",
  "sandbox",
  "serde",
  "serde_json",

@@ -3,7 +3,6 @@ resolver = "3"
 members = [
     "ably-subscriber",
     "api-contracts",
-    "child-exit-notifier",
     "guest-agent",
     "guest-contracts",
     "guest-session-prune",
@@ -36,7 +35,6 @@ edition = "2024"
 # Internal crates
 ably-subscriber = { path = "ably-subscriber" }
 api-contracts = { path = "api-contracts" }
-child-exit-notifier = { path = "child-exit-notifier" }
 guest-agent = { path = "guest-agent" }
 guest-contracts = { path = "guest-contracts" }
 guest-session-prune = { path = "guest-session-prune" }

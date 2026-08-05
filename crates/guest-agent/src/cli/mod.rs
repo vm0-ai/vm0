@@ -17,6 +17,7 @@
 //! flow are part of the runtime contract.
 
 mod child_env;
+mod child_exit_notifier;
 #[doc(hidden)]
 pub mod codex_app_server;
 mod codex_app_server_backend;

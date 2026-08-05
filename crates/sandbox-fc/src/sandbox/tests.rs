@@ -3424,7 +3424,7 @@ async fn stdout_eof_does_not_mark_running_process_crashed() {
 
 #[tokio::test]
 async fn process_monitor_kills_group_after_unexpected_parent_exit() {
-    if !crate::process::child_exit_notification_available_for_test().await {
+    if !ChildExitNotifier::available_for_current_process_for_test() {
         eprintln!("skipping pidfd-dependent process group cleanup test");
         return;
     }
@@ -3495,7 +3495,7 @@ async fn process_monitor_fallback_does_not_kill_group_after_parent_reap() {
         child,
         context,
         readers,
-        None,
+        ChildExitNotifier::unavailable_for_test(),
     );
 
     handle.wait().await;
