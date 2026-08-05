@@ -6,8 +6,19 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 ruby -ryaml - "${repo_root}/.github/workflows/turbo.yml" \
   "${repo_root}/.github/workflows/cleanup.yml" <<'RUBY'
 turbo = YAML.load_file(ARGV.fetch(0))
-deploy_app = turbo.fetch("jobs").fetch("deploy-app")
+jobs = turbo.fetch("jobs")
+deploy_app = jobs.fetch("deploy-app")
 steps = deploy_app.fetch("steps")
+
+%w[deploy-app deploy-cli].each do |job_name|
+  job = jobs.fetch(job_name)
+  if Array(job["needs"]).include?("detect-release")
+    raise "#{job_name} must run independently of detect-release"
+  end
+  if job.fetch("if", "").include?("needs.detect-release")
+    raise "#{job_name} condition must not depend on detect-release"
+  end
+end
 
 find_step = lambda do |name|
   steps.find { |step| step["name"] == name } || raise("missing step: #{name}")
@@ -25,6 +36,9 @@ end
 
 preview_step = find_step.call("Resolve app preview gateway URL")
 raise "app preview step id changed" unless preview_step["id"] == "app-preview"
+if preview_step.key?("if")
+  raise "app preview gateway URL must be resolved on every deploy-app run"
+end
 unless preview_step.fetch("run").include?("CF_PAGES_PREVIEW_DOMAIN")
   raise "app preview URL must use the configured preview domain"
 end

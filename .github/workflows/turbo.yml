@@ -1249,10 +1249,8 @@ jobs:
 
   # Build the canonical Cloudflare app artifact independently of Vercel, then
   # deploy the verified R2 artifact to a Pages preview branch. The shared
-  # gateway fronts that branch at the stable app preview URL. Release PRs keep
-  # the provider preview but do not receive a stable app preview URL.
+  # gateway fronts that branch at the stable app preview URL.
   deploy-app:
-    needs: [detect-release]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -1302,7 +1300,6 @@ jobs:
 
       - name: Resolve app preview gateway URL
         id: app-preview
-        if: needs.detect-release.outputs.skip != 'true' || github.event_name == 'push'
         env:
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
         run: |
@@ -1972,7 +1969,6 @@ jobs:
   deploy-cli:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [detect-release]
     outputs:
       artifact-sha: ${{ steps.artifact.outputs.sha }}
       package-url: ${{ steps.artifact.outputs.package-url }}
@@ -2035,9 +2031,11 @@ jobs:
         run: |
           sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
           prefix="okou-cli/$sha"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
-          echo "package-url=${CLI_STATIC_BASE_URL}/${prefix}/package.tgz" >> "$GITHUB_OUTPUT"
+          {
+            echo "sha=$sha"
+            echo "prefix=$prefix"
+            echo "package-url=${CLI_STATIC_BASE_URL}/${prefix}/package.tgz"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Check for existing artifact
         id: existing
