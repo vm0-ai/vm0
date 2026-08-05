@@ -1057,16 +1057,17 @@ const TEMPLATE_CARD_SHADOW =
   "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
 
 /**
- * Gallery tile hover: a hairline ring drawn on the padded wrapper so it sits
- * clear of the artwork instead of hugging it, plus a small lift on the media.
+ * Gallery tile. The hover outline is a ring with an offset so it is drawn
+ * outside the card and keeps a gap from the artwork — the card itself keeps
+ * the full grid cell and never shrinks.
  */
-const TEMPLATE_TILE_WRAPPER =
-  "group/tile relative -m-2 cursor-pointer rounded-2xl p-2 transition-shadow duration-150";
-const TEMPLATE_TILE_RING_HOVER =
-  "hover:shadow-[0_0_0_1px_hsl(var(--gray-400))]";
-const TEMPLATE_TILE_RING_SELECTED = "shadow-[0_0_0_1px_hsl(var(--primary))]";
+const TEMPLATE_TILE_WRAPPER = "group/tile relative cursor-pointer";
+const TEMPLATE_TILE_RING =
+  "rounded-xl ring-offset-4 ring-offset-card transition-shadow duration-150";
+const TEMPLATE_TILE_RING_HOVER = "ring-gray-400 group-hover/tile:ring-1";
+const TEMPLATE_TILE_RING_SELECTED = "ring-1 ring-primary";
 const TEMPLATE_TILE_MEDIA =
-  "relative overflow-hidden rounded-[10px] border border-gray-200 bg-muted transition-[transform,box-shadow] duration-150 group-hover/tile:-translate-y-0.5 group-hover/tile:shadow-[0_8px_20px_hsl(220_12%_40%/0.14)] motion-reduce:transform-none";
+  "relative overflow-hidden border border-gray-200 bg-muted";
 const TEMPLATE_TILE_SCRIM =
   "pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-14 bg-gradient-to-t from-black/45 to-transparent opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100";
 const TEMPLATE_TILE_USE =
