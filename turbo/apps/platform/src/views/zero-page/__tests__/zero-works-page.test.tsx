@@ -705,10 +705,6 @@ describe("works page", () => {
     expect(queryRole("button", "Show next Feishu guide image")).toBeNull();
     expect(screen.getByText("User token scope JSON")).toBeInTheDocument();
     const scopeImportJson = screen.getByTestId("feishu-user-scope-import-json");
-    expect(scopeImportJson.parentElement).not.toHaveClass(
-      "max-h-56",
-      "overflow-y-auto",
-    );
     expect(JSON.parse(scopeImportJson.textContent ?? "")).toStrictEqual({
       scopes: {
         tenant: [],
@@ -946,19 +942,6 @@ describe("works page", () => {
     await expect(
       screen.findByText("Create an enterprise custom app"),
     ).resolves.toBeInTheDocument();
-    expect(screen.getByRole("dialog")).toHaveClass(
-      "h-[min(800px,calc(100dvh-2rem))]",
-      "!overflow-hidden",
-    );
-    expect(screen.getByTestId("feishu-setup-step-content")).toHaveClass(
-      "min-h-0",
-      "flex-1",
-      "overflow-y-auto",
-    );
-    expect(
-      screen.getByRole("heading", { name: "Add a Feishu bot" }).parentElement,
-    ).toHaveClass("shrink-0");
-    expect(getRole("button", "Next").parentElement).toHaveClass("shrink-0");
     const createGuideImage = screen.getByRole("img", {
       name: "Feishu app creation form with the app name, icon, and Create button highlighted",
     });

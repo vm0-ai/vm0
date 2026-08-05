@@ -1333,10 +1333,7 @@ function FeishuSetupWizard({
       <div className="shrink-0 pb-5">
         <FeishuSetupProgress step={step} />
       </div>
-      <div
-        className="-mr-3 min-h-0 flex-1 overflow-y-auto pr-3 [scrollbar-gutter:stable]"
-        data-testid="feishu-setup-step-content"
-      >
+      <div className="-mr-3 min-h-0 flex-1 overflow-y-auto pr-3 [scrollbar-gutter:stable]">
         <FeishuSetupStepContent
           step={step}
           data={data}
