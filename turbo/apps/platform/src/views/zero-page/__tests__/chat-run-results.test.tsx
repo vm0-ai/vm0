@@ -136,7 +136,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("hides run model names for limited-free-1 workspaces", async () => {
+  it("shows run model names for limited-free-1 workspaces", async () => {
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
       return respond(
         200,
@@ -198,11 +198,12 @@ describe("chat lifecycle", () => {
     click(await screen.findByLabelText("Credit usage 330"));
 
     await waitFor(() => {
-      expect(screen.getAllByText("model").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("GPT 5.6 Luna").length).toBeGreaterThanOrEqual(
+        1,
+      );
       expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
         1,
       );
-      expect(screen.queryByText("GPT 5.6 Luna")).not.toBeInTheDocument();
     });
   });
 
@@ -1967,6 +1968,85 @@ describe("chat lifecycle", () => {
     const recoveryTitle = await screen.findByText(title);
     expect(recoveryTitle).toBeInTheDocument();
     expect(screen.getByTestId("assistant-error-recovery")).toBeInTheDocument();
+  });
+
+  it("shows limited-free recovery models with Pro gating", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000789";
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(
+        200,
+        billingStatus("limited-free-1", {
+          supportByok: false,
+          restrictedVm0Models: true,
+        }),
+      );
+    });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000968",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000969",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000970",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel: "deepseek-v4-flash",
+      chatEvents: [
+        {
+          id: "limited-free-capacity-user",
+          role: "user",
+          content: "Continue",
+          runId: "limited-free-capacity-run",
+          createdAt: "2026-07-30T09:00:00Z",
+        },
+        {
+          id: "limited-free-capacity-failure",
+          role: "assistant",
+          content: null,
+          error:
+            "The selected model is at capacity. Please try a different model.",
+          runId: "limited-free-capacity-run",
+          runLifecycleEvent: "failed",
+          createdAt: "2026-07-30T09:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: true },
+      path: `/chats/${threadId}`,
+    });
+
+    const card = await screen.findByTestId("assistant-error-recovery");
+    click(within(card).getByRole("combobox", { name: "Switch model" }));
+
+    const deepseek = await screen.findByRole("option", {
+      name: /DeepSeek V4 Flash/u,
+    });
+    const luna = screen.getByRole("option", { name: /GPT 5\.6 Luna/u });
+    expect(deepseek).not.toHaveTextContent("Pro");
+    expect(luna).not.toHaveTextContent("Pro");
+    expect(
+      screen.getByRole("option", { name: /GPT 5\.6 Sol.*Pro/u }),
+    ).toBeInTheDocument();
   });
 
   it.each([

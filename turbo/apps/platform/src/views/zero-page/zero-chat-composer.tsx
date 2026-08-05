@@ -205,10 +205,6 @@ import {
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
-import {
-  DEFAULT_MODEL_PLAN_CAPABILITIES,
-  modelPlanCapabilities$,
-} from "../../signals/zero-page/model-plan-capabilities.ts";
 import { shouldUseUserMessage } from "../../signals/zero-page/user-message-document-codec.ts";
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
@@ -7414,15 +7410,6 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const modelSelection = useLastLoadable(signals.model.modelSelection$);
-  const modelCapabilitiesLoadable = useLoadable(modelPlanCapabilities$);
-  const lastModelCapabilities = useLastResolved(modelPlanCapabilities$);
-  const modelCapabilities =
-    modelCapabilitiesLoadable.state === "hasData"
-      ? modelCapabilitiesLoadable.data
-      : (lastModelCapabilities ??
-        (modelCapabilitiesLoadable.state === "hasError"
-          ? DEFAULT_MODEL_PLAN_CAPABILITIES
-          : undefined));
   const selectedModelOauthAvailable =
     useLastResolved(signals.model.selectedModelOauthAvailable$) ?? true;
   const setModelSelection = useSet(signals.model.setModelSelection$);
@@ -7469,12 +7456,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
           },
         }
       : undefined;
-  if (
-    modelPickerLoading ||
-    modelCapabilities === undefined ||
-    modelCapabilities.restrictedVm0Models ||
-    modelPicker.value === null
-  ) {
+  if (modelPickerLoading || modelPicker.value === null) {
     return null;
   }
 

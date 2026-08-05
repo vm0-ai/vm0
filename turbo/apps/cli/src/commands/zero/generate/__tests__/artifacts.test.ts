@@ -1,30 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chalk from "chalk";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { generateCommand } from "../index";
 import { reportCommand } from "../artifacts";
 import { selectResourceCandidates } from "@vm0/core/resource-registry";
-
-function buildZeroToken(
-  featureSwitchOverrides: Partial<Record<FeatureSwitchKey, boolean>>,
-): string {
-  const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
-    "base64url",
-  );
-  const payload = Buffer.from(
-    JSON.stringify({
-      userId: "user-1",
-      runId: "run-1",
-      orgId: "org-1",
-      scope: "zero",
-      capabilities: [],
-      featureSwitchOverrides,
-      iat: 1000,
-      exp: 2000,
-    }),
-  ).toString("base64url");
-  return `vm0_sandbox_${header}.${payload}.test-signature`;
-}
 
 describe("zero generate source-backed artifact commands", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
@@ -37,12 +15,6 @@ describe("zero generate source-backed artifact commands", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv(
-      "ZERO_TOKEN",
-      buildZeroToken({
-        [FeatureSwitchKey.HtmlResourceIndex]: false,
-      }),
-    );
   });
 
   afterEach(() => {
@@ -59,31 +31,26 @@ describe("zero generate source-backed artifact commands", () => {
     {
       command: "report",
       prompt: "Q2 generation usage report",
-      template: "template:finance-report",
     },
     {
       command: "docs-design",
       prompt: "Docs for adding built-in artifact targets",
-      template: "template:docs-page",
     },
     {
       command: "poster",
       prompt: "A poster for source-backed generation",
-      template: "template:html-ppt-zhangzara-retro-zine",
     },
     {
       command: "dashboard-design",
       prompt: "A dashboard for generation run health",
-      template: "template:dashboard",
     },
     {
       command: "mobile-app-design",
       prompt: "A mobile app design for reviewing generated artifacts",
-      template: "template:mobile-app",
     },
   ])(
     "prints a source selection packet for $command",
-    async ({ command, prompt, template }) => {
+    async ({ command, prompt }) => {
       await generateCommand.parseAsync([
         "node",
         "cli",
@@ -101,15 +68,18 @@ describe("zero generate source-backed artifact commands", () => {
       expect(stdout).toContain("generation source-selection packet");
       expect(stdout).not.toContain("federated");
       expect(stdout).toContain(prompt);
-      expect(stdout).toContain(template);
       expect(stdout).toContain(
-        "Default Git Source: `nexu-io/open-design@3fb620af423534643677c7c6fae76be088fa770a`",
+        `https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/${command}.json`,
       );
+      expect(stdout).not.toContain("/website.json");
       expect(stdout).not.toContain("Sources:");
       expect(stdout).not.toContain("vm0-ai/vm0-skills");
+      expect(stdout).toContain('"templates": "string[]"');
       expect(stdout).toContain(
-        "For a candidate without `source.archive`, resolve `source.path` only from the pinned Git Source above. Do not run `zero resource pull` for it.",
+        "Resolve and download only resources selected from the index.",
       );
+      expect(stdout).not.toContain("source.pull");
+      expect(stdout).not.toContain("built-in R2 template packages");
       expect(stdout).toContain(`Artifact kind: ${command}`);
       expect(stdout).toContain("## Artifact Output Model");
       expect(stdout).toContain(
@@ -127,16 +97,6 @@ describe("zero generate source-backed artifact commands", () => {
       expect(stdout).toContain(
         "Check that shapes, charts, images, or decorative graphics do not cover readable text",
       );
-      expect(stdout).toContain('"id": "skill:article-magazine"');
-      expect(stdout).not.toContain('"id": "skill:design-brief"');
-      if (command === "poster") {
-        expect(stdout).toContain('"id": "skill:algorithmic-art"');
-      } else {
-        expect(stdout).not.toContain('"id": "skill:algorithmic-art"');
-      }
-      expect(stdout).not.toContain('"id": "skill:slides"');
-      expect(stdout).not.toContain('"id": "skill:video-hyperframes"');
-      expect(stdout).not.toContain('"id": "skill:8-bit-orbit-video-template"');
     },
   );
 
@@ -161,47 +121,6 @@ describe("zero generate source-backed artifact commands", () => {
     expect(helpOutput).not.toContain("--audience");
     expect(helpOutput).not.toContain("--site <slug>");
   });
-
-  it.each([
-    "report",
-    "docs-design",
-    "poster",
-    "dashboard-design",
-    "mobile-app-design",
-  ])(
-    "uses the target-specific static resource index for %s when enabled",
-    async (command) => {
-      vi.stubEnv(
-        "ZERO_TOKEN",
-        buildZeroToken({
-          [FeatureSwitchKey.HtmlResourceIndex]: true,
-        }),
-      );
-
-      await generateCommand.parseAsync([
-        "node",
-        "cli",
-        command,
-        "--prompt",
-        `Generate a ${command} artifact`,
-        "--site-slug",
-        `${command}-demo`,
-      ]);
-
-      const stdout = output();
-      expect(stdout).toContain(
-        `https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/${command}.json`,
-      );
-      expect(stdout).not.toContain("/website.json");
-      expect(stdout).not.toContain("## Candidate Registry Slice");
-      expect(stdout).toContain('"templates": "string[]"');
-      expect(stdout).toContain(
-        "Resolve and download only resources selected from the index.",
-      );
-      expect(stdout).not.toContain("source.pull");
-      expect(stdout).not.toContain("built-in R2 template packages");
-    },
-  );
 
   it("returns every registered skill when no target is requested", () => {
     const selection = selectResourceCandidates();
@@ -295,28 +214,6 @@ describe("zero generate source-backed artifact commands", () => {
         }),
       ]),
     );
-  });
-
-  it("omits unnecessary candidate groups from the generated packet", async () => {
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "report",
-      "--prompt",
-      "Q2 generation usage report",
-      "--site-slug",
-      "report-demo",
-    ]);
-
-    const stdout = output();
-    expect(stdout).not.toContain('"imageStyles"');
-    expect(stdout).not.toContain('"audioStyles"');
-    expect(stdout).not.toContain('"videoTemplates"');
-    expect(stdout).not.toContain('"bundleTemplates"');
-    expect(stdout).not.toContain('"imageStyle"');
-    expect(stdout).not.toContain('"audioStyle"');
-    expect(stdout).not.toContain('"videoTemplate"');
-    expect(stdout).not.toContain('"bundleTemplate"');
   });
 
   it("filters template candidates by target when requested", () => {
