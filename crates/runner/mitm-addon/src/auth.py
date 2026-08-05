@@ -80,6 +80,11 @@ class FirewallHeaderPhaseAuthResult(Enum):
 type OrdinaryUpstreamCredentialsGuard = Callable[[], bool]
 
 
+_HTTP_STATUS_INFORMATIONAL_MIN = 100
+_HTTP_STATUS_SUCCESS_MIN = 200
+_HTTP_STATUS_NO_CONTENT = 204
+_HTTP_STATUS_RESET_CONTENT = 205
+_HTTP_STATUS_NOT_MODIFIED = 304
 _HTTP_STATUS_CLIENT_ERROR_MIN = 400
 _HTTP_STATUS_SERVER_ERROR_MIN = 500
 AUTH_BASE_FORWARDING_SATURATED_ERROR = "auth_base_forwarding_saturated"
@@ -1071,6 +1076,20 @@ async def _apply_url_rewrite(
             req_body,
             admission=admission,
         )
+        is_head_representation = flow.request.method == "HEAD" and not (
+            _HTTP_STATUS_INFORMATIONAL_MIN <= status < _HTTP_STATUS_SUCCESS_MIN
+            or status in (_HTTP_STATUS_NO_CONTENT, _HTTP_STATUS_RESET_CONTENT)
+        )
+        preserves_representation_length = is_head_representation or (
+            flow.request.method == "GET" and status == _HTTP_STATUS_NOT_MODIFIED
+        )
+        representation_content_length: str | None = None
+        if preserves_representation_length:
+            content_lengths = resp_headers.get_all("Content-Length")
+            if len(content_lengths) == 1:
+                candidate = content_lengths[0].strip(" \t")
+                if candidate.isascii() and candidate.isdigit():
+                    representation_content_length = candidate
         content_encodings = [
             value
             for name, value in header_pairs(resp_headers)
@@ -1081,6 +1100,10 @@ async def _apply_url_rewrite(
         # The forwarder returns representation bytes, but Response.make expects
         # decoded content. Hide the codings while it normalizes response framing.
         flow.response = http.Response.make(status, resp_raw_content, resp_headers)
+        if preserves_representation_length:
+            del flow.response.headers["Content-Length"]
+            if representation_content_length is not None:
+                flow.response.headers["Content-Length"] = representation_content_length
         if content_encodings:
             flow.response.headers.set_all("Content-Encoding", content_encodings)
     except ForwardedRequestTooLargeError:
