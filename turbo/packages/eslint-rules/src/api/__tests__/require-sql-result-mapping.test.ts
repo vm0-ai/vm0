@@ -213,6 +213,16 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
     {
       code: `${preamble}
         import { sql } from "drizzle-orm";
+        import { pgTextDecoder } from "./other/db-structured-result";
+        db.select({
+          value: sql\`value\`.mapWith(pgTextDecoder),
+        }).from(users);
+      `,
+      errors: [{ messageId: "uninspectableResultDecoder" }],
+    },
+    {
+      code: `${preamble}
+        import { sql } from "drizzle-orm";
         import { zodDriverValueDecoder } from
           "../../apps/api/src/lib/db-structured-result";
         declare const schemas: readonly [never];

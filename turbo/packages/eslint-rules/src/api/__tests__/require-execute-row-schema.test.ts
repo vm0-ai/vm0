@@ -137,6 +137,23 @@ ruleTester.run("require-execute-row-schema", requireExecuteRowSchema, {
       `,
     },
     {
+      code: `
+        import { sql } from "drizzle-orm";
+        import { db } from "./other/db";
+        const result = db.execute<Row>(sql\`SELECT 1\`);
+        void result;
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        import type { Db } from "@fake/db";
+        declare const client: Db;
+        const result = client.execute<Row>(sql\`SELECT 1\`);
+        void result;
+      `,
+    },
+    {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
         interface Client<TContext> {
@@ -174,9 +191,32 @@ ruleTester.run("require-execute-row-schema", requireExecuteRowSchema, {
     {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
+        async function query({
+          db: database,
+        }: {
+          readonly db: DrizzleDatabase;
+        }) {
+          const result = await database.execute(sql\`SELECT 1\`);
+          return result;
+        }
+      `,
+      errors: [{ messageId: "rawResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
         type ExecuteDb = Pick<DrizzleDatabase, "execute">;
         declare const pickedDb: ExecuteDb;
         const result = await pickedDb.execute(sql\`SELECT 1\`);
+      `,
+      errors: [{ messageId: "rawResult" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        declare function createDatabase(): DrizzleDatabase;
+        const typedDb: DrizzleDatabase = createDatabase();
+        const result = await typedDb.execute(sql\`SELECT 1\`);
       `,
       errors: [{ messageId: "rawResult" }],
     },

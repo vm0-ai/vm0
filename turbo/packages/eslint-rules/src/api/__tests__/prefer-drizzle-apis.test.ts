@@ -108,6 +108,22 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         );
       `,
     },
+    {
+      code: `${preamble}
+        import { eq, sql } from "drizzle-orm";
+        import { executeRawRows } from "./other/db-raw-rows";
+        declare const rowSchema: unknown;
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT \${users.id}
+            FROM \${users}
+            WHERE \${eq(users.id, 1)}
+          \`,
+          rowSchema,
+        );
+      `,
+    },
   ],
   invalid: [
     {
@@ -143,7 +159,8 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     {
       code: `${preamble}
         import { sql as query } from "drizzle-orm";
-        declare const ids: readonly number[];
+        declare function loadIds(): readonly number[];
+        const ids: readonly number[] = loadIds();
         db.select().from(users).where(query\`\${users.name} IS NULL\`);
         db.select().from(users).where(query\`\${users.name} IS NOT NULL\`);
         db.select().from(users).where(query\`\${users.name} LIKE \${"a%"}\`);

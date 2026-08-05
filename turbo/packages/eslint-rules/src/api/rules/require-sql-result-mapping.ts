@@ -97,7 +97,10 @@ interface SelectionFinding {
 }
 
 function isDbStructuredResultSource(source: string): boolean {
-  return /(?:^|\/)db-structured-result(?:\.[cm]?[jt]s)?$/.test(source);
+  return (
+    source.startsWith(".") &&
+    /(?:^|\/)lib\/db-structured-result(?:\.[cm]?[jt]s)?$/.test(source)
+  );
 }
 
 function builderRootedAtDatabase(

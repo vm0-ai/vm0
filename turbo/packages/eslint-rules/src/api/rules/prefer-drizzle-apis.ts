@@ -587,7 +587,9 @@ function isArrayOperand(
   if (resolved.type === AST_NODE_TYPES.ArrayExpression) {
     return true;
   }
-  let annotation = directTypeAnnotation(sourceCode, resolved);
+  let annotation =
+    directTypeAnnotation(sourceCode, node) ??
+    directTypeAnnotation(sourceCode, resolved);
   while (annotation?.type === AST_NODE_TYPES.TSTypeOperator) {
     annotation = annotation.typeAnnotation ?? null;
   }
@@ -998,7 +1000,10 @@ function selectedExpressions(
 }
 
 function isDbRawRowsSource(source: string): boolean {
-  return /(?:^|\/)db-raw-rows(?:\.[cm]?[jt]s)?$/u.test(source);
+  return (
+    source.startsWith(".") &&
+    /(?:^|\/)lib\/db-raw-rows(?:\.[cm]?[jt]s)?$/u.test(source)
+  );
 }
 
 function isExecuteRawRowsReference(

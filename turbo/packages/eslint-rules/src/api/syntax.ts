@@ -121,6 +121,16 @@ function isDrizzleModule(source: string): boolean {
   );
 }
 
+function isLocalDatabaseModule(source: string): boolean {
+  return (
+    source === "./db" ||
+    (source.startsWith(".") &&
+      /(?:^|\/)(?:external|lib|signals\/external)\/db(?:\.[cm]?[jt]s)?$/u.test(
+        source,
+      ))
+  );
+}
+
 export function memberName(node: TSESTree.MemberExpression): string | null {
   if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
     return node.property.name;
@@ -705,7 +715,7 @@ function databaseTypeAnnotation(
       imported !== null &&
       DATABASE_TYPE_NAMES.has(imported.importedName) &&
       (isDrizzleModule(imported.source) ||
-        /(?:^|\/)db(?:\.[cm]?[jt]s)?$/u.test(imported.source))
+        isLocalDatabaseModule(imported.source))
     ) {
       return true;
     }
@@ -770,7 +780,7 @@ function databaseTypeAnnotation(
     imported !== null &&
     !imported.isTypeOnly &&
     imported.importedName === "db" &&
-    /(?:^|\/)db(?:\.[cm]?[jt]s)?$/u.test(imported.source)
+    isLocalDatabaseModule(imported.source)
   );
 }
 
@@ -780,6 +790,38 @@ function identifierHasDatabaseType(
 ): boolean {
   const annotation = directTypeAnnotation(sourceCode, node);
   return annotation !== null && databaseTypeAnnotation(sourceCode, annotation);
+}
+
+function destructuredIdentifierHasDatabaseType(
+  sourceCode: TSESLint.SourceCode,
+  node: TSESTree.Identifier,
+): boolean {
+  const binding = variableInScope(sourceCode, node)?.identifiers[0];
+  if (binding === undefined) {
+    return false;
+  }
+  const value =
+    binding.parent.type === AST_NODE_TYPES.AssignmentPattern &&
+    binding.parent.left === binding
+      ? binding.parent
+      : binding;
+  const property = value.parent;
+  if (
+    property.type !== AST_NODE_TYPES.Property ||
+    property.value !== value ||
+    property.parent.type !== AST_NODE_TYPES.ObjectPattern
+  ) {
+    return false;
+  }
+  const name = propertyName(property);
+  const annotation = property.parent.typeAnnotation?.typeAnnotation;
+  if (name === null || annotation === undefined) {
+    return false;
+  }
+  const propertyType = propertyTypeAnnotation(sourceCode, annotation, name);
+  return (
+    propertyType !== null && databaseTypeAnnotation(sourceCode, propertyType)
+  );
 }
 
 function propertyTypeAnnotation(
@@ -926,16 +968,24 @@ export function isDatabaseExpression(
   sourceCode: TSESLint.SourceCode,
   node: TSESTree.Expression,
 ): boolean {
+  const directAnnotation = directTypeAnnotation(sourceCode, node);
+  if (
+    directAnnotation !== null &&
+    databaseTypeAnnotation(sourceCode, directAnnotation)
+  ) {
+    return true;
+  }
   const resolved = resolveLocalExpression(sourceCode, node);
   if (resolved.type === AST_NODE_TYPES.Identifier) {
     const imported = importReference(sourceCode, resolved);
     return (
       identifierHasDatabaseType(sourceCode, resolved) ||
+      destructuredIdentifierHasDatabaseType(sourceCode, resolved) ||
       isTransactionParameter(sourceCode, resolved) ||
       (imported !== null &&
         !imported.isTypeOnly &&
         imported.importedName === "db" &&
-        /(?:^|\/)db(?:\.[cm]?[jt]s)?$/.test(imported.source))
+        isLocalDatabaseModule(imported.source))
     );
   }
   if (resolved.type === AST_NODE_TYPES.CallExpression) {
@@ -967,7 +1017,7 @@ export function isDatabaseExpression(
           !imported.isTypeOnly &&
           imported.importedName.endsWith("$") &&
           DATABASE_NAMES.has(imported.importedName.slice(0, -1)) &&
-          /(?:^|\/)db(?:\.[cm]?[jt]s)?$/u.test(imported.source)
+          isLocalDatabaseModule(imported.source)
         ) {
           return true;
         }
@@ -982,7 +1032,7 @@ export function isDatabaseExpression(
       imported !== null &&
       !imported.isTypeOnly &&
       imported.importedName === "db" &&
-      /(?:^|\/)db(?:\.[cm]?[jt]s)?$/.test(imported.source)
+      isLocalDatabaseModule(imported.source)
     );
   }
   return (
