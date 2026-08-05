@@ -231,6 +231,37 @@ async function seedGoalAgent(
   signal.throwIfAborted();
 }
 
+async function seedQueuedIntegrationEvent(tx: DbTransaction, threadId: string) {
+  const [event] = await tx
+    .insert(chatEvents)
+    .values({
+      chatThreadId: threadId,
+      contextType: "slack",
+      contextId: randomUUID(),
+      eventType: "input.prompt",
+      triggerSource: "slack",
+      userMessage: createUserMessageDocument({
+        text: "orphan monitor fixture",
+      }),
+      runId: null,
+      seqId: 1,
+    })
+    .returning({ id: chatEvents.id });
+  if (!event) {
+    throw new Error("Failed to seed queued integration event");
+  }
+  return event;
+}
+
+function requireSeededEventId(
+  event: { readonly id: string } | null | undefined,
+): string {
+  if (!event) {
+    throw new Error("Failed to seed orphan monitor message");
+  }
+  return event.id;
+}
+
 async function seedFixture(
   db: Db,
   fixtureKind: FixtureKind,
@@ -313,21 +344,7 @@ async function seedFixture(
       ];
     }
     if (fixtureKind === "queued-integration") {
-      const [event] = await tx
-        .insert(chatEvents)
-        .values({
-          ...baseEvent,
-          contextType: "slack",
-          contextId: randomUUID(),
-          eventType: "input.prompt",
-          triggerSource: "slack",
-          seqId: 1,
-        })
-        .returning({ id: chatEvents.id });
-      if (!event) {
-        throw new Error("Failed to seed queued integration event");
-      }
-      return [event];
+      return [await seedQueuedIntegrationEvent(tx, thread.id)];
     }
     const event =
       fixtureKind === "failed-message"
@@ -373,12 +390,7 @@ async function seedFixture(
   return actionOk({
     compose_id: compose.id,
     event_id: event.id,
-    event_ids: events.map((candidate) => {
-      if (!candidate) {
-        throw new Error("Failed to seed orphan monitor message");
-      }
-      return candidate.id;
-    }),
+    event_ids: events.map(requireSeededEventId),
   });
 }
 
