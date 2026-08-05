@@ -46,7 +46,7 @@ async fn main() {
     if let Some(exit_code) = helper_exit_code_from_args() {
         std::process::exit(exit_code);
     }
-    let runtime = match GuestRuntime::from_process_env() {
+    let runtime = match initialize_guest_runtime() {
         Ok(runtime) => runtime,
         Err(e) => {
             log_error!(LOG_TAG, "Fatal: {e}");
@@ -56,6 +56,26 @@ async fn main() {
     };
     let exit_code = run(runtime).await;
     std::process::exit(exit_code);
+}
+
+fn initialize_guest_runtime() -> Result<GuestRuntime, String> {
+    #[cfg(target_os = "linux")]
+    deny_unprivileged_process_inspection()?;
+    GuestRuntime::from_process_env()
+}
+
+#[cfg(target_os = "linux")]
+fn deny_unprivileged_process_inspection() -> Result<(), String> {
+    // SAFETY: PR_SET_DUMPABLE only changes the calling process's inspection
+    // policy. It must run before the credential-bearing runtime is captured.
+    let result = unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0) };
+    if result == 0 {
+        return Ok(());
+    }
+    Err(format!(
+        "protect guest-agent from unprivileged process inspection: {}",
+        std::io::Error::last_os_error()
+    ))
 }
 
 fn helper_exit_code_from_args() -> Option<i32> {
