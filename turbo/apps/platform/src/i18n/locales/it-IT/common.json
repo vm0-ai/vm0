@@ -4282,6 +4282,9 @@
         "balancedUse": "Utilizzo equilibrato",
         "builtInModel": "Modello da incasso",
         "byokHelp": "Utilizza il provider configurato",
+        "defaultModel": "Predefinito",
+        "defaultModelDescription": "Predefinito per le nuove chat e le nuove automazioni",
+        "defaultModelUpdated": "{{model}} è ora il tuo modello predefinito",
         "fast": "Veloce",
         "inheritDefault": "Eredita dall'impostazione predefinita dell'organizzazione",
         "loadError": "Impossibile caricare i modelli.",
@@ -4303,6 +4306,7 @@
           "deepseek": "Ricerca profonda"
         },
         "runSpeed": "Corri velocità",
+        "setModelAsDefault": "Imposta {{model}} come predefinito",
         "standard": "Norma"
       },
       "policies": {

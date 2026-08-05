@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { agentById, currentAgentId$ } from "../agent.ts";
 import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
@@ -42,13 +43,15 @@ const chatEvents$ = computed((): ChatEvent[] => {
 
 const setModelSelection$ = command(
   async (
-    { set },
+    { get, set },
     selection: ModelProviderSelection | null,
     signal: AbortSignal,
   ): Promise<void> => {
     set(setChatPageModelSelection$, selection);
     const selectedModel = selection?.selectedModel;
-    if (isSupportedRunModel(selectedModel)) {
+    const explicitDefaultActionEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
+    if (!explicitDefaultActionEnabled && isSupportedRunModel(selectedModel)) {
       await set(updateUserModelPreference$, { selectedModel }, signal);
     }
     await set(updateCodexFastModeDefaultForSelection$, selection, signal);

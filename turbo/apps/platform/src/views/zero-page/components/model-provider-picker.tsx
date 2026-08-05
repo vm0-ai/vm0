@@ -6,6 +6,7 @@ import {
   useLoadable,
   useSet,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { IconBolt, IconCheck, IconCpu } from "@tabler/icons-react";
 import {
   Select,
@@ -22,6 +23,7 @@ import {
   TooltipTrigger,
   cn,
 } from "@vm0/ui";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   getCanonicalModelDisplayName,
   getProvidersForModel,
@@ -34,7 +36,10 @@ import {
 import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import { useTranslation } from "react-i18next";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
-import { userModelPreference$ } from "../../../signals/external/user-model-preference";
+import {
+  updateUserModelPreference$,
+  userModelPreference$,
+} from "../../../signals/external/user-model-preference";
 import {
   DEFAULT_MODEL_PLAN_CAPABILITIES,
   modelAllowedForPlan,
@@ -96,6 +101,8 @@ interface ModelProviderPickerProps {
    * not user/workspace defaults.
    */
   resolveDefaultSelection?: boolean;
+  /** Shows the explicit personal-default action used by the new-chat composer. */
+  showDefaultModelAction?: boolean;
 }
 
 // Radix Select reserves the empty string for "no value" and throws if a
@@ -429,12 +436,15 @@ function ModelFirstPolicyRowContent({
   modelCapabilities,
   selected = false,
   showSelectedIndicator = false,
+  defaultModel,
 }: {
   policy: OrgModelPolicy;
   modelCapabilities: ModelPlanCapabilities;
   selected?: boolean;
   showSelectedIndicator?: boolean;
+  defaultModel?: string | null;
 }) {
+  const { t } = useTranslation();
   const iconType = getModelFirstIconType(policy.model);
   const builtInPriceTier =
     policy.defaultProviderType === "vm0"
@@ -453,6 +463,13 @@ function ModelFirstPolicyRowContent({
         <ByokBadge />
       )}
       {restricted && <ProBadge />}
+      {policy.model === defaultModel && (
+        <span className="shrink-0 text-[11px] text-muted-foreground/70">
+          {t(($) => {
+            return $.settings.models.picker.defaultModel;
+          })}
+        </span>
+      )}
       {showSelectedIndicator && (
         <span className="flex h-4 w-4 shrink-0 items-center justify-center text-foreground">
           {selected && <IconCheck size={15} stroke={1.8} />}
@@ -465,9 +482,11 @@ function ModelFirstPolicyRowContent({
 function ModelFirstPolicyRow({
   policy,
   modelCapabilities,
+  defaultModel,
 }: {
   policy: OrgModelPolicy;
   modelCapabilities: ModelPlanCapabilities;
+  defaultModel?: string | null;
 }) {
   return (
     <SelectItem
@@ -478,6 +497,7 @@ function ModelFirstPolicyRow({
       <ModelFirstPolicyRowContent
         policy={policy}
         modelCapabilities={modelCapabilities}
+        defaultModel={defaultModel}
       />
     </SelectItem>
   );
@@ -488,11 +508,13 @@ function ModelFirstPolicyItems({
   explicitSelectedModel,
   modelCapabilities,
   showSeparator = true,
+  defaultModel,
 }: {
   policies: OrgModelPolicy[];
   explicitSelectedModel: string | null;
   modelCapabilities: ModelPlanCapabilities;
   showSeparator?: boolean;
+  defaultModel?: string | null;
 }) {
   const { t } = useTranslation();
   const hasExplicitSelectedPolicy =
@@ -534,6 +556,7 @@ function ModelFirstPolicyItems({
                 key={policy.id}
                 policy={policy}
                 modelCapabilities={modelCapabilities}
+                defaultModel={defaultModel}
               />
             );
           })}
@@ -659,17 +682,86 @@ function CodexFastModeSelectControl({
   );
 }
 
-function ModelFirstModelPickerContent({
-  selectValue,
-  placeholder,
-  policies,
-  selectableValue,
-  modelCapabilities,
-  codexFastModeAvailable,
+function NewChatDefaultModelFooter({
+  defaultModel,
   selectedModel,
-  codexServiceTier,
-  onChange,
 }: {
+  defaultModel: string | null;
+  selectedModel: string | null;
+}) {
+  const { t } = useTranslation();
+  const [updateLoadable, updatePreference] = useLoadableSet(
+    updateUserModelPreference$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  const selectedModelName = selectedModel
+    ? getCanonicalModelDisplayName(selectedModel)
+    : null;
+  const updating = updateLoadable.state === "loading";
+  const stopSelectDismiss = (event: SyntheticEvent) => {
+    event.stopPropagation();
+  };
+  const setSelectedModelAsDefault = (event: SyntheticEvent) => {
+    event.stopPropagation();
+    if (
+      !isSupportedRunModel(selectedModel) ||
+      selectedModel === defaultModel ||
+      updating
+    ) {
+      return;
+    }
+    const supportedSelectedModel = selectedModel;
+    detach(
+      (async () => {
+        await updatePreference(
+          { selectedModel: supportedSelectedModel },
+          pageSignal,
+        );
+        toast.success(
+          t(
+            ($) => {
+              return $.settings.models.picker.defaultModelUpdated;
+            },
+            { model: selectedModelName },
+          ),
+        );
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <div
+      className="border-t border-border/60 px-2.5 py-1.5 text-[11px] leading-4 text-muted-foreground"
+      onPointerDown={stopSelectDismiss}
+    >
+      <p>
+        {t(($) => {
+          return $.settings.models.picker.defaultModelDescription;
+        })}
+      </p>
+      {isSupportedRunModel(selectedModel) &&
+        selectedModel !== defaultModel &&
+        selectedModelName && (
+          <button
+            type="button"
+            className="mt-0.5 block rounded-sm text-left text-[11px] font-medium text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline disabled:pointer-events-none disabled:opacity-50"
+            disabled={updating}
+            onClick={setSelectedModelAsDefault}
+          >
+            {t(
+              ($) => {
+                return $.settings.models.picker.setModelAsDefault;
+              },
+              { model: selectedModelName },
+            )}
+          </button>
+        )}
+    </div>
+  );
+}
+
+interface ModelFirstModelPickerContentBaseProps {
   selectValue: string;
   placeholder: string;
   policies: OrgModelPolicy[];
@@ -679,12 +771,35 @@ function ModelFirstModelPickerContent({
   selectedModel: string | null;
   codexServiceTier: CodexServiceTier | undefined;
   onChange: (value: ModelProviderSelection | null) => void;
+}
+
+function ModelFirstModelPickerContentLayout({
+  selectValue,
+  placeholder,
+  policies,
+  selectableValue,
+  modelCapabilities,
+  codexFastModeAvailable,
+  selectedModel,
+  codexServiceTier,
+  onChange,
+  newChatDefaults = false,
+  defaultModel,
+  footer,
+}: ModelFirstModelPickerContentBaseProps & {
+  newChatDefaults?: boolean;
+  defaultModel?: string | null;
+  footer?: ReactNode;
 }) {
   return (
     <SelectContent
       className={cn(
-        "max-h-[280px]",
-        codexFastModeAvailable ? "min-w-[372px]" : "min-w-[260px]",
+        newChatDefaults ? "max-h-[340px]" : "max-h-[280px]",
+        codexFastModeAvailable
+          ? "min-w-[372px]"
+          : newChatDefaults
+            ? "min-w-[300px]"
+            : "min-w-[260px]",
       )}
     >
       <div
@@ -709,6 +824,7 @@ function ModelFirstModelPickerContent({
             explicitSelectedModel={selectableValue?.selectedModel ?? null}
             modelCapabilities={modelCapabilities}
             showSeparator={false}
+            defaultModel={defaultModel}
           />
         </div>
         {codexFastModeAvailable && selectedModel && (
@@ -719,8 +835,43 @@ function ModelFirstModelPickerContent({
           />
         )}
       </div>
+      {footer}
     </SelectContent>
   );
+}
+
+function NewChatDefaultModelPickerContent(
+  props: ModelFirstModelPickerContentBaseProps,
+) {
+  const userPreference = useLastResolved(userModelPreference$);
+  const defaultModel =
+    resolveModelFirstDefault(null, userPreference, props.policies)
+      ?.selectedModel ?? null;
+  return (
+    <ModelFirstModelPickerContentLayout
+      {...props}
+      newChatDefaults
+      defaultModel={defaultModel}
+      footer={
+        <NewChatDefaultModelFooter
+          defaultModel={defaultModel}
+          selectedModel={props.selectedModel}
+        />
+      }
+    />
+  );
+}
+
+function ModelFirstModelPickerContent({
+  showDefaultModelAction = false,
+  ...props
+}: ModelFirstModelPickerContentBaseProps & {
+  showDefaultModelAction?: boolean;
+}) {
+  if (showDefaultModelAction) {
+    return <NewChatDefaultModelPickerContent {...props} />;
+  }
+  return <ModelFirstModelPickerContentLayout {...props} />;
 }
 
 interface ModelFirstModelPickerState {
@@ -1044,11 +1195,13 @@ function SubscribedExplicitModelFirstModelPickerContent({
   placeholder,
   codexFastModeEnabled,
   onChange,
+  showDefaultModelAction,
 }: {
   value: ModelProviderSelection | null;
   placeholder: string;
   codexFastModeEnabled: boolean;
   onChange: (value: ModelProviderSelection | null) => void;
+  showDefaultModelAction: boolean;
 }) {
   const policiesLoadable = useLastLoadable(orgModelPolicies$);
   const modelCapabilities =
@@ -1093,6 +1246,7 @@ function SubscribedExplicitModelFirstModelPickerContent({
       selectedModel={state.selectedModel}
       codexServiceTier={state.codexServiceTier}
       onChange={onChange}
+      showDefaultModelAction={showDefaultModelAction}
     />
   );
 }
@@ -1144,6 +1298,7 @@ function EnabledExplicitModelFirstModelPicker(
             placeholder={props.placeholder}
             codexFastModeEnabled={props.codexFastModeEnabled ?? false}
             onChange={props.onChange}
+            showDefaultModelAction={props.showDefaultModelAction ?? false}
           />
         ) : undefined
       }
@@ -1211,6 +1366,7 @@ export function ModelProviderPicker({
   onOpenChange,
   disabled = false,
   resolveDefaultSelection = true,
+  showDefaultModelAction = false,
 }: ModelProviderPickerProps) {
   const { t } = useTranslation();
   const resolvedPlaceholder =
@@ -1229,6 +1385,7 @@ export function ModelProviderPicker({
     open,
     onOpenChange,
     disabled,
+    showDefaultModelAction,
   };
   if (resolveDefaultSelection) {
     return <ModelFirstModelPickerWithDefaultSelection {...props} />;

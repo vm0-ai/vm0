@@ -4282,6 +4282,9 @@
         "balancedUse": "Uso equilibrado",
         "builtInModel": "Modelo integrado",
         "byokHelp": "Usa seu provedor configurado",
+        "defaultModel": "Padrão",
+        "defaultModelDescription": "Padrão para novos chats e novas automações",
+        "defaultModelUpdated": "{{model}} agora é seu modelo padrão",
         "fast": "Rápido",
         "inheritDefault": "Herdar o padrão da organização",
         "loadError": "Não foi possível carregar os modelos.",
@@ -4303,6 +4306,7 @@
           "deepseek": "Deepseek"
         },
         "runSpeed": "Velocidade de execução",
+        "setModelAsDefault": "Definir {{model}} como padrão",
         "standard": "Padrão"
       },
       "policies": {

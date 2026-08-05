@@ -7407,6 +7407,9 @@ function ModelConfigurationWarning({
 function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
+  const explicitDefaultModelActionEnabled = useGet(
+    signals.model.explicitDefaultModelActionEnabled$,
+  );
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const modelSelection = useLastLoadable(signals.model.modelSelection$);
@@ -7482,6 +7485,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
         onOpenChange={setModelPickerOpen}
         disabled={modelPicker.disabled}
         resolveDefaultSelection={false}
+        showDefaultModelAction={explicitDefaultModelActionEnabled}
       />
       <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
     </>

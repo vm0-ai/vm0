@@ -4215,6 +4215,9 @@
         "balancedUse": "Penggunaan seimbang",
         "builtInModel": "Model bawaan",
         "byokHelp": "Menggunakan provider yang Anda atur",
+        "defaultModel": "Default",
+        "defaultModelDescription": "Default untuk chat baru dan otomatisasi baru",
+        "defaultModelUpdated": "{{model}} sekarang menjadi model default Anda",
         "fast": "Cepat",
         "inheritDefault": "Warisi dari default organisasi",
         "loadError": "Tidak dapat memuat model.",
@@ -4236,6 +4239,7 @@
           "deepseek": "Deepseek"
         },
         "runSpeed": "Kecepatan jalankan",
+        "setModelAsDefault": "Jadikan {{model}} sebagai default",
         "standard": "Standar"
       },
       "policies": {
