@@ -6,6 +6,7 @@ from typing import Literal
 from mitmproxy import http
 
 from body_limits import REQUEST_BODY_BILLING_INSPECTION_LIMIT
+from zlib_input import ZlibInputCursor
 
 
 def _decode_zlib_request_body_for_billing(
@@ -16,14 +17,15 @@ def _decode_zlib_request_body_for_billing(
         (16 + zlib.MAX_WBITS,) if encoding == "gzip" else (zlib.MAX_WBITS, -zlib.MAX_WBITS)
     )
     for wbits in wbits_options:
-        remaining = data
+        input_cursor = ZlibInputCursor(data)
         decoded = bytearray()
-        while remaining:
-            obj = zlib.decompressobj(wbits)
+        obj = zlib.decompressobj(wbits)
+        while input_cursor:
+            input_chunk = input_cursor.take()
             try:
                 decoded.extend(
                     obj.decompress(
-                        remaining,
+                        input_chunk,
                         max_length=max_output - len(decoded) + 1,
                     )
                 )
@@ -31,13 +33,15 @@ def _decode_zlib_request_body_for_billing(
                 break
             if len(decoded) > max_output:
                 return None
-            if not obj.eof:
-                break
-            remaining = obj.unused_data
-            if not remaining:
-                return bytes(decoded)
-            if encoding != "gzip":
-                break
+            if obj.eof:
+                input_cursor.carry(obj.unused_data)
+                if not input_cursor:
+                    return bytes(decoded)
+                if encoding != "gzip":
+                    break
+                obj = zlib.decompressobj(wbits)
+            elif obj.unconsumed_tail:
+                input_cursor.carry(obj.unconsumed_tail)
     return None
 
 
