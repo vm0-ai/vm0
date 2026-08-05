@@ -31,12 +31,13 @@ function authenticate(actor: ApiTestUser): {
 async function seedDirectRunActor(): Promise<{
   readonly actor: ApiTestUser;
   readonly composeId: string;
+  readonly runnerGroup: string;
 }> {
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
   runs.acceptStorageDownloads();
   runs.acceptTelemetryIngest();
-  runs.configureRunnerGroup();
+  const runnerGroup = runs.configureRunnerGroup();
   await runs.grantProEntitlement(actor);
 
   const name = `test-agent-runs-${randomUUID().slice(0, 8)}`;
@@ -50,7 +51,7 @@ async function seedDirectRunActor(): Promise<{
     },
   });
 
-  return { actor, composeId: compose.composeId };
+  return { actor, composeId: compose.composeId, runnerGroup };
 }
 
 describe("POST /api/test/agent-runs", () => {
@@ -75,7 +76,11 @@ describe("POST /api/test/agent-runs", () => {
 
   it("creates a direct run when the test endpoint is allowed", async () => {
     mockEnv("ENV", "development");
-    const { actor, composeId } = await seedDirectRunActor();
+    mockEnv(
+      "CLI_PKG_URL",
+      "https://static.vm0.io/okou-cli/direct-run-test/package.tgz",
+    );
+    const { actor, composeId, runnerGroup } = await seedDirectRunActor();
 
     const response = await accept(
       client().create({
@@ -109,6 +114,12 @@ describe("POST /api/test/agent-runs", () => {
         id: response.body.runId,
         triggerSource: "test",
       }),
+    );
+
+    await runs.heartbeatRunner(runnerGroup);
+    const claim = await runs.claimRunnerJob(response.body.runId);
+    expect(claim.environment?.CLI_PKG_URL).toBe(
+      "https://static.vm0.io/okou-cli/direct-run-test/package.tgz",
     );
 
     await runs.requestCancelRun(actor, response.body.runId, [200]);

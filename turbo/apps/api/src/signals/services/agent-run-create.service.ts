@@ -5212,6 +5212,9 @@ async function buildStoredExecutionContextDraft(args: {
       connectorVars: args.connectorContext.vars,
     }),
     ...args.extraEnvironment,
+    // The CLI package is deployment-owned and must reach every runner guest,
+    // including direct/internal run creation paths that bypass Zero routes.
+    CLI_PKG_URL: env("CLI_PKG_URL"),
   };
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {
