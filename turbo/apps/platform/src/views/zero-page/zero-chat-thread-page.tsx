@@ -34,6 +34,7 @@ import {
   IconCopy,
   IconDeviceDesktop,
   IconCheck,
+  IconColorSwatch,
   IconArrowDown,
   IconArrowUpRight,
   IconChevronRight,
@@ -46,7 +47,6 @@ import {
   IconSearch,
   IconSunrise,
   IconTarget,
-  IconTemplate,
   IconX,
   IconClock,
   IconCoins,
@@ -6884,7 +6884,7 @@ function UserMessageTemplateReference({
         setTemplatePickerOpen(true);
       }}
     >
-      <IconTemplate size={13} stroke={1.7} className="shrink-0" />
+      <IconColorSwatch size={13} stroke={1.7} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
     </button>
   );
