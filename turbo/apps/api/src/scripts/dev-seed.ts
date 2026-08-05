@@ -483,8 +483,8 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.output", usd(9), 1_000_000],
   ]),
 
-  // Managed image tasks — billed under task-scoped kinds at the backing
-  // model's token rates (see the image task pricing migrations).
+  // Local development pricing for managed image tasks, billed under
+  // task-scoped kinds at the backing model's token rates.
   ...usageGroup("image-recognition", "xiaomi/mimo-v2.5", [
     ["tokens.input", usd(0.14), 1_000_000],
     ["tokens.cache_read", usd(0.0028), 1_000_000],
