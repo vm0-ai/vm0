@@ -1,4 +1,4 @@
-"""Tests for default Codex provider-output timing observations."""
+"""Tests for default Codex provider request/output timing observations."""
 
 import json
 import sys
@@ -32,9 +32,12 @@ from tests.webhook_test_helpers import (
 from usage import json_probe
 
 _TELEMETRY_PATH = "/api/webhooks/agent/telemetry"
+_FIRST_GENERATED_RESPONSE_CREATE_SENT = "codex_proxy_first_generated_response_create_sent"
 _FIRST_GENERATED_RESPONSE_CREATED = "codex_proxy_first_generated_response_created"
 _FIRST_OUTPUT_ITEM_ADDED = "codex_proxy_first_output_item_added"
 _FIRST_OUTPUT_TEXT_DELTA = "codex_proxy_first_output_text_delta"
+_FIRST_TEXT_IN_FIRST_GENERATED_RESPONSE = "codex_proxy_first_text_in_first_generated_response"
+_FIRST_TEXT_IN_LATER_GENERATED_RESPONSE = "codex_proxy_first_text_in_later_generated_response"
 
 
 @pytest.fixture(autouse=True)
@@ -70,12 +73,31 @@ def _operations(requests: list[CapturedWebhookRequest]) -> list[dict[str, object
     return operations
 
 
+def _feed_client_event(
+    flow: http.HTTPFlow,
+    event: bytes,
+    *,
+    received_at: float | None = None,
+) -> None:
+    set_websocket_message(flow, from_client=True, content=event)
+    assert flow.websocket is not None
+    if received_at is not None:
+        flow.websocket.messages[-1].timestamp = received_at
+    mitm_addon.websocket_message(flow)
+
+
 def _feed_generated_response(
     flow: http.HTTPFlow,
     *,
     include_text: bool = True,
     secret: str | None = None,
+    request_received_at: float | None = None,
 ) -> None:
+    _feed_client_event(
+        flow,
+        _event("response.create", secret=secret),
+        received_at=request_received_at,
+    )
     feed_websocket_server_message(flow, _event("response.created", secret=secret))
     feed_websocket_server_message(flow, _event("response.output_item.added", secret=secret))
     if include_text:
@@ -92,30 +114,39 @@ def test_default_codex_excludes_prewarm_and_reports_content_free_milestones(
     flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
     proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
     secret = "provider-secret-that-must-not-be-reported"
+    generated_request_received_at = 1_700_000_000.125
 
     with mitm_ctx(api_url=usage_webhook_server.api_url):
         mitm_addon.responseheaders(flow)
+        _feed_client_event(flow, _event("response.create", secret=secret))
         feed_websocket_server_message(flow, _event("response.created", secret=secret))
         feed_websocket_server_message(flow, _event("response.completed", secret=secret))
         assert _timing_requests(usage_webhook_server) == []
 
-        _feed_generated_response(flow, secret=secret)
+        _feed_generated_response(
+            flow,
+            secret=secret,
+            request_received_at=generated_request_received_at,
+        )
 
     requests = _timing_requests(usage_webhook_server)
     assert len(requests) == 2
-    assert [len(request.json_body()["sandboxOperations"]) for request in requests] == [2, 1]
+    assert [len(request.json_body()["sandboxOperations"]) for request in requests] == [3, 2]
     assert all(request.header("authorization") == "Bearer tok-xyz" for request in requests)
 
     operations = _operations(requests)
     assert [operation["action_type"] for operation in operations] == [
+        _FIRST_GENERATED_RESPONSE_CREATE_SENT,
         _FIRST_GENERATED_RESPONSE_CREATED,
         _FIRST_OUTPUT_ITEM_ADDED,
         _FIRST_OUTPUT_TEXT_DELTA,
+        _FIRST_TEXT_IN_FIRST_GENERATED_RESPONSE,
     ]
     assert all(operation["duration_ms"] == 0 for operation in operations)
     assert all(operation["success"] is True for operation in operations)
     timestamps = [datetime.fromisoformat(str(operation["ts"])) for operation in operations]
     assert timestamps == sorted(timestamps)
+    assert timestamps[0] == datetime.fromtimestamp(generated_request_received_at, UTC)
     assert all(request.json_body()["runId"] == "run-abc-123" for request in requests)
 
     serialized_requests = b"".join(request.body for request in requests)
@@ -157,17 +188,26 @@ def test_tool_turns_reconnects_and_reused_sandboxes_preserve_run_boundaries(
         assert isinstance(run_id, str)
         operations_by_run.setdefault(run_id, []).extend(_operations([request]))
 
-    expected_actions = [
+    first_run_actions = [
+        _FIRST_GENERATED_RESPONSE_CREATE_SENT,
         _FIRST_GENERATED_RESPONSE_CREATED,
         _FIRST_OUTPUT_ITEM_ADDED,
         _FIRST_OUTPUT_TEXT_DELTA,
+        _FIRST_TEXT_IN_LATER_GENERATED_RESPONSE,
+    ]
+    direct_run_actions = [
+        _FIRST_GENERATED_RESPONSE_CREATE_SENT,
+        _FIRST_GENERATED_RESPONSE_CREATED,
+        _FIRST_OUTPUT_ITEM_ADDED,
+        _FIRST_OUTPUT_TEXT_DELTA,
+        _FIRST_TEXT_IN_FIRST_GENERATED_RESPONSE,
     ]
     assert {
         run_id: [operation["action_type"] for operation in operations]
         for run_id, operations in operations_by_run.items()
     } == {
-        "run-abc-123": expected_actions,
-        "run-reused-sandbox": expected_actions,
+        "run-abc-123": first_run_actions,
+        "run-reused-sandbox": direct_run_actions,
     }
 
 
@@ -189,6 +229,9 @@ def test_irrelevant_websocket_messages_do_not_report_timings(
             content=_event("response.output_item.added"),
         )
         mitm_addon.websocket_message(flow)
+        _feed_client_event(flow, b'{"type":')
+        _feed_client_event(flow, _event("future.client-event"))
+        _feed_client_event(flow, _event("response.create"))
         feed_websocket_server_message(flow, b'{"type":')
         feed_websocket_server_message(flow, _event("future.unknown"))
         feed_websocket_server_message(flow, _event("response.output_text.delta"))
@@ -204,10 +247,17 @@ def test_irrelevant_websocket_messages_do_not_report_timings(
     assert _timing_requests(usage_webhook_server) == []
 
 
-def test_server_websocket_event_type_is_probed_once(
+@pytest.mark.parametrize(
+    ("from_client", "event_type"),
+    [(True, "response.create"), (False, "response.output_text.delta")],
+)
+def test_websocket_event_type_is_probed_once(
     tmp_path: Path,
     real_flow,
     mitm_ctx,
+    *,
+    from_client: bool,
+    event_type: str,
 ) -> None:
     flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
     probe_code = json_probe.probe_top_level_string_field.__code__
@@ -223,7 +273,12 @@ def test_server_websocket_event_type_is_probed_once(
         mitm_addon.responseheaders(flow)
         sys.setprofile(count_probe)
         try:
-            feed_websocket_server_message(flow, _event("response.output_text.delta"))
+            set_websocket_message(
+                flow,
+                from_client=from_client,
+                content=_event(event_type),
+            )
+            mitm_addon.websocket_message(flow)
         finally:
             sys.setprofile(previous_profile)
 
@@ -411,13 +466,17 @@ def test_repeated_runner_flush_retries_saturated_timing_after_websocket_end(
     [request] = _timing_requests(usage_webhook_server)
     operations = _operations([request])
     assert [operation["action_type"] for operation in operations] == [
+        _FIRST_GENERATED_RESPONSE_CREATE_SENT,
         _FIRST_GENERATED_RESPONSE_CREATED,
         _FIRST_OUTPUT_ITEM_ADDED,
         _FIRST_OUTPUT_TEXT_DELTA,
+        _FIRST_TEXT_IN_FIRST_GENERATED_RESPONSE,
     ]
-    created_at = datetime.fromisoformat(str(operations[0]["ts"]))
-    output_at = datetime.fromisoformat(str(operations[1]["ts"]))
-    text_at = datetime.fromisoformat(str(operations[2]["ts"]))
-    assert created_at <= output_at <= text_at <= first_flush_started_at
+    sent_at = datetime.fromisoformat(str(operations[0]["ts"]))
+    created_at = datetime.fromisoformat(str(operations[1]["ts"]))
+    output_at = datetime.fromisoformat(str(operations[2]["ts"]))
+    text_at = datetime.fromisoformat(str(operations[3]["ts"]))
+    path_at = datetime.fromisoformat(str(operations[4]["ts"]))
+    assert sent_at <= created_at <= output_at <= text_at == path_at <= first_flush_started_at
     assert secret.encode() not in request.body
     assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
