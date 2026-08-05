@@ -181,6 +181,20 @@ const googleCalendarAutomation = {
   nextRunAt: null,
 };
 
+const googleMeetAutomation = {
+  ...automationBase,
+  kind: "event",
+  eventType: "google-meet-transcript-generated",
+  eventConfig: {
+    provider: "google-meet",
+    event: "transcript_generated",
+    scope: { type: "organizer_user" },
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+};
+
 const notionAutomation = {
   ...automationBase,
   kind: "event",
@@ -982,6 +996,52 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("team@example.com");
     });
 
+    it("should add a Google Meet transcript-generated automation", async () => {
+      const captured = captureCreateAutomation(googleMeetAutomation);
+
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "google-meet-transcript-generated",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "google-meet-transcript-generated",
+        eventConfig: {
+          provider: "google-meet",
+          event: "transcript_generated",
+          scope: { type: "organizer_user" },
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Google Meet transcript ready");
+    });
+
+    it("should reject event filter options for Google Meet automations", async () => {
+      await expect(async () => {
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "google-meet-transcript-generated",
+          "--calendar-id",
+          "team@example.com",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Google Meet transcript automations do not accept event filter options",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should add a Notion child page automation", async () => {
       const captured = captureCreateAutomation(notionAutomation);
 
@@ -1344,6 +1404,31 @@ describe("zero workflow automation commands", () => {
         expect.stringContaining("from contains must be non-empty"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should document Google Meet transcript automations in add help", () => {
+      const addCommand = automationCommand.commands.find((command) => {
+        return command.name() === "add";
+      });
+      if (!addCommand) {
+        throw new Error("add command not found");
+      }
+      let helpOutput = "";
+      addCommand.configureOutput({
+        writeOut: (value) => {
+          helpOutput += value;
+        },
+        writeErr: (value) => {
+          helpOutput += value;
+        },
+      });
+
+      addCommand.outputHelp();
+
+      expect(helpOutput).toContain("google-meet-transcript-generated");
+      expect(helpOutput).toContain(
+        "zero workflow automation add meeting-notes --agent <agent-id> google-meet-transcript-generated",
+      );
     });
   });
 

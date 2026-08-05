@@ -123,6 +123,7 @@ const EVENT_KINDS = [
   "google-calendar-event-created",
   "google-calendar-event-updated",
   "google-calendar-event-cancelled",
+  "google-meet-transcript-generated",
   "notion-child-page-created",
   "notion-database-item-created",
   "notion-page-content-updated",
@@ -1337,6 +1338,26 @@ function buildGoogleCalendarEventCreateRequest(
   };
 }
 
+function buildGoogleMeetTranscriptGeneratedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasEventAddOptions(options)) {
+    throw new Error(
+      "Google Meet transcript automations do not accept event filter options",
+    );
+  }
+  return {
+    kind: "event",
+    eventType: "google-meet-transcript-generated",
+    eventConfig: {
+      provider: "google-meet",
+      event: "transcript_generated",
+      scope: { type: "organizer_user" },
+    },
+  };
+}
+
 function buildNotionChildPageCreatedCreateRequest(
   options: AddOptions,
 ): ZeroWorkflowAutomationCreateRequest {
@@ -1629,6 +1650,8 @@ function buildCreateRequest(
       return buildGoogleCalendarEventCreateRequest(kind, options);
     case "google-calendar-event-cancelled":
       return buildGoogleCalendarEventCreateRequest(kind, options);
+    case "google-meet-transcript-generated":
+      return buildGoogleMeetTranscriptGeneratedCreateRequest(options);
     case "notion-child-page-created":
       return buildNotionChildPageCreatedCreateRequest(options);
     case "notion-database-item-created":
@@ -1973,6 +1996,7 @@ Examples:
   zero workflow automation add triage --agent <agent-id> google-calendar-event-created
   zero workflow automation add triage --agent <agent-id> google-calendar-event-updated
   zero workflow automation add triage --agent <agent-id> google-calendar-event-cancelled
+  zero workflow automation add meeting-notes --agent <agent-id> google-meet-transcript-generated
   zero workflow automation add research-notes --agent <agent-id> notion-child-page-created --parent-page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
   zero workflow automation add research-notes --agent <agent-id> notion-database-item-created --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
   zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
@@ -1986,6 +2010,7 @@ Notes:
   - Gmail automations match all inbound messages when no text match rules are provided
   - GitHub automations require the GitHub App installation in the workspace
   - GitHub workflow run filters accept comma-separated values; omit a filter to match any value
+  - Google Meet automations run only when a meeting you organize generates a transcript
   - Webhook automations print the signing secret only once after creation
   - Use the workflow ID when a name is ambiguous`,
   )
