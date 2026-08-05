@@ -15,7 +15,19 @@ use crate::types::{Error, Event, SubscribeConfig};
 /// best-effort close request, or [`close_and_wait`](Subscription::close_and_wait) when the caller
 /// must observe bounded shutdown completion.
 ///
-/// Messages may be dropped under backpressure if the consumer falls behind.
+/// # Backpressure
+///
+/// All events share a bounded channel. [`Event::Message`] events use non-blocking delivery and may
+/// be dropped when the channel is full. Status events ([`Event::Connected`],
+/// [`Event::Disconnected`], and [`Event::Error`]) instead wait for channel capacity rather than
+/// being dropped because the channel is full.
+///
+/// Keep polling [`next`](Subscription::next) while the subscription is active. A full channel can
+/// delay reconnect until space is available for `Disconnected` and, after reconnect, delay
+/// processing on the new connection until space is available for `Connected`. Calling `close` or
+/// `close_and_wait`, or dropping the subscription, can interrupt a status-event send that is
+/// waiting for capacity. Before waiting to deliver a terminal `Error`, the background task
+/// releases its socket.
 pub struct Subscription {
     rx: mpsc::Receiver<Event>,
     close_tx: Option<oneshot::Sender<CloseRequest>>,
@@ -117,7 +129,9 @@ impl Drop for Subscription {
 /// channel, and returns a [`Subscription`] that yields [`Event`]s.
 ///
 /// The background task automatically handles reconnection, token renewal, and
-/// heartbeat timeout detection.
+/// heartbeat timeout detection. See [`Subscription`] for how a full event channel
+/// can delay reconnect and post-reconnect receive progress until the caller drains
+/// events or closes the subscription.
 pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
     let timing = config.timing.unwrap_or_default();
     let close_timeout = timing.close_timeout;
