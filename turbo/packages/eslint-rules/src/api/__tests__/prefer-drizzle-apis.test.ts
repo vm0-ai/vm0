@@ -28,7 +28,9 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         import { sql } from "drizzle-orm";
         const left = 1;
         const right = 2;
+        declare const singleId: number;
         sql\`\${left} = \${right}\`;
+        db.select().from(users).where(sql\`\${users.id} IN (\${singleId})\`);
         db.select().from(users).where(sql\`custom_predicate(\${users.id})\`);
         db.select().from(users).where(sql\`'\${users.id} = \${1}'\`);
         db.select().from(users).where(sql\`/* \${users.id} = \${1} */ true\`);
@@ -141,7 +143,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     {
       code: `${preamble}
         import { sql as query } from "drizzle-orm";
-        const ids = [1, 2];
+        declare const ids: readonly number[];
         db.select().from(users).where(query\`\${users.name} IS NULL\`);
         db.select().from(users).where(query\`\${users.name} IS NOT NULL\`);
         db.select().from(users).where(query\`\${users.name} LIKE \${"a%"}\`);
@@ -213,6 +215,30 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select().from(users).innerJoinLateral(selected, sql\`true\`);
       `,
       errors: [{ messageId: "crossJoin" }, { messageId: "crossJoinLateral" }],
+    },
+    {
+      code: `${preamble}
+        import { sql } from "drizzle-orm";
+        const recent = db.$with("recent").as(
+          db.select({ id: users.id }).from(users),
+        );
+        const recentAlias = recent;
+        db.with(recentAlias)
+          .select()
+          .from(recentAlias)
+          .where(sql\`\${recentAlias.id} = \${1}\`);
+        db.query.users.findMany({
+          where: (fields, operators) =>
+            operators.sql\`\${fields.id} = \${1}\`,
+          orderBy: (fields, operators) =>
+            operators.sql\`\${fields.id} DESC\`,
+        });
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "desc" } },
+      ],
     },
     {
       code: `${preamble}

@@ -25,6 +25,13 @@ const DATABASE_TYPE_NAMES = new Set([
   "NodePgDatabase",
   "ReadonlyDb",
 ]);
+const DATABASE_TYPE_WRAPPERS = new Set([
+  "NonNullable",
+  "Omit",
+  "Pick",
+  "Readonly",
+  "Required",
+]);
 const SQL_WRAPPER_HELPERS = new Set([
   "and",
   "arrayContained",
@@ -299,6 +306,105 @@ function callbackPropertyName(
     : null;
 }
 
+function isRelationalQueryCall(
+  sourceCode: TSESLint.SourceCode,
+  node: TSESTree.CallExpression,
+): boolean {
+  if (
+    node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+    (memberName(node.callee) !== "findFirst" &&
+      memberName(node.callee) !== "findMany")
+  ) {
+    return false;
+  }
+  const table = resolveLocalExpression(sourceCode, node.callee.object);
+  if (table.type !== AST_NODE_TYPES.MemberExpression) {
+    return false;
+  }
+  const query = resolveLocalExpression(sourceCode, table.object);
+  return (
+    query.type === AST_NODE_TYPES.MemberExpression &&
+    memberName(query) === "query" &&
+    isDatabaseExpression(sourceCode, query.object)
+  );
+}
+
+function nestedRelationUsesConfig(
+  sourceCode: TSESLint.SourceCode,
+  node: TSESTree.Property,
+  visited: Set<TSESTree.Node>,
+): boolean {
+  const relations = node.parent;
+  const withProperty = relations.parent;
+  return (
+    withProperty.type === AST_NODE_TYPES.Property &&
+    withProperty.value === relations &&
+    propertyName(withProperty) === "with" &&
+    withProperty.parent.type === AST_NODE_TYPES.ObjectExpression &&
+    isRelationalConfigObject(sourceCode, withProperty.parent, visited)
+  );
+}
+
+function relationalConfigReference(
+  sourceCode: TSESLint.SourceCode,
+  node: TSESTree.Identifier,
+  visited: Set<TSESTree.Node>,
+): boolean {
+  const parent = node.parent;
+  if (
+    parent.type === AST_NODE_TYPES.CallExpression &&
+    parent.arguments.includes(node)
+  ) {
+    return isRelationalQueryCall(sourceCode, parent);
+  }
+  return (
+    parent.type === AST_NODE_TYPES.Property &&
+    parent.value === node &&
+    nestedRelationUsesConfig(sourceCode, parent, visited)
+  );
+}
+
+function isRelationalConfigObject(
+  sourceCode: TSESLint.SourceCode,
+  node: TSESTree.ObjectExpression,
+  visited: Set<TSESTree.Node>,
+): boolean {
+  if (visited.has(node)) {
+    return false;
+  }
+  visited.add(node);
+  const parent = node.parent;
+  if (
+    parent.type === AST_NODE_TYPES.CallExpression &&
+    parent.arguments.includes(node)
+  ) {
+    return isRelationalQueryCall(sourceCode, parent);
+  }
+  if (
+    parent.type === AST_NODE_TYPES.Property &&
+    parent.value === node &&
+    nestedRelationUsesConfig(sourceCode, parent, visited)
+  ) {
+    return true;
+  }
+  if (
+    parent.type !== AST_NODE_TYPES.VariableDeclarator ||
+    parent.init !== node ||
+    parent.id.type !== AST_NODE_TYPES.Identifier
+  ) {
+    return false;
+  }
+  const variable = variableInScope(sourceCode, parent.id);
+  return (
+    variable?.references.some((reference) => {
+      return (
+        reference.identifier.type === AST_NODE_TYPES.Identifier &&
+        relationalConfigReference(sourceCode, reference.identifier, visited)
+      );
+    }) === true
+  );
+}
+
 function relationalParameterRole(
   sourceCode: TSESLint.SourceCode,
   node: TSESTree.Identifier,
@@ -311,8 +417,22 @@ function relationalParameterRole(
   if (definition === undefined) {
     return null;
   }
-  const property = callbackPropertyName(definition);
-  if (property !== "extras" && property !== "orderBy" && property !== "where") {
+  const functionNode = definition.node;
+  const property = functionNode.parent;
+  if (
+    property.type !== AST_NODE_TYPES.Property ||
+    property.value !== functionNode ||
+    property.parent.type !== AST_NODE_TYPES.ObjectExpression ||
+    !isRelationalConfigObject(
+      sourceCode,
+      property.parent,
+      new Set<TSESTree.Node>(),
+    )
+  ) {
+    return null;
+  }
+  const name = callbackPropertyName(definition);
+  if (name !== "extras" && name !== "orderBy" && name !== "where") {
     return null;
   }
   const index = parameterIndex(definition);
@@ -398,30 +518,25 @@ export function isSchemaTableExpression(
   node: TSESTree.Expression,
 ): boolean {
   const direct = unwrapExpression(node);
-  if (direct.type === AST_NODE_TYPES.Identifier) {
-    const imported = importReference(sourceCode, direct);
+  const resolved = resolveLocalExpression(sourceCode, direct);
+  if (resolved.type === AST_NODE_TYPES.Identifier) {
+    const imported = importReference(sourceCode, resolved);
     if (
       imported?.source.startsWith(SCHEMA_MODULE_PREFIX) === true &&
       !imported.isTypeOnly
     ) {
       return true;
     }
-    const initializer = constInitializer(sourceCode, direct);
-    if (initializer?.type !== AST_NODE_TYPES.CallExpression) {
-      return false;
-    }
-    const name = drizzleCallName(sourceCode, initializer);
+  }
+  if (resolved.type === AST_NODE_TYPES.CallExpression) {
+    const name = drizzleCallName(sourceCode, resolved);
     return (
       name === "alias" ||
       name === "pgTable" ||
       name === "pgView" ||
-      isQueryBuilderExpression(sourceCode, initializer)
+      isCteExpression(sourceCode, resolved) ||
+      isQueryBuilderExpression(sourceCode, resolved)
     );
-  }
-  const resolved = resolveLocalExpression(sourceCode, direct);
-  if (resolved.type === AST_NODE_TYPES.CallExpression) {
-    const name = drizzleCallName(sourceCode, resolved);
-    return name === "alias" || name === "pgTable" || name === "pgView";
   }
   if (resolved.type !== AST_NODE_TYPES.MemberExpression) {
     return false;
@@ -435,6 +550,27 @@ export function isSchemaTableExpression(
     imported?.importedName === "*" &&
     (imported.source === "@vm0/db" ||
       imported.source.startsWith(SCHEMA_MODULE_PREFIX))
+  );
+}
+
+function isCteExpression(
+  sourceCode: TSESLint.SourceCode,
+  node: TSESTree.Expression,
+): boolean {
+  const resolved = resolveLocalExpression(sourceCode, node);
+  if (
+    resolved.type !== AST_NODE_TYPES.CallExpression ||
+    resolved.callee.type !== AST_NODE_TYPES.MemberExpression ||
+    memberName(resolved.callee) !== "as"
+  ) {
+    return false;
+  }
+  const withCall = resolveLocalExpression(sourceCode, resolved.callee.object);
+  return (
+    withCall.type === AST_NODE_TYPES.CallExpression &&
+    withCall.callee.type === AST_NODE_TYPES.MemberExpression &&
+    memberName(withCall.callee) === "$with" &&
+    isDatabaseExpression(sourceCode, withCall.callee.object)
   );
 }
 
@@ -543,15 +679,6 @@ function databaseTypeAnnotation(
       return databaseTypeAnnotation(sourceCode, member, visited);
     });
   }
-  if (node.type === AST_NODE_TYPES.TSTypeOperator) {
-    return (
-      node.typeAnnotation !== undefined &&
-      databaseTypeAnnotation(sourceCode, node.typeAnnotation, visited)
-    );
-  }
-  if (node.type === AST_NODE_TYPES.TSIndexedAccessType) {
-    return databaseTypeAnnotation(sourceCode, node.objectType, visited);
-  }
   if (node.type === AST_NODE_TYPES.TSImportType) {
     const qualifier = node.qualifier;
     const name =
@@ -565,18 +692,6 @@ function databaseTypeAnnotation(
       isDrizzleModule(node.source.value) &&
       name !== null &&
       DATABASE_TYPE_NAMES.has(name)
-    );
-  }
-  if (node.type === AST_NODE_TYPES.TSTypeQuery) {
-    if (node.exprName.type !== AST_NODE_TYPES.Identifier) {
-      return false;
-    }
-    const imported = importReference(sourceCode, node.exprName);
-    return (
-      imported !== null &&
-      !imported.isTypeOnly &&
-      DATABASE_NAMES.has(imported.importedName.replace(/\$$/, "")) &&
-      /(?:^|\/)db(?:\.[cm]?[jt]s)?$/u.test(imported.source)
     );
   }
   if (node.type !== AST_NODE_TYPES.TSTypeReference) {
@@ -628,10 +743,34 @@ function databaseTypeAnnotation(
       }
     }
   }
+  if (
+    name !== null &&
+    DATABASE_TYPE_WRAPPERS.has(name) &&
+    node.typeArguments?.params[0] !== undefined
+  ) {
+    return databaseTypeAnnotation(
+      sourceCode,
+      node.typeArguments.params[0],
+      visited,
+    );
+  }
+  if (
+    name !== "ReturnType" ||
+    node.typeArguments?.params.length !== 1 ||
+    node.typeArguments.params[0]?.type !== AST_NODE_TYPES.TSTypeQuery ||
+    node.typeArguments.params[0].exprName.type !== AST_NODE_TYPES.Identifier
+  ) {
+    return false;
+  }
+  const imported = importReference(
+    sourceCode,
+    node.typeArguments.params[0].exprName,
+  );
   return (
-    node.typeArguments?.params.some((argument) => {
-      return databaseTypeAnnotation(sourceCode, argument, visited);
-    }) === true
+    imported !== null &&
+    !imported.isTypeOnly &&
+    imported.importedName === "db" &&
+    /(?:^|\/)db(?:\.[cm]?[jt]s)?$/u.test(imported.source)
   );
 }
 
@@ -800,15 +939,49 @@ export function isDatabaseExpression(
     );
   }
   if (resolved.type === AST_NODE_TYPES.CallExpression) {
+    if (
+      resolved.callee.type === AST_NODE_TYPES.MemberExpression &&
+      memberName(resolved.callee) === "with" &&
+      isDatabaseExpression(sourceCode, resolved.callee.object)
+    ) {
+      return true;
+    }
+    const accessorName =
+      resolved.callee.type === AST_NODE_TYPES.Identifier
+        ? resolved.callee.name
+        : resolved.callee.type === AST_NODE_TYPES.MemberExpression
+          ? memberName(resolved.callee)
+          : null;
+    const signal = resolved.arguments[0];
+    if (
+      (accessorName === "get" || accessorName === "set") &&
+      resolved.arguments.length === 1 &&
+      signal !== undefined &&
+      signal.type !== AST_NODE_TYPES.SpreadElement
+    ) {
+      const signalExpression = resolveLocalExpression(sourceCode, signal);
+      if (signalExpression.type === AST_NODE_TYPES.Identifier) {
+        const imported = importReference(sourceCode, signalExpression);
+        if (
+          imported !== null &&
+          !imported.isTypeOnly &&
+          imported.importedName.endsWith("$") &&
+          DATABASE_NAMES.has(imported.importedName.slice(0, -1)) &&
+          /(?:^|\/)db(?:\.[cm]?[jt]s)?$/u.test(imported.source)
+        ) {
+          return true;
+        }
+      }
+    }
     const callee = resolveLocalExpression(sourceCode, resolved.callee);
     if (callee.type !== AST_NODE_TYPES.Identifier) {
       return false;
     }
     const imported = importReference(sourceCode, callee);
     return (
-      DATABASE_NAMES.has(callee.name.replace(/\$$/, "")) &&
       imported !== null &&
       !imported.isTypeOnly &&
+      imported.importedName === "db" &&
       /(?:^|\/)db(?:\.[cm]?[jt]s)?$/.test(imported.source)
     );
   }

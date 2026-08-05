@@ -170,6 +170,19 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
     {
       code: `${preamble}
         import { sql } from "drizzle-orm";
+        const recent = db.$with("recent").as(
+          db.select({ id: users.id }).from(users),
+        );
+        const recentAlias = recent;
+        db.with(recentAlias)
+          .select({ value: sql\`upper(\${recentAlias.id})\` })
+          .from(recentAlias);
+      `,
+      errors: [{ messageId: "unmappedResult" }],
+    },
+    {
+      code: `${preamble}
+        import { sql } from "drizzle-orm";
         const fields = {
           value: sql\`upper(\${users.name})\`,
         } as const;

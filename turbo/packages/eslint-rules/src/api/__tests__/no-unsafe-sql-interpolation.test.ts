@@ -98,6 +98,20 @@ ruleTester.run("no-unsafe-sql-interpolation", noUnsafeSqlInterpolation, {
         sql\`\${value}\`;
       `,
     },
+    {
+      code: `
+        declare const value: any;
+        const client = { run(_config: unknown) {} };
+        client.run({
+          where: (
+            _fields: unknown,
+            operators: {
+              sql(strings: TemplateStringsArray, ...values: unknown[]): unknown;
+            },
+          ) => operators.sql\`\${value}\`,
+        });
+      `,
+    },
   ],
   invalid: [
     {
@@ -186,6 +200,16 @@ ruleTester.run("no-unsafe-sql-interpolation", noUnsafeSqlInterpolation, {
         sql\`\${returnsVoid()}\`;
       `,
       errors: [{ messageId: "undefinedInterpolation" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        function recursive(): unknown {
+          return recursive();
+        }
+        sql\`\${recursive()}\`;
+      `,
+      errors: [{ messageId: "unknownInterpolation" }],
     },
   ],
 });

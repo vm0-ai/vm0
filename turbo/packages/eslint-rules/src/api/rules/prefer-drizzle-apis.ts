@@ -2,6 +2,7 @@ import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { parsePostgres } from "../sql-analysis/postgres-parser.ts";
 import {
+  directTypeAnnotation,
   drizzleCallName,
   importReference,
   isColumnExpression,
@@ -12,6 +13,7 @@ import {
   isSqlWrapperExpression,
   localFunctionReturn,
   memberName,
+  propertyName,
   resolveLocalExpression,
   unwrapExpression,
 } from "../syntax.ts";
@@ -119,6 +121,7 @@ const SELECTION_METHOD_ARGUMENT = new Map<string, number>([
   ["selectDistinct", 0],
   ["selectDistinctOn", 1],
 ]);
+const RELATIONAL_RESULT_METHODS = new Set(["findFirst", "findMany"]);
 
 function staticText(
   node: TSESTree.TaggedTemplateExpression,
@@ -581,10 +584,28 @@ function isArrayOperand(
   node: TSESTree.Expression,
 ): boolean {
   const resolved = resolveLocalExpression(sourceCode, node);
+  if (resolved.type === AST_NODE_TYPES.ArrayExpression) {
+    return true;
+  }
+  let annotation = directTypeAnnotation(sourceCode, resolved);
+  while (annotation?.type === AST_NODE_TYPES.TSTypeOperator) {
+    annotation = annotation.typeAnnotation ?? null;
+  }
+  if (
+    annotation?.type === AST_NODE_TYPES.TSArrayType ||
+    annotation?.type === AST_NODE_TYPES.TSTupleType
+  ) {
+    return true;
+  }
+  if (
+    annotation?.type !== AST_NODE_TYPES.TSTypeReference ||
+    annotation.typeName.type !== AST_NODE_TYPES.Identifier
+  ) {
+    return false;
+  }
   return (
-    resolved.type === AST_NODE_TYPES.ArrayExpression ||
-    (resolved.type === AST_NODE_TYPES.Identifier &&
-      !isSqlWrapperExpression(sourceCode, resolved))
+    annotation.typeName.name === "Array" ||
+    annotation.typeName.name === "ReadonlyArray"
   );
 }
 
@@ -1027,6 +1048,34 @@ function rawRowsQueryArgument(
     : null;
 }
 
+function relationalConfigArgument(
+  sourceCode: Parameters<typeof isDatabaseExpression>[0],
+  node: TSESTree.CallExpression,
+): TSESTree.Expression | null {
+  if (
+    node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+    !RELATIONAL_RESULT_METHODS.has(memberName(node.callee) ?? "")
+  ) {
+    return null;
+  }
+  const table = resolveLocalExpression(sourceCode, node.callee.object);
+  if (table.type !== AST_NODE_TYPES.MemberExpression) {
+    return null;
+  }
+  const query = resolveLocalExpression(sourceCode, table.object);
+  if (
+    query.type !== AST_NODE_TYPES.MemberExpression ||
+    memberName(query) !== "query" ||
+    !isDatabaseExpression(sourceCode, query.object)
+  ) {
+    return null;
+  }
+  const config = node.arguments[0];
+  return config !== undefined && config.type !== AST_NODE_TYPES.SpreadElement
+    ? config
+    : null;
+}
+
 function rootSqlTemplates(
   sourceCode: Parameters<typeof resolveLocalExpression>[0],
   node: TSESTree.Expression,
@@ -1295,6 +1344,77 @@ export const preferDrizzleApis = createRule({
       analyzeExpression(node, "selection");
     }
 
+    function callbackResult(node: TSESTree.Node): TSESTree.Node | null {
+      if (
+        node.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
+        node.type !== AST_NODE_TYPES.FunctionExpression
+      ) {
+        return node;
+      }
+      if (node.body.type !== AST_NODE_TYPES.BlockStatement) {
+        return node.body;
+      }
+      const statement = node.body.body.at(-1);
+      return statement?.type === AST_NODE_TYPES.ReturnStatement
+        ? statement.argument
+        : null;
+    }
+
+    function inspectRelationalConfig(
+      node: TSESTree.Expression,
+      visited: Set<TSESTree.Node>,
+    ): void {
+      const config = resolveLocalExpression(context.sourceCode, node);
+      if (
+        config.type !== AST_NODE_TYPES.ObjectExpression ||
+        visited.has(config)
+      ) {
+        return;
+      }
+      visited.add(config);
+      for (const property of config.properties) {
+        if (property.type === AST_NODE_TYPES.SpreadElement) {
+          continue;
+        }
+        const name = propertyName(property);
+        const value = callbackResult(property.value);
+        if (value === null) {
+          continue;
+        }
+        if (name === "where") {
+          analyzeExpression(value, "predicate");
+          continue;
+        }
+        if (name === "orderBy") {
+          analyzeExpression(value, "ordering");
+          continue;
+        }
+        if (name === "extras") {
+          inspectSelection(value);
+          continue;
+        }
+        if (name !== "with") {
+          continue;
+        }
+        const relations =
+          property.value.type === AST_NODE_TYPES.Identifier
+            ? resolveLocalExpression(context.sourceCode, property.value)
+            : property.value;
+        if (relations.type !== AST_NODE_TYPES.ObjectExpression) {
+          continue;
+        }
+        for (const relation of relations.properties) {
+          if (
+            relation.type !== AST_NODE_TYPES.SpreadElement &&
+            (relation.value.type === AST_NODE_TYPES.Identifier ||
+              relation.value.type === AST_NODE_TYPES.ObjectExpression)
+          ) {
+            inspectRelationalConfig(relation.value, visited);
+          }
+        }
+      }
+    }
+
     function checkJoin(node: TSESTree.CallExpression): void {
       if (
         node.callee.type !== AST_NODE_TYPES.MemberExpression ||
@@ -1398,6 +1518,13 @@ export const preferDrizzleApis = createRule({
         }
         if (unstableGrouping(context.sourceCode, node)) {
           context.report({ node, messageId: "unstableGrouping" });
+        }
+        const relationalConfig = relationalConfigArgument(
+          context.sourceCode,
+          node,
+        );
+        if (relationalConfig !== null) {
+          inspectRelationalConfig(relationalConfig, new Set<TSESTree.Node>());
         }
         checkJoin(node);
         checkTransactionConfig(node);

@@ -266,6 +266,7 @@ function booleanHelperCategories(
 function categoriesFromExpression(
   sourceCode: Parameters<typeof variableInScope>[0],
   node: TSESTree.Expression,
+  visitingCalls = new Set<TSESTree.CallExpression>(),
 ): ReadonlySet<ValueCategory> | null {
   const annotation = directTypeAnnotation(sourceCode, node);
   if (annotation !== null) {
@@ -273,7 +274,7 @@ function categoriesFromExpression(
   }
   const resolved = resolveLocalExpression(sourceCode, node);
   if (resolved !== node) {
-    return categoriesFromExpression(sourceCode, resolved);
+    return categoriesFromExpression(sourceCode, resolved, visitingCalls);
   }
   if (
     resolved.type === AST_NODE_TYPES.Literal ||
@@ -294,13 +295,21 @@ function categoriesFromExpression(
   }
   if (resolved.type === AST_NODE_TYPES.ConditionalExpression) {
     return mergeCategories([
-      categoriesFromExpression(sourceCode, resolved.consequent),
-      categoriesFromExpression(sourceCode, resolved.alternate),
+      categoriesFromExpression(sourceCode, resolved.consequent, visitingCalls),
+      categoriesFromExpression(sourceCode, resolved.alternate, visitingCalls),
     ]);
   }
   if (resolved.type === AST_NODE_TYPES.LogicalExpression) {
-    const left = categoriesFromExpression(sourceCode, resolved.left);
-    const right = categoriesFromExpression(sourceCode, resolved.right);
+    const left = categoriesFromExpression(
+      sourceCode,
+      resolved.left,
+      visitingCalls,
+    );
+    const right = categoriesFromExpression(
+      sourceCode,
+      resolved.right,
+      visitingCalls,
+    );
     if (resolved.operator === "??" && left !== null) {
       const narrowedLeft = new Set(left);
       narrowedLeft.delete("undefined");
@@ -317,8 +326,14 @@ function categoriesFromExpression(
       return new Set(["wrapper"]);
     }
     const returned = localFunctionReturn(sourceCode, resolved);
-    if (returned !== null) {
-      const categories = categoriesFromExpression(sourceCode, returned);
+    if (returned !== null && !visitingCalls.has(resolved)) {
+      visitingCalls.add(resolved);
+      const categories = categoriesFromExpression(
+        sourceCode,
+        returned,
+        visitingCalls,
+      );
+      visitingCalls.delete(resolved);
       if (categories !== null) {
         return categories;
       }
