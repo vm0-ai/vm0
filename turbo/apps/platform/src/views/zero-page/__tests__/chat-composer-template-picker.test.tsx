@@ -717,6 +717,10 @@ describe("chat composer templates", () => {
       const selectAvatar = await within(dialog).findByLabelText(
         "Select template Ada",
       );
+      expect(within(dialog).getByLabelText("Select template Avatar 1")).toBe(
+        firstCard,
+      );
+      expect(avatarScroll.scrollTop).toBe(500);
       const adaPreview = selectAvatar.querySelector(
         "[data-avatar-template-preview]",
       );
@@ -790,6 +794,9 @@ describe("chat composer templates", () => {
       if (!(voiceScroll instanceof HTMLElement)) {
         throw new Error("Voice catalog scroll area not found");
       }
+      const firstVoiceCard = within(dialog).getByLabelText(
+        "Select voice Christopher",
+      );
       Object.defineProperties(voiceScroll, {
         scrollHeight: { configurable: true, value: 1200 },
         clientHeight: { configurable: true, value: 500 },
@@ -799,6 +806,10 @@ describe("chat composer templates", () => {
       await within(dialog).findByText("Loading");
       voicePageTwoReady.resolve();
       await within(dialog).findByLabelText("Select voice Ava");
+      expect(within(dialog).getByLabelText("Select voice Christopher")).toBe(
+        firstVoiceCard,
+      );
+      expect(voiceScroll.scrollTop).toBe(500);
       const voicePreview = within(dialog).getByLabelText(
         "Preview voice Christopher",
       );
