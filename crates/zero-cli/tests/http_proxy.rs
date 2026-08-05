@@ -113,6 +113,15 @@ enum ServerOutcome {
     Cancelled,
 }
 
+impl ServerOutcome {
+    const fn diagnostic(&self) -> &'static str {
+        match self {
+            Self::Request(_) => "request captured",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
 struct HttpServer {
     address: SocketAddr,
     stop: Arc<AtomicBool>,
@@ -460,10 +469,11 @@ fn finish_proxy_case(child: CommandExecution, server: HttpServer) -> io::Result<
                 .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
         }
         (Ok(output), Ok(server_outcome)) => Err(io::Error::other(format!(
-            "proxy child exited with {}; stdout={:?}; stderr={:?}; server={server_outcome:?}",
+            "proxy child exited with {}; stdout={:?}; stderr={:?}; server={}",
             output.status,
             String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
+            String::from_utf8_lossy(&output.stderr),
+            server_outcome.diagnostic()
         ))),
         (Ok(output), Err(server_error)) => Err(io::Error::new(
             server_error.kind(),
@@ -477,7 +487,7 @@ fn finish_proxy_case(child: CommandExecution, server: HttpServer) -> io::Result<
         )),
         (Err(child_error), Ok(server_outcome)) => Err(io::Error::new(
             child_error.kind(),
-            format!("{child_error}; server={server_outcome:?}"),
+            format!("{child_error}; server={}", server_outcome.diagnostic()),
         )),
         (Err(child_error), Err(server_error)) => Err(io::Error::new(
             child_error.kind(),
