@@ -61,7 +61,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
-import { isValidTimeZone, safeSync } from "../utils";
+import { isValidTimeZone, onRejection, safeSync } from "../utils";
 import { calculateNextRun } from "./time-automation";
 import {
   insertRolloutCompatibleWorkflowAutomation,
@@ -75,9 +75,13 @@ import {
 } from "./zero-workflow-data.service";
 import {
   ensureGmailWatchForUser,
+  hasEnabledGmailConsumer,
   resolveGmailLabelForUser,
 } from "./gmail-workflow-event.service";
-import { ensureGoogleCalendarWatchForUser } from "./google-calendar-workflow-event.service";
+import {
+  ensureGoogleCalendarWatchForUser,
+  hasEnabledGoogleCalendarConsumer,
+} from "./google-calendar-workflow-event.service";
 import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-workflow-event.service";
 import { prepareGithubLabelEventConfigForPersist } from "./github-workflow-event.service";
 import { prepareGithubWebhookEventConfigForPersist } from "./github-webhook-automation-event.service";
@@ -108,6 +112,7 @@ import {
 } from "./zero-workflow-user-automation-thread.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
+import { reconcileWorkflowEventWatches } from "./workflow-event-watch-lifecycle.service";
 
 type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
 type WorkflowRow = typeof zeroWorkflows.$inferSelect;
@@ -1571,6 +1576,84 @@ async function prepareGmailEventConfigForPersist(
   };
 }
 
+async function createGmailEventAutomationForWorkflow(args: {
+  readonly context: CreateEventAutomationWorkflowContext;
+  readonly input: CreateGmailEventAutomationInput;
+  readonly signal: AbortSignal;
+}): Promise<AutomationResult> {
+  const preparedConfig = await prepareGmailEventConfigForPersist(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      eventType: args.input.eventType,
+      eventConfig: args.input.eventConfig,
+      signal: args.signal,
+    },
+  );
+  args.signal.throwIfAborted();
+  if (preparedConfig.kind !== "ok") {
+    return preparedConfig;
+  }
+
+  const hadConsumer = args.input.enabled
+    ? await hasEnabledGmailConsumer({
+        db: args.context.db,
+        orgId: args.input.orgId,
+        userId: args.input.member.userId,
+        signal: args.signal,
+      })
+    : false;
+  const summary = await insertWorkflowEventAutomation(args.context.db, {
+    input: { ...args.input, eventConfig: preparedConfig.eventConfig },
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  if (!args.input.enabled) {
+    args.signal.throwIfAborted();
+    return { kind: "ok", summary };
+  }
+
+  args.signal.throwIfAborted();
+  const watchResult = await onRejection(
+    ensureGmailWatchForUser({
+      db: args.context.db,
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      forceRefresh: !hadConsumer,
+      signal: args.signal,
+    }),
+    async () => {
+      await args.context.db
+        .delete(zeroWorkflowAutomations)
+        .where(eq(zeroWorkflowAutomations.id, summary.id));
+    },
+  );
+  args.signal.throwIfAborted();
+  if (watchResult.kind === "ok") {
+    return { kind: "ok", summary };
+  }
+
+  await args.context.db
+    .delete(zeroWorkflowAutomations)
+    .where(eq(zeroWorkflowAutomations.id, summary.id));
+  await reconcileWorkflowEventWatches({
+    db: args.context.db,
+    automations: [
+      {
+        orgId: args.input.orgId,
+        ownerUserId: args.input.member.userId,
+        eventType: args.input.eventType,
+        eventConfig: preparedConfig.eventConfig,
+      },
+    ],
+    signal: args.signal,
+  });
+  return { kind: "bad-request", message: watchResult.message };
+}
+
 async function insertScheduleAutomation(
   db: Db,
   args: {
@@ -1755,17 +1838,15 @@ async function createGoogleCalendarEventAutomationForWorkflow(args: {
     args.input.eventType,
     args.input.eventConfig,
   );
-  const watchResult = await ensureGoogleCalendarWatchForUser({
-    db: args.context.db,
-    orgId: args.input.orgId,
-    userId: args.input.member.userId,
-    calendarId: preparedConfig.calendarId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
-  if (watchResult.kind !== "ok") {
-    return { kind: "bad-request", message: watchResult.message };
-  }
+  const hadConsumer = args.input.enabled
+    ? await hasEnabledGoogleCalendarConsumer({
+        db: args.context.db,
+        orgId: args.input.orgId,
+        userId: args.input.member.userId,
+        calendarId: preparedConfig.calendarId,
+        signal: args.signal,
+      })
+    : false;
 
   const summary = await insertWorkflowEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: preparedConfig },
@@ -1774,7 +1855,46 @@ async function createGoogleCalendarEventAutomationForWorkflow(args: {
     workflowTitle: args.context.workflowTitle,
     currentTime: nowDate(),
   });
+  if (!args.input.enabled) {
+    args.signal.throwIfAborted();
+    return { kind: "ok", summary };
+  }
+
   args.signal.throwIfAborted();
+  const watchResult = await onRejection(
+    ensureGoogleCalendarWatchForUser({
+      db: args.context.db,
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      calendarId: preparedConfig.calendarId,
+      forceRefresh: !hadConsumer,
+      signal: args.signal,
+    }),
+    async () => {
+      await args.context.db
+        .delete(zeroWorkflowAutomations)
+        .where(eq(zeroWorkflowAutomations.id, summary.id));
+    },
+  );
+  args.signal.throwIfAborted();
+  if (watchResult.kind !== "ok") {
+    await args.context.db
+      .delete(zeroWorkflowAutomations)
+      .where(eq(zeroWorkflowAutomations.id, summary.id));
+    await reconcileWorkflowEventWatches({
+      db: args.context.db,
+      automations: [
+        {
+          orgId: args.input.orgId,
+          ownerUserId: args.input.member.userId,
+          eventType: args.input.eventType,
+          eventConfig: preparedConfig,
+        },
+      ],
+      signal: args.signal,
+    });
+    return { kind: "bad-request", message: watchResult.message };
+  }
   return { kind: "ok", summary };
 }
 
@@ -2127,45 +2247,17 @@ const createEventAutomationForWorkflow$ = command(
       });
     }
 
-    if (!automationCreateInputIsGmail(input)) {
-      return {
-        kind: "bad-request",
-        message: "Unsupported workflow event automation type",
-      };
+    if (automationCreateInputIsGmail(input)) {
+      return await createGmailEventAutomationForWorkflow({
+        context: args,
+        input,
+        signal,
+      });
     }
-
-    const preparedConfig = await prepareGmailEventConfigForPersist(args.db, {
-      orgId: input.orgId,
-      userId: input.member.userId,
-      eventType: input.eventType,
-      eventConfig: input.eventConfig,
-      signal,
-    });
-    signal.throwIfAborted();
-    if (preparedConfig.kind !== "ok") {
-      return preparedConfig;
-    }
-
-    const watchResult = await ensureGmailWatchForUser({
-      db: args.db,
-      orgId: input.orgId,
-      userId: input.member.userId,
-      signal,
-    });
-    signal.throwIfAborted();
-    if (watchResult.kind !== "ok") {
-      return { kind: "bad-request", message: watchResult.message };
-    }
-
-    const summary = await insertWorkflowEventAutomation(args.db, {
-      input: { ...input, eventConfig: preparedConfig.eventConfig },
-      workflowId: args.workflowId,
-      agentId: args.agentId,
-      workflowTitle: args.workflowTitle,
-      currentTime: nowDate(),
-    });
-    signal.throwIfAborted();
-    return { kind: "ok", summary };
+    return {
+      kind: "bad-request",
+      message: "Unsupported workflow event automation type",
+    };
   },
 );
 
@@ -2762,6 +2854,12 @@ export const deleteWorkflowAutomation$ = command(
       .delete(zeroWorkflowAutomations)
       .where(eq(zeroWorkflowAutomations.id, owned.automation.id));
     signal.throwIfAborted();
+    await reconcileWorkflowEventWatches({
+      db: writeDb,
+      automations: [owned.automation],
+      signal,
+    });
+    signal.throwIfAborted();
     await publishThreadBoundWorkflowAutomationChanged(
       args.member.userId,
       chatThreadId,
@@ -2782,20 +2880,6 @@ const ensureEventAutomationCanBeEnabled$ = command(
     },
     signal: AbortSignal,
   ): Promise<AutomationActionFailure | null> => {
-    if (args.automation.eventType === "gmail-new-message") {
-      const watchResult = await ensureGmailWatchForUser({
-        db: args.db,
-        orgId: args.orgId,
-        userId: args.member.userId,
-        signal,
-      });
-      signal.throwIfAborted();
-      if (watchResult.kind !== "ok") {
-        return { kind: "bad-request", message: watchResult.message };
-      }
-      return null;
-    }
-
     if (supportedGithubEventType(args.automation.eventType)) {
       const preparedConfig = await prepareGithubAutomationEventConfig(args.db, {
         orgId: args.orgId,
@@ -2805,25 +2889,6 @@ const ensureEventAutomationCanBeEnabled$ = command(
       });
       signal.throwIfAborted();
       return preparedConfig.kind === "ok" ? null : preparedConfig;
-    }
-
-    if (supportedGoogleCalendarEventType(args.automation.eventType)) {
-      const config = parseGoogleCalendarEventConfig(
-        args.automation.eventType,
-        args.automation.eventConfig,
-      );
-      const watchResult = await ensureGoogleCalendarWatchForUser({
-        db: args.db,
-        orgId: args.orgId,
-        userId: args.member.userId,
-        calendarId: config.calendarId,
-        signal,
-      });
-      signal.throwIfAborted();
-      if (watchResult.kind !== "ok") {
-        return { kind: "bad-request", message: watchResult.message };
-      }
-      return null;
     }
 
     if (supportedGoogleMeetEventType(args.automation.eventType)) {
@@ -2843,6 +2908,121 @@ const ensureEventAutomationCanBeEnabled$ = command(
     return null;
   },
 );
+
+async function enabledWatchHadConsumer(args: {
+  readonly db: Db;
+  readonly automation: AutomationRow;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  if (supportedGmailEventType(args.automation.eventType)) {
+    return await hasEnabledGmailConsumer({
+      db: args.db,
+      orgId: args.automation.orgId,
+      userId: args.automation.ownerUserId,
+      signal: args.signal,
+    });
+  }
+  if (!supportedGoogleCalendarEventType(args.automation.eventType)) {
+    return false;
+  }
+  const config = parseGoogleCalendarEventConfig(
+    args.automation.eventType,
+    args.automation.eventConfig,
+  );
+  return await hasEnabledGoogleCalendarConsumer({
+    db: args.db,
+    orgId: args.automation.orgId,
+    userId: args.automation.ownerUserId,
+    calendarId: config.calendarId,
+    signal: args.signal,
+  });
+}
+
+async function ensureEnabledWorkflowEventWatch(args: {
+  readonly db: Db;
+  readonly automation: AutomationRow;
+  readonly hadConsumer: boolean;
+  readonly signal: AbortSignal;
+}): Promise<AutomationActionFailure | null> {
+  if (supportedGmailEventType(args.automation.eventType)) {
+    const result = await ensureGmailWatchForUser({
+      db: args.db,
+      orgId: args.automation.orgId,
+      userId: args.automation.ownerUserId,
+      forceRefresh: !args.hadConsumer,
+      signal: args.signal,
+    });
+    return result.kind === "ok"
+      ? null
+      : { kind: "bad-request", message: result.message };
+  }
+  if (!supportedGoogleCalendarEventType(args.automation.eventType)) {
+    return null;
+  }
+  const config = parseGoogleCalendarEventConfig(
+    args.automation.eventType,
+    args.automation.eventConfig,
+  );
+  const result = await ensureGoogleCalendarWatchForUser({
+    db: args.db,
+    orgId: args.automation.orgId,
+    userId: args.automation.ownerUserId,
+    calendarId: config.calendarId,
+    forceRefresh: !args.hadConsumer,
+    signal: args.signal,
+  });
+  return result.kind === "ok"
+    ? null
+    : { kind: "bad-request", message: result.message };
+}
+
+async function restoreDisabledWorkflowAutomation(
+  db: Db,
+  automation: AutomationRow,
+): Promise<void> {
+  await db
+    .update(zeroWorkflowAutomations)
+    .set({
+      enabled: false,
+      nextRunAt: automation.nextRunAt,
+      updatedAt: nowDate(),
+    })
+    .where(eq(zeroWorkflowAutomations.id, automation.id));
+}
+
+async function ensureEnabledWorkflowEventWatchWithRollback(args: {
+  readonly db: Db;
+  readonly previousAutomation: AutomationRow;
+  readonly enabledAutomation: AutomationRow;
+  readonly hadConsumer: boolean;
+  readonly signal: AbortSignal;
+}): Promise<AutomationActionFailure | null> {
+  const failure = await onRejection(
+    ensureEnabledWorkflowEventWatch({
+      db: args.db,
+      automation: args.enabledAutomation,
+      hadConsumer: args.hadConsumer,
+      signal: args.signal,
+    }),
+    async () => {
+      await restoreDisabledWorkflowAutomation(args.db, args.previousAutomation);
+    },
+  );
+  args.signal.throwIfAborted();
+  if (!failure) {
+    return null;
+  }
+
+  await restoreDisabledWorkflowAutomation(args.db, args.previousAutomation);
+  args.signal.throwIfAborted();
+  await reconcileWorkflowEventWatches({
+    db: args.db,
+    automations: [args.enabledAutomation],
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+  return failure;
+}
 
 async function persistEnabledWorkflowAutomation(
   db: Db,
@@ -2970,6 +3150,11 @@ export const enableWorkflowAutomation$ = command(
             automation.lastRunAt,
           )
         : automation.nextRunAt;
+    const watchHadConsumer = await enabledWatchHadConsumer({
+      db: writeDb,
+      automation,
+      signal,
+    });
     if (automation.kind === "event") {
       const failure = await set(
         ensureEventAutomationCanBeEnabled$,
@@ -2994,13 +3179,24 @@ export const enableWorkflowAutomation$ = command(
       signal,
       autonomyBudgetCeiling: args.autonomyBudgetCeiling,
     });
-    signal.throwIfAborted();
     if (enabled.status === "team-required") {
+      signal.throwIfAborted();
       return workflowWebhookTeamRequiredResult();
     }
     const row = enabled.row;
     if (!row) {
       throw new Error("Failed to enable workflow automation");
+    }
+    const watchFailure = await ensureEnabledWorkflowEventWatchWithRollback({
+      db: writeDb,
+      previousAutomation: automation,
+      enabledAutomation: row,
+      hadConsumer: watchHadConsumer,
+      signal,
+    });
+    signal.throwIfAborted();
+    if (watchFailure) {
+      return watchFailure;
     }
     const chatThreadId = await loadWorkflowUserAutomationThreadId(writeDb, {
       orgId: row.orgId,
@@ -3044,6 +3240,12 @@ export const disableWorkflowAutomation$ = command(
     if (!row) {
       throw new Error("Failed to disable workflow automation");
     }
+    await reconcileWorkflowEventWatches({
+      db: writeDb,
+      automations: [owned.automation],
+      signal,
+    });
+    signal.throwIfAborted();
     const chatThreadId = await loadWorkflowUserAutomationThreadId(writeDb, {
       orgId: row.orgId,
       userId: row.ownerUserId,

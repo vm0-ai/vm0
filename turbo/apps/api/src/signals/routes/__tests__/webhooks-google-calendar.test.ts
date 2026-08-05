@@ -90,6 +90,8 @@ interface GoogleCalendarWatchChannel {
 interface GoogleCalendarApiRecorder {
   /** Watch channels registered against the provider, in order. */
   readonly channels: GoogleCalendarWatchChannel[];
+  baselineCalls: number;
+  incrementalCalls: number;
 }
 
 function configureGoogleCalendarApiMock(args: {
@@ -101,7 +103,11 @@ function configureGoogleCalendarApiMock(args: {
     readonly nextSyncToken: string;
   }[];
 }): GoogleCalendarApiRecorder {
-  const recorder: GoogleCalendarApiRecorder = { channels: [] };
+  const recorder: GoogleCalendarApiRecorder = {
+    channels: [],
+    baselineCalls: 0,
+    incrementalCalls: 0,
+  };
   let incrementalCallCount = 0;
   mockOptionalEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
   server.use(
@@ -153,11 +159,13 @@ function configureGoogleCalendarApiMock(args: {
         expect(url.searchParams.get("maxResults")).toBe("2500");
         const syncToken = url.searchParams.get("syncToken");
         if (!syncToken) {
+          recorder.baselineCalls += 1;
           return HttpResponse.json({
             items: args.baselineItems ?? [],
             nextSyncToken: "calendar-sync-baseline",
           });
         }
+        recorder.incrementalCalls += 1;
         expect(syncToken).toBeTruthy();
         const sequentialResponse =
           args.incrementalResponses?.[
@@ -254,6 +262,64 @@ function webhookHeaders(
 }
 
 describe("POST /api/webhooks/google-calendar", () => {
+  it("short-circuits before Calendar event reads when no consumer remains", async () => {
+    const recorder = configureGoogleCalendarApiMock({});
+    server.use(
+      http.post("https://www.googleapis.com/calendar/v3/channels/stop", () => {
+        return HttpResponse.json({ error: "stop failed" }, { status: 500 });
+      }),
+    );
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+    const watch = recorder.channels[0];
+    if (!watch) {
+      throw new Error("Expected a registered Google Calendar watch channel");
+    }
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+
+    const response = await postGoogleCalendarWebhook(webhookHeaders(watch));
+
+    expect(response.status).toBe(200);
+    expect(response.body).toStrictEqual({
+      success: true,
+      watchStates: 1,
+      dispatched: 0,
+      duplicates: 0,
+    });
+    expect(recorder.baselineCalls).toBe(1);
+    expect(recorder.incrementalCalls).toBe(0);
+
+    server.use(
+      http.post("https://www.googleapis.com/calendar/v3/channels/stop", () => {
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [204],
+    );
+  });
+
   it("dispatches newly created calendar events and de-duplicates retries", async () => {
     const recorder = configureGoogleCalendarApiMock({
       incrementalItems: [

@@ -8,6 +8,10 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { storages } from "@vm0/db/schema/storage";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
+  zeroWorkflowAutomations,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
+import {
   getInstructionsStorageName,
   VOLUME_ORG_USER_ID,
 } from "@vm0/core/storage-names";
@@ -17,6 +21,7 @@ import { db$, writeDb$ } from "../external/db";
 import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
 import { env } from "../../lib/env";
 import { conflict } from "../../lib/error";
+import { reconcileWorkflowEventWatches } from "./workflow-event-watch-lifecycle.service";
 
 export function zeroComposeExists(args: {
   readonly orgId: string;
@@ -109,6 +114,25 @@ export const deleteComposeById$ = command(
         return { kind: "conflict" as const };
       }
 
+      const automations = await tx
+        .select({
+          orgId: zeroWorkflowAutomations.orgId,
+          ownerUserId: zeroWorkflowAutomations.ownerUserId,
+          eventType: zeroWorkflowAutomations.eventType,
+          eventConfig: zeroWorkflowAutomations.eventConfig,
+        })
+        .from(zeroWorkflowAutomations)
+        .innerJoin(
+          zeroWorkflows,
+          eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
+        )
+        .where(
+          and(
+            eq(zeroWorkflows.orgId, args.orgId),
+            eq(zeroWorkflows.agentId, args.composeId),
+          ),
+        );
+
       const versionRows = await tx
         .select({ id: agentComposeVersions.id })
         .from(agentComposeVersions)
@@ -149,6 +173,7 @@ export const deleteComposeById$ = command(
       return {
         kind: "deleted" as const,
         s3Prefix: storage?.s3Prefix ?? null,
+        automations,
       };
     });
     signal.throwIfAborted();
@@ -156,6 +181,13 @@ export const deleteComposeById$ = command(
     if (result.kind === "conflict") {
       return conflict("Cannot delete agent: agent is currently running");
     }
+
+    await reconcileWorkflowEventWatches({
+      db: writeDb,
+      automations: result.automations,
+      signal,
+    });
+    signal.throwIfAborted();
 
     if (result.s3Prefix) {
       const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
