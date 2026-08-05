@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.74](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.73...vsock-host-v0.17.74) (2026-08-05)
+
+
+### Documentation
+
+* **rust:** document exec-control response abandonment ([#25200](https://github.com/vm0-ai/vm0/issues/25200)) ([d59c859](https://github.com/vm0-ai/vm0/commit/d59c8594277cdbdc6f4217364a0daad0b29534b7))
+
 ## [0.17.73](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.72...vsock-host-v0.17.73) (2026-08-04)
 
 

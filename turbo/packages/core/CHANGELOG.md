@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.515.1](https://github.com/vm0-ai/vm0/compare/core-v8.515.0...core-v8.515.1) (2026-08-05)
+
+
+### Refactoring
+
+* remove abandoned rust zero cli switch ([#25169](https://github.com/vm0-ai/vm0/issues/25169)) ([aaa177c](https://github.com/vm0-ai/vm0/commit/aaa177caddeeb4895c3e6e42bfbf530108f29ae4))
+* remove graduated feature switches ([#25128](https://github.com/vm0-ai/vm0/issues/25128)) ([c160b0e](https://github.com/vm0-ai/vm0/commit/c160b0e1a25a6c884a0021fc9caf61eab71e4561))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.3
+
 ## [8.515.0](https://github.com/vm0-ai/vm0/compare/core-v8.514.1...core-v8.515.0) (2026-08-05)
 
 

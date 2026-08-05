@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.279.4](https://github.com/vm0-ai/vm0/compare/cli-v9.279.3...cli-v9.279.4) (2026-08-05)
+
+
+### Refactoring
+
+* remove abandoned rust zero cli switch ([#25169](https://github.com/vm0-ai/vm0/issues/25169)) ([aaa177c](https://github.com/vm0-ai/vm0/commit/aaa177caddeeb4895c3e6e42bfbf530108f29ae4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.274.3
+    * @vm0/core bumped to 8.515.1
+
 ## [9.279.3](https://github.com/vm0-ai/vm0/compare/cli-v9.279.2...cli-v9.279.3) (2026-08-05)
 
 

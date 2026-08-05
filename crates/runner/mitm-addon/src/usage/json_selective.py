@@ -623,13 +623,7 @@ class JsonSelectiveExtractor:
             self._error = "missing string parser state"
             return i
         work_limited = self.max_work_units is not None
-        if (
-            state.raw is None
-            and not state.escape
-            and not state.unicode_remaining
-            and not state.utf8_remaining
-            and _is_discarded_ascii_string_byte(chunk[i])
-        ):
+        if _can_bulk_skip_discarded_string_byte(state, chunk[i]):
             end = self._discarded_ascii_work_span_end(len(chunk), i) if work_limited else len(chunk)
             if self._error:
                 return i
@@ -649,6 +643,8 @@ class JsonSelectiveExtractor:
         start = i
         try:
             while i < end:
+                if _can_bulk_skip_discarded_string_byte(state, chunk[i]):
+                    break
                 b = chunk[i]
                 i += 1
 
@@ -980,6 +976,16 @@ def _is_json_value_start(b: int) -> bool:
 
 def _is_discarded_ascii_string_byte(b: int) -> bool:
     return _JSON_CONTROL_CHAR_MAX <= b < _UTF8_ONE_BYTE_MAX and b not in b'"\\'
+
+
+def _can_bulk_skip_discarded_string_byte(state: _StringState, b: int) -> bool:
+    return (
+        state.raw is None
+        and not state.escape
+        and not state.unicode_remaining
+        and not state.utf8_remaining
+        and _is_discarded_ascii_string_byte(b)
+    )
 
 
 def _validate_extractor_config(

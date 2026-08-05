@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.158.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.5...runner-rs-v0.158.6) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** clean setup temps after cancellation ([#25145](https://github.com/vm0-ai/vm0/issues/25145)) ([c279ec5](https://github.com/vm0-ai/vm0/commit/c279ec5db9d53fa76ef215f00e282a8e01a9f0b3))
+
+
+### Documentation
+
+* **python:** document responses websocket inspection contract ([#25196](https://github.com/vm0-ai/vm0/issues/25196)) ([10d97f5](https://github.com/vm0-ai/vm0/commit/10d97f5a468df9111bd2af94eaf60890698700e1))
+
+
+### Refactoring
+
+* remove abandoned rust zero cli switch ([#25169](https://github.com/vm0-ai/vm0/issues/25169)) ([aaa177c](https://github.com/vm0-ai/vm0/commit/aaa177caddeeb4895c3e6e42bfbf530108f29ae4))
+
 ## [0.158.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.4...runner-rs-v0.158.5) (2026-08-05)
 
 

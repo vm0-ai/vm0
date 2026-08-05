@@ -24,6 +24,7 @@ from body_limits import (
     STREAM_DECODE_EXPANSION_GRACE,
     STREAM_DECODE_MAX_EXPANSION_RATIO,
 )
+from zlib_input import ZlibInputCursor
 
 # Brotli 1.2's output_buffer_limit is a soft allocation threshold, not a hard
 # returned-byte cap. Keep small compressed inputs on tiny chunks as a second
@@ -32,11 +33,6 @@ from body_limits import (
 _BROTLI_DECOMPRESS_MIN_INPUT_CHUNK_SIZE = 16
 _BROTLI_DECOMPRESS_MAX_INPUT_CHUNK_SIZE = 1024
 _BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS = 64
-# Bound how much following compressed input zlib can copy into unused_data at
-# a member boundary. This is larger than zstd validation chunks because zlib's
-# max_length already bounds decoded output and ordinary inputs benefit from
-# fewer Python-to-C calls.
-_ZLIB_DECOMPRESS_INPUT_CHUNK_SIZE = 1024
 # zstd's Python decompression object has no zlib-style max_length argument.
 # Keep validation input chunks small so the discarded decoded output is bounded.
 _ZSTD_VALIDATE_INPUT_CHUNK_SIZE = 32
@@ -67,32 +63,6 @@ _StreamDecodeFinishError = Callable[[], str | None]
 class StreamDecodeSession(NamedTuple):
     feed: _StreamDecodeFeed
     finish_error: _StreamDecodeFinishError
-
-
-class _ZlibInputCursor:
-    """Advance source bytes once while prioritizing bounded decompressor tails."""
-
-    def __init__(self, data: bytes) -> None:
-        self._source = memoryview(data)
-        self._source_offset = 0
-        self._pending_input = b""
-
-    def __bool__(self) -> bool:
-        return self._source_offset < len(self._source) or bool(self._pending_input)
-
-    def take(self) -> bytes | memoryview:
-        if self._pending_input:
-            chunk = self._pending_input
-            self._pending_input = b""
-            return chunk
-        chunk = self._source[
-            self._source_offset : self._source_offset + _ZLIB_DECOMPRESS_INPUT_CHUNK_SIZE
-        ]
-        self._source_offset += len(chunk)
-        return chunk
-
-    def carry(self, data: bytes) -> None:
-        self._pending_input = data
 
 
 def _log_streaming_decode_error(encoding_label: str, exc: Exception) -> None:
@@ -138,7 +108,7 @@ def _create_zlib_stream_decode_session(
         if chunk:
             saw_input = True
             compressed_bytes_seen += len(chunk)
-        input_cursor = _ZlibInputCursor(chunk)
+        input_cursor = ZlibInputCursor(chunk)
         # Input slicing can make zlib return partial parser chunks. Coalesce
         # only within this callback and member so existing delivery boundaries
         # and the max_decoded_chunk contract remain intact.
@@ -323,7 +293,7 @@ def _decompress_zlib_best_effort_bounded(
         return _BodyDecodeResult(b"", False)
 
     wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
-    input_cursor = _ZlibInputCursor(data)
+    input_cursor = ZlibInputCursor(data)
     out = bytearray()
     # A full-input zlib call exposes no partial output when that member raises.
     # Commit each member only at EOF so bounded slicing preserves that policy.
@@ -456,7 +426,7 @@ def _decompress_zlib_json_usage_body(
         return b"", DECODED_BODY_LIMIT_EXCEEDED if data else None
 
     wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
-    input_cursor = _ZlibInputCursor(data)
+    input_cursor = ZlibInputCursor(data)
     out = bytearray()
 
     while input_cursor:

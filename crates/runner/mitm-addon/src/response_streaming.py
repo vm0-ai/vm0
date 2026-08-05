@@ -18,7 +18,8 @@ Lifecycle:
 """
 
 from collections.abc import Callable
-from typing import NamedTuple
+from datetime import UTC, datetime
+from typing import Literal, NamedTuple
 
 from mitmproxy import http
 from wsproto.utilities import generate_accept_token
@@ -30,6 +31,7 @@ import flow_metadata_keys as metadata_keys
 import usage
 from body_limits import STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
+from usage.reporting_context import usage_reporting_context
 from usage.underbilling import log_usage_underbilling
 
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
@@ -47,9 +49,70 @@ _CONNECTOR_RESPONSE_REPORT_ON_INTERRUPTION = "connector_response_report_on_inter
 _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
 _HTTP_OWS_CHARS = " \t"
 
+_ANTHROPIC_MESSAGES_SSE_PROTOCOL = "anthropic_messages_sse"
+_ANTHROPIC_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
+_ANTHROPIC_MESSAGE_STOP_EVENT = "message_stop"
+_ANTHROPIC_ACCOUNTING_TELEMETRY_LOG_TYPE = "anthropic_sse_accounting"
+
+_AnthropicAccountingStatus = Literal[
+    "no_recoverable_usage",
+    "recovered_partial",
+    "recovered_terminal",
+]
+
+_ANTHROPIC_ACCOUNTING_ACTION_TYPES: dict[_AnthropicAccountingStatus, str] = {
+    "no_recoverable_usage": "anthropic_sse_incomplete_no_recoverable_usage",
+    "recovered_partial": "anthropic_sse_incomplete_recovered_partial",
+    "recovered_terminal": "anthropic_sse_incomplete_recovered_terminal",
+}
+
 _ResponseChunkParser = Callable[[bytes], None]
 _SseUsageParseErrorLogger = Callable[[str, str], None]
 _AnthropicLifecycleObserver = Callable[[str, str | None], None]
+
+
+def _anthropic_incomplete_accounting_status(
+    usage_dict: dict,
+    accounting_events: set[str],
+) -> _AnthropicAccountingStatus:
+    has_recoverable_usage = bool(accounting_events & _ANTHROPIC_USAGE_EVENTS) and (
+        usage.has_positive_model_provider_usage(usage_dict)
+    )
+    if not has_recoverable_usage:
+        return "no_recoverable_usage"
+    if _ANTHROPIC_MESSAGE_STOP_EVENT in accounting_events:
+        return "recovered_terminal"
+    return "recovered_partial"
+
+
+def _report_anthropic_incomplete_accounting(
+    flow: http.HTTPFlow,
+    accounting_status: _AnthropicAccountingStatus,
+) -> None:
+    run_id = flow_metadata.run_id(flow.metadata)
+    context = usage_reporting_context(flow)
+    if not run_id or not context.is_complete:
+        return
+
+    payload: dict[str, object] = {
+        "runId": run_id,
+        "sandboxOperations": [
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "action_type": _ANTHROPIC_ACCOUNTING_ACTION_TYPES[accounting_status],
+                "duration_ms": 0,
+                "success": False,
+                "error": body_decoding.INCOMPLETE_COMPRESSED_BODY,
+            }
+        ],
+    }
+    usage.webhook.enqueue_webhook_delivery(
+        context.telemetry_url(),
+        context.sandbox_token,
+        payload,
+        context.proxy_log_path,
+        _ANTHROPIC_ACCOUNTING_TELEMETRY_LOG_TYPE,
+    )
 
 
 class CapturedResponseStreamBody(NamedTuple):
@@ -209,6 +272,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
         content_type = response.headers.get("content-type", "").lower()
         if "text/event-stream" in content_type:
             lifecycle_observer: _AnthropicLifecycleObserver | None = None
+            anthropic_accounting_events: set[str] = set()
             if uses_openai_responses_usage_protocol(flow):
                 usage_protocol = "openai_responses_sse"
                 log_parse_error = _make_model_sse_parse_error_logger(
@@ -219,7 +283,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                     on_parse_error=log_parse_error
                 )
             else:
-                usage_protocol = "anthropic_messages_sse"
+                usage_protocol = _ANTHROPIC_MESSAGES_SSE_PROTOCOL
                 log_parse_error = _make_model_sse_parse_error_logger(
                     flow,
                     usage_protocol=usage_protocol,
@@ -228,6 +292,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                 parser_fn, usage_dict = usage.create_anthropic_messages_sse_usage_extractor(
                     on_parse_error=log_parse_error,
                     on_lifecycle_event=lifecycle_observer,
+                    on_accounting_event=anthropic_accounting_events.add,
                 )
             decode_session = _make_response_decode_session(parser_fn, response.headers)
             if decode_session is None:
@@ -238,8 +303,21 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
             def finish_sse_usage() -> None:
                 decode_error = decode_session.finish_error()
                 if decode_error is not None:
-                    usage_dict.clear()
                     log_parse_error("compressed_body", decode_error)
+                    if (
+                        usage_protocol == _ANTHROPIC_MESSAGES_SSE_PROTOCOL
+                        and decode_error == body_decoding.INCOMPLETE_COMPRESSED_BODY
+                    ):
+                        accounting_status = _anthropic_incomplete_accounting_status(
+                            usage_dict,
+                            anthropic_accounting_events,
+                        )
+                        _report_anthropic_incomplete_accounting(
+                            flow,
+                            accounting_status,
+                        )
+                    else:
+                        usage_dict.clear()
                 else:
                     parser_fn.finish()
                 if lifecycle_observer is not None:
