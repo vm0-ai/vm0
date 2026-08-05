@@ -23,10 +23,8 @@ pub(super) use self::execution::{
 };
 pub(super) use self::manifest::{api_artifact, api_storage};
 pub(super) use self::sandbox::{
-    CancelAtProcessBoundarySandbox, DestroyPanicFactory, OperationGateSandbox,
-    ProcessCancellationPoint, QueuedCopyFileSandbox, SandboxGatePoint, create_overridden_sandbox,
-    sandbox_copy_file_error, sandbox_create_error, sandbox_exec_error, sandbox_read_file_error,
-    sandbox_write_file_error,
+    DestroyPanicFactory, create_overridden_sandbox, sandbox_copy_file_error, sandbox_create_error,
+    sandbox_exec_error, sandbox_read_file_error, sandbox_write_file_error,
 };
 pub(super) use self::tracing::{CapturedEvent, CapturedEvents};
 pub(super) use self::workspace_cache::{

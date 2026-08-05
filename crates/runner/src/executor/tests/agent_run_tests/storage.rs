@@ -3,9 +3,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use sandbox::{ProcessOutputChunk, ProcessOutputMode};
+use sandbox_mock::MockLifecycleGate;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tokio::sync::{Notify, oneshot};
+use tokio::sync::oneshot;
 
 use super::support::{
     assert_failed_action_error_once, assert_no_action, assert_successful_action_once,
@@ -14,9 +15,8 @@ use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
 use crate::executor::storage::guest_download_stdin_command;
 use crate::executor::telemetry::RunnerSpawnTiming;
 use crate::executor::tests::support::{
-    OperationGateSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, SandboxGatePoint, api_artifact, api_storage,
-    create_overridden_sandbox, minimal_context, sandbox_exec_error, test_executor_config,
-    test_telemetry,
+    RUN_IN_SANDBOX_TEST_TIMEOUT, api_artifact, api_storage, create_overridden_sandbox,
+    minimal_context, sandbox_exec_error, test_executor_config, test_telemetry,
 };
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::storage_manifest::StorageManifest;
@@ -124,14 +124,9 @@ async fn run_in_sandbox_starts_deferred_cache_fill_after_agent_spawn() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let start_process_entered = Arc::new(Notify::new());
-    let start_process_release = Arc::new(Notify::new());
-    let sandbox = OperationGateSandbox {
-        inner: create_overridden_sandbox(Arc::clone(&overrides)).await,
-        point: SandboxGatePoint::StartProcess,
-        entered: Arc::clone(&start_process_entered),
-        release: Arc::clone(&start_process_release),
-    };
+    let start_process_gate = MockLifecycleGate::new();
+    overrides.set_start_process_lifecycle_gate(start_process_gate.clone());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let mut ctx = minimal_context();
     let (archive_url, archive_server, mut archive_request) =
         serve_storage_archive_for_cache(b"cache-archive").await;
@@ -144,7 +139,7 @@ async fn run_in_sandbox_starts_deferred_cache_fill_after_agent_spawn() {
 
     {
         let run = run_in_sandbox(
-            &sandbox,
+            sandbox.as_ref(),
             &ctx,
             &config,
             RunStart {
@@ -164,7 +159,9 @@ async fn run_in_sandbox_starts_deferred_cache_fill_after_agent_spawn() {
                     let _ = result;
                     panic!("run finished before the start-process barrier");
                 },
-                () = start_process_entered.notified() => {}
+                entered = start_process_gate.wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT) => {
+                    entered.expect("run should reach the start-process barrier");
+                }
             }
         })
         .await
@@ -182,7 +179,7 @@ async fn run_in_sandbox_starts_deferred_cache_fill_after_agent_spawn() {
             "cache miss passthrough should reach guest-download before process spawn; calls: {exec_calls:?}"
         );
 
-        start_process_release.notify_one();
+        start_process_gate.release_one();
         run.await.unwrap();
     }
 

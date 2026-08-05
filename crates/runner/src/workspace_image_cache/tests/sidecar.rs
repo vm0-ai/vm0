@@ -1,4 +1,5 @@
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{PermissionsExt, symlink};
+use std::path::Path;
 
 use api_contracts::generated::constants::runners::{
     RESUME_SESSION_HISTORY_MAX_BYTES, paths::CANONICAL_WORKING_DIR,
@@ -21,6 +22,10 @@ use crate::paths::RunnerPaths;
 use crate::restored_session_identity::{RestoredSessionFramework, RestoredSessionIdentity};
 use crate::types::ResumeSessionHistoryRefKind;
 
+fn mode(path: &Path) -> u32 {
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
+
 fn test_restored_session_identity(session_id: &str, history: &[u8]) -> RestoredSessionIdentity {
     RestoredSessionIdentity::new(
         RestoredSessionFramework::ClaudeCode,
@@ -40,6 +45,9 @@ async fn publish_test_session_history_sidecar(
 ) -> RestoredSessionIdentity {
     let tmp_path = cache.workspace_image_cache_tmp_sidecar(cache_key, run_id);
     fs::write(&tmp_path, history).await.unwrap();
+    fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o644))
+        .await
+        .unwrap();
     let identity = test_restored_session_identity(session_id, history);
     let source = WorkspaceSessionHistorySidecarPromotionSource {
         tmp_path,
@@ -98,7 +106,105 @@ async fn session_history_sidecar_publish_and_probe_hit() {
         WorkspaceSessionHistorySidecarRepresentation::Raw
     );
     assert_eq!(sidecar.encoded_size, history.len() as u64);
-    assert_eq!(fs::read(sidecar.path).await.unwrap(), history);
+    assert_eq!(fs::read(&sidecar.path).await.unwrap(), history);
+    assert_eq!(mode(cache.workspace_image_cache_dir()), 0o700);
+    assert_eq!(
+        mode(&cache.workspace_image_cache_entry_dir(&cache_key)),
+        0o700
+    );
+    assert_eq!(mode(&metadata_path), 0o600);
+    assert_eq!(mode(&sidecar.path), 0o600);
+}
+
+#[tokio::test]
+async fn session_history_sidecar_rejects_group_writable_source() {
+    let (_dir, paths, cache) = local_cache().await;
+    let run_id = RunId::new_v4();
+    let session_id = "sess-sidecar-group-writable";
+    let history = br#"{"type":"message","content":"unsafe"}"#;
+    let cache_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let tmp_path = cache.workspace_image_cache_tmp_sidecar(&cache_key, run_id);
+    fs::write(&tmp_path, history).await.unwrap();
+    fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o660))
+        .await
+        .unwrap();
+    let source = WorkspaceSessionHistorySidecarPromotionSource {
+        tmp_path: tmp_path.clone(),
+        representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+        encoded_size: history.len() as u64,
+        restored_session_identity: test_restored_session_identity(session_id, history),
+    };
+
+    let error = cache
+        .publish_session_history_sidecar(
+            &cache_key,
+            run_id,
+            WorkspaceSessionHistorySidecarPublication::Replace(&source),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("group/other writable"));
+    assert!(!tmp_path.exists());
+    assert!(
+        !paths
+            .workspace_image_cache_entry_dir(&cache_key)
+            .join("session-history.metadata.json")
+            .exists()
+    );
+}
+
+#[tokio::test]
+async fn session_history_sidecar_does_not_publish_non_regular_source() {
+    let (dir, paths, cache) = local_cache().await;
+    let run_id = RunId::new_v4();
+    let session_id = "sess-sidecar-symlink-source";
+    let history = br#"{"type":"message","content":"outside"}"#;
+    let cache_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let outside = dir.path().join("outside-session-history");
+    fs::write(&outside, history).await.unwrap();
+    let tmp_path = cache.workspace_image_cache_tmp_sidecar(&cache_key, run_id);
+    symlink(&outside, &tmp_path).unwrap();
+    let source = WorkspaceSessionHistorySidecarPromotionSource {
+        tmp_path: tmp_path.clone(),
+        representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+        encoded_size: history.len() as u64,
+        restored_session_identity: test_restored_session_identity(session_id, history),
+    };
+
+    cache
+        .publish_session_history_sidecar(
+            &cache_key,
+            run_id,
+            WorkspaceSessionHistorySidecarPublication::Replace(&source),
+        )
+        .await
+        .unwrap();
+
+    assert!(!tmp_path.exists());
+    assert_eq!(fs::read(&outside).await.unwrap(), history);
+    assert!(
+        !paths
+            .workspace_image_cache_entry_dir(&cache_key)
+            .join("session-history.metadata.json")
+            .exists()
+    );
 }
 
 #[tokio::test]

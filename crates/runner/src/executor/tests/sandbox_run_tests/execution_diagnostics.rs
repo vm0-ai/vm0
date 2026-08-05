@@ -268,14 +268,11 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
         truncated: false,
     }]);
     overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
+    overrides.push_copy_file_result(Ok(b"guest system log\n".to_vec()));
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let source_ip = sandbox.source_ip().to_string();
     let network_log_session = register_proxy(&config, &ctx, &source_ip).await.unwrap();
-    let sandbox: Box<dyn Sandbox> = Box::new(QueuedCopyFileSandbox::new(
-        sandbox,
-        vec![b"guest system log\n".to_vec()],
-    ));
     let system_log_path = config.log_paths.system_log(ctx.run_id);
     let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
     let mut telemetry = test_telemetry(&config, &ctx);

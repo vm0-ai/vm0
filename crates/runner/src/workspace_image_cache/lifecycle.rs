@@ -20,8 +20,9 @@ use crate::types::{
 
 use super::entry::is_cache_key_name;
 use super::fs::{
-    allocated_bytes, ensure_workspace_cache_entry_dir, has_copy_headroom, local_timestamp,
-    remove_non_directory_workspace_cache_entry, remove_workspace_cache_path_if_exists, sparse_copy,
+    allocated_bytes, has_copy_headroom, local_timestamp,
+    remove_non_directory_workspace_cache_entry, remove_workspace_cache_path_if_exists,
+    secure_workspace_cache_publication_file, sparse_copy,
 };
 use super::metadata::{
     WorkspaceCacheMetadata, WorkspaceCacheState as WorkspaceCacheEntryState,
@@ -821,7 +822,9 @@ impl WorkspaceImageCache {
             );
             return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
         }
-        ensure_workspace_cache_entry_dir(&cache_dir).await?;
+        self.ensure_workspace_cache_entry_dir(input.cache_key)
+            .await?;
+        secure_workspace_cache_publication_file(input.active_image)?;
         let tmp = self.workspace_image_cache_tmp_image(input.cache_key, input.run_id);
         let _ = remove_workspace_cache_path_if_exists(&tmp).await;
         let rename_started = Instant::now();
@@ -867,6 +870,10 @@ impl WorkspaceImageCache {
                 return Err(e.into());
             }
         };
+        if let Err(e) = secure_workspace_cache_publication_file(&tmp) {
+            let _ = remove_workspace_cache_path_if_exists(&tmp).await;
+            return Err(e);
+        }
         let tmp_metadata = match fs::symlink_metadata(&tmp).await {
             Ok(metadata) => metadata,
             Err(e) => {
@@ -1242,6 +1249,19 @@ impl WorkspaceImagePromotionContext {
                 }
             }
         };
+        if let Err(e) = self
+            .cache
+            .ensure_workspace_cache_entry_dir(&self.cache_key)
+            .await
+        {
+            info!(
+                run_id = %self.run_id,
+                cache_key = self.cache_key,
+                error = %e,
+                "workspace image cache sidecar staging skipped: cache entry permission setup failed"
+            );
+            return None;
+        }
         Some(WorkspaceSessionHistorySidecarEntryGuard {
             cache: self.cache.clone(),
             cache_key: self.cache_key.clone(),

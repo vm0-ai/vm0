@@ -169,8 +169,14 @@ def release_model_websocket_usage_state(flow: http.HTTPFlow) -> None:
 def _make_response_decode_session(
     feed: _ResponseChunkParser,
     headers: http.Headers,
+    *,
+    should_continue: Callable[[], bool] | None = None,
 ) -> body_decoding.StreamDecodeSession | None:
-    return body_decoding.create_stream_decode_session(headers, feed)
+    return body_decoding.create_stream_decode_session(
+        headers,
+        feed,
+        should_continue=should_continue,
+    )
 
 
 def _make_model_sse_parse_error_logger(
@@ -330,7 +336,11 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
             extractor = usage.create_openai_responses_json_usage_extractor()
         else:
             extractor = usage.create_anthropic_messages_json_usage_extractor()
-        decode_session = _make_response_decode_session(extractor.feed, response.headers)
+        decode_session = _make_response_decode_session(
+            extractor.feed,
+            response.headers,
+            should_continue=extractor.accepts_more_input,
+        )
         if decode_session is None:
             _maybe_log_response_encoding_inspection_risk(flow, response)
             return _ResponseUsageStreamSetup(
@@ -365,7 +375,11 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
         )
     connector_parser = usage.create_connector_response_parser(flow)
     if connector_parser is not None:
-        decode_session = _make_response_decode_session(connector_parser.feed, response.headers)
+        decode_session = _make_response_decode_session(
+            connector_parser.feed,
+            response.headers,
+            should_continue=connector_parser.should_continue,
+        )
         if decode_session is None:
             raise RuntimeError("stream-decodable connector response did not create a decoder")
         if connector_parser.report_on_interruption:
