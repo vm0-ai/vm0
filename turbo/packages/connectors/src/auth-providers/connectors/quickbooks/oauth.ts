@@ -210,7 +210,8 @@ async function fetchQuickBooksUserInfo(
   const givenName = data.givenName ?? data.given_name;
   const familyName = data.familyName ?? data.family_name;
   const username = [givenName, familyName].filter(Boolean).join(" ").trim();
-  const id = data.sub ?? data.email;
+  // Intuit requires the immutable OIDC `sub` for account linking and explicitly forbids using mutable email addresses as identity. Ref: https://developer.intuit.com/app/developer/qbo/docs/go-live/publish-app/technical-requirements
+  const id = data.sub;
   if (!id) {
     throw new Error("No user id in QuickBooks user info response");
   }

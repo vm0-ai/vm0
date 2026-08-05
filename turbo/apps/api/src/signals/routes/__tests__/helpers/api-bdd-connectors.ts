@@ -333,8 +333,8 @@ export function mockSlackConnectorOAuth(): void {
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
-const GMAIL_PROFILE_URL =
-  "https://www.googleapis.com/gmail/v1/users/me/profile";
+const GOOGLE_OPENID_USERINFO_URL =
+  "https://openidconnect.googleapis.com/v1/userinfo";
 
 interface GoogleDriveConnectorOAuthOptions {
   /**
@@ -394,6 +394,7 @@ export function mockGoogleDriveConnectorOAuth(
 interface GmailConnectorOAuthOptions {
   readonly accessToken?: string;
   readonly refreshToken?: string;
+  readonly subject?: string;
   readonly email?: string;
 }
 
@@ -425,13 +426,12 @@ export function mockGmailConnectorOAuth(
         scope: "https://www.googleapis.com/auth/gmail.modify",
       });
     }),
-    http.get(GMAIL_PROFILE_URL, () => {
+    http.get(GOOGLE_OPENID_USERINFO_URL, () => {
       const email = options.email ?? "bdd-gmail@example.test";
       return HttpResponse.json({
-        emailAddress: email,
-        messagesTotal: 10,
-        threadsTotal: 3,
-        historyId: "100",
+        sub: options.subject ?? "bdd-gmail-user-id",
+        email,
+        name: "BDD Gmail User",
       });
     }),
   );

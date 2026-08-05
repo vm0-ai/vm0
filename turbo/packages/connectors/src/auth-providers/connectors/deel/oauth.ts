@@ -8,7 +8,7 @@ const DEEL_TOKEN_URL = "https://app.deel.com/oauth2/tokens";
 
 const DEEL_AUTHORIZATION_URL = "https://app.deel.com/oauth2/authorize";
 
-const DEEL_PEOPLE_ME_URL = "https://api.letsdeel.com/rest/v2/people/me";
+const DEEL_PEOPLE_ME_URL = "https://api.letsdeel.com/rest/people/me";
 
 interface DeelUserInfo {
   id: string;
@@ -29,6 +29,24 @@ interface DeelRefreshResult {
   refreshToken: string | null;
   expiresIn?: number;
 }
+
+const deelPersonSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]).optional(),
+    full_name: z.string().nullable().optional(),
+    first_name: z.string().nullable().optional(),
+    last_name: z.string().nullable().optional(),
+    email: z.string().nullable().optional(),
+    emails: z
+      .array(
+        z.object({
+          type: z.string().optional(),
+          value: z.string().nullable().optional(),
+        }),
+      )
+      .optional(),
+  })
+  .passthrough();
 
 /**
  * Derive a PKCE code_verifier deterministically from the OAuth state.
@@ -211,7 +229,7 @@ export async function exchangeDeelCode(
 }
 
 /**
- * Fetch the current Deel user's personal profile via /rest/v2/people/me.
+ * Fetch the current Deel user's personal profile via /rest/people/me.
  * Requires the people:read scope.
  */
 async function fetchDeelUserInfo(
@@ -231,38 +249,19 @@ async function fetchDeelUserInfo(
     throw new Error(`Deel user info fetch failed: ${response.status}`);
   }
 
-  const data = z
-    .object({
-      data: z
-        .object({
-          id: z.string().optional(),
-          full_name: z.string().nullable().optional(),
-          first_name: z.string().nullable().optional(),
-          last_name: z.string().nullable().optional(),
-          emails: z
-            .array(
-              z.object({
-                type: z.string().optional(),
-                value: z.string().nullable().optional(),
-              }),
-            )
-            .optional(),
-        })
-        .passthrough()
-        .optional(),
-    })
-    .passthrough()
+  const data = deelPersonSchema
+    .extend({ data: deelPersonSchema.optional() })
     .parse(await response.json());
 
-  const person = data.data;
+  // Deel documents a root profile object; tolerate the `data` wrapper observed on the earlier v2 profile response so endpoint migration does not break existing tenant variants. Ref: https://developer.deel.com/api/reference/endpoints/people/get-my-current-personal-profile-v-2026-01-01
+  const person = data.data ?? data;
   const name =
-    person?.full_name ??
-    [person?.first_name, person?.last_name].filter(Boolean).join(" ") ??
-    null;
-  const email = person?.emails?.[0]?.value ?? null;
+    person.full_name ??
+    [person.first_name, person.last_name].filter(Boolean).join(" ");
+  const email = person.email ?? person.emails?.[0]?.value ?? null;
 
   return {
-    id: requireConnectorGrantUserId(person?.id, "Deel"),
+    id: requireConnectorGrantUserId(person.id?.toString(), "Deel"),
     username: name || null,
     email,
   };

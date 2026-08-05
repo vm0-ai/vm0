@@ -218,15 +218,13 @@ export async function refreshMercuryToken(
 }
 
 /**
- * Fetch Mercury user info using the accounts endpoint.
- * Mercury does not have a dedicated user profile endpoint,
- * so we use the first account's details as identity.
+ * Fetch the Mercury organization represented by the OAuth grant.
  */
 async function fetchMercuryUserInfo(
   accessToken: string,
 ): Promise<MercuryUserInfo> {
   const response = await fetch(
-    `${mercuryEndpoints().apiBaseUrl}/api/v1/accounts`,
+    `${mercuryEndpoints().apiBaseUrl}/api/v1/organization`,
     {
       method: "GET",
       headers: {
@@ -237,28 +235,22 @@ async function fetchMercuryUserInfo(
   );
 
   if (!response.ok) {
-    throw new Error(`Mercury user info fetch failed: ${response.status}`);
+    throw new Error(`Mercury organization fetch failed: ${response.status}`);
   }
 
   const data = z
     .object({
-      accounts: z
-        .array(
-          z.object({
-            id: z.string().optional(),
-            name: z.string().nullable().optional(),
-            legalBusinessName: z.string().nullable().optional(),
-          }),
-        )
-        .optional(),
+      organization: z.object({
+        id: z.string(),
+        legalBusinessName: z.string().nullable().optional(),
+      }),
     })
     .parse(await response.json());
 
-  const firstAccount = data.accounts?.[0];
-
+  // Mercury OAuth grants organization resources, so use the documented organization ID instead of a pagination-dependent first account. Ref: https://docs.mercury.com/reference/getorganization
   return {
-    id: requireConnectorGrantUserId(firstAccount?.id, "Mercury"),
-    username: firstAccount?.name ?? firstAccount?.legalBusinessName ?? null,
+    id: requireConnectorGrantUserId(data.organization.id, "Mercury"),
+    username: data.organization.legalBusinessName ?? null,
     email: null,
   };
 }
