@@ -167,7 +167,6 @@ jobs:
       api-changed: ${{ steps.detect.outputs.api-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
-      e2b-changed: ${{ steps.detect.outputs.e2b-changed }}
       migration-changed: ${{ steps.detect.outputs.migration-changed }}
       crates-changed: ${{ steps.detect.outputs.crates-changed }}
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
@@ -222,14 +221,6 @@ jobs:
               echo "${app}-changed=false" >> "$GITHUB_OUTPUT"
             fi
           done
-
-          if printf '%s\n' "$CHANGED_FILES" | grep -q "^turbo/scripts/e2b/"; then
-            echo "E2B template changes detected"
-            echo "e2b-changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No E2B template changes"
-            echo "e2b-changed=false" >> "$GITHUB_OUTPUT"
-          fi
 
           if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema|jsonb-contracts)/"; then
             echo "Migration, schema, or JSONB contract changes detected"
@@ -2887,32 +2878,6 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
-  # Build E2B templates (development account)
-  # Uses repository-level E2B_API_KEY secret
-  build-e2b-template:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    needs: [prepare]
-    # Build on PR or main push when E2B templates changed, skip release-please commits
-    if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
-      needs.prepare.outputs.e2b-changed == 'true'
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Build E2B templates
-        working-directory: turbo
-        env:
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-        run: |
-          pnpm e2b:cli:build
-
-      - name: Build summary
-        run: echo "✅ E2B templates built successfully (development account)"
-
   lint-runtime-api-compat:
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -3008,7 +2973,6 @@ jobs:
       - deploy-app
       - deploy-stripe-listener
       - deploy-cli
-      - build-e2b-template
       - cli-e2e-02-browser
       - cli-e2e-02-playwright
       - cli-e2e-01-serial
@@ -3116,7 +3080,6 @@ jobs:
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "deploy-stripe-listener" "${{ needs.deploy-stripe-listener.result }}" "true"
           check_result "deploy-cli" "${{ needs.deploy-cli.result }}" "$CF_APP_SKIP_ALLOWED"
-          check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"
           check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"

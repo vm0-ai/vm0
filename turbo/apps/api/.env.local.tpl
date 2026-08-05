@@ -23,10 +23,6 @@ ENV=development
 # Required: git commit SHA used as OTel service.version and Sentry release
 GIT_COMMIT_SHA=local-dev
 
-# Required: Sandbox Runtime (E2B)
-E2B_API_KEY=op://Development/e2b/E2B_API_KEY
-E2B_TEMPLATE_NAME=vm0-claude-code-dev
-
 # Optional: Sandbox Runtime (Vercel Sandbox access-token auth)
 VERCEL_TEAM_ID=op://Development/vercel/VERCEL_TEAM_ID
 VERCEL_PROJECT_ID_API=op://Development/vercel/VERCEL_PROJECT_ID_API
