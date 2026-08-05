@@ -207,16 +207,28 @@ async function seedDefaultAgent(
       name: input.name,
       displayName: input.displayName ?? null,
     })
-    .onConflictDoUpdate({
-      target: zeroAgents.id,
-      set: {
-        orgId: input.orgId,
-        owner: input.userId,
-        name: input.name,
-        displayName: input.displayName ?? null,
-        updatedAt: nowDate(),
-      },
-    });
+    // Telegram can seed this shared agent at the same time. Handle either
+    // unique key as the arbiter before updating the canonical compose row.
+    .onConflictDoNothing();
+
+  const [agent] = await db
+    .update(zeroAgents)
+    .set({
+      owner: input.userId,
+      displayName: input.displayName ?? null,
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(zeroAgents.id, composeId),
+        eq(zeroAgents.orgId, input.orgId),
+        eq(zeroAgents.name, input.name),
+      ),
+    )
+    .returning({ id: zeroAgents.id });
+  if (!agent) {
+    throw new Error("Failed to resolve seeded default agent");
+  }
 
   await db.transaction(async (tx) => {
     await ensureStarterCreditGrant(tx, input.orgId);
