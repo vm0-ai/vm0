@@ -3,7 +3,6 @@ import { createStore } from "ccstate";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -17,7 +16,6 @@ import {
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 
 const context = testContext();
@@ -160,13 +158,9 @@ describe("POST /api/zero/uploads/prepare", () => {
     expect(response.body.id).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it("uses flat 10-character keys and signed filename metadata for an enabled org", async () => {
+  it("uses flat 10-character keys and signed filename metadata for supported clients", async () => {
     const orgId = `org_${randomUUID()}`;
-    const owner = { userId: `user_${randomUUID()}`, orgId };
     const peer = { userId: `user_${randomUUID()}`, orgId };
-    await updateFeatureSwitchesForUser(context, owner, {
-      [FeatureSwitchKey.ArtifactKeyV2]: true,
-    });
     mocks.clerk.session(peer.userId, peer.orgId);
     mocks.s3.listObjects([]);
 
@@ -219,12 +213,9 @@ describe("POST /api/zero/uploads/prepare", () => {
     });
   });
 
-  it("keeps legacy keys for enabled orgs when clients cannot send upload headers", async () => {
+  it("keeps legacy keys when clients cannot send upload headers", async () => {
     const orgId = `org_${randomUUID()}`;
     const actor = { userId: `user_${randomUUID()}`, orgId };
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.ArtifactKeyV2]: true,
-    });
     mocks.clerk.session(actor.userId, actor.orgId);
 
     const response = await setupApp({ context })(zeroUploadsContract).prepare({
@@ -245,9 +236,6 @@ describe("POST /api/zero/uploads/prepare", () => {
   it("retries with a new artifact id when a flat hash is occupied", async () => {
     const orgId = `org_${randomUUID()}`;
     const actor = { userId: `user_${randomUUID()}`, orgId };
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.ArtifactKeyV2]: true,
-    });
     mocks.clerk.session(actor.userId, actor.orgId);
     const prefixes: string[] = [];
     context.mocks.s3.send.mockImplementation((command: unknown) => {

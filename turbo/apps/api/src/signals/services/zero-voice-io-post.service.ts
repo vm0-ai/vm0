@@ -1066,7 +1066,6 @@ export const recordGeneratedSpeech$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: params.userId,
-        orgId: params.orgId,
         filenamePrefix: "voice",
         extension: "wav",
         body: Buffer.from(params.audioBytes),

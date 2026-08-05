@@ -13,7 +13,6 @@ import { withCleanup } from "../../utils.ts";
 import { accept } from "../../../lib/accept.ts";
 import { agentDetail$ } from "./detail.ts";
 import { reloadCustomConnectorAuthorizedAgents$ } from "../settings/custom-connectors.ts";
-import { customConnectorPermissionsEnabled$ } from "../../external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
 // Per-agent custom connector authorization — mirrors connectors.ts but keyed
@@ -150,9 +149,6 @@ export const setCustomConnectorPermissionDraftValue$ = command(
 
 export const agentCustomConnectorPermissionBundle$ = computed(
   async (get): Promise<CustomConnectorPermissionBundleResponse | null> => {
-    if (!get(customConnectorPermissionsEnabled$)) {
-      return null;
-    }
     const target = get(internalPermissionTarget$);
     if (!target) {
       return null;

@@ -38,7 +38,6 @@ const completeMultipartInner$ = command(
       resolveArtifactMultipartUpload$,
       {
         userId: auth.userId,
-        orgId: auth.orgId,
         id,
         filename,
         uploadId,
@@ -87,7 +86,6 @@ const abortMultipartInner$ = command(
       resolveArtifactMultipartUpload$,
       {
         userId: auth.userId,
-        orgId: auth.orgId,
         id,
         filename,
         uploadId,

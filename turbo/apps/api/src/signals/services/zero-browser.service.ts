@@ -793,7 +793,6 @@ const captureAndStoreBrowserScreenshot$ = command(
       allocateArtifactObject$,
       {
         userId: browser.userId,
-        orgId: browser.orgId,
         filename: BROWSER_SCREENSHOT_FILENAME,
       },
       signal,
