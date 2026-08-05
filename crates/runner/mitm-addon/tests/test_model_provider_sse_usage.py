@@ -7,12 +7,14 @@ import zlib
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import brotli
 import pytest
 from mitmproxy import http
 from mitmproxy.flow import Error
 
+import anthropic_accounting
 import body_decoding
 import flow_metadata_keys as metadata_keys
 import mitm_addon
@@ -23,10 +25,17 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
 )
 from tests.model_provider_flow_helpers import make_model_provider_sse_flow
+from tests.pending_helpers import assert_current_pending, assert_pending
+from tests.usage_buffer_helpers import event as usage_event
 from tests.usage_helpers import (
     CapturedWebhookRequest,
     UsageWebhookServer,
     compact_observation_quantities,
+)
+from tests.webhook_test_helpers import (
+    QueuedUsageExecutor,
+    install_runner_usage_flush_request,
+    request_runner_usage_flush,
 )
 
 _TELEMETRY_PATH = "/api/webhooks/agent/telemetry"
@@ -90,6 +99,24 @@ def _compress_zlib_sse(body: bytes, encoding: str) -> bytes:
         return gzip.compress(body)
     assert encoding == "deflate"
     return zlib.compress(body)
+
+
+def _feed_incomplete_anthropic_sse_without_recoverable_usage(
+    flow: http.HTTPFlow,
+    *,
+    encoding: str = "gzip",
+) -> None:
+    assert flow.response is not None
+    flow.response.headers["content-encoding"] = encoding
+    plaintext = (
+        b"event: message_start\n"
+        b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
+        b'"usage":{"input_tokens":0,"output_tokens":0}}}\n\n'
+        b"event: message_stop\n"
+        b'data: {"type":"message_stop"}\n\n'
+    )
+    mitm_addon.responseheaders(flow)
+    response_stream(flow)(_compress_zlib_sse(plaintext, encoding)[:-1])
 
 
 def _anthropic_accounting_requests(
@@ -454,18 +481,10 @@ class TestModelProviderSseUsage:
         self, tmp_path, real_flow, encoding
     ):
         flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
-        assert flow.response is not None
-        flow.response.headers["content-encoding"] = encoding
-        plaintext = (
-            b"event: message_start\n"
-            b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
-            b'"usage":{"input_tokens":0,"output_tokens":0}}}\n\n'
-            b"event: message_stop\n"
-            b'data: {"type":"message_stop"}\n\n'
+        _feed_incomplete_anthropic_sse_without_recoverable_usage(
+            flow,
+            encoding=encoding,
         )
-
-        mitm_addon.responseheaders(flow)
-        response_stream(flow)(_compress_zlib_sse(plaintext, encoding)[:-1])
         webhook = self._run_response(flow)
 
         assert webhook.usage_events() == []
@@ -478,6 +497,180 @@ class TestModelProviderSseUsage:
             event="compressed_body",
             error=body_decoding.INCOMPLETE_COMPRESSED_BODY,
         )
+
+    def test_saturated_incomplete_anthropic_accounting_retries_through_runner_flush(
+        self,
+        tmp_path: Path,
+        real_flow,
+        mitm_ctx,
+        usage_webhook_server: UsageWebhookServer,
+    ) -> None:
+        flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
+        executor = QueuedUsageExecutor()
+        pending_path = install_runner_usage_flush_request(tmp_path)
+
+        with (
+            mitm_ctx(api_url=usage_webhook_server.api_url),
+            patch.object(usage.webhook, "usage_executor", executor),
+        ):
+            for index in range(usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS):
+                assert usage.webhook.enqueue_webhook_delivery(
+                    usage_webhook_server.url("/filler"),
+                    "tok-xyz",
+                    {"runId": f"filler-{index}", "events": []},
+                    str(tmp_path / "filler.jsonl"),
+                    "usage_event",
+                )
+
+            _feed_incomplete_anthropic_sse_without_recoverable_usage(flow)
+            mitm_addon.response(flow)
+            retained_at = datetime.now(UTC)
+
+            assert _anthropic_accounting_requests(usage_webhook_server) == []
+            assert_current_pending(
+                pending_path,
+                flows=0,
+                buffered=1,
+                reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+            )
+
+            assert (
+                usage.buffer_usage_events(
+                    usage_webhook_server.url("/usage-priority"),
+                    "tok-xyz",
+                    "usage-priority",
+                    [usage_event(source_key="usage-priority")],
+                    str(tmp_path / "proxy.jsonl"),
+                )
+                == 1
+            )
+            request_runner_usage_flush()
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=2,
+                reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+                flush_request_id="request-1",
+            )
+
+            executor.run_next()
+            request_runner_usage_flush()
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=2,
+                reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+                flush_request_id="request-1",
+            )
+
+            executor.run_last()
+            request_runner_usage_flush()
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+                flush_request_id="request-1",
+            )
+
+            executor.run_all()
+            request_runner_usage_flush()
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
+            request_runner_usage_flush()
+
+        [request] = _anthropic_accounting_requests(usage_webhook_server)
+        assert request.json_body()["runId"] == "00000000-0000-0000-0000-000000025133"
+        [operation] = _anthropic_accounting_operations(usage_webhook_server)
+        assert operation["action_type"] == "anthropic_sse_incomplete_no_recoverable_usage"
+        assert datetime.fromisoformat(str(operation["ts"])) <= retained_at
+        assert [
+            captured.path
+            for captured in usage_webhook_server.requests
+            if captured.path != "/filler"
+        ] == ["/usage-priority", _TELEMETRY_PATH]
+        assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+
+    def test_incomplete_anthropic_accounting_retention_overflow_is_action_specific(
+        self,
+        tmp_path: Path,
+        real_flow,
+        mitm_ctx,
+        usage_webhook_server: UsageWebhookServer,
+    ) -> None:
+        first_flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
+        first_flow.metadata[metadata_keys.VM_RUN_ID] = "run-retained"
+        overflow_flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
+        overflow_flow.metadata[metadata_keys.VM_RUN_ID] = "run-overflow"
+        executor = QueuedUsageExecutor()
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+
+        with (
+            mitm_ctx(api_url=usage_webhook_server.api_url),
+            patch.object(usage.webhook, "usage_executor", executor),
+            patch.object(anthropic_accounting, "MAX_RETAINED_REPORTS", 1),
+        ):
+            for index in range(usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS):
+                assert usage.webhook.enqueue_webhook_delivery(
+                    usage_webhook_server.url("/filler"),
+                    "tok-xyz",
+                    {"runId": f"filler-{index}", "events": []},
+                    str(tmp_path / "filler.jsonl"),
+                    "usage_event",
+                )
+
+            _feed_incomplete_anthropic_sse_without_recoverable_usage(first_flow)
+            mitm_addon.response(first_flow)
+            _feed_incomplete_anthropic_sse_without_recoverable_usage(overflow_flow)
+            mitm_addon.response(overflow_flow)
+
+            assert_current_pending(
+                pending_path,
+                flows=0,
+                buffered=1,
+                reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+            )
+            overflow_entries = [
+                entry
+                for entry in read_jsonl_entries_after_flush(
+                    Path(overflow_flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+                )
+                if entry.get("reason") == "anthropic_accounting_retention_saturated"
+            ]
+            [overflow_entry] = overflow_entries
+            assert overflow_entry["type"] == "usage_underbilling"
+            assert overflow_entry["underbilling_class"] == "risk"
+            assert overflow_entry["component"] == "mitm_addon"
+            assert overflow_entry["action_type"] == (
+                "anthropic_sse_incomplete_no_recoverable_usage"
+            )
+            assert overflow_entry["run_id"] == "run-overflow"
+            assert overflow_entry["retained_report_capacity"] == 1
+            assert "tok-xyz" not in json.dumps(overflow_entry)
+
+            anthropic_accounting.reset_for_tests()
+            assert_current_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+            )
+            executor.run_all()
+
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+        )
+        assert _anthropic_accounting_requests(usage_webhook_server) == []
+        assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
 
     def test_full_pipeline_incomplete_compressed_anthropic_sse_does_not_flush_fragment(
         self, tmp_path, real_flow

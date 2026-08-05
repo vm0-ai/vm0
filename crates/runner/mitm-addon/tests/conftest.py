@@ -25,6 +25,7 @@ import pytest
 from mitmproxy import http, tcp
 from mitmproxy.test import tflow, tutils
 
+import anthropic_accounting
 import auth
 import auth_base_forwarder
 import aws_sigv4_body_admission
@@ -69,6 +70,7 @@ def _reset_module_state() -> Iterator[None]:
     platform_api.configure_client_headers(client_session_id="", client_version="")
     clear_auth_state()
     _usage_connectors._unregistered_handler_warned.clear()
+    anthropic_accounting.reset_for_tests()
     claude_output_timing.reset_for_tests()
     codex_model_catalog_cache.reset_for_tests()
     codex_output_timing.reset_for_tests()
@@ -79,6 +81,7 @@ def _reset_module_state() -> Iterator[None]:
     yield
     runner_flush_lifecycle.reset_runner_usage_flush_state_for_tests()
     usage.reset_usage_buffer_for_tests()
+    anthropic_accounting.reset_for_tests()
     claude_output_timing.reset_for_tests()
     codex_model_catalog_cache.reset_for_tests()
     codex_output_timing.reset_for_tests()

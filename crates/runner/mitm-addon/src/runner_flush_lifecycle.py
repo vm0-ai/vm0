@@ -11,6 +11,7 @@ from typing import Literal
 
 from mitmproxy import ctx
 
+import anthropic_accounting
 import claude_output_timing
 import codex_output_timing
 import logging_utils
@@ -216,8 +217,9 @@ def _flush_usage_for_runner_request() -> None:
 
 
 def _flush_delivery_work(*, trigger: _DeliveryFlushTrigger) -> None:
-    """Admit billing work before retained diagnostic timing reports."""
+    """Admit billing work before retained diagnostic reports."""
     usage.flush_usage_events(trigger=trigger)
+    anthropic_accounting.retry_all_pending()
     claude_output_timing.retry_all_pending()
     codex_output_timing.retry_all_pending()
 
