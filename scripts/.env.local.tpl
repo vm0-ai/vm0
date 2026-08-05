@@ -33,3 +33,4 @@ BYTEPLUS_API_KEY=op://Development/byteplus/BYTEPLUS_API_KEY
 
 # JoggAI API key for local built-in avatar video generation
 JOGGAI_API_KEY=op://Development/joggai/JOGGAI_API_KEY
+JOGGAI_WEBHOOK_SECRET=op://Development/joggai/JOGGAI_WEBHOOK_SECRET

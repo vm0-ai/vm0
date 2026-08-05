@@ -271,13 +271,7 @@ export const webhookBuiltInGenerationBytePlusContract = c.router({
 export const webhookBuiltInGenerationJoggAiContract = c.router({
   post: {
     method: "POST",
-    path: "/api/webhooks/built-in-generations/joggai/:generationId",
-    pathParams: z.object({
-      generationId: z.uuid(),
-    }),
-    query: z.object({
-      token: z.string().min(1),
-    }),
+    path: "/api/webhooks/built-in-generations/joggai",
     body: c.type<string>(),
     responses: {
       200: thirdPartyWebhookOkSchema,
@@ -285,7 +279,7 @@ export const webhookBuiltInGenerationJoggAiContract = c.router({
       401: thirdPartyWebhookErrorSchema,
       503: thirdPartyWebhookErrorSchema,
     },
-    summary: "Handle JoggAI built-in generation webhooks",
+    summary: "Handle registered JoggAI built-in generation webhooks",
   },
 });
 
