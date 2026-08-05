@@ -450,7 +450,7 @@ class TestModelProviderSseUsage:
             assert excluded not in serialized_request
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
-    def test_full_pipeline_incomplete_anthropic_sse_without_positive_usage_emits_none_status(
+    def test_full_pipeline_incomplete_anthropic_sse_emits_no_recoverable_usage_status(
         self, tmp_path, real_flow, encoding
     ):
         flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
