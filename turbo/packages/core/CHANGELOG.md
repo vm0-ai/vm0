@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.514.1](https://github.com/vm0-ai/vm0/compare/core-v8.514.0...core-v8.514.1) (2026-08-05)
+
+
+### Refactoring
+
+* remove unused e2b infrastructure ([#25162](https://github.com/vm0-ai/vm0/issues/25162)) ([54ec015](https://github.com/vm0-ai/vm0/commit/54ec015ee993c21c2b4635bbd969edee8d967f74))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.1
+
 ## [8.514.0](https://github.com/vm0-ai/vm0/compare/core-v8.513.0...core-v8.514.0) (2026-08-05)
 
 
