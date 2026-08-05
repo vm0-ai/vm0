@@ -3,12 +3,12 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use sandbox::{ProcessExit, ProcessOutputChunk, SandboxConfig, SandboxFactory, SandboxId};
-use sandbox_mock::{MockLifecycleGate, MockSandboxFactory};
+use sandbox::{ProcessExit, ProcessOutputChunk};
+use sandbox_mock::MockLifecycleGate;
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
-use tokio::sync::{Notify, oneshot};
+use tokio::sync::oneshot;
 
 use super::support::{
     claude_history_path, final_identity_metadata_bytes, final_identity_runtime_paths,
@@ -17,8 +17,7 @@ use super::support::{
 use crate::executor::agent_run::{ProcessCancelTimeouts, RunControls, RunStart, run_in_sandbox};
 use crate::executor::diagnostics::AgentStdoutStreamDiagnostics;
 use crate::executor::tests::support::{
-    CancelAtProcessBoundarySandbox, OperationGateSandbox, ProcessCancellationPoint,
-    RUN_IN_SANDBOX_TEST_TIMEOUT, SandboxGatePoint, create_overridden_sandbox, minimal_context,
+    RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox, minimal_context,
     spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_cancellation,
     spawn_run_in_sandbox_test_with_timeouts, test_executor_config, test_telemetry,
 };
@@ -55,27 +54,12 @@ async fn run_in_sandbox_preserves_wait_result_when_cancel_arrives_after_wait() {
         claude_history_path(session_id),
     ))));
     let cancel = tokio_util::sync::CancellationToken::new();
-    let factory = MockSandboxFactory::with_overrides(overrides);
-    let sandbox = CancelAtProcessBoundarySandbox {
-        inner: factory
-            .create(SandboxConfig {
-                id: SandboxId::new_v4(),
-                resources: sandbox::ResourceLimits {
-                    cpu_count: 2,
-                    memory_mb: 2048,
-                },
-                device_rate_limits: None,
-                workspace_drive: None,
-            })
-            .await
-            .unwrap(),
-        cancel: cancel.clone(),
-        point: ProcessCancellationPoint::WaitResult,
-    };
+    overrides.cancel_after_next_wait_process_result(cancel.clone());
+    let sandbox = create_overridden_sandbox(overrides).await;
     let mut telemetry = test_telemetry(&config, &ctx);
 
     let result = run_in_sandbox(
-        &sandbox,
+        sandbox.as_ref(),
         &ctx,
         &config,
         RunStart {
@@ -336,19 +320,15 @@ async fn run_in_sandbox_observes_cancellation_while_guest_helper_is_pending() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let helper_entered = Arc::new(Notify::new());
-    let helper_release = Arc::new(Notify::new());
-    let sandbox = OperationGateSandbox {
-        inner: create_overridden_sandbox(Arc::clone(&overrides)).await,
-        point: SandboxGatePoint::WritePrivateFile,
-        entered: Arc::clone(&helper_entered),
-        release: helper_release,
-    };
+    let helper_gate = MockLifecycleGate::new();
+    overrides.set_private_write_file_lifecycle_gate(helper_gate.clone());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let cancel = tokio_util::sync::CancellationToken::new();
-    let run_task = spawn_run_in_sandbox_test(Box::new(sandbox), ctx, config, cancel.clone());
+    let run_task = spawn_run_in_sandbox_test(sandbox, ctx, config, cancel.clone());
 
-    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, helper_entered.notified())
+    helper_gate
+        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
         .await
         .expect("run should enter the guest helper");
     cancel.cancel();
@@ -374,16 +354,13 @@ async fn run_in_sandbox_preserves_ready_start_result_when_cancellation_arrives()
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let cancel = tokio_util::sync::CancellationToken::new();
-    let sandbox = CancelAtProcessBoundarySandbox {
-        inner: create_overridden_sandbox(Arc::clone(&overrides)).await,
-        cancel: cancel.clone(),
-        point: ProcessCancellationPoint::StartResult,
-    };
+    overrides.cancel_after_next_start_process_result(cancel.clone());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let mut telemetry = test_telemetry(&config, &ctx);
 
     let result = run_in_sandbox(
-        &sandbox,
+        sandbox.as_ref(),
         &ctx,
         &config,
         RunStart {

@@ -33,8 +33,8 @@ use super::super::{
     job_terminal_wait_timeout,
 };
 use super::support::{
-    CapturedEvent, CapturedEvents, DestroyPanicFactory, QueuedCopyFileSandbox, api_artifact,
-    api_storage, assert_proxy_registry_empty, create_overridden_sandbox, default_params,
+    CapturedEvent, CapturedEvents, DestroyPanicFactory, api_artifact, api_storage,
+    assert_proxy_registry_empty, create_overridden_sandbox, default_params,
     make_reusable_idle_sandbox, minimal_context, run_new_sandbox_outcome, run_new_sandbox_status,
     sandbox_create_error, sandbox_exec_error, sandbox_write_file_error, seed_workspace_image_cache,
     seed_workspace_image_cache_with_fingerprints, seed_workspace_image_cache_with_sidecar,

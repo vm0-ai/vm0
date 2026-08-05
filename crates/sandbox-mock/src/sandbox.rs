@@ -580,8 +580,28 @@ impl Sandbox for MockSandbox {
             });
         }
 
-        let queued = self.copy_file_results.lock_ignoring_poison().pop_front();
-        let gate = self.copy_file_gate.lock_ignoring_poison().clone();
+        let queued = self
+            .copy_file_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .or_else(|| {
+                self.overrides.as_ref().and_then(|overrides| {
+                    overrides
+                        .file
+                        .copy_file_results
+                        .lock_ignoring_poison()
+                        .pop_front()
+                })
+            });
+        let gate = self
+            .copy_file_gate
+            .lock_ignoring_poison()
+            .clone()
+            .or_else(|| {
+                self.overrides.as_ref().and_then(|overrides| {
+                    overrides.file.copy_file_gate.lock_ignoring_poison().clone()
+                })
+            });
         if let Some(gate) = gate {
             gate.enter_and_wait().await;
         }
@@ -693,6 +713,9 @@ impl Sandbox for MockSandbox {
     }
 
     async fn write_private_file(&self, path: &str, content: &[u8]) -> Result<()> {
+        if let Some(overrides) = &self.overrides {
+            wait_lifecycle_gate(&overrides.file.private_write_file_gate).await;
+        }
         let call = WriteFileCall {
             path: path.to_string(),
             content: content.to_vec(),
@@ -728,6 +751,9 @@ impl Sandbox for MockSandbox {
     }
 
     async fn start_process(&self, request: &StartProcessRequest<'_>) -> Result<GuestProcessHandle> {
+        if let Some(overrides) = &self.overrides {
+            wait_lifecycle_gate(&overrides.process.start_process_lifecycle_gate).await;
+        }
         validate_mock_exec_env_keys(SandboxOperation::StartProcess, request.env)?;
         validate_start_process_output(request.output)?;
         if let Some(overrides) = &self.overrides {
@@ -874,6 +900,15 @@ impl Sandbox for MockSandbox {
         if let Some(process_cancel) = process_cancel {
             handle = handle.with_cancel_handle(process_cancel);
         }
+        if let Some(cancel) = self.overrides.as_ref().and_then(|overrides| {
+            overrides
+                .process
+                .start_process_result_cancellations
+                .lock_ignoring_poison()
+                .pop_front()
+        }) {
+            cancel.cancel();
+        }
         Ok(handle)
     }
 
@@ -893,7 +928,7 @@ impl Sandbox for MockSandbox {
         // longer be observed by the caller and would otherwise buffer forever.
         handle.drop_unclaimed_stdout();
 
-        if let Some(overrides) = &self.overrides {
+        let exit = if let Some(overrides) = &self.overrides {
             overrides
                 .process
                 .wait_process_calls
@@ -911,28 +946,30 @@ impl Sandbox for MockSandbox {
             }
             // Return override exit code when configured.
             if let Some(code) = overrides.process.wait_process_code {
-                return Ok(ProcessExit::new(
-                    handle.guest_pid,
-                    code,
-                    Vec::new(),
-                    Vec::new(),
-                ));
-            }
-            if let Some(exit) = overrides
+                ProcessExit::new(handle.guest_pid, code, Vec::new(), Vec::new())
+            } else if let Some(exit) = overrides
                 .process
                 .wait_process_exits
                 .lock_ignoring_poison()
                 .pop_front()
             {
-                return Ok(exit);
+                exit
+            } else {
+                ProcessExit::new(handle.guest_pid, 0, Vec::new(), Vec::new())
             }
+        } else {
+            ProcessExit::new(handle.guest_pid, 0, Vec::new(), Vec::new())
+        };
+        if let Some(cancel) = self.overrides.as_ref().and_then(|overrides| {
+            overrides
+                .process
+                .wait_process_result_cancellations
+                .lock_ignoring_poison()
+                .pop_front()
+        }) {
+            cancel.cancel();
         }
-        Ok(ProcessExit::new(
-            handle.guest_pid,
-            0,
-            Vec::new(),
-            Vec::new(),
-        ))
+        Ok(exit)
     }
 }
 

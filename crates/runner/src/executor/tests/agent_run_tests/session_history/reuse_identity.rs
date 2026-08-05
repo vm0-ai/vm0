@@ -15,8 +15,8 @@ use guest_contracts::session_history_identity::{
 };
 use httpmock::prelude::*;
 use sandbox::{ExecResult, ExecTermination, ProcessExit};
+use sandbox_mock::MockLifecycleGate;
 use sha2::{Digest, Sha256};
-use tokio::sync::Notify;
 
 use super::{
     LARGE_SESSION_HISTORY_SIZE_BYTES, assert_successful_action, history_prefix_attribution,
@@ -27,8 +27,8 @@ use crate::executor::tests::agent_run_tests::support::{
     final_identity_runtime_paths,
 };
 use crate::executor::tests::support::{
-    OperationGateSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, SandboxGatePoint, create_overridden_sandbox,
-    minimal_context, sandbox_exec_error, test_executor_config, test_telemetry,
+    RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox, minimal_context, sandbox_exec_error,
+    test_executor_config, test_telemetry,
 };
 use crate::executor::{
     EXIT_SIGKILL, RestoredSessionIdentity, SessionHistoryMaterializer,
@@ -283,14 +283,9 @@ async fn run_in_sandbox_drops_checkpointed_identity_when_agent_is_cancelled() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let start_process_entered = Arc::new(Notify::new());
-    let start_process_release = Arc::new(Notify::new());
-    let sandbox = OperationGateSandbox {
-        inner: create_overridden_sandbox(Arc::clone(&overrides)).await,
-        point: SandboxGatePoint::StartProcess,
-        entered: Arc::clone(&start_process_entered),
-        release: Arc::clone(&start_process_release),
-    };
+    let start_process_gate = MockLifecycleGate::new();
+    overrides.set_start_process_lifecycle_gate(start_process_gate.clone());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let (ctx, idle_identity) = context_with_checkpointed_session_identity(
         "sess-cancelled-reuse-123",
         br#"{"type":"before"}"#,
@@ -298,7 +293,7 @@ async fn run_in_sandbox_drops_checkpointed_identity_when_agent_is_cancelled() {
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);
     let run = run_in_sandbox(
-        &sandbox,
+        sandbox.as_ref(),
         &ctx,
         &config,
         RunStart {
@@ -319,7 +314,9 @@ async fn run_in_sandbox_drops_checkpointed_identity_when_agent_is_cancelled() {
                 let _ = result;
                 panic!("run finished before the start-process barrier");
             }
-            () = start_process_entered.notified() => {}
+            entered = start_process_gate.wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT) => {
+                entered.expect("run should reach the start-process barrier");
+            }
         }
     })
     .await
