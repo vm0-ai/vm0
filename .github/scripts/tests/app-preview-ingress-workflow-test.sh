@@ -50,6 +50,25 @@ legacy_markers.each do |marker|
 end
 
 cleanup_source = File.read(ARGV.fetch(1))
+cleanup = YAML.load_file(ARGV.fetch(1))
+expected_cleanup_group = "pr-${{ github.event.pull_request.number }}"
+unless cleanup.fetch("concurrency").fetch("group") == expected_cleanup_group
+  raise "cleanup must cancel the matching PR Turbo run before deleting Pages deployments"
+end
+
+pages_cleanup = cleanup.fetch("jobs").fetch("cleanup-app-pages-deployments")
+pages_cleanup_steps = pages_cleanup.fetch("steps")
+pages_cleanup_step = pages_cleanup_steps.find do |step|
+  step["name"] == "Delete Cloudflare Pages app preview deployments"
+end
+raise "missing app Pages deployment cleanup step" unless pages_cleanup_step
+unless pages_cleanup_step.fetch("run").include?("delete-okou-pages-preview-deployments.sh")
+  raise "app Pages cleanup must use the audited deletion script"
+end
+unless pages_cleanup_step.fetch("env").fetch("PAGES_BRANCH") == "pr-${{ github.event.pull_request.number }}-app"
+  raise "app Pages cleanup branch must derive only from the closed PR number"
+end
+
 legacy_cleanup_markers = [
   "cleanup-okou-pages-domain",
   "cleanup-legacy-preview-www",
