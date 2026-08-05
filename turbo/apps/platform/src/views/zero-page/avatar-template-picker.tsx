@@ -373,7 +373,7 @@ function avatarTemplateCardClass(selected: boolean): string {
   return cn(
     "group relative flex min-w-0 flex-col overflow-hidden rounded-xl border bg-card text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
     AVATAR_CARD_SHADOW,
-    selected ? "border-primary ring-1 ring-primary" : "border-border",
+    selected ? "border-primary" : "border-border",
   );
 }
 
@@ -861,7 +861,7 @@ function AvatarVoiceCard({
         "group/voice flex cursor-pointer items-center gap-3 rounded-xl border bg-card p-3 transition-colors duration-200 hover:border-foreground/20 hover:bg-muted/25 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         AVATAR_CARD_SHADOW,
         selected
-          ? "border-primary bg-primary/[0.04] ring-1 ring-primary"
+          ? "border-primary bg-primary/[0.04]"
           : "border-border",
       )}
     >
