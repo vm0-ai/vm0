@@ -470,6 +470,9 @@ async fn claim_with_local_admission(
     let observed_candidate =
         is_selected_finalizing_candidate(&candidate, ctx.runner_id, ctx.heartbeat_generation)
             .then(|| candidate.clone());
+    if matches!(&admission.resource, LocalAdmissionResource::Reusable(_)) {
+        candidate.mark_reserved_reuse_claim_started();
+    }
     let Some(claimed) = ctx.spawn_ctx.provider.claim(candidate).await else {
         // None means the job won't run here: either lost the race to another
         // runner, or the provider rejected the job. Release the reservation and

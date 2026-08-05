@@ -57,7 +57,7 @@ import {
   eventGroupKey,
   eventGroupMatchesSearch,
   type EventGroup,
-} from "./components/log-views/log-detail-utils.ts";
+} from "../../signals/activity-page/log-detail-utils";
 import { EventGroupCard } from "./components/log-views/event-group-card.tsx";
 import { StatusDot } from "./components/log-views/status-dot.tsx";
 import { zeroActivityContext$ } from "../../signals/activity-page/activity-context-signals.ts";

@@ -1,20 +1,19 @@
 import { randomUUID } from "node:crypto";
-
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
-  type ModelProviderType,
   type OrgModelPoliciesResponse,
   type UpdateOrgModelPolicy,
+  type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroModelProviderConnectionsMainContract } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
-
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { now } from "../../external/time";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
@@ -557,8 +556,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
       headers: authHeaders(),
       body: {
         policies: [
-          makeVm0Policy("kimi-k2.7-code", true),
-          makeVm0Policy("gpt-5.5"),
+          makeVm0Policy("claude-sonnet-5", true),
+          makeVm0Policy("gpt-5.6-terra"),
         ],
       },
     });

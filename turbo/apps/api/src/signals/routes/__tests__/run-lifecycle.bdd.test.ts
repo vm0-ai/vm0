@@ -5738,9 +5738,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
-    expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.ZeroChatMessaging]: true,
-    });
     expect(appendSystemPrompt).toContain("zero chat send");
     expect(appendSystemPrompt).toContain("zero chat cancel");
     expect(appendSystemPrompt).not.toContain("zero chat queued");
@@ -9855,7 +9852,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 });
 
 describe("RUN-01: zero runner context, queue promotion, and skills", () => {
-  it("selects the runner-bundled zero-cli only when its feature switch is enabled", async () => {
+  it("selects npm, R2, and runner-bundled Zero CLI distributions by feature switch precedence", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     if (!actor.orgId) {
@@ -9875,7 +9872,35 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(npmClaim.appendSystemPrompt ?? "").not.toContain(
       "Run commands with: `zero-cli <command>`",
     );
+    expect(npmClaim.environment?.CLI_PKG_URL).toBeUndefined();
     await api.requestCancelRun(actor, npmRun.runId, [200]);
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.R2ZeroCli]: true },
+    );
+
+    const r2Run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the R2 Zero CLI package",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const r2Claim = await api.claimRunnerJob(r2Run.runId);
+    expect(r2Claim.appendSystemPrompt ?? "").toContain(
+      `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" zero <command>\``,
+    );
+    expect(r2Claim.appendSystemPrompt ?? "").not.toContain(
+      "Run commands with: `npx -p @vm0/cli zero <command>`",
+    );
+    expect(r2Claim.appendSystemPrompt ?? "").not.toContain(
+      "Run commands with: `zero-cli <command>`",
+    );
+    expect(r2Claim.environment?.CLI_PKG_URL).toBe(
+      "https://static.vm0.io/okou-cli/test-commit/package.tgz",
+    );
+    await api.requestCancelRun(actor, r2Run.runId, [200]);
 
     await updateFeatureSwitchesForUser(
       context,
@@ -9894,8 +9919,12 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "Run commands with: `zero-cli <command>`",
     );
     expect(rustClaim.appendSystemPrompt ?? "").not.toContain(
+      `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" zero <command>\``,
+    );
+    expect(rustClaim.appendSystemPrompt ?? "").not.toContain(
       "Run commands with: `npx -p @vm0/cli zero <command>`",
     );
+    expect(rustClaim.environment?.CLI_PKG_URL).toBeUndefined();
     await api.requestCancelRun(actor, rustRun.runId, [200]);
   });
 
@@ -10110,8 +10139,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       expect(appendSystemPrompt).toContain(toolHint);
     }
     expect(appendSystemPrompt).toContain("zero upgrade pro");
-    expect(appendSystemPrompt).not.toContain("zero chat send");
-    expect(appendSystemPrompt).not.toContain("zero chat cancel");
     expect(appendSystemPrompt).not.toContain("zero chat queued");
     expect(appendSystemPrompt).not.toContain(
       "`zero browser use` creates, reuses, or resumes a remote browser",
@@ -10133,15 +10160,13 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
     expect(claim.userTimezone).toBe("America/Los_Angeles");
 
-    expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.ZeroChatMessaging]: false,
-    });
     expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
     expect(claim.disallowedTools).not.toContain("WebFetch");
     expect(claim.environment?.ZERO_APP_URL).toBe(appUrl);
+    expect(claim.environment?.CLI_PKG_URL).toBeUndefined();
     expect(claim.environment?.VM0_APP_URL).toBeUndefined();
     expect(claim.environment?.APP_URL).toBeUndefined();
     expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);

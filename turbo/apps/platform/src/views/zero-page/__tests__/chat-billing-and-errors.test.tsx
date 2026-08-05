@@ -100,7 +100,6 @@ describe("chat lifecycle", () => {
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -158,7 +157,6 @@ describe("chat lifecycle", () => {
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -183,7 +181,6 @@ describe("chat lifecycle", () => {
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -227,7 +224,6 @@ describe("chat lifecycle", () => {
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -297,7 +293,6 @@ describe("chat lifecycle", () => {
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -340,7 +335,6 @@ describe("chat lifecycle", () => {
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });

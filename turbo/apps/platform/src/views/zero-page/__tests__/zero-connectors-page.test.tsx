@@ -365,7 +365,6 @@ function mockPublicConnectorStatus(
 function mockCustomConnectorStory(): void {
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "admin",
   });
@@ -3268,7 +3267,6 @@ describe("connectors page", () => {
     });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -3360,7 +3358,6 @@ describe("connectors page", () => {
     });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -3451,7 +3448,6 @@ describe("connectors page", () => {
     });
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -3511,7 +3507,6 @@ describe("connectors page", () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000041";
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });

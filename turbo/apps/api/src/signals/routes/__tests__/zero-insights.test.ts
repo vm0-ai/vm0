@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroInsightsContract } from "@vm0/api-contracts/contracts/zero-insights";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();

@@ -252,7 +252,6 @@ describe("queue drawer", () => {
     mockConcurrencyCapability(true);
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -307,7 +306,6 @@ describe("queue drawer", () => {
   it("hides additional concurrency checkout when the plan capability is disabled", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "admin",
     });
@@ -337,7 +335,6 @@ describe("queue drawer", () => {
   it("hides billing actions from non-admins", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });
@@ -363,7 +360,6 @@ describe("queue drawer", () => {
   it("hides additional concurrency checkout from non-admins", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });

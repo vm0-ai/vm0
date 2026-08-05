@@ -1,7 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 
 interface RunnerJobQueueTimestamps {
   readonly createdAt: Date;

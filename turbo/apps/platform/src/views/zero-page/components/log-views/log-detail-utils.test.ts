@@ -7,7 +7,7 @@ import {
   groupEventsIntoGroups,
   eventGroupKey,
   eventGroupMatchesSearch,
-} from "./log-detail-utils.ts";
+} from "../../../../signals/activity-page/log-detail-utils";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

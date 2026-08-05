@@ -49,6 +49,11 @@ export default defineConfig({
   },
   onSuccess: isWatchMode
     ? async () => {
+        console.log("Uploading Zero CLI for local runners...");
+        execSync("pnpm --workspace-root deploy-cli:local", {
+          stdio: "inherit",
+        });
+        console.log("Zero CLI uploaded for local runners");
         console.log("Installing Zero CLI globally...");
         execSync("sudo npm link --local", { cwd: "dist", stdio: "inherit" });
         console.log("Zero CLI installed globally");

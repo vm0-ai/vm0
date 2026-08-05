@@ -1,7 +1,7 @@
 use std::io;
 
 #[cfg(target_os = "linux")]
-use std::os::fd::{FromRawFd, OwnedFd, RawFd};
+use std::os::fd::OwnedFd;
 
 use tokio::process::Child;
 
@@ -62,27 +62,15 @@ impl ChildExitNotifier {
 
 #[cfg(target_os = "linux")]
 fn open_pidfd(pid: u32) -> io::Result<OwnedFd> {
-    let pid = libc::pid_t::try_from(pid).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "child PID cannot be represented as libc::pid_t",
-        )
-    })?;
+    let pid = i32::try_from(pid)
+        .ok()
+        .and_then(rustix::process::Pid::from_raw)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "child PID cannot be represented as rustix::process::Pid",
+            )
+        })?;
 
-    // SAFETY: `pidfd_open` does not dereference user pointers. On success it
-    // returns a new file descriptor owned by this process.
-    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
-    if fd < 0 {
-        return Err(io::Error::last_os_error());
-    }
-
-    let fd = RawFd::try_from(fd).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "pidfd_open returned a file descriptor outside RawFd range",
-        )
-    })?;
-
-    // SAFETY: `fd` is a fresh descriptor returned by `pidfd_open` above.
-    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).map_err(io::Error::from)
 }

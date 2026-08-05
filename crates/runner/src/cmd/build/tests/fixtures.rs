@@ -3,6 +3,8 @@ use super::*;
 use aws_smithy_mocks::{Rule, RuleMode, mock, mock_client};
 use std::sync::Arc;
 
+use crate::test_fixtures::http_body::byte_stream_with_error_after;
+
 pub(super) const TEST_TEMPLATE_DISK_BYTES: u64 = 128 * 1024 * 1024;
 
 #[derive(clap::Parser)]
@@ -209,6 +211,30 @@ pub(super) fn template_get_rule(body: Vec<u8>) -> Rule {
         .then_output(move || {
             GetObjectOutput::builder()
                 .body(ByteStream::from((*body_for_closure).clone()))
+                .build()
+        })
+}
+
+pub(super) fn template_get_body_error_rule(body: Vec<u8>) -> Rule {
+    use aws_sdk_s3::Client;
+    use aws_sdk_s3::operation::get_object::GetObjectOutput;
+
+    let body = Arc::new(body);
+    let body_for_closure = Arc::clone(&body);
+    mock!(Client::get_object)
+        .match_requests(|req| {
+            req.bucket() == Some("test-bucket")
+                && req.key() == Some("runner-templates/test-template-hash.tar.zst")
+        })
+        .then_output(move || {
+            GetObjectOutput::builder()
+                .body(byte_stream_with_error_after(
+                    (*body_for_closure).clone(),
+                    std::io::Error::new(
+                        std::io::ErrorKind::ConnectionReset,
+                        "injected R2 body transport failure",
+                    ),
+                ))
                 .build()
         })
 }

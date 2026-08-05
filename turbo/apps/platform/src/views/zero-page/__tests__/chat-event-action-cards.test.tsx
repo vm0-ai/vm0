@@ -9,6 +9,7 @@ import {
   zeroBrowserContract,
   type ZeroBrowserSession,
 } from "@vm0/api-contracts/contracts/zero-browser";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   zeroConnectorCatalogContract,
@@ -34,7 +35,7 @@ import {
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { PLACEHOLDER, mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -3208,10 +3209,54 @@ describe("chat event action cards", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps permission success visible while permission grants reload", async () => {
+  it("keeps permission success and composer connectors visible while grants reload", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000991";
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
+    let holdAgentResponse = false;
+    context.mocks.api(
+      zeroAgentsByIdContract.get,
+      async ({ deferred, params, respond }) => {
+        if (holdAgentResponse) {
+          const agentDeferred = deferred<void>();
+          await agentDeferred.promise;
+        }
+        return respond(200, {
+          agentId: params.id,
+          ownerId: "test-user-123",
+          description: null,
+          displayName: "Zero",
+          sound: null,
+          avatarUrl: null,
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      },
+    );
+    context.mocks.data.connectors([
+      connectedConnector({
+        slug: "gmail",
+        authMethod: "oauth",
+        externalEmail: "sender@example.com",
+      }),
+    ]);
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        slug: "gmail",
+        label: "Gmail",
+        connected: true,
+        connectionStatus: "connected",
+        connection: {
+          authMethod: "oauth",
+          externalUsername: null,
+          externalEmail: "sender@example.com",
+          reconnectReason: null,
+        },
+      }),
+    ]);
+    mockAgentConnectorAuthorizations(["gmail"]);
     let listRequests = 0;
     let storedGrants: UserPermissionGrantResponse[] = [];
     let resolveReload: () => void = () => {
@@ -3257,7 +3302,7 @@ describe("chat event action cards", () => {
     );
 
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-permission-save-reload`,
+      threadId,
       threadTitle: "Permission save reload",
       chatEvents: [
         {
@@ -3279,10 +3324,20 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-permission-save-reload`,
+      path: `/chats/${threadId}`,
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
+    const composerEditor = await screen.findByPlaceholderText(PLACEHOLDER);
+    const composer = composerEditor.closest(".zero-composer");
+    if (!(composer instanceof HTMLElement)) {
+      throw new Error("Composer element not found");
+    }
+    await user.click(within(composer).getByLabelText("Connectors"));
+    const gmailConnector = await screen.findByText("Gmail");
+    expect(gmailConnector).toBeInTheDocument();
+
+    holdAgentResponse = true;
     await confirmPermissionAction(user, permissionCard);
 
     await waitFor(() => {
@@ -3294,6 +3349,8 @@ describe("chat event action cards", () => {
     expect(
       within(permissionCard).queryByText("Checking permission status..."),
     ).not.toBeInTheDocument();
+    await user.click(within(composer).getByLabelText("Connectors"));
+    expect(screen.getByText("Gmail")).toBeInTheDocument();
 
     resolveReload();
     await waitFor(() => {

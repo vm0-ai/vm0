@@ -1,9 +1,9 @@
 import { Command } from "commander";
-import { withErrorHandler } from "../../lib/command";
+import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
   requestDeveloperSupportConsent,
   submitDeveloperSupport,
-} from "../../lib/api";
+} from "../../lib/api/domains/zero-developer-support";
 
 export const zeroDeveloperSupportCommand = new Command()
   .name("developer-support")

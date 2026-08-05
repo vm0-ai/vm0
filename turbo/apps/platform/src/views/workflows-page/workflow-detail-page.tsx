@@ -1200,8 +1200,6 @@ function AutomationCreateAction() {
     features[FeatureSwitchKey.GithubWebhookAutomations] ?? false;
   const strapiIntegrationEnabled =
     features[FeatureSwitchKey.StrapiIntegration] ?? false;
-  const chatRunFinishedAutomationsEnabled =
-    features[FeatureSwitchKey.ZeroChatMessaging] ?? false;
 
   return (
     <AutomationCreateMenu
@@ -1212,7 +1210,6 @@ function AutomationCreateAction() {
         }
         setCreateDialog(kind);
       }}
-      chatRunFinishedAutomationsEnabled={chatRunFinishedAutomationsEnabled}
       githubLabelAutomationsEnabled
       githubWebhookAutomationsEnabled={githubWebhookAutomationsEnabled}
       googleCalendarAutomationsEnabled
@@ -4353,21 +4350,18 @@ type AutomationCreateCategory = {
 };
 
 function buildIntegrationAutomationOptions({
-  chatRunFinishedAutomationsEnabled,
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
   strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
-  readonly chatRunFinishedAutomationsEnabled: boolean;
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
   readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): AutomationCreateOption[] {
-  const integrationOptions: AutomationCreateOption[] = [];
-  if (chatRunFinishedAutomationsEnabled) {
-    integrationOptions.push({
+  const integrationOptions: AutomationCreateOption[] = [
+    {
       kind: "chat-run-finished",
       title: i18n.t(($) => {
         return $.workflows.automations.chat.runFinishedTitle;
@@ -4376,8 +4370,8 @@ function buildIntegrationAutomationOptions({
         return $.workflows.automations.chat.runFinishedDescription;
       }),
       icon: IconMessageCircle,
-    });
-  }
+    },
+  ];
   if (githubLabelAutomationsEnabled) {
     integrationOptions.push({
       kind: "github-label",
@@ -4643,7 +4637,6 @@ function buildEmailAutomationOptions(): AutomationCreateOption[] {
 }
 
 function buildAutomationCreateCategories({
-  chatRunFinishedAutomationsEnabled,
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
   googleCalendarAutomationsEnabled,
@@ -4652,7 +4645,6 @@ function buildAutomationCreateCategories({
   strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
-  readonly chatRunFinishedAutomationsEnabled: boolean;
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
@@ -4666,7 +4658,6 @@ function buildAutomationCreateCategories({
     googleMeetAutomationsEnabled,
   );
   const integrationOptions = buildIntegrationAutomationOptions({
-    chatRunFinishedAutomationsEnabled,
     githubLabelAutomationsEnabled,
     githubWebhookAutomationsEnabled,
     strapiIntegrationEnabled,
@@ -4795,7 +4786,6 @@ function AutomationCreateOptionCard({
 
 function AutomationCreateMenu({
   onSelect,
-  chatRunFinishedAutomationsEnabled,
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
   googleCalendarAutomationsEnabled,
@@ -4805,7 +4795,6 @@ function AutomationCreateMenu({
   webhookTierEligible,
 }: {
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
-  readonly chatRunFinishedAutomationsEnabled: boolean;
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
@@ -4819,7 +4808,6 @@ function AutomationCreateMenu({
   const activeKey = useGet(workflowAutomationPickerCategory$);
   const setActiveKey = useSet(setWorkflowAutomationPickerCategory$);
   const categories = buildAutomationCreateCategories({
-    chatRunFinishedAutomationsEnabled,
     githubLabelAutomationsEnabled,
     githubWebhookAutomationsEnabled,
     googleCalendarAutomationsEnabled,

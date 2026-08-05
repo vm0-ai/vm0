@@ -13,8 +13,8 @@ import {
   getCurrentZeroBrowser,
   leaseZeroBrowser,
   useZeroBrowser,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/zero-browser";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 const DEFAULT_AGENT_BROWSER_SESSION = "zero-browser";
 

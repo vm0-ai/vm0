@@ -438,6 +438,11 @@ describe("user messages", () => {
         );
       }
     });
+    // Avatars are transparent, so any background fill shows through as a gray
+    // disc behind the face.
+    for (const agentLink of agentLinks) {
+      expect(agentLink.querySelector("img")).not.toHaveClass("bg-muted");
+    }
     expect(agentLinks[0]).toHaveAttribute(
       "href",
       `/agents/${mentionedAgentId}/chat`,
@@ -555,6 +560,9 @@ describe("user messages", () => {
         sourceAgentAvatarUrl,
       );
     });
+    // Avatars are transparent, so any background fill shows through as a gray
+    // disc behind the face.
+    expect(sourceLink.querySelector("img")).not.toHaveClass("bg-muted");
     expect(document.getElementById(`run-${targetRunId}`)).toHaveAttribute(
       "data-role",
       "user",

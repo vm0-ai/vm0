@@ -102,6 +102,9 @@ def _strip_request_target_query(request_target: str) -> str:
 # exceeding it indicates malformed or hostile upstream data, so the parser
 # discards that row through its terminating newline to protect memory.
 _MAX_NDJSON_LINE_BYTES = LARGE_RESPONSE_DECOMPRESS_LIMIT
+# Bound dense syntax and slow scalar inspection across one non-streaming X JSON
+# response while retaining the selective parser's bulk discarded-string path.
+_MAX_JSON_RESPONSE_WORK_UNITS = 65_536
 # Bound dense syntax and slow scalar inspection while keeping multi-megabyte
 # ordinary discarded strings on the selective parser's bulk-scan path.
 _MAX_NDJSON_ROW_WORK_UNITS = 65_536
@@ -241,6 +244,7 @@ def _create_x_json_selective_extractor() -> JsonSelectiveExtractor:
         array_count_paths={("data",), ("errors",)},
         wildcard_array_count_paths={("includes", "*")},
         object_presence_paths={(), ("data",)},
+        max_work_units=_MAX_JSON_RESPONSE_WORK_UNITS,
     )
 
 

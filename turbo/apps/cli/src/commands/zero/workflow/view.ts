@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getWorkflow } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { getWorkflow } from "../../../lib/api/domains/zero-workflows";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { formatWorkflowAgentName } from "./format";
 import {
   resolveWorkflowRef,

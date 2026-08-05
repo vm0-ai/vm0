@@ -1,6 +1,6 @@
 import { publishRunnerJobNotification } from "../external/realtime";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import {

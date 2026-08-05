@@ -74,6 +74,3 @@ pub use sandbox::FirecrackerSandbox;
 pub use snapshot::{
     FirecrackerSnapshotProvider, SNAPSHOT_COMPLETE_MARKER_CONTENT, SnapshotError, create_snapshot,
 };
-
-/// Exact tracing target for the bounded balloon-settlement production summary.
-pub const BALLOON_SETTLE_AXIOM_TARGET: &str = "sandbox_fc::balloon_settle";

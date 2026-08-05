@@ -7,14 +7,12 @@ import {
   zeroWebSearchDomainSchema,
   zeroWebSearchRecencySchema,
   zeroWebSearchRequestSchema,
+  type ZeroWebSearchResponse,
   type ZeroWebSearchRecency,
 } from "@vm0/api-contracts/contracts/zero-web-search";
 
-import {
-  callZeroWebSearch,
-  type ZeroWebSearchResponse,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { callZeroWebSearch } from "../../../lib/api/domains/zero-web-search";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 const WEB_SEARCH_RECENCIES = zeroWebSearchRecencySchema.options;
 

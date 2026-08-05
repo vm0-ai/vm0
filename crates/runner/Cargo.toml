@@ -1,6 +1,6 @@
 [package]
 name = "runner"
-version = "0.158.0"
+version = "0.158.3"
 edition.workspace = true
 
 [dependencies]
@@ -72,6 +72,7 @@ guest-reseed = { workspace = true }
 guest-write-file = { workspace = true }
 zero-cli = { workspace = true }
 httpmock = { workspace = true }
+http-body = "1"
 sandbox-mock = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 tracing-test-support.workspace = true

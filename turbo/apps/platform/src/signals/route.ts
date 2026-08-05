@@ -1,6 +1,6 @@
 import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
-import type { RoutePath } from "../types/route.ts";
+import type { RoutePath } from "./route-paths";
 import { clerk$, needsOrgSelection$, resolveAppAuthUrl } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";

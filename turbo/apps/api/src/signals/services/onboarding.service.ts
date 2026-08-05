@@ -7,7 +7,7 @@ import { and, eq } from "drizzle-orm";
 
 import type { AuthContext } from "../../types/auth";
 import { db$, writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 
 interface DefaultAgentInfo {
   readonly composeId: string;

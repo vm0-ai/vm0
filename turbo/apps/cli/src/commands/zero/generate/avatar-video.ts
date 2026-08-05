@@ -1,14 +1,14 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 
+import { ApiRequestError } from "../../../lib/api/core/client-factory";
 import {
-  ApiRequestError,
   generateWebAvatarVideo,
-  getZeroBillingStatus,
   listWebAvatarVideoAvatars,
   listWebAvatarVideoVoices,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/web";
+import { getZeroBillingStatus } from "../../../lib/api/domains/zero-billing";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   currentPlanAllowsVideo,
   currentTokenCanReadBilling,

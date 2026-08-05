@@ -8,12 +8,11 @@ import { githubChatThreadRoutes } from "@vm0/db/schema/github-chat-thread-route"
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, isNotNull } from "drizzle-orm";
-
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { settleIncludingAbort } from "../utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { getGithubInstallationAccessToken } from "./github-app.service";

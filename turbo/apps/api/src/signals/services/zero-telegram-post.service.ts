@@ -1,5 +1,4 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-
 import { command, computed } from "ccstate";
 import { v5 as uuidv5 } from "uuid";
 import {
@@ -29,7 +28,6 @@ import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, desc, eq, isNull, notExists, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-
 import { escapeHtml } from "../../lib/telegram-format";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -56,7 +54,7 @@ import {
   getOfficialTelegramBotConfig,
   isOfficialTelegramBotId,
 } from "../external/telegram-official";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { safeJsonParse, safeUrlParse, tapError } from "../utils";
 import {
   decryptPersistentSecretValue,

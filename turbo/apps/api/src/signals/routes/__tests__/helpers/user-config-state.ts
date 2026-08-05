@@ -4,8 +4,8 @@ import {
   type TestUserConfigStateActionResponse,
 } from "@vm0/api-contracts/contracts/test-user-config-state";
 
-import { accept, setupApp } from "../../../../__tests__/test-helpers";
-import type { TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { testUserConfigStateRoutes } from "../../test-user-config-state";
 
 interface UserScope {

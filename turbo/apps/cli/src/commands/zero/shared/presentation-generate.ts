@@ -1,5 +1,5 @@
 import { Command, InvalidArgumentError } from "commander";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
 import {
@@ -7,7 +7,7 @@ import {
   findPresentationRunbookPackage,
   listPresentationRunbookPackages,
   resolvePresentationRunbookColorToken,
-} from "./resource-registry";
+} from "@vm0/core/resource-registry";
 import { canonicalizeRegistryId } from "./resource-listing";
 
 type PresentationRunbookPackage = ReturnType<

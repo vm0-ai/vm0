@@ -10,7 +10,6 @@ import { mockApi } from "../msw-contract.ts";
 // Mock org data — default to admin role for development
 let mockOrg: OrgResponse = {
   id: "org_1",
-  slug: "user-12345678",
   name: "User 12345678",
   role: "admin",
 };
@@ -24,7 +23,6 @@ export function setMockOrg(overrides: Partial<OrgResponse>): void {
 export function resetMockOrg(): void {
   mockOrg = {
     id: "org_1",
-    slug: "user-12345678",
     name: "User 12345678",
     role: "admin",
   };

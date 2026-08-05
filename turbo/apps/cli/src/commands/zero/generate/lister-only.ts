@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { printConnectorGuidance } from "./lib/connector-guidance";
 import { runLister, type GenerationType } from "./lib/lister";
 

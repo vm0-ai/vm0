@@ -7,22 +7,21 @@ import {
   getSecretsForAuthMethod,
   hasAuthMethods,
   MODEL_PROVIDER_TYPES,
-  type ModelProviderFramework,
   type ModelProviderListResponse,
   type ModelProviderResponse,
-  type ModelProviderType,
   modelProviderTypeSchema,
+  type ModelProviderFramework,
+  type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { modelProviderConnections } from "@vm0/db/schema/model-provider-gateway";
 import { secrets } from "@vm0/db/schema/secret";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-
 import { db$, writeDb$, type Db } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { encryptStoredSecretValue } from "./crypto.utils";
 import { lockModelProviderState } from "./auth-state-lock.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";

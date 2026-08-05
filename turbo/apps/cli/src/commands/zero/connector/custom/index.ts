@@ -3,10 +3,12 @@ import chalk from "chalk";
 import {
   getZeroAgent,
   getZeroAgentCustomConnectors,
+} from "../../../../lib/api/domains/zero-agents";
+import {
   getZeroCustomConnector,
   listZeroCustomConnectors,
-} from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+} from "../../../../lib/api/domains/zero-connectors";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 import { createCustomConnectorCommand } from "./create";
 
 const LABEL_WIDTH = 18;

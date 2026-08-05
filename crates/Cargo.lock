@@ -1253,7 +1253,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.64.1"
+version = "0.64.2"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -2605,7 +2605,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.158.0"
+version = "0.158.3"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2627,6 +2627,7 @@ dependencies = [
  "guest-reseed",
  "guest-write-file",
  "hex",
+ "http-body 1.1.0",
  "httpmock",
  "idna",
  "libc",
@@ -2829,7 +2830,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.180"
+version = "0.37.182"
 dependencies = [
  "async-trait",
  "clap",
@@ -2840,6 +2841,7 @@ dependencies = [
  "nbd-cow",
  "nix",
  "reqwest",
+ "rustix",
  "sandbox",
  "serde",
  "serde_json",
@@ -4258,7 +4260,7 @@ dependencies = [
 
 [[package]]
 name = "zero-cli"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "api-contracts",
  "async-trait",

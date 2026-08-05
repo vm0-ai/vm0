@@ -39,15 +39,6 @@ describe("getCreditUsageDisplayName", () => {
     );
   });
 
-  it("uses the generic model name when requested", () => {
-    expect(getCreditUsageDisplayName("model", "gpt-5.6-sol", true)).toBe(
-      "model",
-    );
-    expect(getCreditUsageDisplayName("image", "gpt-image-2", true)).toBe(
-      "GPT Image 2",
-    );
-  });
-
   it("formats unknown providers as a readable label", () => {
     expect(getCreditUsageDisplayName("model", "acme/vision-pro")).toBe(
       "Acme Vision Pro",

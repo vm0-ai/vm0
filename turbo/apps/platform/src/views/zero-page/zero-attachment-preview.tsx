@@ -24,7 +24,7 @@ import {
 import {
   downloadAttachmentUrl,
   publicAttachmentUrl,
-} from "./zero-attachment-chips.tsx";
+} from "./zero-attachment-url";
 import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 
 interface ChatAttachmentDescriptor {

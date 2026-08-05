@@ -19,8 +19,6 @@ import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing
 import type { ChatEvent } from "./chat-event-types.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 
-export { type ZeroChatAttachment } from "../zero-page/chat-draft.ts";
-
 export type EnrichedChatEvent = ChatEvent & {
   blocks: BodyRenderBlock[];
   isQueued: boolean;

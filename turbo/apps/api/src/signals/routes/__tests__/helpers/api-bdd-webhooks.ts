@@ -28,11 +28,8 @@ import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
 import { generateSandboxToken } from "../../../auth/tokens";
 import { mockStripeClient } from "../../../external/stripe-client";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { registerKnownSessionHistoryBlob } from "./api-bdd-session-history";
 
 type AgentEventsBody = z.infer<(typeof webhookEventsContract.send)["body"]>;

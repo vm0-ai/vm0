@@ -19,10 +19,9 @@ import { chatThreadSnapshots } from "@vm0/db/schema/chat-thread-snapshot";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { z } from "zod";
-
 import { executeRawRows } from "../../lib/db-raw-rows";
 import { optionalEnv } from "../../lib/env";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 
 interface SnapshotCompactionStats {
