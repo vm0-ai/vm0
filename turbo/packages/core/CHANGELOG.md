@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.514.0](https://github.com/vm0-ai/vm0/compare/core-v8.513.0...core-v8.514.0) (2026-08-05)
+
+
+### Features
+
+* **chat:** enable chat steering for staff org ([#25130](https://github.com/vm0-ai/vm0/issues/25130)) ([2a7a53f](https://github.com/vm0-ai/vm0/commit/2a7a53fe89658d578237884249be6a490247d413))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.0
+
 ## [8.513.0](https://github.com/vm0-ai/vm0/compare/core-v8.512.1...core-v8.513.0) (2026-08-05)
 
 

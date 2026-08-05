@@ -18,6 +18,11 @@ R2_ACCOUNT_ID=op://Development/cloudflare/R2_ACCOUNT_ID
 R2_ACCESS_KEY_ID=op://Development/cloudflare/R2_ACCESS_KEY_ID
 R2_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_SECRET_ACCESS_KEY
 R2_USER_STORAGES_BUCKET_NAME=op://Development/cloudflare/R2_USER_STORAGES_BUCKET_NAME
+
+# R2 static assets for local CLI uploads
+R2_STATIC_ACCESS_KEY_ID=op://Development/cloudflare/R2_STATIC_ACCESS_KEY_ID
+R2_STATIC_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_STATIC_SECRET_ACCESS_KEY
+
 R2_USER_ARTIFACTS_BUCKET_NAME=user-artifact-dev
 R2_USER_ARTIFACTS_ACCESS_KEY_ID=op://Development/cloudflare/R2_USER_ARTIFACTS_ACCESS_KEY_ID
 R2_USER_ARTIFACTS_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_USER_ARTIFACTS_SECRET_ACCESS_KEY

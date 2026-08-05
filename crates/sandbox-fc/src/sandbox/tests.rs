@@ -4141,7 +4141,7 @@ async fn wait_for_balloon_rechecks_after_initial_25_ms_delay() {
 }
 
 #[tokio::test]
-async fn wait_for_balloon_caps_adaptive_polling_at_14_samples() {
+async fn wait_for_balloon_follows_exact_bounded_poll_schedule() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
     let request_entered = Arc::new(Notify::new());
     let response_release = Arc::new(Notify::new());
@@ -4152,7 +4152,7 @@ async fn wait_for_balloon_caps_adaptive_polling_at_14_samples() {
             release: Arc::clone(&response_release),
             stats: MockBalloonStats::new(target_mib, 0),
         })
-        .take(14)
+        .take(16)
         .chain(std::iter::once(MockBalloonStatsReply::Status(500)))
         .collect(),
     );
@@ -4165,7 +4165,7 @@ async fn wait_for_balloon_caps_adaptive_polling_at_14_samples() {
     tokio::pin!(wait);
 
     for (index, delay_ms) in [
-        0_u64, 25, 50, 100, 200, 400, 500, 500, 500, 500, 500, 500, 500, 500,
+        0_u64, 25, 50, 100, 100, 100, 200, 200, 500, 500, 500, 500, 500, 500, 500, 500,
     ]
     .into_iter()
     .enumerate()
@@ -4231,9 +4231,9 @@ async fn wait_for_balloon_caps_adaptive_polling_at_14_samples() {
             .iter()
             .filter(|request| request.method == "GET" && request.path == "/balloon/statistics")
             .count(),
-        14
+        16
     );
-    assert_balloon_settle_summary(&captured.entries(), "deadline", 14, "reject_and_destroy");
+    assert_balloon_settle_summary(&captured.entries(), "deadline", 16, "reject_and_destroy");
 }
 
 #[tokio::test]
