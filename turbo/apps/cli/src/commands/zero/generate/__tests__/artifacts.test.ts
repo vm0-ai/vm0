@@ -3,7 +3,7 @@ import chalk from "chalk";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { generateCommand } from "../index";
 import { reportCommand } from "../artifacts";
-import { selectResourceCandidates } from "../../shared/resource-registry";
+import { selectResourceCandidates } from "@vm0/core/resource-registry";
 
 function buildZeroToken(
   featureSwitchOverrides: Partial<Record<FeatureSwitchKey, boolean>>,

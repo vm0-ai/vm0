@@ -5,7 +5,7 @@ import {
   isTaskEventData,
   type EventGroup,
   type ToolOperation,
-} from "./log-detail-utils.ts";
+} from "../../../../signals/activity-page/log-detail-utils";
 import { ToolSummary } from "./tool-summary.tsx";
 import {
   SystemInitContent,

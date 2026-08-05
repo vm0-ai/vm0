@@ -1,9 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { describe, expect, it } from "vitest";
 
 import indexHtml from "../../../../index.html?raw";
+import { readGlobalCss } from "./global-css.ts";
 
 function getViewportDirectives(): string[] {
   const match = /<meta\s+name="viewport"\s+content="([^"]+)"/.exec(indexHtml);
@@ -12,20 +10,6 @@ function getViewportDirectives(): string[] {
       return directive.trim();
     }) ?? []
   );
-}
-
-function readGlobalCss(): string {
-  const candidates = [
-    join(process.cwd(), "src/views/css/index.css"),
-    join(process.cwd(), "apps/platform/src/views/css/index.css"),
-  ];
-  const path = candidates.find((candidate) => {
-    return existsSync(candidate);
-  });
-  if (path === undefined) {
-    throw new Error("Unable to locate platform global CSS");
-  }
-  return readFileSync(path, "utf8");
 }
 
 describe("platform entrypoint safe area behavior", () => {

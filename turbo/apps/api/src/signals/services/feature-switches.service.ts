@@ -8,7 +8,7 @@ import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 
 export const ORG_SENTINEL_USER_ID = "__org__";
 

@@ -11,7 +11,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   fetchFeishuBotInfo,
   fetchFeishuTenantAccessToken,

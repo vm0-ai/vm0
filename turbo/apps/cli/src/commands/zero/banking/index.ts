@@ -1,8 +1,11 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 
-import { callZeroBanking, type ZeroBankingResponse } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import {
+  callZeroBanking,
+  type ZeroBankingResponse,
+} from "../../../lib/api/domains/zero-banking";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 interface JsonOption {
   readonly json?: boolean;

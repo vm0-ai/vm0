@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 

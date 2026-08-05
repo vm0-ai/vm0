@@ -19,14 +19,14 @@ import {
   deleteWorkflowAutomation,
   disableWorkflowAutomation,
   enableWorkflowAutomation,
-  getZeroChatThread,
   getWorkflowAutomation,
   listWorkspaceWorkflowAutomations,
-  listZeroModelPolicies,
   listWorkflowAutomations,
   updateWorkflowAutomation,
-} from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+} from "../../../../lib/api/domains/zero-workflows";
+import { getZeroChatThread } from "../../../../lib/api/domains/zero-chat";
+import { listZeroModelPolicies } from "../../../../lib/api/domains/zero-model-policies";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 import { decodeZeroTokenPayload } from "../../../../lib/api/zero-token";
 import { parseDurationSeconds } from "../../shared/duration";
 import {
@@ -127,6 +127,7 @@ const EVENT_KINDS = [
   "notion-database-item-created",
   "notion-page-content-updated",
   "webhook",
+  "chat-run-finished",
 ] as const;
 const GITHUB_WEBHOOK_EVENT_KINDS = [
   "github-workflow-job-completed",
@@ -135,7 +136,6 @@ const GITHUB_WEBHOOK_EVENT_KINDS = [
   "github-issue-comment-created",
 ] as const;
 const STRAPI_EVENT_KINDS = ["strapi-entry-published"] as const;
-const CHAT_EVENT_KINDS = ["chat-run-finished"] as const;
 const CHAT_RUN_FINISHED_STATUSES = [
   "completed",
   "failed",
@@ -145,14 +145,6 @@ const CHAT_RUN_FINISHED_STATUSES = [
 function githubWebhookAutomationsEnabled(): boolean {
   const payload = decodeZeroTokenPayload();
   return isFeatureEnabled(FeatureSwitchKey.GithubWebhookAutomations, {
-    userId: payload?.userId,
-    orgId: payload?.orgId,
-  });
-}
-
-function zeroChatMessagingEnabled(): boolean {
-  const payload = decodeZeroTokenPayload();
-  return isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {
     userId: payload?.userId,
     orgId: payload?.orgId,
   });
@@ -172,7 +164,6 @@ function automationKinds(): readonly string[] {
     ...EVENT_KINDS,
     ...(githubWebhookAutomationsEnabled() ? GITHUB_WEBHOOK_EVENT_KINDS : []),
     ...(strapiIntegrationEnabled() ? STRAPI_EVENT_KINDS : []),
-    ...(zeroChatMessagingEnabled() ? CHAT_EVENT_KINDS : []),
   ];
 }
 
@@ -2012,11 +2003,6 @@ Notes:
         if (kind === "strapi-entry-published" && !strapiIntegrationEnabled()) {
           throw new Error(
             "Strapi workflow automations are not enabled for this workspace",
-          );
-        }
-        if (kind === "chat-run-finished" && !zeroChatMessagingEnabled()) {
-          throw new Error(
-            "Chat run finished automations are not enabled for this workspace",
           );
         }
         if (

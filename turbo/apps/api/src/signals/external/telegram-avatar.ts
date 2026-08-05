@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { env } from "../../lib/env";
-import { now } from "./time";
+import { now } from "../../lib/time";
 
 const AVATAR_URL_TTL_SECONDS = 24 * 60 * 60;
 

@@ -27,6 +27,7 @@ import {
   loadAgentDraft$,
   type EnsuredAgentDraft,
 } from "./agent-draft.ts";
+import { setAgentComposerContext$ } from "./agent-composer-signals.ts";
 import { reloadUserModelPreference$ } from "../external/user-model-preference.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { checkUnifiedSettingsParam$ } from "./settings/settings-dialog.ts";
@@ -54,6 +55,7 @@ export const setupAgentChatPage$ = command(
     if (agentId) {
       set(setChatAgentId$, agentId);
       agentDraft = set(ensureAgentDraft$, agentId);
+      set(setAgentComposerContext$, { agentId, agentDraft });
       set(setTalkDraft$, agentDraft.draft);
     }
 

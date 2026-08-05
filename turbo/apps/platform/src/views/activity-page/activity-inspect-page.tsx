@@ -14,7 +14,7 @@ import {
   formatLogTime,
   formatDuration,
 } from "../../signals/activity-page/activity-signals.ts";
-import { eventGroupMatchesSearch } from "../zero-page/components/log-views/log-detail-utils.ts";
+import { eventGroupMatchesSearch } from "../../signals/activity-page/log-detail-utils";
 import {
   ActivityHeaderCard,
   StepsList,

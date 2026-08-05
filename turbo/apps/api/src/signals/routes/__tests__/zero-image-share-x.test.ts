@@ -2,7 +2,8 @@ import { zeroImageShareXContract } from "@vm0/api-contracts/contracts/zero-image
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import {
   seedOrgMetadata,

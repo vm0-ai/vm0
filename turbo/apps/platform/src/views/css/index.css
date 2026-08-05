@@ -1104,6 +1104,13 @@ body {
 }
 
 .wmde-markdown .mermaid-diagram-image {
+  /* An absolutely positioned <img> whose width and height are `auto` is laid
+     out at its own intrinsic size, so `inset` alone leaves the diagram at
+     lightbox scale and `object-fit` has nothing to fit into. The size is
+     therefore stated: `calc` rather than `100%`, since a percentage resolves
+     against the padding box, which the box's own padding would not clear. */
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
   object-fit: contain;
   /* github-markdown-css paints every image on an opaque canvas colour, which
      would cover the box behind the letterboxed diagram. */

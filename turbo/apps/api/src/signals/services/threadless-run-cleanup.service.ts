@@ -19,9 +19,8 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-
 import { logger } from "../../lib/log";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { settle } from "../utils";
 import { failPendingInlineOnlyDeliveryCallbacksForDeletedThread } from "./agent-run-callback.service";

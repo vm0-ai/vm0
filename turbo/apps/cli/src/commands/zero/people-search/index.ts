@@ -6,11 +6,9 @@ import {
 import chalk from "chalk";
 import { Command, InvalidArgumentError, Option } from "commander";
 
-import {
-  callZeroPeopleSearch,
-  type ZeroPeopleSearchResponse,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { callZeroPeopleSearch } from "../../../lib/api/domains/zero-people-search";
+import type { ZeroPeopleSearchResponse } from "@vm0/api-contracts/contracts/zero-people-search";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 interface PeopleSearchOptions {
   readonly limit: number;

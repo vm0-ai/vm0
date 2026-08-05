@@ -25,7 +25,7 @@ async fn heartbeat_first_success() {
 
     let shutdown = CancellationToken::new();
     let shutdown_clone = shutdown.clone();
-    let handle = tokio::spawn(async move {
+    let mut handle = tokio::spawn(async move {
         guest_agent::heartbeat::heartbeat_loop_for_run(
             TEST_RUN_ID.to_string(),
             http_client!(),
@@ -44,9 +44,17 @@ async fn heartbeat_first_success() {
         .await;
     shutdown.cancel();
 
-    let result = handle.await.unwrap();
-    assert!(result.is_ok());
+    let join_result = tokio::time::timeout(Duration::from_secs(30), &mut handle).await;
+    if join_result.is_err() {
+        handle.abort();
+        let _ = handle.await;
+    }
     mock.delete_async().await;
+
+    let result = join_result
+        .expect("initial-success heartbeat loop should stop after cancellation within 30 seconds")
+        .expect("initial-success heartbeat task should not panic");
+    assert!(result.is_ok());
 }
 
 #[tokio::test]
@@ -60,16 +68,21 @@ async fn heartbeat_first_failure_fatal() {
     });
 
     let shutdown = CancellationToken::new();
-    let result = guest_agent::heartbeat::heartbeat_loop_for_run(
-        TEST_RUN_ID.to_string(),
-        http_client!(),
-        shutdown,
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        guest_agent::heartbeat::heartbeat_loop_for_run(
+            TEST_RUN_ID.to_string(),
+            http_client!(),
+            shutdown,
+        ),
     )
     .await;
-
-    assert!(result.is_err());
-    mock.assert_calls_async(3).await;
+    let heartbeat_calls = mock.calls_async().await;
     mock.delete_async().await;
+
+    let result = result.expect("initial-failure heartbeat loop should stop within 30 seconds");
+    assert!(result.is_err());
+    assert_eq!(heartbeat_calls, 3);
 }
 
 #[tokio::test]

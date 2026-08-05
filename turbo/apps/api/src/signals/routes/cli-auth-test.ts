@@ -27,7 +27,7 @@ import { and, eq } from "drizzle-orm";
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { db$, writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import {
   isTestEndpointAllowed,

@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-
 import { WebPushError } from "web-push";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import type {
@@ -16,10 +15,10 @@ import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
 } from "@vm0/core";
 import { describe, expect, it, onTestFinished } from "vitest";
-
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { clearMockNow, mockNow } from "../../../lib/time";
-import { accept, setupApp } from "../../../__tests__/test-helpers";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
   holdCheckpointReadsFixture,
@@ -32,10 +31,8 @@ import {
 } from "../../../test-fixtures/chat-events";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
-import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { now } from "../../external/time";
 import { createDeferredPromise } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";

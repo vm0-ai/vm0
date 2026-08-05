@@ -19,8 +19,8 @@ import {
   type VideoTemplateRegistryEntry,
 } from "@vm0/core/resource-registry";
 
-import { getRegistryResourceDownload } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { getRegistryResourceDownload } from "../../../lib/api/domains/registry-resources";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 type PullableRegistryEntry = RegistryEntry | VideoTemplateRegistryEntry;
 

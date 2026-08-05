@@ -1,8 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { deleteWorkflow, getWorkflow } from "../../../lib/api";
+import {
+  deleteWorkflow,
+  getWorkflow,
+} from "../../../lib/api/domains/zero-workflows";
 import { isInteractive, promptConfirm } from "../../../lib/utils/prompt-utils";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   resolveWorkflowRef,
   type WorkflowRefOptions,

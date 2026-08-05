@@ -6,13 +6,12 @@ import type {
   OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
-
 import {
   getZeroChatThread,
-  listZeroModelPolicies,
   updateZeroChatThreadModelSelection,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/zero-chat";
+import { listZeroModelPolicies } from "../../../lib/api/domains/zero-model-policies";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { formatModelProviderRoute } from "../../../lib/domain/model-policy-display";
 import { isUuid } from "../../../lib/utils/uuid";
 

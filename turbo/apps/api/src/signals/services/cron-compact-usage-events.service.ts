@@ -23,7 +23,7 @@ import {
 } from "../../lib/db-raw-rows";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { timestampWithoutTimeZone } from "../external/time";
+import { timestampWithoutTimeZone } from "../../lib/time";
 import { lockUsageEventCompaction } from "./usage-event-compaction-lock.service";
 
 const L = logger("CronCompactUsageEvents");

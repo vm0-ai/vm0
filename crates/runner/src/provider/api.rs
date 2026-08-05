@@ -40,7 +40,6 @@ use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationRegistry;
-use crate::telemetry::RESERVED_REUSE_CLAIM_AXIOM_TARGET;
 use crate::types::{
     CompleteRequest, ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse,
     PollResponse, SandboxReuseResult,
@@ -48,6 +47,7 @@ use crate::types::{
 use sandbox::SandboxId;
 
 const CHAT_STEER_FEATURE_FLAG: &str = "chatSteer";
+const RESERVED_REUSE_CLAIM_TRACING_TARGET: &str = "runner::reserved_reuse_claim";
 
 fn chat_steer_enabled(
     reuse_key: Option<&str>,
@@ -198,7 +198,7 @@ fn record_reserved_reuse_claim_observation(
 
     match outcome {
         ReservedReuseClaimOutcome::Claimed { timezone_state } => tracing::info!(
-            target: RESERVED_REUSE_CLAIM_AXIOM_TARGET,
+            target: RESERVED_REUSE_CLAIM_TRACING_TARGET,
             measurement = "reserved_reuse_claim",
             outcome = "claimed",
             run_id = %run_id,
@@ -211,7 +211,7 @@ fn record_reserved_reuse_claim_observation(
             "reserved reusable claim observed"
         ),
         ReservedReuseClaimOutcome::Unavailable => tracing::info!(
-            target: RESERVED_REUSE_CLAIM_AXIOM_TARGET,
+            target: RESERVED_REUSE_CLAIM_TRACING_TARGET,
             measurement = "reserved_reuse_claim",
             outcome = "unavailable",
             run_id = %run_id,
@@ -223,7 +223,7 @@ fn record_reserved_reuse_claim_observation(
             "reserved reusable claim observed"
         ),
         ReservedReuseClaimOutcome::ProviderFailure { class } => tracing::info!(
-            target: RESERVED_REUSE_CLAIM_AXIOM_TARGET,
+            target: RESERVED_REUSE_CLAIM_TRACING_TARGET,
             measurement = "reserved_reuse_claim",
             outcome = "provider_failure",
             failure_class = class.as_str(),
@@ -236,7 +236,7 @@ fn record_reserved_reuse_claim_observation(
             "reserved reusable claim observed"
         ),
         ReservedReuseClaimOutcome::ResponseRunIdMismatch => tracing::info!(
-            target: RESERVED_REUSE_CLAIM_AXIOM_TARGET,
+            target: RESERVED_REUSE_CLAIM_TRACING_TARGET,
             measurement = "reserved_reuse_claim",
             outcome = "response_run_id_mismatch",
             run_id = %run_id,

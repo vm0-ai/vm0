@@ -23,13 +23,12 @@ import {
   sql,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-
 import {
   nullableDriverValueDecoder,
   pgTextDecoder,
 } from "../../lib/db-structured-result";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { STALE_QUEUE_ITEM_AGE_MS } from "./chat-thread-queue-drain.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 

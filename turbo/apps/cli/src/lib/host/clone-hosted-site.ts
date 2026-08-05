@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import type { HostedSiteFilesResponse } from "@vm0/api-contracts/contracts/zero-host";
-import { getHostedSiteFiles } from "../api";
+import { getHostedSiteFiles } from "../api/domains/zero-host";
 import { checkDirectoryStatus } from "../utils/file-utils";
 
 interface CloneHostedSiteProgress {

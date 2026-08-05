@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { safeJsonParse } from "../utils";
 import { feishuOAuthConnectUrl } from "./feishu-config";
 

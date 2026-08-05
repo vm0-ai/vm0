@@ -18,9 +18,8 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
-
 import type { Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { pendingChatQueueEventCondition } from "./chat-event-queue.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 

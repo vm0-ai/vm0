@@ -19,10 +19,9 @@ import {
 } from "@vm0/db/schema/model-provider-gateway";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
-
 import { badRequestMessage, notFound } from "../../lib/error";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { safeSync } from "../utils";
 import { encryptStoredSecretValue } from "./crypto.utils";
 

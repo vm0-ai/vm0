@@ -3,10 +3,9 @@ import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subs
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
 import { and, count, eq, gt, inArray, or, sql, sum } from "drizzle-orm";
-
 import { pgIntegerDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 

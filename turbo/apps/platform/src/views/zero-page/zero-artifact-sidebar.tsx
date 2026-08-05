@@ -29,9 +29,9 @@ import type { ArtifactRef } from "../../signals/chat-page/thread-sidebar.ts";
 import {
   CsvPreviewTable,
   parseCsvRows,
-  publicAttachmentUrl,
   TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
+import { publicAttachmentUrl } from "./zero-attachment-url";
 import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
 import { lightboxDialogVisible$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { Markdown } from "../components/markdown.tsx";

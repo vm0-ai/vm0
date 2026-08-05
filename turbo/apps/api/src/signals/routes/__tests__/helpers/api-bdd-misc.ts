@@ -44,12 +44,8 @@ import {
   updateUserPreferencesRequestSchema,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { zeroLogsSearchContract } from "@vm0/api-contracts/contracts/zero-runs";
-
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { createApp } from "../../../../app-factory";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";

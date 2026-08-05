@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-
 import { createStore } from "ccstate";
 import { eq, sql } from "drizzle-orm";
 import { HttpResponse, delay, http, passthrough } from "msw";
@@ -33,13 +32,13 @@ import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { z } from "zod";
-
 import { executeRawRows } from "../../../lib/db-raw-rows";
 import { mockEnv } from "../../../lib/env";
-import { setupApp, testContext } from "../../../__tests__/test-helpers";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
-import { nowDate } from "../../external/time";
+import { nowDate } from "../../../lib/time";
 import { appendChatThreadEvent } from "../../services/zero-chat-thread-event.service";
 import {
   connectorCatalogExecutableCapabilityState,

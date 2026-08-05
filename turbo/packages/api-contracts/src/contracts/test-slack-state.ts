@@ -29,7 +29,6 @@ export const testSlackStatePostBodySchema = z.object({
   default_agent_name: z.string().optional(),
   default_agent_display_name: z.string().nullable().optional(),
   compose_content: z.record(z.string(), z.unknown()).optional(),
-  org_slug: z.string().optional(),
   org_name: z.string().optional(),
   seed_secret_names: z.array(z.string()).optional(),
   seed_variables: z.record(z.string(), z.string()).optional(),

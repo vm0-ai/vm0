@@ -7,8 +7,6 @@ import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export type { ZeroScrapeResponse } from "@vm0/api-contracts/contracts/zero-scrape";
-
 export async function callZeroScrape(
   body: ZeroScrapeRequest,
 ): Promise<ZeroScrapeResponse> {

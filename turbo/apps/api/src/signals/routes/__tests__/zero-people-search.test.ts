@@ -21,7 +21,7 @@ import {
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import type { RouteEntry } from "../../route-entry";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroPeopleSearchRoutes } from "../zero-people-search";

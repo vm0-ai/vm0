@@ -1,6 +1,6 @@
 import type { UsageRecordRange } from "@vm0/api-contracts/contracts/zero-usage-record";
 
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 
 export type UsageRangeArg = UsageRecordRange | "all";
 

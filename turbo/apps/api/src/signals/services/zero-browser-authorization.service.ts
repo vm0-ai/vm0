@@ -1,14 +1,12 @@
 import { createHash, randomBytes } from "node:crypto";
-
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { browserAuthorizationRequests } from "@vm0/db/schema/browser-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-
 import { env } from "../../lib/env";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
