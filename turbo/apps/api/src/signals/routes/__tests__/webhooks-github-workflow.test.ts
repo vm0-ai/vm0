@@ -15,6 +15,10 @@ import type { ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import {
+  chatEventAutomationPart,
+  chatEventDisplayText,
+} from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -634,7 +638,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    await accept(
+    const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
@@ -657,6 +661,9 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       }),
       [201],
     );
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected the automation to have a chat thread");
+    }
 
     const ignored = await postGithubWebhook({
       event: "workflow_run",
@@ -689,6 +696,26 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     if (!runId || listedRuns.runs.length !== 1) {
       throw new Error("Expected a GitHub workflow run automation");
     }
+    const displayPrompt = `/${WORKFLOW_NAME}\nTrigger: GitHub Actions workflow "Turbo" completed with conclusion "failure" (run 555 attempt 2, GitHub webhook delivery ${deliveryId}).`;
+    const events = await wf.readThreadEvents(created.body.chatThreadId);
+    const admittedEvent = events.find((event) => {
+      return event.eventType === "input.automation";
+    });
+    const claimedEvent = events.find((event) => {
+      return event.eventType === "input.prompt" && event.runId === runId;
+    });
+    if (
+      admittedEvent?.eventType !== "input.automation" ||
+      claimedEvent?.eventType !== "input.prompt"
+    ) {
+      throw new Error("Expected admitted and claimed workflow chat events");
+    }
+    expect(
+      chatEventAutomationPart(admittedEvent)?.automationBrief,
+    ).toBeUndefined();
+    expect(chatEventDisplayText(admittedEvent)).toBe(displayPrompt);
+    expect(claimedEvent.userMessage).toStrictEqual(admittedEvent.userMessage);
+    expect(chatEventDisplayText(claimedEvent)).toBe(displayPrompt);
     const claim = await runsApi.claimRunnerJob(runId);
     const zeroToken = claim.environment?.ZERO_TOKEN;
     if (!zeroToken) {
@@ -697,6 +724,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     expect(verifyZeroToken(zeroToken)?.capabilities).toContain(
       "goal:user-control:write",
     );
+    expect(claim.prompt).toBe(displayPrompt);
     expect(claim.appendSystemPrompt).toContain(
       'GitHub Actions workflow "Turbo" completed with conclusion "failure"',
     );

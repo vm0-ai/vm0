@@ -7472,7 +7472,9 @@ function WorkflowUserMessage({
     t(($) => {
       return $.chat.templates.categories.workflow;
     });
-  const workflowBody = part.automationBrief?.trim();
+  const workflowBody =
+    messageDocumentToDisplayText(event.userMessage)?.trim() ||
+    part.automationBrief?.trim();
   const bubbleClassName =
     "zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden whitespace-pre-wrap transition-colors duration-150";
   const body = workflowBody ? (
