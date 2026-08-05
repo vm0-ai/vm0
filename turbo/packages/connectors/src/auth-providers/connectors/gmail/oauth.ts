@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import { requireConnectorGrantUserId } from "../../grant-result";
 import { buildGoogleAuthorizationUrl } from "../../oauth/google";
 import { throwOAuthError } from "../../oauth/error";
 
@@ -126,7 +127,7 @@ async function fetchGmailUserInfo(accessToken: string): Promise<GmailUserInfo> {
     .parse(await response.json());
 
   return {
-    id: data.emailAddress ?? "",
+    id: requireConnectorGrantUserId(data.emailAddress, "Gmail"),
     email: data.emailAddress ?? null,
     name: data.emailAddress ?? null,
   };

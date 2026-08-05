@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
 
 const GARMIN_CONNECT_TOKEN_URL =
@@ -230,7 +231,7 @@ async function fetchGarminConnectUserId(
     .parse(await response.json());
 
   return {
-    id: data.userId ?? "",
+    id: requireConnectorGrantUserId(data.userId, "Garmin Connect"),
     username: data.displayName ?? null,
     email: null,
   };

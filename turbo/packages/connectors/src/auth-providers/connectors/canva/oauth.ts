@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
 
 const CANVA_TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token";
@@ -234,7 +235,10 @@ async function fetchCanvaUserInfo(accessToken: string): Promise<CanvaUserInfo> {
     })
     .parse(await meResponse.json());
 
-  const userId = meData.team_user?.user_id ?? "";
+  const userId = requireConnectorGrantUserId(
+    meData.team_user?.user_id,
+    "Canva",
+  );
 
   // Fetch display name from profile endpoint (requires profile:read scope)
   let displayName: string | null = null;

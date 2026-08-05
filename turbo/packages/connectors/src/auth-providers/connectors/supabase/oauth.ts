@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
+import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
 
 const SUPABASE_TOKEN_URL = "https://api.supabase.com/v1/oauth/token";
@@ -241,7 +242,7 @@ async function fetchSupabaseUserInfo(
   const org = data[0];
 
   return {
-    id: org?.id ?? "",
+    id: requireConnectorGrantUserId(org?.id, "Supabase"),
     username: org?.name ?? null,
     email: null,
   };
