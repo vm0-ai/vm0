@@ -98,7 +98,7 @@ fn child_timeout_kills_and_reaps_child_and_stops_server() -> io::Result<()> {
     assert!(child_error.contains(HANG_STDERR_MARKER));
     assert!(child_error.contains("kill=signal sent"));
     assert!(child_error.contains("reap=completed with"));
-    assert_eq!(server_outcome, ServerOutcome::Cancelled);
+    assert!(matches!(server_outcome, ServerOutcome::Cancelled));
     assert!(
         cleanup_started.elapsed() < REGRESSION_CLEANUP_BOUND,
         "child and server cleanup exceeded {REGRESSION_CLEANUP_BOUND:?}"
@@ -109,7 +109,6 @@ fn child_timeout_kills_and_reaps_child_and_stops_server() -> io::Result<()> {
     Ok(())
 }
 
-#[derive(Debug, PartialEq, Eq)]
 enum ServerOutcome {
     Request(Vec<u8>),
     Cancelled,
