@@ -147,7 +147,6 @@ function mockPersonalUsageStory(
 
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "member",
   });
@@ -294,7 +293,6 @@ describe("personal usage settings", () => {
   it("refreshes personal usage when billing realtime changes", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });

@@ -3427,7 +3427,7 @@ fn emit_balloon_settle_summary(
     park_outcome: SandboxParkOutcome,
 ) {
     info!(
-        target: crate::BALLOON_SETTLE_AXIOM_TARGET,
+        target: "sandbox_fc::balloon_settle",
         measurement = "balloon_settle",
         outcome = settle_outcome.as_str(),
         elapsed_ms,

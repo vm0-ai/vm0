@@ -11,7 +11,6 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
-import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { collectSuccessfulAttachmentInfos } from "../chat-page/resolve-draft-attachments.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
@@ -181,6 +180,13 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
   return { queueDraftSync$, cancelDraftSync$, flushDraftClear$ };
 }
 
+export function createAgentDraftSignals(agentId: string): EnsuredAgentDraft {
+  const draft = createDraftSignals();
+  const sync = createAgentDraftSync(agentId, draft);
+  const entry: AgentDraftEntry = { draft, ...sync };
+  return { ...entry, isNew: true };
+}
+
 export const ensureAgentDraft$ = command(
   ({ get, set }, agentId: string): EnsuredAgentDraft => {
     const cache = get(agentDraftCache$);
@@ -189,13 +195,17 @@ export const ensureAgentDraft$ = command(
       return { ...existing, isNew: false };
     }
 
-    const draft = createDraftSignals();
-    const sync = createAgentDraftSync(agentId, draft);
-    const entry: AgentDraftEntry = { draft, ...sync };
+    const created = createAgentDraftSignals(agentId);
+    const entry: AgentDraftEntry = {
+      draft: created.draft,
+      queueDraftSync$: created.queueDraftSync$,
+      cancelDraftSync$: created.cancelDraftSync$,
+      flushDraftClear$: created.flushDraftClear$,
+    };
     const next = new Map(cache);
     next.set(agentId, entry);
     set(agentDraftCache$, next);
-    return { ...entry, isNew: true };
+    return created;
   },
 );
 
@@ -252,19 +262,6 @@ export const loadAgentDraft$ = command(
       generationTemplate: restoredDraft.generationTemplate,
       attachments: restoredDraft.attachments.map(createRestoredAttachment),
     });
-  },
-);
-
-export const queueCurrentAgentDraftSync$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const agentId = await get(currentChatAgentRecordId$);
-    signal.throwIfAborted();
-    if (!agentId) {
-      return;
-    }
-
-    const entry = set(ensureAgentDraft$, agentId);
-    await set(entry.queueDraftSync$, signal);
   },
 );
 

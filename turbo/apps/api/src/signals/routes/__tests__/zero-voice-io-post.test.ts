@@ -14,7 +14,7 @@ import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroVoiceIoSpeechRoutes } from "../zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "../zero-voice-io-stt";

@@ -1,8 +1,8 @@
 import { basename, join } from "path";
 import { tmpdir } from "os";
 import { Command } from "commander";
-import { downloadSlackFile } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { downloadSlackFile } from "../../../lib/api/domains/integrations-slack";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 /**
  * Derive a local output path for a Slack file id.

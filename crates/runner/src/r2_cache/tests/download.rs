@@ -6,9 +6,10 @@ use super::super::{
 use super::fixtures::{
     archive_limits, archive_with_type, deterministic_bytes, empty_template_archive,
     excessive_sparse_metadata_archive, get_object_body, get_object_body_for_key,
-    get_object_body_with_content_length, mock_cache, nested_template_archive,
-    production_template_archive, regular_template_archive, sparse_template_archive,
-    template_archive_with_extra, template_archive_with_trailing_decompressed_data, zstd_bytes,
+    get_object_body_then_error, get_object_body_with_content_length, mock_cache,
+    nested_template_archive, production_template_archive, regular_template_archive,
+    sparse_template_archive, template_archive_with_extra,
+    template_archive_with_trailing_decompressed_data, zstd_bytes,
 };
 use aws_smithy_mocks::mock;
 
@@ -156,6 +157,36 @@ async fn request_failure_remains_distinct_from_invalid_object() {
     assert!(matches!(error, R2DownloadError::Request(_)));
     assert!(!destination.exists());
     assert!(!file_staging_dir(&destination).exists());
+}
+
+#[tokio::test]
+async fn body_read_failure_is_request_but_same_prefix_clean_eof_is_invalid() {
+    const BODY_ERROR: &str = "injected R2 body transport failure";
+
+    let archive = regular_template_archive(b"hello");
+    let prefix = archive[..archive.len() / 2].to_vec();
+    let get = get_object_body_then_error(prefix.clone(), BODY_ERROR);
+    let cache = mock_cache("test-bucket", &[&get]);
+    let dst = tempfile::tempdir().unwrap();
+    let destination = dst.path().join("template.ext4");
+    tokio::fs::write(&destination, b"existing-rootfs")
+        .await
+        .unwrap();
+
+    let error = cache
+        .try_download_template_to_file("hash", &destination, SMALL_TEMPLATE_BYTES)
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, R2DownloadError::Request(_)));
+    assert!(error.to_string().contains(BODY_ERROR));
+    assert_eq!(
+        tokio::fs::read(&destination).await.unwrap(),
+        b"existing-rootfs"
+    );
+    assert!(!file_staging_dir(&destination).exists());
+
+    assert_invalid_preserves_destination(get_object_body(prefix), SMALL_TEMPLATE_BYTES).await;
 }
 
 #[tokio::test]

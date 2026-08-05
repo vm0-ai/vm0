@@ -13,7 +13,6 @@ import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-prefe
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, desc, eq, or } from "drizzle-orm";
-
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import {
@@ -47,7 +46,7 @@ import {
   postMessage,
   publishAppHome,
 } from "../external/slack-message-client";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";

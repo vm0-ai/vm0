@@ -6,7 +6,7 @@ import {
   type ResourceCandidateSlice,
   type GenerationTarget,
   selectResourceCandidates,
-} from "./resource-registry";
+} from "@vm0/core/resource-registry";
 
 type HtmlArtifactKind = GenerationTarget;
 

@@ -162,7 +162,7 @@ interface BddMembershipRequest {
 }
 
 interface BddOrgState {
-  readonly slug?: string;
+  readonly slug?: string | null;
   readonly name?: string;
   readonly createdBy?: string;
   readonly createdAt?: number;
@@ -518,7 +518,10 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         throw new Error("Cannot mock an organization for a no-org actor");
       }
 
-      const slug = state.slug ?? `bdd-${actor.orgId.slice(-8).toLowerCase()}`;
+      const slug =
+        state.slug === undefined
+          ? `bdd-${actor.orgId.slice(-8).toLowerCase()}`
+          : state.slug;
       const name = state.name ?? "BDD Workspace";
       const createdBy = state.createdBy ?? actor.userId;
       const createdAt =

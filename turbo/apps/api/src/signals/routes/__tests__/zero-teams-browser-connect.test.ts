@@ -2,7 +2,8 @@ import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-team
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { zeroTeamsBrowserConnectRoutes } from "../zero-teams-browser-connect";
 import {
   createFixtureTracker,

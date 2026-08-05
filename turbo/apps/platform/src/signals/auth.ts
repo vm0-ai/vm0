@@ -534,7 +534,6 @@ export const currentOrgInfo$ = computed(async (get) => {
   return {
     id: org.id,
     name: org.name,
-    slug: org.slug,
     imageUrl: org.imageUrl,
     hasImage: org.hasImage,
   };

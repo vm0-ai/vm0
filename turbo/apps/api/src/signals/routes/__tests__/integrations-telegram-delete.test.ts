@@ -7,9 +7,10 @@ import {
   zeroIntegrationsTelegramContract,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import {
   deleteTelegramFixture$,
   type TelegramFixture,

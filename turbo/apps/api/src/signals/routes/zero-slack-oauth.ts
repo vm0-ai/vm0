@@ -8,7 +8,7 @@ import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   exchangeSlackOAuthCode,
   exchangeSlackOAuthCodeForUser,

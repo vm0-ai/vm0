@@ -7,8 +7,6 @@ import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export type { ZeroPeopleSearchResponse } from "@vm0/api-contracts/contracts/zero-people-search";
-
 export async function callZeroPeopleSearch(
   body: ZeroPeopleSearchRequest,
 ): Promise<ZeroPeopleSearchResponse> {

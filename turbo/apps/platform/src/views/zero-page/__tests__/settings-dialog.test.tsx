@@ -35,7 +35,6 @@ async function openDialog(
 ): Promise<void> {
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role,
   });

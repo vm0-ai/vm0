@@ -1,4 +1,4 @@
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,

@@ -28,11 +28,10 @@ import {
   not,
   or,
 } from "drizzle-orm";
-
 import { env } from "../../lib/env";
 import type { Db } from "../external/db";
 import { settle } from "../utils";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   connectorCredentialRuntimeValueRef,
   loadConnectorCredentialConnection,

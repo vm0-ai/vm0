@@ -2,7 +2,7 @@ import {
   getZeroAgent,
   getZeroAgentCustomConnectors,
   getZeroAgentUserConnectors,
-} from "../../../lib/api";
+} from "../../../lib/api/domains/zero-agents";
 
 interface AgentContext {
   agentId: string;

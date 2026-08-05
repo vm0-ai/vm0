@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroModelPolicies } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { listZeroModelPolicies } from "../../../lib/api/domains/zero-model-policies";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   formatModelPolicyStatus,
   getModelProviderRouteKind,

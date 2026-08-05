@@ -1,12 +1,14 @@
-import { command, computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
-import { currentChatAgent$, currentChatAgentId$ } from "../agent-chat.ts";
+import { agentById, currentAgentId$ } from "../agent.ts";
 import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { updateUserModelPreference$ } from "../external/user-model-preference.ts";
-import { queueCurrentAgentDraftSync$ } from "./agent-draft.ts";
-import { talkDraft$ } from "./chat-draft.ts";
+import {
+  createAgentDraftSignals,
+  type EnsuredAgentDraft,
+} from "./agent-draft.ts";
 import {
   computerUseHosts$,
   selectedComputerUseHostId,
@@ -26,20 +28,10 @@ import {
 } from "./zero-chat-page.ts";
 import {
   newThreadComputerAccess$,
-  newThreadGenerationTemplate$,
   resetNewThreadComputerAccess$,
   setNewThreadCloudBrowserEnabled$,
   setNewThreadComputerUseHostId$,
-  setNewThreadGenerationTemplate$,
 } from "./zero-chat-composer.ts";
-
-const agent$ = computed(async (get) => {
-  const agent = await get(currentChatAgent$);
-  if (!agent) {
-    throw new Error("Chat composer requires an active agent");
-  }
-  return agent;
-});
 
 const idle$ = computed((): Promise<boolean> => {
   return Promise.resolve(false);
@@ -85,85 +77,72 @@ const setCloudBrowserEnabled$ = command(
   },
 );
 
-const submitMessage$ = command(
-  async (
-    { get: read, set },
-    action: "send" | "queue",
-    submission: ComposerSubmission,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    if (action !== "send") {
-      throw new Error("The new-thread composer does not support queueing");
-    }
-    const agentId = await read(currentChatAgentId$);
-    signal.throwIfAborted();
-    if (!agentId) {
-      return false;
-    }
-    const access = read(newThreadComputerAccess$);
-    const hosts = await read(computerUseHosts$);
-    signal.throwIfAborted();
-    const hostId =
-      access.kind === "computerUse"
-        ? selectedComputerUseHostId(hosts, access.hostId)
-        : null;
-    const sent = await set(
-      sendNewThread$,
-      {
-        agentId,
-        prompt: submission.prompt,
-        generationTemplate: submission.generationTemplate,
-        editorDocument: submission.editorDocument,
-        ...(access.kind === "computerUse" ? { computerUseHostId: hostId } : {}),
-        ...(access.kind === "cloudBrowser"
-          ? { cloudBrowserEnabled: true }
-          : {}),
-      },
-      signal,
-    );
-    if (sent) {
-      set(setNewThreadGenerationTemplate$, undefined);
-      set(resetNewThreadComputerAccess$);
-      set(resetChatPageModelSelection$);
-    }
-    return sent;
-  },
-);
-
-const unsupportedAction$ = command(
-  (_context, signal: AbortSignal): Promise<void> => {
-    signal.throwIfAborted();
-    return Promise.reject(
-      new Error("This composer action is unavailable for a new thread"),
-    );
-  },
-);
-const unsupportedEventAction$ = command(
+const noOpAction$ = command((_context, signal: AbortSignal): Promise<void> => {
+  signal.throwIfAborted();
+  return Promise.resolve();
+});
+const noOpEventAction$ = command(
   (_context, _eventId: string, signal: AbortSignal): Promise<void> => {
     signal.throwIfAborted();
-    return Promise.reject(
-      new Error("This composer event action is unavailable for a new thread"),
-    );
+    return Promise.resolve();
   },
 );
-const openActiveGoal$ = command((): void => {
-  throw new Error("Active goals are unavailable for a new thread");
-});
+const noOp$ = command((): void => {});
 
-export const agentChatComposerSignals$ = computed((get) => {
-  // Recreate the editor when delayed feature-switch bootstrap changes its semantics.
-  get(featureSwitch$);
-  const draft = get(talkDraft$);
+function createAgentComposerSignalsWithDraft(
+  agentId: string,
+  agentDraft: EnsuredAgentDraft,
+) {
+  const agent$ = agentById(agentId);
+  const submitMessage$ = command(
+    async (
+      { get, set },
+      action: "send" | "queue",
+      submission: ComposerSubmission,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      if (action !== "send") {
+        return false;
+      }
+      const access = get(newThreadComputerAccess$);
+      const hosts = await get(computerUseHosts$);
+      signal.throwIfAborted();
+      const hostId =
+        access.kind === "computerUse"
+          ? selectedComputerUseHostId(hosts, access.hostId)
+          : null;
+      const sent = await set(
+        sendNewThread$,
+        {
+          agentId,
+          draft: agentDraft.draft,
+          prompt: submission.prompt,
+          generationTemplate: submission.generationTemplate,
+          editorDocument: submission.editorDocument,
+          ...(access.kind === "computerUse"
+            ? { computerUseHostId: hostId }
+            : {}),
+          ...(access.kind === "cloudBrowser"
+            ? { cloudBrowserEnabled: true }
+            : {}),
+        },
+        signal,
+      );
+      if (sent) {
+        set(resetNewThreadComputerAccess$);
+        set(resetChatPageModelSelection$);
+      }
+      return sent;
+    },
+  );
 
   return createComposerSignals({
     agent$,
     draft: {
-      signals: draft,
-      save$: queueCurrentAgentDraftSync$,
+      signals: agentDraft.draft,
+      save$: agentDraft.queueDraftSync$,
     },
     chatEvents$,
-    generationTemplate$: newThreadGenerationTemplate$,
-    setGenerationTemplate$: setNewThreadGenerationTemplate$,
     singleLineOnMobile: false,
     modelSelection$: chatPageModelSelection$,
     selectedModelOauthAvailable$: chatPageSelectedModelOauthAvailable$,
@@ -174,11 +153,49 @@ export const agentChatComposerSignals$ = computed((get) => {
     setComputerUseHostId$,
     setCloudBrowserEnabled$,
     submitMessage$,
-    cancelRun$: unsupportedAction$,
+    cancelRun$: noOpAction$,
     cancellationRecoveryPending$: idle$,
-    removeQueuedMessage$: unsupportedEventAction$,
-    removeWorkflowEvent$: unsupportedEventAction$,
-    cancelActiveGoal$: unsupportedAction$,
-    openActiveGoal$,
+    removeQueuedMessage$: noOpEventAction$,
+    removeWorkflowEvent$: noOpEventAction$,
+    cancelActiveGoal$: noOpAction$,
+    openActiveGoal$: noOp$,
   });
+}
+
+/**
+ * Creates the public composer signals for an agent chat.
+ *
+ * @public
+ */
+export function createAgentComposerSignals(agentId: string) {
+  return createAgentComposerSignalsWithDraft(
+    agentId,
+    createAgentDraftSignals(agentId),
+  );
+}
+
+interface AgentComposerContext {
+  readonly agentId: string;
+  readonly agentDraft: EnsuredAgentDraft;
+}
+
+const internalAgentComposerContext$ = state<AgentComposerContext | null>(null);
+
+export const setAgentComposerContext$ = command(
+  ({ set }, context: AgentComposerContext): void => {
+    set(internalAgentComposerContext$, context);
+  },
+);
+
+export const agentChatComposerSignals$ = computed((get) => {
+  // Recreate the editor when delayed feature-switch bootstrap changes its semantics.
+  get(featureSwitch$);
+  const agentId = get(currentAgentId$);
+  if (!agentId) {
+    throw new Error("Chat composer requires an active agent");
+  }
+  const context = get(internalAgentComposerContext$);
+  return context?.agentId === agentId
+    ? createAgentComposerSignalsWithDraft(agentId, context.agentDraft)
+    : createAgentComposerSignals(agentId);
 });

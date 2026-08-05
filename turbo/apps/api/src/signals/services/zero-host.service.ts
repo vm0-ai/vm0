@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-
 import { command } from "ccstate";
 import type {
   HostedArtifactKind,
@@ -15,7 +14,6 @@ import {
 } from "@vm0/db/schema/hosted-site";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq, isNull, or } from "drizzle-orm";
-
 import { env } from "../../lib/env";
 import { type Db, writeDb$ } from "../external/db";
 import {
@@ -24,7 +22,7 @@ import {
   hostedSitesS3ObjectExists,
   putHostedSitesS3Object,
 } from "../external/s3";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   scheduleArtifactPreviewRender$,
   type RenderArtifactPreviewArgs,

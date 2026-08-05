@@ -5,7 +5,7 @@ import { users } from "@vm0/db/schema/user";
 
 import { env } from "../../lib/env";
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 
 const SIGNATURE_HEX_LENGTH = 32;
 const SIGNATURE_HEX_PATTERN = /^[0-9a-f]{32}$/;

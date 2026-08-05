@@ -8,7 +8,7 @@ import {
   publishChatThreadDetailChangedSafely,
   publishThreadListChangedSafely,
 } from "../external/realtime";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,

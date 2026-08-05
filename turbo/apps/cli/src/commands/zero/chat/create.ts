@@ -4,8 +4,8 @@ import { Command } from "commander";
 import {
   createZeroChatThread,
   getZeroChatThreadAgentId,
-} from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+} from "../../../lib/api/domains/zero-chat";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { isUuid } from "../../../lib/utils/uuid";
 import { printChatUsageError } from "./shared";
 

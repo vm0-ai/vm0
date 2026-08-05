@@ -7,23 +7,22 @@ import {
 } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { and, eq, lte } from "drizzle-orm";
-
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { calculateNextRun } from "./time-automation";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import {
-  runWorkflowAutomationNow$,
   scheduleTriggerContext,
   type DueWorkflowAutomation,
   type RunFailure,
   type AutomationRow,
   type RunWorkflowAutomationNowArgs,
   type RunWorkflowAutomationResult,
-} from "./zero-workflow-automation-run.service";
+} from "./zero-workflow-automation-launch.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";

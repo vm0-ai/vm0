@@ -11,7 +11,7 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import {
   buildOneClickUnsubscribeUrl,
   buildUnsubscribeHeaders,

@@ -1,6 +1,5 @@
 /** Canonical ChatEvent routes. */
 import { randomBytes } from "node:crypto";
-
 import { command } from "ccstate";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import {
@@ -24,7 +23,6 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
-
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -34,7 +32,7 @@ import {
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import {
   autonomyBudgetExhausted,
   badRequestMessage,
@@ -321,11 +319,9 @@ async function resolveNormalSendAgentRunSource(params: {
   readonly db: Db;
   readonly auth: OrganizationAuthContext;
   readonly userMessage: UserMessageDocument;
-  readonly enabled: boolean;
 }): Promise<
   | {
       readonly source: ChatAgentRunSourceAnnotation | null;
-      readonly annotation: ChatAgentRunSourceAnnotation | null;
     }
   | {
       readonly response:
@@ -344,7 +340,7 @@ async function resolveNormalSendAgentRunSource(params: {
   if (resolved === null) {
     return params.auth.tokenType === "zero"
       ? { response: badRequestMessage("Agent source run not found") }
-      : { source: null, annotation: null };
+      : { source: null };
   }
   if (childAutonomyBudget(resolved.autonomyBudget).kind === "exhausted") {
     return { response: autonomyBudgetExhausted() };
@@ -357,7 +353,7 @@ async function resolveNormalSendAgentRunSource(params: {
     };
   }
   const source = resolved.schemaAvailable ? resolved.annotation : null;
-  return { source, annotation: params.enabled ? source : null };
+  return { source };
 }
 
 function normalSendBodyWithAgentRunSource(
@@ -386,7 +382,6 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly artifactKeyV2Enabled: boolean;
-  readonly zeroChatMessagingEnabled: boolean;
   readonly chatSteerEnabled: boolean;
   readonly codexFastModeEnabled: boolean;
   readonly userMessageInlineTemplatesEnabled: boolean;
@@ -925,10 +920,6 @@ async function resolveNormalSendFeatureSwitches(
   return {
     artifactKeyV2Enabled: isFeatureEnabled(
       FeatureSwitchKey.ArtifactKeyV2,
-      context,
-    ),
-    zeroChatMessagingEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ZeroChatMessaging,
       context,
     ),
     chatSteerEnabled: isFeatureEnabled(FeatureSwitchKey.ChatSteer, context),
@@ -2299,7 +2290,6 @@ const prepareNormalSend$ = command(
       db,
       auth: args.auth,
       userMessage: args.body.userMessage,
-      enabled: featureSwitches.zeroChatMessagingEnabled,
     });
     signal.throwIfAborted();
     if ("response" in agentRunSourceResult) {
@@ -2308,10 +2298,7 @@ const prepareNormalSend$ = command(
     const agentRunSource = agentRunSourceResult.source;
 
     const runtimeBody = resolveRuntimeNormalSendBody(
-      normalSendBodyWithAgentRunSource(
-        args.body,
-        agentRunSourceResult.annotation,
-      ),
+      normalSendBodyWithAgentRunSource(args.body, agentRunSource),
       featureSwitches.userMessageInlineTemplatesEnabled,
     );
     const generationTemplateError = validateGenerationTemplatePrompt(

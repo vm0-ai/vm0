@@ -6,10 +6,9 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { exportJobs } from "@vm0/db/schema/export-job";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { and, eq, inArray, isNotNull, lt, lte, sql } from "drizzle-orm";
-
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishOrgSignal,

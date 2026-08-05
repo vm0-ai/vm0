@@ -115,6 +115,7 @@ run_action() {
   local test_dir="$2"
   local input_app="${3:-api}"
   local input_environment="${4:-preview}"
+  local input_cli_pkg_url="${5-https://static.vm0.io/okou-cli/test-sha/package.tgz}"
   local action_script="${test_dir}/web-api-env-action.sh"
   local github_output="${test_dir}/github-output"
   local repo_vars_json
@@ -134,6 +135,7 @@ run_action() {
     INPUT_WEB_URL="https://pr-123-www.vm0.test" \
     INPUT_APP_URL="https://pr-123-app.vm0.test" \
     INPUT_API_BACKEND_URL="https://pr-123-api-backend.vm0.test" \
+    INPUT_CLI_PKG_URL="$input_cli_pkg_url" \
     REPO_VARS_JSON="$repo_vars_json" \
     REPO_SECRETS_JSON='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","ZERO_WEATHER_GOOGLE_WEATHER_TOKEN":"github-google-weather-token","ZERO_FINANCE_APIDOJO_TOKEN":"github-apidojo-token","ZERO_BROWSER_USE_API_KEY":"github-browser-use-api-key","ZERO_SCRAPE_FIRECRAWL_TOKEN":"github-firecrawl-token","ZERO_WEB_SEARCH_PERPLEXITY_TOKEN":"github-perplexity-token","STEAM_WEB_API_KEY":"github-steam-web-api-key","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret","UNSPLASH_ACCESS_KEY":"github-unsplash-access-key","VM0_MACHINE_SECRET_KEY":"github-atom-machine-secret","MICROSOFT_TEAMS_BOT_APP_PASSWORD":"github-teams-bot-app-password","VERCEL_AUTOMATION_BYPASS_SECRET":"github-vercel-bypass-secret","CLOUDFLARE_BROWSER_RENDERING_API_TOKEN":"github-cloudflare-browser-rendering-token","ARTIFACT_PREVIEW_WAF_SECRET":"github-artifact-preview-waf-secret"}' \
     DOPPLER_SECRETS_JSON="$doppler_secrets_json" \
@@ -178,6 +180,7 @@ assert_env_value "$success_env_file" VM0_PREVIEW_JOB_REF "pr-123"
 assert_env_value "$success_env_file" VM0_API_BACKEND_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$success_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$success_env_file" VM0_WEB_URL "https://pr-123-www.vm0.test"
+assert_env_value "$success_env_file" CLI_PKG_URL "https://static.vm0.io/okou-cli/test-sha/package.tgz"
 assert_env_value "$success_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
 assert_env_absent_value "$success_env_file" "ONBOARDING_URL="
 assert_env_value "$success_env_file" ZERO_PRICE_PRO "price_test_pro"
@@ -211,6 +214,7 @@ assert_env_value "$production_web_env_file" POSTHOG_HOST "https://posthog.github
 assert_env_value "$production_web_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
 assert_env_absent_value "$production_web_env_file" "ATOM_URL="
 assert_env_absent_value "$production_web_env_file" "VM0_MACHINE_SECRET_KEY="
+assert_env_absent_value "$production_web_env_file" "CLI_PKG_URL="
 assert_env_value "$production_web_env_file" ZERO_WEATHER_GOOGLE_WEATHER_TOKEN "github-google-weather-token"
 assert_env_value "$production_web_env_file" ZERO_FINANCE_APIDOJO_TOKEN "github-apidojo-token"
 assert_env_value "$production_web_env_file" ZERO_SCRAPE_FIRECRAWL_TOKEN "github-firecrawl-token"
@@ -227,6 +231,7 @@ assert_contains "$production_api_output" "Rendered"
 assert_env_value "$production_api_env_file" VM0_WEB_URL "https://pr-123-www.vm0.test"
 assert_env_value "$production_api_env_file" VM0_API_BACKEND_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$production_api_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"
+assert_env_value "$production_api_env_file" CLI_PKG_URL "https://static.vm0.io/okou-cli/test-sha/package.tgz"
 assert_env_value "$production_api_env_file" ATOM_URL "https://atom.github.test"
 assert_env_value "$production_api_env_file" VM0_MACHINE_SECRET_KEY "github-atom-machine-secret"
 assert_env_value "$production_api_env_file" MICROSOFT_TEAMS_BOT_APP_ID "github-teams-bot-app-id"
@@ -258,5 +263,14 @@ if [[ "$status" -eq 0 ]]; then
   fail "expected missing Stripe Doppler OAuth client id to fail"
 fi
 assert_contains "$missing_stripe_output" "::error::STRIPE_OAUTH_CLIENT_ID is missing from Doppler OAuth config"
+
+missing_cli_pkg_dir="$(mktemp -d)"
+TEMP_DIRS+=("$missing_cli_pkg_dir")
+status=0
+missing_cli_pkg_output="$(run_action "$(build_doppler_secrets_json)" "$missing_cli_pkg_dir" api preview "" 2>&1)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected missing API CLI package URL to fail"
+fi
+assert_contains "$missing_cli_pkg_output" "::error::cli-pkg-url is required for API deployments"
 
 echo "web-api-env-action-test: ok"

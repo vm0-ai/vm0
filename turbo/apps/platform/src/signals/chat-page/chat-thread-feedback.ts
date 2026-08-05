@@ -347,6 +347,14 @@ function createListenersRef({
             event.button === 0 &&
             event.target instanceof Node &&
             closestFeedbackSource(event.target) !== null;
+          const activeElement = doc.activeElement;
+          if (
+            mouseSelectionInProgress &&
+            activeElement instanceof HTMLElement &&
+            activeElement.closest(CHAT_COMPOSER_SELECTOR) !== null
+          ) {
+            activeElement.blur();
+          }
         },
         { capture: true, signal },
       );

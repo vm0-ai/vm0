@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-
 import {
   artifactsContract,
   canonicalChatEvent,
@@ -84,7 +83,6 @@ import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
 import { zeroUploadsPrepareRoutes } from "../../zero-uploads-prepare";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
-export { hostedTextFile } from "./api-bdd-host-files";
 
 interface AuthHeaders {
   readonly authorization?: string;

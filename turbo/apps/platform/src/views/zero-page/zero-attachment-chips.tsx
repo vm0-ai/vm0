@@ -24,7 +24,7 @@ import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroChatAttachment } from "../../signals/chat-page/chat-event.ts";
+import type { ZeroChatAttachment } from "../../signals/zero-page/chat-draft";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import {
   currentLeftThread$,
@@ -83,11 +83,6 @@ import {
   zoomableArtifactImageKey,
 } from "./zero-zoomable-image-canvas.tsx";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
-
-export {
-  downloadAttachmentUrl,
-  publicAttachmentUrl,
-} from "./zero-attachment-url.ts";
 
 type TextPreviewLoadState = {
   readonly status: "loading" | "loaded" | "error";

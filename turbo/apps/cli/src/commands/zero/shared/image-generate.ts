@@ -1,9 +1,9 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
-import { generateWebImage } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { generateWebImage } from "../../../lib/api/domains/web";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { createStyledImageCompilationPacket } from "./image-style-authoring";
-import { findImageStyle, listImageStyles } from "./resource-registry";
+import { findImageStyle, listImageStyles } from "@vm0/core/resource-registry";
 import { formatRegistryListing } from "./resource-listing";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";

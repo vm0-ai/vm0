@@ -15,7 +15,7 @@ import {
   getFeishuTenantAccessToken,
 } from "../external/feishu-client";
 import { writeDb$, type Db } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { safeJsonParse, safeSync, tapError } from "../utils";
 import { processCanonicalFeishuIngress$ } from "./canonical-feishu-ingress-processor.service";
 import { admitFeishuChatEvent } from "./feishu-chat-ingress.service";

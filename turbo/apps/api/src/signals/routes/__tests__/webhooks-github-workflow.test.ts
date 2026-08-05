@@ -5,7 +5,8 @@ import {
   type ZeroWorkflowAutomationCreateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { verifyZeroToken } from "../../auth/tokens";

@@ -7,7 +7,7 @@ import { waitUntil } from "../context/wait-until";
 import type { Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { tapError } from "../utils";
 
 const L = logger("api:zero:chat-first-assistant-message-metric");

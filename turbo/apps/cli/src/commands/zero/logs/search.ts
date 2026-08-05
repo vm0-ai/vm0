@@ -1,15 +1,15 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import {
-  searchZeroLogs,
-  type RunEvent,
-  type LogsSearchResponse,
-} from "../../../lib/api";
+import { searchZeroLogs } from "../../../lib/api/domains/zero-logs";
+import type {
+  RunEvent,
+  LogsSearchResponse,
+} from "@vm0/api-contracts/contracts/runs";
 import { parseTime } from "../../../lib/utils/time-parser";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { EventRenderer } from "../../../lib/events/event-renderer";
 import { EventStreamNormalizer } from "../../../lib/events/event-stream-normalizer";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { isUuid } from "../../../lib/utils/uuid";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
 import { parseSearchQuery } from "../../../lib/utils/search-query";

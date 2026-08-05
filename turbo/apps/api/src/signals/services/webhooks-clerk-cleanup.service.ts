@@ -36,7 +36,6 @@ import { variables } from "@vm0/db/schema/variable";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
 import { and, count, eq, inArray, isNotNull, sql } from "drizzle-orm";
-
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { clerk$ } from "../external/clerk";
@@ -46,7 +45,7 @@ import {
   listS3Objects,
   listS3ObjectsUnderPrefix,
 } from "../external/s3";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { publishCancelToRunnerGroup } from "../external/realtime";
 import { deleteWebhook } from "../external/telegram-client";
 import { getStripeClient } from "../external/stripe-client";

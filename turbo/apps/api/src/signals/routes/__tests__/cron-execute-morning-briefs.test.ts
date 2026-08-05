@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
-
 import { HttpResponse, http } from "msw";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
@@ -21,11 +20,11 @@ import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 import { createStore } from "ccstate";
 import { Cron } from "croner";
 import { describe, expect, it, onTestFinished } from "vitest";
-
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
