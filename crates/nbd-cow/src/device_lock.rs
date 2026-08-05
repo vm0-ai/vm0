@@ -266,13 +266,81 @@ fn file_inode_is_current(file: &File, path: &Path) -> io::Result<bool> {
 #[cfg(test)]
 mod tests {
     use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Barrier, mpsc};
+    use std::thread::JoinHandle;
+    use std::time::{Duration, Instant};
 
     use super::*;
 
     fn replace_lock_file(path: &Path) {
         std::fs::remove_file(path).expect("remove lock path");
         drop(create_lock_file(path).expect("recreate lock path"));
+    }
+
+    const CONCURRENT_CLAIM_RESULT_TIMEOUT: Duration = Duration::from_secs(5);
+    const CLAIM_WORKER_RELEASE_TIMEOUT: Duration = Duration::from_secs(10);
+    const WAITING_WORKER_RELEASE_TIMEOUT: Duration = Duration::from_secs(1);
+
+    type ClaimAttemptResult = Result<bool, String>;
+
+    fn collect_claim_results_and_join_workers(
+        result_rx: mpsc::Receiver<ClaimAttemptResult>,
+        expected_results: usize,
+        timeout: Duration,
+        release_txs: Vec<mpsc::Sender<()>>,
+        handles: Vec<JoinHandle<()>>,
+    ) -> Result<Vec<ClaimAttemptResult>, String> {
+        let deadline = Instant::now() + timeout;
+        let mut results = Vec::with_capacity(expected_results);
+        let collection_result = loop {
+            if results.len() == expected_results {
+                break Ok(results);
+            }
+
+            let now = Instant::now();
+            if now >= deadline {
+                break Err(format!(
+                    "claim result collection timed out after {timeout:?}: {} of {expected_results} workers completed",
+                    results.len()
+                ));
+            }
+
+            match result_rx.recv_timeout(deadline - now) {
+                Ok(result) => results.push(result),
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    break Err(format!(
+                        "claim result collection timed out after {timeout:?}: {} of {expected_results} workers completed",
+                        results.len()
+                    ));
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    break Err(format!(
+                        "claim result channel disconnected after {} of {expected_results} workers completed",
+                        results.len()
+                    ));
+                }
+            }
+        };
+
+        for release_tx in release_txs {
+            let _ = release_tx.send(());
+        }
+
+        let panicked_workers = handles
+            .into_iter()
+            .map(|handle| handle.join())
+            .filter(Result::is_err)
+            .count();
+
+        match (collection_result, panicked_workers) {
+            (Ok(results), 0) => Ok(results),
+            (Ok(_), count) => Err(format!("claim worker panics during cleanup: {count}")),
+            (Err(error), 0) => Err(error),
+            (Err(error), count) => Err(format!(
+                "{error}; claim worker panics during cleanup: {count}"
+            )),
+        }
     }
 
     #[test]
@@ -324,7 +392,9 @@ mod tests {
                 let _ = result_tx.send(result);
                 drop(result_tx);
                 if holds_claim {
-                    let _ = release_rx.recv();
+                    release_rx
+                        .recv_timeout(CLAIM_WORKER_RELEASE_TIMEOUT)
+                        .expect("claim worker should be released");
                 }
                 drop(claim);
             }));
@@ -332,20 +402,14 @@ mod tests {
         drop(result_tx);
 
         start.wait();
-        let mut results = Vec::with_capacity(worker_count);
-        while results.len() < worker_count {
-            let Ok(result) = result_rx.recv() else {
-                break;
-            };
-            results.push(result);
-        }
-        for release_tx in release_txs {
-            let _ = release_tx.send(());
-        }
-
-        for handle in handles {
-            handle.join().expect("worker should not panic");
-        }
+        let results = collect_claim_results_and_join_workers(
+            result_rx,
+            worker_count,
+            CONCURRENT_CLAIM_RESULT_TIMEOUT,
+            release_txs,
+            handles,
+        )
+        .expect("claim workers should complete");
 
         assert_eq!(results.len(), worker_count);
         let winner_count = results
@@ -422,6 +486,42 @@ mod tests {
             error.to_string(),
             format!("lock path {} changed during NBD claim", path.display())
         );
+    }
+
+    #[test]
+    fn claim_result_timeout_releases_and_joins_waiting_worker() {
+        let (result_tx, result_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let release_observed = Arc::new(AtomicBool::new(false));
+        let worker_completed = Arc::new(AtomicBool::new(false));
+        let release_observed_by_worker = Arc::clone(&release_observed);
+        let worker_completed_by_worker = Arc::clone(&worker_completed);
+        let handle = std::thread::spawn(move || {
+            let released = release_rx
+                .recv_timeout(WAITING_WORKER_RELEASE_TIMEOUT)
+                .is_ok();
+            release_observed_by_worker.store(released, Ordering::SeqCst);
+            result_tx
+                .send(Ok(false))
+                .expect("send result after release");
+            worker_completed_by_worker.store(true, Ordering::SeqCst);
+        });
+
+        let error = collect_claim_results_and_join_workers(
+            result_rx,
+            1,
+            Duration::ZERO,
+            vec![release_tx],
+            vec![handle],
+        )
+        .expect_err("waiting result should exceed the collection deadline");
+
+        assert!(
+            error.contains("0 of 1 workers completed"),
+            "unexpected error: {error}"
+        );
+        assert!(release_observed.load(Ordering::SeqCst));
+        assert!(worker_completed.load(Ordering::SeqCst));
     }
 
     #[test]
