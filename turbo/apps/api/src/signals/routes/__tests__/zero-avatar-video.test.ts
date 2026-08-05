@@ -373,6 +373,38 @@ describe("JoggAI built-in avatar video routes", () => {
     expect(voiceBody.hasMore).toBeFalsy();
   });
 
+  it("accepts JoggAI's documented webhook video ID", async () => {
+    const webhookBody = JSON.stringify({
+      event_id: "event-documented-video-id",
+      event: "generated_avatar_video_success",
+      timestamp: 1_700_000_000,
+      data: {
+        video_id: "jogg-documented-video",
+        status: "completed",
+        video_url: GENERATED_VIDEO_URL,
+        cover_url: "https://res.jogg.ai/avatar-video.jpg",
+        duration: 30,
+      },
+    });
+    const signature = createHmac("sha256", JOGGAI_WEBHOOK_SECRET)
+      .update(webhookBody)
+      .digest("hex");
+
+    const response = await createAvatarVideoTestApp().request(
+      "/api/webhooks/built-in-generations/joggai",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-webhook-signature": signature,
+        },
+        body: webhookBody,
+      },
+    );
+
+    expect(response.status).toBe(200);
+  });
+
   it("stores a run-scoped talking-avatar video in the avatar catalog", async () => {
     const fixture = await seedAvatarVideoFixture();
     const { composeId } = await store.set(

@@ -629,7 +629,9 @@ export function parseJoggAiWebhookPayload(
   }
   const event = optionalString(value.event);
   const status = optionalString(value.data.status)?.toLowerCase();
-  const videoId = optionalString(value.data.project_id);
+  const videoId =
+    optionalString(value.data.project_id) ??
+    optionalString(value.data.video_id);
   if (!videoId) {
     return badRequest("JoggAI webhook did not include a video ID");
   }
