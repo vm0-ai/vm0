@@ -18,7 +18,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
@@ -617,6 +617,92 @@ async function completeRunThroughSandbox(
 }
 
 describe("POST /api/webhooks/gmail", () => {
+  it("short-circuits before Gmail history reads when no consumer remains", async () => {
+    const gmailEmail = uniqueGmailEmail();
+    configureGmailEnv();
+    configureGmailWatchMock();
+    let historyCalls = 0;
+    server.use(
+      http.post("https://gmail.googleapis.com/gmail/v1/users/me/stop", () => {
+        return HttpResponse.json({ error: "stop failed" }, { status: 500 });
+      }),
+      http.get("https://gmail.googleapis.com/gmail/v1/users/me/history", () => {
+        historyCalls += 1;
+        return HttpResponse.json({ history: [], historyId: "101" });
+      }),
+    );
+
+    const { actor, workflowId } = await setupFixture();
+    await connectGmail(actor, gmailEmail);
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    let refreshCalls = 0;
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", async ({ request }) => {
+        const body = new URLSearchParams(await request.text());
+        expect(body.get("grant_type")).toBe("refresh_token");
+        refreshCalls += 1;
+        return HttpResponse.json({
+          access_token: "gmail-refreshed-access-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+        });
+      }),
+    );
+    const connectedAt = now();
+    mockNow(connectedAt + 2 * 60 * 60 * 1000);
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(actor),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(refreshCalls).toBe(1);
+    mockNow(connectedAt);
+
+    const response = await postGmailWebhook(
+      gmailPushBody({
+        emailAddress: gmailEmail,
+        historyId: 101,
+        messageId: "pubsub-no-consumer",
+      }),
+    );
+
+    expectResponseStatus(response, 200);
+    expect(response.body).toStrictEqual({
+      success: true,
+      watchStates: 1,
+      dispatched: 0,
+      duplicates: 0,
+    });
+    expect(historyCalls).toBe(0);
+    expect(refreshCalls).toBe(1);
+
+    server.use(
+      http.post("https://gmail.googleapis.com/gmail/v1/users/me/stop", () => {
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(actor),
+        params: { id: created.body.id },
+      }),
+      [204],
+    );
+  });
+
   it("dispatches matching new inbound messages and de-duplicates retries", async () => {
     const gmailEmail = uniqueGmailEmail();
     configureGmailEnv();
