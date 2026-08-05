@@ -2841,6 +2841,7 @@ dependencies = [
  "nbd-cow",
  "nix",
  "reqwest",
+ "rustix",
  "sandbox",
  "serde",
  "serde_json",
