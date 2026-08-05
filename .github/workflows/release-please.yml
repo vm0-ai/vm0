@@ -669,6 +669,7 @@ jobs:
 
       - name: Wait for canonical CLI artifact
         id: cli-artifact
+        shell: bash
         env:
           ARTIFACT_SHA: ${{ needs.release-please.outputs.release_target }}
           CLI_STATIC_BASE_URL: https://static.vm0.io
