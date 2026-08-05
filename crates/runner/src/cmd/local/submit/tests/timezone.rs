@@ -16,6 +16,8 @@ const TIMEZONE_ABSENT_ENV_SCENARIO: &str = "absent-env";
 const TIMEZONE_WHITESPACE_FILE_SCENARIO: &str = "whitespace-file";
 const TIMEZONE_MISSING_FILE_SCENARIO: &str = "missing-file";
 
+// `/etc/timezone` cannot be varied through the local-submit interface without changing host
+// state. The ignored child isolates `TZ` while this internal seam reads a real temporary file.
 #[tokio::test]
 async fn detect_system_timezone_from_env() {
     run_timezone_child(
