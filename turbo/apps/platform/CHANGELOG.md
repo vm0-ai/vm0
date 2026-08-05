@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.685.2](https://github.com/vm0-ai/vm0/compare/app-v0.685.1...app-v0.685.2) (2026-08-05)
+
+
+### Bug Fixes
+
+* **chat:** show every message attachment above the bubble ([#25242](https://github.com/vm0-ai/vm0/issues/25242)) ([9668f00](https://github.com/vm0-ai/vm0/commit/9668f0006ebf5f7eeb47ce126592bf44087d03d9))
+* persist automation trigger prompts in chat events ([#25249](https://github.com/vm0-ai/vm0/issues/25249)) ([26c99e1](https://github.com/vm0-ai/vm0/commit/26c99e14a4d7db973a64eee87d40080fa5be3baf))
+
+
+### Refactoring
+
+* **platform:** replace native timers with abortable signal timers ([#25250](https://github.com/vm0-ai/vm0/issues/25250)) ([e483222](https://github.com/vm0-ai/vm0/commit/e4832229c259f0a7c32718b142793054a9ef04fe))
+
 ## [0.685.1](https://github.com/vm0-ai/vm0/compare/app-v0.685.0...app-v0.685.1) (2026-08-05)
 
 

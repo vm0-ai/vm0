@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.186](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.185...sandbox-fc-v0.37.186) (2026-08-05)
+
+
+### Refactoring
+
+* **sandbox-fc:** centralize snapshot spawn construction ([#25268](https://github.com/vm0-ai/vm0/issues/25268)) ([98a37c5](https://github.com/vm0-ai/vm0/commit/98a37c5f4127d46527e0a2d79be0d462ebedcbcd))
+
 ## [0.37.185](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.184...sandbox-fc-v0.37.185) (2026-08-05)
 
 

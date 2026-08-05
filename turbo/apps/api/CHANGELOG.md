@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.379.1](https://github.com/vm0-ai/vm0/compare/api-v1.379.0...api-v1.379.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* persist automation trigger prompts in chat events ([#25249](https://github.com/vm0-ai/vm0/issues/25249)) ([26c99e1](https://github.com/vm0-ai/vm0/commit/26c99e14a4d7db973a64eee87d40080fa5be3baf))
+
 ## [1.379.0](https://github.com/vm0-ai/vm0/compare/api-v1.378.2...api-v1.379.0) (2026-08-05)
 
 
