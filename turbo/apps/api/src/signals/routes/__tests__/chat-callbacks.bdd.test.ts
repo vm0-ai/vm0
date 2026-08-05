@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-
 import { WebPushError } from "web-push";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import type {
@@ -16,24 +15,24 @@ import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
 } from "@vm0/core";
 import { describe, expect, it, onTestFinished } from "vitest";
-
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { clearMockNow, mockNow } from "../../../lib/time";
-import { accept, setupApp } from "../../../__tests__/test-helpers";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
+  holdChatThreadRowLockFixture,
+  holdModelPolicyReadsFixture,
   insertQueuedSlackMissingContextFixture,
   readChatEventContextFixture,
   removeAcknowledgedCancellationLifecycleFixture,
 } from "../../../test-fixtures/chat-events";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
-import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { now } from "../../external/time";
 import { createDeferredPromise } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
@@ -1825,7 +1824,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await flushWaitUntilForTest();
   }, 90_000);
 
-  it("rejects a goal invalidated during run preparation without creating a run", async () => {
+  it("revokes a goal invalidated during run preparation without creating a run", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1879,7 +1878,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       (items) => {
         return items.some((event) => {
           return (
-            event.eventType === "input.rejected" &&
+            event.eventType === "control.revoke" &&
             event.revokesEventId === goalEventId
           );
         });
@@ -1887,36 +1886,224 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     );
     expect(events.events).toContainEqual(
       expect.objectContaining({
-        eventType: "input.rejected",
+        eventType: "control.revoke",
         revokesEventId: goalEventId,
         content: null,
-        error: "Goal continuation no longer matches the active goal",
-        userMessage: {
-          version: 1,
-          parts: [{ type: "goal", goalBrief: objectiveBrief }],
-        },
       }),
     );
-    const rejected = events.events.find((event) => {
+    const revoked = events.events.find((event) => {
       return (
-        event.eventType === "input.rejected" &&
+        event.eventType === "control.revoke" &&
         event.revokesEventId === goalEventId
       );
     });
-    if (rejected?.eventType !== "input.rejected") {
-      throw new Error("Expected the invalidated goal event to be rejected");
+    if (revoked?.eventType !== "control.revoke") {
+      throw new Error("Expected the invalidated goal event to be revoked");
     }
-    expect(chatEventDisplayText(rejected)).toBe("");
     const admittedContext = await readChatEventContextFixture(goalEventId);
-    const rejectedContext = await readChatEventContextFixture(rejected.id);
+    const revokedContext = await readChatEventContextFixture(revoked.id);
     expect(admittedContext).toMatchObject({
       contextType: null,
       contextId: null,
     });
-    expect(rejectedContext).toMatchObject({
+    expect(revokedContext).toMatchObject({
       contextType: null,
       contextId: null,
     });
+    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
+  }, 90_000);
+
+  it("revokes a goal invalidated while a failing launch resolves", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before the invalidated goal launch fails",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await createGoalForRun(
+      actor,
+      first.runId,
+      "revoke the stale failed launch",
+    );
+    await misc.deleteOrgModelProvider(actor, "anthropic-api-key", [204]);
+    const modelPolicyReads = await holdModelPolicyReadsFixture({
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      modelPolicyReads.release();
+      await modelPolicyReads.done;
+    });
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before the invalidated goal launch failed"),
+    ]);
+
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await expect
+      .poll(modelPolicyReads.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+
+    let goalEventId: string | undefined;
+    await expect
+      .poll(async () => {
+        const [eventId] = await goalQueueEventIds(first.threadId);
+        goalEventId = eventId;
+        return eventId;
+      })
+      .toBeDefined();
+    if (!goalEventId) {
+      throw new Error("Expected the invalidated failing goal queue event");
+    }
+    const paused = await accept(
+      goalsClient().pause({
+        headers: zeroGoalHeaders(actor, first.runId),
+      }),
+      [200],
+    );
+    expect(paused.body.status).toBe("paused");
+    modelPolicyReads.release();
+    await modelPolicyReads.done;
+
+    const events = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return items.some((event) => {
+          return (
+            event.eventType === "control.revoke" &&
+            event.revokesEventId === goalEventId
+          );
+        });
+      },
+    );
+    expect(events.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "control.revoke",
+        revokesEventId: goalEventId,
+        content: null,
+      }),
+    );
+    expect(events.events).not.toContainEqual(
+      expect.objectContaining({
+        eventType: "input.rejected",
+        revokesEventId: goalEventId,
+      }),
+    );
+    const goal = await accept(
+      goalsClient().get({
+        headers: zeroGoalHeaders(actor, first.runId),
+      }),
+      [200],
+    );
+    expect(goal.body.status).toBe("paused");
+    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
+  }, 90_000);
+
+  it("revokes a goal invalidated at the final failed-launch boundary", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before the final goal failure settlement",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await createGoalForRun(
+      actor,
+      first.runId,
+      "revoke the goal invalidated at final settlement",
+    );
+    await misc.deleteOrgModelProvider(actor, "anthropic-api-key", [204]);
+    const modelPolicyReads = await holdModelPolicyReadsFixture({
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      modelPolicyReads.release();
+      await modelPolicyReads.done;
+    });
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before the final goal launch failure"),
+    ]);
+
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await expect
+      .poll(modelPolicyReads.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+
+    let goalEventId: string | undefined;
+    await expect
+      .poll(async () => {
+        const [eventId] = await goalQueueEventIds(first.threadId);
+        goalEventId = eventId;
+        return eventId;
+      })
+      .toBeDefined();
+    if (!goalEventId) {
+      throw new Error("Expected the final-boundary goal queue event");
+    }
+    const threadLock = await holdChatThreadRowLockFixture({
+      threadId: first.threadId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      threadLock.release();
+      await threadLock.done;
+    });
+
+    const pauseRequest = goalsClient().pause({
+      headers: zeroGoalHeaders(actor, first.runId),
+    });
+    await expect.poll(threadLock.firstBlockedStatementKind).toBe("update");
+
+    modelPolicyReads.release();
+    await modelPolicyReads.done;
+    await expect.poll(threadLock.blockedWaiterCount).toBeGreaterThanOrEqual(2);
+    threadLock.release();
+
+    const paused = await accept(pauseRequest, [200]);
+    expect(paused.body.status).toBe("paused");
+    await threadLock.done;
+    await flushWaitUntilForTest();
+
+    const events = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return items.some((event) => {
+          return (
+            event.eventType === "control.revoke" &&
+            event.revokesEventId === goalEventId
+          );
+        });
+      },
+    );
+    expect(events.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "control.revoke",
+        revokesEventId: goalEventId,
+        content: null,
+      }),
+    );
+    expect(events.events).not.toContainEqual(
+      expect.objectContaining({
+        eventType: "input.rejected",
+        revokesEventId: goalEventId,
+      }),
+    );
+    const goal = await accept(
+      goalsClient().get({
+        headers: zeroGoalHeaders(actor, first.runId),
+      }),
+      [200],
+    );
+    expect(goal.body.status).toBe("paused");
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
   }, 90_000);
 
@@ -1939,6 +2126,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await completeChatRunOk(first.runId, sandboxHeaders, {
       lastEventSequence: 0,
     });
+    await flushWaitUntilForTest();
 
     await expect
       .poll(async () => {
@@ -2162,28 +2350,28 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await completeChatRunOk(userRun.runId, userRunHeaders, {
       lastEventSequence: 0,
     });
-    const rejected = await waitForThreadMessages(
+    const revoked = await waitForThreadMessages(
       actor,
       first.threadId,
       (events) => {
         return events.some((event) => {
           return (
-            event.eventType === "input.rejected" &&
+            event.eventType === "control.revoke" &&
             event.revokesEventId === goalEventId
           );
         });
       },
     );
-    const rejectedGoalEvent = rejected.events.find((event) => {
+    const revokedGoalEvent = revoked.events.find((event) => {
       return (
-        event.eventType === "input.rejected" &&
+        event.eventType === "control.revoke" &&
         event.revokesEventId === goalEventId
       );
     });
-    expect(rejectedGoalEvent).toMatchObject({
-      eventType: "input.rejected",
+    expect(revokedGoalEvent).toMatchObject({
+      eventType: "control.revoke",
     });
-    expect(rejectedGoalEvent).not.toHaveProperty("runId");
+    expect(revokedGoalEvent).not.toHaveProperty("runId");
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
     await flushWaitUntilForTest();
   }, 90_000);

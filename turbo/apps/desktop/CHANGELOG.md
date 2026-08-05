@@ -1,5 +1,82 @@
 # Changelog
 
+## [0.28.135](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.134...desktop-v0.28.135) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.2
+
+## [0.28.134](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.133...desktop-v0.28.134) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.1
+
+## [0.28.133](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.132...desktop-v0.28.133) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.274.0
+
+## [0.28.132](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.131...desktop-v0.28.132) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.273.2
+
+## [0.28.131](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.130...desktop-v0.28.131) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.273.1
+
+## [0.28.130](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.129...desktop-v0.28.130) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.273.0
+
+## [0.28.129](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.128...desktop-v0.28.129) (2026-08-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.272.0
+
+## [0.28.128](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.127...desktop-v0.28.128) (2026-08-04)
+
+
+### Refactoring
+
+* retire the zero org command group and unreachable secret and variable apis ([#25039](https://github.com/vm0-ai/vm0/issues/25039)) ([305ca0d](https://github.com/vm0-ai/vm0/commit/305ca0dc0a3a6b149c118b9d8559b233abfffef5)), closes [#25011](https://github.com/vm0-ai/vm0/issues/25011)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.271.0
+
 ## [0.28.127](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.126...desktop-v0.28.127) (2026-08-04)
 
 

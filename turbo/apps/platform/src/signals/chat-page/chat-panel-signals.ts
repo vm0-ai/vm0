@@ -66,6 +66,14 @@ export interface MessageListSignals {
   readonly visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
   readonly visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   readonly chatSkeletonVisible$: Computed<boolean>;
+  readonly assistantErrorRecovery$: Computed<
+    Promise<AssistantErrorRecovery | null>
+  >;
+  readonly retryAssistantError$: Command<Promise<boolean>, [AbortSignal]>;
+  readonly resetCodexSubscriptionAndRetry$: Command<
+    Promise<boolean>,
+    [AbortSignal]
+  >;
   readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
   readonly artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
   readonly agentReferenceSignalsForId: (
@@ -204,6 +212,7 @@ export interface ChatPanelSignals {
   readonly thinkingPhrase$: Computed<string>;
   readonly donePhrase$: Computed<Promise<string>>;
   readonly displayedThinkingText$: Computed<Promise<string>>;
+  readonly thinkingTextFadingOut$: Computed<Promise<boolean>>;
   readonly setThinkingIndicatorTextRef$: Command<
     (() => void) | undefined,
     [HTMLElement | null]

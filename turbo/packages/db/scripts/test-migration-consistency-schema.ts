@@ -1259,6 +1259,13 @@ type PermanentFunction = {
 const EXPECTED_PERMANENT_TRIGGERS = [
   {
     definition:
+      "CREATE TRIGGER bridge_invalidated_goal_continuation_0829 BEFORE INSERT ON public.chat_events FOR EACH ROW WHEN (((new.event_type = 'input.rejected'::text) AND (new.error = 'Goal continuation no longer matches the active goal'::text))) EXECUTE FUNCTION bridge_invalidated_goal_continuation_0829()",
+    schemaName: "public",
+    tableName: "chat_events",
+    triggerName: "bridge_invalidated_goal_continuation_0829",
+  },
+  {
+    definition:
       "CREATE TRIGGER bridge_goal_only_chat_event_run_group_0810 BEFORE INSERT ON public.chat_events FOR EACH ROW EXECUTE FUNCTION bridge_goal_only_chat_event_run_group_0810()",
     schemaName: "public",
     tableName: "chat_events",
@@ -1410,6 +1417,13 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "d222c803fed6a784bf53288dd866f2a2",
     functionName: "bridge_goal_only_chat_event_run_group_0810",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "14663ff71eec325962f2784692c96937",
+    functionName: "bridge_invalidated_goal_continuation_0829",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -3569,6 +3583,272 @@ async function validateTeamsMessageFileScopeBackfill(): Promise<void> {
   }
 }
 
+const INVALIDATED_GOAL_CONTINUATION_PREVIOUS_MIGRATION =
+  "0828_migrate_legacy_deepseek_state";
+const INVALIDATED_GOAL_CONTINUATION_MIGRATION =
+  "0829_revoke_invalidated_goal_continuations";
+
+async function validateInvalidatedGoalContinuationCleanup(): Promise<void> {
+  console.log("=== Validate invalidated goal continuation cleanup ===\n");
+  const testDb = "migration_invalidated_goal_continuation_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    composeId: "00000000-0000-4000-8000-000000082801",
+    threadId: "00000000-0000-4000-8000-000000082802",
+    queuedGoalId: "00000000-0000-4000-8000-000000082803",
+    rejectedGoalId: "00000000-0000-4000-8000-000000082804",
+    drainingQueuedGoalId: "00000000-0000-4000-8000-000000082805",
+    drainingRejectedGoalId: "00000000-0000-4000-8000-000000082806",
+    failedQueuedGoalId: "00000000-0000-4000-8000-000000082807",
+    failedRejectedGoalId: "00000000-0000-4000-8000-000000082808",
+  } as const;
+  const invalidationError =
+    "Goal continuation no longer matches the active goal";
+  const goalMessage = JSON.stringify({
+    version: 1,
+    parts: [{ type: "goal", goalBrief: "migration fixture" }],
+  });
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      INVALIDATED_GOAL_CONTINUATION_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, 'goal-invalidation-user', 'goal-invalidation', 'goal-invalidation-org')
+        `,
+        [fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "last_chat_event_seq_id"
+          )
+          VALUES ($1, 'goal-invalidation-user', $2, 2)
+        `,
+        [fixture.threadId, fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "revokes_event_id",
+            "event_type",
+            "error",
+            "user_message",
+            "seq_id"
+          ) VALUES
+            ($1, $3, NULL, 'input.goal', NULL, $5::jsonb, 1),
+            ($2, $3, $1, 'input.rejected', $4, $5::jsonb, 2)
+        `,
+        [
+          fixture.queuedGoalId,
+          fixture.rejectedGoalId,
+          fixture.threadId,
+          invalidationError,
+          goalMessage,
+        ],
+      );
+
+      await applyMigrationsUpToTag(
+        client,
+        INVALIDATED_GOAL_CONTINUATION_MIGRATION,
+      );
+
+      const backfilled = await client.query<{
+        eventType: string;
+        seqId: number;
+      }>(
+        `
+          SELECT
+            "event_type" AS "eventType",
+            "seq_id"::int AS "seqId"
+          FROM "chat_events"
+          WHERE "revokes_event_id" = $1
+        `,
+        [fixture.rejectedGoalId],
+      );
+      assert.deepEqual(backfilled.rows, [
+        { eventType: "control.revoke", seqId: 3 },
+      ]);
+      const legacyRejected = await client.query<{
+        error: string | null;
+        eventType: string;
+      }>(
+        `
+          SELECT "event_type" AS "eventType", "error"
+          FROM "chat_events"
+          WHERE "id" = $1
+        `,
+        [fixture.rejectedGoalId],
+      );
+      assert.deepEqual(legacyRejected.rows, [
+        { eventType: "input.rejected", error: invalidationError },
+      ]);
+      const thread = await client.query<{ lastSeqId: number }>(
+        `
+          SELECT "last_chat_event_seq_id"::int AS "lastSeqId"
+          FROM "chat_threads"
+          WHERE "id" = $1
+        `,
+        [fixture.threadId],
+      );
+      assert.deepEqual(thread.rows, [{ lastSeqId: 3 }]);
+
+      await client.query(
+        `
+          UPDATE "chat_threads"
+          SET "last_chat_event_seq_id" = 5
+          WHERE "id" = $1
+        `,
+        [fixture.threadId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "user_message",
+            "seq_id"
+          ) VALUES ($1, $2, 'input.goal', $3::jsonb, 4)
+        `,
+        [fixture.drainingQueuedGoalId, fixture.threadId, goalMessage],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "revokes_event_id",
+            "event_type",
+            "error",
+            "user_message",
+            "seq_id"
+          ) VALUES ($1, $2, $3, 'input.rejected', $4, $5::jsonb, 5)
+        `,
+        [
+          fixture.drainingRejectedGoalId,
+          fixture.threadId,
+          fixture.drainingQueuedGoalId,
+          invalidationError,
+          goalMessage,
+        ],
+      );
+      await client.query(
+        `
+          UPDATE "chat_threads"
+          SET "last_chat_event_seq_id" = 7
+          WHERE "id" = $1
+        `,
+        [fixture.threadId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "user_message",
+            "seq_id"
+          ) VALUES ($1, $2, 'input.goal', $3::jsonb, 6)
+        `,
+        [fixture.failedQueuedGoalId, fixture.threadId, goalMessage],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "revokes_event_id",
+            "event_type",
+            "error",
+            "user_message",
+            "seq_id"
+          ) VALUES (
+            $1,
+            $2,
+            $3,
+            'input.rejected',
+            'run creation failed',
+            $4::jsonb,
+            7
+          )
+        `,
+        [
+          fixture.failedRejectedGoalId,
+          fixture.threadId,
+          fixture.failedQueuedGoalId,
+          goalMessage,
+        ],
+      );
+
+      const drainingWrite = await client.query<{
+        error: string | null;
+        eventType: string;
+        userMessage: unknown;
+      }>(
+        `
+          SELECT
+            "event_type" AS "eventType",
+            "error",
+            "user_message" AS "userMessage"
+          FROM "chat_events"
+          WHERE "id" = $1
+        `,
+        [fixture.drainingRejectedGoalId],
+      );
+      assert.deepEqual(drainingWrite.rows, [
+        { eventType: "control.revoke", error: null, userMessage: null },
+      ]);
+      const failedWrite = await client.query<{
+        error: string | null;
+        eventType: string;
+        userMessage: unknown;
+      }>(
+        `
+          SELECT
+            "event_type" AS "eventType",
+            "error",
+            "user_message" AS "userMessage"
+          FROM "chat_events"
+          WHERE "id" = $1
+        `,
+        [fixture.failedRejectedGoalId],
+      );
+      assert.deepEqual(failedWrite.rows, [
+        {
+          eventType: "input.rejected",
+          error: "run creation failed",
+          userMessage: JSON.parse(goalMessage),
+        },
+      ]);
+
+      await assertChatEventsAppendOnlyProtection(
+        client,
+        fixture.rejectedGoalId,
+      );
+      console.log("   ✅ Legacy invalidations receive append-only tombstones");
+      console.log("   ✅ Draining API invalidations are normalized on insert");
+      console.log("   ✅ Real goal continuation failures remain rejected\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log("=== Phase 1.5: Validate Latest Snapshot Accuracy ===\n");
 
@@ -3680,6 +3960,7 @@ async function main(): Promise<void> {
     await validateRunEventSequenceNumberRollout();
     await validateGoalOnlyRunGroupsCleanup();
     await validateTeamsMessageFileScopeBackfill();
+    await validateInvalidatedGoalContinuationCleanup();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

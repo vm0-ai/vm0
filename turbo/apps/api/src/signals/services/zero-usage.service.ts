@@ -13,10 +13,9 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { User } from "@clerk/backend";
-
 import { clerk$ } from "../external/clerk";
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { getOrgBillingPeriod$ } from "./zero-org-billing-period.service";
 import {
   buildFinalizedUsageRunTotalsSubquery,

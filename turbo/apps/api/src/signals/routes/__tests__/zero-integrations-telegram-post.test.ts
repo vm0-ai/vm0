@@ -14,7 +14,8 @@ import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
@@ -2514,7 +2515,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
     await seedModelPolicies({
       fixture,
-      selectedModel: "deepseek-v4-pro",
+      selectedModel: "deepseek-v4-flash",
     });
     const telegramMocks = telegramApiMocks();
 
@@ -2542,7 +2543,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       "/model claude-sonnet-4-6",
     );
     expect(telegramMocks.sentMessages[0]?.text).toContain(
-      "/model deepseek-v4-pro",
+      "/model deepseek-v4-flash",
     );
     expect(telegramMocks.sentMessages[0]?.text).not.toContain("/model default");
 

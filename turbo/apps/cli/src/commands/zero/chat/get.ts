@@ -1,8 +1,8 @@
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { getZeroChatThread } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { getZeroChatThread } from "../../../lib/api/domains/zero-chat";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 interface GetOptions {
   readonly json?: boolean;

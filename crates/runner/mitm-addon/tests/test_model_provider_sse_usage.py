@@ -524,7 +524,7 @@ class TestModelProviderSseUsage:
             b'data: {"response":{"id":"resp_sse_1","model":"gpt-5.5",'
             b'"usage":{"input_tokens":100,"output_tokens":40}}}\n\n'
             b"event: response.failed\n"
-            b'data: {"response":{"id":"resp_sse_empty","model":"gpt-5.4",'
+            b'data: {"response":{"id":"resp_sse_empty","model":"gpt-5.6-luna",'
             b'"usage":{"input_tokens":0,"output_tokens":0}}}\n\n'
         )
 

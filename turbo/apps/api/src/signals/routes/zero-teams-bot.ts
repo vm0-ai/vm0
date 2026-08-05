@@ -21,7 +21,7 @@ import {
   type TeamsAdaptiveCard,
   type TeamsMentionEntity,
 } from "../external/teams-bot-client";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import {
   buildTeamsConnectUrlForActivity,

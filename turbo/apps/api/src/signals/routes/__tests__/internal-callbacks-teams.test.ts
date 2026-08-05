@@ -12,7 +12,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import {

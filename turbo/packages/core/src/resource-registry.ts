@@ -4010,22 +4010,6 @@ export function findTemplate(id: string): RegistryEntry | undefined {
   });
 }
 
-export function toGenerationTarget(value: string): GenerationTarget {
-  if (value === "dashboard") {
-    return "dashboard-design";
-  }
-
-  if (value === "docs") {
-    return "docs-design";
-  }
-
-  if (value === "mobile-app") {
-    return "mobile-app-design";
-  }
-
-  return value as GenerationTarget;
-}
-
 export function selectResourceCandidates(
   target?: GenerationTarget,
 ): ResourceCandidateSlice {

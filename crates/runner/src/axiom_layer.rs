@@ -1,4 +1,4 @@
-//! Tracing layer that ships WARN+ and narrowly allowlisted INFO events to Axiom.
+//! Tracing layer that ships WARN+ events to Axiom.
 //!
 //! Disabled at construction when `AXIOM_TOKEN_TELEMETRY` or
 //! `AXIOM_DATASET_SUFFIX` is unset. Dual-write: the existing fmt subscriber
@@ -23,12 +23,9 @@ use tracing_subscriber::filter::{self, FilterFn};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
-use crate::telemetry::PRE_PARK_HANDOFF_AXIOM_TARGET;
-
 /// Bounded-channel capacity between tracing callers and the dispatcher task.
-/// WARN+ and the selected-candidate measurement events are low-volume, so 1024
-/// absorbs realistic bursts; overflow is counted + surfaced via stderr rather
-/// than blocking the tracing hot path.
+/// WARN+ events are low-volume, so 1024 absorbs realistic bursts; overflow is
+/// counted + surfaced via stderr rather than blocking the tracing hot path.
 const CHANNEL_CAP: usize = 1024;
 /// Max events per ingest POST. Axiom accepts thousands per batch, but a small
 /// cap keeps POST body size and peak dispatcher memory predictable.
@@ -171,13 +168,7 @@ pub(crate) struct AxiomLayer {
 }
 
 fn should_ingest(metadata: &Metadata<'_>) -> bool {
-    // Errors and warnings remain the general threshold. One exact INFO target
-    // carries the bounded selected-candidate measurements required before a
-    // successor has an authenticated per-job telemetry owner. DEBUG/TRACE and
-    // all other INFO events stay local-only.
-    (*metadata.level() <= tracing::Level::WARN && metadata.target() != INTERNAL_TARGET)
-        || (*metadata.level() == tracing::Level::INFO
-            && metadata.target() == PRE_PARK_HANDOFF_AXIOM_TARGET)
+    *metadata.level() <= tracing::Level::WARN && metadata.target() != INTERNAL_TARGET
 }
 
 fn ingest_filter() -> FilterFn<fn(&Metadata<'_>) -> bool> {

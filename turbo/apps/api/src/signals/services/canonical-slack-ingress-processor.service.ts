@@ -12,7 +12,7 @@ import {
   fetchConversationContexts,
   type SlackFile,
 } from "../../lib/slack-webhook-context";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadMessageCreatedSafely,

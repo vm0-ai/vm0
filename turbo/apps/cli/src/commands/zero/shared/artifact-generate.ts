@@ -1,18 +1,20 @@
 import { Command } from "commander";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   findDesignSystem,
   findTemplate,
   listDesignSystems,
   listTemplates,
   type GenerationTarget,
-  toGenerationTarget,
-} from "./resource-registry";
+} from "@vm0/core/resource-registry";
 import {
   canonicalizeRegistryId,
   formatRegistryListing,
 } from "./resource-listing";
-import { createHtmlArtifactAuthoringPacket } from "./html-artifact-authoring";
+import {
+  createHtmlArtifactAuthoringPacket,
+  type HtmlArtifactKind,
+} from "./html-artifact-authoring";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
 
@@ -27,7 +29,7 @@ interface ArtifactOptions {
 interface ArtifactCommandConfig {
   name: string;
   generationType: GenerationType;
-  target: GenerationTarget;
+  target: HtmlArtifactKind;
   description: string;
   usageCommand: string;
   examples: string;
@@ -165,7 +167,7 @@ ${formatRegistryListing(templates, `${config.target} templates`)}`;
         ];
 
         const packet = createHtmlArtifactAuthoringPacket({
-          kind: toGenerationTarget(config.target),
+          kind: config.target,
           prompt,
           slugSource: options.title,
           siteSlug: options.siteSlug,

@@ -2,11 +2,6 @@ import { getModelDisplayName } from "@vm0/core/model-display-name";
 import { i18n } from "../i18n/index.ts";
 
 const USAGE_DISPLAY_NAMES = {
-  auto(): string {
-    return i18n.t(($) => {
-      return $.usage.displayNames.auto;
-    });
-  },
   finance(): string {
     return i18n.t(($) => {
       return $.usage.displayNames.finance;
@@ -72,7 +67,6 @@ const MANAGED_USAGE_PROVIDER_DISPLAY_NAMES: Readonly<
 };
 
 const MODEL_DISPLAY_NAMES: Readonly<Record<string, () => string>> = {
-  "vm0-model": USAGE_DISPLAY_NAMES.auto,
   // Rows recorded before image tasks moved to task-scoped kinds carry
   // kind "model" with this provider; nothing else runs it as a chat model.
   "google/gemini-3.5-flash": USAGE_DISPLAY_NAMES.imageRecognize,

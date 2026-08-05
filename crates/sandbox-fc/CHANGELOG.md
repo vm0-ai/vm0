@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.37.183](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.182...sandbox-fc-v0.37.183) (2026-08-05)
+
+## [0.37.182](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.181...sandbox-fc-v0.37.182) (2026-08-05)
+
+
+### Refactoring
+
+* **rust:** use rustix for child exit pidfds ([#25122](https://github.com/vm0-ai/vm0/issues/25122)) ([85100f1](https://github.com/vm0-ai/vm0/commit/85100f174664559002a35778a73a3b4d9ec722ad))
+
+## [0.37.181](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.180...sandbox-fc-v0.37.181) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** keep info logs out of axiom ([#25114](https://github.com/vm0-ai/vm0/issues/25114)) ([3c6d123](https://github.com/vm0-ai/vm0/commit/3c6d1235847d344b7e1a9bc8ee885b68d1fd8d5b))
+
+## [0.37.180](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.179...sandbox-fc-v0.37.180) (2026-08-04)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** stabilize root veth mac identity ([#25071](https://github.com/vm0-ai/vm0/issues/25071)) ([47af501](https://github.com/vm0-ai/vm0/commit/47af501b4e6ab409596fc07f5230b69b732ba06f))
+
+
+### Performance Improvements
+
+* **sandbox-fc:** reduce balloon settle detection latency ([#25069](https://github.com/vm0-ai/vm0/issues/25069)) ([16893fa](https://github.com/vm0-ai/vm0/commit/16893fa7ffa416a8859a112119a8082229da2d88))
+
+## [0.37.179](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.178...sandbox-fc-v0.37.179) (2026-08-04)
+
 ## [0.37.178](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.177...sandbox-fc-v0.37.178) (2026-08-04)
 
 ## [0.37.177](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.176...sandbox-fc-v0.37.177) (2026-08-04)

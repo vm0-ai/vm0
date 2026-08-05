@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
- "base64 0.23.0",
+ "base64 0.23.1",
  "futures-util",
  "hmac",
  "httpmock",
@@ -20,6 +20,7 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "tokio-tungstenite",
+ "tokio-util",
  "tracing",
  "tracing-subscriber",
  "tracing-test-support",
@@ -117,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "api-contracts"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -602,9 +603,9 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "base64"
-version = "0.23.0"
+version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b25655df2c3cdd83c5e5b293b88acd880332b2ddadd7c30ac43144fdc0033da9"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "base64-simd"
@@ -1253,11 +1254,11 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.64.0"
+version = "0.64.3"
 dependencies = [
  "aho-corasick",
  "api-contracts",
- "base64 0.23.0",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "flate2",
@@ -1292,7 +1293,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.60"
+version = "0.2.62"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1304,7 +1305,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.5.5"
+version = "0.5.7"
 dependencies = [
  "libc",
  "serde",
@@ -1315,7 +1316,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.22.15"
+version = "0.22.17"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1331,7 +1332,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.141"
+version = "0.16.143"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1342,7 +1343,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.38"
+version = "0.21.40"
 dependencies = [
  "api-contracts",
  "guest-contracts",
@@ -1354,7 +1355,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.6.15"
+version = "0.6.16"
 dependencies = [
  "chrono",
  "clap",
@@ -1382,7 +1383,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.48"
+version = "0.1.50"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2493,9 +2494,9 @@ dependencies = [
 
 [[package]]
 name = "regex-automata"
-version = "0.4.16"
+version = "0.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fcfdb36bda0c880c5931cdc7a2bcdc8ba4556847b9d912bca70bc94708711ad"
+checksum = "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -2605,14 +2606,14 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.157.0"
+version = "0.158.5"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
  "async-trait",
  "aws-sdk-s3",
  "aws-smithy-mocks",
- "base64 0.23.0",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "clap",
@@ -2627,6 +2628,7 @@ dependencies = [
  "guest-reseed",
  "guest-write-file",
  "hex",
+ "http-body 1.1.0",
  "httpmock",
  "idna",
  "libc",
@@ -2829,7 +2831,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.178"
+version = "0.37.183"
 dependencies = [
  "async-trait",
  "clap",
@@ -2840,6 +2842,7 @@ dependencies = [
  "nbd-cow",
  "nix",
  "reqwest",
+ "rustix",
  "sandbox",
  "serde",
  "serde_json",
@@ -2859,7 +2862,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.68"
+version = "0.8.70"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3483,6 +3486,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "libc",
  "pin-project-lite",
  "tokio",
@@ -3792,7 +3796,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.60"
+version = "0.19.62"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3825,7 +3829,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-test"
-version = "0.9.185"
+version = "0.9.187"
 dependencies = [
  "guest-write-file",
  "libc",
@@ -4258,11 +4262,11 @@ dependencies = [
 
 [[package]]
 name = "zero-cli"
-version = "0.3.2"
+version = "0.5.0"
 dependencies = [
  "api-contracts",
  "async-trait",
- "base64 0.23.0",
+ "base64 0.23.1",
  "clap",
  "httpmock",
  "libc",

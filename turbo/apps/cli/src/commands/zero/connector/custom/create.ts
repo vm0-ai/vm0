@@ -12,13 +12,15 @@ import { Command } from "commander";
 
 import {
   addZeroAgentCustomConnector,
-  createZeroCustomConnector,
   getZeroAgent,
+} from "../../../../lib/api/domains/zero-agents";
+import {
+  createZeroCustomConnector,
   setZeroCustomConnectorValues,
   startZeroCustomConnectorOAuth2,
-} from "../../../../lib/api";
+} from "../../../../lib/api/domains/zero-connectors";
 import { decodeZeroTokenPayload } from "../../../../lib/api/zero-token";
-import { withErrorHandler } from "../../../../lib/command";
+import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 
 const customConnectorDefinitionSchema = updateCustomConnectorBodySchema.omit({
   authMode: true,

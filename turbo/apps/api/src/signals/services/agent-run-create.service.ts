@@ -20,7 +20,6 @@ import { modelProviderSurfaceProtocolSchema } from "@vm0/api-contracts/contracts
 import {
   getDefaultModel,
   getModelProviderCodexRuntimeConfig,
-  getModelProviderFirewall,
   getModelProviderEnvBindings,
   getModelImageInputSupport,
   getFrameworkForType,
@@ -36,6 +35,7 @@ import {
   type ModelProviderCodexRuntimeConfig,
   type ModelProviderEnvBindings,
   type ModelProviderCredentialScope,
+  getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -70,8 +70,10 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
+  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomConnectorSkillName,
@@ -98,8 +100,8 @@ import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { blobs } from "@vm0/db/schema/blob";
 import { conversations } from "@vm0/db/schema/conversation";
+import { blobs } from "@vm0/db/schema/blob";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import {
   modelProviderConnections,
@@ -126,7 +128,6 @@ import {
   type WithSubquery,
 } from "drizzle-orm";
 import { z } from "zod";
-
 import { env, optionalEnv } from "../../lib/env";
 import {
   nullableDriverValueDecoder,
@@ -149,7 +150,7 @@ import {
   publishOrgSignal,
   publishRunChangedForUserSafely,
 } from "../external/realtime";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { generateZeroToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
 import {
@@ -168,6 +169,11 @@ import {
   GATEWAY_RUNTIME_SECRET_NAME,
 } from "./model-provider-gateway-runtime";
 import { modelProviderGatewaySchemaAvailable } from "./model-provider-gateway-schema.service";
+import {
+  autonomyBudgetSchemaAvailable,
+  insertRolloutCompatibleZeroRun,
+  rolloutLegacyZeroRuns,
+} from "./autonomy-budget-schema.service";
 import {
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CustomConnectorRuntimePrefixError,
@@ -242,6 +248,7 @@ import {
   type QueueFirstRunSessionSnapshotState,
 } from "./zero-chat-queued-event.service";
 import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
+import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
 import {
   cappedBaseConcurrencyLimit,
   loadOrgConcurrencyState,
@@ -346,7 +353,11 @@ function withFinalRunAppendSystemPrompt(
   if (imageRecognitionAvailable) {
     appendedParts.push(ZERO_IMAGE_RECOGNITION_PROMPT);
   }
-  if (framework === "codex" && body.triggerSource === "web" && chatThreadId) {
+  if (
+    framework === "codex" &&
+    isWebChatTriggerSource(body.triggerSource) &&
+    chatThreadId
+  ) {
     appendedParts.push(CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT);
   }
   if (appendedParts.length === 0) {
@@ -405,6 +416,7 @@ interface ZeroRunMetadata {
   readonly triggerBrief?: string;
   // Run provenance for autonomous thread-goal continuation.
   readonly goalId?: string;
+  readonly autonomyBudget?: number;
 }
 
 interface AgentConfig {
@@ -5134,6 +5146,7 @@ function launchRunValues(
 
 function launchZeroRunValues(
   args: LaunchRunRowsArgs,
+  autonomyBudgetAvailable: boolean,
 ): typeof zeroRuns.$inferInsert {
   const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
   return {
@@ -5143,6 +5156,9 @@ function launchZeroRunValues(
     triggerBrief: metadata.triggerBrief ?? null,
     runGroupId: metadata.goalId ?? null,
     goalId: metadata.goalId ?? null,
+    ...(metadata.autonomyBudget === undefined || !autonomyBudgetAvailable
+      ? {}
+      : { autonomyBudget: metadata.autonomyBudget }),
     ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
     chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
@@ -5159,7 +5175,12 @@ async function insertLaunchRunRows(
 
   const createdAt = nowDate();
   await tx.insert(agentRuns).values(launchRunValues(args, createdAt));
-  await tx.insert(zeroRuns).values(launchZeroRunValues(args));
+  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(tx);
+  await insertRolloutCompatibleZeroRun(
+    tx,
+    launchZeroRunValues(args, autonomyBudgetAvailable),
+    autonomyBudgetAvailable,
+  );
 
   if (args.callbackRows.length > 0) {
     await tx.insert(agentRunCallbacks).values([...args.callbackRows]);
@@ -5212,6 +5233,13 @@ async function buildStoredExecutionContextDraft(args: {
       connectorVars: args.connectorContext.vars,
     }),
     ...args.extraEnvironment,
+    ...(isFeatureEnabled(
+      FeatureSwitchKey.R2ZeroCli,
+      args.featureSwitchContext,
+    ) &&
+    !isFeatureEnabled(FeatureSwitchKey.RustZeroCli, args.featureSwitchContext)
+      ? { CLI_PKG_URL: env("CLI_PKG_URL") }
+      : {}),
   };
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {
@@ -5931,7 +5959,10 @@ function launchThreadBindingCte(args: {
   );
 }
 
-function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
+function buildAtomicLaunchCteContext(
+  args: PersistAtomicLaunchRowsArgs,
+  autonomyBudgetAvailable: boolean,
+) {
   const rowsArgs = preparedLaunchRowsArgs({
     commit: args.commit,
     status: args.status,
@@ -5966,12 +5997,17 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
   );
   ctes.push(insertedRun);
 
-  const insertedZeroRun = args.tx.$with("inserted_launch_zero_run").as(
-    args.tx.insert(zeroRuns).values({
-      ...launchZeroRunValues(rowsArgs),
-      id: returnedCteId(insertedRun),
-    }),
-  );
+  const zeroRunValues = {
+    ...launchZeroRunValues(rowsArgs, autonomyBudgetAvailable),
+    id: returnedCteId(insertedRun),
+  };
+  const insertedZeroRun = args.tx
+    .$with("inserted_launch_zero_run")
+    .as(
+      autonomyBudgetAvailable
+        ? args.tx.insert(zeroRuns).values(zeroRunValues)
+        : args.tx.insert(rolloutLegacyZeroRuns).values(zeroRunValues),
+    );
   ctes.push(insertedZeroRun);
 
   appendLaunchCallbackCte({
@@ -6152,7 +6188,8 @@ async function persistQueuedAtomicLaunch(
 async function persistAtomicLaunchRows(
   args: PersistAtomicLaunchRowsArgs,
 ): Promise<PersistedAtomicLaunchRows> {
-  const context = buildAtomicLaunchCteContext(args);
+  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(args.tx);
+  const context = buildAtomicLaunchCteContext(args, autonomyBudgetAvailable);
   const persisted = await args.commit.timing.measure(
     "api_dispatch_persist_atomic_launch",
     "nested",

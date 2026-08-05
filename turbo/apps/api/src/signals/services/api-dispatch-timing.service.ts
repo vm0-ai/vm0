@@ -2,7 +2,7 @@ import { performance } from "node:perf_hooks";
 
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { safeSync } from "../utils";
 
@@ -75,7 +75,7 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_zero_goal_drain_event_queue_age"
   | "api_dispatch_pre_create_zero_goal_drain_load_event"
   | "api_dispatch_pre_create_zero_goal_drain_load_target"
-  | "api_dispatch_pre_create_zero_goal_drain_reject_invalid_event"
+  | "api_dispatch_pre_create_zero_goal_drain_revoke_invalid_event"
   | "api_dispatch_pre_create_zero_goal_drain_resolve_model_context"
   | "api_dispatch_pre_create_zero_goal_drain_build_run_input"
   | "api_dispatch_pre_create_zero_goal_drain_handoff_run"

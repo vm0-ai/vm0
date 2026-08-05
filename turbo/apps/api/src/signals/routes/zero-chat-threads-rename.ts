@@ -7,7 +7,7 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";

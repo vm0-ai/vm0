@@ -1,5 +1,111 @@
 # Changelog
 
+## [9.279.3](https://github.com/vm0-ai/vm0/compare/cli-v9.279.2...cli-v9.279.3) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.274.2
+    * @vm0/connectors bumped to 1.202.11
+    * @vm0/core bumped to 8.515.0
+
+## [9.279.2](https://github.com/vm0-ai/vm0/compare/cli-v9.279.1...cli-v9.279.2) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.274.1
+    * @vm0/core bumped to 8.514.1
+
+## [9.279.1](https://github.com/vm0-ai/vm0/compare/cli-v9.279.0...cli-v9.279.1) (2026-08-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.274.0
+    * @vm0/core bumped to 8.514.0
+
+## [9.279.0](https://github.com/vm0-ai/vm0/compare/cli-v9.278.1...cli-v9.279.0) (2026-08-05)
+
+
+### Features
+
+* deploy commit-addressed cli packages to r2 ([#25072](https://github.com/vm0-ai/vm0/issues/25072)) ([4201a47](https://github.com/vm0-ai/vm0/commit/4201a475d596ad7f97d2f3777dcc9c34f1037050))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.273.2
+    * @vm0/core bumped to 8.513.0
+
+## [9.278.1](https://github.com/vm0-ai/vm0/compare/cli-v9.278.0...cli-v9.278.1) (2026-08-05)
+
+
+### Refactoring
+
+* decouple composer signals and remove internal re-exports ([#25054](https://github.com/vm0-ai/vm0/issues/25054)) ([a5d80a1](https://github.com/vm0-ai/vm0/commit/a5d80a1127cb7533ad763b1f5d22e9fa562afd03))
+* remove zero chat messaging feature switch ([#25101](https://github.com/vm0-ai/vm0/issues/25101)) ([6a6cf24](https://github.com/vm0-ai/vm0/commit/6a6cf24df6b4beeba0d1a95f732c4f52c6b939aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.273.1
+    * @vm0/connectors bumped to 1.202.10
+    * @vm0/core bumped to 8.512.1
+
+## [9.278.0](https://github.com/vm0-ai/vm0/compare/cli-v9.277.3...cli-v9.278.0) (2026-08-05)
+
+
+### Features
+
+* **core:** enable zero chat messaging globally ([#25093](https://github.com/vm0-ai/vm0/issues/25093)) ([76c4a9e](https://github.com/vm0-ai/vm0/commit/76c4a9edf14808ddab0a85c8f94ab61cf07c27b5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.273.0
+    * @vm0/connectors bumped to 1.202.9
+    * @vm0/core bumped to 8.512.0
+
+## [9.277.3](https://github.com/vm0-ai/vm0/compare/cli-v9.277.2...cli-v9.277.3) (2026-08-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.272.0
+    * @vm0/connectors bumped to 1.202.8
+    * @vm0/core bumped to 8.511.0
+
+## [9.277.2](https://github.com/vm0-ai/vm0/compare/cli-v9.277.1...cli-v9.277.2) (2026-08-04)
+
+
+### Refactoring
+
+* canonicalize deepseek model provider ([#25030](https://github.com/vm0-ai/vm0/issues/25030)) ([c19ea0f](https://github.com/vm0-ai/vm0/commit/c19ea0fa2d196143ab899db3953904c814e2b016))
+* retire the zero org command group and unreachable secret and variable apis ([#25039](https://github.com/vm0-ai/vm0/issues/25039)) ([305ca0d](https://github.com/vm0-ai/vm0/commit/305ca0dc0a3a6b149c118b9d8559b233abfffef5)), closes [#25011](https://github.com/vm0-ai/vm0/issues/25011)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.271.0
+    * @vm0/core bumped to 8.510.1
+
 ## [9.277.1](https://github.com/vm0-ai/vm0/compare/cli-v9.277.0...cli-v9.277.1) (2026-08-04)
 
 
@@ -1290,7 +1396,6 @@
 
 ### Bug Fixes
 
-* retire gpt-5.4 models ([#22923](https://github.com/vm0-ai/vm0/issues/22923)) ([0e5de85](https://github.com/vm0-ai/vm0/commit/0e5de85debf5ae6eb58e3a56a598ca2d21e506a0))
 
 
 ### Dependencies

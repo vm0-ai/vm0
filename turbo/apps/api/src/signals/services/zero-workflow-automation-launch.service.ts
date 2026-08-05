@@ -1,13 +1,11 @@
 import { randomBytes } from "node:crypto";
-
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
-
 import { writeDb$, type Db } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import {
   isQueueFirstRunClaimLost,
   type DispatchFailedRunCallbacks,
@@ -105,6 +103,7 @@ interface WorkflowAutomationLaunchArgs {
   readonly appendSystemPrompt: string;
   readonly callbacks: readonly InternalRunCallbackInput[];
   readonly activePreviousRunPolicy: ActivePreviousRunPolicy;
+  readonly autonomyBudget: number;
   readonly recordLastRunId: boolean;
   readonly recordLastRunAt: boolean;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
@@ -137,10 +136,12 @@ function isActivePreviousRunStatus(status: string): boolean {
 function workflowAutomationRunMetadata(
   automation: AutomationRow,
   triggerBrief: string | undefined,
+  autonomyBudget: number,
 ) {
   return {
     workflowAutomationId: automation.id,
     triggerBrief,
+    autonomyBudget,
   };
 }
 
@@ -433,6 +434,7 @@ async function buildTimedWorkflowAutomationRunInput(args: {
         zeroRunMetadata: workflowAutomationRunMetadata(
           args.automation,
           args.command.triggerBrief,
+          args.command.autonomyBudget,
         ),
       };
     },

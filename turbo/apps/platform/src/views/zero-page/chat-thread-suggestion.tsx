@@ -74,7 +74,7 @@ export function ComposerMentionSuggestionMenu({
                   <AvatarFromUrl
                     avatarUrl={agent.avatarUrl}
                     alt=""
-                    className="h-5 w-5 shrink-0 rounded-full bg-muted"
+                    className="h-5 w-5 shrink-0 rounded-full"
                     size={20}
                   />
                   <span className="truncate text-sm text-popover-foreground">
@@ -111,7 +111,7 @@ export function ComposerMentionSuggestionMenu({
               <AvatarFromUrl
                 avatarUrl={chatThread.avatarUrl}
                 alt=""
-                className="h-5 w-5 shrink-0 rounded-full bg-muted"
+                className="h-5 w-5 shrink-0 rounded-full"
                 size={20}
               />
               <span className="truncate text-sm text-popover-foreground">

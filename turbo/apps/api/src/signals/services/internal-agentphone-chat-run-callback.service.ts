@@ -6,12 +6,11 @@ import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, isNotNull } from "drizzle-orm";
-
 import { logger } from "../../lib/log";
 import { sendAgentPhoneMessage } from "../external/agentphone-client";
 import type { Db } from "../external/db";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { settleIncludingAbort } from "../utils";
 import {
   agentphoneChatCallbackPayloadSchema,

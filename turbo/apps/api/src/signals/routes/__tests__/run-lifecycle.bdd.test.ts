@@ -5738,9 +5738,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
-    expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.ZeroChatMessaging]: true,
-    });
     expect(appendSystemPrompt).toContain("zero chat send");
     expect(appendSystemPrompt).toContain("zero chat cancel");
     expect(appendSystemPrompt).not.toContain("zero chat queued");
@@ -5794,7 +5791,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(queue.body.concurrency.active).toBe(0);
   });
 
-  it("defaults limited-free runs to Luna, allows Terra, rejects Sol, and normalizes retired Auto", async () => {
+  it("defaults limited-free runs to DeepSeek, allows Luna, and rejects Sol", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
@@ -5825,7 +5822,10 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       }),
     ).toMatchObject({ isDefault: true });
 
-    for (const model of ["gpt-5.6-terra", "gpt-5.6-luna"] as const) {
+    for (const model of [
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      "gpt-5.6-luna",
+    ] as const) {
       await seedVm0ManagedModelKey(model);
       const sent = await chat.requestSendEvent(
         actor,
@@ -5864,30 +5864,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).toHaveLength(0);
     expect(queue.body.concurrency.active).toBe(0);
-
-    const retiredAuto = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        prompt: "legacy Auto request",
-        model: "vm0-model",
-      },
-      [201],
-    );
-    if (retiredAuto.status !== 201 || retiredAuto.body.runId === null) {
-      throw new Error("Expected retired Auto to normalize to Luna");
-    }
-    await api.heartbeatRunner(runnerGroup);
-    const retiredAutoClaim = await api.claimRunnerJob(retiredAuto.body.runId);
-    expect(retiredAutoClaim.environment).toMatchObject({
-      OPENAI_MODEL: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-    });
-    expect(retiredAutoClaim.environment).not.toHaveProperty("OPENAI_BASE_URL");
-    expect(retiredAutoClaim.codexRuntimeConfig).toBeNull();
-    expect(retiredAutoClaim.modelUsageProvider).toBe(
-      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-    );
-    await api.requestCancelRun(actor, retiredAuto.body.runId, [200]);
   });
 
   it("claims vm0 runs with billable model firewall and usage provider", async () => {
@@ -6025,18 +6001,15 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
     expect(claim.cliAgentType).toBe("codex");
     expect(claim.environment).toMatchObject({
-      OPENAI_API_KEY: modelProviderPlaceholder(
-        "deepseek-codex",
-        "DEEPSEEK_API_KEY",
-      ),
-      OPENAI_BASE_URL: "https://api.deepseek.com",
+      OPENAI_API_KEY: modelProviderPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
+      OPENAI_BASE_URL: "https://api.deepseek.com/",
       OPENAI_MODEL: selectedModel,
     });
     expect(claim.environment).not.toHaveProperty("ANTHROPIC_MODEL");
     expect(claim.codexRuntimeConfig).toMatchObject({
-      providerId: "deepseek-codex",
+      providerId: "deepseek",
       name: "DeepSeek",
-      baseUrl: "https://api.deepseek.com",
+      baseUrl: "https://api.deepseek.com/",
       envKey: "OPENAI_API_KEY",
       wireApi: "responses",
       supportsWebsockets: false,
@@ -6053,8 +6026,8 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       claim.firewalls?.map((firewall) => {
         return firewallEntryName(firewall);
       }),
-    ).toContain("model-provider:deepseek-codex");
-    expect(claim.billableFirewalls).toContain("model-provider:deepseek-codex");
+    ).toContain("model-provider:deepseek");
+    expect(claim.billableFirewalls).toContain("model-provider:deepseek");
     expect(claim.modelUsageProvider).toBe(selectedModel);
 
     await api.requestCancelRun(actor, sent.body.runId, [200]);
@@ -6072,7 +6045,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const { providerId: deepseekProviderId } = await api.createOrgModelProvider(
       actor,
       {
-        type: "deepseek-codex",
+        type: "deepseek",
         secret: "recognition-deepseek-key",
       },
     );
@@ -6088,7 +6061,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       {
         model: unsupportedModel,
         isDefault: true,
-        defaultProviderType: "deepseek-codex",
+        defaultProviderType: "deepseek",
         credentialScope: "org",
         modelProviderId: deepseekProviderId,
       },
@@ -9879,7 +9852,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 });
 
 describe("RUN-01: zero runner context, queue promotion, and skills", () => {
-  it("selects the runner-bundled zero-cli only when its feature switch is enabled", async () => {
+  it("selects npm, R2, and runner-bundled Zero CLI distributions by feature switch precedence", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     if (!actor.orgId) {
@@ -9899,7 +9872,35 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(npmClaim.appendSystemPrompt ?? "").not.toContain(
       "Run commands with: `zero-cli <command>`",
     );
+    expect(npmClaim.environment?.CLI_PKG_URL).toBeUndefined();
     await api.requestCancelRun(actor, npmRun.runId, [200]);
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.R2ZeroCli]: true },
+    );
+
+    const r2Run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the R2 Zero CLI package",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const r2Claim = await api.claimRunnerJob(r2Run.runId);
+    expect(r2Claim.appendSystemPrompt ?? "").toContain(
+      `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" zero <command>\``,
+    );
+    expect(r2Claim.appendSystemPrompt ?? "").not.toContain(
+      "Run commands with: `npx -p @vm0/cli zero <command>`",
+    );
+    expect(r2Claim.appendSystemPrompt ?? "").not.toContain(
+      "Run commands with: `zero-cli <command>`",
+    );
+    expect(r2Claim.environment?.CLI_PKG_URL).toBe(
+      "https://static.vm0.io/okou-cli/test-commit/package.tgz",
+    );
+    await api.requestCancelRun(actor, r2Run.runId, [200]);
 
     await updateFeatureSwitchesForUser(
       context,
@@ -9918,8 +9919,12 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "Run commands with: `zero-cli <command>`",
     );
     expect(rustClaim.appendSystemPrompt ?? "").not.toContain(
+      `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" zero <command>\``,
+    );
+    expect(rustClaim.appendSystemPrompt ?? "").not.toContain(
       "Run commands with: `npx -p @vm0/cli zero <command>`",
     );
+    expect(rustClaim.environment?.CLI_PKG_URL).toBeUndefined();
     await api.requestCancelRun(actor, rustRun.runId, [200]);
   });
 
@@ -10134,8 +10139,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       expect(appendSystemPrompt).toContain(toolHint);
     }
     expect(appendSystemPrompt).toContain("zero upgrade pro");
-    expect(appendSystemPrompt).not.toContain("zero chat send");
-    expect(appendSystemPrompt).not.toContain("zero chat cancel");
     expect(appendSystemPrompt).not.toContain("zero chat queued");
     expect(appendSystemPrompt).not.toContain(
       "`zero browser use` creates, reuses, or resumes a remote browser",
@@ -10157,15 +10160,13 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
     expect(claim.userTimezone).toBe("America/Los_Angeles");
 
-    expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.ZeroChatMessaging]: false,
-    });
     expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
     expect(claim.disallowedTools).not.toContain("WebFetch");
     expect(claim.environment?.ZERO_APP_URL).toBe(appUrl);
+    expect(claim.environment?.CLI_PKG_URL).toBeUndefined();
     expect(claim.environment?.VM0_APP_URL).toBeUndefined();
     expect(claim.environment?.APP_URL).toBeUndefined();
     expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);

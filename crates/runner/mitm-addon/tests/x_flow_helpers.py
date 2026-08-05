@@ -14,7 +14,7 @@ from tests.stream_buffer_helpers import set_response_stream_buffer
 RealFlowFactory = Callable[..., http.HTTPFlow]
 _JSON_EXCESSIVE_NESTING_DEPTH = 10_000
 _JSON_INTEGER_DIGIT_LIMIT_DIGITS = 10_000
-_X_NDJSON_DENSE_OBJECT_COUNT = 30_000
+_X_DENSE_OBJECT_COUNT = 30_000
 
 
 def x_original_url(path: str, query: str = "") -> str:
@@ -35,10 +35,10 @@ def json_body_that_exceeds_integer_digit_limit() -> bytes:
     return b'{"n":' + b"1" * _JSON_INTEGER_DIGIT_LIMIT_DIGITS + b"}"
 
 
-def json_body_that_exceeds_x_ndjson_work_limit() -> bytes:
+def json_body_that_exceeds_x_json_work_limit() -> bytes:
     return (
         b'{"data":{"id":"blocked"},"includes":{"users":[{},{},{}]},'
-        b'"matching_rules":[' + b",".join([b"{}"] * _X_NDJSON_DENSE_OBJECT_COUNT) + b"]}"
+        b'"matching_rules":[' + b",".join([b"{}"] * _X_DENSE_OBJECT_COUNT) + b"]}"
     )
 
 

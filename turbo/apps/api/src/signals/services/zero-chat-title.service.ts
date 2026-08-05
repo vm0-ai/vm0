@@ -22,13 +22,12 @@ import {
   or,
   type SQL,
 } from "drizzle-orm";
-
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { waitUntil } from "../context/wait-until";
 import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { safeJsonParse, tapError } from "../utils";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";

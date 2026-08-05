@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import {
@@ -37,11 +36,11 @@ import {
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
-
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
@@ -67,8 +66,10 @@ import { chatEventDisplayText } from "./helpers/chat-event";
 import {
   clearThreadSessionBinding,
   deleteVm0ManagedDefaultModelKey,
+  readRunAutonomyBudgetFixture,
   readThreadSessionBinding,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
+  setRunAutonomyBudgetFixture,
 } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
@@ -841,8 +842,8 @@ async function upsertOrgModelProvider(
   body: {
     readonly type:
       | "anthropic-api-key"
-      | "deepseek-codex"
-      | "deepseek-api-key"
+      | "deepseek"
+      | "moonshot-api-key"
       | "openai-api-key"
       | "openrouter-api-key"
       | "vercel-ai-gateway"
@@ -942,15 +943,16 @@ async function requestSendEventWithBearer(
     readonly clientEventId?: string;
     readonly prompt: string;
     readonly threadId?: string;
+    readonly userMessage?: UserMessageDocument;
   },
-  statuses: readonly (201 | 401 | 403)[],
+  statuses: readonly (201 | 400 | 401 | 403 | 409)[],
 ) {
   return await accept(
     chatEventsClient().send({
       headers: { authorization: `Bearer ${token}` },
       body: {
         ...body,
-        userMessage: {
+        userMessage: body.userMessage ?? {
           version: 1,
           parts: [{ type: "text", text: body.prompt }],
         },
@@ -1483,6 +1485,39 @@ describe("CHAT-02: queueing and recalling messages", () => {
       );
     }
 
+    const emptyControlPayloadBytes = Buffer.byteLength(
+      JSON.stringify({ type: "active-input", text: "" }),
+      "utf8",
+    );
+    const exactLimitPendingEventId = randomUUID();
+    const exactLimitPending = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "x".repeat(
+          ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES - emptyControlPayloadBytes,
+        ),
+        clientEventId: exactLimitPendingEventId,
+      },
+      [201],
+    );
+    if (exactLimitPending.status !== 201) {
+      throw new Error("Expected the exact-limit pending send to be accepted");
+    }
+    expect(exactLimitPending.body.runId).toBeNull();
+    const exactLimitPrompt = await api.claimRunnerActiveInputs(
+      claim.sandboxToken,
+      active.runId,
+      [exactLimitPendingEventId],
+    );
+    expect(
+      Buffer.byteLength(
+        JSON.stringify({ type: "active-input", text: exactLimitPrompt }),
+        "utf8",
+      ),
+    ).toBe(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES);
+
     const oversizedPendingEventId = randomUUID();
     const oversizedPending = await chat.requestSendEvent(
       actor,
@@ -1520,6 +1555,12 @@ describe("CHAT-02: queueing and recalling messages", () => {
         return event.revokesEventId === oversizedPendingEventId;
       }),
     ).toBeFalsy();
+    expect(userMessages(afterOversizedClaim.events)).toContainEqual(
+      expect.objectContaining({
+        runId: active.runId,
+        revokesEventId: exactLimitPendingEventId,
+      }),
+    );
     await chat.requestSendEvent(
       actor,
       {
@@ -2448,24 +2489,24 @@ describe("CHAT-02: model-first provider policies", () => {
   it("routes model policy providers into the runner claim", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const { providerId: deepseekId } = await upsertOrgModelProvider(actor, {
-      type: "deepseek-api-key",
-      secret: "selected-deepseek-key",
+    const { providerId: moonshotId } = await upsertOrgModelProvider(actor, {
+      type: "moonshot-api-key",
+      secret: "selected-moonshot-key",
     });
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "deepseek-v4-pro",
+        model: "kimi-k2.7-code",
         isDefault: true,
-        defaultProviderType: "deepseek-api-key",
+        defaultProviderType: "moonshot-api-key",
         credentialScope: "org",
-        modelProviderId: deepseekId,
+        modelProviderId: moonshotId,
       },
     ]);
 
     const run = await sendChatRun(actor, {
       agentId,
-      prompt: "run with the selected deepseek provider",
-      model: "deepseek-v4-pro",
+      prompt: "run with the selected Moonshot provider",
+      model: "kimi-k2.7-code",
     });
 
     const { claim, sandboxHeaders } = await claimChatRun(
@@ -2474,12 +2515,12 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     const environment = claimEnvironment(claim);
     expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
-      modelProviderSecretPlaceholder("deepseek-api-key", "DEEPSEEK_API_KEY"),
+      modelProviderSecretPlaceholder("moonshot-api-key", "MOONSHOT_API_KEY"),
     );
     expect(environment.ANTHROPIC_BASE_URL).toBe(
-      "https://api.deepseek.com/anthropic",
+      "https://api.moonshot.ai/anthropic",
     );
-    expect(environment.ANTHROPIC_MODEL).toBe("deepseek-v4-pro");
+    expect(environment.ANTHROPIC_MODEL).toBe("kimi-k2.7-code");
     expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
     expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
 
@@ -2497,14 +2538,14 @@ describe("CHAT-02: model-first provider policies", () => {
       expect.objectContaining({
         kind: "created",
         chatThreadId: run.threadId,
-        selectedModel: "deepseek-v4-pro",
+        selectedModel: "kimi-k2.7-code",
       }),
     );
     expect(threadEvents.body.events).not.toContainEqual(
       expect.objectContaining({
         kind: "model_selection_updated",
         chatThreadId: run.threadId,
-        selectedModel: "deepseek-v4-pro",
+        selectedModel: "kimi-k2.7-code",
       }),
     );
 
@@ -2523,12 +2564,12 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     const followUpEnvironment = claimEnvironment(followUpClaim);
     expect(followUpEnvironment.ANTHROPIC_AUTH_TOKEN).toBe(
-      modelProviderSecretPlaceholder("deepseek-api-key", "DEEPSEEK_API_KEY"),
+      modelProviderSecretPlaceholder("moonshot-api-key", "MOONSHOT_API_KEY"),
     );
     expect(followUpEnvironment.ANTHROPIC_BASE_URL).toBe(
-      "https://api.deepseek.com/anthropic",
+      "https://api.moonshot.ai/anthropic",
     );
-    expect(followUpEnvironment.ANTHROPIC_MODEL).toBe("deepseek-v4-pro");
+    expect(followUpEnvironment.ANTHROPIC_MODEL).toBe("kimi-k2.7-code");
     await cancelChatRun(actor, followUp.runId);
 
     // A vm0 provider pin in an entitled org passes the spendable-credits
@@ -2573,14 +2614,14 @@ describe("CHAT-02: model-first provider policies", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const { providerId } = await upsertOrgModelProvider(actor, {
-      type: "deepseek-codex",
+      type: "deepseek",
       secret: "selected-deepseek-responses-key",
     });
     await api.updateOrgModelPolicies(actor, [
       {
         model: "deepseek-v4-flash",
         isDefault: true,
-        defaultProviderType: "deepseek-codex",
+        defaultProviderType: "deepseek",
         credentialScope: "org",
         modelProviderId: providerId,
       },
@@ -2599,15 +2640,15 @@ describe("CHAT-02: model-first provider policies", () => {
 
     expect(claim.cliAgentType).toBe("codex");
     expect(environment.OPENAI_API_KEY).toBe(
-      modelProviderSecretPlaceholder("deepseek-codex", "DEEPSEEK_API_KEY"),
+      modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
     );
-    expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com");
+    expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com/");
     expect(environment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     expect(environment.ANTHROPIC_MODEL).toBeUndefined();
     expect(claim.codexRuntimeConfig).toMatchObject({
-      providerId: "deepseek-codex",
+      providerId: "deepseek",
       name: "DeepSeek",
-      baseUrl: "https://api.deepseek.com",
+      baseUrl: "https://api.deepseek.com/",
       envKey: "OPENAI_API_KEY",
       requiresOpenaiAuth: false,
       wireApi: "responses",
@@ -2639,12 +2680,12 @@ describe("CHAT-02: model-first provider policies", () => {
     const followUpEnvironment = claimEnvironment(followUpClaim);
     expect(followUpClaim.cliAgentType).toBe("codex");
     expect(followUpClaim.resumeSession?.sessionId).toBe(`bdd-cli-${run.runId}`);
-    expect(followUpClaim.codexRuntimeConfig?.providerId).toBe("deepseek-codex");
+    expect(followUpClaim.codexRuntimeConfig?.providerId).toBe("deepseek");
     expect(followUpEnvironment.OPENAI_API_KEY).toBe(
-      modelProviderSecretPlaceholder("deepseek-codex", "DEEPSEEK_API_KEY"),
+      modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
     );
     expect(followUpEnvironment.OPENAI_BASE_URL).toBe(
-      "https://api.deepseek.com",
+      "https://api.deepseek.com/",
     );
     expect(followUpEnvironment.OPENAI_MODEL).toBe("deepseek-v4-flash");
 
@@ -4817,9 +4858,7 @@ describe("CHAT-02: run-level model overrides", () => {
       [400],
     );
     expectApiError(invalidModel.body);
-    expect(invalidModel.body.error.message).toBe(
-      "model: Invalid model selection",
-    );
+    expect(invalidModel.body.error.message).toBe("Invalid input");
     await chat.requestReadThread(actor, vm0ThreadId, [404]);
 
     const unavailableThreadId = randomUUID();
@@ -4858,7 +4897,7 @@ describe("CHAT-02: run-level model overrides", () => {
       expectApiError(removed.body);
       expect(removed.body.error).toMatchObject({
         code: "BAD_REQUEST",
-        message: "model: Invalid model selection",
+        message: "Invalid input",
       });
       await chat.requestReadThread(actor, removedThreadId, [404]);
     }
@@ -5188,6 +5227,168 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       }),
     );
     await cancelChatRun(actor, normalFollowupRunId);
+  }, 90_000);
+
+  it("steers an active-run recommended follow-up only when chat steer is enabled", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockOptionalEnv("OPENROUTER_API_KEY", "followup-gate-key");
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const payload = openRouterBodySchema.parse(await request.json());
+          const systemContent = payload.messages[0]?.content ?? "";
+          return HttpResponse.json({
+            choices: [
+              {
+                message: {
+                  content: systemContent.includes("concise follow-up prompts")
+                    ? JSON.stringify([
+                        { prompt: "Use the gated follow-up", kind: "talk" },
+                      ])
+                    : "Follow-up gate",
+                },
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const completed = await sendChatRun(actor, {
+      agentId,
+      prompt: "prepare a recommended follow-up",
+    });
+    const completedClaim = await claimChatRun(runnerGroup, completed.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "A completed answer with follow-ups"),
+    ]);
+    await completeChatRunOk(completed.runId, completedClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    const completedEvents = await waitForThreadMessages(
+      actor,
+      completed.threadId,
+      (events) => {
+        return recommendedFollowupEvents(events, completed.runId).some(
+          (event) => {
+            return event.recommendedFollowups.length > 0;
+          },
+        );
+      },
+    );
+    const recommender = recommendedFollowupEvents(
+      completedEvents.events,
+      completed.runId,
+    ).find((event) => {
+      return event.recommendedFollowups.length > 0;
+    });
+    if (!recommender) {
+      throw new Error("Expected a recommended follow-ups event");
+    }
+
+    const disabledActive = await sendChatRun(actor, {
+      agentId,
+      threadId: completed.threadId,
+      prompt: "keep the feature disabled",
+    });
+    const disabledEventId = randomUUID();
+    const disabledFollowup = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: completed.threadId,
+        prompt: "do not steer while disabled",
+        revokesEventId: recommender.id,
+        clientEventId: disabledEventId,
+      },
+      [400],
+    );
+    expectApiError(disabledFollowup.body);
+    expect(disabledFollowup.body.error.message).toBe(
+      "Recommended follow-up cannot be queued",
+    );
+    const afterDisabledFollowup = await chat.listThreadEvents(
+      actor,
+      completed.threadId,
+    );
+    expect(afterDisabledFollowup.events).not.toContainEqual(
+      expect.objectContaining({ id: disabledEventId }),
+    );
+    await cancelChatRun(actor, disabledActive.runId);
+
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatSteer]: true },
+    );
+    const enabledActive = await sendChatRun(actor, {
+      agentId,
+      threadId: completed.threadId,
+      prompt: "enable the recommended follow-up steer",
+    });
+    const enabledClaim = await claimChatRun(runnerGroup, enabledActive.runId);
+    const enabledEventId = randomUUID();
+    const enabledFollowup = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: completed.threadId,
+        prompt: "steer while enabled",
+        revokesEventId: recommender.id,
+        clientEventId: enabledEventId,
+      },
+      [201],
+    );
+    if (enabledFollowup.status !== 201) {
+      throw new Error("Expected the enabled recommended follow-up to succeed");
+    }
+    expect(enabledFollowup.body.runId).toBeNull();
+    await expect(
+      api.listRunnerActiveInputs(
+        enabledClaim.claim.sandboxToken,
+        enabledActive.runId,
+      ),
+    ).resolves.toStrictEqual([enabledEventId]);
+    await expect(
+      api.claimRunnerActiveInputs(
+        enabledClaim.claim.sandboxToken,
+        enabledActive.runId,
+        [enabledEventId],
+      ),
+    ).resolves.toBe("steer while enabled");
+
+    const afterEnabledFollowup = await waitForThreadMessages(
+      actor,
+      completed.threadId,
+      (events) => {
+        return userMessages(events).some((event) => {
+          return (
+            event.revokesEventId === enabledEventId &&
+            event.runId === enabledActive.runId
+          );
+        });
+      },
+    );
+    expect(afterEnabledFollowup.events).toContainEqual(
+      expect.objectContaining({
+        id: enabledEventId,
+        eventType: "input.prompt",
+        revokesEventId: recommender.id,
+      }),
+    );
+    expect(afterEnabledFollowup.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "input.prompt",
+        revokesEventId: enabledEventId,
+        runId: enabledActive.runId,
+      }),
+    );
+    await cancelChatRun(actor, enabledActive.runId);
   }, 90_000);
 });
 
@@ -6231,7 +6432,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
 });
 
 describe("CHAT-02: run-scoped Zero-token chat launches", () => {
-  it("keeps immediate and queued runs web-scoped without agent provenance", async () => {
+  it("keeps immediate and queued runs agent-scoped without retired provenance", async () => {
     const { actor, agentId } = await entitledChatActor();
     if (!actor.orgId) {
       throw new Error("Expected an organization-scoped chat actor");
@@ -6278,6 +6479,12 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
       runId: immediate.body.runId,
       prompt: "immediate run-scoped handoff",
     });
+    await expect(
+      readRunAutonomyBudgetFixture(context, caller.runId),
+    ).resolves.toBe(10);
+    await expect(
+      readRunAutonomyBudgetFixture(context, immediate.body.runId),
+    ).resolves.toBe(9);
     // Neither callback internals nor retired provenance are public API fields.
     // The test-only state route is the only boundary that can prove their
     // absence without importing database schemas or production services.
@@ -6291,7 +6498,7 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
       context.signal,
     );
     expect(immediateState.zero_run).toMatchObject({
-      triggerSource: "web",
+      triggerSource: "agent",
     });
     expect(
       immediateState.callbacks.map((callback) => {
@@ -6344,6 +6551,9 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
       runId: promoted.runId,
       prompt: "queued run-scoped handoff",
     });
+    await expect(
+      readRunAutonomyBudgetFixture(context, promoted.runId),
+    ).resolves.toBe(9);
     const promotedState = await runStateStore.set(
       readAgentRunState$,
       {
@@ -6354,7 +6564,7 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
       context.signal,
     );
     expect(promotedState.zero_run).toMatchObject({
-      triggerSource: "web",
+      triggerSource: "agent",
     });
     expect(
       promotedState.callbacks.map((callback) => {
@@ -6748,6 +6958,522 @@ describe("CHAT-02: shared user message queue", () => {
     }
 
     await cancelChatRun(actor, runId);
+  }, 90_000);
+
+  it("persists agent-run provenance for messages sent across chat threads", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const firstTargetThread = await chat.createThread(actor, { agentId });
+    const secondTargetThread = await chat.createThread(actor, { agentId });
+
+    const source = await sendChatRun(actor, {
+      agentId,
+      prompt: "delegate work to other chat threads",
+    });
+    const { claim: sourceClaim, sandboxHeaders: sourceSandboxHeaders } =
+      await claimChatRun(runnerGroup, source.runId);
+    const sourceToken = zeroTokenFromClaim(sourceClaim);
+
+    const firstEventId = randomUUID();
+    const firstSend = await requestSendEventWithBearer(
+      sourceToken,
+      {
+        agentId,
+        clientEventId: firstEventId,
+        threadId: firstTargetThread.id,
+        prompt: "first delegated prompt",
+      },
+      [201],
+    );
+    if (firstSend.status !== 201) {
+      throw new Error("Expected the first delegated prompt to be accepted");
+    }
+    if (!firstSend.body.runId) {
+      throw new Error("Expected the first delegated prompt to launch a run");
+    }
+    const firstTargetRunId = firstSend.body.runId;
+    await expect(
+      readRunAutonomyBudgetFixture(context, source.runId),
+    ).resolves.toBe(10);
+    await expect(
+      readRunAutonomyBudgetFixture(context, firstTargetRunId),
+    ).resolves.toBe(9);
+    const firstMessages = await waitForThreadMessages(
+      actor,
+      firstTargetThread.id,
+      (events) => {
+        return userMessages(events).some((event) => {
+          return event.id === firstEventId;
+        });
+      },
+    );
+    const firstInput = userMessages(firstMessages.events).find(
+      (event): event is PromptMessage => {
+        return event.eventType === "input.prompt" && event.id === firstEventId;
+      },
+    );
+    expect(firstInput).toMatchObject({
+      eventType: "input.prompt",
+      triggerSource: "agent",
+      userMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: "first delegated prompt" },
+          {
+            type: "source",
+            kind: "agent",
+            runId: source.runId,
+            threadId: source.threadId,
+            agentId,
+            titleSnapshot: "New thread",
+            href: `/chats/${source.threadId}#run-${source.runId}`,
+          },
+        ],
+      },
+    });
+    expect(firstInput?.runId).toBeUndefined();
+    const legacyFirstMessages = await chat.listThreadEvents(
+      actor,
+      firstTargetThread.id,
+      {},
+      "0.636.1",
+    );
+    const legacyFirstInput = userMessages(legacyFirstMessages.events).find(
+      (event): event is PromptMessage => {
+        return event.eventType === "input.prompt" && event.id === firstEventId;
+      },
+    );
+    expect(legacyFirstInput?.userMessage.parts).toStrictEqual([
+      { type: "text", text: "first delegated prompt" },
+    ]);
+    const legacyFirstById = await chat.getThreadEvent(
+      actor,
+      firstTargetThread.id,
+      firstEventId,
+      "0.636.1",
+    );
+    expect(
+      legacyFirstById.eventType === "input.prompt"
+        ? legacyFirstById.userMessage.parts
+        : null,
+    ).toStrictEqual([{ type: "text", text: "first delegated prompt" }]);
+
+    await chat.renameThread(actor, source.threadId, "Delegation source");
+    const secondEventId = randomUUID();
+    const secondSend = await requestSendEventWithBearer(
+      sourceToken,
+      {
+        agentId,
+        clientEventId: secondEventId,
+        threadId: secondTargetThread.id,
+        prompt: "second delegated prompt",
+      },
+      [201],
+    );
+    if (secondSend.status !== 201) {
+      throw new Error("Expected the second delegated prompt to be accepted");
+    }
+    if (!secondSend.body.runId) {
+      throw new Error("Expected the second delegated prompt to queue a run");
+    }
+    const secondTargetRunId = secondSend.body.runId;
+    expect(secondSend.body.status).toBe("queued");
+    await expect(
+      readRunAutonomyBudgetFixture(context, secondTargetRunId),
+    ).resolves.toBe(9);
+    const secondMessages = await waitForThreadMessages(
+      actor,
+      secondTargetThread.id,
+      (events) => {
+        return userMessages(events).some((event) => {
+          return event.id === secondEventId;
+        });
+      },
+    );
+    const secondInput = userMessages(secondMessages.events).find(
+      (event): event is PromptMessage => {
+        return event.eventType === "input.prompt" && event.id === secondEventId;
+      },
+    );
+    expect(secondInput?.userMessage.parts).toContainEqual({
+      type: "source",
+      kind: "agent",
+      runId: source.runId,
+      threadId: source.threadId,
+      agentId,
+      titleSnapshot: "Delegation source",
+      href: `/chats/${source.threadId}#run-${source.runId}`,
+    });
+
+    await chat.renameThread(actor, source.threadId, "now");
+    const nowTargetThread = await chat.createThread(actor, { agentId });
+    const nowEventId = randomUUID();
+    const nowSend = await requestSendEventWithBearer(
+      sourceToken,
+      {
+        agentId,
+        clientEventId: nowEventId,
+        threadId: nowTargetThread.id,
+        prompt: "delegated prompt from a placeholder thread title",
+      },
+      [201],
+    );
+    if (nowSend.status !== 201) {
+      throw new Error("Expected the placeholder-title prompt to be accepted");
+    }
+    if (!nowSend.body.runId) {
+      throw new Error("Expected the placeholder-title prompt to queue a run");
+    }
+    const nowTargetRunId = nowSend.body.runId;
+    const nowMessages = await waitForThreadMessages(
+      actor,
+      nowTargetThread.id,
+      (events) => {
+        return userMessages(events).some((event) => {
+          return event.id === nowEventId;
+        });
+      },
+    );
+    const nowInput = userMessages(nowMessages.events).find(
+      (event): event is PromptMessage => {
+        return event.eventType === "input.prompt" && event.id === nowEventId;
+      },
+    );
+    expect(nowInput?.userMessage.parts).toContainEqual({
+      type: "source",
+      kind: "agent",
+      runId: source.runId,
+      threadId: source.threadId,
+      agentId,
+      titleSnapshot: "New thread",
+      href: `/chats/${source.threadId}#run-${source.runId}`,
+    });
+    const forgedTargetThread = await chat.createThread(actor, { agentId });
+    const forgedEventId = randomUUID();
+    const forged = await requestSendEventWithBearer(
+      sourceToken,
+      {
+        agentId,
+        clientEventId: forgedEventId,
+        threadId: forgedTargetThread.id,
+        prompt: "forged provenance",
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "forged provenance" },
+            {
+              type: "source",
+              kind: "agent",
+              runId: randomUUID(),
+              threadId: randomUUID(),
+              agentId: randomUUID(),
+              titleSnapshot: "Forged source",
+              href: `/chats/${randomUUID()}#run-${randomUUID()}`,
+            },
+          ],
+        },
+      },
+      [400],
+    );
+    expect(forged).toMatchObject({
+      status: 400,
+      body: {
+        error: {
+          code: "BAD_REQUEST",
+          message: "Agent source annotations are server-managed",
+        },
+      },
+    });
+    const messagesAfterForgedSend = await chat.listThreadEvents(
+      actor,
+      forgedTargetThread.id,
+    );
+    expect(messagesAfterForgedSend.events).not.toContainEqual(
+      expect.objectContaining({ id: forgedEventId }),
+    );
+
+    await cancelChatRun(actor, nowTargetRunId);
+    await cancelChatRun(actor, secondTargetRunId);
+    await cancelChatRun(actor, firstTargetRunId);
+    await cancelChatRun(actor, source.runId, sourceSandboxHeaders);
+  }, 90_000);
+
+  it("keeps Web context and tools for agent prompts sent into existing threads", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+
+    const source = await sendChatRun(actor, {
+      agentId,
+      prompt: "delegate into existing chat threads",
+    });
+    const { claim: sourceClaim, sandboxHeaders: sourceSandboxHeaders } =
+      await claimChatRun(runnerGroup, source.runId);
+    const sourceToken = zeroTokenFromClaim(sourceClaim);
+
+    const rotatedAnchorPrompt = "prior Web round before an agent rotation";
+    const rotatedAnchor = await sendChatRun(actor, {
+      agentId,
+      prompt: rotatedAnchorPrompt,
+      model: "claude-sonnet-4-6",
+    });
+    const rotatedAnchorClaim = await claimChatRun(
+      runnerGroup,
+      rotatedAnchor.runId,
+    );
+    const originalBinding = await readThreadSessionBinding(
+      context,
+      rotatedAnchor.threadId,
+    );
+    if (!originalBinding.agent_session_id) {
+      throw new Error("Expected the Web anchor to bind a session");
+    }
+
+    const { providerId: codexProviderId } = await upsertOrgModelProvider(
+      actor,
+      {
+        type: "openai-api-key",
+        secret: "agent-web-semantics-openai-key",
+      },
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "gpt-5.6-terra",
+        isDefault: false,
+        defaultProviderType: "openai-api-key",
+        credentialScope: "org",
+        modelProviderId: codexProviderId,
+      },
+    ]);
+    await chat.updateThreadModelSelection(
+      actor,
+      rotatedAnchor.threadId,
+      "gpt-5.6-terra",
+    );
+
+    const rotatedEventId = randomUUID();
+    const rotatedQueued = await requestSendEventWithBearer(
+      sourceToken,
+      {
+        agentId,
+        clientEventId: rotatedEventId,
+        threadId: rotatedAnchor.threadId,
+        prompt: "agent prompt after the Web session rotates",
+      },
+      [201],
+    );
+    if (rotatedQueued.status !== 201) {
+      throw new Error("Expected the rotated agent prompt to queue");
+    }
+    expect(rotatedQueued.body.runId).toBeNull();
+
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(
+      rotatedAnchor.runId,
+      rotatedAnchorClaim.sandboxHeaders,
+    );
+    const rotatedMessages = await waitForThreadMessages(
+      actor,
+      rotatedAnchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === rotatedEventId &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const rotatedRunId = userMessages(rotatedMessages.events).find(
+      (message) => {
+        return message.revokesEventId === rotatedEventId;
+      },
+    )?.runId;
+    if (!rotatedRunId) {
+      throw new Error("Expected the rotated agent prompt to be promoted");
+    }
+    const rotatedRun = await api.readRun(actor, rotatedRunId);
+    const rotatedSystemPrompt = rotatedRun.appendSystemPrompt ?? "";
+    const rotatedState = await runStateStore.set(
+      readAgentRunState$,
+      {
+        orgId: actor.orgId,
+        userId: actor.userId,
+        runId: rotatedRunId,
+      },
+      context.signal,
+    );
+    expect(rotatedState.zero_run).toMatchObject({ triggerSource: "agent" });
+    expect(rotatedSystemPrompt).toContain("# Web Chat Run Context");
+    expect(rotatedSystemPrompt).toContain(rotatedAnchorPrompt);
+    expect(rotatedSystemPrompt).not.toContain("# Incomplete Rounds Context");
+    expect(rotatedSystemPrompt).toContain("Web chat files: use");
+    expect(rotatedSystemPrompt).toContain(
+      "Cross-integration messages from web chat",
+    );
+    expect(rotatedSystemPrompt).toContain(
+      CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET,
+    );
+    const rotatedBinding = await readThreadSessionBinding(
+      context,
+      rotatedAnchor.threadId,
+    );
+    expect(rotatedBinding.agent_session_id).not.toBe(
+      originalBinding.agent_session_id,
+    );
+    const rotatedClaim = await claimChatRun(runnerGroup, rotatedRunId);
+    expect(rotatedClaim.claim.resumeSession).toBeNull();
+    await cancelChatRun(actor, rotatedRunId, rotatedClaim.sandboxHeaders);
+
+    const incompletePrompt = "failed Web round before an agent retry";
+    const incomplete = await sendChatRun(actor, {
+      agentId,
+      prompt: incompletePrompt,
+    });
+    const incompleteClaim = await claimChatRun(runnerGroup, incomplete.runId);
+    const incompleteEventId = randomUUID();
+    const incompleteQueued = await requestSendEventWithBearer(
+      sourceToken,
+      {
+        agentId,
+        clientEventId: incompleteEventId,
+        threadId: incomplete.threadId,
+        prompt: "agent prompt after an incomplete Web round",
+      },
+      [201],
+    );
+    if (incompleteQueued.status !== 201) {
+      throw new Error("Expected the incomplete agent prompt to queue");
+    }
+    expect(incompleteQueued.body.runId).toBeNull();
+
+    await failChatRun(
+      incomplete.runId,
+      incompleteClaim.sandboxHeaders,
+      "expected incomplete Web round",
+    );
+    const incompleteMessages = await waitForThreadMessages(
+      actor,
+      incomplete.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === incompleteEventId &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const incompleteRunId = userMessages(incompleteMessages.events).find(
+      (message) => {
+        return message.revokesEventId === incompleteEventId;
+      },
+    )?.runId;
+    if (!incompleteRunId) {
+      throw new Error("Expected the incomplete agent prompt to be promoted");
+    }
+    const incompleteRun = await api.readRun(actor, incompleteRunId);
+    const incompleteSystemPrompt = incompleteRun.appendSystemPrompt ?? "";
+    const incompleteState = await runStateStore.set(
+      readAgentRunState$,
+      {
+        orgId: actor.orgId,
+        userId: actor.userId,
+        runId: incompleteRunId,
+      },
+      context.signal,
+    );
+    expect(incompleteState.zero_run).toMatchObject({ triggerSource: "agent" });
+    expect(incompleteSystemPrompt).toContain("# Incomplete Rounds Context");
+    expect(incompleteSystemPrompt).toContain(incompletePrompt);
+    expect(incompleteSystemPrompt).not.toContain("# Web Chat Run Context");
+    expect(incompleteSystemPrompt).toContain("Web chat files: use");
+    const promotedIncompleteClaim = await claimChatRun(
+      runnerGroup,
+      incompleteRunId,
+    );
+    await cancelChatRun(
+      actor,
+      incompleteRunId,
+      promotedIncompleteClaim.sandboxHeaders,
+    );
+    await cancelChatRun(actor, source.runId, sourceSandboxHeaders);
+  }, 90_000);
+
+  it("blocks cross-thread delegation from a zero-budget run", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const target = await chat.createThread(actor, { agentId });
+    const blockedTarget = await chat.createThread(actor, { agentId });
+    const root = await sendChatRun(actor, {
+      agentId,
+      prompt: "start bounded delegation",
+    });
+    const rootClaim = await claimChatRun(runnerGroup, root.runId);
+    await setRunAutonomyBudgetFixture(context, root.runId, 1);
+
+    const delegated = await requestSendEventWithBearer(
+      zeroTokenFromClaim(rootClaim.claim),
+      {
+        agentId,
+        clientEventId: randomUUID(),
+        threadId: target.id,
+        prompt: "last allowed delegation",
+      },
+      [201],
+    );
+    if (delegated.status !== 201 || delegated.body.runId === null) {
+      throw new Error("Expected the last allowed delegation to create a run");
+    }
+    await expect(
+      readRunAutonomyBudgetFixture(context, delegated.body.runId),
+    ).resolves.toBe(0);
+
+    await completeChatRunOk(root.runId, rootClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+    const delegatedClaim = await claimChatRun(
+      runnerGroup,
+      delegated.body.runId,
+    );
+
+    const blockedEventId = randomUUID();
+    const blocked = await requestSendEventWithBearer(
+      zeroTokenFromClaim(delegatedClaim.claim),
+      {
+        agentId,
+        clientEventId: blockedEventId,
+        threadId: blockedTarget.id,
+        prompt: "delegation beyond the limit",
+      },
+      [409],
+    );
+    expect(blocked).toMatchObject({
+      status: 409,
+      body: {
+        error: { code: "AUTONOMY_BUDGET_EXHAUSTED" },
+      },
+    });
+    const targetMessages = await chat.listThreadEvents(actor, blockedTarget.id);
+    expect(targetMessages.events).not.toContainEqual(
+      expect.objectContaining({ id: blockedEventId }),
+    );
+
+    await completeChatRunOk(
+      delegated.body.runId,
+      delegatedClaim.sandboxHeaders,
+    );
+    await flushWaitUntilForTest();
   }, 90_000);
 
   it("derives real-agent preview mode when queued messages are claimed", async () => {

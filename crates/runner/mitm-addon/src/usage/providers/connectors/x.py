@@ -102,6 +102,9 @@ def _strip_request_target_query(request_target: str) -> str:
 # exceeding it indicates malformed or hostile upstream data, so the parser
 # discards that row through its terminating newline to protect memory.
 _MAX_NDJSON_LINE_BYTES = LARGE_RESPONSE_DECOMPRESS_LIMIT
+# Bound dense syntax and slow scalar inspection across one non-streaming X JSON
+# response while retaining the selective parser's bulk discarded-string path.
+_MAX_JSON_RESPONSE_WORK_UNITS = 65_536
 # Bound dense syntax and slow scalar inspection while keeping multi-megabyte
 # ordinary discarded strings on the selective parser's bulk-scan path.
 _MAX_NDJSON_ROW_WORK_UNITS = 65_536
@@ -241,6 +244,7 @@ def _create_x_json_selective_extractor() -> JsonSelectiveExtractor:
         array_count_paths={("data",), ("errors",)},
         wildcard_array_count_paths={("includes", "*")},
         object_presence_paths={(), ("data",)},
+        max_work_units=_MAX_JSON_RESPONSE_WORK_UNITS,
     )
 
 
@@ -745,11 +749,32 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     buffer; decoder/parser completeness is reported separately from forensic
     buffer truncation.
 
-    Buffered JSON fallback failures (truncated buffer, malformed JSON,
-    unexpected shape) leave ``body_parsed=False`` and emit no count fields, so
-    analysis can distinguish "field absent in response" from "we couldn't
-    parse it". NDJSON stream parser failures are reported through
-    ``ndjson_lines_failed``.
+    Ordinary X JSON responses handled by the incremental decoder/parser path
+    publish ``flow.metadata[metadata_keys.X_JSON_STATE]`` at normal response
+    finalization. When present, that state is authoritative over the capped
+    forensic buffer and buffered fallback because this path is fed decoded
+    response chunks independently of that buffer. Its
+    ``body_truncated=False`` therefore means billing inspection was not capped
+    by the forensic buffer; it does not mean the optional forensic capture
+    retained the full response. Parser and decoder failures are reported
+    separately through ``parse_error``.
+
+    Only when neither incremental state is present does the buffered JSON
+    fallback parse ``flow.metadata[metadata_keys.STREAM_BUFFER]``. On that path,
+    ``body_truncated`` retains ``STREAM_BUFFER_STATE["truncated"]`` because the
+    capped buffer is the billing input. Buffered fallback failures (truncated
+    buffer, malformed JSON, unexpected shape) leave ``body_parsed=False`` and
+    emit no count fields, so analysis can distinguish "field absent in
+    response" from "we couldn't parse it". NDJSON stream parser failures are
+    reported through ``ndjson_lines_failed``.
+
+    Focused coverage is
+    ``test_forensic_buffer_truncation_does_not_stop_x_json_parser`` for complete
+    incremental state after capture truncation,
+    ``test_response_logs_x_json_parse_error_after_forensic_buffer_truncates``
+    for incremental parse-error state after capture truncation, and
+    ``test_truncated_buffer_with_no_hints_skips_billing`` for the buffered
+    fallback branch.
     """
     state = flow.metadata.get(metadata_keys.STREAM_BUFFER_STATE) or {}
     truncated = bool(state.get("truncated", False))

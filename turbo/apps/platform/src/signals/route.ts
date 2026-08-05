@@ -1,6 +1,6 @@
 import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
-import type { RoutePath } from "../types/route.ts";
+import type { RoutePath } from "./route-paths";
 import { clerk$, needsOrgSelection$, resolveAppAuthUrl } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
@@ -188,7 +188,15 @@ export const initRoutes$ = command(
 
 interface NavigateOptions {
   searchParams?: URLSearchParams;
+  hash?: string;
   replace?: boolean;
+}
+
+function routeHash(hash: string | undefined): string {
+  if (!hash) {
+    return "";
+  }
+  return hash.startsWith("#") ? hash : `#${hash}`;
 }
 
 const navigate$ = command(
@@ -199,7 +207,7 @@ const navigate$ = command(
     signal: AbortSignal,
   ) => {
     const searchStr = options.searchParams?.toString();
-    const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}`;
+    const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}${routeHash(options.hash)}`;
     L.debug("navigating to", newPath);
     if (options.replace) {
       replaceState({}, "", newPath);
@@ -227,6 +235,7 @@ export const detachedNavigateTo$ = command(
     options?: {
       pathParams?: Parameters<typeof generateRouterPath>[1];
       searchParams?: URLSearchParams;
+      hash?: string;
       replace?: boolean;
     },
   ) => {

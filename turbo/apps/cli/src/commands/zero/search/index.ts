@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { withErrorHandler } from "../../../lib/command";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { runLogsSearch, type LogsSearchCliOptions } from "../logs/search";
-import { searchZeroChat } from "../../../lib/api";
+import { searchZeroChat } from "../../../lib/api/domains/zero-chat";
 import type {
   ChatSearchMessage,
   ChatSearchResponse,

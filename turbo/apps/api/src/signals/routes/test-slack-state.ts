@@ -207,16 +207,28 @@ async function seedDefaultAgent(
       name: input.name,
       displayName: input.displayName ?? null,
     })
-    .onConflictDoUpdate({
-      target: zeroAgents.id,
-      set: {
-        orgId: input.orgId,
-        owner: input.userId,
-        name: input.name,
-        displayName: input.displayName ?? null,
-        updatedAt: nowDate(),
-      },
-    });
+    // Telegram can seed this shared agent at the same time. Handle either
+    // unique key as the arbiter before updating the canonical compose row.
+    .onConflictDoNothing();
+
+  const [agent] = await db
+    .update(zeroAgents)
+    .set({
+      owner: input.userId,
+      displayName: input.displayName ?? null,
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(zeroAgents.id, composeId),
+        eq(zeroAgents.orgId, input.orgId),
+        eq(zeroAgents.name, input.name),
+      ),
+    )
+    .returning({ id: zeroAgents.id });
+  if (!agent) {
+    throw new Error("Failed to resolve seeded default agent");
+  }
 
   await db.transaction(async (tx) => {
     await ensureStarterCreditGrant(tx, input.orgId);
@@ -258,7 +270,7 @@ function vm0ManagedKeyRows(composeId: string) {
     },
     {
       vendor: "deepseek",
-      model: "deepseek-v4-pro",
+      model: "deepseek-v4-flash",
       apiKey: `vm0-key-deepseek-${composeId}`,
       label: composeId,
     },
@@ -714,28 +726,25 @@ async function upsertOrgCacheForTest(
   db: Db,
   args: {
     readonly orgId: string;
-    readonly slug?: string;
     readonly name?: string;
     readonly createdBy?: string;
   },
 ): Promise<void> {
-  if (!args.slug && !args.name) {
+  if (!args.name) {
     return;
   }
   await db
     .insert(orgCache)
     .values({
       orgId: args.orgId,
-      slug: args.slug ?? args.orgId,
-      name: args.name ?? "Test Org",
+      name: args.name,
       createdBy: args.createdBy,
       cachedAt: nowDate(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
       set: {
-        slug: args.slug ?? args.orgId,
-        name: args.name ?? "Test Org",
+        name: args.name,
         createdBy: args.createdBy,
         cachedAt: nowDate(),
       },
@@ -1098,7 +1107,6 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   const db = set(writeDb$);
   await upsertOrgCacheForTest(db, {
     orgId: actor.orgId,
-    slug: body.org_slug,
     name: body.org_name,
     createdBy: actor.userId,
   });

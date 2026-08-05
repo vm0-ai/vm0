@@ -438,6 +438,11 @@ describe("user messages", () => {
         );
       }
     });
+    // Avatars are transparent, so any background fill shows through as a gray
+    // disc behind the face.
+    for (const agentLink of agentLinks) {
+      expect(agentLink.querySelector("img")).not.toHaveClass("bg-muted");
+    }
     expect(agentLinks[0]).toHaveAttribute(
       "href",
       `/agents/${mentionedAgentId}/chat`,
@@ -449,5 +454,95 @@ describe("user messages", () => {
     expect(
       userMessageElement.querySelector("[data-structured-feedback-group]"),
     ).toBeInstanceOf(HTMLElement);
+  });
+
+  it("renders agent-run source annotations with avatar, link, and run anchor", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000750";
+    const sourceThreadId = "b0000000-0000-4000-a000-000000000751";
+    const sourceRunId = "d0000000-0000-4000-a000-000000000751";
+    const targetRunId = "d0000000-0000-4000-a000-000000000750";
+    const sourceAgentId = "a1000000-0000-4000-a000-000000000010";
+    const sourceAgentAvatarUrl = "https://example.com/source-agent-avatar.png";
+    context.mocks.data.team([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: sourceAgentId,
+        displayName: "Source agent",
+        description: null,
+        sound: null,
+        avatarUrl: sourceAgentAvatarUrl,
+        headVersionId: "version_2",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Delegated work",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000750",
+          role: "user",
+          content: "Delegated prompt",
+          runId: targetRunId,
+          triggerSource: "agent",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Delegated prompt" },
+              {
+                type: "source",
+                kind: "agent",
+                runId: sourceRunId,
+                threadId: sourceThreadId,
+                agentId: sourceAgentId,
+                titleSnapshot: "Source thread",
+                href: `/chats/${sourceThreadId}#run-${sourceRunId}`,
+              },
+            ],
+          },
+          createdAt: "2026-08-04T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const sourceLink = await waitFor(() => {
+      const found = queryAllByRoleFast("link").find((element) => {
+        return element.getAttribute("aria-label") === "Open chat Source thread";
+      });
+      if (!found) {
+        throw new Error("Expected the agent source chat link");
+      }
+      return found;
+    });
+    expect(sourceLink).toHaveAttribute(
+      "href",
+      `/chats/${sourceThreadId}#run-${sourceRunId}`,
+    );
+    await waitFor(() => {
+      expect(sourceLink.querySelector("img")).toHaveAttribute(
+        "src",
+        sourceAgentAvatarUrl,
+      );
+    });
+    // Avatars are transparent, so any background fill shows through as a gray
+    // disc behind the face.
+    expect(sourceLink.querySelector("img")).not.toHaveClass("bg-muted");
+    expect(document.getElementById(`run-${targetRunId}`)).toHaveAttribute(
+      "data-role",
+      "user",
+    );
   });
 });

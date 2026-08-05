@@ -2,9 +2,9 @@ name: release-please
 
 # Releases run straight off the push to main. Waiting for the Turbo run on main
 # adds no artifact dependency: each queued pull request's merge-group Turbo run
-# uploads the canonical app artifact under its merged commit SHA, and
+# uploads the canonical app and CLI artifacts under its merged commit SHA, and
 # release-please deploys that same SHA as release_target. The Turbo push run
-# reuses the artifact and only repoints the staging-app Pages alias.
+# reuses those artifacts and only repoints the staging-app Pages alias.
 on:
   push:
     branches: ["main"]
@@ -667,6 +667,47 @@ jobs:
           doppler-project: vm0
           doppler-config: prd
 
+      - name: Wait for canonical CLI artifact
+        id: cli-artifact
+        shell: bash
+        env:
+          ARTIFACT_SHA: ${{ needs.release-please.outputs.release_target }}
+          CLI_STATIC_BASE_URL: https://static.vm0.io
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$ARTIFACT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "CLI artifact commit must be a full lowercase SHA-1: $ARTIFACT_SHA" >&2
+            exit 1
+          fi
+
+          artifact_base_url="${CLI_STATIC_BASE_URL}/okou-cli/${ARTIFACT_SHA}"
+          artifact_dir="$(mktemp -d)"
+          for attempt in $(seq 1 60); do
+            if curl -fsSL \
+              "${artifact_base_url}/ready.json" \
+              --output "${artifact_dir}/ready.json"; then
+              break
+            fi
+            if (( attempt == 60 )); then
+              echo "CLI artifact was not ready after 10 minutes: $artifact_base_url" >&2
+              exit 1
+            fi
+            echo "Waiting for CLI artifact: $artifact_base_url (attempt $attempt/60)"
+            sleep 10
+          done
+
+          curl -fsSL \
+            "${artifact_base_url}/manifest.json" \
+            --output "${artifact_dir}/manifest.json"
+          curl -fsSL \
+            "${artifact_base_url}/package.tgz" \
+            --output "${artifact_dir}/package.tgz"
+          bash .github/scripts/verify-okou-cli-artifact.sh \
+            "$artifact_dir" \
+            "$ARTIFACT_SHA"
+          echo "package-url=${artifact_base_url}/package.tgz" >> "$GITHUB_OUTPUT"
+
       - name: Resolve API production environment
         id: api-production-env
         uses: ./.github/actions/web-api-env
@@ -677,6 +718,7 @@ jobs:
           web-url: https://www.vm0.ai
           app-url: https://app.vm0.ai
           api-backend-url: ${{ vars.VM0_API_BACKEND_URL }}
+          cli-pkg-url: ${{ steps.cli-artifact.outputs.package-url }}
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -908,7 +950,6 @@ jobs:
       - build-runner-release-assets
       - runner-production-host-groups
       - build-runner-production
-      - build-e2b-template-production
       - sbom
       - resolve-image-cache
     # Use always() so this job runs even when upstream build jobs are skipped.
@@ -927,8 +968,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "$NEEDS_JSON" | jq .
-          # "skipped" is acceptable: some build jobs (e.g. build-e2b-template-production)
-          # are component-conditional and only run when their component has a release.
+          # "skipped" is acceptable for component-conditional build jobs.
           failures=$(echo "$NEEDS_JSON" | jq -r '
             to_entries[]
             | select(.value.result != "success" and .value.result != "skipped")
@@ -2382,34 +2422,6 @@ jobs:
                 text:
                   type: mrkdwn
                   text: "*Runner RS* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🏗️ Target: `${{ matrix.target }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
-
-  # Build E2B templates to production account
-  # Uses production environment E2B_API_KEY secret
-  build-e2b-template-production:
-    needs: [release-please]
-    # Build when any release is created
-    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    permissions:
-      contents: read
-    environment: production
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ needs.release-please.outputs.release_target }}
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Build E2B templates
-        working-directory: turbo
-        env:
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-        run: |
-          pnpm e2b:cli:build
-
-      - name: Build summary
-        run: echo "✅ E2B templates built successfully (production account)"
 
   # Generate Software Bill of Materials (SBOM) for CASA compliance (CASA-DEP-003)
   sbom:

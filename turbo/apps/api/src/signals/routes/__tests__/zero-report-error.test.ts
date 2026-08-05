@@ -6,7 +6,8 @@ import { beforeEach, expect } from "vitest";
 import type { AxiomNetworkEvent } from "@vm0/api-contracts/contracts/runs";
 import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-report-error";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";

@@ -4,7 +4,8 @@ import { createStore } from "ccstate";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";

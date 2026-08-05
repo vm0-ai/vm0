@@ -370,6 +370,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Steer pending chat prompts into active runs and render them inline.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PwaChatKeyboardGestures]: {
     maintainer: "bingjie@vm0.ai",
@@ -418,8 +419,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Show standalone Microsoft Teams integration settings, connect flows, and Works page entry points.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.FeishuIntegration]: {
     maintainer: "linghan@vm0.ai",
@@ -447,12 +447,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Create immutable hosted artifact versions behind stable site aliases.",
     enabled: true,
   },
-  [FeatureSwitchKey.HtmlResourceIndex]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Use target-specific static indexes for HTML generation resource selection.",
-    enabled: true,
-  },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -467,17 +461,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ZeroChatMessaging]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Advertise zero chat create, send, and cancel in the agent system prompt without gating the CLI commands or API.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.RustZeroCli]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Use the runner-bundled Rust zero-cli entry point for Zero CLI commands.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.R2ZeroCli]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Use the commit-addressed R2 npm tarball for Zero CLI commands instead of the published @vm0/cli package.",
     enabled: false,
   },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {

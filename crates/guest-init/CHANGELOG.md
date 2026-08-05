@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.16.143](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.142...guest-init-v0.16.143) (2026-08-05)
+
+
+### Documentation
+
+* **guest-init:** document cgroup containment bootstrap ([#25157](https://github.com/vm0-ai/vm0/issues/25157)) ([0f0c74b](https://github.com/vm0-ai/vm0/commit/0f0c74b90934398f1116bc0ad517b5ade744e181))
+
+## [0.16.142](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.141...guest-init-v0.16.142) (2026-08-04)
+
 ## [0.16.141](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.140...guest-init-v0.16.141) (2026-08-04)
 
 ## [0.16.140](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.139...guest-init-v0.16.140) (2026-08-03)

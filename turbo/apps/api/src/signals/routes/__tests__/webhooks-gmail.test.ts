@@ -5,7 +5,6 @@ import {
   randomUUID,
   sign as signData,
 } from "node:crypto";
-
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getVm0Vendor,
@@ -15,8 +14,8 @@ import {
   type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { HttpResponse, http } from "msw";
-
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
@@ -93,19 +92,13 @@ function sandboxOperationEvents(): readonly Record<string, unknown>[] {
   });
 }
 
-function gmailEventContextFromPrompt(
+function expectGmailEventContextInPrompt(
   appendSystemPrompt: string,
-): Record<string, unknown> {
-  const marker = "# This run's event\n";
-  const markerIndex = appendSystemPrompt.indexOf(marker);
-  expect(markerIndex).toBeGreaterThanOrEqual(0);
-  const parsed: unknown = JSON.parse(
-    appendSystemPrompt.slice(markerIndex + marker.length),
+  expected: Record<string, unknown>,
+): void {
+  expect(appendSystemPrompt).toContain(
+    `# This run's event\n${JSON.stringify(expected, null, 2)}`,
   );
-  if (!isRecord(parsed)) {
-    throw new Error("Expected Gmail event context to be an object");
-  }
-  return parsed;
 }
 
 function encodeJwtPart(value: unknown): string {
@@ -717,7 +710,7 @@ describe("POST /api/webhooks/gmail", () => {
     }
     expect(appendSystemPrompt).toContain("Not included below: the email body.");
     expect(appendSystemPrompt).not.toContain("Please draft a helpful reply.");
-    expect(gmailEventContextFromPrompt(appendSystemPrompt)).toStrictEqual({
+    expectGmailEventContextInPrompt(appendSystemPrompt, {
       automationId: created.body.id,
       event: "new_message",
       emailAddress: gmailEmail,
@@ -935,11 +928,15 @@ describe("POST /api/webhooks/gmail", () => {
       throw new Error("Expected appendSystemPrompt on the queued run");
     }
     expect(appendSystemPrompt).not.toContain("Please draft a helpful reply.");
-    expect(gmailEventContextFromPrompt(appendSystemPrompt)).toMatchObject({
+    expectGmailEventContextInPrompt(appendSystemPrompt, {
       automationId: created.body.id,
       event: "new_message",
+      emailAddress: gmailEmail,
       messageId: "msg-1",
       threadId: "gmail-thread-1",
+      from: "Customer Example <customer@example.com>",
+      to: [gmailEmail],
+      cc: [],
       subject: "Invoice needs a reply",
     });
   });

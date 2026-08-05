@@ -76,15 +76,10 @@ const MODEL_PROVIDER_FIREWALL_PROVIDER_CONFIGS: Record<
     secretName: "MINIMAX_API_KEY",
     anthropicBaseUrl: "https://api.minimax.io/anthropic",
   },
-  "deepseek-api-key": {
-    framework: "claude-code",
-    secretName: "DEEPSEEK_API_KEY",
-    anthropicBaseUrl: "https://api.deepseek.com/anthropic",
-  },
-  "deepseek-codex": {
+  deepseek: {
     framework: "codex",
     secretName: "DEEPSEEK_API_KEY",
-    openaiBaseUrl: "https://api.deepseek.com",
+    openaiBaseUrl: "https://api.deepseek.com/",
     firewallBaseUrl: "https://api.deepseek.com/responses",
   },
   "zai-api-key": {
@@ -202,13 +197,8 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS = {
     { name: "Authorization", valuePrefix: "Bearer" },
     MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
   ),
-  "deepseek-api-key": mpFirewall(
-    "deepseek-api-key",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
-  ),
-  "deepseek-codex": mpFirewall(
-    "deepseek-codex",
+  deepseek: mpFirewall(
+    "deepseek",
     { name: "Authorization", valuePrefix: "Bearer" },
     MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
   ),

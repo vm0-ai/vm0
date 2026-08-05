@@ -9,7 +9,6 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { useTranslation } from "react-i18next";
-
 import { i18n } from "../../i18n/index.ts";
 import type { ComposerAgentSuggestion } from "../../signals/zero-page/composer-agent-suggestion-domain.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/zero-page/chat-thread-suggestion-domain.ts";
@@ -18,9 +17,11 @@ import { ComposerMentionSuggestionMenu } from "./chat-thread-suggestion.tsx";
 import {
   buildComposerSlashWorkflows,
   findWorkflowQueryMatches,
+  type ComposerSlashWorkflow,
+} from "../../signals/zero-page/workflow-composer-domain";
+import {
   scrollSlashWorkflowIntoView,
   SlashWorkflowMenu,
-  type ComposerSlashWorkflow,
 } from "./slash-workflow.tsx";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 

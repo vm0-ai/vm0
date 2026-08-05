@@ -6,7 +6,7 @@ import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 
 import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import { getStripeClient } from "../external/stripe-client";
 import { bestEffort, onRejection, settle } from "../utils";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";

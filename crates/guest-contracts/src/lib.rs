@@ -9,6 +9,7 @@ pub mod cli_agent_session_id;
 pub mod codex_thread_id;
 pub mod diagnostics;
 pub mod env;
+pub mod epoch_milliseconds;
 pub mod exec_limits;
 pub mod exec_terminal;
 pub mod process_containment;

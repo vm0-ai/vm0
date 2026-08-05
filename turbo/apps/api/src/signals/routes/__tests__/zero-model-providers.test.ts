@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-
 import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersMainContract,
@@ -7,8 +6,8 @@ import {
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
 import { HttpResponse, http } from "msw";
-
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
 import { generateSandboxToken } from "../../auth/tokens";
@@ -688,23 +687,6 @@ describe("POST /api/zero/model-providers", () => {
       [201],
     );
     expect(other.body.provider.type).toBe("anthropic-api-key");
-  });
-
-  it("keeps MiniMax on Claude Code", async () => {
-    const fixture = uniqueOrgUser("zmp-minimax-framework");
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
-
-    const response = await accept(
-      client.upsert({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { type: "minimax-api-key", secret: "sk-minimax-test" },
-      }),
-      [201],
-    );
-
-    expect(response.body.provider.type).toBe("minimax-api-key");
-    expect(response.body.provider.framework).toBe("claude-code");
   });
 
   it("does not mark provider rows as defaults across frameworks", async () => {

@@ -132,8 +132,8 @@ import {
   FileAttachmentChip,
   PreviewableAudioAttachmentChip,
   PreviewableFileAttachmentChip,
-  publicAttachmentUrl,
 } from "./zero-attachment-chips.tsx";
+import { publicAttachmentUrl } from "./zero-attachment-url";
 import { MailDraftCard } from "./mail-draft-card.tsx";
 import { BrowserSessionCard } from "./browser-session-card.tsx";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
@@ -222,7 +222,6 @@ import {
   atTimeInTimezone,
   cronWallTimeInTimezone,
 } from "../../signals/zero-page/cron.ts";
-
 import {
   buildGmailLabelAppliedEventConfig,
   buildGmailNewMessageEventConfig,
@@ -235,7 +234,6 @@ import {
   WorkflowAutomationCard,
   type WorkflowAutomationCardRow,
 } from "../workflows-page/workflow-automation-card.tsx";
-
 import {
   renameChatThread$,
   type EnrichedChatEvent,
@@ -2996,12 +2994,31 @@ function attachUsageToCompletedWorkGroups(
   groups: readonly ChatEventGroup[],
   usageByRunId: ReadonlyMap<string, ChatEventUsagePayload>,
 ): ChatEventGroup[] {
-  return groups.map((group) => {
+  const lastAssistantGroupIndexByRunId = new Map<string, number>();
+  for (const [index, group] of groups.entries()) {
+    if (
+      group.role !== "assistant" ||
+      !group.events.some(isRenderableAssistantEvent)
+    ) {
+      continue;
+    }
+    const runId = firstRunIdForEvents(group.events);
+    if (runId !== undefined) {
+      lastAssistantGroupIndexByRunId.set(runId, index);
+    }
+  }
+  return groups.map((group, index) => {
     if (group.role !== "assistant") {
       return group;
     }
     const runId = firstRunIdForEvents(group.events);
-    const usage = runId === undefined ? undefined : usageByRunId.get(runId);
+    if (
+      runId === undefined ||
+      lastAssistantGroupIndexByRunId.get(runId) !== index
+    ) {
+      return group;
+    }
+    const usage = usageByRunId.get(runId);
     return usage === undefined ? group : { ...group, usage };
   });
 }
@@ -3035,6 +3052,118 @@ function terminatedRunIdsForCompletedWork(
   return terminatedChatRunIds(events);
 }
 
+function splitCompletedWorkEventsAtUsers(
+  events: readonly EnrichedChatEvent[],
+): EnrichedChatEvent[][] {
+  const phases: EnrichedChatEvent[][] = [];
+  let phase: EnrichedChatEvent[] = [];
+  for (const event of events) {
+    if (
+      phase.length > 0 &&
+      chatEventCompatibilityRole(event.eventType) === "user"
+    ) {
+      phases.push(phase);
+      phase = [];
+    }
+    phase.push(event);
+  }
+  if (phase.length > 0) {
+    phases.push(phase);
+  }
+  return phases;
+}
+
+function lastCompletedWorkEventIndex(
+  events: readonly EnrichedChatEvent[],
+  predicate: (event: EnrichedChatEvent) => boolean,
+): number {
+  for (let index = events.length - 1; index >= 0; index--) {
+    if (predicate(events[index]!)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function completedWorkFinalEventIndex(
+  events: readonly EnrichedChatEvent[],
+): number {
+  const primaryResultIndex = lastCompletedWorkEventIndex(
+    events,
+    isPrimaryAssistantResultEvent,
+  );
+  return primaryResultIndex >= 0
+    ? primaryResultIndex
+    : lastCompletedWorkEventIndex(events, isRenderableAssistantEvent);
+}
+
+function canFoldCompletedWorkTrailingEvent(
+  event: EnrichedChatEvent,
+  chatSteerEnabled: boolean,
+): boolean {
+  const role = chatEventCompatibilityRole(event.eventType);
+  if (chatSteerEnabled && role === "user") {
+    return true;
+  }
+  return (
+    role === "assistant" &&
+    (!isRenderableAssistantEvent(event) || event.eventType === "run.completed")
+  );
+}
+
+interface CompletedWorkPhaseFolding {
+  visibleEvents: readonly EnrichedChatEvent[];
+  fold: CompletedWorkFold | null;
+}
+
+function foldCompletedWorkPhase(
+  runId: string,
+  events: readonly EnrichedChatEvent[],
+  chatSteerEnabled: boolean,
+): CompletedWorkPhaseFolding {
+  const finalEventIndex = completedWorkFinalEventIndex(events);
+  const finalEvent =
+    finalEventIndex >= 0 ? events[finalEventIndex]! : undefined;
+  const precedingEvents =
+    finalEventIndex > 0 ? events.slice(0, finalEventIndex) : [];
+  const hiddenEvents = precedingEvents.filter((event) => {
+    return (
+      chatEventCompatibilityRole(event.eventType) !== "user" &&
+      !isThinkingOnlyAssistantEvent(event)
+    );
+  });
+  const userEvents = (chatSteerEnabled ? events : precedingEvents).filter(
+    (event) => {
+      return chatEventCompatibilityRole(event.eventType) === "user";
+    },
+  );
+  const trailingEvents =
+    finalEventIndex >= 0 ? events.slice(finalEventIndex + 1) : [];
+  const trailingEventsCanFold = trailingEvents.every((event) => {
+    return canFoldCompletedWorkTrailingEvent(event, chatSteerEnabled);
+  });
+  if (
+    finalEvent === undefined ||
+    hiddenEvents.length === 0 ||
+    !trailingEventsCanFold
+  ) {
+    return { visibleEvents: events, fold: null };
+  }
+  return {
+    visibleEvents: [
+      ...userEvents,
+      finalEvent,
+      ...trailingEvents.filter(isRenderableAssistantEvent),
+    ],
+    fold: {
+      key: `${runId}:${finalEvent.id}`,
+      finalEventId: finalEvent.id,
+      hiddenGroups: groupEventsByRole(hiddenEvents),
+      labelGroups: groupEventsByRole(events),
+    },
+  };
+}
+
 function buildCompletedWorkFolding(
   groups: readonly ChatEventGroup[],
   chatSteerEnabled: boolean,
@@ -3046,6 +3175,7 @@ function buildCompletedWorkFolding(
   const terminatedRunIds = terminatedRunIdsForCompletedWork(events);
   const visibleEvents: EnrichedChatEvent[] = [];
   const folds: CompletedWorkFold[] = [];
+  let hasCompletedWorkPhaseBoundary = false;
 
   for (let index = 0; index < events.length; ) {
     const runId = events[index]!.runId;
@@ -3067,70 +3197,28 @@ function buildCompletedWorkFolding(
       continue;
     }
 
-    let finalEventIndex = -1;
-    for (let offset = runEvents.length - 1; offset >= 0; offset--) {
-      if (isPrimaryAssistantResultEvent(runEvents[offset]!)) {
-        finalEventIndex = offset;
-        break;
-      }
+    const completedWorkEventGroups = chatSteerEnabled
+      ? splitCompletedWorkEventsAtUsers(runEvents)
+      : [runEvents];
+    if (completedWorkEventGroups.length > 1) {
+      hasCompletedWorkPhaseBoundary = true;
     }
-    if (finalEventIndex < 0) {
-      for (let offset = runEvents.length - 1; offset >= 0; offset--) {
-        if (isRenderableAssistantEvent(runEvents[offset]!)) {
-          finalEventIndex = offset;
-          break;
-        }
+    for (const completedWorkEvents of completedWorkEventGroups) {
+      const phaseFolding = foldCompletedWorkPhase(
+        runId,
+        completedWorkEvents,
+        chatSteerEnabled,
+      );
+      visibleEvents.push(...phaseFolding.visibleEvents);
+      if (phaseFolding.fold !== null) {
+        folds.push(phaseFolding.fold);
       }
-    }
-    const finalEvent =
-      finalEventIndex >= 0 ? runEvents[finalEventIndex]! : undefined;
-    const precedingEvents =
-      finalEventIndex > 0 ? runEvents.slice(0, finalEventIndex) : [];
-    const hiddenEvents = precedingEvents.filter((event) => {
-      return (
-        chatEventCompatibilityRole(event.eventType) !== "user" &&
-        !isThinkingOnlyAssistantEvent(event)
-      );
-    });
-    const userEvents = (chatSteerEnabled ? runEvents : precedingEvents).filter(
-      (event) => {
-        return chatEventCompatibilityRole(event.eventType) === "user";
-      },
-    );
-    const trailingEvents =
-      finalEventIndex >= 0 ? runEvents.slice(finalEventIndex + 1) : [];
-    const trailingEventsCanFold = trailingEvents.every((event) => {
-      const role = chatEventCompatibilityRole(event.eventType);
-      return (
-        (chatSteerEnabled && role === "user") ||
-        (role === "assistant" &&
-          (!isRenderableAssistantEvent(event) ||
-            event.eventType === "run.completed"))
-      );
-    });
-    const visibleTrailingEvents = trailingEvents.filter((event) => {
-      return isRenderableAssistantEvent(event);
-    });
-    if (
-      finalEvent !== undefined &&
-      hiddenEvents.length > 0 &&
-      trailingEventsCanFold
-    ) {
-      visibleEvents.push(...userEvents, finalEvent, ...visibleTrailingEvents);
-      folds.push({
-        key: `${runId}:${finalEvent.id}`,
-        finalEventId: finalEvent.id,
-        hiddenGroups: groupEventsByRole(hiddenEvents),
-        labelGroups: groupEventsByRole(runEvents),
-      });
-    } else {
-      visibleEvents.push(...runEvents);
     }
 
     index = endIndex;
   }
 
-  if (folds.length === 0) {
+  if (folds.length === 0 && !hasCompletedWorkPhaseBoundary) {
     return null;
   }
 
@@ -3328,10 +3416,21 @@ function runGroupFoldGoalLabel(fold: RunGroupFold): string {
         .toLocaleLowerCase(i18n.resolvedLanguage);
 }
 
+function isRejectedGoalUserMessage(event: EnrichedChatEvent): boolean {
+  return (
+    event.eventType === "input.rejected" &&
+    eventNonContentPart(event)?.type === "goal"
+  );
+}
+
 function isGoalUserMessage(
   event: EnrichedChatEvent,
 ): event is EnrichedChatEvent & ChatInputEvent {
-  return isInputChatEvent(event) && eventNonContentPart(event)?.type === "goal";
+  return (
+    isInputChatEvent(event) &&
+    !isRejectedGoalUserMessage(event) &&
+    eventNonContentPart(event)?.type === "goal"
+  );
 }
 
 function isGoalRunGroupFold(fold: RunGroupFold): boolean {
@@ -3935,6 +4034,7 @@ function ChatSkeleton() {
 
 interface ServerThinkingLabel {
   readonly displayedText: string;
+  readonly fadingOut: boolean;
   readonly fullText: string;
   readonly id: string;
   readonly setRef: (
@@ -3981,7 +4081,11 @@ function ThinkingLabel({
       <p
         key={serverThinkingLabel.id}
         ref={serverThinkingLabel.setRef}
-        className="zero-shimmer-text h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5"
+        className={cn(
+          "zero-shimmer-text h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5",
+          "transition-opacity duration-200",
+          serverThinkingLabel.fadingOut ? "opacity-0" : "opacity-100",
+        )}
         aria-label={serverThinkingLabel.fullText}
       >
         {serverThinkingLabel.displayedText || "\u00a0"}
@@ -4204,6 +4308,8 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
   const thinkingEventId = useLastResolved(thread.thinkingEventId$);
   const displayedThinkingText =
     useLastResolved(thread.displayedThinkingText$) ?? "";
+  const thinkingTextFadingOut =
+    useLastResolved(thread.thinkingTextFadingOut$) ?? false;
   const setThinkingIndicatorTextRef = useSet(
     thread.setThinkingIndicatorTextRef$,
   );
@@ -4211,6 +4317,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
     thinkingText && thinkingEventId && running
       ? {
           displayedText: displayedThinkingText,
+          fadingOut: thinkingTextFadingOut,
           fullText: thinkingText,
           id: thinkingEventId,
           setRef: setThinkingIndicatorTextRef,
@@ -6442,7 +6549,13 @@ const annotationIconImgs = {
   agentphone: settingsIconAssetUrl("imessage"),
 } as const;
 
-function MessageAnnotation({ part }: { part: UserMessageNonContentPart }) {
+function MessageAnnotation({
+  part,
+  agentReferenceSignalsForId,
+}: {
+  part: UserMessageNonContentPart;
+  agentReferenceSignalsForId?: ChatPanelSignals["agentReferenceSignalsForId"];
+}) {
   const { t } = useTranslation();
   const className =
     "mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end " +
@@ -6483,17 +6596,37 @@ function MessageAnnotation({ part }: { part: UserMessageNonContentPart }) {
       </div>
     );
   }
-  return <SourceMessageAnnotation part={part} className={className} />;
+  return (
+    <SourceMessageAnnotation
+      part={part}
+      className={className}
+      agentReferenceSignalsForId={agentReferenceSignalsForId}
+    />
+  );
 }
 
 function SourceMessageAnnotation({
   part,
   className,
+  agentReferenceSignalsForId,
 }: {
   part: Extract<UserMessageNonContentPart, { type: "source" }>;
   className: string;
+  agentReferenceSignalsForId?: ChatPanelSignals["agentReferenceSignalsForId"];
 }) {
   const { t } = useTranslation();
+  if (part.kind === "agent") {
+    if (!agentReferenceSignalsForId) {
+      return null;
+    }
+    return (
+      <AgentRunSourceMessageAnnotation
+        part={part}
+        className={className}
+        signals={agentReferenceSignalsForId(part.agentId)}
+      />
+    );
+  }
   const sourceLabel =
     part.kind === "slack"
       ? t(($) => {
@@ -6582,6 +6715,47 @@ function SourceMessageAnnotation({
     >
       {content}
     </a>
+  );
+}
+
+function AgentRunSourceMessageAnnotation({
+  part,
+  className,
+  signals,
+}: {
+  part: Extract<
+    Extract<UserMessageNonContentPart, { type: "source" }>,
+    { kind: "agent" }
+  >;
+  className: string;
+  signals: AgentReferenceSignals;
+}) {
+  const { t } = useTranslation();
+  const agent = useLastResolved(signals.agent$);
+  return (
+    <Link
+      pathname={ROUTES.chat}
+      options={{
+        pathParams: { threadId: part.threadId },
+        hash: `run-${part.runId}`,
+      }}
+      aria-label={t(
+        ($) => {
+          return $.chat.thread.openNamedChat;
+        },
+        { title: part.titleSnapshot },
+      )}
+      className={`${className} transition-colors hover:bg-gray-50 hover:text-foreground`}
+      title={part.titleSnapshot}
+    >
+      <AvatarFromUrl
+        avatarUrl={agent?.avatarUrl}
+        alt=""
+        className="size-4 shrink-0 overflow-hidden rounded-full object-cover object-top"
+        size={16}
+      />
+      <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+    </Link>
   );
 }
 
@@ -6843,7 +7017,7 @@ function UserMessageAgentReference({
       <AvatarFromUrl
         avatarUrl={agent?.avatarUrl}
         alt=""
-        className="size-4 shrink-0 overflow-hidden rounded-full bg-muted object-cover object-top"
+        className="size-4 shrink-0 overflow-hidden rounded-full object-cover object-top"
         size={16}
       />
       <span className="min-w-0 truncate">{name}</span>
@@ -7412,6 +7586,21 @@ function resolvePagedUserMessageRendering({
   };
 }
 
+function visibleSourceAnnotationPart({
+  userMessage,
+}: {
+  userMessage: UserMessageDocument | undefined;
+}) {
+  const part = userMessageNonContentPart(userMessage);
+  return part?.type === "source" ? part : undefined;
+}
+
+function inputPromptRunAnchor(inputEvent: ChatInputEvent | undefined) {
+  return inputEvent?.eventType === "input.prompt" && inputEvent.runId
+    ? `run-${inputEvent.runId}`
+    : undefined;
+}
+
 function PagedUserMessage({
   event,
   thread,
@@ -7468,6 +7657,10 @@ function PagedUserMessage({
     );
   };
 
+  if (isRejectedGoalUserMessage(event)) {
+    return null;
+  }
+
   if (isWorkflowUserMessage(event)) {
     return <WorkflowUserMessage event={event} />;
   }
@@ -7476,9 +7669,12 @@ function PagedUserMessage({
     return <GoalUserMessage event={event} />;
   }
 
-  const nonContentPart = eventNonContentPart(event);
+  const sourceAnnotationPart = visibleSourceAnnotationPart({
+    userMessage,
+  });
   return (
     <div
+      id={inputPromptRunAnchor(inputEvent)}
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
       className="group"
@@ -7486,8 +7682,11 @@ function PagedUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          {nonContentPart?.type === "source" ? (
-            <MessageAnnotation part={nonContentPart} />
+          {sourceAnnotationPart ? (
+            <MessageAnnotation
+              part={sourceAnnotationPart}
+              agentReferenceSignalsForId={thread.agentReferenceSignalsForId}
+            />
           ) : null}
           {canonicalUserMessage ? (
             <UserMessageContent

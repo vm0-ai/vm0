@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-
 import {
   artifactsContract,
   canonicalChatEvent,
@@ -39,7 +38,11 @@ import {
 } from "@vm0/api-contracts/contracts/artifact-catalog";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
-import { CLIENT_VERSION_HEADER } from "@vm0/api-contracts/contracts/client-headers";
+import {
+  addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import {
   zeroHostContract,
@@ -80,14 +83,17 @@ import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
 import { zeroUploadsPrepareRoutes } from "../../zero-uploads-prepare";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
-export { hostedTextFile } from "./api-bdd-host-files";
 
 interface AuthHeaders {
   readonly authorization?: string;
   readonly [CLIENT_VERSION_HEADER]?: string;
 }
 
-const BDD_CLIENT_VERSION = "0.636.1";
+const LEGACY_BDD_CLIENT_VERSION = "0.636.1";
+const BDD_CLIENT_VERSION = addClientCapabilityToVersion(
+  LEGACY_BDD_CLIENT_VERSION,
+  CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
+);
 
 interface BddCompose {
   readonly composeId: string;
@@ -903,10 +909,15 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly beforeId?: string;
         readonly limit?: number;
       } = {},
+      clientVersion = BDD_CLIENT_VERSION,
     ): Promise<{ readonly events: readonly ChatEvent[] }> {
+      const headers: AuthHeaders = {
+        ...authenticate(context, actor),
+        [CLIENT_VERSION_HEADER]: clientVersion,
+      };
       const response = await accept(
         threadEventsClient().list({
-          headers: authenticate(context, actor),
+          headers,
           params: { threadId },
           query,
         }),
@@ -943,10 +954,15 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       eventId: string,
+      clientVersion = BDD_CLIENT_VERSION,
     ): Promise<ChatEvent> {
+      const headers: AuthHeaders = {
+        ...authenticate(context, actor),
+        [CLIENT_VERSION_HEADER]: clientVersion,
+      };
       const response = await accept(
         threadEventsClient().get({
-          headers: authenticate(context, actor),
+          headers,
           params: { threadId, eventId },
         }),
         [200],

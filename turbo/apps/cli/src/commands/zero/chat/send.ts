@@ -8,8 +8,11 @@ import {
   userMessageDocumentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
-import { getZeroChatThreadAgentId, sendZeroChatEvent } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import {
+  getZeroChatThreadAgentId,
+  sendZeroChatEvent,
+} from "../../../lib/api/domains/zero-chat";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { printChatUsageError, resolveChatThreadId } from "./shared";
 
 // Non-authoritative plain-text views of a document that carries no text part.

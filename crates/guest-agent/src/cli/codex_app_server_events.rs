@@ -26,6 +26,7 @@
 //! legacy JSONL and failure-diagnostic shapes rather than preserving their raw
 //! app-server representation.
 
+use guest_contracts::epoch_milliseconds::is_plausible_epoch_milliseconds;
 use serde_json::{Map, Value, json};
 
 use super::codex_app_server::ServerNotification;
@@ -54,7 +55,6 @@ pub(super) const IGNORED_NOTIFICATION_METHODS: &[&str] = &[
 
 const MAX_GENERIC_COLLECTION_ITEMS: usize = 16;
 const MAX_GENERIC_OBJECT_FIELDS: usize = 24;
-const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum CodexOutputItemKind {
@@ -180,7 +180,7 @@ pub(super) fn codex_output_item_start(
         .get("startedAtMs")
         .ok_or_else(|| missing_field(&notification.method, "startedAtMs"))?
         .as_u64()
-        .filter(|value| *value >= MIN_EPOCH_MS_TIMESTAMP)
+        .filter(|value| is_plausible_epoch_milliseconds(*value))
         .ok_or_else(|| invalid_field_for_method(&notification.method, "startedAtMs"))?;
 
     Ok(Some(CodexOutputItemStart {

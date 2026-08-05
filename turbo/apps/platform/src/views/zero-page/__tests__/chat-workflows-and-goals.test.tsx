@@ -23,7 +23,7 @@ import {
   mockChatLifecycle,
   sendQueuedMessage,
 } from "./chat-test-helpers.ts";
-import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../workflow-chat-prompts.ts";
+import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../../signals/chat-page/workflow-prompt-action";
 import {
   context,
   detachedSetupPage,
@@ -44,14 +44,21 @@ import {
 } from "./chat-lifecycle-test-helpers.ts";
 
 describe("chat lifecycle", () => {
-  it("renders a rejected goal continuation as a goal artifact without exposing its machine reason", async () => {
+  it("does not render a rejected goal continuation after an assistant response", async () => {
     const threadId = "thread-rejected-goal-artifact";
     const objectiveBrief = "Keep the launch moving";
     const machineReason = "internal provider credential id abc123 is invalid";
+    const assistantResponse = "The active goal has been stopped.";
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Rejected goal artifact",
       chatEvents: [
+        {
+          id: "msg-assistant-response",
+          role: "assistant",
+          content: assistantResponse,
+          createdAt: "2026-07-29T10:00:00Z",
+        },
         {
           id: "msg-rejected-goal",
           role: "user",
@@ -62,25 +69,19 @@ describe("chat lifecycle", () => {
             parts: [{ type: "goal", goalBrief: objectiveBrief }],
           },
           error: machineReason,
-          createdAt: "2026-07-29T10:00:00Z",
+          createdAt: "2026-07-29T10:00:01Z",
         },
       ],
     });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    await waitFor(() => {
-      expect(screen.getByLabelText("Goal")).toBeInTheDocument();
-      expect(screen.getByText(objectiveBrief)).toBeInTheDocument();
-    });
+    const renderedAssistantResponse =
+      await screen.findByText(assistantResponse);
+    expect(renderedAssistantResponse).toBeInTheDocument();
+    expect(screen.queryByLabelText("Goal")).not.toBeInTheDocument();
+    expect(screen.queryByText(objectiveBrief)).not.toBeInTheDocument();
     expect(screen.queryByText(machineReason)).not.toBeInTheDocument();
-    const goalArtifact = screen
-      .getByText(objectiveBrief)
-      .closest('[data-role="user"]');
-    if (!(goalArtifact instanceof HTMLElement)) {
-      throw new Error("Expected the rejected goal artifact");
-    }
-    expect(within(goalArtifact).getByLabelText("Goal")).toBeInTheDocument();
   });
 
   it("opens run logs from assistant message actions", async () => {

@@ -313,23 +313,6 @@ describe("AUTH-03 user model preference", () => {
     const readUpdated = await cfg.readModelPreference(admin);
     expect(readUpdated).toStrictEqual(updated);
 
-    for (const retiredModel of ["gpt-5.4", "gpt-5.4-mini"]) {
-      const normalized = await cfg.rawUpdateModelPreference(
-        admin,
-        { selectedModel: retiredModel },
-        [200],
-      );
-      expect(normalized.body).toMatchObject({
-        selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-        updatedAt: expect.any(String),
-      });
-    }
-    const readAfterRetiredWrites = await cfg.readModelPreference(admin);
-    expect(readAfterRetiredWrites).toMatchObject({
-      selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-      updatedAt: expect.any(String),
-    });
-
     const cleared = await cfg.updateModelPreference(admin, {
       selectedModel: null,
     });
@@ -346,7 +329,7 @@ describe("AUTH-03 user model preference", () => {
     expectApiError(emptyBody.body);
     expect(emptyBody.body.error.code).toBe("BAD_REQUEST");
     expect(emptyBody.body.error.message).toContain(
-      "selectedModel: Invalid input",
+      "selectedModel: Invalid option",
     );
 
     const removedModel = await cfg.rawUpdateModelPreference(
@@ -357,7 +340,7 @@ describe("AUTH-03 user model preference", () => {
     expectApiError(removedModel.body);
     expect(removedModel.body.error.code).toBe("BAD_REQUEST");
     expect(removedModel.body.error.message).toContain(
-      "selectedModel: Invalid model selection",
+      "selectedModel: Invalid option",
     );
 
     const unauthenticated = await cfg.requestReadModelPreference(null, [401]);

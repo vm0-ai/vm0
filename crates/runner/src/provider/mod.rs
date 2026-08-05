@@ -43,6 +43,16 @@ pub(crate) enum RunnerPreferenceReason {
     FinalizingPredecessor,
 }
 
+impl RunnerPreferenceReason {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::ExactHistoryGeneration => "exact_history_generation",
+            Self::MatchingReuseKey => "matching_reuse_key",
+            Self::FinalizingPredecessor => "finalizing_predecessor",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct RunnerProcessIdentity {
@@ -149,6 +159,23 @@ pub(crate) enum JobDiscoverySource {
     Poll,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ReservedReuseClaimObservation {
+    started_at: Instant,
+    preference_reason: Option<RunnerPreferenceReason>,
+}
+
+impl ReservedReuseClaimObservation {
+    pub(crate) fn elapsed(self) -> Duration {
+        self.started_at.elapsed()
+    }
+
+    pub(crate) fn preference_reason(self) -> &'static str {
+        self.preference_reason
+            .map_or("none", RunnerPreferenceReason::as_str)
+    }
+}
+
 impl JobDiscoverySource {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
@@ -179,6 +206,7 @@ pub struct JobCandidate {
     reuse_key: Option<String>,
     history_generation_run_id: Option<RunId>,
     runner_preference: Option<RunnerPreference>,
+    reserved_reuse_claim_observation: Option<ReservedReuseClaimObservation>,
 }
 
 impl JobCandidate {
@@ -210,6 +238,7 @@ impl JobCandidate {
             reuse_key: None,
             history_generation_run_id: None,
             runner_preference: None,
+            reserved_reuse_claim_observation: None,
         }
     }
 
@@ -305,6 +334,17 @@ impl JobCandidate {
 
     pub(crate) fn runner_preference(&self) -> Option<&RunnerPreference> {
         self.runner_preference.as_ref()
+    }
+
+    pub(crate) fn mark_reserved_reuse_claim_started(&mut self) {
+        self.reserved_reuse_claim_observation = Some(ReservedReuseClaimObservation {
+            started_at: Instant::now(),
+            preference_reason: self.runner_preference().map(RunnerPreference::reason),
+        });
+    }
+
+    pub(crate) fn reserved_reuse_claim_observation(&self) -> Option<ReservedReuseClaimObservation> {
+        self.reserved_reuse_claim_observation
     }
 
     pub(crate) fn without_runner_preference(mut self) -> Self {

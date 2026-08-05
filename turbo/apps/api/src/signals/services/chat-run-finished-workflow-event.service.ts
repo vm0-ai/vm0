@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { v5 as uuidv5 } from "uuid";
 import {
   chatRunFinishedEventConfigSchema,
   type ChatRunFinishedEventConfig,
@@ -11,16 +12,57 @@ import {
 } from "@vm0/db/schema/zero-workflow";
 import { and, eq, sql } from "drizzle-orm";
 
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
+import { AUTONOMY_BUDGET_EXHAUSTED_MESSAGE } from "../../lib/error";
 import { now, nowDate } from "../../lib/time";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
+import { loadRunAutonomyBudget } from "./autonomy-budget.service";
+import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
+import { insertChatEvent } from "./zero-chat-event.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 
 const CHAT_RUN_FINISHED_EVENT_TYPE = "chat-run-finished";
 // Bounds the finished run's output copied into the triggered run's context.
 const OUTPUT_EXCERPT_CHAR_CAP = 4000;
+const AUTONOMY_BUDGET_ERROR_EVENT_NAMESPACE =
+  "e020ef30-b3ec-4465-83e0-f040094ef14b";
+
+async function appendAutonomyBudgetError(args: {
+  readonly db: Db;
+  readonly chatThreadId: string;
+  readonly sourceRunId: string;
+}): Promise<boolean> {
+  return await args.db.transaction(async (tx) => {
+    const errorEvent = await insertChatEvent(
+      tx,
+      {
+        id: uuidv5(
+          `${args.chatThreadId}:${args.sourceRunId}`,
+          AUTONOMY_BUDGET_ERROR_EVENT_NAMESPACE,
+        ),
+        chatThreadId: args.chatThreadId,
+        eventType: "output.error",
+        content: AUTONOMY_BUDGET_EXHAUSTED_MESSAGE,
+        runId: null,
+        error: "AUTONOMY_BUDGET_EXHAUSTED",
+      },
+      "id",
+    );
+    if (!errorEvent) {
+      return false;
+    }
+    await touchChatThreadLastMessageAt(
+      tx,
+      args.chatThreadId,
+      errorEvent.createdAt,
+    );
+    return true;
+  });
+}
 
 export interface ChatRunFinishedEvent {
   readonly chatThreadId: string;
@@ -115,9 +157,14 @@ function chatRunFinishedTriggerContext(args: {
 export const dispatchChatRunFinishedWorkflowEvents$ = command(
   async ({ set }, event: ChatRunFinishedEvent, signal: AbortSignal) => {
     const db = set(writeDb$);
+    const sourceAutonomyBudget = await loadRunAutonomyBudget(db, event.runId);
+    signal.throwIfAborted();
+    if (sourceAutonomyBudget === null) {
+      return;
+    }
     const automationRows = await db
       .select({
-        automation: zeroWorkflowAutomations,
+        automation: rolloutCompatibleWorkflowAutomationColumns(false),
         agentId: zeroWorkflows.agentId,
         workflowName: zeroWorkflows.name,
         workflowDisplayName: zeroWorkflows.displayName,
@@ -159,6 +206,7 @@ export const dispatchChatRunFinishedWorkflowEvents$ = command(
     signal.throwIfAborted();
 
     const currentTime = nowDate();
+    const exhaustedThreadIds = new Set<string>();
     for (const row of automationRows) {
       const config = chatRunFinishedEventConfigSchema.safeParse(
         row.automation.eventConfig,
@@ -180,6 +228,27 @@ export const dispatchChatRunFinishedWorkflowEvents$ = command(
           });
         }));
       signal.throwIfAborted();
+
+      if (sourceAutonomyBudget === 0) {
+        if (exhaustedThreadIds.has(chatThreadId)) {
+          continue;
+        }
+        exhaustedThreadIds.add(chatThreadId);
+        const inserted = await appendAutonomyBudgetError({
+          db,
+          chatThreadId,
+          sourceRunId: event.runId,
+        });
+        signal.throwIfAborted();
+        if (inserted) {
+          await publishChatThreadMessageCreatedSafely(
+            row.automation.ownerUserId,
+            chatThreadId,
+          );
+          signal.throwIfAborted();
+        }
+        continue;
+      }
 
       const context = chatRunFinishedTriggerContext({
         workflowName: row.workflowName,

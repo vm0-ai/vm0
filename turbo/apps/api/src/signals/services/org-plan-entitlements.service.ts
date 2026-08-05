@@ -3,7 +3,7 @@ import type { OrgPlanEntitlementSourceMetadata } from "@vm0/db/jsonb-contracts/o
 import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
 import { eq } from "drizzle-orm";
 
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import { ORG_PLAN_ENTITLEMENT_TIER_VALUES } from "./org-plan-entitlement-tier-values";
 

@@ -4,12 +4,20 @@ import {
 } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
-
 import { logger } from "../../lib/log";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { writeDb$, type Db } from "../external/db";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
+import { AUTONOMY_BUDGET_EXHAUSTED_MESSAGE } from "../../lib/error";
+import {
+  childAutonomyBudget,
+  loadRunAutonomyBudget,
+} from "./autonomy-budget.service";
+import {
+  autonomyBudgetSchemaAvailable,
+  rolloutCompatibleWorkflowAutomationColumns,
+} from "./autonomy-budget-schema.service";
 import {
   loadNextWorkflowQueueEvent,
   rejectWorkflowQueueEvent,
@@ -37,9 +45,12 @@ async function loadDequeueTarget(
   db: Db,
   event: PendingWorkflowQueueEvent,
 ): Promise<DequeueTarget | null> {
+  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(db);
   const [row] = await db
     .select({
-      automation: zeroWorkflowAutomations,
+      automation: rolloutCompatibleWorkflowAutomationColumns(
+        autonomyBudgetAvailable,
+      ),
       agentId: zeroWorkflows.agentId,
     })
     .from(zeroWorkflowAutomations)
@@ -50,6 +61,50 @@ async function loadDequeueTarget(
     .where(eq(zeroWorkflowAutomations.id, event.automationId))
     .limit(1);
   return row ?? null;
+}
+
+type WorkflowRunAutonomyBudget =
+  | { readonly kind: "ok"; readonly autonomyBudget: number }
+  | { readonly kind: "invalid"; readonly message: string };
+
+async function resolveWorkflowRunAutonomyBudget(
+  db: Db,
+  event: PendingWorkflowQueueEvent,
+  automation: typeof zeroWorkflowAutomations.$inferSelect,
+): Promise<WorkflowRunAutonomyBudget> {
+  const sourceRunId =
+    event.workflowAutomationEventType === "chat-run-finished"
+      ? event.workflowAutomationEventPayload?.["runId"]
+      : event.workflowAutomationEventType === "manual"
+        ? event.workflowAutomationEventPayload?.["sourceRunId"]
+        : undefined;
+  if (
+    event.workflowAutomationEventType !== "chat-run-finished" &&
+    sourceRunId === undefined
+  ) {
+    return { kind: "ok", autonomyBudget: automation.autonomyBudget };
+  }
+  if (typeof sourceRunId !== "string") {
+    return {
+      kind: "invalid",
+      message: `${event.workflowAutomationEventType === "manual" ? "Manual automation" : "Chat run finished"} event is missing its source run`,
+    };
+  }
+  const sourceAutonomyBudget = await loadRunAutonomyBudget(db, sourceRunId);
+  if (sourceAutonomyBudget === null) {
+    return {
+      kind: "invalid",
+      message: `${event.workflowAutomationEventType === "manual" ? "Manual automation" : "Chat run finished"} source run no longer exists`,
+    };
+  }
+  const derived = childAutonomyBudget(sourceAutonomyBudget);
+  if (derived.kind === "exhausted") {
+    return { kind: "invalid", message: AUTONOMY_BUDGET_EXHAUSTED_MESSAGE };
+  }
+  return {
+    kind: "ok",
+    autonomyBudget: Math.min(automation.autonomyBudget, derived.autonomyBudget),
+  };
 }
 
 /**
@@ -238,6 +293,26 @@ export const drainWorkflowQueueForThread$ = command(
         continue;
       }
 
+      const autonomyBudget = await resolveWorkflowRunAutonomyBudget(
+        db,
+        event,
+        target.automation,
+      );
+      signal.throwIfAborted();
+      if (autonomyBudget.kind === "invalid") {
+        const step = await consumeInvalidWorkflowEvent(
+          db,
+          event,
+          autonomyBudget.message,
+          args.workflowEventLaunch,
+          signal,
+        );
+        if (step !== CONTINUE_DRAIN) {
+          return step;
+        }
+        continue;
+      }
+
       const launchHint =
         args.workflowEventLaunch?.eventId === event.id
           ? args.workflowEventLaunch
@@ -259,6 +334,7 @@ export const drainWorkflowQueueForThread$ = command(
           triggerSource: event.triggerSource,
           appendSystemPrompt: launchMaterial.appendSystemPrompt,
           callbacks: launchMaterial.callbacks,
+          autonomyBudget: autonomyBudget.autonomyBudget,
           activePreviousRunPolicy: launchMaterial.activePreviousRunPolicy,
           recordLastRunId: launchMaterial.recordLastRunId,
           recordLastRunAt: launchMaterial.recordLastRunAt,

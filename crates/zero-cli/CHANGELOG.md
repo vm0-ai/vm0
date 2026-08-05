@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/vm0-ai/vm0/compare/zero-cli-v0.4.0...zero-cli-v0.5.0) (2026-08-05)
+
+
+### Features
+
+* deploy commit-addressed cli packages to r2 ([#25072](https://github.com/vm0-ai/vm0/issues/25072)) ([4201a47](https://github.com/vm0-ai/vm0/commit/4201a475d596ad7f97d2f3777dcc9c34f1037050))
+
+## [0.4.0](https://github.com/vm0-ai/vm0/compare/zero-cli-v0.3.2...zero-cli-v0.4.0) (2026-08-04)
+
+
+### Features
+
+* prepare native zero cli phase 2 foundations ([#25056](https://github.com/vm0-ai/vm0/issues/25056)) ([9d3fba8](https://github.com/vm0-ai/vm0/commit/9d3fba8107e7e74b6b47f53d74bdfd0996cdf7fe))
+
 ## [0.3.2](https://github.com/vm0-ai/vm0/compare/zero-cli-v0.3.1...zero-cli-v0.3.2) (2026-08-04)
 
 ## [0.3.1](https://github.com/vm0-ai/vm0/compare/zero-cli-v0.3.0...zero-cli-v0.3.1) (2026-08-04)

@@ -13,7 +13,8 @@ import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { createStore } from "ccstate";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import {

@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { zeroBillingRedeemCodeContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { http, HttpResponse } from "msw";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";

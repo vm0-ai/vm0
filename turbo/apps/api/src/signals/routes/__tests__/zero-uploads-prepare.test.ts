@@ -5,7 +5,8 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";

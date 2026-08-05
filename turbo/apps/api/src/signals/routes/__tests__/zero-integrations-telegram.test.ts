@@ -11,11 +11,12 @@ import { afterEach, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { mockEnv } from "../../../lib/env";
-import { now } from "../../external/time";
+import { now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { buildTelegramBotAvatarUrl } from "../../external/telegram-avatar";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";

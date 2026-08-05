@@ -8,7 +8,7 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";

@@ -48,13 +48,10 @@ import {
 import { Link } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { slackOrgScopeMismatch$ } from "../../signals/zero-page/zero-slack.ts";
-
 import { AccountDropdown } from "./zero-sidebar-account.tsx";
 import { ChatThreadsSection } from "./sidebar-threads.tsx";
 import { PinnedAgentListSection } from "./zero-sidebar-pinned.tsx";
 import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
-
-export { AccountDropdown } from "./zero-sidebar-account.tsx";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 

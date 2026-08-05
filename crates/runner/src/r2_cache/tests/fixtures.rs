@@ -11,6 +11,8 @@ use super::super::{
 };
 use aws_smithy_mocks::{Rule, RuleMode, mock, mock_client};
 
+use crate::test_fixtures::http_body::byte_stream_with_error_after;
+
 pub(super) fn mock_cache(bucket: &str, rules: &[&Rule]) -> R2ImageCache {
     let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, rules);
     R2ImageCache::with_client(client, bucket.to_string())
@@ -186,6 +188,24 @@ pub(super) fn archive_limits(expected_template_bytes: u64) -> TemplateArchiveLim
 
 pub(super) fn get_object_body(bytes: Vec<u8>) -> Rule {
     get_object_body_with_content_length(bytes, None)
+}
+
+pub(super) fn get_object_body_then_error(bytes: Vec<u8>, message: &'static str) -> Rule {
+    use std::sync::Arc;
+
+    use aws_sdk_s3::Client;
+    use aws_sdk_s3::operation::get_object::GetObjectOutput;
+
+    let body = Arc::new(bytes);
+    let body_for_closure = Arc::clone(&body);
+    mock!(Client::get_object).then_output(move || {
+        GetObjectOutput::builder()
+            .body(byte_stream_with_error_after(
+                (*body_for_closure).clone(),
+                std::io::Error::new(std::io::ErrorKind::ConnectionReset, message),
+            ))
+            .build()
+    })
 }
 
 pub(super) fn get_object_body_with_content_length(

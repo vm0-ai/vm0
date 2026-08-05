@@ -5,7 +5,7 @@ import { command } from "ccstate";
 
 import { request$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
-import { now } from "../external/time";
+import { now } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import {
   dispatchWorkflowWebhook$,

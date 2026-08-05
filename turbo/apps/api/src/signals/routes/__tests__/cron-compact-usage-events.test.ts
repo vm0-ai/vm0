@@ -6,7 +6,8 @@ import { zeroUsageInsightContract } from "@vm0/api-contracts/contracts/zero-usag
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { holdUsageEventCompactionLockFixture } from "../../../test-fixtures/usage-event-compaction";
 import { nowDate } from "../../../lib/time";

@@ -1,5 +1,8 @@
 import type { HostedArtifactKind } from "@vm0/api-contracts/contracts/zero-host";
-import { completeHostedSite, prepareHostedSite } from "../api";
+import {
+  completeHostedSite,
+  prepareHostedSite,
+} from "../api/domains/zero-host";
 import { readStaticSiteFile, scanStaticSite } from "./static-site";
 
 interface PublishStaticSiteProgress {

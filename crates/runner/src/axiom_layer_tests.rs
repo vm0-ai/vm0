@@ -17,8 +17,6 @@ use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 
-use crate::telemetry::PRE_PARK_HANDOFF_AXIOM_TARGET;
-
 #[derive(Clone, Debug)]
 struct RecordedEvent {
     level: tracing::Level,
@@ -184,13 +182,28 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
         tracing::error!(code = 42, "a failure");
         tracing::info!("info is below threshold, should not be ingested");
         tracing::info!(
-            target: PRE_PARK_HANDOFF_AXIOM_TARGET,
+            target: "runner::pre_park_successor_handoff",
             outcome = "retained",
-            "allowlisted measurement"
+            "pre-park INFO measurement"
         );
-        tracing::debug!(
-            target: PRE_PARK_HANDOFF_AXIOM_TARGET,
-            "allowlisted target below INFO"
+        tracing::info!(
+            target: "runner::reserved_reuse_claim",
+            measurement = "reserved_reuse_claim",
+            outcome = "claimed",
+            run_id = "00000000-0000-0000-0000-000000000001",
+            duration_ms = 42_u64,
+            preference_reason = "none",
+            timezone_state = "absent",
+            "reserved reusable claim observed"
+        );
+        tracing::info!(
+            target: "sandbox_fc::balloon_settle",
+            measurement = "balloon_settle",
+            outcome = "target_reached",
+            elapsed_ms = 25_u64,
+            sample_count = 2_u64,
+            admission_action = "reuse",
+            "balloon settle completed"
         );
     }
 
@@ -211,17 +224,17 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
     assert_eq!(failure["service"], json!("runner"));
     assert_eq!(failure["level"], json!("error"));
     assert_eq!(failure["code"], json!(42));
-    let measurement = event_with_message(&events, "allowlisted measurement");
-    assert_eq!(measurement["level"], json!("info"));
-    assert_eq!(measurement["outcome"], json!("retained"));
-    assert!(
-        !has_event_with_message(&events, "info is below threshold, should not be ingested"),
-        "ordinary INFO event should not be ingested: {events:#?}",
-    );
-    assert!(
-        !has_event_with_message(&events, "allowlisted target below INFO"),
-        "allowlisted DEBUG event should not be ingested: {events:#?}",
-    );
+    for message in [
+        "info is below threshold, should not be ingested",
+        "pre-park INFO measurement",
+        "reserved reusable claim observed",
+        "balloon settle completed",
+    ] {
+        assert!(
+            !has_event_with_message(&events, message),
+            "INFO event should not be ingested: {events:#?}",
+        );
+    }
 }
 
 #[tokio::test]

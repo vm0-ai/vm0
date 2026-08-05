@@ -10,7 +10,7 @@
 
 import chalk from "chalk";
 import type { ParsedEvent } from "./claude-event-parser";
-import type { RunResult } from "../api";
+import type { RunResult } from "../api/core/types";
 import {
   getFrameworkDisplayName,
   isSupportedFramework,

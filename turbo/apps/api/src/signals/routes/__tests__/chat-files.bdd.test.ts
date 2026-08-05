@@ -7,9 +7,9 @@ import { testContext } from "../../../__tests__/test-context";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
   createChatFilesBddApi,
-  hostedTextFile,
   persistedAttachment,
 } from "./helpers/api-bdd-chat-files";
+import { hostedTextFile } from "./helpers/api-bdd-host-files";
 
 /*
 helper gap:
@@ -195,7 +195,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
     });
 
     await api.renameThread(owner, thread.id, "Pinned launch plan");
-    await api.updateThreadModelSelection(owner, thread.id, "gpt-5.6-terra");
+    await api.updateThreadModelSelection(owner, thread.id, "gpt-5.6-luna");
     await api.pinThread(owner, thread.id);
     const readEmpty = await api.markThreadRead(owner, thread.id);
 
@@ -215,7 +215,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
       expect.objectContaining({
         kind: "model_selection_updated",
         chatThreadId: thread.id,
-        selectedModel: "gpt-5.6-terra",
+        selectedModel: "gpt-5.6-luna",
       }),
     );
     expect(detail.lastReadAt).toStrictEqual(expect.any(String));
@@ -603,7 +603,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       {
         agentId: agent.agentId,
         prompt: "Persist the model selected at send time",
-        model: "gpt-5.6-terra",
+        model: "gpt-5.6-luna",
       },
       [201],
     );
@@ -624,7 +624,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       expect.objectContaining({
         kind: "created",
         chatThreadId: modelSelected.body.threadId,
-        selectedModel: "gpt-5.6-terra",
+        selectedModel: "gpt-5.6-luna",
       }),
     );
   });

@@ -101,10 +101,12 @@ function usageRow(args: {
   };
 }
 
-function mockBillingStatus(): void {
+function mockBillingStatus(tier: "limited-free-1" | "pro" = "pro"): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     return respond(200, {
-      tier: "pro",
+      tier,
+      supportByok: tier !== "limited-free-1",
+      restrictedVm0Models: tier === "limited-free-1",
       credits: 12_500,
       onboardingPaymentPending: false,
       subscriptionStatus: "active",
@@ -139,16 +141,16 @@ function mockBillingStatus(): void {
 
 function mockPersonalUsageStory(
   rows: UsageRecordRow[] = usageRows(),
+  tier: "limited-free-1" | "pro" = "pro",
 ): string[] {
   const requestedRanges: string[] = [];
 
   context.mocks.data.org({
     id: "org_1",
-    slug: "test-org",
     name: "Test Org",
     role: "member",
   });
-  mockBillingStatus();
+  mockBillingStatus(tier);
   context.mocks.api(zeroUsageRecordContract.get, ({ query, respond }) => {
     requestedRanges.push(query.range);
     const offset = (query.page - 1) * query.pageSize;
@@ -240,33 +242,36 @@ describe("personal usage settings", () => {
     });
   });
 
-  it("shows Auto for VM0 model usage", async () => {
+  it("shows model names for limited-free-1 usage", async () => {
     const user = userEvent.setup();
     const row = usageRow({
-      title: "Auto model usage",
+      title: "Limited free model usage",
       credits: 100,
-      runId: "run-auto-model",
+      runId: "run-limited-free-model",
     });
-    mockPersonalUsageStory([
-      {
-        ...row,
-        breakdown: [
-          {
-            kind: "model",
-            credits: 100,
-            providers: [{ provider: "vm0-model", credits: 100 }],
-          },
-        ],
-      },
-    ]);
+    mockPersonalUsageStory(
+      [
+        {
+          ...row,
+          breakdown: [
+            {
+              kind: "model",
+              credits: 100,
+              providers: [{ provider: "gpt-5.6-luna", credits: 100 }],
+            },
+          ],
+        },
+      ],
+      "limited-free-1",
+    );
     await openUsageSettings();
 
     await user.hover(screen.getByTestId("usage-kind-segment-model"));
 
     await waitFor(() => {
-      expect(screen.getAllByText("Auto").length).toBeGreaterThanOrEqual(1);
-      expect(screen.queryByText("VM0 Model")).not.toBeInTheDocument();
-      expect(screen.queryByText("vm0-model")).not.toBeInTheDocument();
+      expect(screen.getAllByText("GPT 5.6 Luna").length).toBeGreaterThanOrEqual(
+        1,
+      );
     });
   });
 
@@ -288,7 +293,6 @@ describe("personal usage settings", () => {
   it("refreshes personal usage when billing realtime changes", async () => {
     context.mocks.data.org({
       id: "org_1",
-      slug: "test-org",
       name: "Test Org",
       role: "member",
     });

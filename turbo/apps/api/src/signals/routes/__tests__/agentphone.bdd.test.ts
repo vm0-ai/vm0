@@ -303,7 +303,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     );
   });
 
-  it("dispatches linked iMessage DMs, refreshes typing, replies with plain-text completions, and controls sessions", async () => {
+  it("dispatches linked iMessage DMs, refreshes typing, and replies with plain-text completions", async () => {
     const webhooks = createWebhookCallbackApi(context);
     const ap = createAgentPhoneBddApi(context);
     const chat = createChatFilesBddApi(context);
@@ -422,6 +422,25 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(completionReply.body).toBe(EXPECTED_PLAIN_RUN_OUTPUT);
     expect(completionReply.body).not.toContain("Audit:");
     expect(completionReply.body).not.toContain("Responded by");
+  });
+
+  it("reuses and resets linked iMessage sessions", async () => {
+    const ap = createAgentPhoneBddApi(context);
+    const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
+    const conversationId = uniqueConversationId();
+
+    const beforeFirstCompletion = sends.messages.length;
+    const messageId1 = await ap.postAgentPhoneInboundMessage({
+      channel: "imessage",
+      from: phone,
+      body: "start session",
+      conversationId,
+      isGroup: false,
+    });
+    const run1 = await claimDispatchedRun(runnerGroup);
+    await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
+    await waitForSendCount(sends, beforeFirstCompletion + 1);
+    expect(lastSend(sends).body).toBe("Task completed successfully.");
     // Session persistence happens in background callback processing, so
     // wait for the session id to be saved before reading it.
     const session1 = await waitForRunSessionIdPresent(actor, run1.runId);
@@ -470,8 +489,13 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await completeSandboxRun(run3.sandboxToken, run3.runId, 0);
     const session3 = await waitForRunSessionIdPresent(actor, run3.runId);
     expect(session3).not.toBe(session1);
+  });
 
-    // A failed run replies with the Web-style generic failure text.
+  it("replies to failed linked iMessage runs", async () => {
+    const ap = createAgentPhoneBddApi(context);
+    const { phone, runnerGroup, sends } = await entitledLinkedActor();
+    const conversationId = uniqueConversationId();
+
     await ap.postAgentPhoneInboundMessage({
       channel: "imessage",
       from: phone,
@@ -479,12 +503,12 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       conversationId,
       isGroup: false,
     });
-    const run4 = await claimDispatchedRun(runnerGroup);
-    const beforeRun4Completion = sends.messages.length;
-    await completeSandboxRun(run4.sandboxToken, run4.runId, 1, {
+    const run = await claimDispatchedRun(runnerGroup);
+    const beforeCompletion = sends.messages.length;
+    await completeSandboxRun(run.sandboxToken, run.runId, 1, {
       error: "AgentPhone bdd route failure",
     });
-    await waitForSendCount(sends, beforeRun4Completion + 1);
+    await waitForSendCount(sends, beforeCompletion + 1);
     expect(lastSend(sends).body).toBe(
       "Oops, something went wrong. Please try again later.",
     );

@@ -7,7 +7,6 @@ import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
-
 import { buildFeishuAgentResponseMessage } from "../../lib/feishu-message-card";
 import { logger } from "../../lib/log";
 import {
@@ -17,7 +16,7 @@ import {
 } from "../external/feishu-client";
 import type { Db } from "../external/db";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import { now, nowDate } from "../external/time";
+import { now, nowDate } from "../../lib/time";
 import { settleIncludingAbort } from "../utils";
 import {
   feishuChatCallbackPayloadSchema,

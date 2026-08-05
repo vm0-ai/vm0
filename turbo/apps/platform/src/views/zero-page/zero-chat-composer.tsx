@@ -20,7 +20,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { i18n } from "../../i18n/index.ts";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
-import { softwareKeyboardOccludesViewport } from "../../lib/visual-viewport-keyboard.ts";
+import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import {
   IconAdjustmentsHorizontal,
   IconAlertTriangle,
@@ -57,28 +57,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
+import { Button } from "@vm0/ui/components/ui/button";
+import { Card, CardContent } from "@vm0/ui/components/ui/card";
+import { Input } from "@vm0/ui/components/ui/input";
 import {
-  Button,
-  Card,
-  CardContent,
-  Input,
   Popover,
   PopoverClose,
   PopoverContent,
   PopoverTrigger,
+} from "@vm0/ui/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+} from "@vm0/ui/components/ui/select";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  cn,
-  processShortcut,
-  type KeyboardEventLike,
-} from "@vm0/ui";
+} from "@vm0/ui/components/ui/tooltip";
+import { cn } from "@vm0/ui/lib/utils";
+import { processShortcut, type KeyboardEventLike } from "@vm0/ui";
 import {
   bestEffort,
   detach,
@@ -113,21 +115,29 @@ import {
 } from "./presentation-html-preview.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
+  type IllustrationTemplateItem,
+} from "@vm0/core/illustration-template-items";
+import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  type PresentationTemplateItem,
+} from "@vm0/core/presentation-template-items";
+import {
   VIDEO_TEMPLATE_ITEMS,
+  findVideoTemplateItem,
+  type VideoTemplateItem,
+} from "@vm0/core/video-template-items";
+import {
   WEBSITE_TEMPLATE_ITEMS,
+  findWebsiteTemplateItem,
+  type WebsiteTemplateItem,
+} from "@vm0/core/website-template-items";
+import {
   WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
-  findWebsiteTemplateItem,
-  findVideoTemplateItem,
   findWorkflowTemplateItem,
-  r2ImageTransformUrl,
-  type IllustrationTemplateItem,
-  type PresentationTemplateItem,
-  type VideoTemplateItem,
-  type WebsiteTemplateItem,
   type WorkflowTemplateItem,
-} from "@vm0/core";
+} from "@vm0/core/workflow-template-items";
+import { r2ImageTransformUrl } from "@vm0/core/r2-image-transform";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
@@ -7340,11 +7350,7 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
 
   const handleKeyDown = (event: KeyboardEventLike) => {
     const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
-    const isTouchOnlyDevice =
-      isTouchDevice &&
-      (!window.matchMedia("(any-pointer: fine)").matches ||
-        softwareKeyboardOccludesViewport());
-    if (isTouchOnlyDevice) {
+    if (isMobileTextInputDevice()) {
       processShortcut({ "mod+enter": submit }, event);
       return;
     }
@@ -7517,36 +7523,34 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
           },
         }
       : undefined;
-  if (modelPickerLoading) {
+  if (modelPickerLoading || modelPicker.value === null) {
     return null;
   }
-  const shouldRenderModelPicker = modelPicker.value !== null;
 
   return (
     <>
       {submitBlocker && <ModelConfigurationWarning blocker={submitBlocker} />}
-      {shouldRenderModelPicker && (
-        <ModelProviderPicker
-          value={modelPicker.value}
-          onChange={onModelPickerChange}
-          placeholder={t(($) => {
-            return $.chat.composer.selectModel;
-          })}
-          triggerClassName={cn(
-            "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
-            "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
-            "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
-            COMPOSER_CONTROL_FOCUS_CLASS,
-          )}
-          compactTrigger
-          mobileIconTrigger
-          codexFastModeEnabled={codexFastModeEnabled}
-          open={modelPickerOpen}
-          onOpenChange={setModelPickerOpen}
-          disabled={modelPicker.disabled}
-          resolveDefaultSelection={false}
-        />
-      )}
+      <ModelProviderPicker
+        value={modelPicker.value}
+        onChange={onModelPickerChange}
+        placeholder={t(($) => {
+          return $.chat.composer.selectModel;
+        })}
+        triggerClassName={cn(
+          "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
+          "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
+          "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+          COMPOSER_CONTROL_FOCUS_CLASS,
+        )}
+        compactTrigger
+        mobileIconTrigger
+        codexFastModeEnabled={codexFastModeEnabled}
+        open={modelPickerOpen}
+        onOpenChange={setModelPickerOpen}
+        disabled={modelPicker.disabled}
+        resolveDefaultSelection={false}
+      />
+      <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
     </>
   );
 }
@@ -8114,7 +8118,6 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
               <ComposerModelPickerSlot signals={signals} />
-              <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
               <MicButton signals={signals} />
               <ComposerSendControl signals={signals} />
             </div>

@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
 import { describe, expect, it, onTestFinished } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import {
   seedOrgMetadata,

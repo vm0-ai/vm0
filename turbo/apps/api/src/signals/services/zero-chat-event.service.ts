@@ -1,6 +1,5 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
-
 import { isValidChatEventRevocation } from "@vm0/api-contracts/contracts/chat-events";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
@@ -9,6 +8,7 @@ import type {
   ChatSlackMessageFiles,
 } from "@vm0/db/jsonb-contracts/chat-slack-context";
 import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
+import { chatAgentRunContext } from "@vm0/db/schema/chat-agent-run-context";
 import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import {
@@ -24,9 +24,8 @@ import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEventAssetRefs } from "@vm0/db/schema/run-uploaded-file";
 import { eq, sql } from "drizzle-orm";
-
 import type { Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { nowDate } from "../../lib/time";
 import type {
   WorkflowAutomationEventPayload,
   WorkflowAutomationEventType,
@@ -210,6 +209,14 @@ type ChatEventInputPayload = Pick<
   readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
 };
 
+interface ChatAgentRunDisplayContext {
+  readonly agentRunContext?: {
+    readonly sourceRunId: string;
+    readonly sourceChatThreadId: string;
+    readonly sourceAgentId: string;
+  };
+}
+
 type ChatEventOutputSequence = Pick<
   ChatEventInsert,
   "runEventSequenceNumber" | "runEventId"
@@ -217,6 +224,7 @@ type ChatEventOutputSequence = Pick<
 
 type InputPromptEvent = ChatEventIdentity &
   ChatEventDisplayContext &
+  ChatAgentRunDisplayContext &
   ChatEventInputPayload & {
     readonly eventType: "input.prompt";
     readonly content?: null;
@@ -415,6 +423,12 @@ export interface LoadedChatEventReplacementTarget extends StoredChatEventContext
 
 type NewDisplayContext =
   | {
+      readonly type: "agent_run";
+      readonly id: string;
+      readonly sourceChatThreadId: string;
+      readonly sourceAgentId: string;
+    }
+  | {
       readonly type: "slack";
       readonly id: string;
       readonly chatThreadId: string;
@@ -571,6 +585,17 @@ function newDisplayContext(
   eventId: string,
   values: NewChatEvent,
 ): NewDisplayContext | undefined {
+  const agentRunContext =
+    "agentRunContext" in values ? values.agentRunContext : undefined;
+  if (agentRunContext !== undefined) {
+    return {
+      type: "agent_run",
+      id: agentRunContext.sourceRunId,
+      sourceChatThreadId: agentRunContext.sourceChatThreadId,
+      sourceAgentId: agentRunContext.sourceAgentId,
+    };
+  }
+
   const slackContext =
     "slackContext" in values ? values.slackContext : undefined;
   if (slackContext !== undefined) {
@@ -767,11 +792,31 @@ async function insertTelegramDisplayContext(
   });
 }
 
+async function insertAgentRunDisplayContext(
+  tx: ChatEventWriteTransaction,
+  context: Extract<NewDisplayContext, { readonly type: "agent_run" }>,
+  createdAt: Date,
+): Promise<void> {
+  await tx
+    .insert(chatAgentRunContext)
+    .values({
+      id: context.id,
+      sourceChatThreadId: context.sourceChatThreadId,
+      sourceAgentId: context.sourceAgentId,
+      createdAt,
+    })
+    .onConflictDoNothing({ target: chatAgentRunContext.id });
+}
+
 async function insertDisplayContext(
   tx: ChatEventWriteTransaction,
   context: NewDisplayContext,
   createdAt: Date,
 ): Promise<void> {
+  if (context.type === "agent_run") {
+    await insertAgentRunDisplayContext(tx, context, createdAt);
+    return;
+  }
   if (context.type === "slack") {
     await tx.insert(chatSlackContext).values({
       id: context.id,

@@ -167,7 +167,6 @@ jobs:
       api-changed: ${{ steps.detect.outputs.api-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
-      e2b-changed: ${{ steps.detect.outputs.e2b-changed }}
       migration-changed: ${{ steps.detect.outputs.migration-changed }}
       crates-changed: ${{ steps.detect.outputs.crates-changed }}
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
@@ -222,14 +221,6 @@ jobs:
               echo "${app}-changed=false" >> "$GITHUB_OUTPUT"
             fi
           done
-
-          if printf '%s\n' "$CHANGED_FILES" | grep -q "^turbo/scripts/e2b/"; then
-            echo "E2B template changes detected"
-            echo "e2b-changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No E2B template changes"
-            echo "e2b-changed=false" >> "$GITHUB_OUTPUT"
-          fi
 
           if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema|jsonb-contracts)/"; then
             echo "Migration, schema, or JSONB contract changes detected"
@@ -904,6 +895,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
+          cli-pkg-url: https://static.vm0.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -1007,6 +999,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
+          cli-pkg-url: https://static.vm0.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -1246,12 +1239,9 @@ jobs:
           retention-days: 1
 
   # Build the canonical Cloudflare app artifact independently of Vercel, then
-  # deploy the verified R2 artifact to a Pages preview branch. Release PRs keep
-  # the provider preview but do not receive a custom preview domain.
-  # CF_PREVIEW_GATEWAY_MODE defaults to legacy; canary and enabled skip only
-  # the custom-domain lifecycle after the gateway route is ready.
+  # deploy the verified R2 artifact to a Pages preview branch. The shared
+  # gateway fronts that branch at the stable app preview URL.
   deploy-app:
-    needs: [detect-release]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -1277,7 +1267,6 @@ jobs:
       AWS_DEFAULT_REGION: auto
       CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
       CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
-      CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
       PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN }}
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
@@ -1300,56 +1289,13 @@ jobs:
             "$MERGE_GROUP_HEAD_REF")"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve app preview ingress mode
-        id: preview-ingress
-        env:
-          CANARY_REF: ${{ vars.CF_PREVIEW_GATEWAY_CANARY_REF }}
-          CONFIGURED_MODE: ${{ vars.CF_PREVIEW_GATEWAY_MODE || 'legacy' }}
-          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
-        run: |
-          target_ref="${PAGES_BRANCH%-app}"
-          mode="$(bash .github/scripts/resolve-app-preview-ingress-mode.sh \
-            "$CONFIGURED_MODE" "$CANARY_REF" "$target_ref")"
-          echo "mode=$mode" >> "$GITHUB_OUTPUT"
-          echo "App preview ingress: ${mode}" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Resolve Cloudflare Pages custom preview domain
-        id: pages-custom-domain
-        if: needs.detect-release.outputs.skip != 'true' || github.event_name == 'push'
+      - name: Resolve app preview gateway URL
+        id: app-preview
         env:
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
         run: |
           : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
-          echo "domain=${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
           echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
-
-      - name: Begin Cloudflare Pages custom preview domain validation
-        id: pages-domain-validation
-        if: steps.preview-ingress.outputs.mode == 'legacy' && steps.pages-custom-domain.outputs.domain != ''
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
-          PAGES_CUSTOM_DOMAIN: ${{ steps.pages-custom-domain.outputs.domain }}
-        run: |
-          : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
-          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
-          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
-          status="$(bash .github/scripts/manage-okou-pages-domain.sh \
-            begin \
-            "$CLOUDFLARE_ACCOUNT_ID" \
-            "$CF_PAGES_PREVIEW_ZONE_ID" \
-            "$CF_PAGES_PROJECT_NAME" \
-            "$PAGES_CUSTOM_DOMAIN" \
-            "$PAGES_BRANCH")"
-          case "$status" in
-            active|pending) ;;
-            *)
-              echo "Unexpected Pages domain status: ${status}" >&2
-              exit 1
-              ;;
-          esac
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          echo "Cloudflare Pages domain validation status: ${status}"
 
       - uses: ./.github/actions/toolchain-init
 
@@ -1598,27 +1544,6 @@ jobs:
 
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
 
-      - name: Finalize Cloudflare Pages custom preview domain
-        if: steps.preview-ingress.outputs.mode == 'legacy' && steps.pages-custom-domain.outputs.domain != ''
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
-          PAGES_CUSTOM_DOMAIN: ${{ steps.pages-custom-domain.outputs.domain }}
-          PAGES_DOMAIN_STATUS: ${{ steps.pages-domain-validation.outputs.status }}
-        run: |
-          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
-          if [[ "$PAGES_DOMAIN_STATUS" == "active" ]]; then
-            echo "Cloudflare Pages custom branch domain already active: https://${PAGES_CUSTOM_DOMAIN}"
-            exit 0
-          fi
-          bash .github/scripts/manage-okou-pages-domain.sh \
-            finish \
-            "$CLOUDFLARE_ACCOUNT_ID" \
-            "$CF_PAGES_PREVIEW_ZONE_ID" \
-            "$CF_PAGES_PROJECT_NAME" \
-            "$PAGES_CUSTOM_DOMAIN" \
-            "$PAGES_BRANCH"
-
       - name: Wait for Cloudflare Pages preview assets
         env:
           PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
@@ -1732,9 +1657,9 @@ jobs:
           exit 1
 
       - name: Smoke test app preview gateway
-        if: steps.preview-ingress.outputs.mode == 'gateway' && steps.pages-custom-domain.outputs.url != ''
+        if: steps.app-preview.outputs.url != ''
         env:
-          PAGES_CUSTOM_URL: ${{ steps.pages-custom-domain.outputs.url }}
+          APP_PREVIEW_URL: ${{ steps.app-preview.outputs.url }}
         run: |
           set -euo pipefail
           response_headers="$(mktemp)"
@@ -1742,7 +1667,7 @@ jobs:
             if curl --fail --silent --show-error \
               --dump-header "$response_headers" \
               --output /dev/null \
-              "${PAGES_CUSTOM_URL}/" && \
+              "${APP_PREVIEW_URL}/" && \
               grep -Eiq '^x-vm0-preview-gateway:[[:space:]]*1[[:space:]]*$' \
                 "$response_headers"; then
               echo "App preview gateway is ready"
@@ -1751,19 +1676,19 @@ jobs:
             echo "::warning::App preview gateway is not ready (attempt ${attempt}/12)"
             sleep 5
           done
-          echo "::error::${PAGES_CUSTOM_URL} did not use vm0-preview-gateway"
+          echo "::error::${APP_PREVIEW_URL} did not use vm0-preview-gateway"
           exit 1
 
       - name: Record Cloudflare Pages preview
         env:
+          APP_PREVIEW_URL: ${{ steps.app-preview.outputs.url }}
           PAGES_DEPLOYMENT_URL: ${{ steps.pages-deploy.outputs.url }}
-          PAGES_CUSTOM_URL: ${{ steps.pages-custom-domain.outputs.url }}
           PAGES_PREVIEW_URL: ${{ steps.pages-preview.outputs.url }}
         run: |
           echo "Cloudflare Pages deployment: ${PAGES_DEPLOYMENT_URL}" >> "$GITHUB_STEP_SUMMARY"
           echo "Cloudflare Pages preview: ${PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
-          if [[ -n "$PAGES_CUSTOM_URL" ]]; then
-            echo "Cloudflare Pages custom preview: ${PAGES_CUSTOM_URL}" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "$APP_PREVIEW_URL" ]]; then
+            echo "App preview gateway: ${APP_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
           fi
 
   deploy-stripe-listener:
@@ -2029,23 +1954,38 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  build-cli:
+  # Build one self-contained npm package per checked-out commit and publish it
+  # to the same canonical R2 bucket used by deploy-app. The ready marker is
+  # written last so PR, merge-group, main, and release runs can safely reuse it.
+  deploy-cli:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-cli-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      cancel-in-progress: false
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    needs: [prepare]
-    if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
-      needs.prepare.outputs.job-ref != '' && (
-        needs.prepare.outputs.api-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.crates-changed == 'true' ||
-        needs.prepare.outputs.ci-changed == 'true' ||
-        needs.prepare.outputs.e2e-changed == 'true'
-      )
+    if: >-
+      ${{
+        github.actor != 'dependabot[bot]' &&
+        (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      CLI_STATIC_BASE_URL: https://static.vm0.io
+      R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+      R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - uses: pnpm/action-setup@v6
         with:
           version: 10.33.4
@@ -2054,53 +1994,180 @@ jobs:
           node-version: 22
           cache: pnpm
           cache-dependency-path: turbo/pnpm-lock.yaml
+      - name: Initialize pnpm cache directory
+        run: mkdir -p "$(pnpm store path --silent)"
       - name: Configure git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install AWS CLI
+        run: |
+          architecture="$(dpkg --print-architecture)"
+          case "$architecture" in
+            amd64) aws_architecture="x86_64" ;;
+            arm64) aws_architecture="aarch64" ;;
+            *) echo "Unsupported architecture: $architecture" >&2; exit 1 ;;
+          esac
+
+          curl -fsSL --retry 3 \
+            "https://awscli.amazonaws.com/awscli-exe-linux-${aws_architecture}.zip" \
+            --output /tmp/awscliv2.zip
+          python3 -m zipfile -e /tmp/awscliv2.zip /tmp/awscli
+          chmod +x /tmp/awscli/aws/install /tmp/awscli/aws/dist/aws
+          /tmp/awscli/aws/install
+          aws --version
+
+      - name: Resolve artifact commit SHA
+        id: artifact
+        run: |
+          sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
+          prefix="okou-cli/$sha"
+          {
+            echo "sha=$sha"
+            echo "prefix=$prefix"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check for existing artifact
+        id: existing
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+        run: |
+          set -euo pipefail
+
+          : "${AWS_ACCESS_KEY_ID:?R2_STATIC_ACCESS_KEY_ID secret is required}"
+          : "${AWS_SECRET_ACCESS_KEY:?R2_STATIC_SECRET_ACCESS_KEY secret is required}"
+          : "${R2_ACCOUNT_ID:?R2_ACCOUNT_ID variable is required}"
+          : "${R2_BUCKET_NAME:?R2_STATIC_BUCKET_NAME variable is required}"
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          ready_key="${ARTIFACT_PREFIX}/ready.json"
+          error_log="$(mktemp)"
+
+          set +e
+          aws s3api head-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "$ready_key" \
+            >/dev/null 2>"$error_log"
+          status=$?
+          set -e
+
+          if (( status == 0 )); then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Artifact already ready: s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}/"
+          elif grep -Eq '404|NotFound|Not Found|NoSuchKey' "$error_log"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "$error_log" >&2
+            exit "$status"
+          fi
+
       - name: Install CLI dependencies
+        if: steps.existing.outputs.exists != 'true'
         run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/cli...
       - name: Build CLI
+        if: steps.existing.outputs.exists != 'true'
         run: cd turbo && pnpm --filter @vm0/cli build
-      - name: Verify CLI package contents
-        shell: bash
+
+      - name: Create canonical CLI artifact
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
+        run: |
+          mkdir -p /tmp/okou-cli-artifact
+          bash .github/scripts/build-okou-cli-artifact.sh \
+            "$ARTIFACT_SHA" \
+            /tmp/okou-cli-artifact
+
+      - name: Upload canonical CLI artifact
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
         run: |
           set -euo pipefail
-          cd turbo/apps/cli/dist
-          # Ensure all imported chunks are present in the package
-          for f in zero.js; do
-            chunks=$(grep -oP './chunk-[A-Z0-9]+\.js' "$f" 2>/dev/null || true)
-            for chunk in $chunks; do
-              chunk_file="${chunk#./}"
-              if [ ! -f "$chunk_file" ]; then
-                echo "ERROR: $f imports $chunk but file is missing from dist/"
-                exit 1
-              fi
-            done
-          done
-          # Verify npm pack includes all JS files
-          npm pack --dry-run 2>&1 | tee /tmp/pack-list.txt
-          for js in *.js; do
-            if ! grep -q "$js" /tmp/pack-list.txt; then
-              echo "ERROR: $js exists in dist/ but would not be included in npm package"
-              exit 1
-            fi
-          done
-          echo "CLI package verification passed"
-      - name: Deploy CLI with production dependencies
-        run: cd turbo && pnpm deploy --filter @vm0/cli --prod --legacy --config.node-linker=hoisted --config.ignore-scripts=true /tmp/cli-deploy
-      - name: Smoke test deployed CLI
-        shell: bash
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
+          cache_control="public, max-age=31536000, immutable"
+
+          aws s3 rm "$artifact_uri/" \
+            --endpoint-url "$r2_endpoint" \
+            --recursive
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/package.tgz" \
+            --body /tmp/okou-cli-artifact/package.tgz \
+            --content-type application/gzip \
+            --cache-control "$cache_control"
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/manifest.json" \
+            --body /tmp/okou-cli-artifact/manifest.json \
+            --content-type application/json \
+            --cache-control "$cache_control"
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/ready.json" \
+            --body /tmp/okou-cli-artifact/ready.json \
+            --content-type application/json \
+            --cache-control "$cache_control" \
+            --if-none-match "*"
+
+          echo "Artifact ready: ${artifact_uri}/"
+
+      - name: Download existing CLI artifact
+        if: steps.existing.outputs.exists == 'true'
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+        run: |
+          mkdir -p /tmp/okou-cli-artifact
+          aws s3 cp \
+            "s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}/" \
+            /tmp/okou-cli-artifact/ \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --recursive
+
+      - name: Verify and smoke test CLI artifact
+        env:
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
         run: |
           set -euo pipefail
-          cd /tmp/cli-deploy
-          # Eager imports load the full dependency tree
-          # (@sentry/node → @prisma/instrumentation → @opentelemetry/*).
-          # Any broken transitive dep will fail here.
-          node dist/zero.js --help
+          bash .github/scripts/verify-okou-cli-artifact.sh \
+            /tmp/okou-cli-artifact \
+            "$ARTIFACT_SHA"
+          npx --yes \
+            --package=/tmp/okou-cli-artifact/package.tgz \
+            zero --help
+
+      - name: Verify CLI artifact through CDN
+        env:
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+        run: |
+          set -euo pipefail
+          cdn_dir="$(mktemp -d)"
+          for filename in package.tgz manifest.json ready.json; do
+            curl -fsSL \
+              --retry 5 \
+              --retry-delay 2 \
+              --retry-all-errors \
+              "${CLI_STATIC_BASE_URL}/${ARTIFACT_PREFIX}/${filename}" \
+              --output "${cdn_dir}/${filename}"
+          done
+          bash .github/scripts/verify-okou-cli-artifact.sh \
+            "$cdn_dir" \
+            "$ARTIFACT_SHA"
+
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v7
         with:
-          name: cli-dist
-          path: /tmp/cli-deploy
+          name: cli-package
+          path: /tmp/okou-cli-artifact/package.tgz
           retention-days: 1
 
   # Run CLI E2E tests - Phase 1: Serial tests (org/provider CRUD)
@@ -2112,7 +2179,7 @@ jobs:
     needs:
       [
         prepare,
-        build-cli,
+        deploy-cli,
         deploy-api,
         lint-eslint,
         lint-types,
@@ -2142,20 +2209,20 @@ jobs:
       - name: Download CLI artifact
         uses: actions/download-artifact@v8.0.1
         with:
-          name: cli-dist
-          path: /tmp/cli-deploy
+          name: cli-package
+          path: /tmp/cli-package
       - name: Install CLI globally
         run: |
           set -euo pipefail
-          # Derive from `node` on PATH so sudo and user see the same prefix
-          # regardless of npmrc / env-var inheritance.
-          NODE_PREFIX=$(dirname "$(dirname "$(command -v node)")")
-          CLI_DIR="$NODE_PREFIX/lib/node_modules/@vm0/cli"
-          sudo rm -rf "$CLI_DIR"
-          sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
-          sudo cp -a /tmp/cli-deploy "$CLI_DIR"
-          sudo chmod +x "$CLI_DIR/dist/zero.js"
-          sudo ln -sf "$CLI_DIR/dist/zero.js" "$NODE_PREFIX/bin/zero"
+          package_root="$(mktemp -d)"
+          tar -xzf /tmp/cli-package/package.tgz -C "$package_root"
+          node_prefix=$(dirname "$(dirname "$(command -v node)")")
+          cli_dir="$node_prefix/lib/node_modules/@vm0/cli"
+          sudo rm -rf "$cli_dir"
+          sudo mkdir -p "$node_prefix/lib/node_modules/@vm0"
+          sudo cp -a "$package_root/package" "$cli_dir"
+          sudo chmod +x "$cli_dir/zero.js"
+          sudo ln -sf "$cli_dir/zero.js" "$node_prefix/bin/zero"
           zero --help
       - name: Download E2E test tokens
         uses: actions/download-artifact@v8.0.1
@@ -2663,7 +2730,7 @@ jobs:
             policies: [
               {model: "claude-opus-4-7", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
               {model: "claude-sonnet-4-6", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
-              {model: "deepseek-v4-pro", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
+              {model: "deepseek-v4-flash", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
               {model: "gpt-5.5", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null}
             ]
           }')"
@@ -2811,32 +2878,6 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
-  # Build E2B templates (development account)
-  # Uses repository-level E2B_API_KEY secret
-  build-e2b-template:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    needs: [prepare]
-    # Build on PR or main push when E2B templates changed, skip release-please commits
-    if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
-      needs.prepare.outputs.e2b-changed == 'true'
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Build E2B templates
-        working-directory: turbo
-        env:
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-        run: |
-          pnpm e2b:cli:build
-
-      - name: Build summary
-        run: echo "✅ E2B templates built successfully (development account)"
-
   lint-runtime-api-compat:
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -2931,8 +2972,7 @@ jobs:
       - deploy-api
       - deploy-app
       - deploy-stripe-listener
-      - build-cli
-      - build-e2b-template
+      - deploy-cli
       - cli-e2e-02-browser
       - cli-e2e-02-playwright
       - cli-e2e-01-serial
@@ -2949,11 +2989,21 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           IS_RELEASE: ${{ needs.detect-release.outputs.skip }}
           RELEASE_PRESENCE_RESULT: ${{ needs.validate-release-presence.result }}
+          RELEASE_DEPLOY_APP_RESULT: ${{ needs.deploy-app.result }}
+          RELEASE_DEPLOY_CLI_RESULT: ${{ needs.deploy-cli.result }}
         run: |
           # Auto-pass for release-please PRs, commits, and merge queue entries
           if [[ "$IS_RELEASE" == "true" ]]; then
             if [[ "$EVENT_NAME" == "merge_group" && "$RELEASE_PRESENCE_RESULT" != "success" ]]; then
               echo "::error::validate-release-presence: expected success, got $RELEASE_PRESENCE_RESULT"
+              exit 1
+            fi
+            if [[ "$EVENT_NAME" == "merge_group" && "$RELEASE_DEPLOY_APP_RESULT" != "success" ]]; then
+              echo "::error::deploy-app: expected success, got $RELEASE_DEPLOY_APP_RESULT"
+              exit 1
+            fi
+            if [[ "$EVENT_NAME" == "merge_group" && "$RELEASE_DEPLOY_CLI_RESULT" != "success" ]]; then
+              echo "::error::deploy-cli: expected success, got $RELEASE_DEPLOY_CLI_RESULT"
               exit 1
             fi
             echo "✅ Release-please — skipping CI gate"
@@ -3029,8 +3079,7 @@ jobs:
           check_result "deploy-api" "${{ needs.deploy-api.result }}" "true"
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "deploy-stripe-listener" "${{ needs.deploy-stripe-listener.result }}" "true"
-          check_result "build-cli" "${{ needs.build-cli.result }}" "true"
-          check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"
+          check_result "deploy-cli" "${{ needs.deploy-cli.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"

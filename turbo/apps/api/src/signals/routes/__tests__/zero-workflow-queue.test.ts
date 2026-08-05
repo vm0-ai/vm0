@@ -9,7 +9,8 @@ import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/z
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { onTestFinished, test as vitestTest } from "vitest";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -505,7 +506,7 @@ describe("workflow queue", () => {
     await runsApi.requestCancelRun(scenario.actor, goalRunId, [200]);
   });
 
-  it("continues to workflow automation after rejecting a higher-priority invalid goal", async () => {
+  it("continues to workflow automation after revoking a higher-priority invalid goal", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     const goal = await createActiveGoalQueueEventFixture({
@@ -525,9 +526,8 @@ describe("workflow queue", () => {
     const events = await wf.readThreadEvents(automation.threadId);
     expect(events).toContainEqual(
       expect.objectContaining({
-        eventType: "input.rejected",
+        eventType: "control.revoke",
         revokesEventId: goal.eventId,
-        error: "Goal continuation no longer matches the active goal",
       }),
     );
     const goalQueue = await readGoalQueueStateFixture(automation.threadId);

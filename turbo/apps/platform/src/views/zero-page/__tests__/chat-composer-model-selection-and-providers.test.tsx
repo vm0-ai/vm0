@@ -287,8 +287,8 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000915",
-        model: "deepseek-v4-pro",
-        modelLabel: "DeepSeek V4 Pro",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
@@ -1205,22 +1205,39 @@ describe("chat composer models", () => {
     expect(preferenceRequestStarted).toBeFalsy();
   });
 
-  it("opens compare plans from limited-free-1 Pro composer model items", async () => {
+  it("shows limited-free-1 models and opens plans for Pro models", async () => {
     const user = userEvent.setup({ delay: null });
-    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
+    mockBillingCapabilities(
+      { supportByok: false, restrictedVm0Models: true },
+      "limited-free-1",
+    );
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000701",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000702",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000703",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000704",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
@@ -1229,12 +1246,22 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-    await expectComposerModel("Kimi K2.7 Code");
-    await user.click(screen.getByRole("combobox", { name: "Kimi K2.7 Code" }));
-    await user.click(
-      await screen.findByRole("option", { name: /GPT 5\.5.*Pro/u }),
-    );
+    await expectComposerModel("DeepSeek V4 Flash");
+    await user.click(await findComposerModel("DeepSeek V4 Flash"));
 
+    const deepseek = await screen.findByRole("option", {
+      name: /DeepSeek V4 Flash/u,
+    });
+    const luna = screen.getByRole("option", { name: /GPT 5\.6 Luna/u });
+    expect(deepseek).not.toHaveTextContent("Pro");
+    expect(luna).not.toHaveTextContent("Pro");
+    expect(
+      screen.getByRole("option", { name: /GPT 5\.6 Sol.*Pro/u }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("option", { name: /Claude Fable 5.*Pro/u }),
+    );
     await expect(
       screen.findByRole("heading", { name: "Compare plans" }),
     ).resolves.toBeInTheDocument();

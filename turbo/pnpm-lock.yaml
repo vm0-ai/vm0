@@ -95,9 +95,6 @@ importers:
       dotenv-cli:
         specifier: ^11.0.0
         version: 11.0.0
-      e2b:
-        specifier: ^2.10.3
-        version: 2.18.0
       knip:
         specifier: ^5.63.1
         version: 5.88.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@types/node@24.3.0)(typescript@6.0.3)
@@ -305,10 +302,6 @@ importers:
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/coverage-v8@4.1.10)(@vitest/ui@4.1.10)(happy-dom@20.11.1(bufferutil@4.1.0)(utf-8-validate@6.0.6))(msw@2.13.2(@types/node@24.3.0)(typescript@6.0.3))(vite@8.0.16(@types/node@24.3.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0))
 
   apps/cli:
-    dependencies:
-      ably:
-        specifier: ^2.21.0
-        version: 2.21.0(bufferutil@4.1.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(utf-8-validate@6.0.6)
     devDependencies:
       '@sentry/node':
         specifier: ^10.50.0
@@ -343,6 +336,9 @@ importers:
       '@vm0/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
+      ably:
+        specifier: ^2.21.0
+        version: 2.21.0(bufferutil@4.1.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(utf-8-validate@6.0.6)
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
@@ -1308,9 +1304,6 @@ packages:
   '@braintree/sanitize-url@7.1.2':
     resolution: {integrity: sha512-jigsZK+sMF/cuiB7sERuo9V7N9jx+dhmHHnQyDSVdpZwVutaBu7WvNYqMDLSgFgfB30n452TP3vjDAvFC973mA==}
 
-  '@bufbuild/protobuf@2.11.0':
-    resolution: {integrity: sha512-sBXGT13cpmPR5BMgHE6UEEfEaShh5Ror6rfN3yEK5si7QVrtZg8LEPQb0VVhiLRUslD2yLnXtnRzG035J/mZXQ==}
-
   '@chevrotain/types@11.1.2':
     resolution: {integrity: sha512-U+HFai5+zmJCkK86QsaJtoITlboZHBqrVketcO2ROv865xfCMSFpELQoz1GkX5GzME8pTa+3kbKrZHQtI0gdbw==}
 
@@ -1478,17 +1471,6 @@ packages:
   '@commitlint/types@20.5.0':
     resolution: {integrity: sha512-ZJoS8oSq2CAZEpc/YI9SulLrdiIyXeHb/OGqGrkUP6Q7YV+0ouNAa7GjqRdXeQPncHQIDz/jbCTlHScvYvO/gA==}
     engines: {node: '>=v18'}
-
-  '@connectrpc/connect-web@2.0.0-rc.3':
-    resolution: {integrity: sha512-w88P8Lsn5CCsA7MFRl2e6oLY4J/5toiNtJns/YJrlyQaWOy3RO8pDgkz+iIkG98RPMhj2thuBvsd3Cn4DKKCkw==}
-    peerDependencies:
-      '@bufbuild/protobuf': ^2.2.0
-      '@connectrpc/connect': 2.0.0-rc.3
-
-  '@connectrpc/connect@2.0.0-rc.3':
-    resolution: {integrity: sha512-ARBt64yEyKbanyRETTjcjJuHr2YXorzQo0etyS5+P6oSeW8xEuzajA9g+zDnMcj1hlX2dQE93foIWQGfpru7gQ==}
-    peerDependencies:
-      '@bufbuild/protobuf': ^2.2.0
 
   '@conventional-changelog/git-client@2.6.0':
     resolution: {integrity: sha512-T+uPDciKf0/ioNNDpMGc8FDsehJClZP0yR3Q5MN6wE/Y/1QZ7F+80OgznnTCOlMEG4AV0LvH2UJi3C/nBnaBUg==}
@@ -6241,9 +6223,6 @@ packages:
     resolution: {integrity: sha512-pJDh5/4wrEnXX/VWRZvruAGHkzKdr46z11OlTPN+VrATlWWhSKewNCJ1futCO5C7eJB3nPMFZA1LeYtcFboZ2A==}
     engines: {node: '>=0.10.0'}
 
-  compare-versions@6.1.1:
-    resolution: {integrity: sha512-4hm4VPpIecmlg59CHXnRDnqGplJFrbLG4aFEl5vl6cK1u76ws3LLvX7ikFnTDl5vo39sjWD6AaDPYodJp/NNHg==}
-
   compress-commons@7.0.1:
     resolution: {integrity: sha512-g0S8KAD8qf4+V//pr3BfB1aBnARLXNz2Gx+jmHU0LEriUuoQUOPOulVquHKTJ8+EAIIO7fhseNDr9wK5Q9FKBQ==}
     engines: {node: '>=18'}
@@ -6662,9 +6641,6 @@ packages:
     resolution: {integrity: sha512-9S6m9Sukh1cZNknO1CWAr2QAWsbKLafQiyM5gZ7VgXHeuaoUwffKN4q6NC4A/Mf9iiPlOXQEKW/Mv/mh9/3YFA==}
     hasBin: true
 
-  dockerfile-ast@0.7.1:
-    resolution: {integrity: sha512-oX/A4I0EhSkGqrFv0YuvPkBUSYp1XiY8O8zAKc8Djglx8ocz+JfOr8gP0ryRMC2myqvDLagmnZaU9ot1vG2ijw==}
-
   doctrine@2.1.0:
     resolution: {integrity: sha512-35mSku4ZXK0vfCuHEDAwt55dg2jNajHZ1odvF+8SSr82EsZY4QmXfuWso8oEd8zRhVObSN18aM0CjSdoBX7zIw==}
     engines: {node: '>=0.10.0'}
@@ -6814,10 +6790,6 @@ packages:
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
     engines: {node: '>= 0.4'}
-
-  e2b@2.18.0:
-    resolution: {integrity: sha512-umWvNhKx3dWUfzcLPLO5Ep1qB5cTLuJlAlnxfKVUnOwx3yaO+H1PaAE2fihT4etEu3BNs3pHvdwa1VM+uMxe0w==}
-    engines: {node: '>=20'}
 
   eastasianwidth@0.2.0:
     resolution: {integrity: sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==}
@@ -8828,12 +8800,6 @@ packages:
     resolution: {integrity: sha512-VXJjc87FScF88uafS3JllDgvAm+c/Slfz06lorj2uAY34rlUu0Nt+v8wreiImcrgAjjIHp1rXpTDlLOGw29WwQ==}
     engines: {node: '>=18'}
 
-  openapi-fetch@0.14.1:
-    resolution: {integrity: sha512-l7RarRHxlEZYjMLd/PR0slfMVse2/vvIAGm75/F7J6MlQ8/b9uUQmUF2kCPrQhJqMXSxmYWObVgeYXbFYzZR+A==}
-
-  openapi-typescript-helpers@0.0.15:
-    resolution: {integrity: sha512-opyTPaunsklCBpTK8JGef6mfPhLSnyy5a0IN9vKtx3+4aExf+KxEqYwIy3hqkedXIB97u357uLMJsOnm3GVjsw==}
-
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
     engines: {node: '>= 0.8.0'}
@@ -9111,9 +9077,6 @@ packages:
 
   pkg-types@1.3.1:
     resolution: {integrity: sha512-/Jm5M4RvtBFVkKWRu2BLUTNP8/M2a+UwuAX+ae4770q1qVGtfjG+WTCupoZixokjmHiry8uI+dlY8KXYV5HVVQ==}
-
-  platform@1.3.6:
-    resolution: {integrity: sha512-fnWVljUchTro6RiCFvCXBbNhJc2NijN7oIQxbwsyL0buWJPG85v81ehlHI9fXrJsMNgTofEoWIQeClKpgxFLrg==}
 
   plist@3.1.1:
     resolution: {integrity: sha512-ZIfcLJC+7E7FBFnDxm9MPmt7D+DidyQ26lewieO75AdhA2ayMtsJSES0iWzqJQbcVRSrTufQoy0DR94xHue0oA==}
@@ -10614,12 +10577,6 @@ packages:
       jsdom:
         optional: true
 
-  vscode-languageserver-textdocument@1.0.12:
-    resolution: {integrity: sha512-cxWNPesCnQCcMPeenjKKsOCKQZ/L6Tv19DTRIGuLWe32lyzWhihGVJ/rcckZXJxfdKCFvRLS3fpBIsV/ZGX4zA==}
-
-  vscode-languageserver-types@3.17.5:
-    resolution: {integrity: sha512-Ld1VelNuX9pdF39h2Hgaeb5hEZM2Z3jUrrMgWQAu82jMtZp7p3vJT3BzToKtZI7NgQssZje5o0zryOrhQvzQAg==}
-
   w3c-keyname@2.2.8:
     resolution: {integrity: sha512-dpojBhNsCNN7T82Tm7k26A6G9ML3NkhDsnw9n/eoxSRlVBB4CEtIQ/KTCLI2Fwf3ataSXRhYFkQi3SlnFwPvPQ==}
 
@@ -11265,8 +11222,6 @@ snapshots:
 
   '@braintree/sanitize-url@7.1.2': {}
 
-  '@bufbuild/protobuf@2.11.0': {}
-
   '@chevrotain/types@11.1.2': {}
 
   '@clerk/backend@3.13.1(react-dom@19.2.6(react@19.2.8))(react@19.2.8)':
@@ -11539,15 +11494,6 @@ snapshots:
     dependencies:
       conventional-commits-parser: 6.3.0
       picocolors: 1.1.1
-
-  '@connectrpc/connect-web@2.0.0-rc.3(@bufbuild/protobuf@2.11.0)(@connectrpc/connect@2.0.0-rc.3(@bufbuild/protobuf@2.11.0))':
-    dependencies:
-      '@bufbuild/protobuf': 2.11.0
-      '@connectrpc/connect': 2.0.0-rc.3(@bufbuild/protobuf@2.11.0)
-
-  '@connectrpc/connect@2.0.0-rc.3(@bufbuild/protobuf@2.11.0)':
-    dependencies:
-      '@bufbuild/protobuf': 2.11.0
 
   '@conventional-changelog/git-client@2.6.0(conventional-commits-parser@6.3.0)':
     dependencies:
@@ -16620,8 +16566,6 @@ snapshots:
 
   compare-version@0.1.2: {}
 
-  compare-versions@6.1.1: {}
-
   compress-commons@7.0.1:
     dependencies:
       crc-32: 1.2.2
@@ -17029,11 +16973,6 @@ snapshots:
 
   direction@2.0.1: {}
 
-  dockerfile-ast@0.7.1:
-    dependencies:
-      vscode-languageserver-textdocument: 1.0.12
-      vscode-languageserver-types: 3.17.5
-
   doctrine@2.1.0:
     dependencies:
       esutils: 2.0.3
@@ -17104,19 +17043,6 @@ snapshots:
       call-bind-apply-helpers: 1.0.2
       es-errors: 1.3.0
       gopd: 1.2.0
-
-  e2b@2.18.0:
-    dependencies:
-      '@bufbuild/protobuf': 2.11.0
-      '@connectrpc/connect': 2.0.0-rc.3(@bufbuild/protobuf@2.11.0)
-      '@connectrpc/connect-web': 2.0.0-rc.3(@bufbuild/protobuf@2.11.0)(@connectrpc/connect@2.0.0-rc.3(@bufbuild/protobuf@2.11.0))
-      chalk: 5.6.2
-      compare-versions: 6.1.1
-      dockerfile-ast: 0.7.1
-      glob: 13.0.6
-      openapi-fetch: 0.14.1
-      platform: 1.3.6
-      tar: 7.5.22
 
   eastasianwidth@0.2.0: {}
 
@@ -19671,12 +19597,6 @@ snapshots:
     dependencies:
       mimic-function: 5.0.1
 
-  openapi-fetch@0.14.1:
-    dependencies:
-      openapi-typescript-helpers: 0.0.15
-
-  openapi-typescript-helpers@0.0.15: {}
-
   optionator@0.9.4:
     dependencies:
       deep-is: 0.1.4
@@ -19995,8 +19915,6 @@ snapshots:
       confbox: 0.1.8
       mlly: 1.8.2
       pathe: 2.0.3
-
-  platform@1.3.6: {}
 
   plist@3.1.1:
     dependencies:
@@ -21813,10 +21731,6 @@ snapshots:
       happy-dom: 20.11.1(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     transitivePeerDependencies:
       - msw
-
-  vscode-languageserver-textdocument@1.0.12: {}
-
-  vscode-languageserver-types@3.17.5: {}
 
   w3c-keyname@2.2.8: {}
 

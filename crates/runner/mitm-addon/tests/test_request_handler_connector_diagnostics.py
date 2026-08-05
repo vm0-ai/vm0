@@ -10,6 +10,7 @@ import request_classification
 import request_streaming
 import upstream_destination_binding
 from tests.connector_diagnostic_helpers import (
+    write_connector_diagnostic_capture_registry,
     write_connector_diagnostic_catalog_cache,
     write_shared_base_diagnostic_catalog,
 )
@@ -136,6 +137,52 @@ async def test_shared_base_unknown_endpoint_diagnoses_inactive_sibling_before_au
     assert proxy_log_entry["ownership_reason"] == "route_owner"
     assert proxy_log_entry["ownership_candidates"] == ["active-shared", "inactive-shared"]
     assert proxy_log_entry["ownership_hint_status"] == "ignored"
+
+
+async def test_shared_base_head_diagnostic_is_bodyless(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    write_shared_base_diagnostic_catalog(
+        tmp_path,
+        active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
+        inactive_permissions=[{"name": "inactive-read", "rules": ["HEAD /inactive"]}],
+    )
+    reg_path = _write_shared_base_active_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        path="/inactive",
+        method="HEAD",
+        request_headers=headers(
+            ("Host", "shared.example.com"),
+            ("X-VM0-Connector-Intent", "inactive-shared"),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 424
+    assert flow.response.raw_content == b""
+    assert flow.response.headers["Content-Type"] == "application/json"
+    assert flow.response.headers.get_all("Content-Length") == []
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] == "inactive-shared"
+    [network_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert network_entry["response_size"] == 0
+    assert "response_body" not in network_entry
+    [connector_entry, http_error_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert connector_entry["type"] == "connector_diagnostic"
+    assert http_error_entry["type"] == "http_error"
 
 
 async def test_shared_base_connector_intent_diagnoses_inside_candidate_set_before_auth(
@@ -391,6 +438,36 @@ async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic
     assert proxy_entry["upstream_status"] == 0
     assert http_error_entry["type"] == "http_error"
     assert http_error_entry["status"] == 424
+
+
+async def test_inactive_builtin_connector_head_diagnostic_is_bodyless(
+    tmp_path, real_flow, mitm_ctx
+):
+    reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path="/fal-ai/nano-banana-pro",
+        method="HEAD",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 424
+    assert flow.response.raw_content == b""
+    assert flow.response.headers["Content-Type"] == "application/json"
+    assert flow.response.headers.get_all("Content-Length") == []
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] == "fal"
+    [network_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert network_entry["response_size"] == 0
+    assert "response_body" not in network_entry
+    [connector_entry, http_error_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert connector_entry["type"] == "connector_diagnostic"
+    assert http_error_entry["type"] == "http_error"
 
 
 @pytest.mark.parametrize(

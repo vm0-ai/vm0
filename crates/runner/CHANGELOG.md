@@ -1,5 +1,81 @@
 # Changelog
 
+## [0.158.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.4...runner-rs-v0.158.5) (2026-08-05)
+
+
+### Bug Fixes
+
+* **python:** keep connector diagnostics bodyless for head ([#25167](https://github.com/vm0-ai/vm0/issues/25167)) ([005a633](https://github.com/vm0-ai/vm0/commit/005a6333c81afaad013a5908bafc439fe1d1d9c4))
+
+## [0.158.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.3...runner-rs-v0.158.4) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** clean up cancelled setup artifact temps ([#25138](https://github.com/vm0-ai/vm0/issues/25138)) ([8cbc510](https://github.com/vm0-ai/vm0/commit/8cbc51072bc488e3d96dedd8668ecfe43fedb6aa))
+
+
+### Documentation
+
+* **python:** document x json truncation contract ([#25153](https://github.com/vm0-ai/vm0/issues/25153)) ([645f14c](https://github.com/vm0-ai/vm0/commit/645f14c1adb25e7c1371c2ca2a0b6aaee9324a28))
+
+
+### Refactoring
+
+* **rust:** centralize epoch-millisecond validation ([#25159](https://github.com/vm0-ai/vm0/issues/25159)) ([4780d82](https://github.com/vm0-ai/vm0/commit/4780d82181ac10f4f7bfaafc6b16e448f89f2860))
+
+## [0.158.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.2...runner-rs-v0.158.3) (2026-08-05)
+
+
+### Bug Fixes
+
+* **python:** preserve auth base representation lengths ([#25135](https://github.com/vm0-ai/vm0/issues/25135)) ([8c70774](https://github.com/vm0-ai/vm0/commit/8c70774539a77c52148354e49a485b3c5c60be61))
+
+
+### Documentation
+
+* **python:** document catalog response-header continuation contract ([#25134](https://github.com/vm0-ai/vm0/issues/25134)) ([f0e55c4](https://github.com/vm0-ai/vm0/commit/f0e55c4f136323477f881c716061185ec6b79fa2))
+
+## [0.158.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.1...runner-rs-v0.158.2) (2026-08-05)
+
+## [0.158.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.0...runner-rs-v0.158.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** keep info logs out of axiom ([#25114](https://github.com/vm0-ai/vm0/issues/25114)) ([3c6d123](https://github.com/vm0-ai/vm0/commit/3c6d1235847d344b7e1a9bc8ee885b68d1fd8d5b))
+
+
+### Performance Improvements
+
+* **runner:** measure reserved reuse claims ([#25078](https://github.com/vm0-ai/vm0/issues/25078)) ([4c2a7fa](https://github.com/vm0-ai/vm0/commit/4c2a7fac17bac1b83689b3f1a31cd8a6f5375cc0))
+
+## [0.158.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.157.2...runner-rs-v0.158.0) (2026-08-04)
+
+
+### Features
+
+* annotate cross-thread agent prompts and bound autonomous delegation depth ([#24934](https://github.com/vm0-ai/vm0/issues/24934)) ([2f2c72a](https://github.com/vm0-ai/vm0/commit/2f2c72af84481a07844bda1eb78fc73612cec3f2))
+
+## [0.157.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.157.1...runner-rs-v0.157.2) (2026-08-04)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** reduce balloon settle detection latency ([#25069](https://github.com/vm0-ai/vm0/issues/25069)) ([16893fa](https://github.com/vm0-ai/vm0/commit/16893fa7ffa416a8859a112119a8082229da2d88))
+
+## [0.157.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.157.0...runner-rs-v0.157.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **runner:** report unavailable status in doctor ([#25051](https://github.com/vm0-ai/vm0/issues/25051)) ([c5b3cc8](https://github.com/vm0-ai/vm0/commit/c5b3cc8618e9ada1c986d7afd1307e9582a46085))
+
+
+### Refactoring
+
+* canonicalize deepseek model provider ([#25030](https://github.com/vm0-ai/vm0/issues/25030)) ([c19ea0f](https://github.com/vm0-ai/vm0/commit/c19ea0fa2d196143ab899db3953904c814e2b016))
+
 ## [0.157.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.156.2...runner-rs-v0.157.0) (2026-08-04)
 
 
@@ -1906,7 +1982,6 @@
 
 ### Bug Fixes
 
-* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
 * prune stale runner direct candidates ([#20649](https://github.com/vm0-ai/vm0/issues/20649)) ([191387f](https://github.com/vm0-ai/vm0/commit/191387fcdb094faae15cb83c940d463bcf5d580a))
 
 ## [0.139.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.138.2...runner-rs-v0.139.0) (2026-07-08)
