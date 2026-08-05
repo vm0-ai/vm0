@@ -176,6 +176,8 @@ async fn complete_close_request(
     p: &mut EventLoopState,
     request: Result<CloseRequest, oneshot::error::RecvError>,
 ) {
+    // `tokio::select!` drops non-selected branch futures before running their
+    // handlers, so a canceled reconnect registers its cleanup before this wait.
     let direct_result = send_close_message(p).await;
     let cleanup_result = p.transport_close_tracker.close_and_wait().await;
     let result = match (direct_result, cleanup_result) {

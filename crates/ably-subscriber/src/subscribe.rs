@@ -79,6 +79,8 @@ impl Subscription {
             code: error_code::FAILED,
             message: "Subscription close request is unavailable".to_string(),
         })?;
+        // Receiving the request can cancel a pending reconnect and start its
+        // transport cleanup immediately, so observation must be enabled first.
         self.transport_close_tracker.observe_failures();
         let (completion_tx, completion_rx) = oneshot::channel();
         close_tx
