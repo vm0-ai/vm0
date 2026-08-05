@@ -1,8 +1,8 @@
 use crate::support::*;
 use ably_subscriber::protocol::{
-    ConnectionDetails, ErrorInfo, ProtocolMessage, action, encode_msg,
+    ConnectionDetails, ErrorInfo, ProtocolMessage, action, encode_msg, error_code,
 };
-use ably_subscriber::{Event, TimingConfig, subscribe};
+use ably_subscriber::{Error, Event, TimingConfig, subscribe};
 use futures_util::{SinkExt, StreamExt};
 use httpmock::prelude::*;
 use std::time::Duration;
@@ -48,8 +48,6 @@ async fn close_subscription() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    let (close_tx, close_rx) = tokio::sync::oneshot::channel::<()>();
-
     let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
 
@@ -68,7 +66,6 @@ async fn close_subscription() {
             matches!(frame, tungstenite::Message::Close(_)),
             "expected websocket close frame, got {frame:?}"
         );
-        close_tx.send(()).unwrap();
     });
 
     let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
@@ -77,13 +74,8 @@ async fn close_subscription() {
 
     expect_connected(&mut sub, "Connected event").await.unwrap();
 
-    sub.close();
+    sub.close_and_wait().await.unwrap();
 
-    // Server task confirms it received CLOSE
-    tokio::time::timeout(Duration::from_secs(5), close_rx)
-        .await
-        .expect("timed out waiting for server to confirm CLOSE")
-        .unwrap();
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
@@ -167,6 +159,18 @@ async fn server_sends_closed() {
         .await
         .unwrap();
     join_server_task(server_task, "mock server").await.unwrap();
+
+    let error = sub.close_and_wait().await.unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            Error::Protocol {
+                code: error_code::FAILED,
+                ..
+            }
+        ),
+        "expected failed close request, got {error}"
+    );
 }
 
 #[tokio::test]
@@ -520,7 +524,7 @@ async fn close_during_reconnect_attach_wait_closes_temporary_socket() {
         .expect("timed out waiting for reconnect ATTACH")
         .unwrap();
 
-    sub.close();
+    sub.close_and_wait().await.unwrap();
 
     tokio::time::timeout(Duration::from_secs(5), closed_rx)
         .await
